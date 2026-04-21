@@ -63,7 +63,8 @@ public sealed class SqlitePlatformSettingsRepository(
             """
             SELECT
                 id, name, media_type, purpose, root_path, downloads_path, auto_search_enabled,
-                search_interval_hours, retry_delay_hours, created_utc, updated_utc
+                missing_search_enabled, upgrade_search_enabled, search_interval_hours,
+                retry_delay_hours, max_items_per_run, created_utc, updated_utc
             FROM libraries
             ORDER BY media_type ASC, name ASC;
             """;
@@ -79,10 +80,17 @@ public sealed class SqlitePlatformSettingsRepository(
                 RootPath: reader.GetString(4),
                 DownloadsPath: reader.IsDBNull(5) ? null : reader.GetString(5),
                 AutoSearchEnabled: reader.GetInt64(6) == 1,
-                SearchIntervalHours: reader.GetInt32(7),
-                RetryDelayHours: reader.GetInt32(8),
-                CreatedUtc: ParseTimestamp(reader.GetString(9)),
-                UpdatedUtc: ParseTimestamp(reader.GetString(10))));
+                MissingSearchEnabled: reader.GetInt64(7) == 1,
+                UpgradeSearchEnabled: reader.GetInt64(8) == 1,
+                SearchIntervalHours: reader.GetInt32(9),
+                RetryDelayHours: reader.GetInt32(10),
+                MaxItemsPerRun: reader.GetInt32(11),
+                AutomationStatus: "idle",
+                SearchRequested: false,
+                LastSearchedUtc: null,
+                NextSearchUtc: null,
+                CreatedUtc: ParseTimestamp(reader.GetString(12)),
+                UpdatedUtc: ParseTimestamp(reader.GetString(13))));
         }
 
         return items;
@@ -101,8 +109,15 @@ public sealed class SqlitePlatformSettingsRepository(
             RootPath: NormalizePath(request.RootPath) ?? string.Empty,
             DownloadsPath: NormalizePath(request.DownloadsPath),
             AutoSearchEnabled: request.AutoSearchEnabled,
+            MissingSearchEnabled: request.MissingSearchEnabled,
+            UpgradeSearchEnabled: request.UpgradeSearchEnabled,
             SearchIntervalHours: NormalizePositiveValue(request.SearchIntervalHours, 6),
             RetryDelayHours: NormalizePositiveValue(request.RetryDelayHours, 24),
+            MaxItemsPerRun: NormalizePositiveValue(request.MaxItemsPerRun, 25),
+            AutomationStatus: "idle",
+            SearchRequested: false,
+            LastSearchedUtc: null,
+            NextSearchUtc: null,
             CreatedUtc: now,
             UpdatedUtc: now);
 
@@ -115,11 +130,13 @@ public sealed class SqlitePlatformSettingsRepository(
             """
             INSERT INTO libraries (
                 id, name, media_type, purpose, root_path, downloads_path, auto_search_enabled,
-                search_interval_hours, retry_delay_hours, created_utc, updated_utc
+                missing_search_enabled, upgrade_search_enabled, search_interval_hours,
+                retry_delay_hours, max_items_per_run, created_utc, updated_utc
             )
             VALUES (
                 @id, @name, @mediaType, @purpose, @rootPath, @downloadsPath, @autoSearchEnabled,
-                @searchIntervalHours, @retryDelayHours, @createdUtc, @updatedUtc
+                @missingSearchEnabled, @upgradeSearchEnabled, @searchIntervalHours,
+                @retryDelayHours, @maxItemsPerRun, @createdUtc, @updatedUtc
             );
             """;
 
@@ -130,13 +147,61 @@ public sealed class SqlitePlatformSettingsRepository(
         AddParameter(command, "@rootPath", item.RootPath);
         AddParameter(command, "@downloadsPath", item.DownloadsPath);
         AddParameter(command, "@autoSearchEnabled", item.AutoSearchEnabled ? 1 : 0);
+        AddParameter(command, "@missingSearchEnabled", item.MissingSearchEnabled ? 1 : 0);
+        AddParameter(command, "@upgradeSearchEnabled", item.UpgradeSearchEnabled ? 1 : 0);
         AddParameter(command, "@searchIntervalHours", item.SearchIntervalHours);
         AddParameter(command, "@retryDelayHours", item.RetryDelayHours);
+        AddParameter(command, "@maxItemsPerRun", item.MaxItemsPerRun);
         AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
         AddParameter(command, "@updatedUtc", item.UpdatedUtc.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
 
         return item;
+    }
+
+    public async Task<LibraryItem?> UpdateLibraryAutomationAsync(
+        string id,
+        UpdateLibraryAutomationRequest request,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                """
+                UPDATE libraries
+                SET
+                    auto_search_enabled = @autoSearchEnabled,
+                    missing_search_enabled = @missingSearchEnabled,
+                    upgrade_search_enabled = @upgradeSearchEnabled,
+                    search_interval_hours = @searchIntervalHours,
+                    retry_delay_hours = @retryDelayHours,
+                    max_items_per_run = @maxItemsPerRun,
+                    updated_utc = @updatedUtc
+                WHERE id = @id;
+                """;
+
+            AddParameter(command, "@id", id);
+            AddParameter(command, "@autoSearchEnabled", request.AutoSearchEnabled ? 1 : 0);
+            AddParameter(command, "@missingSearchEnabled", request.MissingSearchEnabled ? 1 : 0);
+            AddParameter(command, "@upgradeSearchEnabled", request.UpgradeSearchEnabled ? 1 : 0);
+            AddParameter(command, "@searchIntervalHours", NormalizePositiveValue(request.SearchIntervalHours, 6));
+            AddParameter(command, "@retryDelayHours", NormalizePositiveValue(request.RetryDelayHours, 24));
+            AddParameter(command, "@maxItemsPerRun", NormalizePositiveValue(request.MaxItemsPerRun, 25));
+            AddParameter(command, "@updatedUtc", now.ToString("O"));
+
+            if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
+            {
+                return null;
+            }
+        }
+
+        return await GetLibraryAsync(connection, id, cancellationToken);
     }
 
     public async Task<IReadOnlyList<ConnectionItem>> ListConnectionsAsync(CancellationToken cancellationToken)
@@ -384,8 +449,15 @@ public sealed class SqlitePlatformSettingsRepository(
                 RootPath: movieRoot,
                 DownloadsPath: downloadsPath,
                 AutoSearchEnabled: true,
+                MissingSearchEnabled: true,
+                UpgradeSearchEnabled: true,
                 SearchIntervalHours: 6,
                 RetryDelayHours: 24,
+                MaxItemsPerRun: 25,
+                AutomationStatus: "idle",
+                SearchRequested: false,
+                LastSearchedUtc: null,
+                NextSearchUtc: null,
                 CreatedUtc: now,
                 UpdatedUtc: now));
         }
@@ -401,8 +473,15 @@ public sealed class SqlitePlatformSettingsRepository(
                 RootPath: tvRoot,
                 DownloadsPath: downloadsPath,
                 AutoSearchEnabled: true,
+                MissingSearchEnabled: true,
+                UpgradeSearchEnabled: true,
                 SearchIntervalHours: 6,
                 RetryDelayHours: 24,
+                MaxItemsPerRun: 25,
+                AutomationStatus: "idle",
+                SearchRequested: false,
+                LastSearchedUtc: null,
+                NextSearchUtc: null,
                 CreatedUtc: now,
                 UpdatedUtc: now));
         }
@@ -414,11 +493,13 @@ public sealed class SqlitePlatformSettingsRepository(
                 """
                 INSERT INTO libraries (
                     id, name, media_type, purpose, root_path, downloads_path, auto_search_enabled,
-                    search_interval_hours, retry_delay_hours, created_utc, updated_utc
+                    missing_search_enabled, upgrade_search_enabled, search_interval_hours,
+                    retry_delay_hours, max_items_per_run, created_utc, updated_utc
                 )
                 VALUES (
                     @id, @name, @mediaType, @purpose, @rootPath, @downloadsPath, @autoSearchEnabled,
-                    @searchIntervalHours, @retryDelayHours, @createdUtc, @updatedUtc
+                    @missingSearchEnabled, @upgradeSearchEnabled, @searchIntervalHours,
+                    @retryDelayHours, @maxItemsPerRun, @createdUtc, @updatedUtc
                 );
                 """;
 
@@ -429,12 +510,61 @@ public sealed class SqlitePlatformSettingsRepository(
             AddParameter(command, "@rootPath", item.RootPath);
             AddParameter(command, "@downloadsPath", item.DownloadsPath);
             AddParameter(command, "@autoSearchEnabled", item.AutoSearchEnabled ? 1 : 0);
+            AddParameter(command, "@missingSearchEnabled", item.MissingSearchEnabled ? 1 : 0);
+            AddParameter(command, "@upgradeSearchEnabled", item.UpgradeSearchEnabled ? 1 : 0);
             AddParameter(command, "@searchIntervalHours", item.SearchIntervalHours);
             AddParameter(command, "@retryDelayHours", item.RetryDelayHours);
+            AddParameter(command, "@maxItemsPerRun", item.MaxItemsPerRun);
             AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
             AddParameter(command, "@updatedUtc", item.UpdatedUtc.ToString("O"));
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
+    }
+
+    private static async Task<LibraryItem?> GetLibraryAsync(
+        System.Data.Common.DbConnection connection,
+        string id,
+        CancellationToken cancellationToken)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT
+                id, name, media_type, purpose, root_path, downloads_path, auto_search_enabled,
+                missing_search_enabled, upgrade_search_enabled, search_interval_hours,
+                retry_delay_hours, max_items_per_run, created_utc, updated_utc
+            FROM libraries
+            WHERE id = @id
+            LIMIT 1;
+            """;
+
+        AddParameter(command, "@id", id);
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        return new LibraryItem(
+            Id: reader.GetString(0),
+            Name: reader.GetString(1),
+            MediaType: reader.GetString(2),
+            Purpose: reader.GetString(3),
+            RootPath: reader.GetString(4),
+            DownloadsPath: reader.IsDBNull(5) ? null : reader.GetString(5),
+            AutoSearchEnabled: reader.GetInt64(6) == 1,
+            MissingSearchEnabled: reader.GetInt64(7) == 1,
+            UpgradeSearchEnabled: reader.GetInt64(8) == 1,
+            SearchIntervalHours: reader.GetInt32(9),
+            RetryDelayHours: reader.GetInt32(10),
+            MaxItemsPerRun: reader.GetInt32(11),
+            AutomationStatus: "idle",
+            SearchRequested: false,
+            LastSearchedUtc: null,
+            NextSearchUtc: null,
+            CreatedUtc: ParseTimestamp(reader.GetString(12)),
+            UpdatedUtc: ParseTimestamp(reader.GetString(13)));
     }
 
     private static string? NormalizeName(string? value)

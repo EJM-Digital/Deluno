@@ -59,22 +59,22 @@ export function ConnectionsPage() {
   return (
     <section className="page-stack">
       <header className="page-header">
-        <p className="eyebrow">Connections</p>
-        <h2>Connect the services Deluno needs</h2>
+        <p className="eyebrow">Indexers</p>
+        <h2>Set up the sources and services Deluno relies on</h2>
         <p className="page-copy">
-          Deluno runs the library itself. These connections are for the indexers, download clients, notifications, and related services it relies on.
+          Deluno runs your library itself. This is where you connect indexers, download clients, notifications, and related services so search and download routing work cleanly across Movies and TV Shows.
         </p>
       </header>
       <div className="hero-grid hero-grid-tight">
         <article className="hero-card hero-card-feature">
-          <p className="hero-kicker">Run Deluno directly</p>
-          <h3>One app for your library, with clear service connections around it.</h3>
+          <p className="hero-kicker">Built in, not bolted on</p>
+          <h3>One place for search sources, routing, and download handoff.</h3>
           <p>
-            Keep indexers, download clients, and alerts easy to understand, easy to test, and easy to change without turning setup into a maze.
+            Deluno should make source setup feel native. Keep indexers, download clients, and alerts easy to understand, easy to test, and easy to change without turning setup into a maze.
           </p>
         </article>
         <article className="hero-card">
-          <p className="hero-kicker">Connection types</p>
+          <p className="hero-kicker">What lives here</p>
           <div className="manifest-grid">
             <div className="manifest-row">
               <strong>Indexers</strong>
@@ -93,16 +93,16 @@ export function ConnectionsPage() {
       </div>
       <div className="workspace-grid">
         <article className="card">
-          <h3>Add a connection</h3>
+          <h3>Add a source or service</h3>
           <Form method="post" className="entry-form">
             <div className="form-grid">
               <label className="field">
-                <span>Connection name</span>
-                <input name="name" type="text" placeholder="Primary download client" required />
+                <span>Name</span>
+                <input name="name" type="text" placeholder="Primary indexer" required />
                 {renderError(actionData?.errors?.name)}
               </label>
               <label className="field">
-                <span>Connection type</span>
+                <span>Type</span>
                 <select name="connectionKind" defaultValue="indexer">
                   <option value="indexer">Indexer</option>
                   <option value="downloadClient">Download client</option>
@@ -113,7 +113,7 @@ export function ConnectionsPage() {
               </label>
               <label className="field">
                 <span>Role</span>
-                <input name="role" type="text" placeholder="Main movies and TV" />
+                <input name="role" type="text" placeholder="Movies / Main and TV Shows / Main" />
               </label>
               <label className="field">
                 <span>Address or endpoint</span>
@@ -122,29 +122,29 @@ export function ConnectionsPage() {
             </div>
             <label className="checkbox-field">
               <input name="isEnabled" type="checkbox" defaultChecked />
-              <span>Enable this connection</span>
+              <span>Enable this source or service</span>
             </label>
             {actionData?.ok ? (
-              <p className="feedback feedback-success">Connection saved.</p>
+              <p className="feedback feedback-success">Saved. Deluno can use it right away.</p>
             ) : null}
             {actionData?.formError ? (
               <p className="feedback feedback-error">{actionData.formError}</p>
             ) : null}
             <button className="primary-button" type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Saving..." : "Add connection"}
+              {isSubmitting ? "Saving..." : "Add source"}
             </button>
           </Form>
         </article>
         <article className="card">
           <div className="section-heading">
             <div>
-              <h3>Your connections</h3>
-              <p>{connections.length} connection{connections.length === 1 ? "" : "s"} saved for Deluno.</p>
+              <h3>Your sources and services</h3>
+              <p>{connections.length} item{connections.length === 1 ? "" : "s"} saved for Deluno.</p>
             </div>
           </div>
           {connections.length === 0 ? (
             <div className="empty-state">
-              <p>No connections yet. Add the services Deluno should search, download through, or notify.</p>
+              <p>No sources or services yet. Add the indexers and download clients Deluno should use first.</p>
             </div>
           ) : (
             <div className="collection-list">

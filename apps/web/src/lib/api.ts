@@ -60,8 +60,15 @@ export interface LibraryItem {
   rootPath: string;
   downloadsPath: string | null;
   autoSearchEnabled: boolean;
+  missingSearchEnabled: boolean;
+  upgradeSearchEnabled: boolean;
   searchIntervalHours: number;
   retryDelayHours: number;
+  maxItemsPerRun: number;
+  automationStatus: string;
+  searchRequested: boolean;
+  lastSearchedUtc: string | null;
+  nextSearchUtc: string | null;
   createdUtc: string;
   updatedUtc: string;
 }

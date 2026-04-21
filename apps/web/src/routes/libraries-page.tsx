@@ -23,6 +23,23 @@ export async function librariesLoader(): Promise<LibraryItem[]> {
 
 export async function librariesAction({ request }: ActionFunctionArgs) {
   const formData = await request.formData();
+  const intent = formData.get("intent");
+
+  if (intent === "search-now") {
+    const libraryId = String(formData.get("libraryId") ?? "");
+    const response = await fetch(`/api/libraries/${libraryId}/search-now`, {
+      method: "POST"
+    });
+
+    if (response.ok) {
+      return { ok: true } satisfies MutationState;
+    }
+
+    return {
+      formError: "Deluno could not start that library check right now."
+    } satisfies MutationState;
+  }
+
   const payload = {
     name: formData.get("name"),
     mediaType: formData.get("mediaType"),
@@ -30,8 +47,11 @@ export async function librariesAction({ request }: ActionFunctionArgs) {
     rootPath: formData.get("rootPath"),
     downloadsPath: formData.get("downloadsPath"),
     autoSearchEnabled: formData.get("autoSearchEnabled") === "on",
+    missingSearchEnabled: formData.get("missingSearchEnabled") === "on",
+    upgradeSearchEnabled: formData.get("upgradeSearchEnabled") === "on",
     searchIntervalHours: toNumberOrNull(formData.get("searchIntervalHours")),
-    retryDelayHours: toNumberOrNull(formData.get("retryDelayHours"))
+    retryDelayHours: toNumberOrNull(formData.get("retryDelayHours")),
+    maxItemsPerRun: toNumberOrNull(formData.get("maxItemsPerRun"))
   };
 
   const response = await fetch("/api/libraries", {
@@ -63,17 +83,17 @@ export function LibrariesPage() {
     <section className="page-stack">
       <header className="page-header">
         <p className="eyebrow">Libraries</p>
-        <h2>Separate libraries, one clean app</h2>
+        <h2>Separate workflows, one polished home</h2>
         <p className="page-copy">
-          Give each part of your collection its own folders, rules, and search rhythm without running extra installs.
+          Each library can keep its own folders, timing, and search behavior so Movies and TV Shows never feel tangled together.
         </p>
       </header>
       <div className="hero-grid">
         <article className="hero-card hero-card-feature">
           <p className="hero-kicker">Built for real setups</p>
-          <h3>HD, 4K, anime, kids, and custom libraries should feel normal.</h3>
+          <h3>4K movies, everyday movies, kids TV, anime, and custom folders should all feel first-class.</h3>
           <p>
-            Deluno libraries replace the need to split your life across separate apps just to keep different folders and rules apart.
+            Deluno lets each library keep its own rhythm instead of making you juggle separate installs just to keep workflows apart.
           </p>
         </article>
         <article className="hero-card">
@@ -81,15 +101,15 @@ export function LibrariesPage() {
           <div className="manifest-grid">
             <div className="manifest-row">
               <strong>Folders</strong>
-              <span>Choose where this library lives and where finished downloads should come from.</span>
+              <span>Choose where the library lives and where completed downloads should come from.</span>
             </div>
             <div className="manifest-row">
-              <strong>Automatic searches</strong>
-              <span>Set how often Deluno should check for missing and better releases.</span>
+              <strong>Recurring checks</strong>
+              <span>Let Deluno search for missing titles, better releases, or both on its own schedule.</span>
             </div>
             <div className="manifest-row">
-              <strong>Retry delay</strong>
-              <span>Tell Deluno how long to wait before trying the same title again.</span>
+              <strong>Work per pass</strong>
+              <span>Control how much Deluno works through in a single run and how long it waits before trying again.</span>
             </div>
           </div>
         </article>
@@ -126,20 +146,34 @@ export function LibrariesPage() {
                 <input name="downloadsPath" type="text" placeholder="D:\\Downloads" />
               </label>
               <label className="field">
-                <span>Search every (hours)</span>
+                <span>Check every (hours)</span>
                 <input name="searchIntervalHours" type="number" min="1" defaultValue={6} />
               </label>
               <label className="field">
-                <span>Retry after (hours)</span>
+                <span>Try again after (hours)</span>
                 <input name="retryDelayHours" type="number" min="1" defaultValue={24} />
               </label>
+              <label className="field">
+                <span>Work through up to</span>
+                <input name="maxItemsPerRun" type="number" min="1" defaultValue={25} />
+              </label>
             </div>
-            <label className="checkbox-field">
-              <input name="autoSearchEnabled" type="checkbox" defaultChecked />
-              <span>Check this library automatically</span>
-            </label>
+            <div className="checkbox-stack">
+              <label className="checkbox-field">
+                <input name="autoSearchEnabled" type="checkbox" defaultChecked />
+                <span>Keep this library checked automatically</span>
+              </label>
+              <label className="checkbox-field">
+                <input name="missingSearchEnabled" type="checkbox" defaultChecked />
+                <span>Look for titles you do not have yet</span>
+              </label>
+              <label className="checkbox-field">
+                <input name="upgradeSearchEnabled" type="checkbox" defaultChecked />
+                <span>Look for better releases later</span>
+              </label>
+            </div>
             {actionData?.ok ? (
-              <p className="feedback feedback-success">Library saved.</p>
+              <p className="feedback feedback-success">Saved. Deluno will pick this up on its next pass.</p>
             ) : null}
             {actionData?.formError ? (
               <p className="feedback feedback-error">{actionData.formError}</p>
@@ -166,16 +200,29 @@ export function LibrariesPage() {
                 <article key={library.id} className="collection-item">
                   <div className="item-heading">
                     <strong>{library.name}</strong>
-                    <span>{formatMediaType(library.mediaType)}</span>
+                    <span className={`status-pill ${statusClassName(library.automationStatus)}`}>
+                      {formatAutomationStatus(library)}
+                    </span>
                   </div>
                   <div className="meta-row">
-                    <span>{library.purpose}</span>
-                    <span>{library.autoSearchEnabled ? "Auto search on" : "Auto search off"}</span>
+                    <span>{formatMediaType(library.mediaType)} · {library.purpose}</span>
+                    <span>{library.autoSearchEnabled ? "Checked automatically" : "Manual only"}</span>
                   </div>
                   <div className="meta-row">
                     <span>{library.rootPath}</span>
-                    <span>Every {library.searchIntervalHours}h · Retry {library.retryDelayHours}h</span>
+                    <span>Every {library.searchIntervalHours}h · Retry {library.retryDelayHours}h · Up to {library.maxItemsPerRun}</span>
                   </div>
+                  <div className="meta-row">
+                    <span>{formatSearchModes(library)}</span>
+                    <span>{formatTiming(library)}</span>
+                  </div>
+                  <Form method="post" className="inline-form">
+                    <input type="hidden" name="intent" value="search-now" />
+                    <input type="hidden" name="libraryId" value={library.id} />
+                    <button className="secondary-button" type="submit" disabled={isSubmitting}>
+                      Check now
+                    </button>
+                  </Form>
                 </article>
               ))}
             </div>
@@ -204,4 +251,79 @@ function toNumberOrNull(value: FormDataEntryValue | null) {
 
 function formatMediaType(value: string) {
   return value === "tv" ? "TV Shows" : "Movies";
+}
+
+function formatSearchModes(library: LibraryItem) {
+  const modes: string[] = [];
+
+  if (library.missingSearchEnabled) {
+    modes.push("Missing");
+  }
+
+  if (library.upgradeSearchEnabled) {
+    modes.push("Upgrades");
+  }
+
+  return modes.length > 0 ? `Checks: ${modes.join(" + ")}` : "Checks: none yet";
+}
+
+function formatTiming(library: LibraryItem) {
+  if (library.searchRequested) {
+    return "Manual check queued";
+  }
+
+  if (library.nextSearchUtc) {
+    return `Next check ${formatDateTime(library.nextSearchUtc)}`;
+  }
+
+  if (library.lastSearchedUtc) {
+    return `Last checked ${formatDateTime(library.lastSearchedUtc)}`;
+  }
+
+  return "Ready when you are";
+}
+
+function formatAutomationStatus(library: LibraryItem) {
+  if (library.searchRequested) {
+    return "Queued next";
+  }
+
+  switch (library.automationStatus) {
+    case "queued":
+      return "Queued";
+    case "running":
+      return "Checking now";
+    case "ready":
+      return "Healthy";
+    case "paused":
+      return "Paused";
+    case "attention":
+      return "Needs attention";
+    default:
+      return library.autoSearchEnabled ? "Standing by" : "Manual only";
+  }
+}
+
+function statusClassName(status: string) {
+  switch (status) {
+    case "queued":
+      return "status-queued";
+    case "running":
+      return "status-running";
+    case "ready":
+      return "status-completed";
+    case "attention":
+      return "status-failed";
+    default:
+      return "";
+  }
+}
+
+function formatDateTime(value: string) {
+  return new Date(value).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  });
 }

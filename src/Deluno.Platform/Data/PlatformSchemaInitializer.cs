@@ -38,8 +38,11 @@ public sealed class PlatformSchemaInitializer(
                 root_path TEXT NOT NULL,
                 downloads_path TEXT NULL,
                 auto_search_enabled INTEGER NOT NULL DEFAULT 1,
+                missing_search_enabled INTEGER NOT NULL DEFAULT 1,
+                upgrade_search_enabled INTEGER NOT NULL DEFAULT 1,
                 search_interval_hours INTEGER NOT NULL DEFAULT 6,
                 retry_delay_hours INTEGER NOT NULL DEFAULT 24,
+                max_items_per_run INTEGER NOT NULL DEFAULT 25,
                 created_utc TEXT NOT NULL,
                 updated_utc TEXT NOT NULL
             );
@@ -57,6 +60,9 @@ public sealed class PlatformSchemaInitializer(
             """;
 
         await command.ExecuteNonQueryAsync(cancellationToken);
+        await EnsureLibraryColumnAsync(connection, "missing_search_enabled", "INTEGER NOT NULL DEFAULT 1", cancellationToken);
+        await EnsureLibraryColumnAsync(connection, "upgrade_search_enabled", "INTEGER NOT NULL DEFAULT 1", cancellationToken);
+        await EnsureLibraryColumnAsync(connection, "max_items_per_run", "INTEGER NOT NULL DEFAULT 25", cancellationToken);
 
         logger.LogInformation(
             "Platform schema is ready at {DatabasePath}.",
@@ -64,4 +70,36 @@ public sealed class PlatformSchemaInitializer(
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    private static async Task EnsureLibraryColumnAsync(
+        System.Data.Common.DbConnection connection,
+        string columnName,
+        string columnDefinition,
+        CancellationToken cancellationToken)
+    {
+        using var check = connection.CreateCommand();
+        check.CommandText = "PRAGMA table_info(libraries);";
+
+        var exists = false;
+        using (var reader = await check.ExecuteReaderAsync(cancellationToken))
+        {
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                if (string.Equals(reader.GetString(1), columnName, StringComparison.OrdinalIgnoreCase))
+                {
+                    exists = true;
+                    break;
+                }
+            }
+        }
+
+        if (exists)
+        {
+            return;
+        }
+
+        using var alter = connection.CreateCommand();
+        alter.CommandText = $"ALTER TABLE libraries ADD COLUMN {columnName} {columnDefinition};";
+        await alter.ExecuteNonQueryAsync(cancellationToken);
+    }
 }

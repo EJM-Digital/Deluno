@@ -1,5 +1,7 @@
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
+using Deluno.Jobs.Contracts;
+using Deluno.Jobs.Data;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -12,13 +14,13 @@ public static class PlatformEndpointRouteBuilderExtensions
     {
         var settings = endpoints.MapGroup("/api/settings");
 
-        settings.MapGet("/", async (IPlatformSettingsRepository repository, CancellationToken cancellationToken) =>
+        settings.MapGet(string.Empty, async (IPlatformSettingsRepository repository, CancellationToken cancellationToken) =>
         {
             var snapshot = await repository.GetAsync(cancellationToken);
             return Results.Ok(snapshot);
         });
 
-        settings.MapPut("/", async (
+        settings.MapPut(string.Empty, async (
             UpdatePlatformSettingsRequest request,
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
@@ -35,13 +37,17 @@ public static class PlatformEndpointRouteBuilderExtensions
 
         var libraries = endpoints.MapGroup("/api/libraries");
 
-        libraries.MapGet("/", async (IPlatformSettingsRepository repository, CancellationToken cancellationToken) =>
+        libraries.MapGet(string.Empty, async (
+            IPlatformSettingsRepository repository,
+            IJobQueueRepository jobs,
+            CancellationToken cancellationToken) =>
         {
             var items = await repository.ListLibrariesAsync(cancellationToken);
-            return Results.Ok(items);
+            var automation = await jobs.ListLibraryAutomationStatesAsync(cancellationToken);
+            return Results.Ok(items.Select(item => MergeLibraryState(item, automation)));
         });
 
-        libraries.MapPost("/", async (
+        libraries.MapPost(string.Empty, async (
             CreateLibraryRequest request,
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
@@ -56,7 +62,41 @@ public static class PlatformEndpointRouteBuilderExtensions
             return Results.Ok(item);
         });
 
-        libraries.MapDelete("/{id}", async (
+        endpoints.MapPut("/api/libraries/{id}/automation", async (
+            string id,
+            UpdateLibraryAutomationRequest request,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var errors = ValidateLibraryAutomation(request);
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            var item = await repository.UpdateLibraryAutomationAsync(id, request, cancellationToken);
+            return item is null ? Results.NotFound() : Results.Ok(item);
+        });
+
+        endpoints.MapPost("/api/libraries/{id}/search-now", async (
+            string id,
+            IPlatformSettingsRepository repository,
+            IJobQueueRepository jobs,
+            CancellationToken cancellationToken) =>
+        {
+            var library = (await repository.ListLibrariesAsync(cancellationToken))
+                .FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
+
+            if (library is null)
+            {
+                return Results.NotFound();
+            }
+
+            var requested = await jobs.RequestLibrarySearchAsync(ToPlanItem(library), cancellationToken);
+            return requested ? Results.Accepted() : Results.NotFound();
+        });
+
+        libraries.MapDelete("{id}", async (
             string id,
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
@@ -67,13 +107,13 @@ public static class PlatformEndpointRouteBuilderExtensions
 
         var connections = endpoints.MapGroup("/api/connections");
 
-        connections.MapGet("/", async (IPlatformSettingsRepository repository, CancellationToken cancellationToken) =>
+        connections.MapGet(string.Empty, async (IPlatformSettingsRepository repository, CancellationToken cancellationToken) =>
         {
             var items = await repository.ListConnectionsAsync(cancellationToken);
             return Results.Ok(items);
         });
 
-        connections.MapPost("/", async (
+        connections.MapPost(string.Empty, async (
             CreateConnectionRequest request,
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
@@ -88,7 +128,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             return Results.Ok(item);
         });
 
-        connections.MapDelete("/{id}", async (
+        connections.MapDelete("{id}", async (
             string id,
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
@@ -135,6 +175,28 @@ public static class PlatformEndpointRouteBuilderExtensions
         return errors;
     }
 
+    private static Dictionary<string, string[]> ValidateLibraryAutomation(UpdateLibraryAutomationRequest request)
+    {
+        var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+
+        if (request.SearchIntervalHours is <= 0)
+        {
+            errors["searchIntervalHours"] = ["Choose how often Deluno should check this library."];
+        }
+
+        if (request.RetryDelayHours is <= 0)
+        {
+            errors["retryDelayHours"] = ["Choose how long Deluno should wait before trying again."];
+        }
+
+        if (request.MaxItemsPerRun is <= 0)
+        {
+            errors["maxItemsPerRun"] = ["Choose how many titles Deluno should work through at a time."];
+        }
+
+        return errors;
+    }
+
     private static Dictionary<string, string[]> ValidateConnection(CreateConnectionRequest request)
     {
         var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
@@ -150,5 +212,37 @@ public static class PlatformEndpointRouteBuilderExtensions
         }
 
         return errors;
+    }
+
+    private static LibraryItem MergeLibraryState(
+        LibraryItem item,
+        IReadOnlyDictionary<string, LibraryAutomationStateItem> automation)
+    {
+        if (!automation.TryGetValue(item.Id, out var state))
+        {
+            return item;
+        }
+
+        return item with
+        {
+            AutomationStatus = state.Status,
+            SearchRequested = state.SearchRequested,
+            LastSearchedUtc = state.LastCompletedUtc,
+            NextSearchUtc = state.NextSearchUtc
+        };
+    }
+
+    private static LibraryAutomationPlanItem ToPlanItem(LibraryItem library)
+    {
+        return new LibraryAutomationPlanItem(
+            LibraryId: library.Id,
+            LibraryName: library.Name,
+            MediaType: library.MediaType,
+            AutoSearchEnabled: library.AutoSearchEnabled,
+            MissingSearchEnabled: library.MissingSearchEnabled,
+            UpgradeSearchEnabled: library.UpgradeSearchEnabled,
+            SearchIntervalHours: library.SearchIntervalHours,
+            RetryDelayHours: library.RetryDelayHours,
+            MaxItemsPerRun: library.MaxItemsPerRun);
     }
 }

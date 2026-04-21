@@ -28,9 +28,9 @@ const navItems = [
     caption: "Separate setups"
   },
   {
-    to: "/connections",
-    label: "Connections",
-    caption: "Services Deluno uses"
+    to: "/indexers",
+    label: "Indexers",
+    caption: "Sources and routing"
   },
   {
     to: "/settings",
@@ -60,7 +60,7 @@ export function RootLayout() {
           </div>
         </div>
         <div className="sidebar-note">
-          Keep track of movies and TV shows, grab missing releases, and keep your library tidy in one place.
+          Manage movies and TV shows, keep searching for missing or better releases, and route everything through Deluno in one place.
         </div>
         <nav className="app-nav">
           {navItems.map((item) => (
@@ -80,7 +80,7 @@ export function RootLayout() {
         <div className="sidebar-footer">
           <p className="sidebar-footer-label">Designed For Home Users</p>
           <p className="sidebar-footer-copy">One app for movies and TV shows</p>
-          <p className="sidebar-footer-meta">Simple to run on Windows and easy to ship in Docker</p>
+          <p className="sidebar-footer-meta">Simple to run on Windows, easy to ship in Docker, and built to replace split-tool setups</p>
         </div>
       </aside>
       <main className="app-main">

@@ -30,6 +30,7 @@ import {
   connectionsAction,
   connectionsLoader
 } from "./routes/connections-page";
+import { Navigate } from "react-router-dom";
 
 export const router = createBrowserRouter([
   {
@@ -65,10 +66,14 @@ export const router = createBrowserRouter([
         element: <LibrariesPage />
       },
       {
-        path: "connections",
+        path: "indexers",
         loader: connectionsLoader,
         action: connectionsAction,
         element: <ConnectionsPage />
+      },
+      {
+        path: "connections",
+        element: <Navigate to="/indexers" replace />
       },
       {
         path: "settings",

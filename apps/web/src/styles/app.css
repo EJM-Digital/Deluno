@@ -572,6 +572,35 @@ a {
   cursor: progress;
 }
 
+.secondary-button {
+  width: fit-content;
+  padding: 10px 14px;
+  border: 1px solid rgba(35, 48, 58, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.75);
+  color: var(--text);
+  font: inherit;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease,
+    background 0.16s ease;
+}
+
+.secondary-button:hover:enabled {
+  transform: translateY(-1px);
+  border-color: rgba(169, 101, 66, 0.22);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.secondary-button:disabled {
+  opacity: 0.68;
+  cursor: progress;
+}
+
 .feedback {
   margin: 0;
   font-size: 0.9rem;
@@ -633,6 +662,10 @@ a {
 
 .compact-item p {
   margin-top: 6px;
+}
+
+.inline-form {
+  margin-top: 14px;
 }
 
 .empty-state {

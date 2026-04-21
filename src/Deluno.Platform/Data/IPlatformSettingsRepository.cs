@@ -16,6 +16,11 @@ public interface IPlatformSettingsRepository
         CreateLibraryRequest request,
         CancellationToken cancellationToken);
 
+    Task<LibraryItem?> UpdateLibraryAutomationAsync(
+        string id,
+        UpdateLibraryAutomationRequest request,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<ConnectionItem>> ListConnectionsAsync(CancellationToken cancellationToken);
 
     Task<ConnectionItem> CreateConnectionAsync(

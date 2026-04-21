@@ -29,7 +29,7 @@ Important current behavior from the official docs:
 
 ## What Deluno must do to be better
 
-Deluno should not just reproduce the same features in one shell. It needs to remove the pain points that made Fetcher and multi-instance setups necessary in the first place.
+Deluno should not just reproduce the same features in one shell. It needs to remove the pain points that made helper tools and multi-instance setups necessary in the first place.
 
 ### 1. Native recurring wanted searches
 
@@ -51,11 +51,11 @@ The user should be able to say:
 - do not retry the same item for 24 hours
 - pause one library without pausing everything
 
-That is the core behavior Fetcher proved people want.
+That is core behavior Deluno should own natively.
 
 ### 2. Better missing-item coverage than the wanted queue alone
 
-Fetcher solved an important gap here.
+This solves an important gap in the current tool landscape.
 
 The official wanted queues do not always represent the full monitored-missing universe, especially for unreleased or not-yet-available items. Fetcher works around that by walking the full monitored library and selecting monitored items without files, then applying cooldown and batching before dispatching searches.
 
@@ -68,7 +68,7 @@ Deluno should adopt that model natively:
 
 ### 3. Per-item retry delay and search memory
 
-Fetcher also solved repeated search spam with a per-item cooldown log.
+Deluno should solve repeated search spam with a per-item cooldown log.
 
 Deluno should track search attempts per item so it can say:
 
@@ -239,7 +239,7 @@ One Deluno install can host many libraries with strict separation:
 
 This is how Deluno replaces most multi-instance *arr setups.
 
-### Level 2: Service connections
+### Level 2: Indexers and service setup
 
 Important for Deluno's own operation.
 
@@ -262,11 +262,9 @@ Each connection should have:
 
 This gives users a clear setup model without turning the app into a maze.
 
-## Fetcher behavior Deluno should absorb
+## Native recurring search behavior
 
-Fetcher already proved several product ideas are worth keeping.
-
-Deluno should absorb these behaviors:
+Deluno should absorb these behaviors directly into Movies and TV Shows:
 
 - recurring missing searches
 - recurring upgrade searches
@@ -278,7 +276,7 @@ Deluno should absorb these behaviors:
 - clear activity wording
 - manual "search now" actions that bypass schedule windows but still respect cooldown where appropriate
 
-Deluno should not copy Fetcher's UI model directly. It should internalize the behavior and present it in a cleaner way.
+This should not exist as a separate user-facing helper area. It should feel like a normal part of Deluno's movie and TV workflows.
 
 ## Recommended Deluno domain additions
 
@@ -374,10 +372,10 @@ Deluno should standardize on these phrases:
 Build these next in order:
 
 1. `Libraries` domain and UI
-2. `Connections` domain and UI
+2. `Indexers` domain and UI
 3. `Schedules` and `RetryDelay` model in `platform.db` and `jobs.db`
 4. real `Wanted` and `Ready for an upgrade` snapshots
-5. Fetcher-style recurring search runner
+5. native recurring missing and upgrade search runner
 
 ## Sources
 

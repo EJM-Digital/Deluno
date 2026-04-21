@@ -2,6 +2,7 @@ using Deluno.Jobs.Data;
 using Deluno.Platform.Data;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using System.Text.Json;
 
 namespace Deluno.Worker.Services;
 
@@ -11,6 +12,11 @@ public sealed class DelunoHeartbeatWorker(
     IPlatformSettingsRepository platformSettingsRepository)
     : BackgroundService
 {
+    private static readonly JsonSerializerOptions PayloadJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
     private readonly string _workerId = $"worker-{Environment.MachineName.ToLowerInvariant()}";
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -30,6 +36,22 @@ public sealed class DelunoHeartbeatWorker(
                 continue;
             }
 
+            var libraries = await platformSettingsRepository.ListLibrariesAsync(stoppingToken);
+            var automationPlans = libraries
+                .Select(library => new Deluno.Jobs.Contracts.LibraryAutomationPlanItem(
+                    LibraryId: library.Id,
+                    LibraryName: library.Name,
+                    MediaType: library.MediaType,
+                    AutoSearchEnabled: library.AutoSearchEnabled,
+                    MissingSearchEnabled: library.MissingSearchEnabled,
+                    UpgradeSearchEnabled: library.UpgradeSearchEnabled,
+                    SearchIntervalHours: library.SearchIntervalHours,
+                    RetryDelayHours: library.RetryDelayHours,
+                    MaxItemsPerRun: library.MaxItemsPerRun))
+                .ToArray();
+
+            await jobQueueRepository.PlanLibrarySearchesAsync(automationPlans, stoppingToken);
+
             var job = await jobQueueRepository.LeaseNextAsync(
                 _workerId,
                 TimeSpan.FromMinutes(2),
@@ -46,12 +68,7 @@ public sealed class DelunoHeartbeatWorker(
                 logger.LogInformation("Processing job {JobId} of type {JobType}.", job.Id, job.JobType);
                 await Task.Delay(TimeSpan.FromMilliseconds(800), stoppingToken);
 
-                var message = job.JobType switch
-                {
-                    "movies.catalog.refresh" => "Finished checking your movie library.",
-                    "series.catalog.refresh" => "Finished checking your TV show library.",
-                    _ => "Finished a background task."
-                };
+                var message = BuildCompletionMessage(job);
 
                 await jobQueueRepository.CompleteAsync(job.Id, _workerId, message, stoppingToken);
             }
@@ -66,4 +83,55 @@ public sealed class DelunoHeartbeatWorker(
             }
         }
     }
+
+    private static string BuildCompletionMessage(Deluno.Jobs.Contracts.JobQueueItem job)
+    {
+        if (job.JobType == "library.search")
+        {
+            try
+            {
+                var payload = JsonSerializer.Deserialize<LibrarySearchPayload>(job.PayloadJson ?? "{}", PayloadJsonOptions);
+                if (payload is not null && !string.IsNullOrWhiteSpace(payload.LibraryName))
+                {
+                    if (payload.CheckMissing && payload.CheckUpgrades)
+                    {
+                        return $"Finished checking {payload.LibraryName} for missing and better releases.";
+                    }
+
+                    if (payload.CheckMissing)
+                    {
+                        return $"Finished checking {payload.LibraryName} for missing releases.";
+                    }
+
+                    if (payload.CheckUpgrades)
+                    {
+                        return $"Finished checking {payload.LibraryName} for better releases.";
+                    }
+
+                    return $"Finished checking {payload.LibraryName}.";
+                }
+            }
+            catch
+            {
+                return "Finished checking a library.";
+            }
+        }
+
+        return job.JobType switch
+        {
+            "movies.catalog.refresh" => "Finished checking your movie library.",
+            "series.catalog.refresh" => "Finished checking your TV show library.",
+            _ => "Finished a background task."
+        };
+    }
+
+    private sealed record LibrarySearchPayload(
+        string LibraryId,
+        string LibraryName,
+        string MediaType,
+        bool CheckMissing,
+        bool CheckUpgrades,
+        int MaxItems,
+        int RetryDelayHours,
+        string TriggeredBy);
 }
