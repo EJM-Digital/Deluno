@@ -27,7 +27,15 @@ public interface IPlatformSettingsRepository
         CreateConnectionRequest request,
         CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<IndexerItem>> ListIndexersAsync(CancellationToken cancellationToken);
+
+    Task<IndexerItem> CreateIndexerAsync(
+        CreateIndexerRequest request,
+        CancellationToken cancellationToken);
+
     Task<bool> DeleteLibraryAsync(string id, CancellationToken cancellationToken);
 
     Task<bool> DeleteConnectionAsync(string id, CancellationToken cancellationToken);
+
+    Task<bool> DeleteIndexerAsync(string id, CancellationToken cancellationToken);
 }

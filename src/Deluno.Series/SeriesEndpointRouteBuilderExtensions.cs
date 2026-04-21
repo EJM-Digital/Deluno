@@ -21,6 +21,12 @@ public static class SeriesEndpointRouteBuilderExtensions
             return Results.Ok(items);
         });
 
+        series.MapGet("/import-recovery", async (ISeriesCatalogRepository repository, CancellationToken cancellationToken) =>
+        {
+            var summary = await repository.GetImportRecoverySummaryAsync(cancellationToken);
+            return Results.Ok(summary);
+        });
+
         series.MapGet("/{id}", async (string id, ISeriesCatalogRepository repository, CancellationToken cancellationToken) =>
         {
             var item = await repository.GetByIdAsync(id, cancellationToken);

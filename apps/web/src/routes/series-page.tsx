@@ -8,6 +8,7 @@ import {
 import {
   fetchJson,
   readValidationProblem,
+  type SeriesImportRecoverySummary,
   type SeriesListItem
 } from "../lib/api";
 
@@ -16,8 +17,18 @@ interface MutationState {
   errors?: Record<string, string[]>;
 }
 
-export async function seriesLoader(): Promise<SeriesListItem[]> {
-  return fetchJson<SeriesListItem[]>("/api/series");
+interface SeriesLoaderData {
+  items: SeriesListItem[];
+  importRecovery: SeriesImportRecoverySummary;
+}
+
+export async function seriesLoader(): Promise<SeriesLoaderData> {
+  const [items, importRecovery] = await Promise.all([
+    fetchJson<SeriesListItem[]>("/api/series"),
+    fetchJson<SeriesImportRecoverySummary>("/api/series/import-recovery")
+  ]);
+
+  return { items, importRecovery };
 }
 
 export async function seriesAction({ request }: ActionFunctionArgs) {
@@ -49,7 +60,7 @@ export async function seriesAction({ request }: ActionFunctionArgs) {
 }
 
 export function SeriesPage() {
-  const items = useLoaderData() as SeriesListItem[];
+  const { items, importRecovery } = useLoaderData() as SeriesLoaderData;
   const actionData = useActionData() as MutationState | undefined;
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
@@ -142,6 +153,54 @@ export function SeriesPage() {
           )}
         </article>
       </div>
+      <div className="card-grid">
+        <article className="card">
+          <h3>Import recovery</h3>
+          <p>
+            TV imports are messy in their own special ways. Deluno will keep track of failed episode imports, unmatched files, corrupt downloads, and quality rejects here.
+          </p>
+          <div className="manifest-grid">
+            <div className="manifest-row">
+              <strong>{importRecovery.openCount}</strong>
+              <span>TV import issue{importRecovery.openCount === 1 ? "" : "s"} currently open</span>
+            </div>
+            <div className="manifest-row">
+              <strong>{importRecovery.unmatchedCount}</strong>
+              <span>files that need matching or review</span>
+            </div>
+            <div className="manifest-row">
+              <strong>{importRecovery.importFailedCount}</strong>
+              <span>items that reached a hard import failure</span>
+            </div>
+          </div>
+        </article>
+        <article className="card">
+          <h3>Recent import issues</h3>
+          {importRecovery.recentCases.length === 0 ? (
+            <div className="empty-state">
+              <p>No TV import issues right now. Deluno is ready to surface quality rejects, unmatched episodes, corrupt downloads, and failed imports here.</p>
+            </div>
+          ) : (
+            <div className="collection-list">
+              {importRecovery.recentCases.map((item) => (
+                <article key={item.id} className="collection-item">
+                  <div className="item-heading">
+                    <strong>{item.title}</strong>
+                    <span>{formatFailureKind(item.failureKind)}</span>
+                  </div>
+                  <div className="meta-row">
+                    <span>{item.summary}</span>
+                  </div>
+                  <div className="meta-row">
+                    <span>{item.recommendedAction}</span>
+                    <span>{formatDateTime(item.detectedUtc)}</span>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </article>
+      </div>
     </section>
   );
 }
@@ -160,4 +219,30 @@ function toNumberOrNull(value: FormDataEntryValue | null) {
   }
 
   return Number(value);
+}
+
+function formatFailureKind(value: string) {
+  switch (value) {
+    case "quality":
+      return "Quality rejected";
+    case "unmatched":
+      return "Needs matching";
+    case "corrupt":
+      return "Corrupt";
+    case "downloadFailed":
+      return "Download failed";
+    case "importFailed":
+      return "Import failed";
+    default:
+      return "Needs review";
+  }
+}
+
+function formatDateTime(value: string) {
+  return new Date(value).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  });
 }

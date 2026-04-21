@@ -8,6 +8,7 @@ import {
 import {
   fetchJson,
   readValidationProblem,
+  type MovieImportRecoverySummary,
   type MovieListItem
 } from "../lib/api";
 
@@ -16,8 +17,18 @@ interface MutationState {
   errors?: Record<string, string[]>;
 }
 
-export async function moviesLoader(): Promise<MovieListItem[]> {
-  return fetchJson<MovieListItem[]>("/api/movies");
+interface MoviesLoaderData {
+  movies: MovieListItem[];
+  importRecovery: MovieImportRecoverySummary;
+}
+
+export async function moviesLoader(): Promise<MoviesLoaderData> {
+  const [movies, importRecovery] = await Promise.all([
+    fetchJson<MovieListItem[]>("/api/movies"),
+    fetchJson<MovieImportRecoverySummary>("/api/movies/import-recovery")
+  ]);
+
+  return { movies, importRecovery };
 }
 
 export async function moviesAction({ request }: ActionFunctionArgs) {
@@ -49,7 +60,7 @@ export async function moviesAction({ request }: ActionFunctionArgs) {
 }
 
 export function MoviesPage() {
-  const movies = useLoaderData() as MovieListItem[];
+  const { movies, importRecovery } = useLoaderData() as MoviesLoaderData;
   const actionData = useActionData() as MutationState | undefined;
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
@@ -142,6 +153,54 @@ export function MoviesPage() {
           )}
         </article>
       </div>
+      <div className="card-grid">
+        <article className="card">
+          <h3>Import recovery</h3>
+          <p>
+            When Deluno sees import trouble, this is where Movies will explain what went wrong and what it recommends next.
+          </p>
+          <div className="manifest-grid">
+            <div className="manifest-row">
+              <strong>{importRecovery.openCount}</strong>
+              <span>movie import issue{importRecovery.openCount === 1 ? "" : "s"} currently open</span>
+            </div>
+            <div className="manifest-row">
+              <strong>{importRecovery.qualityCount}</strong>
+              <span>quality or upgrade rejections</span>
+            </div>
+            <div className="manifest-row">
+              <strong>{importRecovery.unmatchedCount}</strong>
+              <span>titles that need matching or review</span>
+            </div>
+          </div>
+        </article>
+        <article className="card">
+          <h3>Recent import issues</h3>
+          {importRecovery.recentCases.length === 0 ? (
+            <div className="empty-state">
+              <p>No movie import issues right now. Deluno is ready to surface quality rejects, unmatched items, corrupt downloads, and failed imports here.</p>
+            </div>
+          ) : (
+            <div className="collection-list">
+              {importRecovery.recentCases.map((item) => (
+                <article key={item.id} className="collection-item">
+                  <div className="item-heading">
+                    <strong>{item.title}</strong>
+                    <span>{formatFailureKind(item.failureKind)}</span>
+                  </div>
+                  <div className="meta-row">
+                    <span>{item.summary}</span>
+                  </div>
+                  <div className="meta-row">
+                    <span>{item.recommendedAction}</span>
+                    <span>{formatDateTime(item.detectedUtc)}</span>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </article>
+      </div>
     </section>
   );
 }
@@ -160,4 +219,30 @@ function toNumberOrNull(value: FormDataEntryValue | null) {
   }
 
   return Number(value);
+}
+
+function formatFailureKind(value: string) {
+  switch (value) {
+    case "quality":
+      return "Quality rejected";
+    case "unmatched":
+      return "Needs matching";
+    case "corrupt":
+      return "Corrupt";
+    case "downloadFailed":
+      return "Download failed";
+    case "importFailed":
+      return "Import failed";
+    default:
+      return "Needs review";
+  }
+}
+
+function formatDateTime(value: string) {
+  return new Date(value).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  });
 }

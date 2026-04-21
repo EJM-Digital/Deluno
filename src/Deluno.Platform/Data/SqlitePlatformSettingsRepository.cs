@@ -238,6 +238,46 @@ public sealed class SqlitePlatformSettingsRepository(
         return items;
     }
 
+    public async Task<IReadOnlyList<IndexerItem>> ListIndexersAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        var items = new List<IndexerItem>();
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT
+                id, name, protocol, privacy, base_url, priority, categories, tags,
+                is_enabled, health_status, last_health_message, created_utc, updated_utc
+            FROM indexer_sources
+            ORDER BY priority ASC, name ASC;
+            """;
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            items.Add(new IndexerItem(
+                Id: reader.GetString(0),
+                Name: reader.GetString(1),
+                Protocol: reader.GetString(2),
+                Privacy: reader.GetString(3),
+                BaseUrl: reader.GetString(4),
+                Priority: reader.GetInt32(5),
+                Categories: reader.GetString(6),
+                Tags: reader.GetString(7),
+                IsEnabled: reader.GetInt64(8) == 1,
+                HealthStatus: reader.GetString(9),
+                LastHealthMessage: reader.IsDBNull(10) ? null : reader.GetString(10),
+                CreatedUtc: ParseTimestamp(reader.GetString(11)),
+                UpdatedUtc: ParseTimestamp(reader.GetString(12))));
+        }
+
+        return items;
+    }
+
     public async Task<ConnectionItem> CreateConnectionAsync(
         CreateConnectionRequest request,
         CancellationToken cancellationToken)
@@ -281,6 +321,61 @@ public sealed class SqlitePlatformSettingsRepository(
         return item;
     }
 
+    public async Task<IndexerItem> CreateIndexerAsync(
+        CreateIndexerRequest request,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        var item = new IndexerItem(
+            Id: Guid.CreateVersion7().ToString("N"),
+            Name: NormalizeName(request.Name) ?? "New indexer",
+            Protocol: NormalizeIndexerProtocol(request.Protocol),
+            Privacy: NormalizeIndexerPrivacy(request.Privacy),
+            BaseUrl: NormalizePath(request.BaseUrl) ?? string.Empty,
+            Priority: request.Priority is >= 1 ? request.Priority.Value : 100,
+            Categories: NormalizeCsv(request.Categories),
+            Tags: NormalizeCsv(request.Tags),
+            IsEnabled: request.IsEnabled,
+            HealthStatus: request.IsEnabled ? "ready" : "paused",
+            LastHealthMessage: request.IsEnabled ? "Ready to test and use." : "Disabled until you turn it on.",
+            CreatedUtc: now,
+            UpdatedUtc: now);
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            INSERT INTO indexer_sources (
+                id, name, protocol, privacy, base_url, priority, categories, tags,
+                is_enabled, health_status, last_health_message, created_utc, updated_utc
+            )
+            VALUES (
+                @id, @name, @protocol, @privacy, @baseUrl, @priority, @categories, @tags,
+                @isEnabled, @healthStatus, @lastHealthMessage, @createdUtc, @updatedUtc
+            );
+            """;
+
+        AddParameter(command, "@id", item.Id);
+        AddParameter(command, "@name", item.Name);
+        AddParameter(command, "@protocol", item.Protocol);
+        AddParameter(command, "@privacy", item.Privacy);
+        AddParameter(command, "@baseUrl", item.BaseUrl);
+        AddParameter(command, "@priority", item.Priority);
+        AddParameter(command, "@categories", item.Categories);
+        AddParameter(command, "@tags", item.Tags);
+        AddParameter(command, "@isEnabled", item.IsEnabled ? 1 : 0);
+        AddParameter(command, "@healthStatus", item.HealthStatus);
+        AddParameter(command, "@lastHealthMessage", item.LastHealthMessage);
+        AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
+        AddParameter(command, "@updatedUtc", item.UpdatedUtc.ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+
+        return item;
+    }
+
     public async Task<bool> DeleteLibraryAsync(string id, CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -301,6 +396,18 @@ public sealed class SqlitePlatformSettingsRepository(
 
         using var command = connection.CreateCommand();
         command.CommandText = "DELETE FROM app_connections WHERE id = @id;";
+        AddParameter(command, "@id", id);
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
+    public async Task<bool> DeleteIndexerAsync(string id, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM indexer_sources WHERE id = @id;";
         AddParameter(command, "@id", id);
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
@@ -605,6 +712,35 @@ public sealed class SqlitePlatformSettingsRepository(
             "media server" => "mediaServer",
             _ => "indexer"
         };
+    }
+
+    private static string NormalizeIndexerProtocol(string? value)
+    {
+        var normalized = value?.Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "usenet" => "usenet",
+            _ => "torrent"
+        };
+    }
+
+    private static string NormalizeIndexerPrivacy(string? value)
+    {
+        var normalized = value?.Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "private" => "private",
+            _ => "public"
+        };
+    }
+
+    private static string NormalizeCsv(string? value)
+    {
+        return string.Join(
+            ", ",
+            (value ?? string.Empty)
+                .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                .Distinct(StringComparer.OrdinalIgnoreCase));
     }
 
     private static int NormalizePositiveValue(int? value, int fallback)

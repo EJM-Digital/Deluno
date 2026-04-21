@@ -21,6 +21,12 @@ public static class MoviesEndpointRouteBuilderExtensions
             return Results.Ok(items);
         });
 
+        movies.MapGet("/import-recovery", async (IMovieCatalogRepository repository, CancellationToken cancellationToken) =>
+        {
+            var summary = await repository.GetImportRecoverySummaryAsync(cancellationToken);
+            return Results.Ok(summary);
+        });
+
         movies.MapGet("/{id}", async (string id, IMovieCatalogRepository repository, CancellationToken cancellationToken) =>
         {
             var movie = await repository.GetByIdAsync(id, cancellationToken);

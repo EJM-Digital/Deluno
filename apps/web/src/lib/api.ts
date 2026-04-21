@@ -26,6 +26,25 @@ export interface MovieListItem {
   updatedUtc: string;
 }
 
+export interface MovieImportRecoveryCase {
+  id: string;
+  title: string;
+  failureKind: string;
+  summary: string;
+  recommendedAction: string;
+  detectedUtc: string;
+}
+
+export interface MovieImportRecoverySummary {
+  openCount: number;
+  qualityCount: number;
+  unmatchedCount: number;
+  corruptCount: number;
+  downloadFailedCount: number;
+  importFailedCount: number;
+  recentCases: MovieImportRecoveryCase[];
+}
+
 export interface SeriesListItem {
   id: string;
   title: string;
@@ -34,6 +53,25 @@ export interface SeriesListItem {
   monitored: boolean;
   createdUtc: string;
   updatedUtc: string;
+}
+
+export interface SeriesImportRecoveryCase {
+  id: string;
+  title: string;
+  failureKind: string;
+  summary: string;
+  recommendedAction: string;
+  detectedUtc: string;
+}
+
+export interface SeriesImportRecoverySummary {
+  openCount: number;
+  qualityCount: number;
+  unmatchedCount: number;
+  corruptCount: number;
+  downloadFailedCount: number;
+  importFailedCount: number;
+  recentCases: SeriesImportRecoveryCase[];
 }
 
 export interface ValidationProblem {
@@ -80,6 +118,22 @@ export interface ConnectionItem {
   role: string;
   endpointUrl: string | null;
   isEnabled: boolean;
+  createdUtc: string;
+  updatedUtc: string;
+}
+
+export interface IndexerItem {
+  id: string;
+  name: string;
+  protocol: string;
+  privacy: string;
+  baseUrl: string;
+  priority: number;
+  categories: string;
+  tags: string;
+  isEnabled: boolean;
+  healthStatus: string;
+  lastHealthMessage: string | null;
   createdUtc: string;
   updatedUtc: string;
 }

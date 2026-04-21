@@ -57,6 +57,22 @@ public sealed class PlatformSchemaInitializer(
                 created_utc TEXT NOT NULL,
                 updated_utc TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS indexer_sources (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                protocol TEXT NOT NULL,
+                privacy TEXT NOT NULL,
+                base_url TEXT NOT NULL,
+                priority INTEGER NOT NULL DEFAULT 100,
+                categories TEXT NOT NULL DEFAULT '',
+                tags TEXT NOT NULL DEFAULT '',
+                is_enabled INTEGER NOT NULL DEFAULT 1,
+                health_status TEXT NOT NULL DEFAULT 'unknown',
+                last_health_message TEXT NULL,
+                created_utc TEXT NOT NULL,
+                updated_utc TEXT NOT NULL
+            );
             """;
 
         await command.ExecuteNonQueryAsync(cancellationToken);

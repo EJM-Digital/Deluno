@@ -107,6 +107,38 @@ public static class PlatformEndpointRouteBuilderExtensions
 
         var connections = endpoints.MapGroup("/api/connections");
 
+        var indexers = endpoints.MapGroup("/api/indexers");
+
+        indexers.MapGet(string.Empty, async (IPlatformSettingsRepository repository, CancellationToken cancellationToken) =>
+        {
+            var items = await repository.ListIndexersAsync(cancellationToken);
+            return Results.Ok(items);
+        });
+
+        indexers.MapPost(string.Empty, async (
+            CreateIndexerRequest request,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var errors = ValidateIndexer(request);
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            var item = await repository.CreateIndexerAsync(request, cancellationToken);
+            return Results.Ok(item);
+        });
+
+        indexers.MapDelete("{id}", async (
+            string id,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var removed = await repository.DeleteIndexerAsync(id, cancellationToken);
+            return removed ? Results.NoContent() : Results.NotFound();
+        });
+
         connections.MapGet(string.Empty, async (IPlatformSettingsRepository repository, CancellationToken cancellationToken) =>
         {
             var items = await repository.ListConnectionsAsync(cancellationToken);
@@ -209,6 +241,23 @@ public static class PlatformEndpointRouteBuilderExtensions
         if (string.IsNullOrWhiteSpace(request.ConnectionKind))
         {
             errors["connectionKind"] = ["Choose what kind of connection this is."];
+        }
+
+        return errors;
+    }
+
+    private static Dictionary<string, string[]> ValidateIndexer(CreateIndexerRequest request)
+    {
+        var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+
+        if (string.IsNullOrWhiteSpace(request.Name))
+        {
+            errors["name"] = ["Give this indexer a name."];
+        }
+
+        if (string.IsNullOrWhiteSpace(request.BaseUrl))
+        {
+            errors["baseUrl"] = ["Add the address Deluno should use for this indexer."];
         }
 
         return errors;
