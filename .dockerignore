@@ -1,0 +1,16 @@
+.git
+.github
+.dotnet
+node_modules
+**/bin
+**/obj
+**/data
+artifacts
+coverage
+*.log
+backend-dev.log
+backend-dev.err.log
+frontend-dev.log
+frontend-dev.err.log
+host-stdout.log
+host-stderr.log

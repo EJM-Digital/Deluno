@@ -1,3 +1,6 @@
+using System.Text.Json;
+using Deluno.Jobs.Contracts;
+using Deluno.Jobs.Data;
 using Deluno.Series.Contracts;
 using Deluno.Series.Data;
 using Microsoft.AspNetCore.Builder;
@@ -24,7 +27,11 @@ public static class SeriesEndpointRouteBuilderExtensions
             return item is null ? Results.NotFound() : Results.Ok(item);
         });
 
-        series.MapPost("/", async (CreateSeriesRequest request, ISeriesCatalogRepository repository, CancellationToken cancellationToken) =>
+        series.MapPost("/", async (
+            CreateSeriesRequest request,
+            ISeriesCatalogRepository repository,
+            IJobScheduler jobScheduler,
+            CancellationToken cancellationToken) =>
         {
             var errors = Validate(request);
             if (errors.Count > 0)
@@ -33,6 +40,19 @@ public static class SeriesEndpointRouteBuilderExtensions
             }
 
             var item = await repository.AddAsync(request, cancellationToken);
+            await jobScheduler.EnqueueAsync(
+                new EnqueueJobRequest(
+                    JobType: "series.catalog.refresh",
+                    Source: "series",
+                    PayloadJson: JsonSerializer.Serialize(new
+                    {
+                        item.Id,
+                        item.Title,
+                        item.ImdbId
+                    }),
+                    RelatedEntityType: "series",
+                    RelatedEntityId: item.Id),
+                cancellationToken);
             return Results.Created($"/api/series/{item.Id}", item);
         });
 

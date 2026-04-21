@@ -87,9 +87,15 @@ npm.cmd run dev --workspace apps/web
 
 The Vite dev server proxies `/api` and `/hubs` to the backend host.
 
+## Packaging
+
+- Docker scaffolding: [Dockerfile](C:\Users\User\Documents\Codex\2026-04-21-what-would-it-take-to-build\Dockerfile), [compose.yaml](C:\Users\User\Documents\Codex\2026-04-21-what-would-it-take-to-build\compose.yaml)
+- Windows publish script: [scripts/publish-windows.ps1](C:\Users\User\Documents\Codex\2026-04-21-what-would-it-take-to-build\scripts\publish-windows.ps1)
+- Packaging notes: [docs/packaging.md](C:\Users\User\Documents\Codex\2026-04-21-what-would-it-take-to-build\docs\packaging.md)
+
 ## Next Steps
 
-1. Add module-owned settings and root-folder configuration in `platform.db`.
-2. Introduce durable job records in `jobs.db` for search/import pipelines.
-3. Expand the movie and series schemas toward monitored-state, profiles, and history.
-4. Replace the placeholder activity/settings pages with live data.
+1. Expand the movie and series schemas toward monitored-state, profiles, and history.
+2. Introduce real search/import pipeline job types and SignalR push updates.
+3. Add filesystem policy validation around roots, downloads, and imports.
+4. Turn the Windows publish output into a proper installer.

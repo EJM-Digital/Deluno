@@ -1,6 +1,5 @@
 import { createBrowserRouter } from "react-router-dom";
 import { RootLayout } from "./shell/root-layout";
-import { ActivityPage } from "./routes/activity-page";
 import {
   DashboardPage,
   dashboardLoader
@@ -15,7 +14,12 @@ import {
   seriesAction,
   seriesLoader
 } from "./routes/series-page";
-import { SettingsPage } from "./routes/settings-page";
+import {
+  SettingsPage,
+  settingsAction,
+  settingsLoader
+} from "./routes/settings-page";
+import { ActivityPage, activityLoader } from "./routes/activity-page";
 
 export const router = createBrowserRouter([
   {
@@ -41,10 +45,13 @@ export const router = createBrowserRouter([
       },
       {
         path: "activity",
+        loader: activityLoader,
         element: <ActivityPage />
       },
       {
         path: "settings",
+        loader: settingsLoader,
+        action: settingsAction,
         element: <SettingsPage />
       }
     ]

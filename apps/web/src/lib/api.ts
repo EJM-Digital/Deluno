@@ -41,6 +41,46 @@ export interface ValidationProblem {
   errors?: Record<string, string[]>;
 }
 
+export interface PlatformSettingsSnapshot {
+  appInstanceName: string;
+  movieRootPath: string | null;
+  seriesRootPath: string | null;
+  downloadsPath: string | null;
+  incompleteDownloadsPath: string | null;
+  autoStartJobs: boolean;
+  enableNotifications: boolean;
+  updatedUtc: string;
+}
+
+export interface JobQueueItem {
+  id: string;
+  jobType: string;
+  source: string;
+  status: string;
+  payloadJson: string | null;
+  attempts: number;
+  createdUtc: string;
+  scheduledUtc: string;
+  startedUtc: string | null;
+  completedUtc: string | null;
+  leasedUntilUtc: string | null;
+  workerId: string | null;
+  lastError: string | null;
+  relatedEntityType: string | null;
+  relatedEntityId: string | null;
+}
+
+export interface ActivityEventItem {
+  id: string;
+  category: string;
+  message: string;
+  detailsJson: string | null;
+  relatedJobId: string | null;
+  relatedEntityType: string | null;
+  relatedEntityId: string | null;
+  createdUtc: string;
+}
+
 export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init);
   if (!response.ok) {

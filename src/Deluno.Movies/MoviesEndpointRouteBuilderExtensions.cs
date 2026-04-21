@@ -1,3 +1,6 @@
+using System.Text.Json;
+using Deluno.Jobs.Contracts;
+using Deluno.Jobs.Data;
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
 using Microsoft.AspNetCore.Builder;
@@ -24,7 +27,11 @@ public static class MoviesEndpointRouteBuilderExtensions
             return movie is null ? Results.NotFound() : Results.Ok(movie);
         });
 
-        movies.MapPost("/", async (CreateMovieRequest request, IMovieCatalogRepository repository, CancellationToken cancellationToken) =>
+        movies.MapPost("/", async (
+            CreateMovieRequest request,
+            IMovieCatalogRepository repository,
+            IJobScheduler jobScheduler,
+            CancellationToken cancellationToken) =>
         {
             var errors = Validate(request);
             if (errors.Count > 0)
@@ -33,6 +40,19 @@ public static class MoviesEndpointRouteBuilderExtensions
             }
 
             var movie = await repository.AddAsync(request, cancellationToken);
+            await jobScheduler.EnqueueAsync(
+                new EnqueueJobRequest(
+                    JobType: "movies.catalog.refresh",
+                    Source: "movies",
+                    PayloadJson: JsonSerializer.Serialize(new
+                    {
+                        movie.Id,
+                        movie.Title,
+                        movie.ImdbId
+                    }),
+                    RelatedEntityType: "movie",
+                    RelatedEntityId: movie.Id),
+                cancellationToken);
             return Results.Created($"/api/movies/{movie.Id}", movie);
         });
 

@@ -32,8 +32,10 @@ app.UseDefaultFiles();
 app.UseStaticFiles();
 
 app.MapDelunoApi();
+app.MapDelunoPlatformEndpoints();
 app.MapDelunoMoviesEndpoints();
 app.MapDelunoSeriesEndpoints();
+app.MapDelunoJobsEndpoints();
 app.MapDelunoRealtime();
 app.MapFallbackToFile("index.html");
 

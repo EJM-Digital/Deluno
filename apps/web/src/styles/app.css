@@ -216,6 +216,12 @@ a {
   accent-color: #8cc9ff;
 }
 
+.checkbox-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .primary-button {
   width: fit-content;
   padding: 11px 16px;
@@ -240,6 +246,10 @@ a {
 .feedback-error,
 .field-error {
   color: #ffb4b4;
+}
+
+.feedback-success {
+  color: #97f0b4;
 }
 
 .field-error {
@@ -282,6 +292,38 @@ a {
   margin-top: 8px;
   color: var(--muted);
   font-size: 0.88rem;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.status-queued {
+  background: rgba(140, 201, 255, 0.16);
+  color: #d9e7ff;
+}
+
+.status-running {
+  background: rgba(255, 219, 115, 0.16);
+  color: #ffe6a4;
+}
+
+.status-completed {
+  background: rgba(103, 224, 159, 0.16);
+  color: #bef7d4;
+}
+
+.status-failed {
+  background: rgba(255, 132, 132, 0.16);
+  color: #ffcbcb;
 }
 
 .compact-list {

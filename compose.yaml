@@ -1,0 +1,14 @@
+services:
+  deluno:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: deluno:dev
+    container_name: deluno
+    ports:
+      - "5099:8080"
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      Storage__DataRoot: /data
+    volumes:
+      - ./artifacts/docker/data:/data
