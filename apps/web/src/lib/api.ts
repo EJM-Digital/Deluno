@@ -45,6 +45,31 @@ export interface MovieImportRecoverySummary {
   recentCases: MovieImportRecoveryCase[];
 }
 
+export interface MovieWantedItem {
+  movieId: string;
+  title: string;
+  releaseYear: number | null;
+  imdbId: string | null;
+  libraryId: string;
+  wantedStatus: string;
+  wantedReason: string;
+  hasFile: boolean;
+  qualityCutoffMet: boolean;
+  missingSinceUtc: string | null;
+  lastSearchUtc: string | null;
+  nextEligibleSearchUtc: string | null;
+  lastSearchResult: string | null;
+  updatedUtc: string;
+}
+
+export interface MovieWantedSummary {
+  totalWanted: number;
+  missingCount: number;
+  upgradeCount: number;
+  waitingCount: number;
+  recentItems: MovieWantedItem[];
+}
+
 export interface SeriesListItem {
   id: string;
   title: string;
@@ -72,6 +97,31 @@ export interface SeriesImportRecoverySummary {
   downloadFailedCount: number;
   importFailedCount: number;
   recentCases: SeriesImportRecoveryCase[];
+}
+
+export interface SeriesWantedItem {
+  seriesId: string;
+  title: string;
+  startYear: number | null;
+  imdbId: string | null;
+  libraryId: string;
+  wantedStatus: string;
+  wantedReason: string;
+  hasFile: boolean;
+  qualityCutoffMet: boolean;
+  missingSinceUtc: string | null;
+  lastSearchUtc: string | null;
+  nextEligibleSearchUtc: string | null;
+  lastSearchResult: string | null;
+  updatedUtc: string;
+}
+
+export interface SeriesWantedSummary {
+  totalWanted: number;
+  missingCount: number;
+  upgradeCount: number;
+  waitingCount: number;
+  recentItems: SeriesWantedItem[];
 }
 
 export interface ValidationProblem {
@@ -131,6 +181,20 @@ export interface IndexerItem {
   priority: number;
   categories: string;
   tags: string;
+  isEnabled: boolean;
+  healthStatus: string;
+  lastHealthMessage: string | null;
+  createdUtc: string;
+  updatedUtc: string;
+}
+
+export interface DownloadClientItem {
+  id: string;
+  name: string;
+  protocol: string;
+  endpointUrl: string | null;
+  categoryTemplate: string | null;
+  priority: number;
   isEnabled: boolean;
   healthStatus: string;
   lastHealthMessage: string | null;

@@ -9,11 +9,13 @@ import {
   fetchJson,
   readValidationProblem,
   type ConnectionItem,
+  type DownloadClientItem,
   type IndexerItem
 } from "../lib/api";
 
 interface IndexersLoaderData {
   indexers: IndexerItem[];
+  downloadClients: DownloadClientItem[];
   connections: ConnectionItem[];
 }
 
@@ -24,12 +26,13 @@ interface MutationState {
 }
 
 export async function connectionsLoader(): Promise<IndexersLoaderData> {
-  const [indexers, connections] = await Promise.all([
+  const [indexers, downloadClients, connections] = await Promise.all([
     fetchJson<IndexerItem[]>("/api/indexers"),
+    fetchJson<DownloadClientItem[]>("/api/download-clients"),
     fetchJson<ConnectionItem[]>("/api/connections")
   ]);
 
-  return { indexers, connections };
+  return { indexers, downloadClients, connections };
 }
 
 export async function connectionsAction({ request }: ActionFunctionArgs) {
@@ -52,9 +55,40 @@ export async function connectionsAction({ request }: ActionFunctionArgs) {
   }
 
   if (intent === "create-service") {
+    const connectionKind = String(formData.get("connectionKind") ?? "downloadClient");
+
+    if (connectionKind === "downloadClient") {
+      const payload = {
+        name: formData.get("serviceName"),
+        protocol: formData.get("downloadProtocol"),
+        endpointUrl: formData.get("endpointUrl"),
+        categoryTemplate: formData.get("categoryTemplate"),
+        priority: toNumberOrNull(formData.get("downloadPriority")),
+        isEnabled: formData.get("isEnabled") === "on"
+      };
+
+      const response = await fetch("/api/download-clients", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (response.ok) {
+        return { ok: true } satisfies MutationState;
+      }
+
+      const problem = await readValidationProblem(response);
+      return {
+        formError: problem?.title ?? "Unable to save the download client right now.",
+        errors: problem?.errors ?? {}
+      } satisfies MutationState;
+    }
+
     const payload = {
       name: formData.get("serviceName"),
-      connectionKind: formData.get("connectionKind"),
+      connectionKind,
       role: formData.get("role"),
       endpointUrl: formData.get("endpointUrl"),
       isEnabled: formData.get("isEnabled") === "on"
@@ -110,7 +144,7 @@ export async function connectionsAction({ request }: ActionFunctionArgs) {
 }
 
 export function ConnectionsPage() {
-  const { indexers, connections } = useLoaderData() as IndexersLoaderData;
+  const { indexers, downloadClients, connections } = useLoaderData() as IndexersLoaderData;
   const actionData = useActionData() as MutationState | undefined;
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
@@ -276,35 +310,66 @@ export function ConnectionsPage() {
                   <input name="serviceName" type="text" placeholder="Primary qBittorrent" required />
                   {renderError(actionData?.errors?.serviceName)}
                 </label>
-                <label className="field">
-                  <span>Service type</span>
-                  <select name="connectionKind" defaultValue="downloadClient">
-                    <option value="downloadClient">Download client</option>
+              <label className="field">
+                <span>Service type</span>
+                <select name="connectionKind" defaultValue="downloadClient">
+                  <option value="downloadClient">Download client</option>
                     <option value="notification">Notification</option>
                     <option value="mediaServer">Media server</option>
                   </select>
                 </label>
-                <label className="field">
-                  <span>Role</span>
-                  <input name="role" type="text" placeholder="Movies / Main and TV Shows / Main" />
-                </label>
-                <label className="field">
-                  <span>Address or endpoint</span>
-                  <input name="endpointUrl" type="text" placeholder="http://192.168.1.10:8080" />
-                </label>
-              </div>
-              <label className="checkbox-field">
-                <input name="isEnabled" type="checkbox" defaultChecked />
-                <span>Enable this service right away</span>
+              <label className="field">
+                <span>Role</span>
+                <input name="role" type="text" placeholder="Movies / Main and TV Shows / Main" />
               </label>
+              <label className="field">
+                <span>Address or endpoint</span>
+                <input name="endpointUrl" type="text" placeholder="http://192.168.1.10:8080" />
+              </label>
+              <label className="field">
+                <span>Protocol</span>
+                <select name="downloadProtocol" defaultValue="torrent">
+                  <option value="torrent">Torrent</option>
+                  <option value="usenet">Usenet</option>
+                </select>
+              </label>
+              <label className="field">
+                <span>Category template</span>
+                <input name="categoryTemplate" type="text" placeholder="deluno-{library}" />
+              </label>
+              <label className="field">
+                <span>Priority</span>
+                <input name="downloadPriority" type="number" min="1" defaultValue={100} />
+              </label>
+            </div>
+            <label className="checkbox-field">
+              <input name="isEnabled" type="checkbox" defaultChecked />
+              <span>Enable this service right away</span>
+            </label>
               <button className="secondary-button" type="submit" disabled={isSubmitting}>
                 {isSubmitting ? "Saving..." : "Add service"}
               </button>
             </Form>
             <div className="collection-list">
+              {downloadClients.map((client) => (
+                <article key={client.id} className="collection-item">
+                  <div className="item-heading">
+                    <strong>{client.name}</strong>
+                    <span>{capitalize(client.protocol)} client</span>
+                  </div>
+                  <div className="meta-row">
+                    <span>{client.endpointUrl ?? "No address saved yet"}</span>
+                    <span>{client.isEnabled ? "Enabled" : "Paused"}</span>
+                  </div>
+                  <div className="meta-row">
+                    <span>{client.categoryTemplate ?? "No category template yet"}</span>
+                    <span>{client.lastHealthMessage ?? "Ready to route downloads."}</span>
+                  </div>
+                </article>
+              ))}
               {connections.length === 0 ? (
                 <div className="empty-state">
-                  <p>No services yet. Add a download client so Deluno knows where to send grabs.</p>
+                  <p>No extra services yet. Add notifications or media servers once Deluno is ready to use them.</p>
                 </div>
               ) : (
                 connections.map((connection) => (

@@ -9,7 +9,8 @@ import {
   fetchJson,
   readValidationProblem,
   type SeriesImportRecoverySummary,
-  type SeriesListItem
+  type SeriesListItem,
+  type SeriesWantedSummary
 } from "../lib/api";
 
 interface MutationState {
@@ -20,15 +21,17 @@ interface MutationState {
 interface SeriesLoaderData {
   items: SeriesListItem[];
   importRecovery: SeriesImportRecoverySummary;
+  wanted: SeriesWantedSummary;
 }
 
 export async function seriesLoader(): Promise<SeriesLoaderData> {
-  const [items, importRecovery] = await Promise.all([
+  const [items, importRecovery, wanted] = await Promise.all([
     fetchJson<SeriesListItem[]>("/api/series"),
-    fetchJson<SeriesImportRecoverySummary>("/api/series/import-recovery")
+    fetchJson<SeriesImportRecoverySummary>("/api/series/import-recovery"),
+    fetchJson<SeriesWantedSummary>("/api/series/wanted")
   ]);
 
-  return { items, importRecovery };
+  return { items, importRecovery, wanted };
 }
 
 export async function seriesAction({ request }: ActionFunctionArgs) {
@@ -89,7 +92,7 @@ export async function seriesAction({ request }: ActionFunctionArgs) {
 }
 
 export function SeriesPage() {
-  const { items, importRecovery } = useLoaderData() as SeriesLoaderData;
+  const { items, importRecovery, wanted } = useLoaderData() as SeriesLoaderData;
   const actionData = useActionData() as MutationState | undefined;
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
@@ -113,9 +116,19 @@ export function SeriesPage() {
         </article>
         <article className="hero-card">
           <p className="hero-kicker">What happens next</p>
-          <div className="manifest-row">
-            <strong>Keep checking automatically</strong>
-            <span>After you add a show, Deluno can keep looking for missing episodes and better replacements later.</span>
+          <div className="manifest-grid">
+            <div className="manifest-row">
+              <strong>{wanted.missingCount}</strong>
+              <span>TV show{wanted.missingCount === 1 ? "" : "s"} still missing</span>
+            </div>
+            <div className="manifest-row">
+              <strong>{wanted.upgradeCount}</strong>
+              <span>ready for a better upgrade</span>
+            </div>
+            <div className="manifest-row">
+              <strong>{wanted.waitingCount}</strong>
+              <span>waiting before Deluno checks again</span>
+            </div>
           </div>
         </article>
       </div>
@@ -176,6 +189,34 @@ export function SeriesPage() {
                     <span className={item.monitored ? "status-tag status-tag-armed" : "status-tag"}>
                       {item.monitored ? "Auto search on" : "Auto search off"}
                     </span>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </article>
+      </div>
+      <div className="card-grid">
+        <article className="card">
+          <h3>Wanted right now</h3>
+          {wanted.recentItems.length === 0 ? (
+            <div className="empty-state">
+              <p>Nothing is waiting for Deluno right now.</p>
+            </div>
+          ) : (
+            <div className="collection-list">
+              {wanted.recentItems.map((item) => (
+                <article key={item.seriesId} className="collection-item">
+                  <div className="item-heading">
+                    <strong>{item.title}</strong>
+                    <span>{formatWantedStatus(item.wantedStatus)}</span>
+                  </div>
+                  <div className="meta-row">
+                    <span>{item.wantedReason}</span>
+                  </div>
+                  <div className="meta-row">
+                    <span>{item.lastSearchResult ?? "Deluno has not checked this one yet."}</span>
+                    <span>{item.nextEligibleSearchUtc ? `Next check ${formatDateTime(item.nextEligibleSearchUtc)}` : "Ready now"}</span>
                   </div>
                 </article>
               ))}
@@ -295,6 +336,17 @@ function formatFailureKind(value: string) {
       return "Import failed";
     default:
       return "Needs review";
+  }
+}
+
+function formatWantedStatus(value: string) {
+  switch (value) {
+    case "upgrade":
+      return "Upgrade";
+    case "waiting":
+      return "Waiting";
+    default:
+      return "Missing";
   }
 }
 

@@ -9,7 +9,8 @@ import {
   fetchJson,
   readValidationProblem,
   type MovieImportRecoverySummary,
-  type MovieListItem
+  type MovieListItem,
+  type MovieWantedSummary
 } from "../lib/api";
 
 interface MutationState {
@@ -20,15 +21,17 @@ interface MutationState {
 interface MoviesLoaderData {
   movies: MovieListItem[];
   importRecovery: MovieImportRecoverySummary;
+  wanted: MovieWantedSummary;
 }
 
 export async function moviesLoader(): Promise<MoviesLoaderData> {
-  const [movies, importRecovery] = await Promise.all([
+  const [movies, importRecovery, wanted] = await Promise.all([
     fetchJson<MovieListItem[]>("/api/movies"),
-    fetchJson<MovieImportRecoverySummary>("/api/movies/import-recovery")
+    fetchJson<MovieImportRecoverySummary>("/api/movies/import-recovery"),
+    fetchJson<MovieWantedSummary>("/api/movies/wanted")
   ]);
 
-  return { movies, importRecovery };
+  return { movies, importRecovery, wanted };
 }
 
 export async function moviesAction({ request }: ActionFunctionArgs) {
@@ -89,7 +92,7 @@ export async function moviesAction({ request }: ActionFunctionArgs) {
 }
 
 export function MoviesPage() {
-  const { movies, importRecovery } = useLoaderData() as MoviesLoaderData;
+  const { movies, importRecovery, wanted } = useLoaderData() as MoviesLoaderData;
   const actionData = useActionData() as MutationState | undefined;
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
@@ -113,9 +116,19 @@ export function MoviesPage() {
         </article>
         <article className="hero-card">
           <p className="hero-kicker">What happens next</p>
-          <div className="manifest-row">
-            <strong>Keep checking automatically</strong>
-            <span>After you add a movie, Deluno can keep looking for the first good release and future upgrades.</span>
+          <div className="manifest-grid">
+            <div className="manifest-row">
+              <strong>{wanted.missingCount}</strong>
+              <span>movie{wanted.missingCount === 1 ? "" : "s"} still missing</span>
+            </div>
+            <div className="manifest-row">
+              <strong>{wanted.upgradeCount}</strong>
+              <span>ready for a better upgrade</span>
+            </div>
+            <div className="manifest-row">
+              <strong>{wanted.waitingCount}</strong>
+              <span>waiting before Deluno checks again</span>
+            </div>
           </div>
         </article>
       </div>
@@ -176,6 +189,34 @@ export function MoviesPage() {
                     <span className={movie.monitored ? "status-tag status-tag-armed" : "status-tag"}>
                       {movie.monitored ? "Auto search on" : "Auto search off"}
                     </span>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </article>
+      </div>
+      <div className="card-grid">
+        <article className="card">
+          <h3>Wanted right now</h3>
+          {wanted.recentItems.length === 0 ? (
+            <div className="empty-state">
+              <p>Nothing is waiting for Deluno right now.</p>
+            </div>
+          ) : (
+            <div className="collection-list">
+              {wanted.recentItems.map((item) => (
+                <article key={item.movieId} className="collection-item">
+                  <div className="item-heading">
+                    <strong>{item.title}</strong>
+                    <span>{formatWantedStatus(item.wantedStatus)}</span>
+                  </div>
+                  <div className="meta-row">
+                    <span>{item.wantedReason}</span>
+                  </div>
+                  <div className="meta-row">
+                    <span>{item.lastSearchResult ?? "Deluno has not checked this one yet."}</span>
+                    <span>{item.nextEligibleSearchUtc ? `Next check ${formatDateTime(item.nextEligibleSearchUtc)}` : "Ready now"}</span>
                   </div>
                 </article>
               ))}
@@ -295,6 +336,17 @@ function formatFailureKind(value: string) {
       return "Import failed";
     default:
       return "Needs review";
+  }
+}
+
+function formatWantedStatus(value: string) {
+  switch (value) {
+    case "upgrade":
+      return "Upgrade";
+    case "waiting":
+      return "Waiting";
+    default:
+      return "Missing";
   }
 }
 
