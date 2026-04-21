@@ -174,45 +174,50 @@ SQLite allows many readers but only one writer per database file. Splitting the 
 
 `platform.db`
 
-- users
-- settings
-- API keys
-- notifications
-- audit log
-- health snapshots
+- system settings
+- root paths
+- library definitions
+- indexer sources
+- download clients
+- library routing
+- service health
 
 `movies.db`
 
 - movie catalog
-- movie monitoring
-- movie profiles
-- movie history
+- movie wanted state
+- movie search history
 - movie imports
+- movie import recovery
 
 `series.db`
 
 - shows
 - seasons
 - episodes
-- series monitoring
-- series profiles
-- series history
-- series imports
+- TV wanted state
+- TV search history
+- TV imports
+- TV import recovery
 
 `jobs.db`
 
 - scheduled jobs
-- job runs
-- leases
-- attempts
-- dead letters
+- worker leases
 - worker heartbeats
+- activity feed
+- library automation state
+- search cycle runs
+- retry windows
 
 `cache.db`
 
 - provider payload cache
+- search result cache
 - artwork cache metadata
 - transient normalization data
+
+The detailed schema direction is tracked in [deluno-database-map.md](C:\Users\User\Documents\Codex\2026-04-21-what-would-it-take-to-build\docs\deluno-database-map.md).
 
 ### SQLite performance rules
 

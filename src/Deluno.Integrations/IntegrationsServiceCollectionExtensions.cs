@@ -6,7 +6,7 @@ public static class IntegrationsServiceCollectionExtensions
 {
     public static IServiceCollection AddDelunoIntegrationsModule(this IServiceCollection services)
     {
+        services.AddHostedService<CacheSchemaInitializer>();
         return services;
     }
 }
-

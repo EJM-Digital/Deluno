@@ -73,6 +73,50 @@ public sealed class PlatformSchemaInitializer(
                 created_utc TEXT NOT NULL,
                 updated_utc TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS download_clients (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                protocol TEXT NOT NULL,
+                endpoint_url TEXT NULL,
+                category_template TEXT NULL,
+                priority INTEGER NOT NULL DEFAULT 100,
+                is_enabled INTEGER NOT NULL DEFAULT 1,
+                health_status TEXT NOT NULL DEFAULT 'unknown',
+                last_health_message TEXT NULL,
+                created_utc TEXT NOT NULL,
+                updated_utc TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS library_source_links (
+                id TEXT PRIMARY KEY,
+                library_id TEXT NOT NULL,
+                indexer_id TEXT NOT NULL,
+                priority INTEGER NOT NULL DEFAULT 100,
+                required_tags TEXT NOT NULL DEFAULT '',
+                excluded_tags TEXT NOT NULL DEFAULT '',
+                created_utc TEXT NOT NULL,
+                updated_utc TEXT NOT NULL,
+                FOREIGN KEY (library_id) REFERENCES libraries(id) ON DELETE CASCADE,
+                FOREIGN KEY (indexer_id) REFERENCES indexer_sources(id) ON DELETE CASCADE
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS ix_library_source_links_unique
+                ON library_source_links (library_id, indexer_id);
+
+            CREATE TABLE IF NOT EXISTS library_download_client_links (
+                id TEXT PRIMARY KEY,
+                library_id TEXT NOT NULL,
+                download_client_id TEXT NOT NULL,
+                priority INTEGER NOT NULL DEFAULT 100,
+                created_utc TEXT NOT NULL,
+                updated_utc TEXT NOT NULL,
+                FOREIGN KEY (library_id) REFERENCES libraries(id) ON DELETE CASCADE,
+                FOREIGN KEY (download_client_id) REFERENCES download_clients(id) ON DELETE CASCADE
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS ix_library_download_client_links_unique
+                ON library_download_client_links (library_id, download_client_id);
             """;
 
         await command.ExecuteNonQueryAsync(cancellationToken);
