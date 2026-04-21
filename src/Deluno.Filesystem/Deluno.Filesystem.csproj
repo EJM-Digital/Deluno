@@ -2,5 +2,10 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Deluno.Contracts\Deluno.Contracts.csproj" />
+    <ProjectReference Include="..\Deluno.Movies\Deluno.Movies.csproj" />
+    <ProjectReference Include="..\Deluno.Platform\Deluno.Platform.csproj" />
+    <ProjectReference Include="..\Deluno.Series\Deluno.Series.csproj" />
+  </ItemGroup>
 </Project>
-

@@ -25,6 +25,12 @@ public interface IMovieCatalogRepository
         string wantedReason,
         CancellationToken cancellationToken);
 
+    Task<bool> ImportExistingAsync(
+        string libraryId,
+        string title,
+        int? releaseYear,
+        CancellationToken cancellationToken);
+
     Task RecordSearchAttemptAsync(
         string movieId,
         string libraryId,

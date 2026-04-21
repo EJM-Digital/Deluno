@@ -25,6 +25,21 @@ export async function librariesAction({ request }: ActionFunctionArgs) {
   const formData = await request.formData();
   const intent = formData.get("intent");
 
+  if (intent === "import-existing") {
+    const libraryId = String(formData.get("libraryId") ?? "");
+    const response = await fetch(`/api/libraries/${libraryId}/import-existing`, {
+      method: "POST"
+    });
+
+    if (response.ok) {
+      return { ok: true } satisfies MutationState;
+    }
+
+    return {
+      formError: "Deluno could not import that library right now."
+    } satisfies MutationState;
+  }
+
   if (intent === "search-now") {
     const libraryId = String(formData.get("libraryId") ?? "");
     const response = await fetch(`/api/libraries/${libraryId}/search-now`, {
@@ -221,6 +236,13 @@ export function LibrariesPage() {
                     <input type="hidden" name="libraryId" value={library.id} />
                     <button className="secondary-button" type="submit" disabled={isSubmitting}>
                       Check now
+                    </button>
+                  </Form>
+                  <Form method="post" className="inline-form">
+                    <input type="hidden" name="intent" value="import-existing" />
+                    <input type="hidden" name="libraryId" value={library.id} />
+                    <button className="secondary-button" type="submit" disabled={isSubmitting}>
+                      Import existing
                     </button>
                   </Form>
                 </article>

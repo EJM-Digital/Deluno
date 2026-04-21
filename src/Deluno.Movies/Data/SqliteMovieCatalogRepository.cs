@@ -125,10 +125,36 @@ public sealed class SqliteMovieCatalogRepository(
     public async Task<MovieWantedSummary> GetWantedSummaryAsync(CancellationToken cancellationToken)
     {
         var items = new List<MovieWantedItem>();
+        var totalWanted = 0;
+        var missingCount = 0;
+        var upgradeCount = 0;
+        var waitingCount = 0;
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Movies,
             cancellationToken);
+
+        using (var totals = connection.CreateCommand())
+        {
+            totals.CommandText =
+                """
+                SELECT
+                    COUNT(*),
+                    SUM(CASE WHEN wanted_status = 'missing' THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN wanted_status = 'upgrade' THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN wanted_status = 'waiting' THEN 1 ELSE 0 END)
+                FROM movie_wanted_state;
+                """;
+
+            using var totalsReader = await totals.ExecuteReaderAsync(cancellationToken);
+            if (await totalsReader.ReadAsync(cancellationToken))
+            {
+                totalWanted = totalsReader.IsDBNull(0) ? 0 : totalsReader.GetInt32(0);
+                missingCount = totalsReader.IsDBNull(1) ? 0 : totalsReader.GetInt32(1);
+                upgradeCount = totalsReader.IsDBNull(2) ? 0 : totalsReader.GetInt32(2);
+                waitingCount = totalsReader.IsDBNull(3) ? 0 : totalsReader.GetInt32(3);
+            }
+        }
 
         using var command = connection.CreateCommand();
         command.CommandText =
@@ -150,10 +176,10 @@ public sealed class SqliteMovieCatalogRepository(
         }
 
         return new MovieWantedSummary(
-            TotalWanted: items.Count,
-            MissingCount: items.Count(item => item.WantedStatus == "missing"),
-            UpgradeCount: items.Count(item => item.WantedStatus == "upgrade"),
-            WaitingCount: items.Count(item => item.WantedStatus == "waiting"),
+            TotalWanted: totalWanted,
+            MissingCount: missingCount,
+            UpgradeCount: upgradeCount,
+            WaitingCount: waitingCount,
             RecentItems: items);
     }
 
@@ -239,6 +265,90 @@ public sealed class SqliteMovieCatalogRepository(
         AddParameter(command, "@missingSinceUtc", now.ToString("O"));
         AddParameter(command, "@updatedUtc", now.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<bool> ImportExistingAsync(
+        string libraryId,
+        string title,
+        int? releaseYear,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        var normalizedTitle = title.Trim();
+        var now = timeProvider.GetUtcNow();
+        string? movieId = null;
+
+        using (var lookup = connection.CreateCommand())
+        {
+            lookup.CommandText =
+                """
+                SELECT id
+                FROM movie_entries
+                WHERE lower(title) = lower(@title)
+                  AND ((release_year IS NULL AND @releaseYear IS NULL) OR release_year = @releaseYear)
+                LIMIT 1;
+                """;
+
+            AddParameter(lookup, "@title", normalizedTitle);
+            AddParameter(lookup, "@releaseYear", releaseYear);
+
+            movieId = await lookup.ExecuteScalarAsync(cancellationToken) as string;
+        }
+
+        var created = false;
+        if (string.IsNullOrWhiteSpace(movieId))
+        {
+            movieId = Guid.CreateVersion7().ToString("N");
+            created = true;
+
+            using var insert = connection.CreateCommand();
+            insert.CommandText =
+                """
+                INSERT INTO movie_entries (
+                    id, title, release_year, imdb_id, monitored, created_utc, updated_utc
+                )
+                VALUES (
+                    @id, @title, @releaseYear, NULL, 1, @createdUtc, @updatedUtc
+                );
+                """;
+
+            AddParameter(insert, "@id", movieId);
+            AddParameter(insert, "@title", normalizedTitle);
+            AddParameter(insert, "@releaseYear", releaseYear);
+            AddParameter(insert, "@createdUtc", now.ToString("O"));
+            AddParameter(insert, "@updatedUtc", now.ToString("O"));
+            await insert.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        using var wanted = connection.CreateCommand();
+        wanted.CommandText =
+            """
+            INSERT INTO movie_wanted_state (
+                movie_id, library_id, wanted_status, wanted_reason, has_file, quality_cutoff_met,
+                missing_since_utc, last_search_utc, next_eligible_search_utc, last_search_result, updated_utc
+            )
+            VALUES (
+                @movieId, @libraryId, 'waiting', 'Already in your library.', 1, 0,
+                NULL, NULL, NULL, 'Imported from your existing library.', @updatedUtc
+            )
+            ON CONFLICT(movie_id) DO UPDATE SET
+                library_id = excluded.library_id,
+                wanted_status = excluded.wanted_status,
+                wanted_reason = excluded.wanted_reason,
+                has_file = 1,
+                last_search_result = excluded.last_search_result,
+                updated_utc = excluded.updated_utc;
+            """;
+
+        AddParameter(wanted, "@movieId", movieId);
+        AddParameter(wanted, "@libraryId", libraryId);
+        AddParameter(wanted, "@updatedUtc", now.ToString("O"));
+        await wanted.ExecuteNonQueryAsync(cancellationToken);
+
+        return created;
     }
 
     public async Task RecordSearchAttemptAsync(

@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Deluno.Jobs.Contracts;
@@ -95,6 +96,30 @@ public static class PlatformEndpointRouteBuilderExtensions
 
             var requested = await jobs.RequestLibrarySearchAsync(ToPlanItem(library), cancellationToken);
             return requested ? Results.Accepted() : Results.NotFound();
+        });
+
+        endpoints.MapPost("/api/libraries/{id}/import-existing", async (
+            string id,
+            IExistingLibraryImportService importService,
+            IActivityFeedRepository activityFeedRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await importService.ImportLibraryAsync(id, cancellationToken);
+            if (result is null)
+            {
+                return Results.NotFound();
+            }
+
+            await activityFeedRepository.RecordActivityAsync(
+                "library.import.existing",
+                $"Deluno scanned {result.LibraryName} and brought in {result.ImportedCount} existing item{(result.ImportedCount == 1 ? "" : "s")}.",
+                null,
+                null,
+                "library",
+                result.LibraryId,
+                cancellationToken);
+
+            return Results.Ok(result);
         });
 
         libraries.MapDelete("{id}", async (
