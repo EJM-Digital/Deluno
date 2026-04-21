@@ -36,6 +36,21 @@ export async function connectionsAction({ request }: ActionFunctionArgs) {
   const formData = await request.formData();
   const intent = String(formData.get("intent") ?? "create-indexer");
 
+  if (intent === "test-indexer") {
+    const id = String(formData.get("id") ?? "");
+    const response = await fetch(`/api/indexers/${id}/test`, {
+      method: "POST"
+    });
+
+    if (response.ok) {
+      return { ok: true } satisfies MutationState;
+    }
+
+    return {
+      formError: "Deluno could not test that indexer right now."
+    } satisfies MutationState;
+  }
+
   if (intent === "create-service") {
     const payload = {
       name: formData.get("serviceName"),
@@ -233,6 +248,13 @@ export function ConnectionsPage() {
                       <span>{indexer.lastHealthMessage ?? "Ready to use."}</span>
                     </div>
                   )}
+                  <Form method="post" className="inline-form">
+                    <input type="hidden" name="intent" value="test-indexer" />
+                    <input type="hidden" name="id" value={indexer.id} />
+                    <button className="secondary-button" type="submit" disabled={isSubmitting}>
+                      Test source
+                    </button>
+                  </Form>
                 </article>
               ))}
             </div>

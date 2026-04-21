@@ -33,6 +33,12 @@ public interface IPlatformSettingsRepository
         CreateIndexerRequest request,
         CancellationToken cancellationToken);
 
+    Task<IndexerTestResult?> UpdateIndexerHealthAsync(
+        string id,
+        string healthStatus,
+        string message,
+        CancellationToken cancellationToken);
+
     Task<bool> DeleteLibraryAsync(string id, CancellationToken cancellationToken);
 
     Task<bool> DeleteConnectionAsync(string id, CancellationToken cancellationToken);

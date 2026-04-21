@@ -27,6 +27,30 @@ public static class SeriesEndpointRouteBuilderExtensions
             return Results.Ok(summary);
         });
 
+        series.MapPost("/import-recovery", async (
+            CreateSeriesImportRecoveryCaseRequest request,
+            ISeriesCatalogRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var errors = ValidateImportRecovery(request.Title, request.Summary);
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            var item = await repository.AddImportRecoveryCaseAsync(request, cancellationToken);
+            return Results.Ok(item);
+        });
+
+        series.MapDelete("/import-recovery/{id}", async (
+            string id,
+            ISeriesCatalogRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var removed = await repository.DeleteImportRecoveryCaseAsync(id, cancellationToken);
+            return removed ? Results.NoContent() : Results.NotFound();
+        });
+
         series.MapGet("/{id}", async (string id, ISeriesCatalogRepository repository, CancellationToken cancellationToken) =>
         {
             var item = await repository.GetByIdAsync(id, cancellationToken);
@@ -77,6 +101,23 @@ public static class SeriesEndpointRouteBuilderExtensions
         if (request.StartYear is < 1888 or > 2100)
         {
             errors["startYear"] = ["Start year must be between 1888 and 2100."];
+        }
+
+        return errors;
+    }
+
+    private static Dictionary<string, string[]> ValidateImportRecovery(string? title, string? summary)
+    {
+        var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            errors["title"] = ["Give this import issue a TV show title."];
+        }
+
+        if (string.IsNullOrWhiteSpace(summary))
+        {
+            errors["summary"] = ["Add a short summary so Deluno can explain what went wrong."];
         }
 
         return errors;

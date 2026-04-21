@@ -33,6 +33,35 @@ export async function moviesLoader(): Promise<MoviesLoaderData> {
 
 export async function moviesAction({ request }: ActionFunctionArgs) {
   const formData = await request.formData();
+  const intent = String(formData.get("intent") ?? "create-movie");
+
+  if (intent === "add-import-issue") {
+    const payload = {
+      title: formData.get("issueTitle"),
+      failureKind: formData.get("failureKind"),
+      summary: formData.get("issueSummary"),
+      recommendedAction: formData.get("recommendedAction")
+    };
+
+    const response = await fetch("/api/movies/import-recovery", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (response.ok) {
+      return { ok: true };
+    }
+
+    const problem = await readValidationProblem(response);
+    return {
+      formError: problem?.title ?? "Unable to save the import issue right now.",
+      errors: problem?.errors ?? {}
+    } satisfies MutationState;
+  }
+
   const payload = {
     title: formData.get("title"),
     releaseYear: toNumberOrNull(formData.get("releaseYear")),
@@ -94,6 +123,7 @@ export function MoviesPage() {
         <article className="card">
           <h3>Add a movie</h3>
           <Form method="post" className="entry-form">
+            <input type="hidden" name="intent" value="create-movie" />
             <div className="form-grid">
               <label className="field">
                 <span>Movie title</span>
@@ -159,6 +189,36 @@ export function MoviesPage() {
           <p>
             When Deluno sees import trouble, this is where Movies will explain what went wrong and what it recommends next.
           </p>
+          <Form method="post" className="entry-form">
+            <input type="hidden" name="intent" value="add-import-issue" />
+            <div className="form-grid">
+              <label className="field">
+                <span>Movie title</span>
+                <input name="issueTitle" type="text" placeholder="Arrival" />
+              </label>
+              <label className="field">
+                <span>Issue type</span>
+                <select name="failureKind" defaultValue="unmatched">
+                  <option value="unmatched">Needs matching</option>
+                  <option value="quality">Quality rejected</option>
+                  <option value="corrupt">Corrupt</option>
+                  <option value="downloadFailed">Download failed</option>
+                  <option value="importFailed">Import failed</option>
+                </select>
+              </label>
+              <label className="field">
+                <span>What happened</span>
+                <input name="issueSummary" type="text" placeholder="Manual import could not match the movie folder." />
+              </label>
+              <label className="field">
+                <span>Recommended next step</span>
+                <input name="recommendedAction" type="text" placeholder="Review the folder name and retry the match." />
+              </label>
+            </div>
+            <button className="secondary-button" type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Saving..." : "Add import issue"}
+            </button>
+          </Form>
           <div className="manifest-grid">
             <div className="manifest-row">
               <strong>{importRecovery.openCount}</strong>

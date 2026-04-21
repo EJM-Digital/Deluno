@@ -2,6 +2,7 @@ using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
+using System.Net.Http;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -139,6 +140,24 @@ public static class PlatformEndpointRouteBuilderExtensions
             return removed ? Results.NoContent() : Results.NotFound();
         });
 
+        indexers.MapPost("{id}/test", async (
+            string id,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var item = (await repository.ListIndexersAsync(cancellationToken))
+                .FirstOrDefault(indexer => string.Equals(indexer.Id, id, StringComparison.OrdinalIgnoreCase));
+
+            if (item is null)
+            {
+                return Results.NotFound();
+            }
+
+            var (healthStatus, message) = await TestIndexerAsync(item, cancellationToken);
+            var result = await repository.UpdateIndexerHealthAsync(id, healthStatus, message, cancellationToken);
+            return result is null ? Results.NotFound() : Results.Ok(result);
+        });
+
         connections.MapGet(string.Empty, async (IPlatformSettingsRepository repository, CancellationToken cancellationToken) =>
         {
             var items = await repository.ListConnectionsAsync(cancellationToken);
@@ -261,6 +280,38 @@ public static class PlatformEndpointRouteBuilderExtensions
         }
 
         return errors;
+    }
+
+    private static async Task<(string healthStatus, string message)> TestIndexerAsync(
+        IndexerItem item,
+        CancellationToken cancellationToken)
+    {
+        if (!Uri.TryCreate(item.BaseUrl, UriKind.Absolute, out var uri))
+        {
+            return ("attention", "The address is not valid yet.");
+        }
+
+        try
+        {
+            using var client = new HttpClient
+            {
+                Timeout = TimeSpan.FromSeconds(8)
+            };
+
+            using var request = new HttpRequestMessage(HttpMethod.Head, uri);
+            using var response = await client.SendAsync(request, cancellationToken);
+
+            if ((int)response.StatusCode >= 200 && (int)response.StatusCode < 400)
+            {
+                return ("ready", $"Reached {uri.Host} successfully.");
+            }
+
+            return ("attention", $"Reached {uri.Host}, but it returned {(int)response.StatusCode}.");
+        }
+        catch (Exception ex)
+        {
+            return ("attention", ex.Message);
+        }
     }
 
     private static LibraryItem MergeLibraryState(

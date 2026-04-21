@@ -33,6 +33,35 @@ export async function seriesLoader(): Promise<SeriesLoaderData> {
 
 export async function seriesAction({ request }: ActionFunctionArgs) {
   const formData = await request.formData();
+  const intent = String(formData.get("intent") ?? "create-series");
+
+  if (intent === "add-import-issue") {
+    const payload = {
+      title: formData.get("issueTitle"),
+      failureKind: formData.get("failureKind"),
+      summary: formData.get("issueSummary"),
+      recommendedAction: formData.get("recommendedAction")
+    };
+
+    const response = await fetch("/api/series/import-recovery", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (response.ok) {
+      return { ok: true };
+    }
+
+    const problem = await readValidationProblem(response);
+    return {
+      formError: problem?.title ?? "Unable to save the import issue right now.",
+      errors: problem?.errors ?? {}
+    } satisfies MutationState;
+  }
+
   const payload = {
     title: formData.get("title"),
     startYear: toNumberOrNull(formData.get("startYear")),
@@ -94,6 +123,7 @@ export function SeriesPage() {
         <article className="card">
           <h3>Add a TV show</h3>
           <Form method="post" className="entry-form">
+            <input type="hidden" name="intent" value="create-series" />
             <div className="form-grid">
               <label className="field">
                 <span>Show title</span>
@@ -159,6 +189,36 @@ export function SeriesPage() {
           <p>
             TV imports are messy in their own special ways. Deluno will keep track of failed episode imports, unmatched files, corrupt downloads, and quality rejects here.
           </p>
+          <Form method="post" className="entry-form">
+            <input type="hidden" name="intent" value="add-import-issue" />
+            <div className="form-grid">
+              <label className="field">
+                <span>TV show title</span>
+                <input name="issueTitle" type="text" placeholder="Severance" />
+              </label>
+              <label className="field">
+                <span>Issue type</span>
+                <select name="failureKind" defaultValue="unmatched">
+                  <option value="unmatched">Needs matching</option>
+                  <option value="quality">Quality rejected</option>
+                  <option value="corrupt">Corrupt</option>
+                  <option value="downloadFailed">Download failed</option>
+                  <option value="importFailed">Import failed</option>
+                </select>
+              </label>
+              <label className="field">
+                <span>What happened</span>
+                <input name="issueSummary" type="text" placeholder="Episode file could not be matched to a season." />
+              </label>
+              <label className="field">
+                <span>Recommended next step</span>
+                <input name="recommendedAction" type="text" placeholder="Review the episode naming and retry the import." />
+              </label>
+            </div>
+            <button className="secondary-button" type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Saving..." : "Add import issue"}
+            </button>
+          </Form>
           <div className="manifest-grid">
             <div className="manifest-row">
               <strong>{importRecovery.openCount}</strong>

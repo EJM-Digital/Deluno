@@ -376,6 +376,46 @@ public sealed class SqlitePlatformSettingsRepository(
         return item;
     }
 
+    public async Task<IndexerTestResult?> UpdateIndexerHealthAsync(
+        string id,
+        string healthStatus,
+        string message,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE indexer_sources
+            SET
+                health_status = @healthStatus,
+                last_health_message = @lastHealthMessage,
+                updated_utc = @updatedUtc
+            WHERE id = @id;
+            """;
+
+        AddParameter(command, "@id", id);
+        AddParameter(command, "@healthStatus", healthStatus);
+        AddParameter(command, "@lastHealthMessage", message);
+        AddParameter(command, "@updatedUtc", now.ToString("O"));
+
+        if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
+        {
+            return null;
+        }
+
+        return new IndexerTestResult(
+            Id: id,
+            HealthStatus: healthStatus,
+            Message: message,
+            TestedUtc: now);
+    }
+
     public async Task<bool> DeleteLibraryAsync(string id, CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
