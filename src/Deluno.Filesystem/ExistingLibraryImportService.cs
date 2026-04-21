@@ -1,7 +1,8 @@
-using Deluno.Contracts;
 using System.Text.RegularExpressions;
+using Deluno.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Platform.Data;
+using Deluno.Platform.Quality;
 using Deluno.Series.Data;
 
 namespace Deluno.Filesystem;
@@ -19,6 +20,9 @@ public sealed class ExistingLibraryImportService(
 
     private static readonly Regex YearPattern = new(@"\b(19|20)\d{2}\b", RegexOptions.Compiled);
     private static readonly Regex EpisodePattern = new(@"^(?<title>.+?)[\s._-]+S\d{1,2}E\d{1,2}", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex CleanupTokensPattern = new(
+        @"\b(remux|bluray|blu-ray|bdrip|web[-\s]?dl|webrip|web|hdtv|sdtv|dvd|x264|x265|hevc|av1|720p|1080p|2160p)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public async Task<ExistingLibraryImportResult?> ImportLibraryAsync(string libraryId, CancellationToken cancellationToken)
     {
@@ -46,22 +50,8 @@ public sealed class ExistingLibraryImportService(
             }
 
             var wasImported = library.MediaType == "movies"
-                ? await movieCatalogRepository.ImportExistingAsync(
-                    library.Id,
-                    item.Title,
-                    item.Year,
-                    library.UpgradeUnknownItems ? "upgrade" : "waiting",
-                    FormatImportReason(library, "movie"),
-                    !library.UpgradeUnknownItems,
-                    cancellationToken)
-                : await seriesCatalogRepository.ImportExistingAsync(
-                    library.Id,
-                    item.Title,
-                    item.Year,
-                    library.UpgradeUnknownItems ? "upgrade" : "waiting",
-                    FormatImportReason(library, "TV show"),
-                    !library.UpgradeUnknownItems,
-                    cancellationToken);
+                ? await ImportMovieAsync(library, item, cancellationToken)
+                : await ImportSeriesAsync(library, item, cancellationToken);
 
             if (wasImported)
             {
@@ -84,6 +74,56 @@ public sealed class ExistingLibraryImportService(
             SampleTitles: samples);
     }
 
+    private async Task<bool> ImportMovieAsync(
+        Deluno.Platform.Contracts.LibraryItem library,
+        DetectedLibraryItem item,
+        CancellationToken cancellationToken)
+    {
+        var decision = LibraryQualityDecider.Decide(
+            mediaLabel: "movie",
+            hasFile: true,
+            currentQuality: item.DetectedQuality,
+            cutoffQuality: library.CutoffQuality,
+            upgradeUntilCutoff: library.UpgradeUntilCutoff,
+            upgradeUnknownItems: library.UpgradeUnknownItems);
+
+        return await movieCatalogRepository.ImportExistingAsync(
+            library.Id,
+            item.Title,
+            item.Year,
+            decision.WantedStatus,
+            decision.WantedReason,
+            decision.CurrentQuality,
+            decision.TargetQuality,
+            decision.QualityCutoffMet,
+            cancellationToken);
+    }
+
+    private async Task<bool> ImportSeriesAsync(
+        Deluno.Platform.Contracts.LibraryItem library,
+        DetectedLibraryItem item,
+        CancellationToken cancellationToken)
+    {
+        var decision = LibraryQualityDecider.Decide(
+            mediaLabel: "TV show",
+            hasFile: true,
+            currentQuality: item.DetectedQuality,
+            cutoffQuality: library.CutoffQuality,
+            upgradeUntilCutoff: library.UpgradeUntilCutoff,
+            upgradeUnknownItems: library.UpgradeUnknownItems);
+
+        return await seriesCatalogRepository.ImportExistingAsync(
+            library.Id,
+            item.Title,
+            item.Year,
+            decision.WantedStatus,
+            decision.WantedReason,
+            decision.CurrentQuality,
+            decision.TargetQuality,
+            decision.QualityCutoffMet,
+            cancellationToken);
+    }
+
     private static List<DetectedLibraryItem> DiscoverMovies(string rootPath)
     {
         var items = new List<DetectedLibraryItem>();
@@ -96,11 +136,13 @@ public sealed class ExistingLibraryImportService(
                 continue;
             }
 
-            var parsed = ParseTitle(Path.GetFileName(directory));
+            var rawName = Path.GetFileName(directory);
+            var parsed = ParseTitle(rawName);
+            var quality = LibraryQualityDecider.DetectQuality(rawName);
             var key = $"{parsed.Title}|{parsed.Year}";
             if (seen.Add(key))
             {
-                items.Add(parsed);
+                items.Add(parsed with { DetectedQuality = quality });
             }
         }
 
@@ -111,11 +153,13 @@ public sealed class ExistingLibraryImportService(
                 continue;
             }
 
-            var parsed = ParseTitle(Path.GetFileNameWithoutExtension(file));
+            var rawName = Path.GetFileNameWithoutExtension(file);
+            var parsed = ParseTitle(rawName);
+            var quality = LibraryQualityDecider.DetectQuality(rawName);
             var key = $"{parsed.Title}|{parsed.Year}";
             if (seen.Add(key))
             {
-                items.Add(parsed);
+                items.Add(parsed with { DetectedQuality = quality });
             }
         }
 
@@ -134,11 +178,13 @@ public sealed class ExistingLibraryImportService(
                 continue;
             }
 
-            var parsed = ParseTitle(Path.GetFileName(directory));
+            var rawName = Path.GetFileName(directory);
+            var parsed = ParseTitle(rawName);
+            var quality = LibraryQualityDecider.DetectQuality(rawName);
             var key = $"{parsed.Title}|{parsed.Year}";
             if (seen.Add(key))
             {
-                items.Add(parsed);
+                items.Add(parsed with { DetectedQuality = quality });
             }
         }
 
@@ -157,10 +203,11 @@ public sealed class ExistingLibraryImportService(
             }
 
             var parsed = ParseTitle(match.Groups["title"].Value);
+            var quality = LibraryQualityDecider.DetectQuality(name);
             var key = $"{parsed.Title}|{parsed.Year}";
             if (seen.Add(key))
             {
-                items.Add(parsed);
+                items.Add(parsed with { DetectedQuality = quality });
             }
         }
 
@@ -190,13 +237,15 @@ public sealed class ExistingLibraryImportService(
             .Trim();
 
         int? year = null;
-        var yearMatch = YearPattern.Match(normalized);
+        var yearMatches = YearPattern.Matches(normalized);
+        var yearMatch = yearMatches.Count > 0 ? yearMatches[^1] : Match.Empty;
         if (yearMatch.Success && int.TryParse(yearMatch.Value, out var parsedYear))
         {
             year = parsedYear;
-            normalized = normalized.Replace(yearMatch.Value, string.Empty, StringComparison.OrdinalIgnoreCase).Trim();
+            normalized = normalized.Remove(yearMatch.Index, yearMatch.Length).Trim();
         }
 
+        normalized = CleanupTokensPattern.Replace(normalized, " ").Trim();
         normalized = Regex.Replace(normalized, @"\[[^\]]+\]|\([^\)]+\)", string.Empty).Trim();
         normalized = Regex.Replace(normalized, @"\(\s*\)", string.Empty).Trim();
         normalized = Regex.Replace(normalized, @"\s{2,}", " ").Trim('-', ' ');
@@ -204,15 +253,5 @@ public sealed class ExistingLibraryImportService(
         return new DetectedLibraryItem(string.IsNullOrWhiteSpace(normalized) ? raw.Trim() : normalized, year);
     }
 
-    private static string FormatImportReason(Platform.Contracts.LibraryItem library, string mediaLabel)
-    {
-        if (library.UpgradeUnknownItems && !string.IsNullOrWhiteSpace(library.CutoffQuality))
-        {
-            return $"Imported from your existing library. Deluno will keep checking this {mediaLabel} until it reaches {library.CutoffQuality}.";
-        }
-
-        return "Already in your library.";
-    }
-
-    private sealed record DetectedLibraryItem(string Title, int? Year);
+    private sealed record DetectedLibraryItem(string Title, int? Year, string? DetectedQuality = null);
 }

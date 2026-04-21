@@ -24,6 +24,8 @@ public interface IMovieCatalogRepository
         string wantedStatus,
         string wantedReason,
         bool hasFile,
+        string? currentQuality,
+        string? targetQuality,
         bool qualityCutoffMet,
         CancellationToken cancellationToken);
 
@@ -33,6 +35,8 @@ public interface IMovieCatalogRepository
         int? releaseYear,
         string wantedStatus,
         string wantedReason,
+        string? currentQuality,
+        string? targetQuality,
         bool qualityCutoffMet,
         CancellationToken cancellationToken);
 
@@ -44,6 +48,13 @@ public interface IMovieCatalogRepository
         DateTimeOffset now,
         DateTimeOffset? nextEligibleSearchUtc,
         string? lastSearchResult,
+        CancellationToken cancellationToken);
+
+    Task<int> ReevaluateLibraryWantedStateAsync(
+        string libraryId,
+        string? cutoffQuality,
+        bool upgradeUntilCutoff,
+        bool upgradeUnknownItems,
         CancellationToken cancellationToken);
 
     Task<MovieImportRecoverySummary> GetImportRecoverySummaryAsync(CancellationToken cancellationToken);

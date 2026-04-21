@@ -1,4 +1,5 @@
 using Deluno.Contracts;
+using System.Text.Json;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Deluno.Jobs.Contracts;
@@ -106,10 +107,33 @@ public static class PlatformEndpointRouteBuilderExtensions
             string id,
             UpdateLibraryQualityProfileRequest request,
             IPlatformSettingsRepository repository,
+            IJobScheduler jobScheduler,
             CancellationToken cancellationToken) =>
         {
             var item = await repository.UpdateLibraryQualityProfileAsync(id, request, cancellationToken);
-            return item is null ? Results.NotFound() : Results.Ok(item);
+            if (item is null)
+            {
+                return Results.NotFound();
+            }
+
+            await jobScheduler.EnqueueAsync(
+                new EnqueueJobRequest(
+                    JobType: item.MediaType == "tv" ? "series.quality.recalculate" : "movies.quality.recalculate",
+                    Source: item.MediaType,
+                    PayloadJson: JsonSerializer.Serialize(new
+                    {
+                        libraryId = item.Id,
+                        libraryName = item.Name,
+                        mediaType = item.MediaType,
+                        cutoffQuality = item.CutoffQuality,
+                        upgradeUntilCutoff = item.UpgradeUntilCutoff,
+                        upgradeUnknownItems = item.UpgradeUnknownItems
+                    }),
+                    RelatedEntityType: "library",
+                    RelatedEntityId: item.Id),
+                cancellationToken);
+
+            return Results.Ok(item);
         });
 
         endpoints.MapPost("/api/libraries/{id}/search-now", async (

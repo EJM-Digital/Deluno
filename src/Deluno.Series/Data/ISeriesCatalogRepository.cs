@@ -24,6 +24,8 @@ public interface ISeriesCatalogRepository
         string wantedStatus,
         string wantedReason,
         bool hasFile,
+        string? currentQuality,
+        string? targetQuality,
         bool qualityCutoffMet,
         CancellationToken cancellationToken);
 
@@ -33,6 +35,8 @@ public interface ISeriesCatalogRepository
         int? startYear,
         string wantedStatus,
         string wantedReason,
+        string? currentQuality,
+        string? targetQuality,
         bool qualityCutoffMet,
         CancellationToken cancellationToken);
 
@@ -44,6 +48,13 @@ public interface ISeriesCatalogRepository
         DateTimeOffset now,
         DateTimeOffset? nextEligibleSearchUtc,
         string? lastSearchResult,
+        CancellationToken cancellationToken);
+
+    Task<int> ReevaluateLibraryWantedStateAsync(
+        string libraryId,
+        string? cutoffQuality,
+        bool upgradeUntilCutoff,
+        bool upgradeUnknownItems,
         CancellationToken cancellationToken);
 
     Task<SeriesImportRecoverySummary> GetImportRecoverySummaryAsync(CancellationToken cancellationToken);

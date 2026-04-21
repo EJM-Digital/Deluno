@@ -1,6 +1,7 @@
 using System.Globalization;
 using Deluno.Infrastructure.Storage;
 using Deluno.Movies.Contracts;
+using Deluno.Platform.Quality;
 
 namespace Deluno.Movies.Data;
 
@@ -161,7 +162,7 @@ public sealed class SqliteMovieCatalogRepository(
             """
             SELECT
                 m.id, m.title, m.release_year, m.imdb_id,
-                w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.quality_cutoff_met,
+                w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality, w.quality_cutoff_met,
                 w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc, w.last_search_result, w.updated_utc
             FROM movie_wanted_state w
             INNER JOIN movie_entries m ON m.id = w.movie_id
@@ -200,7 +201,7 @@ public sealed class SqliteMovieCatalogRepository(
             """
             SELECT
                 m.id, m.title, m.release_year, m.imdb_id,
-                w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.quality_cutoff_met,
+                w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality, w.quality_cutoff_met,
                 w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc, w.last_search_result, w.updated_utc
             FROM movie_wanted_state w
             INNER JOIN movie_entries m ON m.id = w.movie_id
@@ -233,6 +234,8 @@ public sealed class SqliteMovieCatalogRepository(
         string wantedStatus,
         string wantedReason,
         bool hasFile,
+        string? currentQuality,
+        string? targetQuality,
         bool qualityCutoffMet,
         CancellationToken cancellationToken)
     {
@@ -247,16 +250,18 @@ public sealed class SqliteMovieCatalogRepository(
             """
             INSERT INTO movie_wanted_state (
                 movie_id, library_id, wanted_status, wanted_reason, has_file, quality_cutoff_met,
-                missing_since_utc, last_search_utc, next_eligible_search_utc, last_search_result, updated_utc
+                current_quality, target_quality, missing_since_utc, last_search_utc, next_eligible_search_utc, last_search_result, updated_utc
             )
             VALUES (
                 @movieId, @libraryId, @wantedStatus, @wantedReason, @hasFile, @qualityCutoffMet,
-                @missingSinceUtc, NULL, NULL, NULL, @updatedUtc
+                @currentQuality, @targetQuality, @missingSinceUtc, NULL, NULL, NULL, @updatedUtc
             )
             ON CONFLICT(movie_id, library_id) DO UPDATE SET
                 wanted_status = excluded.wanted_status,
                 wanted_reason = excluded.wanted_reason,
                 has_file = excluded.has_file,
+                current_quality = excluded.current_quality,
+                target_quality = excluded.target_quality,
                 quality_cutoff_met = excluded.quality_cutoff_met,
                 updated_utc = excluded.updated_utc;
             """;
@@ -266,6 +271,8 @@ public sealed class SqliteMovieCatalogRepository(
         AddParameter(command, "@wantedStatus", NormalizeWantedStatus(wantedStatus));
         AddParameter(command, "@wantedReason", wantedReason.Trim());
         AddParameter(command, "@hasFile", hasFile ? 1 : 0);
+        AddParameter(command, "@currentQuality", currentQuality);
+        AddParameter(command, "@targetQuality", targetQuality);
         AddParameter(command, "@qualityCutoffMet", qualityCutoffMet ? 1 : 0);
         AddParameter(command, "@missingSinceUtc", now.ToString("O"));
         AddParameter(command, "@updatedUtc", now.ToString("O"));
@@ -278,6 +285,8 @@ public sealed class SqliteMovieCatalogRepository(
         int? releaseYear,
         string wantedStatus,
         string wantedReason,
+        string? currentQuality,
+        string? targetQuality,
         bool qualityCutoffMet,
         CancellationToken cancellationToken)
     {
@@ -336,16 +345,18 @@ public sealed class SqliteMovieCatalogRepository(
             """
             INSERT INTO movie_wanted_state (
                 movie_id, library_id, wanted_status, wanted_reason, has_file, quality_cutoff_met,
-                missing_since_utc, last_search_utc, next_eligible_search_utc, last_search_result, updated_utc
+                current_quality, target_quality, missing_since_utc, last_search_utc, next_eligible_search_utc, last_search_result, updated_utc
             )
             VALUES (
                 @movieId, @libraryId, @wantedStatus, @wantedReason, 1, @qualityCutoffMet,
-                NULL, NULL, NULL, 'Imported from your existing library.', @updatedUtc
+                @currentQuality, @targetQuality, NULL, NULL, NULL, 'Imported from your existing library.', @updatedUtc
             )
             ON CONFLICT(movie_id, library_id) DO UPDATE SET
                 wanted_status = excluded.wanted_status,
                 wanted_reason = excluded.wanted_reason,
                 has_file = 1,
+                current_quality = excluded.current_quality,
+                target_quality = excluded.target_quality,
                 quality_cutoff_met = excluded.quality_cutoff_met,
                 last_search_result = excluded.last_search_result,
                 updated_utc = excluded.updated_utc;
@@ -355,6 +366,8 @@ public sealed class SqliteMovieCatalogRepository(
         AddParameter(wanted, "@libraryId", libraryId);
         AddParameter(wanted, "@wantedStatus", NormalizeWantedStatus(wantedStatus));
         AddParameter(wanted, "@wantedReason", wantedReason.Trim());
+        AddParameter(wanted, "@currentQuality", currentQuality);
+        AddParameter(wanted, "@targetQuality", targetQuality);
         AddParameter(wanted, "@qualityCutoffMet", qualityCutoffMet ? 1 : 0);
         AddParameter(wanted, "@updatedUtc", now.ToString("O"));
         await wanted.ExecuteNonQueryAsync(cancellationToken);
@@ -425,6 +438,76 @@ public sealed class SqliteMovieCatalogRepository(
         }
 
         await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task<int> ReevaluateLibraryWantedStateAsync(
+        string libraryId,
+        string? cutoffQuality,
+        bool upgradeUntilCutoff,
+        bool upgradeUnknownItems,
+        CancellationToken cancellationToken)
+    {
+        var items = new List<(string MovieId, bool HasFile, string? CurrentQuality)>();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                """
+                SELECT movie_id, has_file, current_quality
+                FROM movie_wanted_state
+                WHERE library_id = @libraryId;
+                """;
+            AddParameter(command, "@libraryId", libraryId);
+
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                items.Add((
+                    reader.GetString(0),
+                    reader.GetInt64(1) == 1,
+                    reader.IsDBNull(2) ? null : reader.GetString(2)));
+            }
+        }
+
+        var updated = 0;
+        foreach (var item in items)
+        {
+            var decision = LibraryQualityDecider.Decide(
+                mediaLabel: "movie",
+                hasFile: item.HasFile,
+                currentQuality: item.CurrentQuality,
+                cutoffQuality: cutoffQuality,
+                upgradeUntilCutoff: upgradeUntilCutoff,
+                upgradeUnknownItems: upgradeUnknownItems);
+
+            using var update = connection.CreateCommand();
+            update.CommandText =
+                """
+                UPDATE movie_wanted_state
+                SET
+                    wanted_status = @wantedStatus,
+                    wanted_reason = @wantedReason,
+                    target_quality = @targetQuality,
+                    quality_cutoff_met = @qualityCutoffMet,
+                    updated_utc = @updatedUtc
+                WHERE movie_id = @movieId
+                  AND library_id = @libraryId;
+                """;
+            AddParameter(update, "@movieId", item.MovieId);
+            AddParameter(update, "@libraryId", libraryId);
+            AddParameter(update, "@wantedStatus", decision.WantedStatus);
+            AddParameter(update, "@wantedReason", decision.WantedReason);
+            AddParameter(update, "@targetQuality", decision.TargetQuality);
+            AddParameter(update, "@qualityCutoffMet", decision.QualityCutoffMet ? 1 : 0);
+            AddParameter(update, "@updatedUtc", timeProvider.GetUtcNow().ToString("O"));
+            updated += await update.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        return updated;
     }
 
     public async Task<MovieImportRecoverySummary> GetImportRecoverySummaryAsync(CancellationToken cancellationToken)
@@ -560,12 +643,14 @@ public sealed class SqliteMovieCatalogRepository(
             WantedStatus: reader.GetString(5),
             WantedReason: reader.GetString(6),
             HasFile: reader.GetInt64(7) == 1,
-            QualityCutoffMet: reader.GetInt64(8) == 1,
-            MissingSinceUtc: reader.IsDBNull(9) ? null : ParseTimestamp(reader.GetString(9)),
-            LastSearchUtc: reader.IsDBNull(10) ? null : ParseTimestamp(reader.GetString(10)),
-            NextEligibleSearchUtc: reader.IsDBNull(11) ? null : ParseTimestamp(reader.GetString(11)),
-            LastSearchResult: reader.IsDBNull(12) ? null : reader.GetString(12),
-            UpdatedUtc: ParseTimestamp(reader.GetString(13)));
+            CurrentQuality: reader.IsDBNull(8) ? null : reader.GetString(8),
+            TargetQuality: reader.IsDBNull(9) ? null : reader.GetString(9),
+            QualityCutoffMet: reader.GetInt64(10) == 1,
+            MissingSinceUtc: reader.IsDBNull(11) ? null : ParseTimestamp(reader.GetString(11)),
+            LastSearchUtc: reader.IsDBNull(12) ? null : ParseTimestamp(reader.GetString(12)),
+            NextEligibleSearchUtc: reader.IsDBNull(13) ? null : ParseTimestamp(reader.GetString(13)),
+            LastSearchResult: reader.IsDBNull(14) ? null : reader.GetString(14),
+            UpdatedUtc: ParseTimestamp(reader.GetString(15)));
     }
 
     private static void AddParameter(System.Data.Common.DbCommand command, string name, object? value)

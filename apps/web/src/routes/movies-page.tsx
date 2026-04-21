@@ -215,6 +215,9 @@ export function MoviesPage() {
                     <span>{item.wantedReason}</span>
                   </div>
                   <div className="meta-row">
+                    <span>{formatQualityLine(item.currentQuality, item.targetQuality, item.qualityCutoffMet)}</span>
+                  </div>
+                  <div className="meta-row">
                     <span>{item.lastSearchResult ?? "Deluno has not checked this one yet."}</span>
                     <span>{item.nextEligibleSearchUtc ? `Next check ${formatDateTime(item.nextEligibleSearchUtc)}` : "Ready now"}</span>
                   </div>
@@ -348,6 +351,20 @@ function formatWantedStatus(value: string) {
     default:
       return "Missing";
   }
+}
+
+function formatQualityLine(currentQuality: string | null, targetQuality: string | null, cutoffMet: boolean) {
+  if (currentQuality && targetQuality) {
+    return cutoffMet
+      ? `Current quality ${currentQuality} meets the ${targetQuality} target`
+      : `Current quality ${currentQuality} · Target ${targetQuality}`;
+  }
+
+  if (targetQuality) {
+    return `Target quality ${targetQuality}`;
+  }
+
+  return "Quality target still needs to be set";
 }
 
 function formatDateTime(value: string) {

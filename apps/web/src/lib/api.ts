@@ -54,6 +54,8 @@ export interface MovieWantedItem {
   wantedStatus: string;
   wantedReason: string;
   hasFile: boolean;
+  currentQuality: string | null;
+  targetQuality: string | null;
   qualityCutoffMet: boolean;
   missingSinceUtc: string | null;
   lastSearchUtc: string | null;
@@ -108,6 +110,8 @@ export interface SeriesWantedItem {
   wantedStatus: string;
   wantedReason: string;
   hasFile: boolean;
+  currentQuality: string | null;
+  targetQuality: string | null;
   qualityCutoffMet: boolean;
   missingSinceUtc: string | null;
   lastSearchUtc: string | null;

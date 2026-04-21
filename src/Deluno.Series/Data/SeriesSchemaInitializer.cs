@@ -47,6 +47,8 @@ public sealed class SeriesSchemaInitializer(
                 wanted_status TEXT NOT NULL,
                 wanted_reason TEXT NOT NULL,
                 has_file INTEGER NOT NULL DEFAULT 0,
+                current_quality TEXT NULL,
+                target_quality TEXT NULL,
                 quality_cutoff_met INTEGER NOT NULL DEFAULT 0,
                 missing_since_utc TEXT NULL,
                 last_search_utc TEXT NULL,
@@ -143,6 +145,8 @@ public sealed class SeriesSchemaInitializer(
             """;
 
         await command.ExecuteNonQueryAsync(cancellationToken);
+        await EnsureWantedStateColumnAsync(connection, "current_quality", "TEXT NULL", cancellationToken);
+        await EnsureWantedStateColumnAsync(connection, "target_quality", "TEXT NULL", cancellationToken);
         await MigrateWantedStateAsync(connection, cancellationToken);
 
         logger.LogInformation(
@@ -187,6 +191,8 @@ public sealed class SeriesSchemaInitializer(
                 wanted_status TEXT NOT NULL,
                 wanted_reason TEXT NOT NULL,
                 has_file INTEGER NOT NULL DEFAULT 0,
+                current_quality TEXT NULL,
+                target_quality TEXT NULL,
                 quality_cutoff_met INTEGER NOT NULL DEFAULT 0,
                 missing_since_utc TEXT NULL,
                 last_search_utc TEXT NULL,
@@ -198,11 +204,11 @@ public sealed class SeriesSchemaInitializer(
             );
 
             INSERT INTO series_wanted_state (
-                series_id, library_id, wanted_status, wanted_reason, has_file, quality_cutoff_met,
+                series_id, library_id, wanted_status, wanted_reason, has_file, current_quality, target_quality, quality_cutoff_met,
                 missing_since_utc, last_search_utc, next_eligible_search_utc, last_search_result, updated_utc
             )
             SELECT
-                series_id, library_id, wanted_status, wanted_reason, has_file, quality_cutoff_met,
+                series_id, library_id, wanted_status, wanted_reason, has_file, NULL, NULL, quality_cutoff_met,
                 missing_since_utc, last_search_utc, next_eligible_search_utc, last_search_result, updated_utc
             FROM series_wanted_state_legacy;
 
@@ -213,5 +219,37 @@ public sealed class SeriesSchemaInitializer(
             """;
 
         await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task EnsureWantedStateColumnAsync(
+        System.Data.Common.DbConnection connection,
+        string columnName,
+        string columnDefinition,
+        CancellationToken cancellationToken)
+    {
+        using var check = connection.CreateCommand();
+        check.CommandText = "PRAGMA table_info(series_wanted_state);";
+
+        var exists = false;
+        using (var reader = await check.ExecuteReaderAsync(cancellationToken))
+        {
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                if (string.Equals(reader.GetString(1), columnName, StringComparison.OrdinalIgnoreCase))
+                {
+                    exists = true;
+                    break;
+                }
+            }
+        }
+
+        if (exists)
+        {
+            return;
+        }
+
+        using var alter = connection.CreateCommand();
+        alter.CommandText = $"ALTER TABLE series_wanted_state ADD COLUMN {columnName} {columnDefinition};";
+        await alter.ExecuteNonQueryAsync(cancellationToken);
     }
 }

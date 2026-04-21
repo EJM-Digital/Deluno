@@ -195,10 +195,74 @@ public sealed class DelunoHeartbeatWorker(
 
         return job.JobType switch
         {
+            "movies.quality.recalculate" => await RecalculateMovieQualityAsync(job, movieCatalogRepository, activityFeedRepository, stoppingToken: cancellationToken),
+            "series.quality.recalculate" => await RecalculateSeriesQualityAsync(job, seriesCatalogRepository, activityFeedRepository, stoppingToken: cancellationToken),
             "movies.catalog.refresh" => "Finished checking your movie library.",
             "series.catalog.refresh" => "Finished checking your TV show library.",
             _ => "Finished a background task."
         };
+    }
+
+    private static async Task<string> RecalculateMovieQualityAsync(
+        Deluno.Jobs.Contracts.JobQueueItem job,
+        IMovieCatalogRepository movieCatalogRepository,
+        IActivityFeedRepository activityFeedRepository,
+        CancellationToken stoppingToken)
+    {
+        var payload = ParseQualityPayload(job.PayloadJson);
+        if (payload is null)
+        {
+            return "Finished refreshing movie quality decisions.";
+        }
+
+        var updated = await movieCatalogRepository.ReevaluateLibraryWantedStateAsync(
+            payload.LibraryId,
+            payload.CutoffQuality,
+            payload.UpgradeUntilCutoff,
+            payload.UpgradeUnknownItems,
+            stoppingToken);
+
+        await activityFeedRepository.RecordActivityAsync(
+            "library.quality.recalculated",
+            $"Deluno refreshed quality decisions for {payload.LibraryName} across {updated} movie record{(updated == 1 ? "" : "s")}.",
+            null,
+            job.Id,
+            "library",
+            payload.LibraryId,
+            stoppingToken);
+
+        return $"Finished refreshing quality decisions for {payload.LibraryName}.";
+    }
+
+    private static async Task<string> RecalculateSeriesQualityAsync(
+        Deluno.Jobs.Contracts.JobQueueItem job,
+        ISeriesCatalogRepository seriesCatalogRepository,
+        IActivityFeedRepository activityFeedRepository,
+        CancellationToken stoppingToken)
+    {
+        var payload = ParseQualityPayload(job.PayloadJson);
+        if (payload is null)
+        {
+            return "Finished refreshing TV quality decisions.";
+        }
+
+        var updated = await seriesCatalogRepository.ReevaluateLibraryWantedStateAsync(
+            payload.LibraryId,
+            payload.CutoffQuality,
+            payload.UpgradeUntilCutoff,
+            payload.UpgradeUnknownItems,
+            stoppingToken);
+
+        await activityFeedRepository.RecordActivityAsync(
+            "library.quality.recalculated",
+            $"Deluno refreshed quality decisions for {payload.LibraryName} across {updated} TV show record{(updated == 1 ? "" : "s")}.",
+            null,
+            job.Id,
+            "library",
+            payload.LibraryId,
+            stoppingToken);
+
+        return $"Finished refreshing quality decisions for {payload.LibraryName}.";
     }
 
     private static string FormatExecutionMessage(
@@ -263,6 +327,18 @@ public sealed class DelunoHeartbeatWorker(
         }
     }
 
+    private static LibraryQualityPayload? ParseQualityPayload(string? payloadJson)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<LibraryQualityPayload>(payloadJson ?? "{}", PayloadJsonOptions);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private sealed record LibrarySearchPayload(
         string LibraryId,
         string LibraryName,
@@ -272,4 +348,12 @@ public sealed class DelunoHeartbeatWorker(
         int MaxItems,
         int RetryDelayHours,
         string TriggeredBy);
+
+    private sealed record LibraryQualityPayload(
+        string LibraryId,
+        string LibraryName,
+        string MediaType,
+        string? CutoffQuality,
+        bool UpgradeUntilCutoff,
+        bool UpgradeUnknownItems);
 }

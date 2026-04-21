@@ -9,6 +9,8 @@ public sealed record SeriesWantedItem(
     string WantedStatus,
     string WantedReason,
     bool HasFile,
+    string? CurrentQuality,
+    string? TargetQuality,
     bool QualityCutoffMet,
     DateTimeOffset? MissingSinceUtc,
     DateTimeOffset? LastSearchUtc,

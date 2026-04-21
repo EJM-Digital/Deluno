@@ -4,6 +4,7 @@ using Deluno.Jobs.Data;
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Platform.Data;
+using Deluno.Platform.Quality;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -81,13 +82,23 @@ public static class MoviesEndpointRouteBuilderExtensions
             var libraries = await platformSettingsRepository.ListLibrariesAsync(cancellationToken);
             foreach (var library in libraries.Where(item => item.MediaType == "movies"))
             {
+                var decision = LibraryQualityDecider.Decide(
+                    mediaLabel: "movie",
+                    hasFile: false,
+                    currentQuality: null,
+                    cutoffQuality: library.CutoffQuality,
+                    upgradeUntilCutoff: library.UpgradeUntilCutoff,
+                    upgradeUnknownItems: library.UpgradeUnknownItems);
+
                 await repository.EnsureWantedStateAsync(
                     movie.Id,
                     library.Id,
-                    "missing",
-                    FormatWantedReason(library, "movie"),
+                    decision.WantedStatus,
+                    decision.WantedReason,
                     false,
-                    false,
+                    decision.CurrentQuality,
+                    decision.TargetQuality,
+                    decision.QualityCutoffMet,
                     cancellationToken);
             }
 
@@ -142,15 +153,5 @@ public static class MoviesEndpointRouteBuilderExtensions
         }
 
         return errors;
-    }
-
-    private static string FormatWantedReason(Platform.Contracts.LibraryItem library, string mediaLabel)
-    {
-        if (!string.IsNullOrWhiteSpace(library.QualityProfileName) && !string.IsNullOrWhiteSpace(library.CutoffQuality))
-        {
-            return $"Deluno is still looking for this {mediaLabel} for {library.QualityProfileName} and will keep upgrading until {library.CutoffQuality}.";
-        }
-
-        return $"Deluno is still looking for this {mediaLabel}.";
     }
 }
