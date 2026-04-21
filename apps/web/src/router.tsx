@@ -20,6 +20,8 @@ import {
   settingsLoader
 } from "./routes/settings-page";
 import { ActivityPage, activityLoader } from "./routes/activity-page";
+import { LibrariesPage } from "./routes/libraries-page";
+import { ConnectionsPage } from "./routes/connections-page";
 
 export const router = createBrowserRouter([
   {
@@ -47,6 +49,14 @@ export const router = createBrowserRouter([
         path: "activity",
         loader: activityLoader,
         element: <ActivityPage />
+      },
+      {
+        path: "libraries",
+        element: <LibrariesPage />
+      },
+      {
+        path: "connections",
+        element: <ConnectionsPage />
       },
       {
         path: "settings",

@@ -48,9 +48,9 @@ public sealed class DelunoHeartbeatWorker(
 
                 var message = job.JobType switch
                 {
-                    "movies.catalog.refresh" => "Movie follow-up job completed.",
-                    "series.catalog.refresh" => "Series follow-up job completed.",
-                    _ => $"{job.JobType} completed."
+                    "movies.catalog.refresh" => "Finished checking your movie library.",
+                    "series.catalog.refresh" => "Finished checking your TV show library.",
+                    _ => "Finished a background task."
                 };
 
                 await jobQueueRepository.CompleteAsync(job.Id, _workerId, message, stoppingToken);

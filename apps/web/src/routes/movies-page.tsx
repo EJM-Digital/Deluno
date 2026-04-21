@@ -58,36 +58,34 @@ export function MoviesPage() {
     <section className="page-stack">
       <header className="page-header">
         <p className="eyebrow">Movies</p>
-        <h2>Movie engine workspace</h2>
+        <h2>Movies</h2>
         <p className="page-copy">
-          This module owns its own schema, endpoints, and storage file. Nothing
-          here shares operational state with series.
+          Add the movies you care about and let Deluno keep checking for missing releases and better versions over time.
         </p>
       </header>
       <div className="hero-grid hero-grid-tight">
         <article className="hero-card hero-card-feature">
-          <p className="hero-kicker">Film engine</p>
-          <h3>{movies.length} titles under management.</h3>
+          <p className="hero-kicker">Movie library</p>
+          <h3>{movies.length} movie{movies.length === 1 ? "" : "s"} on your list.</h3>
           <p>
-            Add films here and Deluno handles them through a movie-only pipeline
-            with no TV crossover or shared state.
+            This is where Deluno keeps track of what you want, what is missing, and what could be upgraded later.
           </p>
         </article>
         <article className="hero-card">
-          <p className="hero-kicker">Storage boundary</p>
+          <p className="hero-kicker">What happens next</p>
           <div className="manifest-row">
-            <strong>movies.db</strong>
-            <span>Catalog, monitoring state, and import records for films only.</span>
+            <strong>Keep checking automatically</strong>
+            <span>After you add a movie, Deluno can keep looking for the first good release and future upgrades.</span>
           </div>
         </article>
       </div>
       <div className="workspace-grid">
         <article className="card">
-          <h3>Add movie</h3>
+          <h3>Add a movie</h3>
           <Form method="post" className="entry-form">
             <div className="form-grid">
               <label className="field">
-                <span>Title</span>
+                <span>Movie title</span>
                 <input name="title" type="text" placeholder="Arrival" required />
                 {renderError(actionData?.errors?.title)}
               </label>
@@ -97,13 +95,13 @@ export function MoviesPage() {
                 {renderError(actionData?.errors?.releaseYear)}
               </label>
               <label className="field">
-                <span>IMDb ID</span>
+                <span>IMDb ID or link (optional)</span>
                 <input name="imdbId" type="text" placeholder="tt2543164" />
               </label>
             </div>
             <label className="checkbox-field">
               <input name="monitored" type="checkbox" defaultChecked />
-              <span>Monitor this movie after it is added</span>
+              <span>Keep looking for this movie automatically</span>
             </label>
             {actionData?.formError ? (
               <p className="feedback feedback-error">{actionData.formError}</p>
@@ -116,13 +114,13 @@ export function MoviesPage() {
         <article className="card">
           <div className="section-heading">
             <div>
-              <h3>Tracked movies</h3>
-              <p>{movies.length} item(s) stored in `movies.db`.</p>
+              <h3>Your movies</h3>
+              <p>{movies.length} movie{movies.length === 1 ? "" : "s"} on your wanted list.</p>
             </div>
           </div>
           {movies.length === 0 ? (
             <div className="empty-state">
-              <p>No movies added yet.</p>
+              <p>No movies yet. Start with one title you want Deluno to keep an eye on.</p>
             </div>
           ) : (
             <div className="collection-list">
@@ -133,9 +131,9 @@ export function MoviesPage() {
                     {movie.releaseYear ? <span>{movie.releaseYear}</span> : null}
                   </div>
                   <div className="meta-row">
-                    <span>{movie.imdbId ?? "No IMDb ID yet"}</span>
+                    <span>{movie.imdbId ?? "No IMDb link added"}</span>
                     <span className={movie.monitored ? "status-tag status-tag-armed" : "status-tag"}>
-                      {movie.monitored ? "Monitored" : "Unmonitored"}
+                      {movie.monitored ? "Auto search on" : "Auto search off"}
                     </span>
                   </div>
                 </article>

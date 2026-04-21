@@ -57,73 +57,70 @@ export function SeriesPage() {
   return (
     <section className="page-stack">
       <header className="page-header">
-        <p className="eyebrow">Series</p>
-        <h2>Series engine workspace</h2>
+        <p className="eyebrow">TV Shows</p>
+        <h2>TV Shows</h2>
         <p className="page-copy">
-          Series data stays inside its own database file and API surface, ready
-          for season, episode, and pack logic without stepping on the movies
-          engine.
+          Add TV shows you want and let Deluno keep up with missing episodes, better releases, and the awkward bits that come with TV.
         </p>
       </header>
       <div className="hero-grid hero-grid-tight">
         <article className="hero-card hero-card-feature">
-          <p className="hero-kicker">Series engine</p>
-          <h3>{items.length} shows under management.</h3>
+          <p className="hero-kicker">TV library</p>
+          <h3>{items.length} TV show{items.length === 1 ? "" : "s"} on your list.</h3>
           <p>
-            This workspace is reserved for episodic flows, alternate orderings,
-            packs, and the messy realities of television metadata.
+            Deluno needs to handle normal shows, daily releases, anime, specials, and packs without making any of that feel complicated.
           </p>
         </article>
         <article className="hero-card">
-          <p className="hero-kicker">Storage boundary</p>
+          <p className="hero-kicker">What happens next</p>
           <div className="manifest-row">
-            <strong>series.db</strong>
-            <span>Shows, seasons, episodes, and monitoring state stay isolated here.</span>
+            <strong>Keep checking automatically</strong>
+            <span>After you add a show, Deluno can keep looking for missing episodes and better replacements later.</span>
           </div>
         </article>
       </div>
       <div className="workspace-grid">
         <article className="card">
-          <h3>Add series</h3>
+          <h3>Add a TV show</h3>
           <Form method="post" className="entry-form">
             <div className="form-grid">
               <label className="field">
-                <span>Title</span>
+                <span>Show title</span>
                 <input name="title" type="text" placeholder="Severance" required />
                 {renderError(actionData?.errors?.title)}
               </label>
               <label className="field">
-                <span>Start year</span>
+                <span>First aired year</span>
                 <input name="startYear" type="number" min="1888" max="2100" />
                 {renderError(actionData?.errors?.startYear)}
               </label>
               <label className="field">
-                <span>IMDb ID</span>
+                <span>IMDb ID or link (optional)</span>
                 <input name="imdbId" type="text" placeholder="tt11280740" />
               </label>
             </div>
             <label className="checkbox-field">
               <input name="monitored" type="checkbox" defaultChecked />
-              <span>Monitor this series after it is added</span>
+              <span>Keep looking for this show automatically</span>
             </label>
             {actionData?.formError ? (
               <p className="feedback feedback-error">{actionData.formError}</p>
             ) : null}
             <button className="primary-button" type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Saving..." : "Add series"}
+              {isSubmitting ? "Saving..." : "Add TV show"}
             </button>
           </Form>
         </article>
         <article className="card">
           <div className="section-heading">
             <div>
-              <h3>Tracked series</h3>
-              <p>{items.length} item(s) stored in `series.db`.</p>
+              <h3>Your TV shows</h3>
+              <p>{items.length} show{items.length === 1 ? "" : "s"} on your wanted list.</p>
             </div>
           </div>
           {items.length === 0 ? (
             <div className="empty-state">
-              <p>No series added yet.</p>
+              <p>No TV shows yet. Add one and Deluno can start keeping up with it.</p>
             </div>
           ) : (
             <div className="collection-list">
@@ -134,9 +131,9 @@ export function SeriesPage() {
                     {item.startYear ? <span>{item.startYear}</span> : null}
                   </div>
                   <div className="meta-row">
-                    <span>{item.imdbId ?? "No IMDb ID yet"}</span>
+                    <span>{item.imdbId ?? "No IMDb link added"}</span>
                     <span className={item.monitored ? "status-tag status-tag-armed" : "status-tag"}>
-                      {item.monitored ? "Monitored" : "Unmonitored"}
+                      {item.monitored ? "Auto search on" : "Auto search off"}
                     </span>
                   </div>
                 </article>

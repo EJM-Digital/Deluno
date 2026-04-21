@@ -3,29 +3,39 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 const navItems = [
   {
     to: "/",
-    label: "Home",
-    caption: "Control room",
+    label: "Overview",
+    caption: "Your library",
     end: true
   },
   {
     to: "/movies",
     label: "Movies",
-    caption: "Film catalog"
+    caption: "Movies"
   },
   {
     to: "/series",
-    label: "Series",
-    caption: "Episodic engine"
+    label: "TV Shows",
+    caption: "TV shows"
   },
   {
     to: "/activity",
     label: "Activity",
-    caption: "Runtime ledger"
+    caption: "What Deluno is doing"
+  },
+  {
+    to: "/libraries",
+    label: "Libraries",
+    caption: "Separate setups"
+  },
+  {
+    to: "/connections",
+    label: "Connections",
+    caption: "Bring apps across"
   },
   {
     to: "/settings",
     label: "Settings",
-    caption: "Platform rules"
+    caption: "Folders and apps"
   }
 ];
 
@@ -46,11 +56,11 @@ export function RootLayout() {
           </span>
           <div>
             <h1>Deluno</h1>
-            <p>Media operations suite</p>
+            <p>Your media library, handled beautifully</p>
           </div>
         </div>
         <div className="sidebar-note">
-          One host. Separate engines. Premium control over what enters your library.
+          Keep track of movies and TV shows, grab missing releases, and keep your library tidy in one place.
         </div>
         <nav className="app-nav">
           {navItems.map((item) => (
@@ -68,9 +78,9 @@ export function RootLayout() {
           ))}
         </nav>
         <div className="sidebar-footer">
-          <p className="sidebar-footer-label">Architecture</p>
-          <p className="sidebar-footer-copy">SQLite-first modular host</p>
-          <p className="sidebar-footer-meta">Windows-ready and Docker-ready by design</p>
+          <p className="sidebar-footer-label">Designed For Home Users</p>
+          <p className="sidebar-footer-copy">One app for movies and TV shows</p>
+          <p className="sidebar-footer-meta">Simple to run on Windows and easy to ship in Docker</p>
         </div>
       </aside>
       <main className="app-main">
@@ -81,8 +91,8 @@ export function RootLayout() {
           </div>
           <div className="shell-topbar-pills" aria-hidden="true">
             <span className="shell-pill">Deluno</span>
-            <span className="shell-pill shell-pill-muted">single app</span>
-            <span className="shell-pill shell-pill-muted">separate domains</span>
+            <span className="shell-pill shell-pill-muted">movies</span>
+            <span className="shell-pill shell-pill-muted">tv shows</span>
           </div>
         </div>
         <div className="shell-stage">

@@ -62,26 +62,24 @@ export function SettingsPage() {
     <section className="page-stack">
       <header className="page-header">
         <p className="eyebrow">Settings</p>
-        <h2>System configuration</h2>
+        <h2>Folders and automation</h2>
         <p className="page-copy">
-          Platform settings live in `platform.db` and control the roots and
-          operational defaults shared by the movie and series engines.
+          Tell Deluno where your library lives, where downloads arrive, and how automatic you want the app to be.
         </p>
       </header>
       <div className="hero-grid hero-grid-tight">
         <article className="hero-card hero-card-feature">
-          <p className="hero-kicker">Platform fabric</p>
+          <p className="hero-kicker">Library setup</p>
           <h3>{settings.appInstanceName}</h3>
           <p>
-            This layer decides where Deluno writes, where it watches, and
-            whether background work starts automatically.
+            Keep this simple and clear. Most people should only need to choose their library folders and whether Deluno should keep checking automatically.
           </p>
         </article>
         <article className="hero-card">
-          <p className="hero-kicker">Last updated</p>
+          <p className="hero-kicker">Last saved</p>
           <div className="manifest-row">
             <strong>{new Date(settings.updatedUtc).toLocaleString()}</strong>
-            <span>Current platform snapshot from `platform.db`.</span>
+            <span>Your latest saved setup.</span>
           </div>
         </article>
       </div>
@@ -89,7 +87,7 @@ export function SettingsPage() {
         <Form method="post" className="entry-form">
           <div className="form-grid">
             <label className="field">
-              <span>App name</span>
+              <span>Library name</span>
               <input
                 name="appInstanceName"
                 type="text"
@@ -99,7 +97,7 @@ export function SettingsPage() {
               {renderError(actionData?.errors?.appInstanceName)}
             </label>
             <label className="field">
-              <span>Movie root</span>
+              <span>Movies folder</span>
               <input
                 name="movieRootPath"
                 type="text"
@@ -108,16 +106,16 @@ export function SettingsPage() {
               />
             </label>
             <label className="field">
-              <span>Series root</span>
+              <span>TV shows folder</span>
               <input
                 name="seriesRootPath"
                 type="text"
-                placeholder="D:\\Media\\Series"
+                placeholder="D:\\Media\\TV Shows"
                 defaultValue={settings.seriesRootPath ?? ""}
               />
             </label>
             <label className="field">
-              <span>Downloads path</span>
+              <span>Completed downloads folder</span>
               <input
                 name="downloadsPath"
                 type="text"
@@ -126,7 +124,7 @@ export function SettingsPage() {
               />
             </label>
             <label className="field">
-              <span>Incomplete downloads path</span>
+              <span>Incomplete downloads folder</span>
               <input
                 name="incompleteDownloadsPath"
                 type="text"
@@ -142,7 +140,7 @@ export function SettingsPage() {
                 type="checkbox"
                 defaultChecked={settings.autoStartJobs}
               />
-              <span>Automatically process queued jobs</span>
+              <span>Check for missing and better releases automatically</span>
             </label>
             <label className="checkbox-field">
               <input
@@ -150,7 +148,7 @@ export function SettingsPage() {
                 type="checkbox"
                 defaultChecked={settings.enableNotifications}
               />
-              <span>Enable app notifications</span>
+              <span>Show app alerts</span>
             </label>
           </div>
           {actionData?.ok ? (
