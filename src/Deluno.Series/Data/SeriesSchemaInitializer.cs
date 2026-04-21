@@ -42,7 +42,7 @@ public sealed class SeriesSchemaInitializer(
             );
 
             CREATE TABLE IF NOT EXISTS series_wanted_state (
-                series_id TEXT PRIMARY KEY,
+                series_id TEXT NOT NULL,
                 library_id TEXT NOT NULL,
                 wanted_status TEXT NOT NULL,
                 wanted_reason TEXT NOT NULL,
@@ -53,6 +53,7 @@ public sealed class SeriesSchemaInitializer(
                 next_eligible_search_utc TEXT NULL,
                 last_search_result TEXT NULL,
                 updated_utc TEXT NOT NULL,
+                PRIMARY KEY (series_id, library_id),
                 FOREIGN KEY (series_id) REFERENCES series_entries(id) ON DELETE CASCADE
             );
 
@@ -142,6 +143,7 @@ public sealed class SeriesSchemaInitializer(
             """;
 
         await command.ExecuteNonQueryAsync(cancellationToken);
+        await MigrateWantedStateAsync(connection, cancellationToken);
 
         logger.LogInformation(
             "Series schema is ready at {DatabasePath}.",
@@ -149,4 +151,67 @@ public sealed class SeriesSchemaInitializer(
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    private static async Task MigrateWantedStateAsync(
+        System.Data.Common.DbConnection connection,
+        CancellationToken cancellationToken)
+    {
+        using var tableInfo = connection.CreateCommand();
+        tableInfo.CommandText = "PRAGMA table_info(series_wanted_state);";
+
+        var keyColumns = 0;
+        using (var reader = await tableInfo.ExecuteReaderAsync(cancellationToken))
+        {
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                if (!reader.IsDBNull(5) && reader.GetInt32(5) > 0)
+                {
+                    keyColumns++;
+                }
+            }
+        }
+
+        if (keyColumns >= 2)
+        {
+            return;
+        }
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            ALTER TABLE series_wanted_state RENAME TO series_wanted_state_legacy;
+
+            CREATE TABLE series_wanted_state (
+                series_id TEXT NOT NULL,
+                library_id TEXT NOT NULL,
+                wanted_status TEXT NOT NULL,
+                wanted_reason TEXT NOT NULL,
+                has_file INTEGER NOT NULL DEFAULT 0,
+                quality_cutoff_met INTEGER NOT NULL DEFAULT 0,
+                missing_since_utc TEXT NULL,
+                last_search_utc TEXT NULL,
+                next_eligible_search_utc TEXT NULL,
+                last_search_result TEXT NULL,
+                updated_utc TEXT NOT NULL,
+                PRIMARY KEY (series_id, library_id),
+                FOREIGN KEY (series_id) REFERENCES series_entries(id) ON DELETE CASCADE
+            );
+
+            INSERT INTO series_wanted_state (
+                series_id, library_id, wanted_status, wanted_reason, has_file, quality_cutoff_met,
+                missing_since_utc, last_search_utc, next_eligible_search_utc, last_search_result, updated_utc
+            )
+            SELECT
+                series_id, library_id, wanted_status, wanted_reason, has_file, quality_cutoff_met,
+                missing_since_utc, last_search_utc, next_eligible_search_utc, last_search_result, updated_utc
+            FROM series_wanted_state_legacy;
+
+            DROP TABLE series_wanted_state_legacy;
+
+            CREATE INDEX IF NOT EXISTS ix_series_wanted_state_library_status
+                ON series_wanted_state (library_id, wanted_status, next_eligible_search_utc);
+            """;
+
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
 }

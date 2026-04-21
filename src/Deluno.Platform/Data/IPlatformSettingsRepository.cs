@@ -12,6 +12,12 @@ public interface IPlatformSettingsRepository
 
     Task<IReadOnlyList<LibraryItem>> ListLibrariesAsync(CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<QualityProfileItem>> ListQualityProfilesAsync(CancellationToken cancellationToken);
+
+    Task<QualityProfileItem> CreateQualityProfileAsync(
+        CreateQualityProfileRequest request,
+        CancellationToken cancellationToken);
+
     Task<LibraryItem> CreateLibraryAsync(
         CreateLibraryRequest request,
         CancellationToken cancellationToken);
@@ -19,6 +25,11 @@ public interface IPlatformSettingsRepository
     Task<LibraryItem?> UpdateLibraryAutomationAsync(
         string id,
         UpdateLibraryAutomationRequest request,
+        CancellationToken cancellationToken);
+
+    Task<LibraryItem?> UpdateLibraryQualityProfileAsync(
+        string id,
+        UpdateLibraryQualityProfileRequest request,
         CancellationToken cancellationToken);
 
     Task<IReadOnlyList<ConnectionItem>> ListConnectionsAsync(CancellationToken cancellationToken);

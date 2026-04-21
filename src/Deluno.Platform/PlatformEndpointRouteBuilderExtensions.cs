@@ -38,6 +38,28 @@ public static class PlatformEndpointRouteBuilderExtensions
         });
 
         var libraries = endpoints.MapGroup("/api/libraries");
+        var qualityProfiles = endpoints.MapGroup("/api/quality-profiles");
+
+        qualityProfiles.MapGet(string.Empty, async (IPlatformSettingsRepository repository, CancellationToken cancellationToken) =>
+        {
+            var items = await repository.ListQualityProfilesAsync(cancellationToken);
+            return Results.Ok(items);
+        });
+
+        qualityProfiles.MapPost(string.Empty, async (
+            CreateQualityProfileRequest request,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var errors = ValidateQualityProfile(request);
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            var item = await repository.CreateQualityProfileAsync(request, cancellationToken);
+            return Results.Ok(item);
+        });
 
         libraries.MapGet(string.Empty, async (
             IPlatformSettingsRepository repository,
@@ -77,6 +99,16 @@ public static class PlatformEndpointRouteBuilderExtensions
             }
 
             var item = await repository.UpdateLibraryAutomationAsync(id, request, cancellationToken);
+            return item is null ? Results.NotFound() : Results.Ok(item);
+        });
+
+        endpoints.MapPut("/api/libraries/{id}/quality-profile", async (
+            string id,
+            UpdateLibraryQualityProfileRequest request,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var item = await repository.UpdateLibraryQualityProfileAsync(id, request, cancellationToken);
             return item is null ? Results.NotFound() : Results.Ok(item);
         });
 
@@ -340,6 +372,29 @@ public static class PlatformEndpointRouteBuilderExtensions
         if (mediaType is not ("movies" or "tv" or "tv shows" or "tvshows"))
         {
             errors["mediaType"] = ["Choose Movies or TV Shows."];
+        }
+
+        return errors;
+    }
+
+    private static Dictionary<string, string[]> ValidateQualityProfile(CreateQualityProfileRequest request)
+    {
+        var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+
+        if (string.IsNullOrWhiteSpace(request.Name))
+        {
+            errors["name"] = ["Give this quality profile a name."];
+        }
+
+        var mediaType = request.MediaType?.Trim().ToLowerInvariant();
+        if (mediaType is not ("movies" or "tv" or "tv shows" or "tvshows"))
+        {
+            errors["mediaType"] = ["Choose whether this profile is for Movies or TV Shows."];
+        }
+
+        if (string.IsNullOrWhiteSpace(request.CutoffQuality))
+        {
+            errors["cutoffQuality"] = ["Choose the quality Deluno should aim for."];
         }
 
         return errors;

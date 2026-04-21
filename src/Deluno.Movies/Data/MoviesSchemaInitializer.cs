@@ -42,7 +42,7 @@ public sealed class MoviesSchemaInitializer(
             );
 
             CREATE TABLE IF NOT EXISTS movie_wanted_state (
-                movie_id TEXT PRIMARY KEY,
+                movie_id TEXT NOT NULL,
                 library_id TEXT NOT NULL,
                 wanted_status TEXT NOT NULL,
                 wanted_reason TEXT NOT NULL,
@@ -54,6 +54,7 @@ public sealed class MoviesSchemaInitializer(
                 next_eligible_search_utc TEXT NULL,
                 last_search_result TEXT NULL,
                 updated_utc TEXT NOT NULL,
+                PRIMARY KEY (movie_id, library_id),
                 FOREIGN KEY (movie_id) REFERENCES movie_entries(id) ON DELETE CASCADE
             );
 
@@ -91,6 +92,7 @@ public sealed class MoviesSchemaInitializer(
             """;
 
         await command.ExecuteNonQueryAsync(cancellationToken);
+        await MigrateWantedStateAsync(connection, cancellationToken);
 
         logger.LogInformation(
             "Movies schema is ready at {DatabasePath}.",
@@ -98,4 +100,70 @@ public sealed class MoviesSchemaInitializer(
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    private static async Task MigrateWantedStateAsync(
+        System.Data.Common.DbConnection connection,
+        CancellationToken cancellationToken)
+    {
+        using var tableInfo = connection.CreateCommand();
+        tableInfo.CommandText = "PRAGMA table_info(movie_wanted_state);";
+
+        var keyColumns = 0;
+        using (var reader = await tableInfo.ExecuteReaderAsync(cancellationToken))
+        {
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                if (!reader.IsDBNull(5) && reader.GetInt32(5) > 0)
+                {
+                    keyColumns++;
+                }
+            }
+        }
+
+        if (keyColumns >= 2)
+        {
+            return;
+        }
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            ALTER TABLE movie_wanted_state RENAME TO movie_wanted_state_legacy;
+
+            CREATE TABLE movie_wanted_state (
+                movie_id TEXT NOT NULL,
+                library_id TEXT NOT NULL,
+                wanted_status TEXT NOT NULL,
+                wanted_reason TEXT NOT NULL,
+                minimum_availability TEXT NULL,
+                has_file INTEGER NOT NULL DEFAULT 0,
+                quality_cutoff_met INTEGER NOT NULL DEFAULT 0,
+                missing_since_utc TEXT NULL,
+                last_search_utc TEXT NULL,
+                next_eligible_search_utc TEXT NULL,
+                last_search_result TEXT NULL,
+                updated_utc TEXT NOT NULL,
+                PRIMARY KEY (movie_id, library_id),
+                FOREIGN KEY (movie_id) REFERENCES movie_entries(id) ON DELETE CASCADE
+            );
+
+            INSERT INTO movie_wanted_state (
+                movie_id, library_id, wanted_status, wanted_reason, minimum_availability,
+                has_file, quality_cutoff_met, missing_since_utc, last_search_utc,
+                next_eligible_search_utc, last_search_result, updated_utc
+            )
+            SELECT
+                movie_id, library_id, wanted_status, wanted_reason, minimum_availability,
+                has_file, quality_cutoff_met, missing_since_utc, last_search_utc,
+                next_eligible_search_utc, last_search_result, updated_utc
+            FROM movie_wanted_state_legacy;
+
+            DROP TABLE movie_wanted_state_legacy;
+
+            CREATE INDEX IF NOT EXISTS ix_movie_wanted_state_library_status
+                ON movie_wanted_state (library_id, wanted_status, next_eligible_search_utc);
+            """;
+
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
 }

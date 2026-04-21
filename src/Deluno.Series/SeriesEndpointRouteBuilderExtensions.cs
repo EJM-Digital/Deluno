@@ -85,7 +85,9 @@ public static class SeriesEndpointRouteBuilderExtensions
                     item.Id,
                     library.Id,
                     "missing",
-                    "Deluno is still looking for this TV show.",
+                    FormatWantedReason(library),
+                    false,
+                    false,
                     cancellationToken);
             }
 
@@ -140,5 +142,15 @@ public static class SeriesEndpointRouteBuilderExtensions
         }
 
         return errors;
+    }
+
+    private static string FormatWantedReason(Platform.Contracts.LibraryItem library)
+    {
+        if (!string.IsNullOrWhiteSpace(library.QualityProfileName) && !string.IsNullOrWhiteSpace(library.CutoffQuality))
+        {
+            return $"Deluno is still looking for this TV show for {library.QualityProfileName} and will keep upgrading until {library.CutoffQuality}.";
+        }
+
+        return "Deluno is still looking for this TV show.";
     }
 }

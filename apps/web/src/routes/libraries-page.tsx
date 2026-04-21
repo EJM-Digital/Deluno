@@ -8,7 +8,8 @@ import {
 import {
   fetchJson,
   readValidationProblem,
-  type LibraryItem
+  type LibraryItem,
+  type QualityProfileItem
 } from "../lib/api";
 
 interface MutationState {
@@ -17,8 +18,18 @@ interface MutationState {
   errors?: Record<string, string[]>;
 }
 
-export async function librariesLoader(): Promise<LibraryItem[]> {
-  return fetchJson<LibraryItem[]>("/api/libraries");
+interface LibrariesLoaderData {
+  libraries: LibraryItem[];
+  qualityProfiles: QualityProfileItem[];
+}
+
+export async function librariesLoader(): Promise<LibrariesLoaderData> {
+  const [libraries, qualityProfiles] = await Promise.all([
+    fetchJson<LibraryItem[]>("/api/libraries"),
+    fetchJson<QualityProfileItem[]>("/api/quality-profiles")
+  ]);
+
+  return { libraries, qualityProfiles };
 }
 
 export async function librariesAction({ request }: ActionFunctionArgs) {
@@ -61,6 +72,7 @@ export async function librariesAction({ request }: ActionFunctionArgs) {
     purpose: formData.get("purpose"),
     rootPath: formData.get("rootPath"),
     downloadsPath: formData.get("downloadsPath"),
+    qualityProfileId: formData.get("qualityProfileId"),
     autoSearchEnabled: formData.get("autoSearchEnabled") === "on",
     missingSearchEnabled: formData.get("missingSearchEnabled") === "on",
     upgradeSearchEnabled: formData.get("upgradeSearchEnabled") === "on",
@@ -89,7 +101,7 @@ export async function librariesAction({ request }: ActionFunctionArgs) {
 }
 
 export function LibrariesPage() {
-  const libraries = useLoaderData() as LibraryItem[];
+  const { libraries, qualityProfiles } = useLoaderData() as LibrariesLoaderData;
   const actionData = useActionData() as MutationState | undefined;
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
@@ -100,7 +112,7 @@ export function LibrariesPage() {
         <p className="eyebrow">Libraries</p>
         <h2>Separate workflows, one polished home</h2>
         <p className="page-copy">
-          Each library can keep its own folders, timing, and search behavior so Movies and TV Shows never feel tangled together.
+          Each library can keep its own folders, timing, search behavior, and quality expectations so Movies and TV Shows never feel tangled together.
         </p>
       </header>
       <div className="hero-grid">
@@ -108,7 +120,7 @@ export function LibrariesPage() {
           <p className="hero-kicker">Built for real setups</p>
           <h3>4K movies, everyday movies, kids TV, anime, and custom folders should all feel first-class.</h3>
           <p>
-            Deluno lets each library keep its own rhythm instead of making you juggle separate installs just to keep workflows apart.
+            Deluno lets each library keep its own rhythm and target quality instead of making you juggle separate installs just to keep workflows apart.
           </p>
         </article>
         <article className="hero-card">
@@ -119,12 +131,12 @@ export function LibrariesPage() {
               <span>Choose where the library lives and where completed downloads should come from.</span>
             </div>
             <div className="manifest-row">
-              <strong>Recurring checks</strong>
-              <span>Let Deluno search for missing titles, better releases, or both on its own schedule.</span>
+              <strong>Quality target</strong>
+              <span>Pick the default quality Deluno should aim for and decide whether upgrades should continue until that target is reached.</span>
             </div>
             <div className="manifest-row">
-              <strong>Work per pass</strong>
-              <span>Control how much Deluno works through in a single run and how long it waits before trying again.</span>
+              <strong>Recurring checks</strong>
+              <span>Let Deluno search for missing titles, better releases, or both on its own schedule.</span>
             </div>
           </div>
         </article>
@@ -159,6 +171,16 @@ export function LibrariesPage() {
               <label className="field">
                 <span>Completed downloads folder</span>
                 <input name="downloadsPath" type="text" placeholder="D:\\Downloads" />
+              </label>
+              <label className="field">
+                <span>Quality profile</span>
+                <select name="qualityProfileId" defaultValue={defaultQualityProfileId(qualityProfiles)}>
+                  {qualityProfiles.map((profile) => (
+                    <option key={profile.id} value={profile.id}>
+                      {profile.name}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label className="field">
                 <span>Check every (hours)</span>
@@ -224,6 +246,10 @@ export function LibrariesPage() {
                     <span>{library.autoSearchEnabled ? "Checked automatically" : "Manual only"}</span>
                   </div>
                   <div className="meta-row">
+                    <span>{formatQualityProfile(library)}</span>
+                    <span>{formatUpgradeRule(library)}</span>
+                  </div>
+                  <div className="meta-row">
                     <span>{library.rootPath}</span>
                     <span>Every {library.searchIntervalHours}h · Retry {library.retryDelayHours}h · Up to {library.maxItemsPerRun}</span>
                   </div>
@@ -273,6 +299,34 @@ function toNumberOrNull(value: FormDataEntryValue | null) {
 
 function formatMediaType(value: string) {
   return value === "tv" ? "TV Shows" : "Movies";
+}
+
+function defaultQualityProfileId(profiles: QualityProfileItem[]) {
+  return (
+    profiles.find((profile) => profile.name.toLowerCase().includes("standard"))?.id ??
+    profiles[0]?.id ??
+    ""
+  );
+}
+
+function formatQualityProfile(library: LibraryItem) {
+  if (library.qualityProfileName && library.cutoffQuality) {
+    return `${library.qualityProfileName} · Target ${library.cutoffQuality}`;
+  }
+
+  return "No quality profile selected";
+}
+
+function formatUpgradeRule(library: LibraryItem) {
+  if (!library.upgradeUntilCutoff) {
+    return "Stop after the first good match";
+  }
+
+  if (library.upgradeUnknownItems) {
+    return "Review and upgrade unknown imports";
+  }
+
+  return "Upgrade until the target is reached";
 }
 
 function formatSearchModes(library: LibraryItem) {

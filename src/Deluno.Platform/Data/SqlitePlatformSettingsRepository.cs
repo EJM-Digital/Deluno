@@ -54,6 +54,8 @@ public sealed class SqlitePlatformSettingsRepository(
             DelunoDatabaseNames.Platform,
             cancellationToken);
 
+        await EnsureSeedQualityProfilesAsync(connection, cancellationToken);
+        await BackfillLibraryQualityProfilesAsync(connection, cancellationToken);
         await EnsureSeedLibrariesAsync(connection, cancellationToken);
 
         var items = new List<LibraryItem>();
@@ -62,38 +64,98 @@ public sealed class SqlitePlatformSettingsRepository(
         command.CommandText =
             """
             SELECT
-                id, name, media_type, purpose, root_path, downloads_path, auto_search_enabled,
-                missing_search_enabled, upgrade_search_enabled, search_interval_hours,
-                retry_delay_hours, max_items_per_run, created_utc, updated_utc
-            FROM libraries
+                l.id, l.name, l.media_type, l.purpose, l.root_path, l.downloads_path,
+                l.quality_profile_id, q.name, q.cutoff_quality, q.upgrade_until_cutoff, q.upgrade_unknown_items,
+                l.auto_search_enabled, l.missing_search_enabled, l.upgrade_search_enabled, l.search_interval_hours,
+                l.retry_delay_hours, l.max_items_per_run, l.created_utc, l.updated_utc
+            FROM libraries l
+            LEFT JOIN quality_profiles q ON q.id = l.quality_profile_id
+            ORDER BY l.media_type ASC, l.name ASC;
+            """;
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            items.Add(ReadLibrary(reader));
+        }
+
+        return items;
+    }
+
+    public async Task<IReadOnlyList<QualityProfileItem>> ListQualityProfilesAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        await EnsureSeedQualityProfilesAsync(connection, cancellationToken);
+
+        var items = new List<QualityProfileItem>();
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT
+                id, name, media_type, cutoff_quality, allowed_qualities,
+                upgrade_until_cutoff, upgrade_unknown_items, created_utc, updated_utc
+            FROM quality_profiles
             ORDER BY media_type ASC, name ASC;
             """;
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            items.Add(new LibraryItem(
-                Id: reader.GetString(0),
-                Name: reader.GetString(1),
-                MediaType: reader.GetString(2),
-                Purpose: reader.GetString(3),
-                RootPath: reader.GetString(4),
-                DownloadsPath: reader.IsDBNull(5) ? null : reader.GetString(5),
-                AutoSearchEnabled: reader.GetInt64(6) == 1,
-                MissingSearchEnabled: reader.GetInt64(7) == 1,
-                UpgradeSearchEnabled: reader.GetInt64(8) == 1,
-                SearchIntervalHours: reader.GetInt32(9),
-                RetryDelayHours: reader.GetInt32(10),
-                MaxItemsPerRun: reader.GetInt32(11),
-                AutomationStatus: "idle",
-                SearchRequested: false,
-                LastSearchedUtc: null,
-                NextSearchUtc: null,
-                CreatedUtc: ParseTimestamp(reader.GetString(12)),
-                UpdatedUtc: ParseTimestamp(reader.GetString(13))));
+            items.Add(ReadQualityProfile(reader));
         }
 
         return items;
+    }
+
+    public async Task<QualityProfileItem> CreateQualityProfileAsync(
+        CreateQualityProfileRequest request,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        var item = new QualityProfileItem(
+            Id: Guid.CreateVersion7().ToString("N"),
+            Name: NormalizeName(request.Name) ?? "New quality profile",
+            MediaType: NormalizeMediaType(request.MediaType),
+            CutoffQuality: NormalizeName(request.CutoffQuality) ?? DefaultCutoffForMediaType(request.MediaType),
+            AllowedQualities: NormalizeCsv(request.AllowedQualities) ?? DefaultAllowedQualities(request.MediaType),
+            UpgradeUntilCutoff: request.UpgradeUntilCutoff,
+            UpgradeUnknownItems: request.UpgradeUnknownItems,
+            CreatedUtc: now,
+            UpdatedUtc: now);
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            INSERT INTO quality_profiles (
+                id, name, media_type, cutoff_quality, allowed_qualities,
+                upgrade_until_cutoff, upgrade_unknown_items, created_utc, updated_utc
+            )
+            VALUES (
+                @id, @name, @mediaType, @cutoffQuality, @allowedQualities,
+                @upgradeUntilCutoff, @upgradeUnknownItems, @createdUtc, @updatedUtc
+            );
+            """;
+
+        AddParameter(command, "@id", item.Id);
+        AddParameter(command, "@name", item.Name);
+        AddParameter(command, "@mediaType", item.MediaType);
+        AddParameter(command, "@cutoffQuality", item.CutoffQuality);
+        AddParameter(command, "@allowedQualities", item.AllowedQualities);
+        AddParameter(command, "@upgradeUntilCutoff", item.UpgradeUntilCutoff ? 1 : 0);
+        AddParameter(command, "@upgradeUnknownItems", item.UpgradeUnknownItems ? 1 : 0);
+        AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
+        AddParameter(command, "@updatedUtc", item.UpdatedUtc.ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+
+        return item;
     }
 
     public async Task<LibraryItem> CreateLibraryAsync(
@@ -101,13 +163,19 @@ public sealed class SqlitePlatformSettingsRepository(
         CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
+        var mediaType = NormalizeMediaType(request.MediaType);
         var item = new LibraryItem(
             Id: Guid.CreateVersion7().ToString("N"),
             Name: NormalizeName(request.Name) ?? "New library",
-            MediaType: NormalizeMediaType(request.MediaType),
+            MediaType: mediaType,
             Purpose: NormalizeName(request.Purpose) ?? "General",
             RootPath: NormalizePath(request.RootPath) ?? string.Empty,
             DownloadsPath: NormalizePath(request.DownloadsPath),
+            QualityProfileId: null,
+            QualityProfileName: null,
+            CutoffQuality: null,
+            UpgradeUntilCutoff: true,
+            UpgradeUnknownItems: false,
             AutoSearchEnabled: request.AutoSearchEnabled,
             MissingSearchEnabled: request.MissingSearchEnabled,
             UpgradeSearchEnabled: request.UpgradeSearchEnabled,
@@ -125,16 +193,26 @@ public sealed class SqlitePlatformSettingsRepository(
             DelunoDatabaseNames.Platform,
             cancellationToken);
 
+        await EnsureSeedQualityProfilesAsync(connection, cancellationToken);
+        var qualityProfileId = await ResolveQualityProfileIdAsync(
+            connection,
+            mediaType,
+            NormalizeName(request.QualityProfileId),
+            cancellationToken);
+        var profile = qualityProfileId is null
+            ? null
+            : await GetQualityProfileAsync(connection, qualityProfileId, cancellationToken);
+
         using var command = connection.CreateCommand();
         command.CommandText =
             """
             INSERT INTO libraries (
-                id, name, media_type, purpose, root_path, downloads_path, auto_search_enabled,
+                id, name, media_type, purpose, root_path, downloads_path, quality_profile_id, auto_search_enabled,
                 missing_search_enabled, upgrade_search_enabled, search_interval_hours,
                 retry_delay_hours, max_items_per_run, created_utc, updated_utc
             )
             VALUES (
-                @id, @name, @mediaType, @purpose, @rootPath, @downloadsPath, @autoSearchEnabled,
+                @id, @name, @mediaType, @purpose, @rootPath, @downloadsPath, @qualityProfileId, @autoSearchEnabled,
                 @missingSearchEnabled, @upgradeSearchEnabled, @searchIntervalHours,
                 @retryDelayHours, @maxItemsPerRun, @createdUtc, @updatedUtc
             );
@@ -146,6 +224,7 @@ public sealed class SqlitePlatformSettingsRepository(
         AddParameter(command, "@purpose", item.Purpose);
         AddParameter(command, "@rootPath", item.RootPath);
         AddParameter(command, "@downloadsPath", item.DownloadsPath);
+        AddParameter(command, "@qualityProfileId", qualityProfileId);
         AddParameter(command, "@autoSearchEnabled", item.AutoSearchEnabled ? 1 : 0);
         AddParameter(command, "@missingSearchEnabled", item.MissingSearchEnabled ? 1 : 0);
         AddParameter(command, "@upgradeSearchEnabled", item.UpgradeSearchEnabled ? 1 : 0);
@@ -156,7 +235,14 @@ public sealed class SqlitePlatformSettingsRepository(
         AddParameter(command, "@updatedUtc", item.UpdatedUtc.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
 
-        return item;
+        return item with
+        {
+            QualityProfileId = profile?.Id,
+            QualityProfileName = profile?.Name,
+            CutoffQuality = profile?.CutoffQuality,
+            UpgradeUntilCutoff = profile?.UpgradeUntilCutoff ?? true,
+            UpgradeUnknownItems = profile?.UpgradeUnknownItems ?? false
+        };
     }
 
     public async Task<LibraryItem?> UpdateLibraryAutomationAsync(
@@ -200,6 +286,48 @@ public sealed class SqlitePlatformSettingsRepository(
                 return null;
             }
         }
+
+        return await GetLibraryAsync(connection, id, cancellationToken);
+    }
+
+    public async Task<LibraryItem?> UpdateLibraryQualityProfileAsync(
+        string id,
+        UpdateLibraryQualityProfileRequest request,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        var library = await GetLibraryAsync(connection, id, cancellationToken);
+        if (library is null)
+        {
+            return null;
+        }
+
+        await EnsureSeedQualityProfilesAsync(connection, cancellationToken);
+        var qualityProfileId = await ResolveQualityProfileIdAsync(
+            connection,
+            library.MediaType,
+            NormalizeName(request.QualityProfileId),
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE libraries
+            SET
+                quality_profile_id = @qualityProfileId,
+                updated_utc = @updatedUtc
+            WHERE id = @id;
+            """;
+
+        AddParameter(command, "@id", id);
+        AddParameter(command, "@qualityProfileId", qualityProfileId);
+        AddParameter(command, "@updatedUtc", now.ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
 
         return await GetLibraryAsync(connection, id, cancellationToken);
     }
@@ -772,6 +900,9 @@ public sealed class SqlitePlatformSettingsRepository(
         System.Data.Common.DbConnection connection,
         CancellationToken cancellationToken)
     {
+        await EnsureSeedQualityProfilesAsync(connection, cancellationToken);
+        await BackfillLibraryQualityProfilesAsync(connection, cancellationToken);
+
         var count = 0;
 
         using (var countCommand = connection.CreateCommand())
@@ -789,6 +920,8 @@ public sealed class SqlitePlatformSettingsRepository(
         var roots = await ReadRootsAsync(connection, cancellationToken);
         var downloadsPath = GetValue(roots, "downloads");
         var now = DateTimeOffset.UtcNow;
+        var defaultMovieProfileId = await ResolveQualityProfileIdAsync(connection, "movies", null, cancellationToken);
+        var defaultTvProfileId = await ResolveQualityProfileIdAsync(connection, "tv", null, cancellationToken);
 
         var seeds = new List<LibraryItem>();
         var movieRoot = GetValue(roots, "movies");
@@ -801,6 +934,11 @@ public sealed class SqlitePlatformSettingsRepository(
                 Purpose: "Everyday library",
                 RootPath: movieRoot,
                 DownloadsPath: downloadsPath,
+                QualityProfileId: defaultMovieProfileId,
+                QualityProfileName: "Movies / Standard",
+                CutoffQuality: "WEB 1080p",
+                UpgradeUntilCutoff: true,
+                UpgradeUnknownItems: false,
                 AutoSearchEnabled: true,
                 MissingSearchEnabled: true,
                 UpgradeSearchEnabled: true,
@@ -825,6 +963,11 @@ public sealed class SqlitePlatformSettingsRepository(
                 Purpose: "General shows",
                 RootPath: tvRoot,
                 DownloadsPath: downloadsPath,
+                QualityProfileId: defaultTvProfileId,
+                QualityProfileName: "TV Shows / Standard",
+                CutoffQuality: "WEB 1080p",
+                UpgradeUntilCutoff: true,
+                UpgradeUnknownItems: false,
                 AutoSearchEnabled: true,
                 MissingSearchEnabled: true,
                 UpgradeSearchEnabled: true,
@@ -845,12 +988,12 @@ public sealed class SqlitePlatformSettingsRepository(
             command.CommandText =
                 """
                 INSERT INTO libraries (
-                    id, name, media_type, purpose, root_path, downloads_path, auto_search_enabled,
+                    id, name, media_type, purpose, root_path, downloads_path, quality_profile_id, auto_search_enabled,
                     missing_search_enabled, upgrade_search_enabled, search_interval_hours,
                     retry_delay_hours, max_items_per_run, created_utc, updated_utc
                 )
                 VALUES (
-                    @id, @name, @mediaType, @purpose, @rootPath, @downloadsPath, @autoSearchEnabled,
+                    @id, @name, @mediaType, @purpose, @rootPath, @downloadsPath, @qualityProfileId, @autoSearchEnabled,
                     @missingSearchEnabled, @upgradeSearchEnabled, @searchIntervalHours,
                     @retryDelayHours, @maxItemsPerRun, @createdUtc, @updatedUtc
                 );
@@ -862,6 +1005,7 @@ public sealed class SqlitePlatformSettingsRepository(
             AddParameter(command, "@purpose", item.Purpose);
             AddParameter(command, "@rootPath", item.RootPath);
             AddParameter(command, "@downloadsPath", item.DownloadsPath);
+            AddParameter(command, "@qualityProfileId", item.QualityProfileId);
             AddParameter(command, "@autoSearchEnabled", item.AutoSearchEnabled ? 1 : 0);
             AddParameter(command, "@missingSearchEnabled", item.MissingSearchEnabled ? 1 : 0);
             AddParameter(command, "@upgradeSearchEnabled", item.UpgradeSearchEnabled ? 1 : 0);
@@ -883,11 +1027,13 @@ public sealed class SqlitePlatformSettingsRepository(
         command.CommandText =
             """
             SELECT
-                id, name, media_type, purpose, root_path, downloads_path, auto_search_enabled,
-                missing_search_enabled, upgrade_search_enabled, search_interval_hours,
-                retry_delay_hours, max_items_per_run, created_utc, updated_utc
-            FROM libraries
-            WHERE id = @id
+                l.id, l.name, l.media_type, l.purpose, l.root_path, l.downloads_path,
+                l.quality_profile_id, q.name, q.cutoff_quality, q.upgrade_until_cutoff, q.upgrade_unknown_items,
+                l.auto_search_enabled, l.missing_search_enabled, l.upgrade_search_enabled, l.search_interval_hours,
+                l.retry_delay_hours, l.max_items_per_run, l.created_utc, l.updated_utc
+            FROM libraries l
+            LEFT JOIN quality_profiles q ON q.id = l.quality_profile_id
+            WHERE l.id = @id
             LIMIT 1;
             """;
 
@@ -899,25 +1045,173 @@ public sealed class SqlitePlatformSettingsRepository(
             return null;
         }
 
-        return new LibraryItem(
-            Id: reader.GetString(0),
-            Name: reader.GetString(1),
-            MediaType: reader.GetString(2),
-            Purpose: reader.GetString(3),
-            RootPath: reader.GetString(4),
-            DownloadsPath: reader.IsDBNull(5) ? null : reader.GetString(5),
-            AutoSearchEnabled: reader.GetInt64(6) == 1,
-            MissingSearchEnabled: reader.GetInt64(7) == 1,
-            UpgradeSearchEnabled: reader.GetInt64(8) == 1,
-            SearchIntervalHours: reader.GetInt32(9),
-            RetryDelayHours: reader.GetInt32(10),
-            MaxItemsPerRun: reader.GetInt32(11),
-            AutomationStatus: "idle",
-            SearchRequested: false,
-            LastSearchedUtc: null,
-            NextSearchUtc: null,
-            CreatedUtc: ParseTimestamp(reader.GetString(12)),
-            UpdatedUtc: ParseTimestamp(reader.GetString(13)));
+        return ReadLibrary(reader);
+    }
+
+    private static async Task EnsureSeedQualityProfilesAsync(
+        System.Data.Common.DbConnection connection,
+        CancellationToken cancellationToken)
+    {
+        using var countCommand = connection.CreateCommand();
+        countCommand.CommandText = "SELECT COUNT(*) FROM quality_profiles;";
+        var scalar = await countCommand.ExecuteScalarAsync(cancellationToken);
+        var count = Convert.ToInt32(scalar ?? 0, CultureInfo.InvariantCulture);
+        if (count > 0)
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var seeds = new[]
+        {
+            new QualityProfileItem(Guid.CreateVersion7().ToString("N"), "Movies / Standard", "movies", "WEB 1080p", "WEB 1080p, Bluray 1080p, Remux 1080p", true, false, now, now),
+            new QualityProfileItem(Guid.CreateVersion7().ToString("N"), "Movies / Premium 4K", "movies", "Remux 2160p", "WEB 2160p, Bluray 2160p, Remux 2160p", true, true, now, now),
+            new QualityProfileItem(Guid.CreateVersion7().ToString("N"), "TV Shows / Standard", "tv", "WEB 1080p", "WEB 720p, WEB 1080p, HDTV 1080p", true, false, now, now),
+            new QualityProfileItem(Guid.CreateVersion7().ToString("N"), "TV Shows / Premium 4K", "tv", "WEB 2160p", "WEB 1080p, WEB 2160p, Bluray 2160p", true, true, now, now)
+        };
+
+        foreach (var item in seeds)
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                INSERT INTO quality_profiles (
+                    id, name, media_type, cutoff_quality, allowed_qualities,
+                    upgrade_until_cutoff, upgrade_unknown_items, created_utc, updated_utc
+                )
+                VALUES (
+                    @id, @name, @mediaType, @cutoffQuality, @allowedQualities,
+                    @upgradeUntilCutoff, @upgradeUnknownItems, @createdUtc, @updatedUtc
+                );
+                """;
+
+            AddParameter(command, "@id", item.Id);
+            AddParameter(command, "@name", item.Name);
+            AddParameter(command, "@mediaType", item.MediaType);
+            AddParameter(command, "@cutoffQuality", item.CutoffQuality);
+            AddParameter(command, "@allowedQualities", item.AllowedQualities);
+            AddParameter(command, "@upgradeUntilCutoff", item.UpgradeUntilCutoff ? 1 : 0);
+            AddParameter(command, "@upgradeUnknownItems", item.UpgradeUnknownItems ? 1 : 0);
+            AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
+            AddParameter(command, "@updatedUtc", item.UpdatedUtc.ToString("O"));
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+    }
+
+    private static async Task BackfillLibraryQualityProfilesAsync(
+        System.Data.Common.DbConnection connection,
+        CancellationToken cancellationToken)
+    {
+        var pendingLibraries = new List<(string LibraryId, string MediaType)>();
+        var assignments = new List<(string LibraryId, string ProfileId)>();
+
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                """
+                SELECT id, media_type
+                FROM libraries
+                WHERE quality_profile_id IS NULL;
+                """;
+
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                pendingLibraries.Add((reader.GetString(0), reader.GetString(1)));
+            }
+        }
+
+        foreach (var library in pendingLibraries)
+        {
+            var profileId = await ResolveQualityProfileIdAsync(
+                connection,
+                library.MediaType,
+                null,
+                cancellationToken);
+
+            if (!string.IsNullOrWhiteSpace(profileId))
+            {
+                assignments.Add((library.LibraryId, profileId));
+            }
+        }
+
+        foreach (var assignment in assignments)
+        {
+            using var update = connection.CreateCommand();
+            update.CommandText =
+                """
+                UPDATE libraries
+                SET quality_profile_id = @qualityProfileId
+                WHERE id = @id;
+                """;
+            AddParameter(update, "@id", assignment.LibraryId);
+            AddParameter(update, "@qualityProfileId", assignment.ProfileId);
+            await update.ExecuteNonQueryAsync(cancellationToken);
+        }
+    }
+
+    private static async Task<string?> ResolveQualityProfileIdAsync(
+        System.Data.Common.DbConnection connection,
+        string mediaType,
+        string? requestedProfileId,
+        CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(requestedProfileId))
+        {
+            using var requested = connection.CreateCommand();
+            requested.CommandText =
+                """
+                SELECT id
+                FROM quality_profiles
+                WHERE id = @id AND media_type = @mediaType
+                LIMIT 1;
+                """;
+            AddParameter(requested, "@id", requestedProfileId);
+            AddParameter(requested, "@mediaType", mediaType);
+            var existing = await requested.ExecuteScalarAsync(cancellationToken) as string;
+            if (!string.IsNullOrWhiteSpace(existing))
+            {
+                return existing;
+            }
+        }
+
+        using var fallback = connection.CreateCommand();
+        fallback.CommandText =
+            """
+            SELECT id
+            FROM quality_profiles
+            WHERE media_type = @mediaType
+            ORDER BY
+                CASE
+                    WHEN lower(name) LIKE '%standard%' THEN 0
+                    ELSE 1
+                END,
+                name ASC
+            LIMIT 1;
+            """;
+        AddParameter(fallback, "@mediaType", mediaType);
+        return await fallback.ExecuteScalarAsync(cancellationToken) as string;
+    }
+
+    private static async Task<QualityProfileItem?> GetQualityProfileAsync(
+        System.Data.Common.DbConnection connection,
+        string id,
+        CancellationToken cancellationToken)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT
+                id, name, media_type, cutoff_quality, allowed_qualities,
+                upgrade_until_cutoff, upgrade_unknown_items, created_utc, updated_utc
+            FROM quality_profiles
+            WHERE id = @id
+            LIMIT 1;
+            """;
+        AddParameter(command, "@id", id);
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? ReadQualityProfile(reader) : null;
     }
 
     private static string? NormalizeName(string? value)
@@ -990,6 +1284,14 @@ public sealed class SqlitePlatformSettingsRepository(
         };
     }
 
+    private static string DefaultCutoffForMediaType(string? mediaType)
+        => NormalizeMediaType(mediaType) == "tv" ? "WEB 1080p" : "WEB 1080p";
+
+    private static string DefaultAllowedQualities(string? mediaType)
+        => NormalizeMediaType(mediaType) == "tv"
+            ? "WEB 720p, WEB 1080p, HDTV 1080p"
+            : "WEB 1080p, Bluray 1080p, Remux 1080p";
+
     private static string NormalizeCsv(string? value)
     {
         return string.Join(
@@ -1040,6 +1342,48 @@ public sealed class SqlitePlatformSettingsRepository(
         }
 
         return items;
+    }
+
+    private static LibraryItem ReadLibrary(System.Data.Common.DbDataReader reader)
+    {
+        return new LibraryItem(
+            Id: reader.GetString(0),
+            Name: reader.GetString(1),
+            MediaType: reader.GetString(2),
+            Purpose: reader.GetString(3),
+            RootPath: reader.GetString(4),
+            DownloadsPath: reader.IsDBNull(5) ? null : reader.GetString(5),
+            QualityProfileId: reader.IsDBNull(6) ? null : reader.GetString(6),
+            QualityProfileName: reader.IsDBNull(7) ? null : reader.GetString(7),
+            CutoffQuality: reader.IsDBNull(8) ? null : reader.GetString(8),
+            UpgradeUntilCutoff: reader.IsDBNull(9) || reader.GetInt64(9) == 1,
+            UpgradeUnknownItems: !reader.IsDBNull(10) && reader.GetInt64(10) == 1,
+            AutoSearchEnabled: reader.GetInt64(11) == 1,
+            MissingSearchEnabled: reader.GetInt64(12) == 1,
+            UpgradeSearchEnabled: reader.GetInt64(13) == 1,
+            SearchIntervalHours: reader.GetInt32(14),
+            RetryDelayHours: reader.GetInt32(15),
+            MaxItemsPerRun: reader.GetInt32(16),
+            AutomationStatus: "idle",
+            SearchRequested: false,
+            LastSearchedUtc: null,
+            NextSearchUtc: null,
+            CreatedUtc: ParseTimestamp(reader.GetString(17)),
+            UpdatedUtc: ParseTimestamp(reader.GetString(18)));
+    }
+
+    private static QualityProfileItem ReadQualityProfile(System.Data.Common.DbDataReader reader)
+    {
+        return new QualityProfileItem(
+            Id: reader.GetString(0),
+            Name: reader.GetString(1),
+            MediaType: reader.GetString(2),
+            CutoffQuality: reader.GetString(3),
+            AllowedQualities: reader.GetString(4),
+            UpgradeUntilCutoff: reader.GetInt64(5) == 1,
+            UpgradeUnknownItems: reader.GetInt64(6) == 1,
+            CreatedUtc: ParseTimestamp(reader.GetString(7)),
+            UpdatedUtc: ParseTimestamp(reader.GetString(8)));
     }
 
     private static async Task<IReadOnlyList<LibraryDownloadClientLinkItem>> ReadLibraryDownloadClientLinksAsync(

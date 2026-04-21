@@ -23,12 +23,17 @@ public interface ISeriesCatalogRepository
         string libraryId,
         string wantedStatus,
         string wantedReason,
+        bool hasFile,
+        bool qualityCutoffMet,
         CancellationToken cancellationToken);
 
     Task<bool> ImportExistingAsync(
         string libraryId,
         string title,
         int? startYear,
+        string wantedStatus,
+        string wantedReason,
+        bool qualityCutoffMet,
         CancellationToken cancellationToken);
 
     Task RecordSearchAttemptAsync(

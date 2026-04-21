@@ -85,7 +85,9 @@ public static class MoviesEndpointRouteBuilderExtensions
                     movie.Id,
                     library.Id,
                     "missing",
-                    "Deluno is still looking for this movie.",
+                    FormatWantedReason(library, "movie"),
+                    false,
+                    false,
                     cancellationToken);
             }
 
@@ -140,5 +142,15 @@ public static class MoviesEndpointRouteBuilderExtensions
         }
 
         return errors;
+    }
+
+    private static string FormatWantedReason(Platform.Contracts.LibraryItem library, string mediaLabel)
+    {
+        if (!string.IsNullOrWhiteSpace(library.QualityProfileName) && !string.IsNullOrWhiteSpace(library.CutoffQuality))
+        {
+            return $"Deluno is still looking for this {mediaLabel} for {library.QualityProfileName} and will keep upgrading until {library.CutoffQuality}.";
+        }
+
+        return $"Deluno is still looking for this {mediaLabel}.";
     }
 }

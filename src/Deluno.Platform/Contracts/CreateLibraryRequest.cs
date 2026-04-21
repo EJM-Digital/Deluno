@@ -6,6 +6,7 @@ public sealed record CreateLibraryRequest(
     string? Purpose,
     string? RootPath,
     string? DownloadsPath,
+    string? QualityProfileId,
     bool AutoSearchEnabled,
     bool MissingSearchEnabled,
     bool UpgradeSearchEnabled,

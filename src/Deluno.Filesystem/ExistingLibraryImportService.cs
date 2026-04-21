@@ -46,8 +46,22 @@ public sealed class ExistingLibraryImportService(
             }
 
             var wasImported = library.MediaType == "movies"
-                ? await movieCatalogRepository.ImportExistingAsync(library.Id, item.Title, item.Year, cancellationToken)
-                : await seriesCatalogRepository.ImportExistingAsync(library.Id, item.Title, item.Year, cancellationToken);
+                ? await movieCatalogRepository.ImportExistingAsync(
+                    library.Id,
+                    item.Title,
+                    item.Year,
+                    library.UpgradeUnknownItems ? "upgrade" : "waiting",
+                    FormatImportReason(library, "movie"),
+                    !library.UpgradeUnknownItems,
+                    cancellationToken)
+                : await seriesCatalogRepository.ImportExistingAsync(
+                    library.Id,
+                    item.Title,
+                    item.Year,
+                    library.UpgradeUnknownItems ? "upgrade" : "waiting",
+                    FormatImportReason(library, "TV show"),
+                    !library.UpgradeUnknownItems,
+                    cancellationToken);
 
             if (wasImported)
             {
@@ -188,6 +202,16 @@ public sealed class ExistingLibraryImportService(
         normalized = Regex.Replace(normalized, @"\s{2,}", " ").Trim('-', ' ');
 
         return new DetectedLibraryItem(string.IsNullOrWhiteSpace(normalized) ? raw.Trim() : normalized, year);
+    }
+
+    private static string FormatImportReason(Platform.Contracts.LibraryItem library, string mediaLabel)
+    {
+        if (library.UpgradeUnknownItems && !string.IsNullOrWhiteSpace(library.CutoffQuality))
+        {
+            return $"Imported from your existing library. Deluno will keep checking this {mediaLabel} until it reaches {library.CutoffQuality}.";
+        }
+
+        return "Already in your library.";
     }
 
     private sealed record DetectedLibraryItem(string Title, int? Year);

@@ -37,6 +37,7 @@ public sealed class PlatformSchemaInitializer(
                 purpose TEXT NOT NULL,
                 root_path TEXT NOT NULL,
                 downloads_path TEXT NULL,
+                quality_profile_id TEXT NULL,
                 auto_search_enabled INTEGER NOT NULL DEFAULT 1,
                 missing_search_enabled INTEGER NOT NULL DEFAULT 1,
                 upgrade_search_enabled INTEGER NOT NULL DEFAULT 1,
@@ -44,8 +45,24 @@ public sealed class PlatformSchemaInitializer(
                 retry_delay_hours INTEGER NOT NULL DEFAULT 24,
                 max_items_per_run INTEGER NOT NULL DEFAULT 25,
                 created_utc TEXT NOT NULL,
+                updated_utc TEXT NOT NULL,
+                FOREIGN KEY (quality_profile_id) REFERENCES quality_profiles(id) ON DELETE SET NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS quality_profiles (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                media_type TEXT NOT NULL,
+                cutoff_quality TEXT NOT NULL,
+                allowed_qualities TEXT NOT NULL,
+                upgrade_until_cutoff INTEGER NOT NULL DEFAULT 1,
+                upgrade_unknown_items INTEGER NOT NULL DEFAULT 0,
+                created_utc TEXT NOT NULL,
                 updated_utc TEXT NOT NULL
             );
+
+            CREATE INDEX IF NOT EXISTS ix_quality_profiles_media_type
+                ON quality_profiles (media_type, name);
 
             CREATE TABLE IF NOT EXISTS app_connections (
                 id TEXT PRIMARY KEY,
@@ -120,6 +137,7 @@ public sealed class PlatformSchemaInitializer(
             """;
 
         await command.ExecuteNonQueryAsync(cancellationToken);
+        await EnsureLibraryColumnAsync(connection, "quality_profile_id", "TEXT NULL", cancellationToken);
         await EnsureLibraryColumnAsync(connection, "missing_search_enabled", "INTEGER NOT NULL DEFAULT 1", cancellationToken);
         await EnsureLibraryColumnAsync(connection, "upgrade_search_enabled", "INTEGER NOT NULL DEFAULT 1", cancellationToken);
         await EnsureLibraryColumnAsync(connection, "max_items_per_run", "INTEGER NOT NULL DEFAULT 25", cancellationToken);

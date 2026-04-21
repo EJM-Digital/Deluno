@@ -147,6 +147,11 @@ export interface LibraryItem {
   purpose: string;
   rootPath: string;
   downloadsPath: string | null;
+  qualityProfileId: string | null;
+  qualityProfileName: string | null;
+  cutoffQuality: string | null;
+  upgradeUntilCutoff: boolean;
+  upgradeUnknownItems: boolean;
   autoSearchEnabled: boolean;
   missingSearchEnabled: boolean;
   upgradeSearchEnabled: boolean;
@@ -157,6 +162,18 @@ export interface LibraryItem {
   searchRequested: boolean;
   lastSearchedUtc: string | null;
   nextSearchUtc: string | null;
+  createdUtc: string;
+  updatedUtc: string;
+}
+
+export interface QualityProfileItem {
+  id: string;
+  name: string;
+  mediaType: string;
+  cutoffQuality: string;
+  allowedQualities: string;
+  upgradeUntilCutoff: boolean;
+  upgradeUnknownItems: boolean;
   createdUtc: string;
   updatedUtc: string;
 }

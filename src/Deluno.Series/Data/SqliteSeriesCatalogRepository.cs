@@ -232,6 +232,8 @@ public sealed class SqliteSeriesCatalogRepository(
         string libraryId,
         string wantedStatus,
         string wantedReason,
+        bool hasFile,
+        bool qualityCutoffMet,
         CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
@@ -248,13 +250,14 @@ public sealed class SqliteSeriesCatalogRepository(
                 missing_since_utc, last_search_utc, next_eligible_search_utc, last_search_result, updated_utc
             )
             VALUES (
-                @seriesId, @libraryId, @wantedStatus, @wantedReason, 0, 0,
+                @seriesId, @libraryId, @wantedStatus, @wantedReason, @hasFile, @qualityCutoffMet,
                 @missingSinceUtc, NULL, NULL, NULL, @updatedUtc
             )
-            ON CONFLICT(series_id) DO UPDATE SET
-                library_id = excluded.library_id,
+            ON CONFLICT(series_id, library_id) DO UPDATE SET
                 wanted_status = excluded.wanted_status,
                 wanted_reason = excluded.wanted_reason,
+                has_file = excluded.has_file,
+                quality_cutoff_met = excluded.quality_cutoff_met,
                 updated_utc = excluded.updated_utc;
             """;
 
@@ -262,6 +265,8 @@ public sealed class SqliteSeriesCatalogRepository(
         AddParameter(command, "@libraryId", libraryId);
         AddParameter(command, "@wantedStatus", NormalizeWantedStatus(wantedStatus));
         AddParameter(command, "@wantedReason", wantedReason.Trim());
+        AddParameter(command, "@hasFile", hasFile ? 1 : 0);
+        AddParameter(command, "@qualityCutoffMet", qualityCutoffMet ? 1 : 0);
         AddParameter(command, "@missingSinceUtc", now.ToString("O"));
         AddParameter(command, "@updatedUtc", now.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
@@ -271,6 +276,9 @@ public sealed class SqliteSeriesCatalogRepository(
         string libraryId,
         string title,
         int? startYear,
+        string wantedStatus,
+        string wantedReason,
+        bool qualityCutoffMet,
         CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -331,20 +339,23 @@ public sealed class SqliteSeriesCatalogRepository(
                 missing_since_utc, last_search_utc, next_eligible_search_utc, last_search_result, updated_utc
             )
             VALUES (
-                @seriesId, @libraryId, 'waiting', 'Already in your library.', 1, 0,
+                @seriesId, @libraryId, @wantedStatus, @wantedReason, 1, @qualityCutoffMet,
                 NULL, NULL, NULL, 'Imported from your existing library.', @updatedUtc
             )
-            ON CONFLICT(series_id) DO UPDATE SET
-                library_id = excluded.library_id,
+            ON CONFLICT(series_id, library_id) DO UPDATE SET
                 wanted_status = excluded.wanted_status,
                 wanted_reason = excluded.wanted_reason,
                 has_file = 1,
+                quality_cutoff_met = excluded.quality_cutoff_met,
                 last_search_result = excluded.last_search_result,
                 updated_utc = excluded.updated_utc;
             """;
 
         AddParameter(wanted, "@seriesId", seriesId);
         AddParameter(wanted, "@libraryId", libraryId);
+        AddParameter(wanted, "@wantedStatus", NormalizeWantedStatus(wantedStatus));
+        AddParameter(wanted, "@wantedReason", wantedReason.Trim());
+        AddParameter(wanted, "@qualityCutoffMet", qualityCutoffMet ? 1 : 0);
         AddParameter(wanted, "@updatedUtc", now.ToString("O"));
         await wanted.ExecuteNonQueryAsync(cancellationToken);
 
