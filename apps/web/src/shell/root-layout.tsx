@@ -30,7 +30,7 @@ const navItems = [
   {
     to: "/connections",
     label: "Connections",
-    caption: "Bring apps across"
+    caption: "Services Deluno uses"
   },
   {
     to: "/settings",

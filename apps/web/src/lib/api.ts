@@ -52,6 +52,31 @@ export interface PlatformSettingsSnapshot {
   updatedUtc: string;
 }
 
+export interface LibraryItem {
+  id: string;
+  name: string;
+  mediaType: string;
+  purpose: string;
+  rootPath: string;
+  downloadsPath: string | null;
+  autoSearchEnabled: boolean;
+  searchIntervalHours: number;
+  retryDelayHours: number;
+  createdUtc: string;
+  updatedUtc: string;
+}
+
+export interface ConnectionItem {
+  id: string;
+  name: string;
+  connectionKind: string;
+  role: string;
+  endpointUrl: string | null;
+  isEnabled: boolean;
+  createdUtc: string;
+  updatedUtc: string;
+}
+
 export interface JobQueueItem {
   id: string;
   jobType: string;

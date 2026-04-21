@@ -7,7 +7,7 @@ Build quickly now without making commercialization impossible later.
 ## Constraints
 
 - Build clean-room.
-- Do not copy Radarr or Sonarr code.
+- Do not copy code from existing media automation projects.
 - Keep the app self-hosted and user-operated.
 - Treat metadata providers as replaceable.
 - Avoid product decisions that assume perpetual free access to commercial metadata.
@@ -101,4 +101,3 @@ It does not mean:
 3. Implement provider interfaces and local stub adapters.
 4. Build the first add-and-list flows for both domains.
 5. Add a frontend shell once the API shape stabilizes.
-

@@ -505,7 +505,8 @@ a {
   font-weight: 700;
 }
 
-.field input {
+.field input,
+.field select {
   width: 100%;
   padding: 13px 14px;
   border-radius: 14px;
@@ -518,9 +519,11 @@ a {
     border-color 0.16s ease,
     box-shadow 0.16s ease,
     transform 0.16s ease;
+  appearance: none;
 }
 
-.field input:focus {
+.field input:focus,
+.field select:focus {
   outline: none;
   border-color: rgba(169, 101, 66, 0.28);
   box-shadow: 0 0 0 4px rgba(169, 101, 66, 0.1);

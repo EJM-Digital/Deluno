@@ -4,13 +4,13 @@ Updated: 2026-04-21
 
 ## Goal
 
-Deluno should feel simpler, friendlier, and more premium than Radarr and Sonarr while still covering the hard real-world cases that make people keep multiple *arr instances, external automation tools, and manual workarounds.
+Deluno should feel simpler, friendlier, and more premium than the current crop of media automation tools while still covering the hard real-world cases that make people keep multiple installs, helper tools, and manual workarounds.
 
 This document turns that into a product plan.
 
-## What Radarr and Sonarr already do well
+## What Existing Tools Already Do Well
 
-From the official Servarr docs, both apps are strong at:
+From the official Servarr docs, the leading apps in this space are strong at:
 
 - Tracking monitored items and watching RSS feeds for newly posted releases
 - Running manual or search-on-add searches when the user wants something immediately
@@ -22,9 +22,9 @@ From the official Servarr docs, both apps are strong at:
 
 Important current behavior from the official docs:
 
-- Radarr and Sonarr do not regularly search the backlog of missing or cutoff-unmet items on their own. They rely on RSS for newly posted releases and manual or explicit automatic search commands for older backlog items.
-- Sonarr exposes different show types for Standard, Daily, and Anime because search and parsing behavior differs.
-- Radarr and Sonarr both support upgrades through quality and cutoff rules.
+- Existing tools do not regularly search the backlog of missing or cutoff-unmet items on their own. They rely on RSS for newly posted releases and manual or explicit automatic search commands for older backlog items.
+- Current TV-focused tools expose different show types for Standard, Daily, and Anime because search and parsing behavior differs.
+- Existing tools support upgrades through quality and cutoff rules.
 - Servarr explicitly documents running multiple instances with separate data directories for split libraries such as 4K.
 
 ## What Deluno must do to be better
@@ -78,9 +78,9 @@ Deluno should track search attempts per item so it can say:
 
 Without this, recurring wanted searches will feel noisy and wasteful.
 
-### 4. Multi-library and multi-instance support without chaos
+### 4. Multi-library support without chaos
 
-Some users run multiple Radarr or Sonarr instances today because they need:
+Some users run multiple separate installs today because they need:
 
 - HD and 4K split libraries
 - anime separated from normal TV
@@ -109,7 +109,7 @@ This replaces the need for multiple Deluno instances in most cases while still a
 
 ### 5. Friendlier language everywhere
 
-Radarr and Sonarr expose a lot of internal concepts directly. Deluno should translate them.
+Existing tools expose a lot of internal concepts directly. Deluno should translate them.
 
 Examples:
 
@@ -209,7 +209,7 @@ Technical detail can exist behind an expandable drawer, but the default view sho
 
 ### Import Review
 
-This is a major opportunity to beat Radarr and Sonarr.
+This is a major opportunity for Deluno to raise the bar.
 
 Deluno should provide a friendly import review screen for:
 
@@ -239,16 +239,16 @@ One Deluno install can host many libraries with strict separation:
 
 This is how Deluno replaces most multi-instance *arr setups.
 
-### Level 2: External Arr connections
+### Level 2: Service connections
 
-Important for migration and transitional setups.
+Important for Deluno's own operation.
 
-Deluno should eventually allow connecting multiple existing Radarr and Sonarr instances, for example:
+Deluno should model its required outside services cleanly, for example:
 
-- Radarr Main
-- Radarr 4K
-- Sonarr Main
-- Sonarr Anime
+- main indexer group
+- backup indexer group
+- primary download client
+- notification service
 
 Each connection should have:
 
@@ -260,7 +260,7 @@ Each connection should have:
 - health status
 - test connection action
 
-This gives users a path in without forcing an overnight migration.
+This gives users a clear setup model without turning the app into a maze.
 
 ## Fetcher behavior Deluno should absorb
 
@@ -323,7 +323,7 @@ The current codebase needs these product concepts next.
 
 - indexers
 - download clients
-- optional migration and companion mode for existing Radarr and Sonarr instances
+- optional import and migration helpers for users coming from older setups
 
 ## Recommended UI wording model
 
@@ -365,8 +365,8 @@ Deluno should standardize on these phrases:
 
 ### Phase 4: migration and companion support
 
-- import from Radarr and Sonarr
-- connect existing Arr instances
+- import from older setups where it is useful
+- keep Deluno's own rules and services as the primary model
 - ingest or recreate the useful Fetcher behavior
 
 ## Recommended next implementation slice
@@ -383,15 +383,8 @@ Build these next in order:
 
 Official sources reviewed on 2026-04-21:
 
-- Radarr FAQ (Servarr): https://wikiold.servarr.com/Radarr_FAQ
-- Radarr Tips and Tricks (Servarr): https://wikiold.servarr.com/Radarr_Tips_and_Tricks
-- Radarr overview: https://wikiold.servarr.com/Radarr
-- Sonarr FAQ (Servarr): https://wikiold.servarr.com/Sonarr_FAQ
-- Sonarr Settings (Servarr): https://wikiold.servarr.com/Sonarr_Settings
-- Sonarr overview: https://wikiold.servarr.com/Sonarr
-- Settings Profiles (Servarr): https://wikiold.servarr.com/Settings_Profiles
-- Settings Indexers (Servarr): https://wikiold.servarr.com/Settings_Indexers
-- Wanted Cutoff Unmet (Servarr): https://wikiold.servarr.com/Wanted_Cutoff_Unmet
+- Servarr FAQ and settings pages for the current media automation ecosystem
+- Servarr wanted-queue and profile documentation
 
 Local product reference reviewed:
 

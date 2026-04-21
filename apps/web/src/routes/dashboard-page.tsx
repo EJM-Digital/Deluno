@@ -109,7 +109,7 @@ export function DashboardPage() {
           <h3>What comes next</h3>
           <div className="collection-list compact-list">
             <div className="collection-item compact-item">
-              <strong>Multiple Radarr and Sonarr connections</strong>
+              <strong>Multiple library setups</strong>
               <p>Support for separate 4K, HD, anime, or other split libraries without making the UI confusing.</p>
             </div>
             <div className="collection-item compact-item">
