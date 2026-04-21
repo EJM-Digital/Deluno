@@ -278,6 +278,44 @@ public sealed class SqlitePlatformSettingsRepository(
         return items;
     }
 
+    public async Task<IReadOnlyList<DownloadClientItem>> ListDownloadClientsAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        var items = new List<DownloadClientItem>();
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT
+                id, name, protocol, endpoint_url, category_template, priority,
+                is_enabled, health_status, last_health_message, created_utc, updated_utc
+            FROM download_clients
+            ORDER BY priority ASC, name ASC;
+            """;
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            items.Add(new DownloadClientItem(
+                Id: reader.GetString(0),
+                Name: reader.GetString(1),
+                Protocol: reader.GetString(2),
+                EndpointUrl: reader.IsDBNull(3) ? null : reader.GetString(3),
+                CategoryTemplate: reader.IsDBNull(4) ? null : reader.GetString(4),
+                Priority: reader.GetInt32(5),
+                IsEnabled: reader.GetInt64(6) == 1,
+                HealthStatus: reader.GetString(7),
+                LastHealthMessage: reader.IsDBNull(8) ? null : reader.GetString(8),
+                CreatedUtc: ParseTimestamp(reader.GetString(9)),
+                UpdatedUtc: ParseTimestamp(reader.GetString(10))));
+        }
+
+        return items;
+    }
+
     public async Task<ConnectionItem> CreateConnectionAsync(
         CreateConnectionRequest request,
         CancellationToken cancellationToken)
@@ -376,6 +414,57 @@ public sealed class SqlitePlatformSettingsRepository(
         return item;
     }
 
+    public async Task<DownloadClientItem> CreateDownloadClientAsync(
+        CreateDownloadClientRequest request,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        var item = new DownloadClientItem(
+            Id: Guid.CreateVersion7().ToString("N"),
+            Name: NormalizeName(request.Name) ?? "New download client",
+            Protocol: NormalizeDownloadProtocol(request.Protocol),
+            EndpointUrl: NormalizePath(request.EndpointUrl),
+            CategoryTemplate: NormalizeName(request.CategoryTemplate),
+            Priority: request.Priority is >= 1 ? request.Priority.Value : 100,
+            IsEnabled: request.IsEnabled,
+            HealthStatus: request.IsEnabled ? "ready" : "paused",
+            LastHealthMessage: request.IsEnabled ? "Ready to route downloads." : "Disabled until you turn it on.",
+            CreatedUtc: now,
+            UpdatedUtc: now);
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            INSERT INTO download_clients (
+                id, name, protocol, endpoint_url, category_template, priority,
+                is_enabled, health_status, last_health_message, created_utc, updated_utc
+            )
+            VALUES (
+                @id, @name, @protocol, @endpointUrl, @categoryTemplate, @priority,
+                @isEnabled, @healthStatus, @lastHealthMessage, @createdUtc, @updatedUtc
+            );
+            """;
+
+        AddParameter(command, "@id", item.Id);
+        AddParameter(command, "@name", item.Name);
+        AddParameter(command, "@protocol", item.Protocol);
+        AddParameter(command, "@endpointUrl", item.EndpointUrl);
+        AddParameter(command, "@categoryTemplate", item.CategoryTemplate);
+        AddParameter(command, "@priority", item.Priority);
+        AddParameter(command, "@isEnabled", item.IsEnabled ? 1 : 0);
+        AddParameter(command, "@healthStatus", item.HealthStatus);
+        AddParameter(command, "@lastHealthMessage", item.LastHealthMessage);
+        AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
+        AddParameter(command, "@updatedUtc", item.UpdatedUtc.ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+
+        return item;
+    }
+
     public async Task<IndexerTestResult?> UpdateIndexerHealthAsync(
         string id,
         string healthStatus,
@@ -416,6 +505,111 @@ public sealed class SqlitePlatformSettingsRepository(
             TestedUtc: now);
     }
 
+    public async Task<LibraryRoutingSnapshot?> GetLibraryRoutingAsync(string libraryId, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        var library = await GetLibraryAsync(connection, libraryId, cancellationToken);
+        if (library is null)
+        {
+            return null;
+        }
+
+        var sources = await ReadLibrarySourceLinksAsync(connection, libraryId, cancellationToken);
+        var downloadClients = await ReadLibraryDownloadClientLinksAsync(connection, libraryId, cancellationToken);
+        return new LibraryRoutingSnapshot(library.Id, library.Name, sources, downloadClients);
+    }
+
+    public async Task<LibraryRoutingSnapshot?> SaveLibraryRoutingAsync(
+        string libraryId,
+        UpdateLibraryRoutingRequest request,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        var library = await GetLibraryAsync(connection, libraryId, cancellationToken);
+        if (library is null)
+        {
+            return null;
+        }
+
+        var now = timeProvider.GetUtcNow();
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        using (var deleteSources = connection.CreateCommand())
+        {
+            deleteSources.Transaction = transaction;
+            deleteSources.CommandText = "DELETE FROM library_source_links WHERE library_id = @libraryId;";
+            AddParameter(deleteSources, "@libraryId", libraryId);
+            await deleteSources.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        foreach (var source in request.Sources ?? [])
+        {
+            using var insertSource = connection.CreateCommand();
+            insertSource.Transaction = transaction;
+            insertSource.CommandText =
+                """
+                INSERT INTO library_source_links (
+                    id, library_id, indexer_id, priority, required_tags, excluded_tags, created_utc, updated_utc
+                )
+                VALUES (
+                    @id, @libraryId, @indexerId, @priority, @requiredTags, @excludedTags, @createdUtc, @updatedUtc
+                );
+                """;
+
+            AddParameter(insertSource, "@id", Guid.CreateVersion7().ToString("N"));
+            AddParameter(insertSource, "@libraryId", libraryId);
+            AddParameter(insertSource, "@indexerId", source.IndexerId);
+            AddParameter(insertSource, "@priority", source.Priority is >= 1 ? source.Priority.Value : 100);
+            AddParameter(insertSource, "@requiredTags", NormalizeCsv(source.RequiredTags));
+            AddParameter(insertSource, "@excludedTags", NormalizeCsv(source.ExcludedTags));
+            AddParameter(insertSource, "@createdUtc", now.ToString("O"));
+            AddParameter(insertSource, "@updatedUtc", now.ToString("O"));
+            await insertSource.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        using (var deleteClients = connection.CreateCommand())
+        {
+            deleteClients.Transaction = transaction;
+            deleteClients.CommandText = "DELETE FROM library_download_client_links WHERE library_id = @libraryId;";
+            AddParameter(deleteClients, "@libraryId", libraryId);
+            await deleteClients.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        foreach (var client in request.DownloadClients ?? [])
+        {
+            using var insertClient = connection.CreateCommand();
+            insertClient.Transaction = transaction;
+            insertClient.CommandText =
+                """
+                INSERT INTO library_download_client_links (
+                    id, library_id, download_client_id, priority, created_utc, updated_utc
+                )
+                VALUES (
+                    @id, @libraryId, @downloadClientId, @priority, @createdUtc, @updatedUtc
+                );
+                """;
+
+            AddParameter(insertClient, "@id", Guid.CreateVersion7().ToString("N"));
+            AddParameter(insertClient, "@libraryId", libraryId);
+            AddParameter(insertClient, "@downloadClientId", client.DownloadClientId);
+            AddParameter(insertClient, "@priority", client.Priority is >= 1 ? client.Priority.Value : 100);
+            AddParameter(insertClient, "@createdUtc", now.ToString("O"));
+            AddParameter(insertClient, "@updatedUtc", now.ToString("O"));
+            await insertClient.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        var sources = await ReadLibrarySourceLinksAsync(connection, libraryId, cancellationToken);
+        var downloadClients = await ReadLibraryDownloadClientLinksAsync(connection, libraryId, cancellationToken);
+        return new LibraryRoutingSnapshot(library.Id, library.Name, sources, downloadClients);
+    }
+
     public async Task<bool> DeleteLibraryAsync(string id, CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -448,6 +642,18 @@ public sealed class SqlitePlatformSettingsRepository(
 
         using var command = connection.CreateCommand();
         command.CommandText = "DELETE FROM indexer_sources WHERE id = @id;";
+        AddParameter(command, "@id", id);
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
+    public async Task<bool> DeleteDownloadClientAsync(string id, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM download_clients WHERE id = @id;";
         AddParameter(command, "@id", id);
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
@@ -774,6 +980,16 @@ public sealed class SqlitePlatformSettingsRepository(
         };
     }
 
+    private static string NormalizeDownloadProtocol(string? value)
+    {
+        var normalized = value?.Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "usenet" => "usenet",
+            _ => "torrent"
+        };
+    }
+
     private static string NormalizeCsv(string? value)
     {
         return string.Join(
@@ -786,6 +1002,80 @@ public sealed class SqlitePlatformSettingsRepository(
     private static int NormalizePositiveValue(int? value, int fallback)
     {
         return value is > 0 ? value.Value : fallback;
+    }
+
+    private static async Task<IReadOnlyList<LibrarySourceLinkItem>> ReadLibrarySourceLinksAsync(
+        System.Data.Common.DbConnection connection,
+        string libraryId,
+        CancellationToken cancellationToken)
+    {
+        var items = new List<LibrarySourceLinkItem>();
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT
+                l.id, l.library_id, l.indexer_id, i.name, l.priority, l.required_tags, l.excluded_tags, l.created_utc, l.updated_utc
+            FROM library_source_links l
+            INNER JOIN indexer_sources i ON i.id = l.indexer_id
+            WHERE l.library_id = @libraryId
+            ORDER BY l.priority ASC, i.name ASC;
+            """;
+
+        AddParameter(command, "@libraryId", libraryId);
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            items.Add(new LibrarySourceLinkItem(
+                Id: reader.GetString(0),
+                LibraryId: reader.GetString(1),
+                IndexerId: reader.GetString(2),
+                IndexerName: reader.GetString(3),
+                Priority: reader.GetInt32(4),
+                RequiredTags: reader.GetString(5),
+                ExcludedTags: reader.GetString(6),
+                CreatedUtc: ParseTimestamp(reader.GetString(7)),
+                UpdatedUtc: ParseTimestamp(reader.GetString(8))));
+        }
+
+        return items;
+    }
+
+    private static async Task<IReadOnlyList<LibraryDownloadClientLinkItem>> ReadLibraryDownloadClientLinksAsync(
+        System.Data.Common.DbConnection connection,
+        string libraryId,
+        CancellationToken cancellationToken)
+    {
+        var items = new List<LibraryDownloadClientLinkItem>();
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT
+                l.id, l.library_id, l.download_client_id, d.name, l.priority, l.created_utc, l.updated_utc
+            FROM library_download_client_links l
+            INNER JOIN download_clients d ON d.id = l.download_client_id
+            WHERE l.library_id = @libraryId
+            ORDER BY l.priority ASC, d.name ASC;
+            """;
+
+        AddParameter(command, "@libraryId", libraryId);
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            items.Add(new LibraryDownloadClientLinkItem(
+                Id: reader.GetString(0),
+                LibraryId: reader.GetString(1),
+                DownloadClientId: reader.GetString(2),
+                DownloadClientName: reader.GetString(3),
+                Priority: reader.GetInt32(4),
+                CreatedUtc: ParseTimestamp(reader.GetString(5)),
+                UpdatedUtc: ParseTimestamp(reader.GetString(6))));
+        }
+
+        return items;
     }
 
     private static void AddParameter(System.Data.Common.DbCommand command, string name, object? value)

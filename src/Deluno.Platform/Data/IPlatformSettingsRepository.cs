@@ -33,6 +33,19 @@ public interface IPlatformSettingsRepository
         CreateIndexerRequest request,
         CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<DownloadClientItem>> ListDownloadClientsAsync(CancellationToken cancellationToken);
+
+    Task<DownloadClientItem> CreateDownloadClientAsync(
+        CreateDownloadClientRequest request,
+        CancellationToken cancellationToken);
+
+    Task<LibraryRoutingSnapshot?> GetLibraryRoutingAsync(string libraryId, CancellationToken cancellationToken);
+
+    Task<LibraryRoutingSnapshot?> SaveLibraryRoutingAsync(
+        string libraryId,
+        UpdateLibraryRoutingRequest request,
+        CancellationToken cancellationToken);
+
     Task<IndexerTestResult?> UpdateIndexerHealthAsync(
         string id,
         string healthStatus,
@@ -44,4 +57,6 @@ public interface IPlatformSettingsRepository
     Task<bool> DeleteConnectionAsync(string id, CancellationToken cancellationToken);
 
     Task<bool> DeleteIndexerAsync(string id, CancellationToken cancellationToken);
+
+    Task<bool> DeleteDownloadClientAsync(string id, CancellationToken cancellationToken);
 }

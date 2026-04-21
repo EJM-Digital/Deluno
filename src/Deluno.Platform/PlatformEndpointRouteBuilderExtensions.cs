@@ -158,6 +158,63 @@ public static class PlatformEndpointRouteBuilderExtensions
             return result is null ? Results.NotFound() : Results.Ok(result);
         });
 
+        var downloadClients = endpoints.MapGroup("/api/download-clients");
+
+        downloadClients.MapGet(string.Empty, async (IPlatformSettingsRepository repository, CancellationToken cancellationToken) =>
+        {
+            var items = await repository.ListDownloadClientsAsync(cancellationToken);
+            return Results.Ok(items);
+        });
+
+        downloadClients.MapPost(string.Empty, async (
+            CreateDownloadClientRequest request,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var errors = ValidateDownloadClient(request);
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            var item = await repository.CreateDownloadClientAsync(request, cancellationToken);
+            return Results.Ok(item);
+        });
+
+        downloadClients.MapDelete("{id}", async (
+            string id,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var removed = await repository.DeleteDownloadClientAsync(id, cancellationToken);
+            return removed ? Results.NoContent() : Results.NotFound();
+        });
+
+        endpoints.MapGet("/api/libraries/{id}/routing", async (
+            string id,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var routing = await repository.GetLibraryRoutingAsync(id, cancellationToken);
+            return routing is null ? Results.NotFound() : Results.Ok(routing);
+        });
+
+        endpoints.MapPut("/api/libraries/{id}/routing", async (
+            string id,
+            UpdateLibraryRoutingRequest request,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var errors = ValidateLibraryRouting(request);
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            var routing = await repository.SaveLibraryRoutingAsync(id, request, cancellationToken);
+            return routing is null ? Results.NotFound() : Results.Ok(routing);
+        });
+
         connections.MapGet(string.Empty, async (IPlatformSettingsRepository repository, CancellationToken cancellationToken) =>
         {
             var items = await repository.ListConnectionsAsync(cancellationToken);
@@ -198,6 +255,43 @@ public static class PlatformEndpointRouteBuilderExtensions
         if (string.IsNullOrWhiteSpace(request.AppInstanceName))
         {
             errors["appInstanceName"] = ["A library name is required."];
+        }
+
+        return errors;
+    }
+
+    private static Dictionary<string, string[]> ValidateDownloadClient(CreateDownloadClientRequest request)
+    {
+        var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+
+        if (string.IsNullOrWhiteSpace(request.Name))
+        {
+            errors["name"] = ["Give this download client a name."];
+        }
+
+        return errors;
+    }
+
+    private static Dictionary<string, string[]> ValidateLibraryRouting(UpdateLibraryRoutingRequest request)
+    {
+        var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var source in request.Sources ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(source.IndexerId))
+            {
+                errors["sources"] = ["Choose a source before saving library routing."];
+                break;
+            }
+        }
+
+        foreach (var client in request.DownloadClients ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(client.DownloadClientId))
+            {
+                errors["downloadClients"] = ["Choose a download client before saving library routing."];
+                break;
+            }
         }
 
         return errors;
