@@ -139,10 +139,10 @@ Start with a modular monolith, not distributed microservices.
 That means:
 
 - one deployable backend
-- one database
+- one logical application
 - one worker process type
 - clear internal module boundaries
-- separate queues and schemas per domain
+- separate queues and data stores per domain
 
 Why:
 
@@ -271,71 +271,89 @@ This prevents interference and allows different retry, priority, and rate-limit 
 
 ## Data Model
 
-Use PostgreSQL for the main production recommendation.
+Use SQLite as the only core database technology for Deluno.
 
-SQLite can work for local/dev or a small self-hosted MVP, but PostgreSQL is the better long-term default because of concurrency, indexing flexibility, and operational headroom.
+For Windows and Docker home users, the best product is one that does not require a separate database server. Because SQLite allows many readers but only one writer per database file, Deluno should use multiple SQLite database files with strict ownership boundaries instead of one shared database.
 
-## Schema Strategy
+## Database Layout
 
-Use three schema groups:
+Use these database files:
 
-- `platform`
-- `movies`
-- `series`
+- `platform.db`
+- `movies.db`
+- `series.db`
+- `jobs.db`
+- `cache.db`
 
-This makes ownership explicit and reduces accidental coupling.
+This makes ownership explicit, reduces write contention, and reinforces the movie/series isolation model.
 
-## Core Platform Tables
+## Platform Tables
 
-- `platform.users`
-- `platform.roles`
-- `platform.user_preferences`
-- `platform.api_keys`
-- `platform.notifications`
-- `platform.audit_log`
-- `platform.system_settings`
-- `platform.indexer_configs`
-- `platform.download_client_configs`
-- `platform.metadata_provider_configs`
-- `platform.job_runs`
-- `platform.webhooks`
+Store these in `platform.db`:
+
+- users
+- roles
+- user preferences
+- API keys
+- notifications
+- audit log
+- system settings
+- indexer configs
+- download client configs
+- metadata provider configs
+- webhooks
 
 ## Movie Tables
 
-- `movies.items`
-- `movies.external_ids`
-- `movies.images`
-- `movies.monitoring_state`
-- `movies.library_files`
-- `movies.release_candidates`
-- `movies.grab_history`
-- `movies.import_history`
-- `movies.quality_profiles`
-- `movies.custom_formats`
-- `movies.naming_profiles`
-- `movies.tags`
-- `movies.item_tag_links`
-- `movies.manual_review_queue`
+Store these in `movies.db`:
+
+- items
+- external IDs
+- images
+- monitoring state
+- library files
+- release candidates
+- grab history
+- import history
+- quality profiles
+- custom formats
+- naming profiles
+- tags
+- item tag links
+- manual review queue
 
 ## Series Tables
 
-- `series.shows`
-- `series.external_ids`
-- `series.seasons`
-- `series.episodes`
-- `series.episode_orderings`
-- `series.images`
-- `series.monitoring_state`
-- `series.episode_files`
-- `series.release_candidates`
-- `series.grab_history`
-- `series.import_history`
-- `series.quality_profiles`
-- `series.custom_formats`
-- `series.naming_profiles`
-- `series.tags`
-- `series.show_tag_links`
-- `series.manual_review_queue`
+Store these in `series.db`:
+
+- shows
+- external IDs
+- seasons
+- episodes
+- episode orderings
+- images
+- monitoring state
+- episode files
+- release candidates
+- grab history
+- import history
+- quality profiles
+- custom formats
+- naming profiles
+- tags
+- show tag links
+- manual review queue
+
+## Job Tables
+
+Store these in `jobs.db`:
+
+- scheduled jobs
+- job runs
+- job leases
+- job attempts
+- dead letters
+- worker heartbeats
 
 ## Identity Model
 
@@ -606,23 +624,24 @@ Every automated action should be explainable in the UI.
 
 One strong implementation path:
 
-- Backend: .NET or Go
-- API: ASP.NET Core or Go HTTP stack
-- Database: PostgreSQL
-- Cache: Redis only if needed after MVP
-- Workers: same codebase, separate worker process mode
+- Backend: ASP.NET Core 10
+- API: ASP.NET Core HTTP API
+- Storage: SQLite with multiple DB files
+- Data access: Dapper for hot paths, limited EF Core where helpful
+- Realtime: SignalR
+- Workers: same codebase, separate worker process mode if needed
 - Frontend: React with TypeScript
-- Search index: PostgreSQL full-text at first, dedicated search engine later if needed
-- Packaging: Docker for server deployment
+- Search: SQLite indexes and application-level composition first, dedicated search engine only if the real product demands it later
+- Packaging: self-contained Windows build and single-container Docker deployment
 
 Why this stack:
 
 - strong concurrency and filesystem tooling on the backend
-- easy self-hosting story
+- excellent Windows packaging story
+- simple Docker story for home users
+- no required companion services
 - good typed contracts
-- straightforward ops for a serious but still approachable self-hosted app
-
-If prioritizing speed over raw performance, TypeScript full-stack is possible, but the import and background processing layers will need extra care.
+- straightforward ops for self-hosting
 
 ## MVP Scope
 

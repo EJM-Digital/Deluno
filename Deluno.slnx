@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Deluno.Api/Deluno.Api.csproj" />
+    <Project Path="src/Deluno.Contracts/Deluno.Contracts.csproj" />
+    <Project Path="src/Deluno.Filesystem/Deluno.Filesystem.csproj" />
+    <Project Path="src/Deluno.Host/Deluno.Host.csproj" />
+    <Project Path="src/Deluno.Infrastructure/Deluno.Infrastructure.csproj" />
+    <Project Path="src/Deluno.Integrations/Deluno.Integrations.csproj" />
+    <Project Path="src/Deluno.Jobs/Deluno.Jobs.csproj" />
+    <Project Path="src/Deluno.Movies/Deluno.Movies.csproj" />
+    <Project Path="src/Deluno.Platform/Deluno.Platform.csproj" />
+    <Project Path="src/Deluno.Realtime/Deluno.Realtime.csproj" />
+    <Project Path="src/Deluno.Series/Deluno.Series.csproj" />
+    <Project Path="src/Deluno.Worker/Deluno.Worker.csproj" />
+  </Folder>
+</Solution>

@@ -1,14 +1,13 @@
 {
-  "name": "deluno",
-  "version": "0.1.0",
+  "name": "deluno-monorepo",
   "private": true,
-  "type": "module",
-  "description": "Unified media automation app with isolated movie and series engines.",
   "workspaces": [
-    "apps/*",
-    "packages/*"
+    "apps/web"
   ],
   "scripts": {
-    "start:api": "node apps/api/src/server.js"
+    "dev:web": "npm --workspace apps/web run dev",
+    "build:web": "npm --workspace apps/web run build",
+    "preview:web": "npm --workspace apps/web run preview"
   }
 }
+

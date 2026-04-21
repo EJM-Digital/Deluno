@@ -1,63 +1,95 @@
 # Deluno
 
-Deluno is a clean-room media automation project aimed at delivering one app with two isolated engines:
+Deluno is a clean-room media automation app built to deliver one product with fully separated movie and series engines.
 
-- `Movies`
-- `Series`
+The architecture is now locked to:
 
-The product goal is to feel unified for users while preserving strict internal separation so movie and TV logic cannot interfere with each other.
+- `Frontend`: React 19 + React Router v7 + Vite + TypeScript
+- `Backend`: ASP.NET Core 10
+- `Storage`: SQLite only, split into multiple database files
+- `Realtime`: SignalR
+- `Workers`: durable hosted background workers
 
-## Current Focus
+## Core Principles
 
-Right now the project is being built for speed, validation, and clean architecture:
+- one app for users
+- hard module boundaries internally
+- no shared movie/series business rules
+- Windows-first and Docker-first packaging
+- no required companion database service
 
-- no monetization yet
-- no dependency on copying Radarr or Sonarr code
-- metadata providers abstracted from day one
-- self-hosted first
-- future commercialization kept possible, but not blocking progress
+## Repo Layout
 
-## Repo Shape
+- `apps/web`: React frontend shell
+- `src/Deluno.Host`: ASP.NET Core host and composition root
+- `src/Deluno.Api`: HTTP endpoints
+- `src/Deluno.Worker`: worker registration and background services
+- `src/Deluno.Contracts`: shared contracts and system manifest
+- `src/Deluno.Platform`: platform module
+- `src/Deluno.Movies`: movie module
+- `src/Deluno.Series`: series module
+- `src/Deluno.Jobs`: jobs module
+- `src/Deluno.Integrations`: provider and client abstractions
+- `src/Deluno.Realtime`: SignalR hub wiring
+- `src/Deluno.Filesystem`: filesystem policies and services
+- `src/Deluno.Infrastructure`: storage and runtime infrastructure
+- `docs`: architecture and strategy docs
 
-- `apps/api`: minimal runnable backend shell
-- `apps/web`: frontend placeholder and future UI app
-- `docs`: product, architecture, and execution docs
-- `packages/platform`: app-level shared concerns only
-- `packages/movies`: movie-only domain logic
-- `packages/series`: series-only domain logic
-- `packages/integrations`: metadata/indexer/download client abstractions
+## Current State
 
-## Why This Shape
+The architecture is now running end-to-end:
 
-We want a fast start without creating future cleanup work.
+- the ASP.NET Core host serves the bundled React frontend
+- the storage bootstrap creates `platform.db`, `movies.db`, `series.db`, `jobs.db`, and `cache.db`
+- the movies and series modules each own their own schema and `add/list` API surface
+- the first UI slice can add and list movies and series against the live backend
 
-That means:
+## Local Development
 
-- one repo
-- one app shell
-- isolated media domains
-- provider abstraction now, not later
-- no shared movie/series business logic
+### Prerequisites
 
-## Commands
+- Node.js with `npm`
+- the repo-local .NET SDK in `.dotnet/`
 
-Run the API shell:
+### Install frontend dependencies
 
-```bash
-node apps/api/src/server.js
+```powershell
+npm.cmd install
 ```
 
-Then open:
+### Build the frontend bundle
 
-- `http://localhost:4000/health`
-- `http://localhost:4000/api`
-- `http://localhost:4000/api/domains`
-- `http://localhost:4000/api/providers`
+```powershell
+npm.cmd run build:web
+```
 
-## Next Build Steps
+### Build the backend
 
-1. Add persistent storage and migrations.
-2. Implement metadata provider adapters.
-3. Ship a movie vertical slice end to end.
-4. Ship a series vertical slice end to end.
-5. Add a real web UI shell.
+```powershell
+.\.dotnet\dotnet.exe build .\Deluno.slnx
+```
+
+### Run the single Deluno host
+
+```powershell
+.\.dotnet\dotnet.exe run --project src/Deluno.Host/Deluno.Host.csproj --urls http://127.0.0.1:5099
+```
+
+Open `http://127.0.0.1:5099`.
+
+### Optional frontend-only dev server
+
+Run the backend first on `http://127.0.0.1:5099`, then in another shell:
+
+```powershell
+npm.cmd run dev --workspace apps/web
+```
+
+The Vite dev server proxies `/api` and `/hubs` to the backend host.
+
+## Next Steps
+
+1. Add module-owned settings and root-folder configuration in `platform.db`.
+2. Introduce durable job records in `jobs.db` for search/import pipelines.
+3. Expand the movie and series schemas toward monitored-state, profiles, and history.
+4. Replace the placeholder activity/settings pages with live data.

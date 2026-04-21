@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Deluno.Host</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Deluno.Api\Deluno.Api.csproj" />
+    <ProjectReference Include="..\Deluno.Contracts\Deluno.Contracts.csproj" />
+    <ProjectReference Include="..\Deluno.Filesystem\Deluno.Filesystem.csproj" />
+    <ProjectReference Include="..\Deluno.Infrastructure\Deluno.Infrastructure.csproj" />
+    <ProjectReference Include="..\Deluno.Integrations\Deluno.Integrations.csproj" />
+    <ProjectReference Include="..\Deluno.Jobs\Deluno.Jobs.csproj" />
+    <ProjectReference Include="..\Deluno.Movies\Deluno.Movies.csproj" />
+    <ProjectReference Include="..\Deluno.Platform\Deluno.Platform.csproj" />
+    <ProjectReference Include="..\Deluno.Realtime\Deluno.Realtime.csproj" />
+    <ProjectReference Include="..\Deluno.Series\Deluno.Series.csproj" />
+    <ProjectReference Include="..\Deluno.Worker\Deluno.Worker.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="Exists('..\..\apps\web\dist')">
+    <Content Include="..\..\apps\web\dist\**\*">
+      <Link>wwwroot\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+</Project>
