@@ -40,6 +40,27 @@ export function DashboardPage() {
           databases, real endpoints, and durable workers behind the shell.
         </p>
       </header>
+      <div className="hero-grid">
+        <article className="hero-card hero-card-feature">
+          <p className="hero-kicker">Unified surface</p>
+          <h3>Automation that feels curated, not bolted together.</h3>
+          <p>
+            Deluno keeps movies and series isolated under the hood while giving
+            home users one polished control room on top.
+          </p>
+        </article>
+        <article className="hero-card">
+          <p className="hero-kicker">Storage fabric</p>
+          <div className="manifest-grid">
+            {manifest.databases.map((database) => (
+              <div key={database.key} className="manifest-row">
+                <strong>{database.fileName}</strong>
+                <span>{database.purpose}</span>
+              </div>
+            ))}
+          </div>
+        </article>
+      </div>
       <div className="stat-grid">
         <article className="stat-card">
           <p className="stat-label">Movies tracked</p>

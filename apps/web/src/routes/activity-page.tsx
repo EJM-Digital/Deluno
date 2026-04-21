@@ -42,6 +42,23 @@ export function ActivityPage() {
           and completion events here.
         </p>
       </header>
+      <div className="hero-grid hero-grid-tight">
+        <article className="hero-card hero-card-feature">
+          <p className="hero-kicker">Operations ledger</p>
+          <h3>{jobs.length} recent jobs tracked.</h3>
+          <p>
+            This page revalidates automatically every few seconds so the queue
+            feels alive while Deluno works in the background.
+          </p>
+        </article>
+        <article className="hero-card">
+          <p className="hero-kicker">Activity feed</p>
+          <div className="manifest-row">
+            <strong>{activity.length} events</strong>
+            <span>Queue, start, completion, and failure records from `jobs.db`.</span>
+          </div>
+        </article>
+      </div>
       <div className="workspace-grid">
         <article className="card">
           <div className="section-heading">

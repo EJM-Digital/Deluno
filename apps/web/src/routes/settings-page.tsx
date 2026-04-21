@@ -68,6 +68,23 @@ export function SettingsPage() {
           operational defaults shared by the movie and series engines.
         </p>
       </header>
+      <div className="hero-grid hero-grid-tight">
+        <article className="hero-card hero-card-feature">
+          <p className="hero-kicker">Platform fabric</p>
+          <h3>{settings.appInstanceName}</h3>
+          <p>
+            This layer decides where Deluno writes, where it watches, and
+            whether background work starts automatically.
+          </p>
+        </article>
+        <article className="hero-card">
+          <p className="hero-kicker">Last updated</p>
+          <div className="manifest-row">
+            <strong>{new Date(settings.updatedUtc).toLocaleString()}</strong>
+            <span>Current platform snapshot from `platform.db`.</span>
+          </div>
+        </article>
+      </div>
       <article className="card">
         <Form method="post" className="entry-form">
           <div className="form-grid">

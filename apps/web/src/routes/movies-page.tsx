@@ -64,6 +64,23 @@ export function MoviesPage() {
           here shares operational state with series.
         </p>
       </header>
+      <div className="hero-grid hero-grid-tight">
+        <article className="hero-card hero-card-feature">
+          <p className="hero-kicker">Film engine</p>
+          <h3>{movies.length} titles under management.</h3>
+          <p>
+            Add films here and Deluno handles them through a movie-only pipeline
+            with no TV crossover or shared state.
+          </p>
+        </article>
+        <article className="hero-card">
+          <p className="hero-kicker">Storage boundary</p>
+          <div className="manifest-row">
+            <strong>movies.db</strong>
+            <span>Catalog, monitoring state, and import records for films only.</span>
+          </div>
+        </article>
+      </div>
       <div className="workspace-grid">
         <article className="card">
           <h3>Add movie</h3>
@@ -117,7 +134,9 @@ export function MoviesPage() {
                   </div>
                   <div className="meta-row">
                     <span>{movie.imdbId ?? "No IMDb ID yet"}</span>
-                    <span>{movie.monitored ? "Monitored" : "Unmonitored"}</span>
+                    <span className={movie.monitored ? "status-tag status-tag-armed" : "status-tag"}>
+                      {movie.monitored ? "Monitored" : "Unmonitored"}
+                    </span>
                   </div>
                 </article>
               ))}

@@ -65,6 +65,23 @@ export function SeriesPage() {
           engine.
         </p>
       </header>
+      <div className="hero-grid hero-grid-tight">
+        <article className="hero-card hero-card-feature">
+          <p className="hero-kicker">Series engine</p>
+          <h3>{items.length} shows under management.</h3>
+          <p>
+            This workspace is reserved for episodic flows, alternate orderings,
+            packs, and the messy realities of television metadata.
+          </p>
+        </article>
+        <article className="hero-card">
+          <p className="hero-kicker">Storage boundary</p>
+          <div className="manifest-row">
+            <strong>series.db</strong>
+            <span>Shows, seasons, episodes, and monitoring state stay isolated here.</span>
+          </div>
+        </article>
+      </div>
       <div className="workspace-grid">
         <article className="card">
           <h3>Add series</h3>
@@ -118,7 +135,9 @@ export function SeriesPage() {
                   </div>
                   <div className="meta-row">
                     <span>{item.imdbId ?? "No IMDb ID yet"}</span>
-                    <span>{item.monitored ? "Monitored" : "Unmonitored"}</span>
+                    <span className={item.monitored ? "status-tag status-tag-armed" : "status-tag"}>
+                      {item.monitored ? "Monitored" : "Unmonitored"}
+                    </span>
                   </div>
                 </article>
               ))}
