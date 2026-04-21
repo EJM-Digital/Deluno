@@ -41,6 +41,24 @@ public sealed class SeriesSchemaInitializer(
                 detected_utc TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS series_wanted_state (
+                series_id TEXT PRIMARY KEY,
+                library_id TEXT NOT NULL,
+                wanted_status TEXT NOT NULL,
+                wanted_reason TEXT NOT NULL,
+                has_file INTEGER NOT NULL DEFAULT 0,
+                quality_cutoff_met INTEGER NOT NULL DEFAULT 0,
+                missing_since_utc TEXT NULL,
+                last_search_utc TEXT NULL,
+                next_eligible_search_utc TEXT NULL,
+                last_search_result TEXT NULL,
+                updated_utc TEXT NOT NULL,
+                FOREIGN KEY (series_id) REFERENCES series_entries(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS ix_series_wanted_state_library_status
+                ON series_wanted_state (library_id, wanted_status, next_eligible_search_utc);
+
             CREATE TABLE IF NOT EXISTS season_entries (
                 id TEXT PRIMARY KEY,
                 series_id TEXT NOT NULL,

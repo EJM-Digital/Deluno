@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
+using Deluno.Platform.Data;
 using Deluno.Series.Contracts;
 using Deluno.Series.Data;
 using Microsoft.AspNetCore.Builder;
@@ -24,6 +25,12 @@ public static class SeriesEndpointRouteBuilderExtensions
         series.MapGet("/import-recovery", async (ISeriesCatalogRepository repository, CancellationToken cancellationToken) =>
         {
             var summary = await repository.GetImportRecoverySummaryAsync(cancellationToken);
+            return Results.Ok(summary);
+        });
+
+        series.MapGet("/wanted", async (ISeriesCatalogRepository repository, CancellationToken cancellationToken) =>
+        {
+            var summary = await repository.GetWantedSummaryAsync(cancellationToken);
             return Results.Ok(summary);
         });
 
@@ -60,6 +67,7 @@ public static class SeriesEndpointRouteBuilderExtensions
         series.MapPost("/", async (
             CreateSeriesRequest request,
             ISeriesCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
             IJobScheduler jobScheduler,
             CancellationToken cancellationToken) =>
         {
@@ -70,6 +78,17 @@ public static class SeriesEndpointRouteBuilderExtensions
             }
 
             var item = await repository.AddAsync(request, cancellationToken);
+            var libraries = await platformSettingsRepository.ListLibrariesAsync(cancellationToken);
+            foreach (var library in libraries.Where(entry => entry.MediaType == "tv"))
+            {
+                await repository.EnsureWantedStateAsync(
+                    item.Id,
+                    library.Id,
+                    "missing",
+                    "Deluno is still looking for this TV show.",
+                    cancellationToken);
+            }
+
             await jobScheduler.EnqueueAsync(
                 new EnqueueJobRequest(
                     JobType: "series.catalog.refresh",

@@ -3,6 +3,7 @@ using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
+using Deluno.Platform.Data;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -24,6 +25,12 @@ public static class MoviesEndpointRouteBuilderExtensions
         movies.MapGet("/import-recovery", async (IMovieCatalogRepository repository, CancellationToken cancellationToken) =>
         {
             var summary = await repository.GetImportRecoverySummaryAsync(cancellationToken);
+            return Results.Ok(summary);
+        });
+
+        movies.MapGet("/wanted", async (IMovieCatalogRepository repository, CancellationToken cancellationToken) =>
+        {
+            var summary = await repository.GetWantedSummaryAsync(cancellationToken);
             return Results.Ok(summary);
         });
 
@@ -60,6 +67,7 @@ public static class MoviesEndpointRouteBuilderExtensions
         movies.MapPost("/", async (
             CreateMovieRequest request,
             IMovieCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
             IJobScheduler jobScheduler,
             CancellationToken cancellationToken) =>
         {
@@ -70,6 +78,17 @@ public static class MoviesEndpointRouteBuilderExtensions
             }
 
             var movie = await repository.AddAsync(request, cancellationToken);
+            var libraries = await platformSettingsRepository.ListLibrariesAsync(cancellationToken);
+            foreach (var library in libraries.Where(item => item.MediaType == "movies"))
+            {
+                await repository.EnsureWantedStateAsync(
+                    movie.Id,
+                    library.Id,
+                    "missing",
+                    "Deluno is still looking for this movie.",
+                    cancellationToken);
+            }
+
             await jobScheduler.EnqueueAsync(
                 new EnqueueJobRequest(
                     JobType: "movies.catalog.refresh",
