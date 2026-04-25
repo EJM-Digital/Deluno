@@ -209,47 +209,10 @@ export function SettingsShell({
         <SettingsStep step="C" title="Automation" copy="Enable lists, schedules, and UI defaults once policy is correct." />
       </div>
 
-      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(260px,0.28fr)_minmax(0,1fr)] 2xl:grid-cols-[minmax(300px,0.22fr)_minmax(0,1fr)]">
-        <aside className="hidden xl:block">
-          <nav className="sticky top-[calc(var(--content-pad-block)+104px)] overflow-hidden rounded-2xl border border-hairline/80 bg-card/88 p-3 shadow-card dark:border-white/[0.07] dark:bg-white/[0.035]">
-            <span
-              aria-hidden
-              className="pointer-events-none absolute inset-x-5 top-0 h-px rounded-full"
-              style={{ background: "linear-gradient(90deg, transparent, hsl(var(--primary)/0.45), hsl(var(--primary-2)/0.3), transparent)" }}
-            />
-            <div className="space-y-4">
-              {settingsNavGroups.map((group) => (
-                <div key={group.label}>
-                  <p className="px-3 pb-2 text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">
-                    {group.label}
-                  </p>
-                  <div className="space-y-1">
-                    {group.items.map((item) => (
-                      <SettingsNavLink key={item.to} item={item} />
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </nav>
-        </aside>
+      <SectionSubnav groups={settingsNavGroups} />
 
-        <div className="min-w-0 space-y-[var(--page-gap)]">
-          <div className="no-scrollbar overflow-x-auto xl:hidden">
-            <nav className="relative flex min-w-max items-center gap-1 overflow-hidden rounded-2xl border border-hairline/80 bg-card/85 p-2 shadow-card dark:border-white/[0.07] dark:bg-white/[0.035]">
-              {settingsNavGroups.map((group, groupIndex) => (
-                <div key={group.label} className="flex items-center gap-1">
-                  {groupIndex > 0 ? <div className="mx-1.5 h-6 w-px bg-hairline/80" aria-hidden /> : null}
-                  {group.items.map((item) => (
-                    <SettingsNavLink key={item.to} item={item} compact />
-                  ))}
-                </div>
-              ))}
-            </nav>
-          </div>
-
-          {children}
-        </div>
+      <div className="min-w-0 space-y-[var(--page-gap)]">
+        {children}
       </div>
     </div>
   );
@@ -314,6 +277,27 @@ function SettingsNavLink({
   );
 }
 
+function SectionSubnav({
+  groups
+}: {
+  groups: typeof settingsNavGroups | readonly { label: string; items: readonly (typeof systemNavItems)[number][] }[];
+}) {
+  return (
+    <div className="no-scrollbar overflow-x-auto">
+      <nav className="flex min-w-max items-center gap-1 rounded-2xl border border-hairline/80 bg-card/85 p-2 shadow-card dark:border-white/[0.07] dark:bg-white/[0.035]">
+        {groups.map((group, groupIndex) => (
+          <div key={group.label} className="flex items-center gap-1">
+            {groupIndex > 0 ? <div className="mx-1.5 h-6 w-px bg-hairline/80" aria-hidden /> : null}
+            {group.items.map((item) => (
+              <SettingsNavLink key={item.to} item={item} compact />
+            ))}
+          </div>
+        ))}
+      </nav>
+    </div>
+  );
+}
+
 export function SystemShell({
   title,
   description,
@@ -343,13 +327,7 @@ export function SystemShell({
         </p>
       </div>
 
-      <div className="no-scrollbar overflow-x-auto">
-        <nav className="flex min-w-max items-center gap-2 rounded-2xl border border-hairline/80 bg-card/85 p-2 shadow-card dark:border-white/[0.07] dark:bg-white/[0.035]">
-          {systemNavItems.map((item) => (
-            <SettingsNavLink key={item.to} item={item} compact />
-          ))}
-        </nav>
-      </div>
+      <SectionSubnav groups={[{ label: "System", items: systemNavItems }]} />
 
       {children}
     </div>
