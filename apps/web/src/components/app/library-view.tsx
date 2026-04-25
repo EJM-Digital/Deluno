@@ -1362,7 +1362,7 @@ function ProgressiveGrid({
         key={keyBust}
         className="stagger grid gap-[var(--library-grid-gap)] transition-[grid-template-columns] duration-200"
         style={{
-          gridTemplateColumns: `repeat(auto-fit, minmax(${GRID_MIN_BY_DENSITY[density][cardSize]}, 1fr))`
+          gridTemplateColumns: `repeat(auto-fill, minmax(${GRID_MIN_BY_DENSITY[density][cardSize]}, 1fr))`
         }}
       >
         {slice.map((item) => (

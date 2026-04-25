@@ -1521,7 +1521,7 @@ html .text-\[64px\] {
 
 .dashboard-poster-grid {
   gap: var(--library-grid-gap);
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--dashboard-poster-min)), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--dashboard-poster-min)), 1fr));
 }
 
 .density-nowrap {
