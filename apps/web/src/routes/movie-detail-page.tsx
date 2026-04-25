@@ -326,7 +326,7 @@ export function MovieDetailPage() {
         />
       ) : null}
 
-      <div className="grid gap-[var(--grid-gap)] md:grid-cols-2 xl:grid-cols-4">
+      <div className="fluid-kpi-grid">
         <KpiCard
           label="Wanted state"
           value={wantedItem ? formatWantedStatus(wantedItem.wantedStatus) : "Tracked"}

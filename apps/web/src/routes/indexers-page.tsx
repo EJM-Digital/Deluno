@@ -1255,7 +1255,7 @@ export function IndexersPage() {
       </div>
 
       {/* KPI row */}
-      <Stagger className="grid gap-[var(--grid-gap)] sm:grid-cols-2 xl:grid-cols-4">
+      <Stagger className="fluid-kpi-grid">
         <StaggerItem><KpiCard label="Indexers" value={String(indexers.length)} icon={RadioTower} meta="Configured search providers" sparkline={[8,9,9,10,11,12,12,13,14,14,15,15,16,16,17]} /></StaggerItem>
         <StaggerItem><KpiCard label="Healthy" value={String(healthyIndexers)} icon={BadgeCheck} meta="Providers reporting ready" delta={unhealthyCount > 0 ? { value: `${unhealthyCount} alert`, tone: "down" } : undefined} sparkline={[18,20,19,21,23,24,24,25,26,25,27,28,28,29,29]} /></StaggerItem>
         <StaggerItem><KpiCard label="Routing links" value={String(linkedSources + linkedClients)} icon={Route} meta="Library → provider links" sparkline={[3,4,4,5,6,7,6,7,8,9,8,9,10,10,11]} /></StaggerItem>

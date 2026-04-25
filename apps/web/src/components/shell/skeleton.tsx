@@ -71,13 +71,13 @@ export function RouteSkeleton() {
         <Skeleton className="h-3 w-1/2 max-w-md" />
       </div>
 
-      <div className="grid gap-[var(--grid-gap)] md:grid-cols-2 xl:grid-cols-4">
+      <div className="fluid-kpi-grid">
         {Array.from({ length: 4 }).map((_, i) => (
           <CardSkeleton key={`route-card-${i}`} />
         ))}
       </div>
 
-      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.95fr)] 2xl:grid-cols-[minmax(0,1.55fr)_minmax(420px,0.75fr)]">
+      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.45fr)_minmax(min(100%,var(--hero-stat-panel-min)),0.85fr)] 2xl:grid-cols-[minmax(0,1.65fr)_minmax(min(100%,calc(var(--hero-stat-panel-min)+40px)),0.7fr)]">
         <div className="space-y-3 rounded-2xl border border-hairline bg-card p-5 dark:border-white/[0.06]">
           <Skeleton className="h-4 w-1/3" />
           <Skeleton className="h-3 w-1/2" />
@@ -98,7 +98,7 @@ export function RouteSkeleton() {
 export function LibraryGridSkeleton({ count = 18 }: { count?: number }) {
   return (
     <div
-      className="grid gap-[var(--library-grid-gap)] sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6"
+      className="dashboard-poster-grid"
       aria-busy="true"
       aria-live="polite"
     >

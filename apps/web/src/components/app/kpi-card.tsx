@@ -42,7 +42,7 @@ export function KpiCard({
   return (
     <div
       className={cn(
-        "group relative flex h-full flex-col overflow-hidden rounded-2xl border bg-card",
+        "group relative flex h-full min-w-0 flex-col overflow-hidden rounded-2xl border bg-card",
         accent
           ? "border-primary/20 dark:border-primary/15 shadow-[0_0_0_1px_hsl(var(--primary)/0.08),var(--shadow-card)]"
           : "border-hairline shadow-card"
@@ -58,13 +58,13 @@ export function KpiCard({
         )}
       />
 
-      <div className="flex flex-1 flex-col px-[var(--tile-pad)] py-[var(--tile-pad)]">
+      <div className="flex min-w-0 flex-1 flex-col px-[var(--tile-pad)] py-[var(--tile-pad)]">
         {/* Label + icon row */}
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-start justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             <span
               className={cn(
-                "flex h-7 w-7 items-center justify-center rounded-lg",
+                "flex h-[calc(var(--control-height-icon)*0.78)] w-[calc(var(--control-height-icon)*0.78)] shrink-0 items-center justify-center rounded-lg",
                 accent
                   ? "bg-primary/10 text-primary dark:bg-primary/15"
                   : "bg-muted/60 text-muted-foreground"
@@ -72,14 +72,14 @@ export function KpiCard({
             >
               <Icon className="h-3.5 w-3.5" />
             </span>
-            <span className="text-[length:var(--metric-label-size)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+            <span className="density-nowrap text-[length:var(--metric-label-size)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
               {label}
             </span>
           </div>
           {delta ? (
             <span
               className={cn(
-                "rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular",
+                "shrink-0 rounded-md px-1.5 py-0.5 text-[length:var(--type-micro)] font-semibold tabular",
                 delta.tone === "up"
                   ? "bg-success/12 text-success dark:bg-success/15"
                   : "bg-destructive/10 text-destructive dark:bg-destructive/12"
@@ -91,10 +91,10 @@ export function KpiCard({
         </div>
 
         {/* Hero number */}
-        <div className="mt-4 flex items-end gap-1.5">
+        <div className="mt-4 flex min-w-0 items-end gap-1.5">
           <span
             className={cn(
-              "font-bold leading-none tracking-display tabular",
+              "density-nowrap font-bold leading-none tracking-display tabular",
               "text-[length:var(--metric-value-size)]",
               accent ? "text-primary" : "text-foreground"
             )}
@@ -102,12 +102,12 @@ export function KpiCard({
             {value}
           </span>
           {unit ? (
-            <span className="mb-0.5 text-[length:var(--metric-unit-size)] font-medium text-muted-foreground">{unit}</span>
+            <span className="mb-0.5 shrink-0 text-[length:var(--metric-unit-size)] font-medium text-muted-foreground">{unit}</span>
           ) : null}
         </div>
 
         {/* Supporting text */}
-        <p className="mt-2.5 text-[length:var(--metric-meta-size)] leading-relaxed text-muted-foreground">{meta}</p>
+        <p className="density-nowrap mt-2.5 text-[length:var(--metric-meta-size)] leading-relaxed text-muted-foreground">{meta}</p>
 
         {/* Area sparkline */}
         <div className="mt-auto pt-4">

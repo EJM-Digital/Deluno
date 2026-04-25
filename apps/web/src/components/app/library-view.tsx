@@ -173,10 +173,10 @@ function resolveInitialDisplayOptions(variant: Variant): DisplayOptions {
 }
 
 const GRID_MIN_BY_DENSITY: Record<Density, Record<CardSize, string>> = {
-  compact: { sm: "108px", md: "148px", lg: "208px" },
-  comfortable: { sm: "118px", md: "162px", lg: "228px" },
-  spacious: { sm: "128px", md: "178px", lg: "252px" },
-  expanded: { sm: "136px", md: "190px", lg: "272px" }
+  compact: { sm: "112px", md: "150px", lg: "210px" },
+  comfortable: { sm: "126px", md: "172px", lg: "238px" },
+  spacious: { sm: "144px", md: "196px", lg: "270px" },
+  expanded: { sm: "160px", md: "218px", lg: "304px" }
 };
 
 const TITLE_CLASS_BY_DENSITY: Record<Density, Record<CardSize, string>> = {

@@ -152,7 +152,7 @@ export function CalendarPage() {
         </div>
       </div>
 
-      <Stagger className="grid gap-[var(--grid-gap)] md:grid-cols-2 xl:grid-cols-4">
+      <Stagger className="fluid-kpi-grid">
         <StaggerItem>
           <KpiCard
             label="This week"

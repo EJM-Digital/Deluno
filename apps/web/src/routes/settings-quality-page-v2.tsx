@@ -42,7 +42,7 @@ export function SettingsQualityPage() {
       title="Quality"
       description="Quality is Deluno's raw acceptance layer: cutoffs, allowed ladders, and upgrade posture that profiles assign to libraries."
     >
-      <div className="grid gap-[var(--grid-gap)] md:grid-cols-2 xl:grid-cols-4">
+      <div className="fluid-kpi-grid">
         <KpiCard
           label="Profiles"
           value={String(qualityProfiles.length)}

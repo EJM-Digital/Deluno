@@ -202,7 +202,7 @@ export function SettingsPolicySetsPage() {
       title="Policy Sets"
       description="Combine quality profiles, custom formats, and destination rules into reusable policies that keep Deluno single-install and easier to reason about."
     >
-      <div className="grid gap-[var(--grid-gap)] md:grid-cols-2 xl:grid-cols-4">
+      <div className="fluid-kpi-grid">
         <KpiCard
           label="Policy sets"
           value={String(policySets.length)}

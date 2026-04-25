@@ -87,7 +87,7 @@ export function PageHero({
         className={cn(
           "relative grid gap-[var(--grid-gap)]",
           stats && stats.length > 0
-            ? "xl:grid-cols-[minmax(0,1.65fr)_minmax(360px,0.95fr)] 2xl:grid-cols-[minmax(0,1.85fr)_minmax(420px,0.8fr)]"
+            ? "hero-layout-with-stats"
             : "",
           size === "sm" ? "p-[var(--tile-pad)] md:p-[calc(var(--tile-pad)*1.15)]" : "p-[calc(var(--tile-pad)*1.1)] md:p-[calc(var(--tile-pad)*1.35)] lg:p-[calc(var(--tile-pad)*1.5)]"
         )}
@@ -126,12 +126,12 @@ export function PageHero({
             ) : null}
           </div>
 
-          {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+          {actions ? <div className="flex min-w-0 flex-wrap items-center gap-2">{actions}</div> : null}
         </div>
 
         {stats && stats.length > 0 ? (
           <div className="relative flex flex-col justify-center rounded-2xl border border-hairline bg-card/60 p-[calc(var(--tile-pad)*0.8)] backdrop-blur-md dark:border-white/[0.08] dark:bg-white/[0.03]">
-            <div className="grid grid-cols-2 gap-[calc(var(--grid-gap)*0.75)]">
+            <div className="hero-stat-grid">
               {stats.map((stat, i) => (
                 <HeroStatTile key={i} {...stat} />
               ))}
@@ -153,13 +153,13 @@ function HeroStatTile({ label, value, tone = "neutral" }: PageHeroStat) {
   }[tone];
 
   return (
-    <div className="rounded-xl border border-hairline bg-muted/30 px-3 py-2.5 dark:border-white/[0.05] dark:bg-white/[0.02]">
-      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground/70">
+    <div className="min-w-0 rounded-xl border border-hairline bg-muted/30 px-[calc(var(--tile-pad)*0.55)] py-[calc(var(--tile-pad)*0.42)] dark:border-white/[0.05] dark:bg-white/[0.02]">
+      <p className="density-nowrap text-[length:var(--type-micro)] font-bold uppercase tracking-[0.16em] text-muted-foreground/70">
         {label}
       </p>
       <p
         className={cn(
-          "mt-0.5 tabular font-display text-2xl font-bold leading-tight tracking-display",
+          "density-nowrap mt-0.5 tabular font-display text-[length:var(--type-title-md)] font-bold leading-tight tracking-display",
           valueClass
         )}
       >
@@ -223,10 +223,10 @@ export function StatChip({
       )}
     >
       {icon}
-      <span className="text-[11px] font-semibold uppercase tracking-wide opacity-75">
+      <span className="density-nowrap text-[length:var(--type-micro)] font-semibold uppercase tracking-wide opacity-75">
         {label}
       </span>
-      <span className="tabular text-[12.5px] font-bold">{value}</span>
+      <span className="density-nowrap tabular text-[length:var(--type-caption)] font-bold">{value}</span>
     </div>
   );
 }

@@ -238,7 +238,7 @@ export function SystemPage() {
       description="Runtime health, background jobs, diagnostics, and the full audit timeline for this Deluno instance."
     >
       {/* KPI row */}
-      <div className="grid gap-[var(--grid-gap)] md:grid-cols-2 xl:grid-cols-4">
+      <div className="fluid-kpi-grid">
         <KpiCard
           label="Active jobs"
           value={String(liveActiveJobs)}

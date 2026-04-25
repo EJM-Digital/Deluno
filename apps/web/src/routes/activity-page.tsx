@@ -190,7 +190,7 @@ export function ActivityPage() {
       />
 
       {/* ═══════ SUMMARY RAIL ═══════ */}
-      <Stagger className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <Stagger className="fluid-kpi-grid">
         <StaggerItem className="h-full">
           <PulseMetric
             icon={Workflow}
@@ -511,7 +511,7 @@ function PulseMetric({
   return (
     <div
       className={cn(
-        "relative overflow-hidden rounded-2xl border px-[calc(var(--tile-pad)*0.8)] py-[calc(var(--tile-pad)*0.8)] shadow-card transition-all",
+        "relative min-w-0 overflow-hidden rounded-2xl border px-[calc(var(--tile-pad)*0.8)] py-[calc(var(--tile-pad)*0.8)] shadow-card transition-all",
         "before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px",
         "before:bg-gradient-to-r before:from-transparent before:via-hairline before:to-transparent",
         tones
@@ -522,18 +522,18 @@ function PulseMetric({
           <Icon className="h-4 w-4" />
         </div>
       </div>
-      <p className="mt-3 text-[length:var(--metric-label-size)] font-bold uppercase tracking-[0.16em] text-muted-foreground/70">
+      <p className="density-nowrap mt-3 text-[length:var(--metric-label-size)] font-bold uppercase tracking-[0.16em] text-muted-foreground/70">
         {label}
       </p>
       <p
         className={cn(
-          "mt-0.5 tabular font-display text-[calc(var(--metric-unit-size)+0.65rem)] font-bold tracking-display",
+          "density-nowrap mt-0.5 tabular font-display text-[length:var(--type-title-lg)] font-bold tracking-display",
           valueColor
         )}
       >
         {value}
       </p>
-      <p className="mt-0.5 text-[length:var(--metric-meta-size)] text-muted-foreground">{sub}</p>
+      <p className="density-nowrap mt-0.5 text-[length:var(--metric-meta-size)] text-muted-foreground">{sub}</p>
     </div>
   );
 }

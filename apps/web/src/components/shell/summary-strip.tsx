@@ -25,8 +25,8 @@ export function SummaryStrip({
     <div
       role="list"
       className={cn(
-        "flex gap-3 overflow-x-auto snap-x snap-mandatory px-0 no-scrollbar scroll-fade-x",
-        "md:grid md:grid-cols-[repeat(auto-fit,minmax(180px,1fr))] md:overflow-visible md:snap-none",
+        "summary-strip-grid overflow-x-auto snap-x snap-mandatory px-0 no-scrollbar scroll-fade-x",
+        "md:overflow-visible md:snap-none",
         className
       )}
     >
@@ -53,24 +53,24 @@ function SummaryTileCard({ tile }: { tile: SummaryTile }) {
   const body = (
     <div
       className={cn(
-        "relative flex min-w-[180px] snap-start flex-col gap-1.5 rounded-2xl border bg-card p-3.5 text-left transition-colors",
+        "relative flex min-w-[var(--summary-tile-min)] snap-start flex-col gap-1.5 rounded-2xl border bg-card p-[calc(var(--tile-pad)*0.72)] text-left transition-colors md:min-w-0",
         borderTone,
         (tile.to || tile.onClick) &&
           "hover:bg-card-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       )}
     >
-      <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-        <span className="inline-flex items-center gap-2">
+      <div className="flex min-w-0 items-center justify-between gap-2 text-[length:var(--type-caption)] text-muted-foreground">
+        <span className="inline-flex min-w-0 items-center gap-2">
           {Icon ? <Icon className="h-3.5 w-3.5" /> : null}
-          <span className="uppercase tracking-[0.12em]">{tile.label}</span>
+          <span className="density-nowrap uppercase tracking-[0.12em]">{tile.label}</span>
         </span>
         {tile.severity ? <AttentionDot severity={tile.severity} /> : null}
       </div>
-      <p className="tabular font-display text-2xl font-semibold text-foreground leading-tight">
+      <p className="density-nowrap tabular font-display text-[length:var(--type-title-md)] font-semibold text-foreground leading-tight">
         {tile.value}
       </p>
       {tile.hint ? (
-        <p className="text-xs text-muted-foreground">{tile.hint}</p>
+        <p className="density-nowrap text-[length:var(--type-caption)] text-muted-foreground">{tile.hint}</p>
       ) : null}
     </div>
   );

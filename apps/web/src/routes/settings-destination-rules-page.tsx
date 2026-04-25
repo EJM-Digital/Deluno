@@ -243,7 +243,7 @@ export function SettingsDestinationRulesPage() {
       title="Destination Rules"
       description="Route titles into the right root folders without splitting Deluno into multiple installs. Rules are reusable and explainable."
     >
-      <div className="grid gap-[var(--grid-gap)] md:grid-cols-2 xl:grid-cols-4">
+      <div className="fluid-kpi-grid">
         <KpiCard
           label="Rules"
           value={String(destinationRules.length)}

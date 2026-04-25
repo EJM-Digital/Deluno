@@ -230,8 +230,8 @@ function DesktopSidebar({
   }
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-50 hidden w-[var(--sidebar-width)] border-r border-hairline/80 bg-sidebar/95 px-5 py-6 lg:flex lg:flex-col">
-      <NavLink to="/" aria-label="Deluno home" className="flex min-h-[76px] items-center gap-3 rounded-2xl border border-hairline/80 bg-card/75 px-3 text-foreground shadow-card no-underline dark:border-white/[0.07] dark:bg-white/[0.035]">
+    <aside className="fixed inset-y-0 left-0 z-50 hidden w-[var(--sidebar-width)] border-r border-hairline/80 bg-sidebar/95 px-[calc(var(--tile-pad)*0.8)] py-[calc(var(--tile-pad)*1.15)] lg:flex lg:flex-col">
+      <NavLink to="/" aria-label="Deluno home" className="flex min-h-[calc(var(--shell-pill-height)*1.8)] items-center gap-3 rounded-2xl border border-hairline/80 bg-card/75 px-[calc(var(--tile-pad)*0.65)] text-foreground shadow-card no-underline dark:border-white/[0.07] dark:bg-white/[0.035]">
         <AppMark size={42} />
         <span className="min-w-0">
           <span className="block truncate font-display text-[length:var(--shell-brand-size)] font-bold tracking-[-0.04em]">Deluno</span>
@@ -241,7 +241,7 @@ function DesktopSidebar({
 
       <div className="my-5 h-px bg-hairline/80" />
 
-      <nav aria-label="Primary navigation" className="space-y-1.5">
+      <nav aria-label="Primary navigation" className="space-y-[calc(var(--shell-nav-gap)*0.7)]">
         {primaryNav.map((item) => (
           <SidebarItem
             key={item.to}
@@ -253,7 +253,7 @@ function DesktopSidebar({
 
       <div className="my-5 h-px bg-hairline/80" />
 
-      <nav aria-label="Controls" className="space-y-1.5">
+      <nav aria-label="Controls" className="space-y-[calc(var(--shell-nav-gap)*0.7)]">
         {utilityNav.map((item) => (
           <SidebarItem key={`${item.label}-${item.to}`} item={item} count={0} />
         ))}
@@ -261,28 +261,28 @@ function DesktopSidebar({
 
       <div className="min-h-6 flex-1" />
 
-      <div className="rounded-2xl border border-hairline/80 bg-card/75 p-4 shadow-card dark:border-white/[0.07] dark:bg-white/[0.035]">
+      <div className="rounded-2xl border border-hairline/80 bg-card/75 p-[calc(var(--tile-pad)*0.8)] shadow-card dark:border-white/[0.07] dark:bg-white/[0.035]">
         <div className="flex items-center gap-2">
           <span className="h-2 w-2 rounded-full bg-success shadow-[0_0_12px_hsl(var(--success)/0.8)]" />
-          <span className="text-sm font-semibold text-foreground">All systems normal</span>
+          <span className="density-nowrap text-[length:var(--type-body-sm)] font-semibold text-foreground">All systems normal</span>
         </div>
         <p className="mt-2 text-[length:var(--shell-subtle-size)] text-muted-foreground">
           4 active downloads
         </p>
-        <p className="mt-1 font-mono text-lg font-semibold text-primary">82.3 MB/s</p>
+        <p className="density-nowrap mt-1 font-mono text-[length:var(--type-body-lg)] font-semibold text-primary">82.3 MB/s</p>
       </div>
 
       <div className="group relative z-50 mt-3">
         <button
           type="button"
-          className="flex w-full items-center gap-3 rounded-2xl border border-hairline/80 bg-card/75 px-3 py-2.5 text-left transition hover:border-primary/30 hover:bg-muted/30 dark:border-white/[0.07] dark:bg-white/[0.035]"
+          className="flex min-h-[var(--shell-pill-height)] w-full items-center gap-3 rounded-2xl border border-hairline/80 bg-card/75 px-[calc(var(--tile-pad)*0.65)] text-left transition hover:border-primary/30 hover:bg-muted/30 dark:border-white/[0.07] dark:bg-white/[0.035]"
         >
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-[hsl(var(--primary-2))] text-sm font-bold text-primary-foreground">
+          <span className="flex h-[var(--shell-avatar-size)] w-[var(--shell-avatar-size)] shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-[hsl(var(--primary-2))] text-[length:var(--type-body-sm)] font-bold text-primary-foreground">
             {user?.avatarInitials ?? "DU"}
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-semibold text-foreground">{user?.displayName ?? "User"}</span>
-            <span className="block truncate text-xs text-muted-foreground">@{user?.username ?? "deluno"}</span>
+            <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{user?.displayName ?? "User"}</span>
+            <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">@{user?.username ?? "deluno"}</span>
           </span>
           <ChevronDown className="h-4 w-4 text-muted-foreground" />
         </button>
@@ -401,7 +401,7 @@ function SidebarItem({
       end={item.end}
       className={({ isActive }) =>
         cn(
-          "group relative flex min-h-[48px] items-center gap-3 rounded-2xl px-3 text-[length:var(--shell-nav-size)] font-semibold transition-all duration-200",
+          "group relative flex min-h-[var(--shell-pill-height)] items-center gap-3 rounded-2xl px-[var(--shell-nav-pad-x)] text-[length:var(--shell-nav-size)] font-semibold transition-all duration-200",
           isActive
             ? "bg-primary/14 text-foreground shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.18)]"
             : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
@@ -410,13 +410,13 @@ function SidebarItem({
     >
       {({ isActive }) => (
         <>
-          <span className={cn("absolute left-0 h-7 w-[3px] rounded-full", isActive ? "bg-primary" : "bg-transparent")} />
-          <span className={cn("flex h-8 w-8 items-center justify-center rounded-xl transition", isActive ? "bg-primary/18 text-primary" : "bg-muted/30 text-muted-foreground group-hover:text-foreground")}>
+          <span className={cn("absolute left-0 h-[calc(var(--shell-pill-height)*0.58)] w-[3px] rounded-full", isActive ? "bg-primary" : "bg-transparent")} />
+          <span className={cn("flex h-[calc(var(--shell-pill-height)*0.68)] w-[calc(var(--shell-pill-height)*0.68)] shrink-0 items-center justify-center rounded-xl transition", isActive ? "bg-primary/18 text-primary" : "bg-muted/30 text-muted-foreground group-hover:text-foreground")}>
             <Icon className="h-[var(--shell-icon-size)] w-[var(--shell-icon-size)]" strokeWidth={isActive ? 2.15 : 1.8} />
           </span>
           <span className="min-w-0 flex-1 truncate">{item.label}</span>
           {count > 0 ? (
-            <span className={cn("flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 font-mono text-[10px] font-bold", isActive ? "bg-primary text-primary-foreground" : "bg-surface-2 text-muted-foreground")}>
+            <span className={cn("flex h-[calc(var(--shell-pill-height)*0.42)] min-w-[calc(var(--shell-pill-height)*0.42)] shrink-0 items-center justify-center rounded-full px-1.5 font-mono text-[length:var(--shell-nav-badge-size)] font-bold", isActive ? "bg-primary text-primary-foreground" : "bg-surface-2 text-muted-foreground")}>
               {count}
             </span>
           ) : null}

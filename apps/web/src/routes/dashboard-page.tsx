@@ -127,7 +127,7 @@ export function DashboardPage() {
     <div className="space-y-[var(--page-gap)]">
       <OnboardingBanner state={data.onboarding} />
 
-      <section className="grid gap-[var(--grid-gap)] md:grid-cols-2 xl:grid-cols-5">
+      <section className="dashboard-metric-grid">
         <MetricPlane
           label="Library"
           value={data.totalCount.toLocaleString()}
@@ -224,7 +224,7 @@ export function DashboardPage() {
               </Link>
             }
           />
-          <div className="grid gap-[var(--library-grid-gap)] grid-cols-[repeat(auto-fill,minmax(118px,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(132px,1fr))] 2xl:grid-cols-[repeat(auto-fill,minmax(148px,1fr))]">
+          <div className="dashboard-poster-grid">
             {data.recentlyAdded.slice(0, 12).map((item) => (
               <PosterPreview key={`${item.type}-${item.id}`} item={item} />
             ))}
@@ -325,18 +325,18 @@ function MetricPlane({
   return (
     <article
       className={cn(
-        "group relative min-h-[148px] overflow-hidden rounded-2xl border border-hairline bg-card p-[var(--tile-pad)] shadow-card",
+        "group relative min-h-[var(--metric-plane-min-height)] min-w-0 overflow-hidden rounded-2xl border border-hairline bg-card p-[var(--tile-pad)] shadow-card",
         "transition duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg dark:border-white/[0.06]",
-        wide && "xl:col-span-1 2xl:col-span-1"
+        wide && "xl:col-span-2 2xl:col-span-2"
       )}
     >
       <AmbientTone tone={tone} />
       <div className="relative flex h-full flex-col justify-between">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-[length:var(--metric-label-size)] font-bold uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
-            <div className="mt-3 flex items-end gap-1.5">
-              <span className="tabular font-display text-[length:var(--metric-value-size)] font-bold leading-none tracking-display text-foreground">
+        <div className="flex min-w-0 items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="density-nowrap text-[length:var(--metric-label-size)] font-bold uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
+            <div className="mt-3 flex min-w-0 items-end gap-1.5">
+              <span className="density-nowrap tabular font-display text-[length:var(--metric-value-size)] font-bold leading-none tracking-display text-foreground">
                 {value}
               </span>
               {unit ? <span className="pb-1 text-[length:var(--metric-unit-size)] font-semibold text-muted-foreground">{unit}</span> : null}

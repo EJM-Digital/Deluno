@@ -372,7 +372,7 @@ export function QueuePage() {
         }
       />
 
-      <Stagger className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <Stagger className="fluid-kpi-grid">
         <StaggerItem>
           <MetricTile icon={Download} label="Connected clients" value={`${activeClients}/${telemetry.clients.length}`} sub="ready endpoints" tone="primary" />
         </StaggerItem>
@@ -1054,16 +1054,16 @@ function MetricTile({
     neutral: "text-muted-foreground bg-muted/30 border-hairline"
   }[tone];
   return (
-    <div className="h-full rounded-2xl border border-hairline bg-card p-[calc(var(--tile-pad)*0.75)] shadow-card">
-      <div className={cn("flex h-9 w-9 items-center justify-center rounded-xl border", toneClass)}>
+    <div className="h-full min-w-0 rounded-2xl border border-hairline bg-card p-[calc(var(--tile-pad)*0.75)] shadow-card">
+      <div className={cn("flex h-[calc(var(--control-height-icon)*0.82)] w-[calc(var(--control-height-icon)*0.82)] items-center justify-center rounded-xl border", toneClass)}>
         <Icon className="h-4 w-4" />
       </div>
-      <p className="mt-4 text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
-      <p className="mt-1 tabular font-display text-3xl font-semibold tracking-display text-foreground">
+      <p className="density-nowrap mt-4 text-[length:var(--metric-label-size)] font-bold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
+      <p className="density-nowrap mt-1 tabular font-display text-[length:var(--type-title-lg)] font-semibold tracking-display text-foreground">
         {value}
         {unit ? <span className="ml-1 text-sm font-semibold text-muted-foreground">{unit}</span> : null}
       </p>
-      <p className="mt-1 text-[12px] text-muted-foreground">{sub}</p>
+      <p className="density-nowrap mt-1 text-[length:var(--metric-meta-size)] text-muted-foreground">{sub}</p>
     </div>
   );
 }

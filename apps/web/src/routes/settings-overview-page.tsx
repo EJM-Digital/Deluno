@@ -313,7 +313,7 @@ export function SettingsOverviewPage() {
       description="Deluno identity, libraries, automation, and quality policy in one workspace while the deeper settings areas expand into their own routes."
     >
 
-      <div className="grid gap-[var(--grid-gap)] md:grid-cols-2 xl:grid-cols-4">
+      <div className="fluid-kpi-grid">
         <KpiCard
           label="Libraries"
           value={String(libraries.length)}
@@ -603,7 +603,7 @@ export function SettingsOverviewPage() {
                       {library.mediaType === "tv" ? "TV" : "Movies"}
                     </Badge>
                   </div>
-                  <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <div className="fluid-field-grid mt-3">
                     <Field label="Profile">
                       <select
                         value={library.qualityProfileId ?? ""}
