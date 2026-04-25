@@ -33,6 +33,7 @@ import {
   type UpdateStatusResponse
 } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
+import { densityDisplayName } from "../lib/use-density";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { PathInput } from "../components/ui/path-input";
@@ -143,7 +144,7 @@ export function SystemPage() {
         <HealthRow label="Bind address" status={`${settings.hostBindAddress}:${settings.hostPort}`} />
         <HealthRow label="URL base" status={settings.urlBase || "/"} />
         <HealthRow label="Authentication" status="Required" />
-        <HealthRow label="UI defaults" status={`${settings.uiTheme} / ${settings.uiDensity}`} />
+        <HealthRow label="UI defaults" status={`${settings.uiTheme} / ${densityDisplayName(settings.uiDensity)}`} />
       </CardContent>
     </Card>
   );
@@ -302,7 +303,7 @@ export function SystemPage() {
               <HealthRow label="Bind address" status={`${settings.hostBindAddress}:${settings.hostPort}`} />
               <HealthRow label="URL base" status={settings.urlBase || "/"} />
               <HealthRow label="Authentication" status="Required" />
-              <HealthRow label="UI defaults" status={`${settings.uiTheme} · ${settings.uiDensity}`} />
+              <HealthRow label="UI defaults" status={`${settings.uiTheme} · ${densityDisplayName(settings.uiDensity)}`} />
             </CardContent>
           </Card>
 

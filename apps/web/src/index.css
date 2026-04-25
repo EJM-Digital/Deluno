@@ -1207,6 +1207,166 @@
   }
 
 /*
+  Density v2 normalization.
+  Keep the current persisted values for compatibility:
+  compact = Compact, comfortable = Balanced, spacious = Comfortable,
+  expanded = Cinematic.
+
+  The important change is that component tokens now derive from two global
+  scalars instead of each density redefining dozens of unrelated values.
+*/
+html {
+  font-size: 16px;
+  --density-scale: 1;
+  --font-scale: 1;
+
+  --row-height: calc(52px * var(--density-scale));
+  --data-row-py: calc(10px * var(--density-scale));
+  --data-cell-px: calc(16px * var(--density-scale));
+
+  --card-pad-x: calc(20px * var(--density-scale));
+  --card-pad-y: calc(16px * var(--density-scale));
+  --tile-pad: calc(20px * var(--density-scale));
+  --page-gap: calc(20px * var(--density-scale));
+  --grid-gap: calc(16px * var(--density-scale));
+  --library-grid-gap: calc(14px * var(--density-scale));
+
+  --control-height: calc(40px * var(--density-scale));
+  --control-height-sm: calc(34px * var(--density-scale));
+  --control-height-lg: calc(46px * var(--density-scale));
+  --control-height-icon: calc(38px * var(--density-scale));
+  --button-font-size: calc(13.5px * var(--font-scale));
+  --button-font-size-sm: calc(13px * var(--font-scale));
+
+  --field-pad-x: calc(12px * var(--density-scale));
+  --field-group-pad: calc(16px * var(--density-scale));
+  --field-label-size: calc(11px * var(--font-scale));
+  --field-help-size: calc(14px * var(--font-scale));
+  --field-control-size: calc(14px * var(--font-scale));
+  --field-label-gap: calc(9px * var(--density-scale));
+
+  --type-micro: calc(11px * var(--font-scale));
+  --type-caption: calc(12px * var(--font-scale));
+  --type-body-sm: calc(14px * var(--font-scale));
+  --type-body: calc(15px * var(--font-scale));
+  --type-body-lg: calc(16px * var(--font-scale));
+  --type-card-title: calc(16px * var(--font-scale));
+  --type-title-sm: calc(20px * var(--font-scale));
+  --type-title-md: calc(26px * var(--font-scale));
+  --type-title-lg: clamp(calc(32px * var(--font-scale)), calc(2.2vw * var(--font-scale)), calc(42px * var(--font-scale)));
+  --type-title-xl: clamp(calc(40px * var(--font-scale)), calc(3vw * var(--font-scale)), calc(56px * var(--font-scale)));
+  --type-display: clamp(calc(48px * var(--font-scale)), calc(4vw * var(--font-scale)), calc(72px * var(--font-scale)));
+
+  --metric-value-size: calc(48px * var(--font-scale));
+  --metric-unit-size: calc(18px * var(--font-scale));
+  --metric-meta-size: calc(12px * var(--font-scale));
+  --metric-label-size: calc(11px * var(--font-scale));
+  --metric-plane-min-height: calc(148px * var(--density-scale));
+
+  --poster-rail-width: calc(156px * var(--density-scale));
+  --library-card-sm: calc(126px * var(--density-scale));
+  --library-card-md: calc(176px * var(--density-scale));
+  --library-card-lg: calc(244px * var(--density-scale));
+  --library-title-sm: calc(13px * var(--font-scale));
+  --library-title-md: calc(15px * var(--font-scale));
+  --library-title-lg: calc(17px * var(--font-scale));
+  --library-meta-size: calc(13px * var(--font-scale));
+  --library-badge-size: calc(11px * var(--font-scale));
+  --library-toolbar-size: calc(14px * var(--font-scale));
+  --library-toolbar-height: calc(40px * var(--density-scale));
+  --library-table-min-width: calc(980px * var(--density-scale));
+
+  --content-max-width: calc(2040px * var(--density-scale));
+  --sidebar-width: calc(280px * var(--density-scale));
+  --content-outer-gap: clamp(calc(10px * var(--density-scale)), 1.2vw, calc(24px * var(--density-scale)));
+  --content-pad-inline: clamp(calc(12px * var(--density-scale)), 1.35vw, calc(28px * var(--density-scale)));
+  --content-pad-block: clamp(calc(16px * var(--density-scale)), 1.5vw, calc(30px * var(--density-scale)));
+
+  --dashboard-metric-min: calc(210px * var(--density-scale));
+  --summary-tile-min: calc(190px * var(--density-scale));
+  --hero-stat-min: calc(180px * var(--density-scale));
+  --hero-stat-panel-min: calc(380px * var(--density-scale));
+  --kpi-card-min: calc(230px * var(--density-scale));
+  --dashboard-poster-min: calc(138px * var(--density-scale));
+
+  --shell-brand-size: calc(16px * var(--font-scale));
+  --shell-subtle-size: calc(12.5px * var(--font-scale));
+  --shell-nav-size: calc(14px * var(--font-scale));
+  --shell-nav-badge-size: calc(9.5px * var(--font-scale));
+  --shell-pill-height: calc(42px * var(--density-scale));
+  --shell-nav-pad-x: calc(15px * var(--density-scale));
+  --shell-nav-gap: calc(8px * var(--density-scale));
+  --shell-action-gap: calc(4px * var(--density-scale));
+  --shell-avatar-size: calc(26px * var(--density-scale));
+  --shell-divider-height: calc(17px * var(--density-scale));
+  --shell-kbd-size: calc(9px * var(--font-scale));
+  --shell-nav-radius: calc(12px * var(--density-scale));
+  --shell-top-row-height: calc(46px * var(--density-scale));
+  --shell-nav-row-height: calc(58px * var(--density-scale));
+  --shell-mobile-row-height: calc(46px * var(--density-scale));
+  --shell-icon-button-size: calc(34px * var(--density-scale));
+  --shell-icon-size: calc(15px * var(--density-scale));
+  --shell-icon-size-sm: calc(14px * var(--density-scale));
+
+  --settings-nav-size: calc(14px * var(--font-scale));
+  --settings-nav-pad-y: calc(8px * var(--density-scale));
+  --settings-nav-pad-x: calc(12px * var(--density-scale));
+  --section-eyebrow-size: calc(11px * var(--font-scale));
+  --section-subtitle-size: calc(14px * var(--font-scale));
+}
+
+html[data-density="compact"] {
+  --density-scale: 0.84;
+  --font-scale: 0.88;
+  --content-max-width: calc(1840px * var(--density-scale));
+  --sidebar-width: calc(276px * var(--density-scale));
+}
+
+html[data-density="comfortable"] {
+  --density-scale: 1;
+  --font-scale: 1;
+}
+
+html[data-density="spacious"] {
+  --density-scale: 1.12;
+  --font-scale: 1.12;
+}
+
+html[data-density="expanded"] {
+  --density-scale: 1.22;
+  --font-scale: 1.22;
+  --content-max-width: calc(2180px * var(--density-scale));
+}
+
+@media (max-width: 1180px) {
+  html {
+    --sidebar-width: calc(84px * var(--density-scale));
+    --content-max-width: 100vw;
+  }
+}
+
+@media (max-width: 720px) {
+  html {
+    --content-outer-gap: calc(10px * var(--density-scale));
+    --content-pad-inline: calc(14px * var(--density-scale));
+    --content-pad-block: calc(16px * var(--density-scale));
+    --library-card-sm: calc(142px * var(--density-scale));
+    --library-card-md: calc(158px * var(--density-scale));
+    --library-card-lg: calc(174px * var(--density-scale));
+    --library-toolbar-height: max(44px, calc(40px * var(--density-scale)));
+    --control-height: max(42px, calc(40px * var(--density-scale)));
+    --control-height-icon: max(42px, calc(38px * var(--density-scale)));
+    --shell-pill-height: max(42px, calc(42px * var(--density-scale)));
+  }
+
+  html[data-density="spacious"],
+  html[data-density="expanded"] {
+    --density-scale: 1.12;
+    --font-scale: 1.12;
+  }
+}
+
+/*
   Typography normalization.
   The app still contains legacy Tailwind text utilities and arbitrary pixel
   classes from earlier UI passes. Density should not preserve every tiny

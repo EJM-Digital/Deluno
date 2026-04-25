@@ -7,7 +7,7 @@ import { Button } from "../components/ui/button";
 import { SaveStatus, useSaveStatus } from "../components/shell/save-status";
 import { toast } from "../components/shell/toaster";
 import { settingsOverviewLoader } from "./settings-overview-page";
-import { useDensity, type Density } from "../lib/use-density";
+import { densityDisplayName, isDensity, useDensity, type Density } from "../lib/use-density";
 import {
   emptyPlatformSettingsSnapshot,
   type LibraryItem,
@@ -31,25 +31,25 @@ const densityOptions: Array<{
   {
     value: "compact",
     label: "Compact",
-    description: "Smaller type, tighter lists, and maximum information density for laptops and power-user workflows.",
+    description: "Tighter spacing and smaller type for laptops or dense power-user workflows.",
     icon: Rows3
   },
   {
     value: "comfortable",
-    label: "Comfortable",
-    description: "Balanced type and spacing for most setups and mixed browsing plus operations work.",
+    label: "Balanced",
+    description: "The default posture: readable, efficient, and suitable for most screens.",
     icon: LayoutGrid
   },
   {
     value: "spacious",
-    label: "Spacious",
-    description: "Larger type, wider canvas, and bigger controls for 27-inch desktop monitors and 1440p setups.",
+    label: "Comfortable",
+    description: "Larger typography, controls, cards, and canvas for desktop monitors.",
     icon: PanelTop
   },
   {
     value: "expanded",
-    label: "Expanded",
-    description: "The largest type and most aggressive screen usage for 1440p, ultrawide, and long viewing sessions.",
+    label: "Cinematic",
+    description: "The most screen-filling mode for 1440p, ultrawide, and living-room distance.",
     icon: Monitor
   }
 ];
@@ -64,12 +64,7 @@ export function SettingsUiPage() {
   const { density, setDensity } = useDensity();
 
   useEffect(() => {
-    if (
-      formState.uiDensity === "compact" ||
-      formState.uiDensity === "comfortable" ||
-      formState.uiDensity === "spacious" ||
-      formState.uiDensity === "expanded"
-    ) {
+    if (isDensity(formState.uiDensity)) {
       if (density !== formState.uiDensity) setDensity(formState.uiDensity as Density);
     }
   }, [formState.uiDensity, density, setDensity]);
@@ -202,7 +197,7 @@ export function SettingsUiPage() {
             </CardHeader>
             <CardContent className="space-y-[calc(var(--field-group-pad)*0.7)]">
               <StatRow label="Theme" value={settings.uiTheme} />
-              <StatRow label="Density" value={settings.uiDensity} />
+              <StatRow label="Density" value={densityDisplayName(settings.uiDensity)} />
               <StatRow label="Movies view" value={settings.defaultMovieView} />
               <StatRow label="TV view" value={settings.defaultShowView} />
             </CardContent>
@@ -219,20 +214,20 @@ export function SettingsUiPage() {
               <PreviewRow title="Compact">
                 Tighter tables, smaller controls, and less padding for maximum information on-screen.
               </PreviewRow>
-              <PreviewRow title="Comfortable">
+              <PreviewRow title="Balanced">
                 Balanced spacing for general use across mixed monitor sizes.
               </PreviewRow>
-              <PreviewRow title="Spacious">
+              <PreviewRow title="Comfortable">
                 More breathing room, larger controls, and a wider workspace for bigger monitors where the interface can feel cramped.
               </PreviewRow>
-              <PreviewRow title="Expanded">
+              <PreviewRow title="Cinematic">
                 The most screen-filling preset. Best when you want Deluno to feel larger and more commanding on 1440p or ultrawide displays.
               </PreviewRow>
               <div className="density-field rounded-xl border border-hairline bg-surface-1">
                 <p className="density-label uppercase tracking-[0.18em] text-muted-foreground">Recommended</p>
                 <p className="density-help mt-2 text-foreground">
-                  If Deluno feels too small on a 27-inch 1440p monitor, start with <span className="font-medium">Spacious</span>.
-                  If you still want it to claim more of the screen, use <span className="font-medium">Expanded</span>.
+                  If Deluno feels too small on a 27-inch 1440p monitor, start with <span className="font-medium">Comfortable</span>.
+                  If you still want it to claim more of the screen, use <span className="font-medium">Cinematic</span>.
                 </p>
               </div>
           </CardContent>

@@ -1,13 +1,9 @@
 /**
- * Display density mode — compact / comfortable / spacious.
+ * Display density mode.
  *
- * Controls row heights, card padding, and data-table tightness. The
- * mode is stored in localStorage and reflected on `<html data-density>`
- * so CSS (in index.css) can react globally without prop drilling.
- *
- * Usage:
- *   const { density, setDensity } = useDensity();
- *   <DensityProvider>…</DensityProvider>   // once at the app root
+ * Persisted values stay backward-compatible with existing installs:
+ * compact = Compact, comfortable = Balanced, spacious = Comfortable,
+ * expanded = Cinematic.
  */
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
@@ -16,6 +12,21 @@ export type Density = "compact" | "comfortable" | "spacious" | "expanded";
 
 const STORAGE_KEY = "deluno-density";
 const DEFAULT: Density = "comfortable";
+
+export const DENSITY_LABELS: Record<Density, string> = {
+  compact: "Compact",
+  comfortable: "Balanced",
+  spacious: "Comfortable",
+  expanded: "Cinematic"
+};
+
+export function isDensity(value: unknown): value is Density {
+  return value === "compact" || value === "comfortable" || value === "spacious" || value === "expanded";
+}
+
+export function densityDisplayName(value: string | null | undefined) {
+  return isDensity(value) ? DENSITY_LABELS[value] : DENSITY_LABELS[DEFAULT];
+}
 
 interface DensityContextValue {
   density: Density;
@@ -28,7 +39,7 @@ function readStored(): Density {
   if (typeof window === "undefined") return DEFAULT;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw === "compact" || raw === "comfortable" || raw === "spacious" || raw === "expanded") return raw;
+    if (isDensity(raw)) return raw;
   } catch {
     /* noop */
   }
@@ -62,7 +73,7 @@ export function useDensity() {
     return {
       density: DEFAULT,
       setDensity: () => {
-        /* noop — provider missing */
+        /* noop: provider missing */
       }
     } as DensityContextValue;
   }
