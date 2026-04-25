@@ -148,10 +148,10 @@ function AppLayoutContent() {
         <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} theme={resolvedTheme} onToggleTheme={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")} />
         <KeyboardHintOverlay open={helpOpen} onOpenChange={setHelpOpen} shortcuts={globalShortcuts.map((s) => ({ keys: s.keys, label: s.label, group: s.group }))} />
 
-        <div className="min-h-dvh lg:grid lg:grid-cols-[var(--sidebar-width)_minmax(0,1fr)]">
+        <div className="min-h-dvh">
           <DesktopSidebar attention={attention} user={user} onLogout={logout} />
 
-          <div className="min-w-0 pb-mobile-tabbar lg:pb-0">
+          <div className="min-w-0 pb-mobile-tabbar lg:ml-[var(--sidebar-width)] lg:pb-0">
             <ContentTopbar
               title={meta.title}
               subtitle={meta.subtitle}
@@ -233,7 +233,7 @@ function DesktopSidebar({
   }
 
   return (
-    <aside className="sticky top-0 hidden h-dvh min-h-dvh border-r border-hairline/80 bg-sidebar/95 px-5 py-6 lg:flex lg:flex-col">
+    <aside className="fixed inset-y-0 left-0 z-50 hidden w-[var(--sidebar-width)] border-r border-hairline/80 bg-sidebar/95 px-5 py-6 lg:flex lg:flex-col">
       <NavLink to="/" aria-label="Deluno home" className="flex min-h-[76px] items-center gap-3 rounded-2xl border border-hairline/80 bg-card/75 px-3 text-foreground shadow-card no-underline dark:border-white/[0.07] dark:bg-white/[0.035]">
         <AppMark size={42} />
         <span className="min-w-0">
