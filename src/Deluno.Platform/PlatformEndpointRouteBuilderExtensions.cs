@@ -119,6 +119,46 @@ public static class PlatformEndpointRouteBuilderExtensions
                 User: created));
         });
 
+        auth.MapPut("/password", async (
+            HttpContext httpContext,
+            ChangePasswordRequest request,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (!UserAuthorization.TryReadUser(httpContext, out var user) || user is null)
+            {
+                return Results.Unauthorized();
+            }
+
+            var errors = ValidatePasswordChange(request);
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            var changed = await repository.ChangeUserPasswordAsync(
+                user.Id,
+                request.CurrentPassword!,
+                request.NewPassword!,
+                cancellationToken);
+
+            if (!changed)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["currentPassword"] = ["Current password is not correct."]
+                });
+            }
+
+            return Results.NoContent();
+        });
+
         qualityProfiles.MapGet(string.Empty, async (IPlatformSettingsRepository repository, CancellationToken cancellationToken) =>
         {
             var items = await repository.ListQualityProfilesAsync(cancellationToken);
@@ -1301,6 +1341,34 @@ public static class PlatformEndpointRouteBuilderExtensions
         if (string.IsNullOrWhiteSpace(request.DisplayName))
         {
             errors["displayName"] = ["Choose the name Deluno should show in the app."];
+        }
+
+        return errors;
+    }
+
+    private static Dictionary<string, string[]> ValidatePasswordChange(ChangePasswordRequest request)
+    {
+        var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+
+        if (string.IsNullOrWhiteSpace(request.CurrentPassword))
+        {
+            errors["currentPassword"] = ["Enter your current password."];
+        }
+
+        if (string.IsNullOrWhiteSpace(request.NewPassword))
+        {
+            errors["newPassword"] = ["Enter a new password."];
+        }
+        else if (request.NewPassword.Length < 8)
+        {
+            errors["newPassword"] = ["Use at least 8 characters for the new password."];
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.CurrentPassword) &&
+            !string.IsNullOrWhiteSpace(request.NewPassword) &&
+            string.Equals(request.CurrentPassword, request.NewPassword, StringComparison.Ordinal))
+        {
+            errors["newPassword"] = ["Choose a password that is different from your current password."];
         }
 
         return errors;

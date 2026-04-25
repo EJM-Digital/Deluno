@@ -28,6 +28,7 @@ interface AuthContextValue {
   isLoading: boolean;
   login(username: string, password: string): Promise<void>;
   bootstrap(displayName: string, username: string, password: string): Promise<void>;
+  changePassword(currentPassword: string, newPassword: string): Promise<void>;
   logout(): void;
 }
 
@@ -177,6 +178,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     applyLoginPayload(data, setToken, setUser);
   }, []);
 
+  const changePassword = useCallback(async (currentPassword: string, newPassword: string) => {
+    const res = await authedFetch("/api/auth/password", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ currentPassword, newPassword })
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(text || "Password could not be changed.");
+    }
+  }, []);
+
   const logout = useCallback(() => {
     setToken(null);
     setUser(null);
@@ -192,9 +206,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isLoading,
       login,
       bootstrap,
+      changePassword,
       logout
     }),
-    [user, token, isLoading, login, bootstrap, logout]
+    [user, token, isLoading, login, bootstrap, changePassword, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -212,6 +227,9 @@ export function useAuth(): AuthContextValue {
         throw new Error("AuthProvider not mounted");
       },
       bootstrap: async () => {
+        throw new Error("AuthProvider not mounted");
+      },
+      changePassword: async () => {
         throw new Error("AuthProvider not mounted");
       },
       logout: () => {}

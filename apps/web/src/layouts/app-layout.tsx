@@ -7,7 +7,9 @@ import {
   Film,
   HelpCircle,
   LayoutGrid,
+  LoaderCircle,
   LogOut,
+  LockKeyhole,
   Moon,
   RadioTower,
   Search,
@@ -18,7 +20,7 @@ import {
   ArchiveRestore
 } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentType, type FormEvent } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { AccentPicker } from "../components/shell/accent-picker";
@@ -195,6 +197,41 @@ function DesktopSidebar({
   user: UserProfile | null;
   onLogout: () => void;
 }) {
+  const { changePassword } = useAuth();
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordBusy, setPasswordBusy] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState<string | null>(null);
+
+  async function handleChangePassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPasswordMessage(null);
+
+    if (newPassword !== confirmPassword) {
+      setPasswordMessage("New passwords do not match.");
+      return;
+    }
+
+    setPasswordBusy(true);
+    try {
+      await changePassword(currentPassword, newPassword);
+      setPasswordMessage("Password changed.");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      window.setTimeout(() => {
+        setPasswordOpen(false);
+        setPasswordMessage(null);
+      }, 700);
+    } catch (error) {
+      setPasswordMessage(error instanceof Error ? error.message : "Password could not be changed.");
+    } finally {
+      setPasswordBusy(false);
+    }
+  }
+
   return (
     <aside className="sticky top-0 hidden h-dvh min-h-dvh border-r border-hairline/80 bg-sidebar/95 px-5 py-6 lg:flex lg:flex-col">
       <NavLink to="/" aria-label="Deluno home" className="flex min-h-[76px] items-center gap-3 rounded-2xl border border-hairline/80 bg-card/75 px-3 text-foreground shadow-card no-underline dark:border-white/[0.07] dark:bg-white/[0.035]">
@@ -238,7 +275,7 @@ function DesktopSidebar({
         <p className="mt-1 font-mono text-lg font-semibold text-primary">82.3 MB/s</p>
       </div>
 
-      <div className="group relative mt-3">
+      <div className="group relative z-50 mt-3">
         <button
           type="button"
           className="flex w-full items-center gap-3 rounded-2xl border border-hairline/80 bg-card/75 px-3 py-2.5 text-left transition hover:border-primary/30 hover:bg-muted/30 dark:border-white/[0.07] dark:bg-white/[0.035]"
@@ -252,7 +289,15 @@ function DesktopSidebar({
           </span>
           <ChevronDown className="h-4 w-4 text-muted-foreground" />
         </button>
-        <div className="absolute bottom-full left-0 z-50 mb-2 w-full overflow-hidden rounded-xl border border-hairline bg-card/95 opacity-0 shadow-lg backdrop-blur-xl transition group-focus-within:opacity-100 group-hover:opacity-100 dark:border-white/[0.07]">
+        <div className="absolute bottom-0 left-[calc(100%+12px)] z-[90] w-64 overflow-hidden rounded-xl border border-hairline bg-card/95 opacity-0 shadow-lg backdrop-blur-xl transition group-focus-within:opacity-100 group-hover:opacity-100 dark:border-white/[0.07]">
+          <button
+            type="button"
+            onClick={() => setPasswordOpen(true)}
+            className="flex w-full items-center gap-2 px-3 py-2.5 text-sm font-medium text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+          >
+            <LockKeyhole className="h-4 w-4" />
+            Change password
+          </button>
           <button
             type="button"
             onClick={onLogout}
@@ -263,6 +308,84 @@ function DesktopSidebar({
           </button>
         </div>
       </div>
+      {passwordOpen ? (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/65 p-4 backdrop-blur-sm">
+          <form
+            onSubmit={(event) => void handleChangePassword(event)}
+            className="w-full max-w-md rounded-2xl border border-hairline bg-card p-5 shadow-lg dark:border-white/[0.07]"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                  Account
+                </p>
+                <h2 className="mt-2 font-display text-2xl font-semibold tracking-tight text-foreground">
+                  Change password
+                </h2>
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                  Update the password for {user?.displayName ?? "this user"}.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPasswordOpen(false)}
+                className="rounded-xl px-3 py-2 text-sm font-semibold text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-3">
+              <label className="block">
+                <span className="density-label uppercase tracking-[0.18em] text-muted-foreground">Current password</span>
+                <Input
+                  className="mt-2"
+                  type="password"
+                  autoComplete="current-password"
+                  value={currentPassword}
+                  onChange={(event) => setCurrentPassword(event.target.value)}
+                />
+              </label>
+              <label className="block">
+                <span className="density-label uppercase tracking-[0.18em] text-muted-foreground">New password</span>
+                <Input
+                  className="mt-2"
+                  type="password"
+                  autoComplete="new-password"
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                />
+              </label>
+              <label className="block">
+                <span className="density-label uppercase tracking-[0.18em] text-muted-foreground">Confirm new password</span>
+                <Input
+                  className="mt-2"
+                  type="password"
+                  autoComplete="new-password"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                />
+              </label>
+            </div>
+
+            {passwordMessage ? (
+              <p className="mt-4 rounded-xl border border-hairline bg-surface-1 px-3 py-2 text-sm text-muted-foreground">
+                {passwordMessage}
+              </p>
+            ) : null}
+
+            <div className="mt-5 flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setPasswordOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={passwordBusy || !currentPassword || !newPassword || !confirmPassword}>
+                {passwordBusy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <LockKeyhole className="h-4 w-4" />}
+                Save password
+              </Button>
+            </div>
+          </form>
+        </div>
+      ) : null}
     </aside>
   );
 }

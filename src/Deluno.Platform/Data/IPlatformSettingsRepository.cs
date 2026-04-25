@@ -38,6 +38,12 @@ public interface IPlatformSettingsRepository
         string id,
         CancellationToken cancellationToken);
 
+    Task<bool> ChangeUserPasswordAsync(
+        string userId,
+        string currentPassword,
+        string newPassword,
+        CancellationToken cancellationToken);
+
     Task<UserItem> BootstrapUserAsync(
         BootstrapUserRequest request,
         CancellationToken cancellationToken);

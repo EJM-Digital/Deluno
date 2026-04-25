@@ -458,6 +458,47 @@ public sealed class SqlitePlatformSettingsRepository(
             CreatedUtc: ParseTimestamp(reader.GetString(4)));
     }
 
+    public async Task<bool> ChangeUserPasswordAsync(
+        string userId,
+        string currentPassword,
+        string newPassword,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        using var readCommand = connection.CreateCommand();
+        readCommand.CommandText =
+            """
+            SELECT password_hash
+            FROM users
+            WHERE id = @id
+            LIMIT 1;
+            """;
+        AddParameter(readCommand, "@id", userId);
+
+        var existing = await readCommand.ExecuteScalarAsync(cancellationToken) as string;
+        if (string.IsNullOrWhiteSpace(existing) || !VerifyPassword(currentPassword, existing))
+        {
+            return false;
+        }
+
+        using var updateCommand = connection.CreateCommand();
+        updateCommand.CommandText =
+            """
+            UPDATE users
+            SET password_hash = @passwordHash,
+                updated_utc = @updatedUtc
+            WHERE id = @id;
+            """;
+        AddParameter(updateCommand, "@id", userId);
+        AddParameter(updateCommand, "@passwordHash", HashPassword(newPassword));
+        AddParameter(updateCommand, "@updatedUtc", timeProvider.GetUtcNow().ToString("O"));
+
+        return await updateCommand.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
     public async Task<UserItem> BootstrapUserAsync(
         BootstrapUserRequest request,
         CancellationToken cancellationToken)
