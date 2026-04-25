@@ -454,7 +454,24 @@ function ContentTopbar({
 }) {
   const searchRef = useRef<HTMLInputElement>(null);
   const { density, setDensity } = useDensity();
+  const [densityOpen, setDensityOpen] = useState(false);
+  const densityMenuRef = useRef<HTMLDivElement>(null);
   useEffect(() => { if (searchOpen) setTimeout(() => searchRef.current?.focus(), 50); }, [searchOpen]);
+  useEffect(() => {
+    if (!densityOpen) return;
+    function onPointerDown(event: PointerEvent) {
+      if (!densityMenuRef.current?.contains(event.target as Node)) setDensityOpen(false);
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setDensityOpen(false);
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [densityOpen]);
 
   return (
     <header className="sticky top-0 z-40 border-b border-hairline/70 bg-background/88 px-[var(--content-pad-inline)] py-4 backdrop-blur-2xl supports-[backdrop-filter]:bg-background/78 lg:py-5 dark:border-white/[0.05]">
@@ -495,23 +512,58 @@ function ContentTopbar({
           <HelpCircle className="h-[var(--shell-icon-size-sm)] w-[var(--shell-icon-size-sm)]" strokeWidth={1.75} />
         </Button>
 
-        <label className="hidden min-h-[var(--control-height-icon)] items-center gap-2 rounded-xl border border-hairline/70 bg-card/75 px-3 text-[length:var(--shell-nav-size)] font-semibold text-muted-foreground transition hover:border-primary/30 hover:bg-muted/40 hover:text-foreground min-[920px]:inline-flex">
-          <span className="sr-only">Display density</span>
-          <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_10px_hsl(var(--primary)/0.65)]" />
-          <select
-            value={density}
-            onChange={(event) => setDensity(event.target.value as Density)}
-            aria-label="Display density"
-            className="cursor-pointer appearance-none bg-transparent pr-5 font-semibold text-current outline-none"
+        <div ref={densityMenuRef} className="relative hidden min-[920px]:block">
+          <button
+            type="button"
+            onClick={() => setDensityOpen((open) => !open)}
+            aria-haspopup="menu"
+            aria-expanded={densityOpen}
+            className={cn(
+              "inline-flex min-h-[var(--control-height-icon)] items-center gap-2 rounded-xl border px-3",
+              "bg-card/75 text-[length:var(--shell-nav-size)] font-semibold text-muted-foreground transition",
+              "hover:border-primary/30 hover:bg-muted/40 hover:text-foreground",
+              densityOpen ? "border-primary/45 text-foreground shadow-[0_0_0_1px_hsl(var(--primary)/0.12),0_10px_30px_hsl(var(--primary)/0.08)]" : "border-hairline/70"
+            )}
           >
-            {densityChoices.map((choice) => (
-              <option key={choice} value={choice}>
-                {DENSITY_LABELS[choice]}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="-ml-5 h-[var(--shell-icon-size-sm)] w-[var(--shell-icon-size-sm)] pointer-events-none" strokeWidth={1.75} />
-        </label>
+            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_10px_hsl(var(--primary)/0.65)]" />
+            <span>{DENSITY_LABELS[density]}</span>
+            <ChevronDown className={cn("h-[var(--shell-icon-size-sm)] w-[var(--shell-icon-size-sm)] transition", densityOpen && "rotate-180")} strokeWidth={1.75} />
+          </button>
+
+          {densityOpen ? (
+            <div
+              role="menu"
+              aria-label="Display density"
+              className="absolute right-0 top-[calc(100%+8px)] z-[80] w-52 overflow-hidden rounded-xl border border-hairline/80 bg-card/95 p-1.5 shadow-lg backdrop-blur-xl dark:border-white/[0.07]"
+            >
+              {densityChoices.map((choice) => {
+                const selected = choice === density;
+                return (
+                  <button
+                    key={choice}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={selected}
+                    onClick={() => {
+                      setDensity(choice);
+                      setDensityOpen(false);
+                    }}
+                    className={cn(
+                      "flex min-h-[var(--control-height-sm)] w-full items-center justify-between gap-3 rounded-lg px-3 text-left",
+                      "text-[length:var(--shell-nav-size)] font-semibold transition",
+                      selected
+                        ? "bg-primary/12 text-foreground ring-1 ring-inset ring-primary/20"
+                        : "text-muted-foreground hover:bg-muted/45 hover:text-foreground"
+                    )}
+                  >
+                    <span>{DENSITY_LABELS[choice]}</span>
+                    {selected ? <span className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_10px_hsl(var(--primary)/0.75)]" /> : null}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
 
         <button
           type="button"
