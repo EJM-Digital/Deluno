@@ -28,7 +28,7 @@
     --destructive-foreground: 0 0% 100%;
     --success: 145 72% 34%;
     --success-foreground: 0 0% 100%;
-    --warning: 38 92% 46%;
+    --warning: 24 94% 38%;
     --warning-foreground: 28 40% 10%;
     --info: 207 92% 45%;
     --info-foreground: 0 0% 100%;
@@ -44,7 +44,7 @@
     --sidebar-accent-foreground: 222 18% 8%;
     --sidebar-border: 220 12% 88%;
     --state-ok: 145 72% 34%;
-    --state-warn: 38 92% 46%;
+    --state-warn: 24 94% 38%;
     --state-danger: 0 84% 48%;
     --state-info: 207 92% 45%;
     --gradient-surface: linear-gradient(160deg, hsl(0 0% 100%) 0%, hsl(42 18% 97%) 100%);
@@ -96,7 +96,7 @@
     --destructive-foreground: 0 0% 100%;
     --success: 145 78% 52%;
     --success-foreground: 145 50% 8%;
-    --warning: 38 95% 58%;
+    --warning: 28 96% 58%;
     --warning-foreground: 28 40% 10%;
     --info: 207 96% 62%;
     --info-foreground: 210 30% 98%;
@@ -112,7 +112,7 @@
     --sidebar-accent-foreground: 220 18% 98%;
     --sidebar-border: 222 16% 13%;
     --state-ok: 145 78% 52%;
-    --state-warn: 38 95% 58%;
+    --state-warn: 28 96% 58%;
     --state-danger: 0 84% 62%;
     --state-info: 207 96% 62%;
     --gradient-surface: linear-gradient(160deg, hsl(222 18% 11%) 0%, hsl(222 22% 7%) 100%);
@@ -133,29 +133,29 @@
   /* Default - Deluno Gold (graphite luxury, status colours remain semantic) */
   :root,
   :root[data-accent="cobalt"] {
-    --primary: 38 92% 45%;
-    --primary-glow: 43 96% 58%;
-    --primary-2: 26 88% 52%;
-    --primary-deep: 34 80% 22%;
+    --primary: 39 82% 32%;
+    --primary-glow: 43 94% 48%;
+    --primary-2: 28 84% 43%;
+    --primary-deep: 36 74% 19%;
     --primary-foreground: 35 52% 9%;
     --accent: 42 78% 95%;
     --accent-foreground: 34 62% 23%;
-    --ring: 38 92% 45%;
-    --sidebar-ring: 38 92% 45%;
-    --gradient-accent: linear-gradient(135deg, hsl(43 96% 58%) 0%, hsl(26 88% 52%) 100%);
+    --ring: 39 82% 32%;
+    --sidebar-ring: 39 82% 32%;
+    --gradient-accent: linear-gradient(135deg, hsl(43 94% 48%) 0%, hsl(28 84% 43%) 100%);
   }
   .dark,
   .dark[data-accent="cobalt"] {
-    --primary: 42 96% 66%;
-    --primary-glow: 46 98% 72%;
-    --primary-2: 28 92% 62%;
+    --primary: 43 94% 68%;
+    --primary-glow: 46 96% 74%;
+    --primary-2: 29 92% 64%;
     --primary-deep: 36 82% 15%;
     --primary-foreground: 35 54% 9%;
     --accent: 222 14% 15%;
     --accent-foreground: 43 92% 78%;
-    --ring: 42 96% 66%;
-    --sidebar-ring: 42 96% 66%;
-    --gradient-accent: linear-gradient(135deg, hsl(42 96% 66%) 0%, hsl(28 92% 62%) 100%);
+    --ring: 43 94% 68%;
+    --sidebar-ring: 43 94% 68%;
+    --gradient-accent: linear-gradient(135deg, hsl(43 94% 68%) 0%, hsl(29 92% 64%) 100%);
   }
 
   /* Indigo — deep classic enterprise (Stripe OG) */
