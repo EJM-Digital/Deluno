@@ -13,6 +13,15 @@ export interface MediaItem {
   monitored: boolean;
   sizeGb: number | null;
   rating: number | null;
+  ratings?: Array<{
+    source: string;
+    label: string;
+    score: number | null;
+    maxScore: number | null;
+    voteCount: number | null;
+    url: string | null;
+    kind: string | null;
+  }>;
   genres: string[];
   added: string;
   overview: string;

@@ -276,6 +276,8 @@ export function MediaDetailSheet({
                 {item.nextEligibleSearchUtc ? <Badge variant="default">Next retry {formatWhen(item.nextEligibleSearchUtc)}</Badge> : null}
               </div>
 
+              <RatingSummary item={item} />
+
               <div className="mt-5 flex flex-wrap gap-2">
                 <Button onClick={handleQueueSearch} disabled={!item.libraryId || isQueueingSearch}>
                   {isQueueingSearch ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
@@ -492,6 +494,76 @@ function EpisodeRow({ episode }: { episode: SeriesEpisodeInventoryItem }) {
       </div>
     </div>
   );
+}
+
+function RatingSummary({ item }: { item: MediaItem }) {
+  const ratings = normalizeRatings(item);
+  if (ratings.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
+      {ratings.map((rating) => (
+        <a
+          key={rating.source}
+          href={rating.url ?? undefined}
+          target={rating.url ? "_blank" : undefined}
+          rel={rating.url ? "noreferrer" : undefined}
+          className="rounded-xl border border-hairline bg-surface-1 p-3 no-underline transition hover:border-primary/30 hover:bg-surface-2"
+        >
+          <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.16em] text-muted-foreground">
+            {rating.label}
+          </p>
+          <p className="mt-1 tabular font-display text-[length:var(--type-title-sm)] font-semibold tracking-display text-foreground">
+            {formatRatingValue(rating)}
+          </p>
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function normalizeRatings(item: MediaItem) {
+  const ratings = (item.ratings ?? [])
+    .filter((rating) => rating.score !== null || rating.voteCount !== null)
+    .filter((rating, index, source) => source.findIndex((entry) => entry.source === rating.source) === index);
+
+  if (ratings.length) {
+    return ratings.slice(0, 4);
+  }
+
+  if (item.rating === null) {
+    return [];
+  }
+
+  return [
+    {
+      source: "tmdb",
+      label: "TMDb",
+      score: item.rating,
+      maxScore: 10,
+      voteCount: null,
+      url: null,
+      kind: "community"
+    }
+  ];
+}
+
+function formatRatingValue(rating: NonNullable<MediaItem["ratings"]>[number]) {
+  if (rating.score === null || rating.score === undefined) {
+    return "Unknown";
+  }
+
+  if (rating.maxScore === 100 || rating.source === "rotten_tomatoes" || rating.source === "metacritic") {
+    return `${Math.round(rating.score)}%`;
+  }
+
+  if (rating.maxScore) {
+    return `${rating.score.toFixed(1)}/${rating.maxScore}`;
+  }
+
+  return rating.score.toFixed(1);
 }
 
 function Stat({ label, value }: { label: string; value: string }) {

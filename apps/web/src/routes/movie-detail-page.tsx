@@ -23,6 +23,7 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { KpiCard } from "../components/app/kpi-card";
+import { RatingStrip } from "../components/app/rating-strip";
 import { EmptyState } from "../components/shell/empty-state";
 
 interface MovieDetailLoaderData {
@@ -79,6 +80,7 @@ export function MovieDetailPage() {
       posterUrl: null,
       backdropUrl: null,
       rating: null,
+      ratings: [],
       genres: null,
       externalUrl: null,
       metadataJson: null,
@@ -435,9 +437,9 @@ export function MovieDetailPage() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <MetadataStat label="Provider" value={movie.metadataProvider ?? "Not linked"} />
                 <MetadataStat label="Provider ID" value={movie.metadataProviderId ?? "None"} />
-                <MetadataStat label="Rating" value={movie.rating ? movie.rating.toFixed(1) : "Unknown"} />
                 <MetadataStat label="Genres" value={movie.genres ?? "None"} />
               </div>
+              <RatingStrip ratings={movie.ratings} fallbackRating={movie.rating} />
               {movie.externalUrl ? (
                 <Button asChild variant="outline" size="sm">
                   <a href={movie.externalUrl} target="_blank" rel="noreferrer">

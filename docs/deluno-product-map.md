@@ -65,13 +65,19 @@ From the user perspective this is:
 
 This should absorb the role that Prowlarr-style tooling often plays, but in Deluno's language and product shape.
 
-Recurring missing and upgrade searching should not appear to the user as a separate product area. That behavior belongs inside Movies and TV Shows as normal Deluno options.
+Recurring missing and upgrade searching should not appear to the user as a separate product area. Huntarr-style hunting belongs inside Movies and TV Shows as normal Deluno options.
+
+Fetcher-style monitored-missing and cutoff-upgrade automation should not appear as a separate helper app. It belongs inside Deluno's Movies and TV Shows automation with clear run state, retry-delay context, and failed-import cleanup visibility.
+
+Guide-backed presets should not require users to write YAML. Recyclarr-style custom formats, quality profiles, quality definitions, and naming presets belong in guided settings with previews and safe overrides.
 
 ## Product Rules
 
 - Movies and TV Shows are first-class product sections, not tabs hanging off one generic library page.
 - Indexers is a Deluno area, not an afterthought hidden in Settings.
 - Recurring search behavior should feel built into Movies and TV Shows, not like a separate helper app.
+- Monitored-missing and cutoff-upgrade search should feel like native Deluno automation, not a separate service.
+- Guide-backed quality and custom-format setup should be preset-driven and previewable.
 - User-facing language should always say `TV Shows`, never `Series`.
 - Internal modules can stay separate even when the UI feels unified.
 

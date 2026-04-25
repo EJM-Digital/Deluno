@@ -48,6 +48,7 @@ export function SettingsMetadataPage() {
   const revalidator = useRevalidator();
   const [formState, setFormState] = useState(settings);
   const [tmdbApiKey, setTmdbApiKey] = useState("");
+  const [omdbApiKey, setOmdbApiKey] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<MetadataTestResponse | null>(null);
@@ -64,7 +65,8 @@ export function SettingsMetadataPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...formState,
-          metadataTmdbApiKey: tmdbApiKey.trim() || undefined
+          metadataTmdbApiKey: tmdbApiKey.trim() || undefined,
+          metadataOmdbApiKey: omdbApiKey.trim() || undefined
         })
       });
 
@@ -75,6 +77,7 @@ export function SettingsMetadataPage() {
       save.markSaved();
       toast.success("Metadata settings saved");
       setTmdbApiKey("");
+      setOmdbApiKey("");
       revalidator.revalidate();
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Metadata settings could not be saved.";
@@ -132,7 +135,7 @@ export function SettingsMetadataPage() {
   return (
     <SettingsShell
       title="Metadata"
-      description="Connect the provider Deluno uses for title lookup, posters, backdrops, ratings, genres, external IDs, and future sidecar output."
+      description="Connect lookup and ratings providers for title matching, posters, backdrops, genres, IDs, audience scores, and future sidecar output."
     >
       <div className="settings-split settings-split-config-heavy">
         <Card className="settings-panel">
@@ -141,14 +144,14 @@ export function SettingsMetadataPage() {
               Provider and output
               <SaveStatus state={save.state} message={save.message} />
             </CardTitle>
-            <CardDescription>Use TMDb for live lookup now; use output settings to control how metadata is written beside managed files later.</CardDescription>
+            <CardDescription>Use TMDb for lookup and artwork. Add OMDb when you want IMDb, Rotten Tomatoes, and Metacritic ratings attached to stored metadata.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="mb-4 grid gap-3 sm:grid-cols-3">
               <SetupStep
                 icon={<KeyRound className="h-4 w-4" />}
                 title="1. Add key"
-                copy={settings.metadataTmdbApiKeyConfigured ? "TMDb is already connected." : "Paste a TMDb API key once for this Deluno install."}
+                copy={settings.metadataTmdbApiKeyConfigured ? "TMDb lookup is connected." : "Paste a TMDb API key once for lookup and artwork."}
                 complete={settings.metadataTmdbApiKeyConfigured}
               />
               <SetupStep
@@ -191,9 +194,23 @@ export function SettingsMetadataPage() {
                     placeholder={settings.metadataTmdbApiKeyConfigured ? "Configured - enter a new key to replace" : "Paste TMDb API key"}
                   />
                   <p className="density-help mt-2 text-muted-foreground">
-                    Used for live movie and TV lookup. Leave blank when saving if you want to keep the current key.
+                    Primary provider for search, posters, backdrops, overview, genres, IDs, and the TMDb community score.
                   </p>
                 </Field>
+                <Field label="OMDb API key">
+                  <Input
+                    value={omdbApiKey}
+                    onChange={(event) => setOmdbApiKey(event.target.value)}
+                    type="password"
+                    placeholder={settings.metadataOmdbApiKeyConfigured ? "Configured - enter a new key to replace" : "Paste OMDb API key"}
+                  />
+                  <p className="density-help mt-2 text-muted-foreground">
+                    Optional enrichment for IMDb, Rotten Tomatoes, and Metacritic ratings. Leave blank to keep the current key.
+                  </p>
+                </Field>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Certification country">
                   <PresetField
                     value={formState.metadataCertificationCountry}
@@ -272,6 +289,10 @@ export function SettingsMetadataPage() {
             <BacklogRow
               title="TMDb key"
               copy={settings.metadataTmdbApiKeyConfigured ? "A TMDb API key is stored for this Deluno install." : "No TMDb key is stored yet. Add-title lookup is disabled until a provider key is saved."}
+            />
+            <BacklogRow
+              title="Ratings enrichment"
+              copy={settings.metadataOmdbApiKeyConfigured ? "OMDb is connected, so future metadata refreshes can attach IMDb, Rotten Tomatoes, and Metacritic scores." : "OMDb is not connected yet. Deluno will still store TMDb ratings, but cross-provider ratings need an OMDb key."}
             />
             <BacklogRow
               title="Libraries in scope"

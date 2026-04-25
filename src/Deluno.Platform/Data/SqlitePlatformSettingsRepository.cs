@@ -59,6 +59,10 @@ public sealed class SqlitePlatformSettingsRepository(
         {
             await UpsertSettingAsync(connection, transaction, "metadata.tmdbApiKey", request.MetadataTmdbApiKey.Trim(), updatedUtc, cancellationToken);
         }
+        if (!string.IsNullOrWhiteSpace(request.MetadataOmdbApiKey))
+        {
+            await UpsertSettingAsync(connection, transaction, "metadata.omdbApiKey", request.MetadataOmdbApiKey.Trim(), updatedUtc, cancellationToken);
+        }
 
         await UpsertRootAsync(connection, transaction, "movies", NormalizePath(request.MovieRootPath), updatedUtc, cancellationToken);
         await UpsertRootAsync(connection, transaction, "series", NormalizePath(request.SeriesRootPath), updatedUtc, cancellationToken);
@@ -77,6 +81,7 @@ public sealed class SqlitePlatformSettingsRepository(
         var settingKey = provider.Trim().ToLowerInvariant() switch
         {
             "tmdb" => "metadata.tmdbApiKey",
+            "omdb" => "metadata.omdbApiKey",
             _ => null
         };
 
@@ -2074,6 +2079,7 @@ public sealed class SqlitePlatformSettingsRepository(
             MetadataCertificationCountry: NormalizeName(GetValue(settings, "metadata.certificationCountry")) ?? "US",
             MetadataLanguage: NormalizeName(GetValue(settings, "metadata.language")) ?? "en",
             MetadataTmdbApiKeyConfigured: !string.IsNullOrWhiteSpace(GetValue(settings, "metadata.tmdbApiKey")),
+            MetadataOmdbApiKeyConfigured: !string.IsNullOrWhiteSpace(GetValue(settings, "metadata.omdbApiKey")),
             UpdatedUtc: DateTimeOffset.UtcNow);
     }
 

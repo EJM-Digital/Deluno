@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using Deluno.Infrastructure.Storage;
 using Deluno.Platform.Quality;
 using Deluno.Series.Contracts;
@@ -26,6 +27,7 @@ public sealed class SqliteSeriesCatalogRepository(
             PosterUrl: NormalizeText(request.PosterUrl),
             BackdropUrl: NormalizeText(request.BackdropUrl),
             Rating: request.Rating,
+            Ratings: BuildRatings(request.Rating, request.MetadataJson),
             Genres: NormalizeText(request.Genres),
             ExternalUrl: NormalizeText(request.ExternalUrl),
             MetadataJson: NormalizeText(request.MetadataJson),
@@ -1206,6 +1208,7 @@ public sealed class SqliteSeriesCatalogRepository(
             PosterUrl: reader.IsDBNull(9) ? null : reader.GetString(9),
             BackdropUrl: reader.IsDBNull(10) ? null : reader.GetString(10),
             Rating: reader.IsDBNull(11) ? null : reader.GetDouble(11),
+            Ratings: BuildRatings(reader.IsDBNull(11) ? null : reader.GetDouble(11), reader.IsDBNull(14) ? null : reader.GetString(14)),
             Genres: reader.IsDBNull(12) ? null : reader.GetString(12),
             ExternalUrl: reader.IsDBNull(13) ? null : reader.GetString(13),
             MetadataJson: reader.IsDBNull(14) ? null : reader.GetString(14),
@@ -1257,6 +1260,129 @@ public sealed class SqliteSeriesCatalogRepository(
     {
         var normalized = value?.Trim();
         return string.IsNullOrWhiteSpace(normalized) ? null : normalized;
+    }
+
+    private static IReadOnlyList<MetadataRatingItem> BuildRatings(double? fallbackRating, string? metadataJson)
+    {
+        var fromMetadata = ReadRatings(metadataJson);
+        if (fromMetadata.Count > 0)
+        {
+            return fromMetadata;
+        }
+
+        return fallbackRating is null
+            ? []
+            :
+            [
+                new MetadataRatingItem(
+                    Source: "tmdb",
+                    Label: "TMDb",
+                    Score: Math.Round(fallbackRating.Value, 1),
+                    MaxScore: 10,
+                    VoteCount: null,
+                    Url: null,
+                    Kind: "community")
+            ];
+    }
+
+    private static IReadOnlyList<MetadataRatingItem> ReadRatings(string? metadataJson)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson))
+        {
+            return [];
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(metadataJson);
+            if (!TryGetProperty(document.RootElement, "ratings", out var ratingsElement) ||
+                ratingsElement.ValueKind != JsonValueKind.Array)
+            {
+                return [];
+            }
+
+            var ratings = new List<MetadataRatingItem>();
+            foreach (var item in ratingsElement.EnumerateArray())
+            {
+                var source = ReadString(item, "source");
+                var label = ReadString(item, "label") ?? source?.ToUpperInvariant();
+                if (string.IsNullOrWhiteSpace(source) || string.IsNullOrWhiteSpace(label))
+                {
+                    continue;
+                }
+
+                ratings.Add(new MetadataRatingItem(
+                    Source: source,
+                    Label: label,
+                    Score: ReadDouble(item, "score"),
+                    MaxScore: ReadDouble(item, "maxScore") ?? ReadDouble(item, "max_score"),
+                    VoteCount: ReadInt(item, "voteCount") ?? ReadInt(item, "vote_count"),
+                    Url: ReadString(item, "url"),
+                    Kind: ReadString(item, "kind")));
+            }
+
+            return ratings;
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private static bool TryGetProperty(JsonElement element, string name, out JsonElement property)
+    {
+        foreach (var item in element.EnumerateObject())
+        {
+            if (string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase))
+            {
+                property = item.Value;
+                return true;
+            }
+        }
+
+        property = default;
+        return false;
+    }
+
+    private static string? ReadString(JsonElement element, string name)
+        => TryGetProperty(element, name, out var property) && property.ValueKind == JsonValueKind.String
+            ? NormalizeText(property.GetString())
+            : null;
+
+    private static double? ReadDouble(JsonElement element, string name)
+    {
+        if (!TryGetProperty(element, name, out var property))
+        {
+            return null;
+        }
+
+        if (property.ValueKind == JsonValueKind.Number && property.TryGetDouble(out var value))
+        {
+            return value;
+        }
+
+        return property.ValueKind == JsonValueKind.String &&
+               double.TryParse(property.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : null;
+    }
+
+    private static int? ReadInt(JsonElement element, string name)
+    {
+        if (!TryGetProperty(element, name, out var property))
+        {
+            return null;
+        }
+
+        if (property.ValueKind == JsonValueKind.Number && property.TryGetInt32(out var value))
+        {
+            return value;
+        }
+
+        return property.ValueKind == JsonValueKind.String &&
+               int.TryParse(property.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : null;
     }
 
     private static string NormalizeFailureKind(string? value)

@@ -27,6 +27,7 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { KpiCard } from "../components/app/kpi-card";
+import { RatingStrip } from "../components/app/rating-strip";
 import { EmptyState } from "../components/shell/empty-state";
 
 interface ShowDetailLoaderData {
@@ -100,6 +101,7 @@ export function ShowDetailPage() {
       posterUrl: null,
       backdropUrl: null,
       rating: null,
+      ratings: [],
       genres: null,
       externalUrl: null,
       metadataJson: null,
@@ -769,9 +771,9 @@ export function ShowDetailPage() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <MetadataStat label="Provider" value={series.metadataProvider ?? "Not linked"} />
                 <MetadataStat label="Provider ID" value={series.metadataProviderId ?? "None"} />
-                <MetadataStat label="Rating" value={series.rating ? series.rating.toFixed(1) : "Unknown"} />
                 <MetadataStat label="Genres" value={series.genres ?? "None"} />
               </div>
+              <RatingStrip ratings={series.ratings} fallbackRating={series.rating} />
               {series.externalUrl ? (
                 <Button asChild variant="outline" size="sm">
                   <a href={series.externalUrl} target="_blank" rel="noreferrer">

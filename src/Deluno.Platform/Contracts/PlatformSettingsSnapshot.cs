@@ -28,4 +28,5 @@ public sealed record PlatformSettingsSnapshot(
     string MetadataCertificationCountry,
     string MetadataLanguage,
     bool MetadataTmdbApiKeyConfigured,
+    bool MetadataOmdbApiKeyConfigured,
     DateTimeOffset UpdatedUtc);

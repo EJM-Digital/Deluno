@@ -27,4 +27,5 @@ public sealed record UpdatePlatformSettingsRequest(
     bool MetadataArtworkEnabled,
     string? MetadataCertificationCountry,
     string? MetadataLanguage,
-    string? MetadataTmdbApiKey);
+    string? MetadataTmdbApiKey,
+    string? MetadataOmdbApiKey);

@@ -70,6 +70,17 @@ function readStringArray(meta: Record<string, unknown>, ...keys: string[]) {
   return [];
 }
 
+function readRating(
+  item: { ratings?: Array<{ source: string; score: number | null; maxScore: number | null }> | null },
+  source: string,
+  fallback: number | null
+) {
+  const rating = item.ratings?.find((entry) => entry.source === source && typeof entry.score === "number");
+  if (!rating || rating.score === null) return fallback;
+  if (rating.maxScore === 100) return rating.score;
+  return rating.score;
+}
+
 export function adaptMovieItems(items: MovieListItem[], wanted: MovieWantedSummary): MediaItem[] {
   const wantedMap = new Map(wanted.recentItems.map((item) => [item.movieId, item]));
 
@@ -97,6 +108,7 @@ export function adaptMovieItems(items: MovieListItem[], wanted: MovieWantedSumma
       monitored: item.monitored,
       sizeGb: readNumber(meta, "sizeGb", "sizeGB", "sizeOnDiskGb"),
       rating: item.rating,
+      ratings: item.ratings ?? [],
       genres,
       added: new Date(item.createdUtc).toLocaleDateString([], { month: "short", day: "numeric" }),
       overview: item.overview ?? `${item.title} is tracked inside Deluno with live search state, monitoring, and acquisition history.`,
@@ -130,13 +142,13 @@ export function adaptMovieItems(items: MovieListItem[], wanted: MovieWantedSumma
       qualityProfile: readString(meta, "qualityProfile"),
       runtimeMinutes: readNumber(meta, "runtimeMinutes", "runtime"),
       studio: readString(meta, "studio"),
-      tmdbRating: item.rating,
+      tmdbRating: readRating(item, "tmdb", item.rating),
       tmdbVotes: readNumber(meta, "tmdbVotes"),
-      imdbRating: readNumber(meta, "imdbRating"),
+      imdbRating: readRating(item, "imdb", readNumber(meta, "imdbRating")),
       imdbVotes: readNumber(meta, "imdbVotes"),
       traktRating: readNumber(meta, "traktRating"),
       traktVotes: readNumber(meta, "traktVotes"),
-      tomatoRating: readNumber(meta, "tomatoRating"),
+      tomatoRating: readRating(item, "rotten_tomatoes", readNumber(meta, "tomatoRating")),
       tomatoVotes: readNumber(meta, "tomatoVotes"),
       popularity: readNumber(meta, "popularity"),
       keywords: readStringArray(meta, "keywords")
@@ -171,6 +183,7 @@ export function adaptSeriesItems(items: SeriesListItem[], wanted: SeriesWantedSu
       monitored: item.monitored,
       sizeGb: readNumber(meta, "sizeGb", "sizeGB", "sizeOnDiskGb"),
       rating: item.rating,
+      ratings: item.ratings ?? [],
       genres,
       added: new Date(item.createdUtc).toLocaleDateString([], { month: "short", day: "numeric" }),
       overview: item.overview ?? `${item.title} is tracked inside Deluno with episode inventory, wanted state, and acquisition context.`,
@@ -205,13 +218,13 @@ export function adaptSeriesItems(items: SeriesListItem[], wanted: SeriesWantedSu
       qualityProfile: readString(meta, "qualityProfile"),
       runtimeMinutes: readNumber(meta, "runtimeMinutes", "runtime"),
       studio: readString(meta, "studio"),
-      tmdbRating: item.rating,
+      tmdbRating: readRating(item, "tmdb", item.rating),
       tmdbVotes: readNumber(meta, "tmdbVotes"),
-      imdbRating: readNumber(meta, "imdbRating"),
+      imdbRating: readRating(item, "imdb", readNumber(meta, "imdbRating")),
       imdbVotes: readNumber(meta, "imdbVotes"),
       traktRating: readNumber(meta, "traktRating"),
       traktVotes: readNumber(meta, "traktVotes"),
-      tomatoRating: readNumber(meta, "tomatoRating"),
+      tomatoRating: readRating(item, "rotten_tomatoes", readNumber(meta, "tomatoRating")),
       tomatoVotes: readNumber(meta, "tomatoVotes"),
       popularity: readNumber(meta, "popularity"),
       keywords: readStringArray(meta, "keywords")

@@ -22,6 +22,7 @@ public sealed class TmdbMetadataProvider(
     public async Task<MetadataProviderStatus> GetStatusAsync(CancellationToken cancellationToken)
     {
         var apiKey = await GetApiKeyAsync(cancellationToken);
+        var omdbApiKey = await GetOmdbApiKeyAsync(cancellationToken);
         var status = string.IsNullOrWhiteSpace(apiKey)
             ? new MetadataProviderStatus(
                 ProviderName,
@@ -32,7 +33,9 @@ public sealed class TmdbMetadataProvider(
                 ProviderName,
                 true,
                 "live",
-                "TMDb metadata search is configured.");
+                string.IsNullOrWhiteSpace(omdbApiKey)
+                    ? "TMDb metadata search is configured. Add OMDb to enrich stored metadata with IMDb, Rotten Tomatoes, and Metacritic ratings."
+                    : "TMDb metadata search and OMDb ratings enrichment are configured.");
 
         return status;
     }
@@ -194,6 +197,12 @@ public sealed class TmdbMetadataProvider(
            ?? configuration["TMDB_API_KEY"]
            ?? Environment.GetEnvironmentVariable("TMDB_API_KEY");
 
+    private async Task<string?> GetOmdbApiKeyAsync(CancellationToken cancellationToken)
+        => await platformRepository.GetMetadataProviderSecretAsync("omdb", cancellationToken)
+           ?? configuration["Deluno:Metadata:OMDbApiKey"]
+           ?? configuration["OMDB_API_KEY"]
+           ?? Environment.GetEnvironmentVariable("OMDB_API_KEY");
+
     private async Task<MetadataSearchResult> ToResultAsync(
         TmdbSearchItem item,
         string mediaType,
@@ -212,6 +221,14 @@ public sealed class TmdbMetadataProvider(
 
         var externalIds = await GetExternalIdsAsync(item.Id, mediaType, apiKey, cancellationToken);
 
+        var ratings = await BuildRatingsAsync(
+            mediaType,
+            item.Id,
+            item.VoteAverage,
+            item.VoteCount,
+            externalIds.ImdbId,
+            cancellationToken);
+
         return new MetadataSearchResult(
             Provider: ProviderName,
             ProviderId: item.Id.ToString(CultureInfo.InvariantCulture),
@@ -223,9 +240,10 @@ public sealed class TmdbMetadataProvider(
             PosterUrl: poster,
             BackdropUrl: backdrop,
             Rating: item.VoteAverage,
+            Ratings: ratings,
             Genres: ResolveGenreNames(mediaType, item.GenreIds),
             ImdbId: externalIds.ImdbId,
-                    ExternalUrl: $"https://www.themoviedb.org/{(mediaType == "tv" ? "tv" : "movie")}/{item.Id}");
+            ExternalUrl: BuildTmdbUrl(mediaType, item.Id));
     }
 
     private async Task<MetadataSearchResult?> GetDetailsByIdAsync(
@@ -253,6 +271,14 @@ public sealed class TmdbMetadataProvider(
                 ? null
                 : $"https://image.tmdb.org/t/p/w1280{detail.BackdropPath}";
 
+            var ratings = await BuildRatingsAsync(
+                mediaType,
+                detail.Id,
+                detail.VoteAverage,
+                detail.VoteCount,
+                detail.ExternalIds?.ImdbId,
+                cancellationToken);
+
             return new MetadataSearchResult(
                 Provider: ProviderName,
                 ProviderId: detail.Id.ToString(CultureInfo.InvariantCulture),
@@ -264,9 +290,10 @@ public sealed class TmdbMetadataProvider(
                 PosterUrl: poster,
                 BackdropUrl: backdrop,
                 Rating: detail.VoteAverage,
+                Ratings: ratings,
                 Genres: detail.Genres?.Select(genre => genre.Name).Where(name => !string.IsNullOrWhiteSpace(name)).Cast<string>().ToArray() ?? [],
                 ImdbId: detail.ExternalIds?.ImdbId,
-                ExternalUrl: $"https://www.themoviedb.org/{(mediaType == "tv" ? "tv" : "movie")}/{detail.Id}");
+                ExternalUrl: BuildTmdbUrl(mediaType, detail.Id));
         }
         catch
         {
@@ -313,6 +340,191 @@ public sealed class TmdbMetadataProvider(
         return normalized is "tv" or "shows" or "series" ? "tv" : "movies";
     }
 
+    private async Task<IReadOnlyList<MetadataRatingItem>> BuildRatingsAsync(
+        string mediaType,
+        int providerId,
+        double? voteAverage,
+        int? voteCount,
+        string? imdbId,
+        CancellationToken cancellationToken)
+    {
+        var ratings = new List<MetadataRatingItem>();
+        if (voteAverage is null)
+        {
+            return await AddOmdbRatingsAsync(ratings, imdbId, cancellationToken);
+        }
+
+        ratings.Add(
+            new MetadataRatingItem(
+                Source: "tmdb",
+                Label: "TMDb",
+                Score: Math.Round(voteAverage.Value, 1),
+                MaxScore: 10,
+                VoteCount: voteCount,
+                Url: BuildTmdbUrl(mediaType, providerId),
+                Kind: "community"));
+
+        return await AddOmdbRatingsAsync(ratings, imdbId, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<MetadataRatingItem>> AddOmdbRatingsAsync(
+        List<MetadataRatingItem> ratings,
+        string? imdbId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(imdbId))
+        {
+            return ratings;
+        }
+
+        var apiKey = await GetOmdbApiKeyAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return ratings;
+        }
+
+        var url =
+            $"https://www.omdbapi.com/?apikey={Uri.EscapeDataString(apiKey)}&i={Uri.EscapeDataString(imdbId)}&plot=short&r=json";
+
+        try
+        {
+            var item = await httpClient.GetFromJsonAsync<OmdbTitleResponse>(url, cancellationToken);
+            if (item is null || string.Equals(item.Response, "False", StringComparison.OrdinalIgnoreCase))
+            {
+                return ratings;
+            }
+
+            AddRatingIfPresent(
+                ratings,
+                "imdb",
+                "IMDb",
+                ParseFraction(item.ImdbRating, 10),
+                10,
+                ParseVotes(item.ImdbVotes),
+                BuildImdbUrl(imdbId),
+                "community");
+
+            foreach (var rating in item.Ratings ?? [])
+            {
+                var source = NormalizeOmdbSource(rating.Source);
+                if (source is null)
+                {
+                    continue;
+                }
+
+                var parsed = ParseOmdbRating(rating.Value);
+                AddRatingIfPresent(
+                    ratings,
+                    source.Value.Source,
+                    source.Value.Label,
+                    parsed.Score,
+                    parsed.MaxScore,
+                    null,
+                    null,
+                    source.Value.Kind);
+            }
+
+            if (int.TryParse(item.Metascore, NumberStyles.Integer, CultureInfo.InvariantCulture, out var metascore))
+            {
+                AddRatingIfPresent(ratings, "metacritic", "Metacritic", metascore, 100, null, null, "critic");
+            }
+        }
+        catch
+        {
+            return ratings;
+        }
+
+        return ratings
+            .GroupBy(item => item.Source, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToArray();
+    }
+
+    private static string BuildTmdbUrl(string mediaType, int providerId)
+        => $"https://www.themoviedb.org/{(mediaType == "tv" ? "tv" : "movie")}/{providerId.ToString(CultureInfo.InvariantCulture)}";
+
+    private static string BuildImdbUrl(string imdbId)
+        => $"https://www.imdb.com/title/{imdbId}/";
+
+    private static void AddRatingIfPresent(
+        List<MetadataRatingItem> ratings,
+        string source,
+        string label,
+        double? score,
+        double? maxScore,
+        int? voteCount,
+        string? url,
+        string kind)
+    {
+        if (score is null && voteCount is null)
+        {
+            return;
+        }
+
+        ratings.Add(new MetadataRatingItem(source, label, score, maxScore, voteCount, url, kind));
+    }
+
+    private static (string Source, string Label, string Kind)? NormalizeOmdbSource(string? source)
+    {
+        return source?.Trim().ToLowerInvariant() switch
+        {
+            "internet movie database" => ("imdb", "IMDb", "community"),
+            "rotten tomatoes" => ("rotten_tomatoes", "Rotten Tomatoes", "critic"),
+            "metacritic" => ("metacritic", "Metacritic", "critic"),
+            _ => null
+        };
+    }
+
+    private static (double? Score, double? MaxScore) ParseOmdbRating(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || string.Equals(value, "N/A", StringComparison.OrdinalIgnoreCase))
+        {
+            return (null, null);
+        }
+
+        var trimmed = value.Trim();
+        if (trimmed.EndsWith('%') &&
+            double.TryParse(trimmed.TrimEnd('%'), NumberStyles.Float, CultureInfo.InvariantCulture, out var percent))
+        {
+            return (percent, 100);
+        }
+
+        var parts = trimmed.Split('/', 2, StringSplitOptions.TrimEntries);
+        if (parts.Length == 2 &&
+            double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var score) &&
+            double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var maxScore))
+        {
+            return (score, maxScore);
+        }
+
+        return (null, null);
+    }
+
+    private static double? ParseFraction(string? value, double maxScore)
+    {
+        if (string.IsNullOrWhiteSpace(value) || string.Equals(value, "N/A", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
+            ? Math.Min(parsed, maxScore)
+            : null;
+    }
+
+    private static int? ParseVotes(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || string.Equals(value, "N/A", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var normalized = value.Replace(",", string.Empty, StringComparison.Ordinal);
+        return int.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : null;
+    }
+
     private static int? TryParseYear(string? value)
         => DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed)
             ? parsed.Year
@@ -333,6 +545,7 @@ public sealed class TmdbMetadataProvider(
         [property: JsonPropertyName("release_date")] string? ReleaseDate,
         [property: JsonPropertyName("first_air_date")] string? FirstAirDate,
         [property: JsonPropertyName("vote_average")] double? VoteAverage,
+        [property: JsonPropertyName("vote_count")] int? VoteCount,
         [property: JsonPropertyName("genre_ids")] IReadOnlyList<int>? GenreIds);
 
     private sealed record TmdbExternalIds(
@@ -350,12 +563,24 @@ public sealed class TmdbMetadataProvider(
         [property: JsonPropertyName("release_date")] string? ReleaseDate,
         [property: JsonPropertyName("first_air_date")] string? FirstAirDate,
         [property: JsonPropertyName("vote_average")] double? VoteAverage,
+        [property: JsonPropertyName("vote_count")] int? VoteCount,
         [property: JsonPropertyName("genres")] IReadOnlyList<TmdbGenre>? Genres,
         [property: JsonPropertyName("external_ids")] TmdbExternalIds? ExternalIds);
 
     private sealed record TmdbGenre(
         [property: JsonPropertyName("id")] int Id,
         [property: JsonPropertyName("name")] string Name);
+
+    private sealed record OmdbTitleResponse(
+        [property: JsonPropertyName("imdbRating")] string? ImdbRating,
+        [property: JsonPropertyName("imdbVotes")] string? ImdbVotes,
+        [property: JsonPropertyName("Metascore")] string? Metascore,
+        [property: JsonPropertyName("Ratings")] IReadOnlyList<OmdbRating>? Ratings,
+        [property: JsonPropertyName("Response")] string? Response);
+
+    private sealed record OmdbRating(
+        [property: JsonPropertyName("Source")] string? Source,
+        [property: JsonPropertyName("Value")] string? Value);
 
     private static readonly IReadOnlyDictionary<int, string> MovieGenres = new Dictionary<int, string>
     {

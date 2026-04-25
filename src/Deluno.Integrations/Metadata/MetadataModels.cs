@@ -11,9 +11,19 @@ public sealed record MetadataSearchResult(
     string? PosterUrl,
     string? BackdropUrl,
     double? Rating,
+    IReadOnlyList<MetadataRatingItem> Ratings,
     IReadOnlyList<string> Genres,
     string? ImdbId,
     string? ExternalUrl);
+
+public sealed record MetadataRatingItem(
+    string Source,
+    string Label,
+    double? Score,
+    double? MaxScore,
+    int? VoteCount,
+    string? Url,
+    string? Kind);
 
 public sealed record MetadataLookupRequest(
     string? Query,

@@ -31,6 +31,7 @@ export interface MovieListItem {
   posterUrl: string | null;
   backdropUrl: string | null;
   rating: number | null;
+  ratings?: MetadataRatingItem[] | null;
   genres: string | null;
   externalUrl: string | null;
   metadataJson: string | null;
@@ -111,6 +112,7 @@ export interface SeriesListItem {
   posterUrl: string | null;
   backdropUrl: string | null;
   rating: number | null;
+  ratings?: MetadataRatingItem[] | null;
   genres: string | null;
   externalUrl: string | null;
   metadataJson: string | null;
@@ -247,6 +249,7 @@ export interface PlatformSettingsSnapshot {
   metadataCertificationCountry: string;
   metadataLanguage: string;
   metadataTmdbApiKeyConfigured: boolean;
+  metadataOmdbApiKeyConfigured: boolean;
   updatedUtc: string;
 }
 
@@ -278,6 +281,7 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   metadataCertificationCountry: "US",
   metadataLanguage: "en",
   metadataTmdbApiKeyConfigured: false,
+  metadataOmdbApiKeyConfigured: false,
   updatedUtc: new Date(0).toISOString()
 };
 
@@ -603,9 +607,20 @@ export interface MetadataSearchResult {
   posterUrl: string | null;
   backdropUrl: string | null;
   rating: number | null;
+  ratings?: MetadataRatingItem[] | null;
   genres: string[];
   imdbId: string | null;
   externalUrl: string | null;
+}
+
+export interface MetadataRatingItem {
+  source: string;
+  label: string;
+  score: number | null;
+  maxScore: number | null;
+  voteCount: number | null;
+  url: string | null;
+  kind: string | null;
 }
 
 export interface MetadataProviderStatus {

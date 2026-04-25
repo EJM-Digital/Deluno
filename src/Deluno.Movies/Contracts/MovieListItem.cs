@@ -13,6 +13,7 @@ public sealed record MovieListItem(
     string? PosterUrl,
     string? BackdropUrl,
     double? Rating,
+    IReadOnlyList<MetadataRatingItem> Ratings,
     string? Genres,
     string? ExternalUrl,
     string? MetadataJson,
