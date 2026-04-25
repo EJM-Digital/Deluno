@@ -7,51 +7,51 @@
 
 /*
   Premium 2026 token system.
-  Design language: glass morphism + typographic scale contrast + single vivid accent.
-  Reference: Raycast, Arc, Linear, Apple visionOS apps.
+  Design language: neutral media-control surfaces, high contrast text, and
+  colour reserved for clear operational signals.
 */
 @layer base {
   :root {
-    --background: 0 0% 98.5%;
-    --foreground: 224 14% 8%;
+    --background: 42 18% 97%;
+    --foreground: 222 18% 8%;
     --card: 0 0% 100%;
     --card-elevated: 0 0% 100%;
-    --card-foreground: 224 14% 8%;
+    --card-foreground: 222 18% 8%;
     --popover: 0 0% 100%;
-    --popover-foreground: 224 14% 8%;
+    --popover-foreground: 222 18% 8%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 8% 94%;
-    --secondary-foreground: 224 12% 18%;
-    --muted: 220 8% 94%;
-    --muted-foreground: 220 6% 44%;
-    --destructive: 0 70% 48%;
+    --secondary: 220 10% 93%;
+    --secondary-foreground: 222 14% 16%;
+    --muted: 220 10% 93%;
+    --muted-foreground: 220 9% 38%;
+    --destructive: 0 84% 48%;
     --destructive-foreground: 0 0% 100%;
-    --success: 152 52% 36%;
+    --success: 145 72% 34%;
     --success-foreground: 0 0% 100%;
-    --warning: 36 95% 44%;
+    --warning: 38 92% 46%;
     --warning-foreground: 28 40% 10%;
-    --info: 214 88% 48%;
+    --info: 207 92% 45%;
     --info-foreground: 0 0% 100%;
-    --border: 220 8% 88%;
-    --input: 220 8% 88%;
-    --surface-1: 0 0% 99.5%;
-    --surface-2: 220 8% 96%;
-    --surface-3: 220 6% 92%;
-    --hairline: 220 8% 90%;
-    --sidebar-background: 220 12% 97%;
-    --sidebar-foreground: 224 12% 12%;
-    --sidebar-accent: 220 8% 92%;
-    --sidebar-accent-foreground: 224 14% 8%;
-    --sidebar-border: 220 8% 90%;
-    --state-ok: 152 52% 36%;
-    --state-warn: 36 95% 44%;
-    --state-danger: 0 70% 48%;
-    --state-info: 214 88% 48%;
-    --gradient-surface: linear-gradient(160deg, hsl(0 0% 100%) 0%, hsl(220 8% 98%) 100%);
-    --shadow-card: 0 1px 2px hsl(224 14% 8% / 0.04), 0 4px 12px hsl(224 14% 8% / 0.04);
-    --shadow-md: 0 8px 32px hsl(224 14% 8% / 0.06), 0 2px 8px hsl(224 14% 8% / 0.04);
-    --shadow-lg: 0 20px 60px hsl(224 14% 8% / 0.08);
-    --shadow-glow: 0 1px 3px hsl(224 14% 8% / 0.05);
+    --border: 220 12% 86%;
+    --input: 220 12% 86%;
+    --surface-1: 0 0% 99%;
+    --surface-2: 220 12% 95%;
+    --surface-3: 220 10% 91%;
+    --hairline: 220 12% 88%;
+    --sidebar-background: 220 16% 96%;
+    --sidebar-foreground: 222 16% 12%;
+    --sidebar-accent: 220 12% 91%;
+    --sidebar-accent-foreground: 222 18% 8%;
+    --sidebar-border: 220 12% 88%;
+    --state-ok: 145 72% 34%;
+    --state-warn: 38 92% 46%;
+    --state-danger: 0 84% 48%;
+    --state-info: 207 92% 45%;
+    --gradient-surface: linear-gradient(160deg, hsl(0 0% 100%) 0%, hsl(42 18% 97%) 100%);
+    --shadow-card: 0 1px 2px hsl(222 18% 8% / 0.05), 0 4px 12px hsl(222 18% 8% / 0.04);
+    --shadow-md: 0 8px 32px hsl(222 18% 8% / 0.07), 0 2px 8px hsl(222 18% 8% / 0.04);
+    --shadow-lg: 0 20px 60px hsl(222 18% 8% / 0.1);
+    --shadow-glow: 0 1px 3px hsl(222 18% 8% / 0.06);
     /* Desktop: two header rows; mobile: single row (see app-layout TopBar). */
     --shell-top-row-height: 2.75rem;
     --shell-nav-row-height: 2.75rem;
@@ -64,8 +64,8 @@
     --sidebar-width: 280px;
     --sidebar-rail: 58px;
     --mobile-tabbar-height: 56px;
-    --glass-bg: hsl(0 0% 100% / 0.75);
-    --glass-border: hsl(224 14% 8% / 0.07);
+    --glass-bg: hsl(0 0% 100% / 0.82);
+    --glass-border: hsl(222 18% 8% / 0.08);
 
     /* ── MOTION LANGUAGE ───────────────────────────────
        Two easing curves (emphasis + standard) and three durations
@@ -81,46 +81,46 @@
   }
 
   .dark {
-    --background: 225 20% 8%;
-    --foreground: 210 14% 94%;
-    --card: 225 18% 11%;
-    --card-elevated: 225 16% 13%;
-    --card-foreground: 210 14% 94%;
-    --popover: 225 20% 10%;
-    --popover-foreground: 210 14% 94%;
-    --secondary: 225 14% 15%;
-    --secondary-foreground: 210 14% 94%;
-    --muted: 225 14% 14%;
-    --muted-foreground: 215 8% 56%;
-    --destructive: 0 65% 54%;
+    --background: 222 22% 6%;
+    --foreground: 220 18% 96%;
+    --card: 222 18% 9%;
+    --card-elevated: 222 16% 12%;
+    --card-foreground: 220 18% 96%;
+    --popover: 222 20% 8%;
+    --popover-foreground: 220 18% 96%;
+    --secondary: 222 14% 14%;
+    --secondary-foreground: 220 18% 96%;
+    --muted: 222 14% 13%;
+    --muted-foreground: 218 11% 68%;
+    --destructive: 0 84% 62%;
     --destructive-foreground: 0 0% 100%;
-    --success: 152 55% 46%;
-    --success-foreground: 152 30% 8%;
-    --warning: 38 90% 52%;
+    --success: 145 78% 52%;
+    --success-foreground: 145 50% 8%;
+    --warning: 38 95% 58%;
     --warning-foreground: 28 40% 10%;
-    --info: 210 80% 56%;
+    --info: 207 96% 62%;
     --info-foreground: 210 30% 98%;
-    --border: 225 14% 18%;
-    --input: 225 14% 16%;
-    --surface-1: 225 18% 11%;
-    --surface-2: 225 16% 13%;
-    --surface-3: 225 14% 16%;
-    --hairline: 225 14% 19%;
-    --sidebar-background: 225 22% 7%;
-    --sidebar-foreground: 210 12% 90%;
-    --sidebar-accent: 225 16% 13%;
-    --sidebar-accent-foreground: 210 14% 97%;
-    --sidebar-border: 225 16% 13%;
-    --state-ok: 152 55% 46%;
-    --state-warn: 38 90% 52%;
-    --state-danger: 0 65% 54%;
-    --state-info: 210 80% 56%;
-    --gradient-surface: linear-gradient(160deg, hsl(225 18% 12%) 0%, hsl(225 18% 10%) 100%);
-    --shadow-card: 0 1px 0 hsl(225 20% 5% / 0.5), 0 2px 8px hsl(225 20% 4% / 0.25);
-    --shadow-md: 0 8px 32px hsl(225 20% 4% / 0.35), 0 1px 0 hsl(0 0% 100% / 0.04) inset;
-    --shadow-lg: 0 24px 64px hsl(225 20% 3% / 0.5);
+    --border: 222 13% 18%;
+    --input: 222 13% 17%;
+    --surface-1: 222 18% 9%;
+    --surface-2: 222 16% 12%;
+    --surface-3: 222 14% 15%;
+    --hairline: 222 13% 19%;
+    --sidebar-background: 222 24% 5%;
+    --sidebar-foreground: 220 16% 92%;
+    --sidebar-accent: 222 16% 12%;
+    --sidebar-accent-foreground: 220 18% 98%;
+    --sidebar-border: 222 16% 13%;
+    --state-ok: 145 78% 52%;
+    --state-warn: 38 95% 58%;
+    --state-danger: 0 84% 62%;
+    --state-info: 207 96% 62%;
+    --gradient-surface: linear-gradient(160deg, hsl(222 18% 11%) 0%, hsl(222 22% 7%) 100%);
+    --shadow-card: 0 1px 0 hsl(222 22% 3% / 0.55), 0 2px 8px hsl(222 22% 3% / 0.3);
+    --shadow-md: 0 8px 32px hsl(222 22% 3% / 0.4), 0 1px 0 hsl(0 0% 100% / 0.04) inset;
+    --shadow-lg: 0 24px 64px hsl(222 22% 2% / 0.55);
     --shadow-glow: 0 0 0 1px hsl(0 0% 100% / 0.05) inset, 0 1px 0 hsl(0 0% 100% / 0.06) inset;
-    --glass-bg: hsl(225 18% 11% / 0.7);
+    --glass-bg: hsl(222 18% 9% / 0.78);
     --glass-border: hsl(0 0% 100% / 0.07);
   }
 
@@ -133,29 +133,29 @@
   /* Default — Cobalt (premium, Linear/Arc vibe) */
   :root,
   :root[data-accent="cobalt"] {
-    --primary: 222 88% 50%;
-    --primary-glow: 222 82% 58%;
-    --primary-2: 240 82% 62%;
-    --primary-deep: 222 85% 22%;
+    --primary: 214 95% 52%;
+    --primary-glow: 207 96% 60%;
+    --primary-2: 190 94% 46%;
+    --primary-deep: 214 88% 24%;
     --primary-foreground: 0 0% 100%;
-    --accent: 222 60% 96%;
-    --accent-foreground: 222 70% 28%;
-    --ring: 222 88% 50%;
-    --sidebar-ring: 222 88% 50%;
-    --gradient-accent: linear-gradient(135deg, hsl(222 88% 52%) 0%, hsl(240 82% 62%) 100%);
+    --accent: 214 72% 96%;
+    --accent-foreground: 214 74% 26%;
+    --ring: 214 95% 52%;
+    --sidebar-ring: 214 95% 52%;
+    --gradient-accent: linear-gradient(135deg, hsl(214 95% 52%) 0%, hsl(190 94% 46%) 100%);
   }
   .dark,
   .dark[data-accent="cobalt"] {
-    --primary: 222 92% 66%;
-    --primary-glow: 222 85% 70%;
-    --primary-2: 246 88% 72%;
-    --primary-deep: 222 80% 14%;
-    --primary-foreground: 222 50% 10%;
-    --accent: 225 14% 16%;
-    --accent-foreground: 222 80% 78%;
-    --ring: 222 92% 66%;
-    --sidebar-ring: 222 92% 66%;
-    --gradient-accent: linear-gradient(135deg, hsl(222 92% 66%) 0%, hsl(246 88% 72%) 100%);
+    --primary: 212 100% 66%;
+    --primary-glow: 199 100% 68%;
+    --primary-2: 188 92% 58%;
+    --primary-deep: 212 90% 14%;
+    --primary-foreground: 216 42% 8%;
+    --accent: 222 14% 15%;
+    --accent-foreground: 212 100% 82%;
+    --ring: 212 100% 66%;
+    --sidebar-ring: 212 100% 66%;
+    --gradient-accent: linear-gradient(135deg, hsl(212 100% 66%) 0%, hsl(188 92% 58%) 100%);
   }
 
   /* Indigo — deep classic enterprise (Stripe OG) */

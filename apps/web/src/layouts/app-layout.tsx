@@ -22,7 +22,6 @@ import { useTheme } from "next-themes";
 import { useEffect, useMemo, useRef, useState, type ComponentType, type FormEvent } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { AccentPicker } from "../components/shell/accent-picker";
 import { CommandPalette } from "../components/shell/command-palette";
 import { KeyboardHintOverlay } from "../components/shell/keyboard-hint-overlay";
 import { MobileShellNav } from "../components/shell/mobile-shell-nav";
@@ -493,10 +492,6 @@ function ContentTopbar({
         <Button type="button" variant="ghost" size="icon" className="hidden text-muted-foreground hover:text-foreground md:inline-flex" onClick={onOpenHelp} aria-label="Keyboard shortcuts">
           <HelpCircle className="h-[var(--shell-icon-size-sm)] w-[var(--shell-icon-size-sm)]" strokeWidth={1.75} />
         </Button>
-
-        <div className="hidden md:block">
-          <AccentPicker />
-        </div>
 
         <button
           type="button"

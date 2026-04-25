@@ -3,13 +3,17 @@ import ReactDOM from "react-dom/client";
 import { ThemeProvider } from "next-themes";
 import { RouterProvider } from "react-router-dom";
 import { TooltipProvider } from "./components/ui/tooltip";
-import { applyAccent, resolveInitialAccent } from "./lib/theme-accent";
 import { AuthProvider } from "./lib/use-auth";
 import { router } from "./router";
 import "./index.css";
 
-// Apply persisted accent before React paints to avoid a flash of the default theme
-applyAccent(resolveInitialAccent());
+// Lock Deluno to one product accent. Status colour now carries semantic meaning.
+document.documentElement.setAttribute("data-accent", "cobalt");
+try {
+  window.localStorage.removeItem("deluno-accent");
+} catch {
+  /* ignore storage failures */
+}
 
 // Register PWA service worker (production only)
 if ("serviceWorker" in navigator && import.meta.env.PROD) {
@@ -31,7 +35,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         storageKey="deluno-theme"
       >
         <AuthProvider>
-          {/* Toaster now lives inside <AppLayout> so it inherits accent + density */}
+          {/* Toaster now lives inside <AppLayout> so it inherits density and theme */}
           <RouterProvider router={router} />
         </AuthProvider>
       </ThemeProvider>

@@ -141,7 +141,7 @@ export const settingsCommands: CommandItem[] = [
   {
     id: "settings.ui",
     label: "Settings · System · Interface",
-    keywords: ["system", "appearance", "theme", "accent", "density", "display", "ui", "interface"],
+    keywords: ["system", "appearance", "theme", "density", "display", "ui", "interface"],
     group: "navigation",
     icon: Palette,
     to: "/settings/ui"
