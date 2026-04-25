@@ -2,8 +2,8 @@
  * Display density mode.
  *
  * Persisted values stay backward-compatible with existing installs:
- * compact = Compact, comfortable = Balanced, spacious = Comfortable,
- * expanded = Cinematic.
+ * compact = Compact, comfortable = Standard, spacious = Spacious,
+ * expanded = Expanded.
  */
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
@@ -15,9 +15,9 @@ const DEFAULT: Density = "comfortable";
 
 export const DENSITY_LABELS: Record<Density, string> = {
   compact: "Compact",
-  comfortable: "Balanced",
-  spacious: "Comfortable",
-  expanded: "Cinematic"
+  comfortable: "Standard",
+  spacious: "Spacious",
+  expanded: "Expanded"
 };
 
 export function isDensity(value: unknown): value is Density {

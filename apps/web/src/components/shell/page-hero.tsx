@@ -29,7 +29,7 @@ interface PageHeroProps {
 }
 
 /**
- * Cinematic page hero: poster-mosaic backdrop + editorial typography + stats.
+ * Editorial page hero: poster-mosaic backdrop + operational typography + stats.
  * Used at the top of every major page in the app shell.
  */
 export function PageHero({

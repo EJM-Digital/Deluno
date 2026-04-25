@@ -1209,8 +1209,8 @@
 /*
   Density v2 normalization.
   Keep the current persisted values for compatibility:
-  compact = Compact, comfortable = Balanced, spacious = Comfortable,
-  expanded = Cinematic.
+  compact = Compact, comfortable = Standard, spacious = Spacious,
+  expanded = Expanded.
 
   The important change is that component tokens now derive from two global
   scalars instead of each density redefining dozens of unrelated values.

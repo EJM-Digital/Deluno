@@ -36,20 +36,20 @@ const densityOptions: Array<{
   },
   {
     value: "comfortable",
-    label: "Balanced",
-    description: "The default posture: readable, efficient, and suitable for most screens.",
+    label: "Standard",
+    description: "The default workspace posture: readable, efficient, and suitable for most screens.",
     icon: LayoutGrid
   },
   {
     value: "spacious",
-    label: "Comfortable",
+    label: "Spacious",
     description: "Larger typography, controls, cards, and canvas for desktop monitors.",
     icon: PanelTop
   },
   {
     value: "expanded",
-    label: "Cinematic",
-    description: "The most screen-filling mode for 1440p, ultrawide, and living-room distance.",
+    label: "Expanded",
+    description: "The most screen-filling workspace for 1440p, ultrawide, and long operator sessions.",
     icon: Monitor
   }
 ];
@@ -214,20 +214,20 @@ export function SettingsUiPage() {
               <PreviewRow title="Compact">
                 Tighter tables, smaller controls, and less padding for maximum information on-screen.
               </PreviewRow>
-              <PreviewRow title="Balanced">
-                Balanced spacing for general use across mixed monitor sizes.
+              <PreviewRow title="Standard">
+                Default spacing for general use across mixed monitor sizes.
               </PreviewRow>
-              <PreviewRow title="Comfortable">
+              <PreviewRow title="Spacious">
                 More breathing room, larger controls, and a wider workspace for bigger monitors where the interface can feel cramped.
               </PreviewRow>
-              <PreviewRow title="Cinematic">
-                The most screen-filling preset. Best when you want Deluno to feel larger and more commanding on 1440p or ultrawide displays.
+              <PreviewRow title="Expanded">
+                The most screen-filling preset. Best when you want Deluno to feel larger and more operational on 1440p or ultrawide displays.
               </PreviewRow>
               <div className="density-field rounded-xl border border-hairline bg-surface-1">
                 <p className="density-label uppercase tracking-[0.18em] text-muted-foreground">Recommended</p>
                 <p className="density-help mt-2 text-foreground">
-                  If Deluno feels too small on a 27-inch 1440p monitor, start with <span className="font-medium">Comfortable</span>.
-                  If you still want it to claim more of the screen, use <span className="font-medium">Cinematic</span>.
+                  If Deluno feels too small on a 27-inch 1440p monitor, start with <span className="font-medium">Spacious</span>.
+                  If you still want it to claim more of the screen, use <span className="font-medium">Expanded</span>.
                 </p>
               </div>
           </CardContent>
