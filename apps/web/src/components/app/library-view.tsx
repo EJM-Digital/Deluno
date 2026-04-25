@@ -1362,7 +1362,7 @@ function ProgressiveGrid({
         key={keyBust}
         className="stagger grid gap-[var(--library-grid-gap)] transition-[grid-template-columns] duration-200"
         style={{
-          gridTemplateColumns: `repeat(auto-fill, minmax(${GRID_MIN_BY_DENSITY[density][cardSize]}, 1fr))`
+          gridTemplateColumns: `repeat(auto-fit, minmax(${GRID_MIN_BY_DENSITY[density][cardSize]}, 1fr))`
         }}
       >
         {slice.map((item) => (
@@ -1493,7 +1493,7 @@ function PosterCard({
             size === "sm" ? "px-2 pb-2 pt-8" : "px-2.5 pb-2.5 pt-14"
           )}>
             {displayOptions.showTitle ? (
-              <p className={cn("line-clamp-1 font-semibold text-[hsl(var(--media-foreground))] drop-shadow", titleCls)}>
+              <p className={cn("line-clamp-2 font-semibold leading-tight text-[hsl(var(--media-foreground))] drop-shadow", titleCls)}>
                 {item.title}
               </p>
             ) : null}

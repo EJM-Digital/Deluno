@@ -270,7 +270,7 @@ function SettingsNavLink({
               className={cn("absolute left-0 h-6 w-[3px] rounded-full", isActive ? "bg-primary" : "bg-transparent")}
             />
           ) : null}
-          <span className="truncate">{item.label}</span>
+          <span className="whitespace-nowrap">{item.label}</span>
         </>
       )}
     </NavLink>

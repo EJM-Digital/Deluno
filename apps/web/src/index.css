@@ -1279,13 +1279,14 @@ html {
   --content-max-width: calc(2040px * var(--density-scale));
   --sidebar-width: calc(280px * var(--density-scale));
   --content-outer-gap: clamp(calc(10px * var(--density-scale)), 1.2vw, calc(24px * var(--density-scale)));
-  --content-pad-inline: clamp(calc(12px * var(--density-scale)), 1.35vw, calc(28px * var(--density-scale)));
-  --content-pad-block: clamp(calc(16px * var(--density-scale)), 1.5vw, calc(30px * var(--density-scale)));
+  --content-pad-inline: clamp(calc(14px * var(--density-scale)), 1.08vw, calc(26px * var(--density-scale)));
+  --content-pad-block: clamp(calc(16px * var(--density-scale)), 1.35vw, calc(28px * var(--density-scale)));
 
   --dashboard-metric-min: calc(210px * var(--density-scale));
   --summary-tile-min: calc(190px * var(--density-scale));
   --hero-stat-min: calc(180px * var(--density-scale));
   --hero-stat-panel-min: calc(380px * var(--density-scale));
+  --settings-panel-min: calc(420px * var(--density-scale));
   --kpi-card-min: calc(230px * var(--density-scale));
   --dashboard-poster-min: calc(138px * var(--density-scale));
 
@@ -1520,35 +1521,43 @@ html .text-\[64px\] {
 
 .dashboard-poster-grid {
   gap: var(--library-grid-gap);
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--dashboard-poster-min)), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--dashboard-poster-min)), 1fr));
 }
 
 .density-nowrap {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+  text-wrap: balance;
+  white-space: normal;
+}
+
+@media (min-width: 1180px) {
+  .density-nowrap {
+    text-wrap: nowrap;
+    white-space: nowrap;
+  }
 }
 
 @media (min-width: 1280px) {
   .hero-layout-with-stats {
-    grid-template-columns: minmax(0, 1.72fr) minmax(min(100%, var(--hero-stat-panel-min)), 0.88fr);
+    grid-template-columns: minmax(min(100%, calc(var(--hero-stat-panel-min) * 1.45)), 1.72fr) minmax(min(100%, var(--hero-stat-panel-min)), 0.88fr);
   }
 
   .settings-split {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--settings-panel-min)), 1fr));
   }
 
   .settings-split-balanced {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--settings-panel-min)), 1fr));
   }
 
   .settings-split-content-heavy {
-    grid-template-columns: minmax(380px, 0.82fr) minmax(0, 1.18fr);
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--settings-panel-min)), 1fr));
   }
 
   .settings-split-config-heavy {
-    grid-template-columns: minmax(0, 1.18fr) minmax(360px, 0.82fr);
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--settings-panel-min)), 1fr));
   }
 }
 
@@ -1561,15 +1570,15 @@ html .text-\[64px\] {
 
 @media (min-width: 1536px) {
   .hero-layout-with-stats {
-    grid-template-columns: minmax(0, 1.9fr) minmax(min(100%, calc(var(--hero-stat-panel-min) + 40px)), 0.72fr);
+    grid-template-columns: minmax(min(100%, calc(var(--hero-stat-panel-min) * 1.6)), 1.9fr) minmax(min(100%, calc(var(--hero-stat-panel-min) + 40px)), 0.72fr);
   }
 
   .settings-split-content-heavy {
-    grid-template-columns: minmax(420px, 0.72fr) minmax(0, 1.28fr);
+    grid-template-columns: minmax(var(--settings-panel-min), 0.8fr) minmax(var(--settings-panel-min), 1.2fr);
   }
 
   .settings-split-config-heavy {
-    grid-template-columns: minmax(0, 1.35fr) minmax(420px, 0.65fr);
+    grid-template-columns: minmax(var(--settings-panel-min), 1.2fr) minmax(var(--settings-panel-min), 0.8fr);
   }
 }
 

@@ -78,7 +78,7 @@ export function CommandTile({
                 strokeWidth={1.85}
               />
             ) : null}
-            <span className="truncate text-[length:var(--metric-label-size)] font-semibold text-foreground">{label}</span>
+            <span className="density-nowrap text-[length:var(--metric-label-size)] font-semibold text-foreground">{label}</span>
           </div>
           {accessory ? <div className="shrink-0">{accessory}</div> : null}
         </div>

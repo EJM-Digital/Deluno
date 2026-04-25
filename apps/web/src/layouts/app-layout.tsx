@@ -165,9 +165,8 @@ function AppLayoutContent() {
 
             <main
               id="main-content"
-              className="mx-auto w-full"
+              className="w-full min-w-0"
               style={{
-                maxWidth: "min(var(--content-max-width), calc(100vw - (var(--content-outer-gap) * 2)))",
                 paddingInline: "var(--content-pad-inline)",
                 paddingTop: "var(--content-pad-block)",
                 paddingBottom: "var(--content-pad-block)"
@@ -234,8 +233,8 @@ function DesktopSidebar({
       <NavLink to="/" aria-label="Deluno home" className="flex min-h-[calc(var(--shell-pill-height)*1.8)] items-center gap-3 rounded-2xl border border-hairline/80 bg-card/75 px-[calc(var(--tile-pad)*0.65)] text-foreground shadow-card no-underline dark:border-white/[0.07] dark:bg-white/[0.035]">
         <AppMark size={42} />
         <span className="min-w-0">
-          <span className="block truncate font-display text-[length:var(--shell-brand-size)] font-bold tracking-[-0.04em]">Deluno</span>
-          <span className="block truncate text-[length:var(--shell-subtle-size)] font-medium text-muted-foreground">Media Manager</span>
+          <span className="block whitespace-nowrap font-display text-[length:var(--shell-brand-size)] font-bold tracking-[-0.04em]">Deluno</span>
+          <span className="block whitespace-nowrap text-[length:var(--shell-subtle-size)] font-medium text-muted-foreground">Media Manager</span>
         </span>
       </NavLink>
 
@@ -281,8 +280,8 @@ function DesktopSidebar({
             {user?.avatarInitials ?? "DU"}
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{user?.displayName ?? "User"}</span>
-            <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">@{user?.username ?? "deluno"}</span>
+            <span className="block whitespace-nowrap text-[length:var(--type-body-sm)] font-semibold text-foreground">{user?.displayName ?? "User"}</span>
+            <span className="block whitespace-nowrap text-[length:var(--type-caption)] text-muted-foreground">@{user?.username ?? "deluno"}</span>
           </span>
           <ChevronDown className="h-4 w-4 text-muted-foreground" />
         </button>
@@ -414,7 +413,7 @@ function SidebarItem({
           <span className={cn("flex h-[calc(var(--shell-pill-height)*0.68)] w-[calc(var(--shell-pill-height)*0.68)] shrink-0 items-center justify-center rounded-xl transition", isActive ? "bg-primary/18 text-primary" : "bg-muted/30 text-muted-foreground group-hover:text-foreground")}>
             <Icon className="h-[var(--shell-icon-size)] w-[var(--shell-icon-size)]" strokeWidth={isActive ? 2.15 : 1.8} />
           </span>
-          <span className="min-w-0 flex-1 truncate">{item.label}</span>
+          <span className="min-w-0 flex-1 whitespace-nowrap">{item.label}</span>
           {count > 0 ? (
             <span className={cn("flex h-[calc(var(--shell-pill-height)*0.42)] min-w-[calc(var(--shell-pill-height)*0.42)] shrink-0 items-center justify-center rounded-full px-1.5 font-mono text-[length:var(--shell-nav-badge-size)] font-bold", isActive ? "bg-primary text-primary-foreground" : "bg-surface-2 text-muted-foreground")}>
               {count}
@@ -456,14 +455,14 @@ function ContentTopbar({
 
   return (
     <header className="sticky top-0 z-40 border-b border-hairline/70 bg-background/88 px-[var(--content-pad-inline)] py-4 backdrop-blur-2xl supports-[backdrop-filter]:bg-background/78 lg:py-5 dark:border-white/[0.05]">
-      <div className="mx-auto flex w-full items-center gap-4" style={{ maxWidth: "min(var(--content-max-width), calc(100vw - (var(--content-outer-gap) * 2)))" }}>
+      <div className="flex w-full min-w-0 items-center gap-4">
         <NavLink to="/" aria-label="Deluno home" className="flex shrink-0 items-center no-underline lg:hidden">
           <AppMark />
         </NavLink>
 
         <div className="min-w-0 flex-1">
           <p className="hidden text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-muted-foreground min-[520px]:block">{subtitle}</p>
-          <h1 className="mt-0.5 truncate font-display text-[length:var(--type-title-sm)] font-semibold tracking-tight text-foreground sm:mt-1 sm:text-[length:var(--type-title-md)]">
+          <h1 className="mt-0.5 font-display text-[length:var(--type-title-sm)] font-semibold leading-tight tracking-tight text-foreground sm:mt-1 sm:text-[length:var(--type-title-md)]">
             {title}
           </h1>
         </div>
