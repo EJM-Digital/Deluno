@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { NavLink } from "react-router-dom";
+import { createContext, useContext, type ReactNode } from "react";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { cn } from "../../lib/utils";
 
 /**
@@ -49,6 +49,129 @@ export const settingsNavGroups = [
 /** Flat list kept for backwards compatibility. */
 export const settingsNavItems = settingsNavGroups.flatMap((group) => [...group.items]);
 
+const SettingsWorkspaceContext = createContext(false);
+const SystemWorkspaceContext = createContext(false);
+
+const systemNavItems = [
+  { to: "/system", label: "Health", end: true, tip: "Runtime health, jobs, providers, and current posture" },
+  { to: "/system/audit", label: "Audit", end: false, tip: "Searchable event timeline and live activity stream" },
+  { to: "/system/backups", label: "Backups", end: false, tip: "Manual backups, automatic schedule, restore preview, and downloads" },
+  { to: "/system/updates", label: "Updates", end: false, tip: "Version status, signed release checks, and upgrade readiness" }
+] as const;
+
+const settingsPageMeta = [
+  {
+    match: (path: string) => path === "/settings",
+    title: "Settings overview",
+    description:
+      "Guided configuration for libraries, quality policy, automation, and runtime behaviour."
+  },
+  {
+    match: (path: string) => path.startsWith("/settings/media-management"),
+    title: "Media Management",
+    description: "Naming, import, and file-handling behaviour for movies and TV."
+  },
+  {
+    match: (path: string) => path.startsWith("/settings/destination-rules"),
+    title: "Destination Rules",
+    description: "Route media into the right root folders without running multiple Deluno instances."
+  },
+  {
+    match: (path: string) => path.startsWith("/settings/policy-sets"),
+    title: "Policy Sets",
+    description: "Reusable acquisition policies that combine quality, routing, and automation decisions."
+  },
+  {
+    match: (path: string) => path.startsWith("/settings/profiles"),
+    title: "Profiles",
+    description: "Quality targets, cutoffs, and upgrade behaviour for each library intent."
+  },
+  {
+    match: (path: string) => path.startsWith("/settings/quality"),
+    title: "Quality Sizes",
+    description: "Size limits that keep downloads sane and predictable across qualities."
+  },
+  {
+    match: (path: string) => path.startsWith("/settings/custom-formats"),
+    title: "Custom Formats",
+    description: "Release scoring for source, codec, HDR, language, group, and preference rules."
+  },
+  {
+    match: (path: string) => path.startsWith("/settings/lists"),
+    title: "Lists",
+    description: "External intake sources and automated discovery behaviour."
+  },
+  {
+    match: (path: string) => path.startsWith("/settings/metadata"),
+    title: "Metadata",
+    description: "NFO, artwork, certification, and library metadata output."
+  },
+  {
+    match: (path: string) => path.startsWith("/settings/tags"),
+    title: "Tags",
+    description: "Labels used for filtering, routing, policies, and user organisation."
+  },
+  {
+    match: (path: string) => path.startsWith("/settings/general"),
+    title: "General",
+    description: "Host identity, runtime defaults, startup behaviour, and notifications."
+  },
+  {
+    match: (path: string) => path.startsWith("/settings/ui"),
+    title: "Interface",
+    description: "Theme, density, default views, and how Deluno should feel on your display."
+  }
+] as const;
+
+const systemPageMeta = [
+  {
+    match: (path: string) => path === "/system",
+    title: "System Health",
+    description: "Runtime health, background jobs, provider posture, and operational state."
+  },
+  {
+    match: (path: string) => path.startsWith("/system/audit"),
+    title: "Audit Timeline",
+    description: "Searchable activity, live events, errors, imports, searches, and notifications."
+  },
+  {
+    match: (path: string) => path.startsWith("/system/backups"),
+    title: "Backups",
+    description: "Manual backups, automatic schedules, restore previews, and backup downloads."
+  },
+  {
+    match: (path: string) => path.startsWith("/system/updates"),
+    title: "Updates",
+    description: "Version status, release channel, signed update checks, and upgrade readiness."
+  }
+] as const;
+
+export function SettingsWorkspaceLayout() {
+  const location = useLocation();
+  const meta = settingsPageMeta.find((item) => item.match(location.pathname)) ?? settingsPageMeta[0];
+
+  return (
+    <SettingsShell title={meta.title} description={meta.description}>
+      <SettingsWorkspaceContext.Provider value>
+        <Outlet />
+      </SettingsWorkspaceContext.Provider>
+    </SettingsShell>
+  );
+}
+
+export function SystemWorkspaceLayout() {
+  const location = useLocation();
+  const meta = systemPageMeta.find((item) => item.match(location.pathname)) ?? systemPageMeta[0];
+
+  return (
+    <SystemShell title={meta.title} description={meta.description}>
+      <SystemWorkspaceContext.Provider value>
+        <Outlet />
+      </SystemWorkspaceContext.Provider>
+    </SystemShell>
+  );
+}
+
 export function SettingsShell({
   eyebrow = "Settings",
   title,
@@ -60,6 +183,10 @@ export function SettingsShell({
   description: string;
   children: ReactNode;
 }) {
+  if (useContext(SettingsWorkspaceContext)) {
+    return <>{children}</>;
+  }
+
   return (
     <div className="space-y-[var(--page-gap)]">
       <div className="flex flex-col gap-2 xl:flex-row xl:items-end xl:justify-between xl:gap-[var(--grid-gap)]">
@@ -74,6 +201,12 @@ export function SettingsShell({
         <p className="max-w-[min(58rem,100%)] text-[length:var(--section-subtitle-size)] leading-relaxed text-muted-foreground xl:text-right">
           {description}
         </p>
+      </div>
+
+      <div className="grid gap-[var(--grid-gap)] rounded-2xl border border-hairline/80 bg-card/80 p-[calc(var(--tile-pad)*0.8)] shadow-card dark:border-white/[0.07] dark:bg-white/[0.035] md:grid-cols-3">
+        <SettingsStep step="A" title="Library" copy="Choose roots, naming, metadata, and destination rules first." />
+        <SettingsStep step="B" title="Quality" copy="Set profiles, sizes, and custom formats after storage is clear." />
+        <SettingsStep step="C" title="Automation" copy="Enable lists, schedules, and UI defaults once policy is correct." />
       </div>
 
       <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(260px,0.28fr)_minmax(0,1fr)] 2xl:grid-cols-[minmax(300px,0.22fr)_minmax(0,1fr)]">
@@ -122,11 +255,29 @@ export function SettingsShell({
   );
 }
 
+function SettingsStep({ copy, step, title }: { copy: string; step: string; title: string }) {
+  return (
+    <div className="flex gap-3 rounded-xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.62)]">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 font-mono text-sm font-bold text-primary">
+        {step}
+      </span>
+      <span className="min-w-0">
+        <span className="block font-display text-[length:var(--type-card-title)] font-semibold tracking-tight text-foreground">
+          {title}
+        </span>
+        <span className="mt-1 block text-[length:var(--section-subtitle-size)] leading-relaxed text-muted-foreground">
+          {copy}
+        </span>
+      </span>
+    </div>
+  );
+}
+
 function SettingsNavLink({
   item,
   compact = false
 }: {
-  item: (typeof settingsNavItems)[number];
+  item: (typeof settingsNavItems)[number] | (typeof systemNavItems)[number];
   compact?: boolean;
 }) {
   return (
@@ -172,15 +323,34 @@ export function SystemShell({
   description: string;
   children: ReactNode;
 }) {
+  if (useContext(SystemWorkspaceContext)) {
+    return <>{children}</>;
+  }
+
   return (
     <div className="space-y-[var(--page-gap)]">
-      <div className="space-y-2">
-        <p className="text-[length:var(--section-subtitle-size)] text-muted-foreground">System</p>
-        <h1 className="font-display text-[length:var(--type-title-lg)] font-semibold tracking-tight text-foreground">
-          {title}
-        </h1>
-        <p className="max-w-3xl text-[length:var(--section-subtitle-size)] text-muted-foreground">{description}</p>
+      <div className="flex flex-col gap-2 xl:flex-row xl:items-end xl:justify-between xl:gap-[var(--grid-gap)]">
+        <div>
+          <p className="text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+            System
+          </p>
+          <h1 className="mt-2 font-display text-[length:var(--type-title-lg)] font-semibold tracking-tight text-foreground">
+            {title}
+          </h1>
+        </div>
+        <p className="max-w-[min(58rem,100%)] text-[length:var(--section-subtitle-size)] leading-relaxed text-muted-foreground xl:text-right">
+          {description}
+        </p>
       </div>
+
+      <div className="no-scrollbar overflow-x-auto">
+        <nav className="flex min-w-max items-center gap-2 rounded-2xl border border-hairline/80 bg-card/85 p-2 shadow-card dark:border-white/[0.07] dark:bg-white/[0.035]">
+          {systemNavItems.map((item) => (
+            <SettingsNavLink key={item.to} item={item} compact />
+          ))}
+        </nav>
+      </div>
+
       {children}
     </div>
   );

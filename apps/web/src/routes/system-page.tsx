@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useLoaderData } from "react-router-dom";
+import { useLoaderData, useLocation } from "react-router-dom";
 import {
   Activity,
   BellRing,
@@ -64,6 +64,7 @@ export async function systemLoader(): Promise<SystemLoaderData> {
 }
 
 export function SystemPage() {
+  const location = useLocation();
   const loaderData = useLoaderData() as SystemLoaderData | undefined;
   const { activity, backupSettings, backups, downloadClients, indexers, jobs, settings, updateStatus } = loaderData ?? {
     activity: [],
@@ -114,6 +115,122 @@ export function SystemPage() {
   const [liveActiveJobs, setLiveActiveJobs] = useState(activeJobs);
   useSignalREvent("QueueItemAdded", () => setLiveActiveJobs((n) => n + 1));
   useSignalREvent("QueueItemRemoved", () => setLiveActiveJobs((n) => Math.max(0, n - 1)));
+
+  const auditCard = (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between gap-3">
+          <span>Audit timeline</span>
+          <WsStatusBadge />
+        </CardTitle>
+        <CardDescription>
+          Full searchable log of every event Deluno has recorded. Live events stream in from WebSocket.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <AuditTimeline events={activity} liveEvents={liveEvents} maxVisible={500} />
+      </CardContent>
+    </Card>
+  );
+
+  const runtimeCard = (
+    <Card>
+      <CardHeader>
+        <CardTitle>Runtime posture</CardTitle>
+        <CardDescription>Persisted host and UI defaults for this instance.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <HealthRow label="Bind address" status={`${settings.hostBindAddress}:${settings.hostPort}`} />
+        <HealthRow label="URL base" status={settings.urlBase || "/"} />
+        <HealthRow label="Authentication" status="Required" />
+        <HealthRow label="UI defaults" status={`${settings.uiTheme} / ${settings.uiDensity}`} />
+      </CardContent>
+    </Card>
+  );
+
+  const providerCard = (
+    <Card>
+      <CardHeader>
+        <CardTitle>Provider health</CardTitle>
+        <CardDescription>Current indexer and client posture.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {indexers.slice(0, 6).map((indexer) => (
+          <HealthRow key={indexer.id} label={indexer.name} status={indexer.healthStatus} />
+        ))}
+        {downloadClients.slice(0, 4).map((client) => (
+          <HealthRow key={client.id} label={client.name} status={client.healthStatus} />
+        ))}
+      </CardContent>
+    </Card>
+  );
+
+  const jobsCard = (
+    <Card>
+      <CardHeader>
+        <CardTitle>Recent jobs</CardTitle>
+        <CardDescription>Latest background work executing in Deluno.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {jobs.slice(0, 8).map((job) => (
+          <div key={job.id} className="rounded-xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.7)]">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[13px] font-medium leading-snug text-foreground">{job.jobType}</p>
+              <JobStatusBadge status={job.status} />
+            </div>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              {job.source} / {formatWhen(job.createdUtc)}
+            </p>
+          </div>
+        ))}
+        {jobs.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">No recent jobs.</p>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+
+  if (location.pathname.startsWith("/system/backups")) {
+    return (
+      <SystemShell title="Backups" description="Manual backups, automatic schedule, restore preview, and backup downloads.">
+        <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
+          <BackupCard initialBackups={backups} initialSettings={backupSettings} />
+          <div className="space-y-[var(--page-gap)]">
+            <OperationsFlowCard />
+            {runtimeCard}
+          </div>
+        </div>
+      </SystemShell>
+    );
+  }
+
+  if (location.pathname.startsWith("/system/updates")) {
+    return (
+      <SystemShell title="Updates" description="Signed release checks and upgrade readiness.">
+        <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+          <UpgradeCard status={updateStatus} />
+          <div className="space-y-[var(--page-gap)]">
+            <OperationsFlowCard />
+            {runtimeCard}
+          </div>
+        </div>
+      </SystemShell>
+    );
+  }
+
+  if (location.pathname.startsWith("/system/audit")) {
+    return (
+      <SystemShell title="Audit Timeline" description="Searchable live system activity.">
+        <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.45fr)]">
+          {auditCard}
+          <div className="space-y-[var(--page-gap)]">
+            {jobsCard}
+            {providerCard}
+          </div>
+        </div>
+      </SystemShell>
+    );
+  }
 
   return (
     <SystemShell

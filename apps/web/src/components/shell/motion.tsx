@@ -55,11 +55,12 @@ export function PageTransition() {
   const outlet = useOutlet();
   const shouldReduce = useReducedMotion();
   const variants = shouldReduce ? pageVariantsReduced : pageVariants;
+  const transitionKey = getRouteTransitionKey(location.pathname);
 
   return (
     <AnimatePresence mode="wait" initial={false}>
       <motion.div
-        key={location.pathname}
+        key={transitionKey}
         variants={variants}
         initial="initial"
         animate="enter"
@@ -70,6 +71,12 @@ export function PageTransition() {
       </motion.div>
     </AnimatePresence>
   );
+}
+
+function getRouteTransitionKey(pathname: string) {
+  if (pathname.startsWith("/settings")) return "/settings";
+  if (pathname.startsWith("/system")) return "/system";
+  return pathname;
 }
 
 /* ──────────────────────────────────────────────────────

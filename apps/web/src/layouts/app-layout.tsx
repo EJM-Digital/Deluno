@@ -57,7 +57,7 @@ const primaryNav = [
 const utilityNav = [
   { to: "/settings", label: "Settings", icon: Settings, end: false },
   { to: "/system", label: "System", icon: ServerCog, end: false },
-  { to: "/system", label: "Backups", icon: ArchiveRestore, end: false }
+  { to: "/system/backups", label: "Backups", icon: ArchiveRestore, end: false }
 ] as const;
 
 const routeMeta = [

@@ -2,6 +2,7 @@ import type { LoaderFunction } from "react-router-dom";
 import { createBrowserRouter, Navigate, redirect, useParams } from "react-router-dom";
 import type { ComponentType } from "react";
 import { RouteErrorBoundary } from "./components/shell/route-error-boundary";
+import { SettingsWorkspaceLayout, SystemWorkspaceLayout } from "./components/app/settings-shell";
 import { AppLayout } from "./layouts/app-layout";
 import { LoginPage } from "./routes/login-page";
 import { SetupPage } from "./routes/setup-page";
@@ -190,114 +191,147 @@ export const router = createBrowserRouter([
       },
       {
         path: "settings",
-        lazy: withSkeleton(async () => {
-          const module = await import("./routes/settings-overview-page");
-          return { loader: module.settingsOverviewLoader, Component: module.SettingsOverviewPage };
-        })
+        element: <SettingsWorkspaceLayout />,
+        children: [
+          {
+            index: true,
+            lazy: withSkeleton(async () => {
+              const module = await import("./routes/settings-overview-page");
+              return { loader: module.settingsOverviewLoader, Component: module.SettingsOverviewPage };
+            })
+          },
+          {
+            path: "media-management",
+            lazy: withSkeleton(async () => {
+              const module = await import("./routes/settings-media-management-page-v2");
+              return {
+                loader: module.settingsMediaManagementLoader,
+                Component: module.SettingsMediaManagementPage
+              };
+            })
+          },
+          { path: "media", element: <Navigate to="/settings/media-management" replace /> },
+          {
+            path: "destination-rules",
+            lazy: withSkeleton(async () => {
+              const module = await import("./routes/settings-destination-rules-page");
+              return {
+                loader: module.settingsDestinationRulesLoader,
+                Component: module.SettingsDestinationRulesPage
+              };
+            })
+          },
+          { path: "root-folders", element: <Navigate to="/settings/destination-rules" replace /> },
+          {
+            path: "policy-sets",
+            lazy: withSkeleton(async () => {
+              const module = await import("./routes/settings-policy-sets-page");
+              return {
+                loader: module.settingsPolicySetsLoader,
+                Component: module.SettingsPolicySetsPage
+              };
+            })
+          },
+          {
+            path: "profiles",
+            lazy: withSkeleton(async () => {
+              const module = await import("./routes/settings-profiles-page");
+              return { loader: module.settingsProfilesLoader, Component: module.SettingsProfilesPage };
+            })
+          },
+          {
+            path: "quality",
+            lazy: withSkeleton(async () => {
+              const module = await import("./routes/settings-quality-page-v2");
+              return { loader: module.settingsQualityLoader, Component: module.SettingsQualityPage };
+            })
+          },
+          { path: "quality-sizes", element: <Navigate to="/settings/quality" replace /> },
+          {
+            path: "custom-formats",
+            lazy: withSkeleton(async () => {
+              const module = await import("./routes/settings-custom-formats-page");
+              return {
+                loader: module.settingsCustomFormatsLoader,
+                Component: module.SettingsCustomFormatsPage
+              };
+            })
+          },
+          { path: "indexers", element: <Navigate to="/indexers" replace /> },
+          { path: "download-clients", element: <Navigate to="/indexers" replace /> },
+          { path: "import-lists", element: <Navigate to="/settings/lists" replace /> },
+          { path: "connect", element: <Navigate to="/settings/general" replace /> },
+          {
+            path: "lists",
+            lazy: withSkeleton(async () => {
+              const module = await import("./routes/settings-lists-page");
+              return { loader: module.settingsListsLoader, Component: module.SettingsListsPage };
+            })
+          },
+          {
+            path: "metadata",
+            lazy: withSkeleton(async () => {
+              const module = await import("./routes/settings-metadata-page");
+              return { loader: module.settingsMetadataLoader, Component: module.SettingsMetadataPage };
+            })
+          },
+          {
+            path: "tags",
+            lazy: withSkeleton(async () => {
+              const module = await import("./routes/settings-tags-page");
+              return { loader: module.settingsTagsLoader, Component: module.SettingsTagsPage };
+            })
+          },
+          {
+            path: "general",
+            lazy: withSkeleton(async () => {
+              const module = await import("./routes/settings-general-page");
+              return { loader: module.settingsGeneralLoader, Component: module.SettingsGeneralPage };
+            })
+          },
+          {
+            path: "ui",
+            lazy: withSkeleton(async () => {
+              const module = await import("./routes/settings-ui-page");
+              return { loader: module.settingsUiLoader, Component: module.SettingsUiPage };
+            })
+          },
+          { path: "*", element: <Navigate to="/settings" replace /> }
+        ]
       },
-      {
-        path: "settings/media-management",
-        lazy: withSkeleton(async () => {
-          const module = await import("./routes/settings-media-management-page-v2");
-          return {
-            loader: module.settingsMediaManagementLoader,
-            Component: module.SettingsMediaManagementPage
-          };
-        })
-      },
-      { path: "settings/media", element: <Navigate to="/settings/media-management" replace /> },
-      {
-        path: "settings/destination-rules",
-        lazy: withSkeleton(async () => {
-          const module = await import("./routes/settings-destination-rules-page");
-          return {
-            loader: module.settingsDestinationRulesLoader,
-            Component: module.SettingsDestinationRulesPage
-          };
-        })
-      },
-      { path: "settings/root-folders", element: <Navigate to="/settings/destination-rules" replace /> },
-      {
-        path: "settings/policy-sets",
-        lazy: withSkeleton(async () => {
-          const module = await import("./routes/settings-policy-sets-page");
-          return {
-            loader: module.settingsPolicySetsLoader,
-            Component: module.SettingsPolicySetsPage
-          };
-        })
-      },
-      {
-        path: "settings/profiles",
-        lazy: withSkeleton(async () => {
-          const module = await import("./routes/settings-profiles-page");
-          return { loader: module.settingsProfilesLoader, Component: module.SettingsProfilesPage };
-        })
-      },
-      {
-        path: "settings/quality",
-        lazy: withSkeleton(async () => {
-          const module = await import("./routes/settings-quality-page-v2");
-          return { loader: module.settingsQualityLoader, Component: module.SettingsQualityPage };
-        })
-      },
-      { path: "settings/quality-sizes", element: <Navigate to="/settings/quality" replace /> },
-      {
-        path: "settings/custom-formats",
-        lazy: withSkeleton(async () => {
-          const module = await import("./routes/settings-custom-formats-page");
-          return {
-            loader: module.settingsCustomFormatsLoader,
-            Component: module.SettingsCustomFormatsPage
-          };
-        })
-      },
-      { path: "settings/indexers", element: <Navigate to="/indexers" replace /> },
-      { path: "settings/download-clients", element: <Navigate to="/indexers" replace /> },
-      { path: "settings/import-lists", element: <Navigate to="/settings/lists" replace /> },
-      { path: "settings/connect", element: <Navigate to="/settings/general" replace /> },
-      {
-        path: "settings/lists",
-        lazy: withSkeleton(async () => {
-          const module = await import("./routes/settings-lists-page");
-          return { loader: module.settingsListsLoader, Component: module.SettingsListsPage };
-        })
-      },
-      {
-        path: "settings/metadata",
-        lazy: withSkeleton(async () => {
-          const module = await import("./routes/settings-metadata-page");
-          return { loader: module.settingsMetadataLoader, Component: module.SettingsMetadataPage };
-        })
-      },
-      {
-        path: "settings/tags",
-        lazy: withSkeleton(async () => {
-          const module = await import("./routes/settings-tags-page");
-          return { loader: module.settingsTagsLoader, Component: module.SettingsTagsPage };
-        })
-      },
-      {
-        path: "settings/general",
-        lazy: withSkeleton(async () => {
-          const module = await import("./routes/settings-general-page");
-          return { loader: module.settingsGeneralLoader, Component: module.SettingsGeneralPage };
-        })
-      },
-      {
-        path: "settings/ui",
-        lazy: withSkeleton(async () => {
-          const module = await import("./routes/settings-ui-page");
-          return { loader: module.settingsUiLoader, Component: module.SettingsUiPage };
-        })
-      },
-      { path: "settings/*", element: <Navigate to="/settings" replace /> },
       {
         path: "system",
-        lazy: withSkeleton(async () => {
-          const module = await import("./routes/system-page");
-          return { loader: module.systemLoader, Component: module.SystemPage };
-        })
+        element: <SystemWorkspaceLayout />,
+        children: [
+          {
+            index: true,
+            lazy: withSkeleton(async () => {
+              const module = await import("./routes/system-page");
+              return { loader: module.systemLoader, Component: module.SystemPage };
+            })
+          },
+          {
+            path: "audit",
+            lazy: withSkeleton(async () => {
+              const module = await import("./routes/system-page");
+              return { loader: module.systemLoader, Component: module.SystemPage };
+            })
+          },
+          {
+            path: "backups",
+            lazy: withSkeleton(async () => {
+              const module = await import("./routes/system-page");
+              return { loader: module.systemLoader, Component: module.SystemPage };
+            })
+          },
+          {
+            path: "updates",
+            lazy: withSkeleton(async () => {
+              const module = await import("./routes/system-page");
+              return { loader: module.systemLoader, Component: module.SystemPage };
+            })
+          }
+        ]
       }
     ]
   }
