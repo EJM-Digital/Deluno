@@ -30,7 +30,7 @@
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 46%;
     --warning-foreground: 28 40% 10%;
-    --info: 202 88% 44%;
+    --info: 207 92% 45%;
     --info-foreground: 0 0% 100%;
     --border: 220 12% 86%;
     --input: 220 12% 86%;
@@ -46,7 +46,7 @@
     --state-ok: 145 72% 34%;
     --state-warn: 38 92% 46%;
     --state-danger: 0 84% 48%;
-    --state-info: 202 88% 44%;
+    --state-info: 207 92% 45%;
     --gradient-surface: linear-gradient(160deg, hsl(0 0% 100%) 0%, hsl(42 18% 97%) 100%);
     --shadow-card: 0 1px 2px hsl(222 18% 8% / 0.05), 0 4px 12px hsl(222 18% 8% / 0.04);
     --shadow-md: 0 8px 32px hsl(222 18% 8% / 0.07), 0 2px 8px hsl(222 18% 8% / 0.04);
@@ -98,7 +98,7 @@
     --success-foreground: 145 50% 8%;
     --warning: 38 95% 58%;
     --warning-foreground: 28 40% 10%;
-    --info: 202 92% 61%;
+    --info: 207 96% 62%;
     --info-foreground: 210 30% 98%;
     --border: 222 13% 18%;
     --input: 222 13% 17%;
@@ -114,7 +114,7 @@
     --state-ok: 145 78% 52%;
     --state-warn: 38 95% 58%;
     --state-danger: 0 84% 62%;
-    --state-info: 202 92% 61%;
+    --state-info: 207 96% 62%;
     --gradient-surface: linear-gradient(160deg, hsl(222 18% 11%) 0%, hsl(222 22% 7%) 100%);
     --shadow-card: 0 1px 0 hsl(222 22% 3% / 0.55), 0 2px 8px hsl(222 22% 3% / 0.3);
     --shadow-md: 0 8px 32px hsl(222 22% 3% / 0.4), 0 1px 0 hsl(0 0% 100% / 0.04) inset;
@@ -130,32 +130,32 @@
   /* (--primary-2 = gradient end-stop, --primary-deep = deep shadow tone)*/
   /* ══════════════════════════════════════════════════════════════════ */
 
-  /* Default - Deluno Blue (calm periwinkle, distinct from status info) */
+  /* Default — Cobalt (premium, Linear/Arc vibe) */
   :root,
   :root[data-accent="cobalt"] {
-    --primary: 224 88% 58%;
-    --primary-glow: 232 88% 68%;
-    --primary-2: 246 78% 66%;
-    --primary-deep: 228 72% 24%;
+    --primary: 214 95% 52%;
+    --primary-glow: 207 96% 60%;
+    --primary-2: 190 94% 46%;
+    --primary-deep: 214 88% 24%;
     --primary-foreground: 0 0% 100%;
-    --accent: 226 72% 96%;
-    --accent-foreground: 226 58% 27%;
-    --ring: 224 88% 58%;
-    --sidebar-ring: 224 88% 58%;
-    --gradient-accent: linear-gradient(135deg, hsl(224 88% 58%) 0%, hsl(246 78% 66%) 100%);
+    --accent: 214 72% 96%;
+    --accent-foreground: 214 74% 26%;
+    --ring: 214 95% 52%;
+    --sidebar-ring: 214 95% 52%;
+    --gradient-accent: linear-gradient(135deg, hsl(214 95% 52%) 0%, hsl(190 94% 46%) 100%);
   }
   .dark,
   .dark[data-accent="cobalt"] {
-    --primary: 224 100% 70%;
-    --primary-glow: 236 92% 76%;
-    --primary-2: 250 88% 74%;
-    --primary-deep: 230 74% 16%;
-    --primary-foreground: 230 46% 9%;
+    --primary: 212 100% 66%;
+    --primary-glow: 199 100% 68%;
+    --primary-2: 188 92% 58%;
+    --primary-deep: 212 90% 14%;
+    --primary-foreground: 216 42% 8%;
     --accent: 222 14% 15%;
-    --accent-foreground: 228 100% 84%;
-    --ring: 224 100% 70%;
-    --sidebar-ring: 224 100% 70%;
-    --gradient-accent: linear-gradient(135deg, hsl(224 100% 70%) 0%, hsl(250 88% 74%) 100%);
+    --accent-foreground: 212 100% 82%;
+    --ring: 212 100% 66%;
+    --sidebar-ring: 212 100% 66%;
+    --gradient-accent: linear-gradient(135deg, hsl(212 100% 66%) 0%, hsl(188 92% 58%) 100%);
   }
 
   /* Indigo — deep classic enterprise (Stripe OG) */
