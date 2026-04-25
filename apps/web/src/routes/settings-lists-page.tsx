@@ -172,7 +172,7 @@ export function SettingsListsPage() {
       ) : null}
 
       <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.18fr)_minmax(380px,0.82fr)] 2xl:grid-cols-[minmax(0,1.35fr)_minmax(440px,0.65fr)]">
-        <Card>
+        <Card className="order-2">
           <CardHeader>
             <CardTitle>Current intake sources</CardTitle>
             <CardDescription>Saved watchlists and feed definitions Deluno can manage today.</CardDescription>
@@ -341,7 +341,7 @@ export function SettingsListsPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="order-1">
           <CardHeader>
             <CardTitle>Create intake source</CardTitle>
             <CardDescription>Define how Deluno should ingest titles from external watchlists and discovery feeds.</CardDescription>

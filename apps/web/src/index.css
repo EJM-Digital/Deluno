@@ -809,6 +809,7 @@
   --type-body-sm: 0.875rem;
   --type-body: 0.9375rem;
   --type-body-lg: 1rem;
+  --type-card-title: 1rem;
   --type-title-sm: 1.125rem;
   --type-title-md: 1.5rem;
   --type-title-lg: 2rem;
@@ -869,6 +870,7 @@
   --type-body-sm: 0.8125rem;
   --type-body: 0.875rem;
   --type-body-lg: 0.9375rem;
+  --type-card-title: 0.9375rem;
   --type-title-sm: 1rem;
   --type-title-md: 1.35rem;
   --type-title-lg: 1.75rem;
@@ -935,6 +937,7 @@
   --type-body-sm: 0.875rem;
   --type-body: 0.9375rem;
   --type-body-lg: 1rem;
+  --type-card-title: 1rem;
   --type-title-sm: 1.125rem;
   --type-title-md: 1.5rem;
   --type-title-lg: 2rem;
@@ -1001,6 +1004,7 @@
     --type-body-sm: 0.9375rem;
     --type-body: 1rem;
     --type-body-lg: 1.125rem;
+    --type-card-title: 1.125rem;
     --type-title-sm: 1.25rem;
     --type-title-md: 1.75rem;
     --type-title-lg: 2.25rem;
@@ -1067,6 +1071,7 @@
     --type-body-sm: 1rem;
     --type-body: 1.0625rem;
     --type-body-lg: 1.1875rem;
+    --type-card-title: 1.1875rem;
     --type-title-sm: 1.375rem;
     --type-title-md: 2rem;
     --type-title-lg: 2.65rem;
@@ -1129,6 +1134,9 @@ html .text-xl { font-size: var(--type-title-sm) !important; line-height: 1.25; }
 html .text-2xl { font-size: var(--type-title-md) !important; line-height: 1.18; }
 html .text-3xl { font-size: var(--type-title-lg) !important; line-height: 1.12; }
 html .text-4xl { font-size: var(--type-title-xl) !important; line-height: 1.08; }
+html .text-5xl,
+html .text-6xl,
+html .text-7xl { font-size: var(--type-display) !important; line-height: 0.98; }
 
 html .text-\[8\.5px\],
 html .text-\[9px\],
@@ -1153,6 +1161,18 @@ html .text-\[14px\],
 html .text-\[14\.5px\],
 html .text-\[15px\] {
   font-size: var(--type-body-sm) !important;
+  line-height: 1.45 !important;
+}
+
+html .text-\[16px\],
+html .text-\[17px\],
+html .text-\[18px\],
+html .text-\[19px\],
+html .text-\[20px\],
+html .text-\[21px\],
+html .text-\[22px\],
+html .text-\[23px\] {
+  font-size: var(--type-body-lg) !important;
   line-height: 1.45 !important;
 }
 

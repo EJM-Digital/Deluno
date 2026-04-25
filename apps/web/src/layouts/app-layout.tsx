@@ -235,7 +235,7 @@ function DesktopSidebar({
       <NavLink to="/" aria-label="Deluno home" className="flex min-h-[76px] items-center gap-3 rounded-2xl border border-hairline/80 bg-card/75 px-3 text-foreground shadow-card no-underline dark:border-white/[0.07] dark:bg-white/[0.035]">
         <AppMark size={42} />
         <span className="min-w-0">
-          <span className="block truncate font-display text-[22px] font-bold tracking-[-0.04em]">Deluno</span>
+          <span className="block truncate font-display text-[length:var(--shell-brand-size)] font-bold tracking-[-0.04em]">Deluno</span>
           <span className="block truncate text-[length:var(--shell-subtle-size)] font-medium text-muted-foreground">Media Manager</span>
         </span>
       </NavLink>

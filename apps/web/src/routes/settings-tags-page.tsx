@@ -137,7 +137,7 @@ export function SettingsTagsPage() {
       ) : null}
 
       <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.18fr)_minmax(380px,0.82fr)] 2xl:grid-cols-[minmax(0,1.35fr)_minmax(440px,0.65fr)]">
-        <Card>
+        <Card className="order-2">
           <CardHeader>
             <CardTitle>Current tags</CardTitle>
             <CardDescription>Live tags Deluno can now persist and reuse across future policy surfaces.</CardDescription>
@@ -246,7 +246,7 @@ export function SettingsTagsPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="order-1">
           <CardHeader>
             <CardTitle>Create and future usage</CardTitle>
             <CardDescription>Start the tag library now; assignment will be layered onto routing, lists, and title operations next.</CardDescription>
