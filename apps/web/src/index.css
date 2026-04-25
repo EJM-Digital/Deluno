@@ -1201,6 +1201,57 @@ html .text-\[64px\] {
   line-height: 0.98 !important;
 }
 
+/*
+  Settings layout normalization.
+  Use named split patterns so settings pages do not drift into arbitrary card
+  proportions. Configuration stays on the left; configured/current content stays
+  on the right when a page has that relationship.
+*/
+.settings-split {
+  display: grid;
+  gap: var(--grid-gap);
+  align-items: start;
+}
+
+.settings-side-stack {
+  display: grid;
+  gap: var(--page-gap);
+  align-content: start;
+  min-width: 0;
+}
+
+.settings-panel {
+  min-width: 0;
+}
+
+@media (min-width: 1280px) {
+  .settings-split {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .settings-split-balanced {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .settings-split-content-heavy {
+    grid-template-columns: minmax(380px, 0.82fr) minmax(0, 1.18fr);
+  }
+
+  .settings-split-config-heavy {
+    grid-template-columns: minmax(0, 1.18fr) minmax(360px, 0.82fr);
+  }
+}
+
+@media (min-width: 1536px) {
+  .settings-split-content-heavy {
+    grid-template-columns: minmax(420px, 0.72fr) minmax(0, 1.28fr);
+  }
+
+  .settings-split-config-heavy {
+    grid-template-columns: minmax(0, 1.35fr) minmax(420px, 0.65fr);
+  }
+}
+
 .data-table tbody td {
   padding-top: var(--data-row-py);
   padding-bottom: var(--data-row-py);

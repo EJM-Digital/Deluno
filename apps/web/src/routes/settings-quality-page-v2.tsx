@@ -73,8 +73,8 @@ export function SettingsQualityPage() {
         />
       </div>
 
-      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.18fr)_minmax(380px,0.82fr)] 2xl:grid-cols-[minmax(0,1.35fr)_minmax(440px,0.65fr)]">
-        <Card>
+      <div className="settings-split settings-split-config-heavy">
+        <Card className="settings-panel">
           <CardHeader>
             <CardTitle>Profile quality matrix</CardTitle>
             <CardDescription>Current cutoff and allowed-quality posture coming from live Deluno profiles.</CardDescription>
@@ -118,7 +118,7 @@ export function SettingsQualityPage() {
           </CardContent>
         </Card>
 
-        <div className="space-y-[var(--page-gap)]">
+        <div className="settings-side-stack">
           <Card>
             <CardHeader>
               <CardTitle>Quality coverage</CardTitle>

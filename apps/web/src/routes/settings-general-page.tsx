@@ -61,8 +61,8 @@ export function SettingsGeneralPage() {
       title="General"
       description="Host, runtime, identity, and basic application behavior should live here rather than being mixed into media policy pages."
     >
-      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-2">
-        <Card>
+      <div className="settings-split settings-split-balanced">
+        <Card className="settings-panel">
           <CardHeader>
             <CardTitle className="flex items-center justify-between gap-3">
               Instance and host
@@ -155,7 +155,7 @@ export function SettingsGeneralPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="settings-panel">
           <CardHeader>
             <CardTitle>Status</CardTitle>
             <CardDescription>Current persisted general posture.</CardDescription>

@@ -136,10 +136,10 @@ export function SettingsTagsPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.18fr)_minmax(380px,0.82fr)] 2xl:grid-cols-[minmax(0,1.35fr)_minmax(440px,0.65fr)]">
-        <Card className="order-2">
+      <div className="settings-split settings-split-content-heavy">
+        <Card className="settings-panel order-2">
           <CardHeader>
-            <CardTitle>Current tags</CardTitle>
+            <CardTitle>Configured tags</CardTitle>
             <CardDescription>Live tags Deluno can now persist and reuse across future policy surfaces.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -246,9 +246,9 @@ export function SettingsTagsPage() {
           </CardContent>
         </Card>
 
-        <Card className="order-1">
+        <Card className="settings-panel order-1">
           <CardHeader>
-            <CardTitle>Create and future usage</CardTitle>
+            <CardTitle>Add tag</CardTitle>
             <CardDescription>Start the tag library now; assignment will be layered onto routing, lists, and title operations next.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-[var(--page-gap)]">
@@ -273,7 +273,7 @@ export function SettingsTagsPage() {
               </Field>
               <Button type="submit" disabled={busyKey === "create"}>
                 {busyKey === "create" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-                Create tag
+                Add tag
               </Button>
             </form>
 

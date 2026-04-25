@@ -66,8 +66,8 @@ export function SettingsMediaManagementPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.22fr)_minmax(360px,0.78fr)] 2xl:grid-cols-[minmax(0,1.45fr)_minmax(420px,0.62fr)]">
-        <Card>
+      <div className="settings-split settings-split-config-heavy">
+        <Card className="settings-panel">
           <CardHeader>
             <CardTitle>Import and file handling</CardTitle>
             <CardDescription>
@@ -181,7 +181,7 @@ export function SettingsMediaManagementPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="settings-panel">
           <CardHeader>
             <CardTitle>Library impact</CardTitle>
             <CardDescription>Active libraries that will inherit these rules.</CardDescription>

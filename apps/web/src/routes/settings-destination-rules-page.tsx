@@ -274,8 +274,8 @@ export function SettingsDestinationRulesPage() {
         />
       </div>
 
-      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.18fr)_minmax(380px,0.82fr)] 2xl:grid-cols-[minmax(0,1.35fr)_minmax(440px,0.65fr)]">
-        <Card>
+      <div className="settings-split settings-split-balanced">
+        <Card className="settings-panel">
           <CardHeader>
             <CardTitle>{editingId ? "Edit destination rule" : "Create destination rule"}</CardTitle>
             <CardDescription>
@@ -385,7 +385,7 @@ export function SettingsDestinationRulesPage() {
           </CardContent>
         </Card>
 
-        <div className="space-y-[var(--page-gap)]">
+        <div className="settings-side-stack">
           <Card>
             <CardHeader>
               <CardTitle>Preview an import route</CardTitle>

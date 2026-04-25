@@ -344,8 +344,8 @@ export function SettingsOverviewPage() {
         />
       </div>
 
-      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.72fr)] 2xl:grid-cols-[minmax(0,1.55fr)_minmax(420px,0.58fr)]">
-        <Card>
+      <div className="settings-split settings-split-config-heavy">
+        <Card className="settings-panel">
           <CardHeader>
             <CardTitle>Control plane</CardTitle>
             <CardDescription>
@@ -386,7 +386,7 @@ export function SettingsOverviewPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="settings-panel">
           <CardHeader>
             <CardTitle>Single-install direction</CardTitle>
             <CardDescription>
@@ -413,8 +413,8 @@ export function SettingsOverviewPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.22fr)_minmax(380px,0.78fr)] 2xl:grid-cols-[minmax(0,1.45fr)_minmax(440px,0.62fr)]">
-        <div className="space-y-[var(--page-gap)]">
+      <div className="settings-split settings-split-config-heavy">
+        <div className="settings-side-stack">
           <Card>
             <CardHeader>
               <CardTitle>Platform</CardTitle>
@@ -694,7 +694,7 @@ export function SettingsOverviewPage() {
           </Card>
         </div>
 
-        <div className="space-y-[var(--page-gap)]">
+        <div className="settings-side-stack">
           <Card>
             <CardHeader>
               <CardTitle>Create quality profile</CardTitle>

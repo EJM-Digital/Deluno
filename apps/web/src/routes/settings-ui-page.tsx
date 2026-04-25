@@ -107,8 +107,8 @@ export function SettingsUiPage() {
       title="Interface"
       description="Choose how Deluno should feel on your hardware before you fine-tune the visual style."
     >
-      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.08fr)_minmax(360px,0.92fr)] 2xl:grid-cols-[minmax(0,1.25fr)_minmax(420px,0.75fr)]">
-        <Card>
+      <div className="settings-split settings-split-balanced">
+        <Card className="settings-panel">
           <CardHeader>
             <CardTitle className="flex items-center justify-between gap-3">
               UI preferences
@@ -192,7 +192,7 @@ export function SettingsUiPage() {
           </CardContent>
         </Card>
 
-        <div className="space-y-[var(--page-gap)]">
+        <div className="settings-side-stack">
           <Card>
             <CardHeader>
               <CardTitle>Current defaults</CardTitle>

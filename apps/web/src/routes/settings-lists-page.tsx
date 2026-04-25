@@ -171,10 +171,10 @@ export function SettingsListsPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.18fr)_minmax(380px,0.82fr)] 2xl:grid-cols-[minmax(0,1.35fr)_minmax(440px,0.65fr)]">
-        <Card className="order-2">
+      <div className="settings-split settings-split-content-heavy">
+        <Card className="settings-panel order-2">
           <CardHeader>
-            <CardTitle>Current intake sources</CardTitle>
+            <CardTitle>Configured list sources</CardTitle>
             <CardDescription>Saved watchlists and feed definitions Deluno can manage today.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -323,7 +323,7 @@ export function SettingsListsPage() {
                       <div className="mt-4">
                         <Button onClick={() => void handleSave(item.id)} disabled={busyKey === `save:${item.id}`}>
                           {busyKey === `save:${item.id}` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-                          Save intake source
+                          Save list source
                         </Button>
                       </div>
                     ) : null}
@@ -334,16 +334,16 @@ export function SettingsListsPage() {
               <EmptyState
                 size="sm"
                 variant="custom"
-                title="No intake sources yet"
+                title="No list sources yet"
                 description="Add a list source — IMDb, TMDB, Trakt — to auto-populate your libraries."
               />
             )}
           </CardContent>
         </Card>
 
-        <Card className="order-1">
+        <Card className="settings-panel order-1">
           <CardHeader>
-            <CardTitle>Create intake source</CardTitle>
+            <CardTitle>Add list source</CardTitle>
             <CardDescription>Define how Deluno should ingest titles from external watchlists and discovery feeds.</CardDescription>
           </CardHeader>
           <CardContent>
@@ -408,7 +408,7 @@ export function SettingsListsPage() {
               />
               <Button type="submit" disabled={busyKey === "create"}>
                 {busyKey === "create" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-                Create intake source
+                Add source
               </Button>
             </form>
           </CardContent>

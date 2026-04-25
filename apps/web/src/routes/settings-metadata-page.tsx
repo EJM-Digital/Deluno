@@ -134,8 +134,8 @@ export function SettingsMetadataPage() {
       title="Metadata"
       description="Connect the provider Deluno uses for title lookup, posters, backdrops, ratings, genres, external IDs, and future sidecar output."
     >
-      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.18fr)_minmax(380px,0.82fr)] 2xl:grid-cols-[minmax(0,1.35fr)_minmax(440px,0.65fr)]">
-        <Card>
+      <div className="settings-split settings-split-config-heavy">
+        <Card className="settings-panel">
           <CardHeader>
             <CardTitle className="flex items-center justify-between gap-3">
               Provider and output
@@ -255,7 +255,7 @@ export function SettingsMetadataPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="settings-panel">
           <CardHeader>
             <CardTitle>Current posture</CardTitle>
             <CardDescription>What Deluno will use for lookup, enrichment jobs, and future sidecar generation.</CardDescription>

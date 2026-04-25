@@ -289,9 +289,9 @@ export function SettingsProfilesPage() {
       title="Quality Profiles"
       description="Define which quality sources and custom formats Deluno targets. Assign profiles to individual libraries."
     >
-      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.25fr)_minmax(380px,0.75fr)] 2xl:grid-cols-[minmax(0,1.45fr)_minmax(440px,0.58fr)]">
+      <div className="settings-split settings-split-config-heavy">
         {/* ── Profile list ── */}
-        <div className="space-y-[calc(var(--field-group-pad)*0.9)]">
+        <div className="settings-panel space-y-[calc(var(--field-group-pad)*0.9)]">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="font-semibold text-foreground">Your profiles</h3>
@@ -375,7 +375,7 @@ export function SettingsProfilesPage() {
         </div>
 
         {/* ── Libraries panel ── */}
-        <div className="space-y-[calc(var(--field-group-pad)*0.9)]">
+        <div className="settings-panel space-y-[calc(var(--field-group-pad)*0.9)]">
           <div>
             <h3 className="flex items-center gap-2 font-semibold text-foreground">
               Library assignments
