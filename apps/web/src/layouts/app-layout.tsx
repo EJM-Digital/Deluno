@@ -33,7 +33,7 @@ import { Input } from "../components/ui/input";
 import { globalShortcuts } from "../lib/command-registry";
 import { useAttention } from "../lib/use-attention";
 import { useAuth, type UserProfile } from "../lib/use-auth";
-import { DensityProvider } from "../lib/use-density";
+import { DENSITY_LABELS, DensityProvider, useDensity, type Density } from "../lib/use-density";
 import { SignalRProvider } from "../lib/use-signalr";
 import { cn } from "../lib/utils";
 
@@ -58,6 +58,8 @@ const utilityNav = [
   { to: "/settings", label: "Settings", icon: Settings, end: false },
   { to: "/system", label: "System", icon: ServerCog, end: false }
 ] as const;
+
+const densityChoices: Density[] = ["compact", "comfortable", "spacious", "expanded"];
 
 const routeMeta = [
   { match: (path: string) => path === "/", title: "Overview", subtitle: "Unified media operations" },
@@ -451,6 +453,7 @@ function ContentTopbar({
   onLogout: () => void;
 }) {
   const searchRef = useRef<HTMLInputElement>(null);
+  const { density, setDensity } = useDensity();
   useEffect(() => { if (searchOpen) setTimeout(() => searchRef.current?.focus(), 50); }, [searchOpen]);
 
   return (
@@ -491,6 +494,24 @@ function ContentTopbar({
         <Button type="button" variant="ghost" size="icon" className="hidden text-muted-foreground hover:text-foreground md:inline-flex" onClick={onOpenHelp} aria-label="Keyboard shortcuts">
           <HelpCircle className="h-[var(--shell-icon-size-sm)] w-[var(--shell-icon-size-sm)]" strokeWidth={1.75} />
         </Button>
+
+        <label className="hidden min-h-[var(--control-height-icon)] items-center gap-2 rounded-xl border border-hairline/70 bg-card/75 px-3 text-[length:var(--shell-nav-size)] font-semibold text-muted-foreground transition hover:border-primary/30 hover:bg-muted/40 hover:text-foreground min-[920px]:inline-flex">
+          <span className="sr-only">Display density</span>
+          <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_10px_hsl(var(--primary)/0.65)]" />
+          <select
+            value={density}
+            onChange={(event) => setDensity(event.target.value as Density)}
+            aria-label="Display density"
+            className="cursor-pointer appearance-none bg-transparent pr-5 font-semibold text-current outline-none"
+          >
+            {densityChoices.map((choice) => (
+              <option key={choice} value={choice}>
+                {DENSITY_LABELS[choice]}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="-ml-5 h-[var(--shell-icon-size-sm)] w-[var(--shell-icon-size-sm)] pointer-events-none" strokeWidth={1.75} />
+        </label>
 
         <button
           type="button"
