@@ -29,7 +29,7 @@ export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHead
   return (
     <h3
       className={cn(
-        "text-dynamic-base font-semibold leading-snug tracking-tight text-foreground",
+        "text-[length:var(--type-card-title)] font-semibold leading-snug tracking-tight text-foreground",
         className
       )}
       {...props}

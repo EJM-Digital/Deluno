@@ -32,7 +32,7 @@ export function SectionTabs({ items, className }: SectionTabsProps) {
             end={item.end}
             className={({ isActive }) =>
               cn(
-                "relative inline-flex shrink-0 items-center gap-2 whitespace-nowrap px-3 py-2.5 text-sm font-medium transition-colors",
+                "relative inline-flex min-h-[var(--control-height)] shrink-0 items-center gap-2 whitespace-nowrap px-3 py-2.5 text-[length:var(--type-body-sm)] font-medium transition-colors",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-t-md",
                 isActive
                   ? "text-foreground after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:bg-primary after:rounded-full"

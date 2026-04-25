@@ -119,7 +119,7 @@ export function SettingsUiPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form className="space-y-[calc(var(--field-group-pad)*0.9)]" onSubmit={handleSave}>
+            <form className="space-y-[var(--grid-gap)]" onSubmit={handleSave}>
               <Field label="Theme">
                 <Select
                   value={formState.uiTheme}
@@ -142,7 +142,7 @@ export function SettingsUiPage() {
                         key={option.value}
                         type="button"
                         onClick={() => setFormState((current) => ({ ...current, uiDensity: option.value }))}
-                        className={`density-field rounded-xl border text-left transition-colors ${
+                        className={`density-field min-h-[calc(var(--control-height-lg)*2.6)] rounded-xl border text-left transition-colors ${
                           active
                             ? "border-primary/40 bg-primary/10 text-foreground"
                             : "border-hairline bg-surface-1 text-foreground hover:border-primary/25 hover:bg-surface-2"

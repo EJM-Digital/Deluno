@@ -173,17 +173,17 @@ function resolveInitialDisplayOptions(variant: Variant): DisplayOptions {
 }
 
 const GRID_MIN_BY_DENSITY: Record<Density, Record<CardSize, string>> = {
-  compact: { sm: "112px", md: "150px", lg: "210px" },
-  comfortable: { sm: "126px", md: "172px", lg: "238px" },
-  spacious: { sm: "144px", md: "196px", lg: "270px" },
-  expanded: { sm: "160px", md: "218px", lg: "304px" }
+  compact: { sm: "var(--library-card-sm)", md: "var(--library-card-md)", lg: "var(--library-card-lg)" },
+  comfortable: { sm: "var(--library-card-sm)", md: "var(--library-card-md)", lg: "var(--library-card-lg)" },
+  spacious: { sm: "var(--library-card-sm)", md: "var(--library-card-md)", lg: "var(--library-card-lg)" },
+  expanded: { sm: "var(--library-card-sm)", md: "var(--library-card-md)", lg: "var(--library-card-lg)" }
 };
 
 const TITLE_CLASS_BY_DENSITY: Record<Density, Record<CardSize, string>> = {
-  compact: { sm: "text-[10.5px]", md: "text-[12px]", lg: "text-[13px]" },
-  comfortable: { sm: "text-[11px]", md: "text-[12.5px]", lg: "text-[14px]" },
-  spacious: { sm: "text-[12px]", md: "text-[13px]", lg: "text-[14.5px]" },
-  expanded: { sm: "text-[12.5px]", md: "text-[13.5px]", lg: "text-[15px]" }
+  compact: { sm: "text-[length:var(--library-title-sm)]", md: "text-[length:var(--library-title-md)]", lg: "text-[length:var(--library-title-lg)]" },
+  comfortable: { sm: "text-[length:var(--library-title-sm)]", md: "text-[length:var(--library-title-md)]", lg: "text-[length:var(--library-title-lg)]" },
+  spacious: { sm: "text-[length:var(--library-title-sm)]", md: "text-[length:var(--library-title-md)]", lg: "text-[length:var(--library-title-lg)]" },
+  expanded: { sm: "text-[length:var(--library-title-sm)]", md: "text-[length:var(--library-title-md)]", lg: "text-[length:var(--library-title-lg)]" }
 };
 
 /** Whether to show sub-metadata (year / genre) per size */
@@ -1114,7 +1114,7 @@ export function LibraryView({
         {/* ═══════ RESULT + SELECT ROW ═══════ */}
         <div className="flex items-center justify-between gap-3">
           {/* Left — count */}
-          <p className="text-[12.5px] font-medium text-muted-foreground">
+          <p className="text-[length:var(--library-toolbar-size)] font-medium text-muted-foreground">
             {filtered.length === libraryItems.length
               ? <><span className="font-bold tabular text-foreground">{filtered.length}</span> {label}</>
               : <><span className="font-bold tabular text-foreground">{filtered.length}</span> of {libraryItems.length} {label}</>
@@ -1126,7 +1126,7 @@ export function LibraryView({
             type="button"
             onClick={toggleSelectAllVisible}
             className={cn(
-              "group flex items-center gap-2 rounded-xl px-3 py-1.5 text-[12px] font-medium transition-all duration-200 select-none",
+              "group flex min-h-[var(--library-toolbar-height)] items-center gap-2 rounded-xl px-3 py-1.5 text-[length:var(--library-toolbar-size)] font-medium transition-all duration-200 select-none",
               selectedCount > 0
                 ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/20 hover:bg-primary/15"
                 : "text-muted-foreground hover:bg-muted/60 hover:text-foreground dark:hover:bg-white/[0.05]"
@@ -1179,12 +1179,12 @@ export function LibraryView({
                 <span className={cn(
                   "flex h-6 min-w-6 items-center justify-center rounded-full px-2",
                   "bg-gradient-to-br from-primary to-[hsl(var(--primary-2))]",
-                  "text-[11px] font-bold text-primary-foreground",
+                  "text-[length:var(--library-badge-size)] font-bold text-primary-foreground",
                   "shadow-[0_2px_8px_hsl(var(--primary-deep)/0.5),inset_0_1px_0_hsl(0_0%_100%/0.2)]"
                 )}>
                   {selectedCount}
                 </span>
-                <span className="whitespace-nowrap text-[12.5px] font-medium text-white/70">
+                <span className="whitespace-nowrap text-[length:var(--library-toolbar-size)] font-medium text-[hsl(var(--media-muted-foreground))]">
                   {selectedCount === 1 ? "item" : "items"} selected
                 </span>
               </div>
@@ -1218,11 +1218,11 @@ export function LibraryView({
                 <button
                   type="button"
                   onClick={() => setSelectedIds([])}
-                  className="flex h-8 items-center gap-1.5 rounded-xl px-3 text-[12px] font-medium text-white/40 transition hover:bg-white/[0.06] hover:text-white/80"
+                  className="flex min-h-[var(--library-toolbar-height)] items-center gap-1.5 rounded-xl px-3 text-[length:var(--library-toolbar-size)] font-medium text-[hsl(var(--media-muted-foreground)/0.65)] transition hover:bg-white/[0.06] hover:text-[hsl(var(--media-foreground))]"
                   aria-label="Clear selection"
                 >
                   Clear
-                  <kbd className="rounded border border-white/10 bg-white/[0.05] px-1 font-mono text-[9.5px] text-white/30">Esc</kbd>
+                  <kbd className="rounded border border-white/10 bg-white/[0.05] px-1 font-mono text-[length:var(--library-badge-size)] text-[hsl(var(--media-muted-foreground)/0.5)]">Esc</kbd>
                 </button>
               </div>
             </div>
@@ -1381,7 +1381,7 @@ function ProgressiveGrid({
       {remaining > 0 ? (
         <div
           ref={sentinelRef}
-          className="flex items-center justify-center py-6 text-[11px] uppercase tracking-[0.18em] text-muted-foreground"
+          className="flex items-center justify-center py-6 text-[length:var(--type-caption)] uppercase tracking-[0.18em] text-muted-foreground"
           role="status"
           aria-live="polite"
         >
@@ -1493,16 +1493,16 @@ function PosterCard({
             size === "sm" ? "px-2 pb-2 pt-8" : "px-2.5 pb-2.5 pt-14"
           )}>
             {displayOptions.showTitle ? (
-              <p className={cn("line-clamp-1 font-semibold text-primary-foreground drop-shadow", titleCls)}>
+              <p className={cn("line-clamp-1 font-semibold text-[hsl(var(--media-foreground))] drop-shadow", titleCls)}>
                 {item.title}
               </p>
             ) : null}
             {showMeta ? (
-              <div className="mt-0.5 flex items-center gap-1.5 text-[10.5px] text-primary-foreground/70">
+              <div className="mt-0.5 flex items-center gap-1.5 text-[length:var(--library-meta-size)] text-[hsl(var(--media-muted-foreground))]">
                 <span className="tabular">{item.year}</span>
                 {item.monitored ? (
                   <>
-                    <span className="text-primary-foreground/30">·</span>
+                    <span className="text-[hsl(var(--media-muted-foreground)/0.45)]">·</span>
                     <ShieldCheck className="h-3 w-3 text-primary" />
                   </>
                 ) : null}
@@ -1510,15 +1510,15 @@ function PosterCard({
             ) : null}
             {showMeta && (displayOptions.showRating || displayOptions.showQualityBadge) ? (
               <div className="mt-1">
-                <div className="flex items-center justify-between gap-2 text-[10.5px]">
+                <div className="flex items-center justify-between gap-2 text-[length:var(--library-meta-size)]">
                   {displayOptions.showRating && item.rating !== null ? (
-                    <span className="tabular inline-flex items-center gap-0.5 font-bold text-primary-foreground">
+                    <span className="tabular inline-flex items-center gap-0.5 font-bold text-[hsl(var(--media-foreground))]">
                       <Star className="h-2.5 w-2.5 fill-warning text-warning" />
                       {item.rating.toFixed(1)}
                     </span>
                   ) : <span />}
                   {displayOptions.showQualityBadge && item.quality ? (
-                    <Badge className="bg-primary-foreground/15 px-1.5 py-0 text-[9.5px] font-bold text-primary-foreground backdrop-blur-sm">
+                    <Badge className="bg-white/15 px-1.5 py-0 text-[length:var(--library-badge-size)] font-bold text-[hsl(var(--media-foreground))] backdrop-blur-sm">
                       {shortQuality(item.quality)}
                     </Badge>
                   ) : null}
@@ -1532,7 +1532,7 @@ function PosterCard({
             <Link
               to={workspaceHref}
               onClick={(e) => e.stopPropagation()}
-              className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-primary px-2 py-1.5 text-[11px] font-bold text-primary-foreground shadow-md transition hover:brightness-110"
+              className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-primary px-2 py-1.5 text-[length:var(--library-badge-size)] font-bold text-primary-foreground shadow-md transition hover:brightness-110"
             >
               <Play className="h-2.5 w-2.5" fill="currentColor" />
               Open
@@ -1549,7 +1549,7 @@ function PosterCard({
           </p>
         ) : null}
         {showMeta ? (
-          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <div className="flex items-center gap-1.5 text-[length:var(--library-meta-size)] text-muted-foreground">
             <span className="tabular">{item.year}</span>
             {item.monitored ? (
               <>
@@ -1575,7 +1575,7 @@ function StatusPill({ status }: { status: MediaStatus }) {
   return (
     <div
       className={cn(
-        "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider backdrop-blur-md",
+        "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[length:var(--library-badge-size)] font-bold uppercase tracking-wider backdrop-blur-md",
         config.tone
       )}
     >
@@ -1693,7 +1693,7 @@ function BulkAction({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "flex h-8 items-center gap-1.5 rounded-xl px-3 text-[12px] font-medium transition-all duration-150 select-none",
+        "flex min-h-[var(--library-toolbar-height)] items-center gap-1.5 rounded-xl px-3 text-[length:var(--library-toolbar-size)] font-medium transition-all duration-150 select-none",
         "disabled:opacity-40 disabled:cursor-not-allowed",
         variant === "primary"
           ? [
@@ -1702,7 +1702,7 @@ function BulkAction({
               "hover:brightness-110 active:scale-95"
             ].join(" ")
           : [
-              "text-white/70 hover:bg-white/[0.07] hover:text-white active:bg-white/[0.04]"
+              "text-[hsl(var(--media-muted-foreground))] hover:bg-white/[0.07] hover:text-[hsl(var(--media-foreground))] active:bg-white/[0.04]"
             ].join(" ")
       )}
     >
@@ -2047,7 +2047,7 @@ function ControlRail({
           <div className="flex flex-wrap items-center gap-2">
             <div className={cn(
               "group relative flex min-w-[240px] flex-1 items-center gap-2.5 rounded-xl px-3.5 transition-all duration-200",
-              "h-9 bg-foreground/[0.04] dark:bg-white/[0.05]",
+              "min-h-[var(--library-toolbar-height)] bg-foreground/[0.04] dark:bg-white/[0.05]",
               "ring-1 ring-inset ring-hairline/60 dark:ring-white/[0.06]",
               "focus-within:bg-foreground/[0.06] focus-within:ring-primary/35",
               "focus-within:shadow-[0_0_0_3px_hsl(var(--primary)/0.09)]"
@@ -2057,7 +2057,7 @@ function ControlRail({
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder={`Search ${label}…`}
-                className="h-full border-0 bg-transparent px-0 text-[13px] shadow-none placeholder:text-muted-foreground/40 focus-visible:ring-0"
+                className="h-full border-0 bg-transparent px-0 text-[length:var(--library-toolbar-size)] shadow-none placeholder:text-muted-foreground/40 focus-visible:ring-0"
               />
               {query ? (
                 <button
@@ -2069,7 +2069,7 @@ function ControlRail({
                   <span className="text-[8.5px] font-bold leading-none">×</span>
                 </button>
               ) : (
-                <kbd className="hidden shrink-0 rounded border border-hairline/70 bg-background/50 px-1.5 py-px font-mono text-[9px] text-muted-foreground/40 group-focus-within:hidden sm:block">
+                <kbd className="hidden shrink-0 rounded border border-hairline/70 bg-background/50 px-1.5 py-px font-mono text-[length:var(--library-badge-size)] text-muted-foreground/40 group-focus-within:hidden sm:block">
                   /
                 </kbd>
               )}
@@ -2107,7 +2107,7 @@ function ControlRail({
                   style={{
                     left: pill.left,
                     width: pill.width,
-                    height: 28,
+                    height: "calc(var(--library-toolbar-height) * 0.74)",
                     top: "50%",
                     transform: "translateY(-50%)",
                     transition: "left 0.22s cubic-bezier(0.4,0,0.2,1), width 0.22s cubic-bezier(0.4,0,0.2,1)"
@@ -2124,14 +2124,14 @@ function ControlRail({
                     type="button"
                     onClick={() => setQuickFilter(chip.key)}
                     className={cn(
-                      "relative flex h-7 items-center gap-1.5 rounded-lg px-3 text-[12.5px] select-none",
+                      "relative flex min-h-[calc(var(--library-toolbar-height)*0.78)] items-center gap-1.5 rounded-lg px-3 text-[length:var(--library-toolbar-size)] select-none",
                       active ? "font-semibold text-foreground" : "font-medium text-muted-foreground hover:text-foreground"
                     )}
                   >
                     <span>{chip.label}</span>
                     <span
                       className={cn(
-                        "tabular rounded-md px-1.5 py-px text-[10px] font-bold leading-tight",
+                        "tabular rounded-md px-1.5 py-px text-[length:var(--library-badge-size)] font-bold leading-tight",
                         active ? "bg-primary/15 text-primary dark:bg-primary/20" : "bg-foreground/[0.06] text-muted-foreground dark:bg-white/[0.07]"
                       )}
                     >
@@ -2355,7 +2355,7 @@ function ToolbarMenuButton({
       type="button"
       onClick={onClick}
       className={cn(
-        "inline-flex h-9 items-center gap-2 rounded-xl px-3 text-[12px] font-medium transition-all",
+        "inline-flex min-h-[var(--library-toolbar-height)] items-center gap-2 rounded-xl px-3 text-[length:var(--library-toolbar-size)] font-medium transition-all",
         active
           ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/25"
           : "bg-foreground/[0.04] text-foreground ring-1 ring-inset ring-hairline/60 hover:bg-foreground/[0.06] dark:bg-white/[0.05] dark:ring-white/[0.06]"
@@ -2363,7 +2363,7 @@ function ToolbarMenuButton({
     >
       <Icon className="h-3.5 w-3.5" />
       <span>{label}</span>
-      <span className="hidden text-[11px] text-muted-foreground sm:inline">{meta}</span>
+      <span className="hidden text-[length:var(--type-caption)] text-muted-foreground sm:inline">{meta}</span>
       <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", active && "rotate-180")} />
     </button>
   );
@@ -2371,7 +2371,7 @@ function ToolbarMenuButton({
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+    <p className="text-[length:var(--type-caption)] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
       {children}
     </p>
   );

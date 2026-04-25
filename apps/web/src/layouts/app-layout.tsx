@@ -462,8 +462,8 @@ function ContentTopbar({
         </NavLink>
 
         <div className="min-w-0 flex-1">
-          <p className="text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-muted-foreground">{subtitle}</p>
-          <h1 className="mt-1 truncate font-display text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+          <p className="hidden text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-muted-foreground min-[520px]:block">{subtitle}</p>
+          <h1 className="mt-0.5 truncate font-display text-[length:var(--type-title-sm)] font-semibold tracking-tight text-foreground sm:mt-1 sm:text-[length:var(--type-title-md)]">
             {title}
           </h1>
         </div>

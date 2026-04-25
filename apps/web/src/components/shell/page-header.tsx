@@ -25,7 +25,7 @@ export function PageHeader({
     >
       <div className="min-w-0">
         {eyebrow ? (
-          <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+          <p className="text-[length:var(--section-eyebrow-size)] uppercase tracking-[0.16em] text-muted-foreground">
             {eyebrow}
           </p>
         ) : null}
@@ -33,7 +33,7 @@ export function PageHeader({
           {title}
         </h1>
         {description ? (
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+          <p className="mt-1 max-w-2xl text-[length:var(--section-subtitle-size)] text-muted-foreground">
             {description}
           </p>
         ) : null}
