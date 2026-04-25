@@ -6,4 +6,5 @@ public sealed record MovieImportRecoveryCase(
     string FailureKind,
     string Summary,
     string RecommendedAction,
+    string? DetailsJson,
     DateTimeOffset DetectedUtc);

@@ -1,0 +1,1246 @@
+@import "@fontsource-variable/inter/index.css";
+@import "@fontsource-variable/jetbrains-mono/index.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  Premium 2026 token system.
+  Design language: glass morphism + typographic scale contrast + single vivid accent.
+  Reference: Raycast, Arc, Linear, Apple visionOS apps.
+*/
+@layer base {
+  :root {
+    --background: 0 0% 98.5%;
+    --foreground: 224 14% 8%;
+    --card: 0 0% 100%;
+    --card-elevated: 0 0% 100%;
+    --card-foreground: 224 14% 8%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 14% 8%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 8% 94%;
+    --secondary-foreground: 224 12% 18%;
+    --muted: 220 8% 94%;
+    --muted-foreground: 220 6% 44%;
+    --destructive: 0 70% 48%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 152 52% 36%;
+    --success-foreground: 0 0% 100%;
+    --warning: 36 95% 44%;
+    --warning-foreground: 28 40% 10%;
+    --info: 214 88% 48%;
+    --info-foreground: 0 0% 100%;
+    --border: 220 8% 88%;
+    --input: 220 8% 88%;
+    --surface-1: 0 0% 99.5%;
+    --surface-2: 220 8% 96%;
+    --surface-3: 220 6% 92%;
+    --hairline: 220 8% 90%;
+    --sidebar-background: 220 12% 97%;
+    --sidebar-foreground: 224 12% 12%;
+    --sidebar-accent: 220 8% 92%;
+    --sidebar-accent-foreground: 224 14% 8%;
+    --sidebar-border: 220 8% 90%;
+    --state-ok: 152 52% 36%;
+    --state-warn: 36 95% 44%;
+    --state-danger: 0 70% 48%;
+    --state-info: 214 88% 48%;
+    --gradient-surface: linear-gradient(160deg, hsl(0 0% 100%) 0%, hsl(220 8% 98%) 100%);
+    --shadow-card: 0 1px 2px hsl(224 14% 8% / 0.04), 0 4px 12px hsl(224 14% 8% / 0.04);
+    --shadow-md: 0 8px 32px hsl(224 14% 8% / 0.06), 0 2px 8px hsl(224 14% 8% / 0.04);
+    --shadow-lg: 0 20px 60px hsl(224 14% 8% / 0.08);
+    --shadow-glow: 0 1px 3px hsl(224 14% 8% / 0.05);
+    /* Desktop: two header rows; mobile: single row (see app-layout TopBar). */
+    --shell-top-row-height: 2.75rem;
+    --shell-nav-row-height: 2.75rem;
+    --shell-mobile-row-height: 2.75rem;
+    --shell-icon-button-size: 2rem;
+    --shell-icon-size: 0.9375rem;
+    --shell-icon-size-sm: 0.875rem;
+    --topbar-height: calc(var(--shell-top-row-height) + var(--shell-nav-row-height));
+    --topbar-height-mobile: var(--shell-mobile-row-height);
+    --sidebar-width: 280px;
+    --sidebar-rail: 58px;
+    --mobile-tabbar-height: 56px;
+    --glass-bg: hsl(0 0% 100% / 0.75);
+    --glass-border: hsl(224 14% 8% / 0.07);
+
+    /* ── MOTION LANGUAGE ───────────────────────────────
+       Two easing curves (emphasis + standard) and three durations
+       gives every interaction the same choreography vocabulary. */
+    --ease-emphasis: cubic-bezier(0.2, 0.9, 0.22, 1);
+    --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+    --ease-spring:   cubic-bezier(0.34, 1.56, 0.64, 1);
+    --dur-xs: 120ms;
+    --dur-sm: 180ms;
+    --dur-md: 260ms;
+    --dur-lg: 420ms;
+    --stagger: 34ms;
+  }
+
+  .dark {
+    --background: 225 20% 8%;
+    --foreground: 210 14% 94%;
+    --card: 225 18% 11%;
+    --card-elevated: 225 16% 13%;
+    --card-foreground: 210 14% 94%;
+    --popover: 225 20% 10%;
+    --popover-foreground: 210 14% 94%;
+    --secondary: 225 14% 15%;
+    --secondary-foreground: 210 14% 94%;
+    --muted: 225 14% 14%;
+    --muted-foreground: 215 8% 56%;
+    --destructive: 0 65% 54%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 152 55% 46%;
+    --success-foreground: 152 30% 8%;
+    --warning: 38 90% 52%;
+    --warning-foreground: 28 40% 10%;
+    --info: 210 80% 56%;
+    --info-foreground: 210 30% 98%;
+    --border: 225 14% 18%;
+    --input: 225 14% 16%;
+    --surface-1: 225 18% 11%;
+    --surface-2: 225 16% 13%;
+    --surface-3: 225 14% 16%;
+    --hairline: 225 14% 19%;
+    --sidebar-background: 225 22% 7%;
+    --sidebar-foreground: 210 12% 90%;
+    --sidebar-accent: 225 16% 13%;
+    --sidebar-accent-foreground: 210 14% 97%;
+    --sidebar-border: 225 16% 13%;
+    --state-ok: 152 55% 46%;
+    --state-warn: 38 90% 52%;
+    --state-danger: 0 65% 54%;
+    --state-info: 210 80% 56%;
+    --gradient-surface: linear-gradient(160deg, hsl(225 18% 12%) 0%, hsl(225 18% 10%) 100%);
+    --shadow-card: 0 1px 0 hsl(225 20% 5% / 0.5), 0 2px 8px hsl(225 20% 4% / 0.25);
+    --shadow-md: 0 8px 32px hsl(225 20% 4% / 0.35), 0 1px 0 hsl(0 0% 100% / 0.04) inset;
+    --shadow-lg: 0 24px 64px hsl(225 20% 3% / 0.5);
+    --shadow-glow: 0 0 0 1px hsl(0 0% 100% / 0.05) inset, 0 1px 0 hsl(0 0% 100% / 0.06) inset;
+    --glass-bg: hsl(225 18% 11% / 0.7);
+    --glass-border: hsl(0 0% 100% / 0.07);
+  }
+
+  /* ══════════════════════════════════════════════════════════════════ */
+  /* ACCENT THEMES — choose via [data-accent] on <html>                  */
+  /* Each theme defines: --primary, --primary-glow, --primary-2          */
+  /* (--primary-2 = gradient end-stop, --primary-deep = deep shadow tone)*/
+  /* ══════════════════════════════════════════════════════════════════ */
+
+  /* Default — Cobalt (premium, Linear/Arc vibe) */
+  :root,
+  :root[data-accent="cobalt"] {
+    --primary: 222 88% 50%;
+    --primary-glow: 222 82% 58%;
+    --primary-2: 240 82% 62%;
+    --primary-deep: 222 85% 22%;
+    --primary-foreground: 0 0% 100%;
+    --accent: 222 60% 96%;
+    --accent-foreground: 222 70% 28%;
+    --ring: 222 88% 50%;
+    --sidebar-ring: 222 88% 50%;
+    --gradient-accent: linear-gradient(135deg, hsl(222 88% 52%) 0%, hsl(240 82% 62%) 100%);
+  }
+  .dark,
+  .dark[data-accent="cobalt"] {
+    --primary: 222 92% 66%;
+    --primary-glow: 222 85% 70%;
+    --primary-2: 246 88% 72%;
+    --primary-deep: 222 80% 14%;
+    --primary-foreground: 222 50% 10%;
+    --accent: 225 14% 16%;
+    --accent-foreground: 222 80% 78%;
+    --ring: 222 92% 66%;
+    --sidebar-ring: 222 92% 66%;
+    --gradient-accent: linear-gradient(135deg, hsl(222 92% 66%) 0%, hsl(246 88% 72%) 100%);
+  }
+
+  /* Indigo — deep classic enterprise (Stripe OG) */
+  :root[data-accent="indigo"] {
+    --primary: 238 72% 52%;
+    --primary-glow: 238 70% 60%;
+    --primary-2: 252 76% 62%;
+    --primary-deep: 238 70% 20%;
+    --primary-foreground: 0 0% 100%;
+    --accent: 238 60% 97%;
+    --accent-foreground: 238 65% 28%;
+    --ring: 238 72% 52%;
+    --sidebar-ring: 238 72% 52%;
+    --gradient-accent: linear-gradient(135deg, hsl(238 72% 52%) 0%, hsl(252 76% 62%) 100%);
+  }
+  .dark[data-accent="indigo"] {
+    --primary: 238 88% 70%;
+    --primary-glow: 238 82% 74%;
+    --primary-2: 254 86% 76%;
+    --primary-deep: 238 70% 14%;
+    --primary-foreground: 238 50% 10%;
+    --accent: 225 14% 16%;
+    --accent-foreground: 238 80% 82%;
+    --ring: 238 88% 70%;
+    --sidebar-ring: 238 88% 70%;
+    --gradient-accent: linear-gradient(135deg, hsl(238 88% 70%) 0%, hsl(254 86% 76%) 100%);
+  }
+
+  /* Violet — Stripe/Vercel bold */
+  :root[data-accent="violet"] {
+    --primary: 258 78% 54%;
+    --primary-glow: 258 75% 60%;
+    --primary-2: 286 75% 58%;
+    --primary-deep: 258 70% 22%;
+    --primary-foreground: 0 0% 100%;
+    --accent: 258 60% 97%;
+    --accent-foreground: 258 62% 30%;
+    --ring: 258 78% 54%;
+    --sidebar-ring: 258 78% 54%;
+    --gradient-accent: linear-gradient(135deg, hsl(258 78% 54%) 0%, hsl(286 75% 58%) 100%);
+  }
+  .dark[data-accent="violet"] {
+    --primary: 258 88% 70%;
+    --primary-glow: 258 82% 74%;
+    --primary-2: 290 85% 74%;
+    --primary-deep: 258 70% 16%;
+    --primary-foreground: 258 40% 10%;
+    --accent: 225 14% 16%;
+    --accent-foreground: 258 75% 82%;
+    --ring: 258 88% 70%;
+    --sidebar-ring: 258 88% 70%;
+    --gradient-accent: linear-gradient(135deg, hsl(258 88% 70%) 0%, hsl(290 85% 74%) 100%);
+  }
+
+  /* Crimson — deep serious red (GitLab / Atlassian) */
+  :root[data-accent="crimson"] {
+    --primary: 354 78% 48%;
+    --primary-glow: 354 74% 54%;
+    --primary-2: 2 80% 52%;
+    --primary-deep: 354 74% 20%;
+    --primary-foreground: 0 0% 100%;
+    --accent: 354 60% 97%;
+    --accent-foreground: 354 62% 28%;
+    --ring: 354 78% 48%;
+    --sidebar-ring: 354 78% 48%;
+    --gradient-accent: linear-gradient(135deg, hsl(354 78% 48%) 0%, hsl(2 80% 52%) 100%);
+  }
+  .dark[data-accent="crimson"] {
+    --primary: 354 86% 62%;
+    --primary-glow: 354 82% 66%;
+    --primary-2: 4 84% 64%;
+    --primary-deep: 354 72% 16%;
+    --primary-foreground: 354 30% 10%;
+    --accent: 225 14% 16%;
+    --accent-foreground: 354 82% 78%;
+    --ring: 354 86% 62%;
+    --sidebar-ring: 354 86% 62%;
+    --gradient-accent: linear-gradient(135deg, hsl(354 86% 62%) 0%, hsl(4 84% 64%) 100%);
+  }
+
+  /* Amber — warm luxury, editorial */
+  :root[data-accent="amber"] {
+    --primary: 28 95% 42%;
+    --primary-glow: 32 88% 52%;
+    --primary-2: 18 90% 54%;
+    --primary-deep: 28 90% 20%;
+    --primary-foreground: 0 0% 100%;
+    --accent: 32 70% 96%;
+    --accent-foreground: 28 65% 24%;
+    --ring: 28 95% 42%;
+    --sidebar-ring: 28 95% 42%;
+    --gradient-accent: linear-gradient(135deg, hsl(32 92% 48%) 0%, hsl(18 90% 54%) 100%);
+  }
+  .dark[data-accent="amber"] {
+    --primary: 36 96% 62%;
+    --primary-glow: 36 92% 66%;
+    --primary-2: 20 92% 64%;
+    --primary-deep: 32 80% 14%;
+    --primary-foreground: 28 40% 10%;
+    --accent: 225 14% 16%;
+    --accent-foreground: 36 88% 78%;
+    --ring: 36 96% 62%;
+    --sidebar-ring: 36 96% 62%;
+    --gradient-accent: linear-gradient(135deg, hsl(36 96% 62%) 0%, hsl(20 92% 64%) 100%);
+  }
+
+  /* Rose — bold editorial, magenta-leaning */
+  :root[data-accent="rose"] {
+    --primary: 346 84% 46%;
+    --primary-glow: 346 80% 54%;
+    --primary-2: 326 82% 54%;
+    --primary-deep: 346 74% 22%;
+    --primary-foreground: 0 0% 100%;
+    --accent: 346 60% 97%;
+    --accent-foreground: 346 65% 30%;
+    --ring: 346 84% 46%;
+    --sidebar-ring: 346 84% 46%;
+    --gradient-accent: linear-gradient(135deg, hsl(346 82% 50%) 0%, hsl(326 82% 54%) 100%);
+  }
+  .dark[data-accent="rose"] {
+    --primary: 346 92% 68%;
+    --primary-glow: 346 86% 72%;
+    --primary-2: 326 88% 70%;
+    --primary-deep: 346 70% 18%;
+    --primary-foreground: 346 30% 10%;
+    --accent: 225 14% 16%;
+    --accent-foreground: 346 80% 82%;
+    --ring: 346 92% 68%;
+    --sidebar-ring: 346 92% 68%;
+    --gradient-accent: linear-gradient(135deg, hsl(346 92% 68%) 0%, hsl(326 88% 70%) 100%);
+  }
+
+  /* Lime — electric neon green (Vercel/Supabase) */
+  :root[data-accent="lime"] {
+    --primary: 90 80% 32%;
+    --primary-glow: 94 72% 42%;
+    --primary-2: 78 78% 40%;
+    --primary-deep: 94 78% 16%;
+    --primary-foreground: 0 0% 100%;
+    --accent: 96 55% 96%;
+    --accent-foreground: 96 62% 22%;
+    --ring: 90 80% 32%;
+    --sidebar-ring: 90 80% 32%;
+    --gradient-accent: linear-gradient(135deg, hsl(94 74% 38%) 0%, hsl(78 78% 42%) 100%);
+  }
+  .dark[data-accent="lime"] {
+    --primary: 96 78% 56%;
+    --primary-glow: 96 72% 62%;
+    --primary-2: 78 82% 60%;
+    --primary-deep: 96 72% 14%;
+    --primary-foreground: 96 40% 8%;
+    --accent: 225 14% 16%;
+    --accent-foreground: 96 68% 74%;
+    --ring: 96 78% 56%;
+    --sidebar-ring: 96 78% 56%;
+    --gradient-accent: linear-gradient(135deg, hsl(96 78% 56%) 0%, hsl(78 82% 60%) 100%);
+  }
+
+  /* Sky — airy cyan (docs / data-viz) */
+  :root[data-accent="sky"] {
+    --primary: 202 92% 38%;
+    --primary-glow: 200 88% 46%;
+    --primary-2: 184 88% 42%;
+    --primary-deep: 200 88% 18%;
+    --primary-foreground: 0 0% 100%;
+    --accent: 198 70% 96%;
+    --accent-foreground: 198 70% 24%;
+    --ring: 202 92% 38%;
+    --sidebar-ring: 202 92% 38%;
+    --gradient-accent: linear-gradient(135deg, hsl(200 92% 44%) 0%, hsl(184 88% 44%) 100%);
+  }
+  .dark[data-accent="sky"] {
+    --primary: 198 92% 62%;
+    --primary-glow: 198 86% 66%;
+    --primary-2: 182 86% 60%;
+    --primary-deep: 198 76% 14%;
+    --primary-foreground: 198 50% 8%;
+    --accent: 225 14% 16%;
+    --accent-foreground: 198 80% 78%;
+    --ring: 198 92% 62%;
+    --sidebar-ring: 198 92% 62%;
+    --gradient-accent: linear-gradient(135deg, hsl(198 92% 62%) 0%, hsl(182 86% 60%) 100%);
+  }
+
+  /* Graphite — monochrome with electric-blue highlight (Linear/Raycast) */
+  :root[data-accent="graphite"] {
+    --primary: 224 14% 22%;
+    --primary-glow: 218 85% 58%;
+    --primary-2: 218 85% 58%;
+    --primary-deep: 224 14% 12%;
+    --primary-foreground: 0 0% 100%;
+    --accent: 220 10% 95%;
+    --accent-foreground: 224 14% 14%;
+    --ring: 218 85% 58%;
+    --sidebar-ring: 218 85% 58%;
+    --gradient-accent: linear-gradient(135deg, hsl(224 14% 22%) 0%, hsl(218 85% 58%) 100%);
+  }
+  .dark[data-accent="graphite"] {
+    --primary: 210 18% 92%;
+    --primary-glow: 218 92% 70%;
+    --primary-2: 218 92% 70%;
+    --primary-deep: 224 14% 8%;
+    --primary-foreground: 224 14% 8%;
+    --accent: 225 14% 16%;
+    --accent-foreground: 210 18% 92%;
+    --ring: 218 92% 70%;
+    --sidebar-ring: 218 92% 70%;
+    --gradient-accent: linear-gradient(135deg, hsl(210 18% 92%) 0%, hsl(218 92% 70%) 100%);
+  }
+
+  /* Emerald — original brand (preserved for users who want to opt back in) */
+  :root[data-accent="emerald"] {
+    --primary: 168 88% 30%;
+    --primary-glow: 168 78% 40%;
+    --primary-2: 188 80% 38%;
+    --primary-deep: 168 84% 16%;
+    --primary-foreground: 0 0% 100%;
+    --accent: 168 50% 96%;
+    --accent-foreground: 168 60% 24%;
+    --ring: 168 88% 30%;
+    --sidebar-ring: 168 88% 30%;
+    --gradient-accent: linear-gradient(135deg, hsl(168 85% 36%) 0%, hsl(188 78% 40%) 100%);
+  }
+  .dark[data-accent="emerald"] {
+    --primary: 168 76% 52%;
+    --primary-glow: 168 70% 56%;
+    --primary-2: 192 68% 58%;
+    --primary-deep: 168 76% 14%;
+    --primary-foreground: 168 40% 8%;
+    --accent: 225 14% 16%;
+    --accent-foreground: 168 60% 72%;
+    --ring: 168 76% 52%;
+    --sidebar-ring: 168 76% 52%;
+    --gradient-accent: linear-gradient(135deg, hsl(168 76% 52%) 0%, hsl(192 68% 58%) 100%);
+  }
+
+  * {
+    @apply border-border;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* ── GLOBAL FOCUS RING ──────────────────────────────
+     Every interactive element gets a consistent, accessible
+     2-layer ring: an inner solid line + an outer halo in the
+     brand primary. Applies only to keyboard focus (`:focus-visible`). */
+  :where(
+    a, button, input, select, textarea, summary,
+    [role="button"], [role="link"], [role="menuitem"],
+    [role="tab"], [role="switch"], [role="checkbox"],
+    [role="radio"], [role="option"], [tabindex]:not([tabindex="-1"])
+  ):focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 2px hsl(var(--background)),
+      0 0 0 4px hsl(var(--ring) / 0.9),
+      0 0 0 7px hsl(var(--primary) / 0.18);
+    border-radius: inherit;
+    transition: box-shadow var(--dur-xs) var(--ease-standard);
+  }
+  /* Opt-out for components that paint their own focus */
+  :where([data-focus-style="none"]):focus-visible {
+    box-shadow: none;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    text-size-adjust: 100%;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont,
+      ui-sans-serif, system-ui, sans-serif;
+    font-feature-settings: "cv11" 1, "ss01" 1, "ss02" 1;
+    min-height: 100dvh;
+    overflow-x: hidden;
+  }
+
+  /* Ambient depth gradient in dark mode — visible behind glass layers */
+  .dark body {
+    background-image: radial-gradient(
+      ellipse 80% 50% at 50% -10%,
+      hsl(var(--primary) / 0.07) 0%,
+      transparent 60%
+    );
+  }
+
+  #root {
+    min-height: 100dvh;
+  }
+
+  input, textarea, select, button {
+    font-family: inherit;
+  }
+
+  :where(button, [role="button"], a, input, select, textarea) {
+    touch-action: manipulation;
+  }
+}
+
+@layer components {
+  /* Premium Deluno brand mark */
+  .deluno-glyph {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.875rem;
+    height: 1.875rem;
+    border-radius: 0.5625rem;
+    background: var(--gradient-accent);
+    color: hsl(var(--primary-foreground));
+    font-weight: 700;
+    font-size: 0.9375rem;
+    letter-spacing: -0.04em;
+    flex-shrink: 0;
+    box-shadow: 0 1px 2px hsl(var(--primary-deep) / 0.3);
+  }
+
+  /* Glass morphism surface — for overlays, topbar, popups */
+  .glass {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    backdrop-filter: saturate(1.8) blur(24px);
+    -webkit-backdrop-filter: saturate(1.8) blur(24px);
+  }
+
+  /* Card with a gradient accent top-border */
+  .card-accent::before {
+    content: '';
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    height: 1px;
+    background: linear-gradient(90deg,
+      transparent 0%,
+      hsl(var(--primary) / 0.55) 40%,
+      hsl(var(--primary) / 0.55) 60%,
+      transparent 100%
+    );
+    border-radius: 999px;
+  }
+
+  /* Subtle ambient glow behind featured cards */
+  .card-glow::after {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    background: radial-gradient(
+      ellipse 60% 40% at 50% 0%,
+      hsl(var(--primary) / 0.1) 0%,
+      transparent 70%
+    );
+    pointer-events: none;
+    z-index: 0;
+  }
+}
+
+@layer utilities {
+  .gradient-accent {
+    background-image: var(--gradient-accent);
+  }
+
+  .shadow-card {
+    box-shadow: var(--shadow-card);
+  }
+
+  .shadow-glow {
+    box-shadow: var(--shadow-glow);
+  }
+
+  .shadow-elevated {
+    box-shadow: var(--shadow-md);
+  }
+
+  .tabular,
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .font-display {
+    letter-spacing: -0.03em;
+    font-weight: 600;
+  }
+
+  /* Ultra-tight display tracking for hero numbers */
+  .tracking-display {
+    letter-spacing: -0.04em;
+  }
+
+  .font-mono-code {
+    font-family: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace,
+      SFMono-Regular, Menlo, monospace;
+  }
+
+  .text-fluid-h1 {
+    font-size: var(--type-title-xl);
+    line-height: 1.08;
+    letter-spacing: -0.035em;
+    font-weight: 700;
+  }
+
+  .text-fluid-h2 {
+    font-size: var(--type-title-lg);
+    line-height: 1.12;
+    letter-spacing: -0.028em;
+    font-weight: 600;
+  }
+
+  /* Hero stat: huge, bold, tight */
+  .text-stat {
+    font-size: var(--type-display);
+    line-height: 0.95;
+    letter-spacing: -0.045em;
+    font-weight: 700;
+  }
+
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .hairline {
+    border-color: hsl(var(--hairline));
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+
+.density-field {
+  padding: var(--field-group-pad);
+  min-width: 0;
+}
+
+.density-label {
+  font-size: var(--field-label-size);
+  line-height: 1.35;
+}
+
+.density-help {
+  font-size: var(--field-help-size);
+  line-height: 1.45;
+  }
+
+.density-control-text {
+  font-size: var(--field-control-size);
+  line-height: 1.35;
+}
+
+  .type-micro { font-size: var(--type-micro); line-height: 1.3; }
+  .type-caption { font-size: var(--type-caption); line-height: 1.35; }
+  .type-body-sm { font-size: var(--type-body-sm); line-height: 1.45; }
+  .type-body { font-size: var(--type-body); line-height: 1.5; }
+  .type-body-lg { font-size: var(--type-body-lg); line-height: 1.5; }
+  .type-title-sm { font-size: var(--type-title-sm); line-height: 1.25; }
+  .type-title-md { font-size: var(--type-title-md); line-height: 1.18; }
+  .type-title-lg { font-size: var(--type-title-lg); line-height: 1.12; }
+  .type-title-xl { font-size: var(--type-title-xl); line-height: 1.08; }
+
+  .px-safe {
+    padding-left: max(env(safe-area-inset-left), 0px);
+    padding-right: max(env(safe-area-inset-right), 0px);
+  }
+
+  .pb-safe {
+    padding-bottom: max(env(safe-area-inset-bottom), 0px);
+  }
+
+  .pt-safe {
+    padding-top: max(env(safe-area-inset-top), 0px);
+  }
+
+  .min-h-dvh {
+    min-height: 100dvh;
+  }
+
+  .tap-target {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .bg-state-ok    { background-color: hsl(var(--state-ok)); }
+  .bg-state-warn  { background-color: hsl(var(--state-warn)); }
+  .bg-state-danger{ background-color: hsl(var(--state-danger)); }
+  .bg-state-info  { background-color: hsl(var(--state-info)); }
+  .text-state-ok   { color: hsl(var(--state-ok)); }
+  .text-state-warn { color: hsl(var(--state-warn)); }
+  .text-state-danger{color: hsl(var(--state-danger)); }
+  .text-state-info { color: hsl(var(--state-info)); }
+
+  .scroll-fade-x {
+    mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      black 20px,
+      black calc(100% - 20px),
+      transparent 100%
+    );
+  }
+
+  /* ── PREMIUM DATA TABLE ────────────────────────────────
+     Enterprise-grade sticky-header table vocabulary. Apply
+     `.data-table` to <table>. Inner helpers for sticky-col. */
+  .data-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+  .data-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: hsl(var(--surface-1) / 0.92);
+    backdrop-filter: saturate(1.6) blur(14px);
+    -webkit-backdrop-filter: saturate(1.6) blur(14px);
+    border-bottom: 1px solid hsl(var(--hairline));
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: hsl(var(--muted-foreground));
+    padding: 11px 16px;
+    text-align: left;
+    white-space: nowrap;
+  }
+  .data-table tbody td {
+    padding: 11px 16px;
+    border-bottom: 1px solid hsl(var(--hairline) / 0.55);
+    vertical-align: middle;
+  }
+  .data-table tbody tr {
+    transition: background-color var(--dur-xs) var(--ease-standard);
+  }
+  .data-table tbody tr:hover {
+    background: hsl(var(--primary) / 0.04);
+  }
+  .dark .data-table tbody tr:hover {
+    background: hsl(0 0% 100% / 0.025);
+  }
+  .data-table tbody tr[data-selected="true"] {
+    background: hsl(var(--primary) / 0.06);
+    box-shadow: inset 2px 0 0 hsl(var(--primary));
+  }
+  /* Sticky first column w/ edge shadow */
+  .data-table .col-sticky {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: hsl(var(--background));
+  }
+  .data-table thead .col-sticky {
+    z-index: 4;
+    background: hsl(var(--surface-1) / 0.95);
+  }
+  .data-table .col-sticky::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: -12px;
+    bottom: 0;
+    width: 12px;
+    pointer-events: none;
+    background: linear-gradient(90deg, hsl(0 0% 0% / 0.05), transparent);
+    opacity: 0;
+    transition: opacity var(--dur-xs) var(--ease-standard);
+  }
+  .data-table.is-scrolled .col-sticky::after {
+    opacity: 1;
+  }
+  .dark .data-table.is-scrolled .col-sticky::after {
+    background: linear-gradient(90deg, hsl(0 0% 0% / 0.35), transparent);
+  }
+  /* Numeric columns */
+  .data-table .num {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+}
+
+@layer base {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.18) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--muted-foreground) / 0.18);
+    border-radius: 999px;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground) / 0.32);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   DISPLAY DENSITY
+   Set via <html data-density="…"> from <DensityProvider>.
+   Tokens here feed row heights AND padding on .data-table rows,
+   card padding, and gap tightness across the shell.
+═══════════════════════════════════════════════════════════════ */
+  html {
+  font-size: 16px;
+  --row-height: 52px;
+  --data-row-py: 10px;
+  --card-pad-x: 1.25rem;
+  --card-pad-y: 1rem;
+  --tile-pad: 1.25rem;
+  --metric-value-size: 3rem;
+  --metric-unit-size: 1.125rem;
+  --metric-meta-size: 0.75rem;
+  --metric-label-size: 0.6875rem;
+  --poster-rail-width: 148px;
+  --control-height: 36px;
+  --control-height-sm: 32px;
+  --control-height-lg: 40px;
+  --control-height-icon: 36px;
+  --field-pad-x: 0.75rem;
+  --field-group-pad: 1rem;
+  --field-label-size: 0.6875rem;
+  --field-help-size: 0.875rem;
+  --field-control-size: 0.875rem;
+  --field-label-gap: 0.55rem;
+  --type-micro: 0.6875rem;
+  --type-caption: 0.75rem;
+  --type-body-sm: 0.875rem;
+  --type-body: 0.9375rem;
+  --type-body-lg: 1rem;
+  --type-title-sm: 1.125rem;
+  --type-title-md: 1.5rem;
+  --type-title-lg: 2rem;
+  --type-title-xl: 2.5rem;
+  --type-display: 3rem;
+  --content-max-width: 1920px;
+  --sidebar-width: 280px;
+  --content-outer-gap: clamp(0.75rem, 1.4vw, 1.5rem);
+  --content-pad-inline: clamp(0.75rem, 1.4vw, 1.75rem);
+  --content-pad-block: clamp(1rem, 1.6vw, 1.75rem);
+  --page-gap: 1.25rem;
+  --grid-gap: 1rem;
+  --library-grid-gap: 0.9rem;
+  --shell-brand-size: 16px;
+  --shell-subtle-size: 12.5px;
+  --shell-nav-size: 14px;
+  --shell-nav-badge-size: 9.5px;
+  --shell-pill-height: 42px;
+  --shell-nav-pad-x: 0.95rem;
+  --shell-nav-gap: 0.5rem;
+  --shell-action-gap: 0.25rem;
+  --shell-avatar-size: 1.65rem;
+  --shell-divider-height: 1.05rem;
+  --shell-kbd-size: 9px;
+  --shell-nav-radius: 0.75rem;
+  --settings-nav-size: 0.875rem;
+  --settings-nav-pad-y: 0.5rem;
+  --settings-nav-pad-x: 0.75rem;
+  --section-eyebrow-size: 0.6875rem;
+  --section-subtitle-size: 0.875rem;
+  --button-font-size: 0.84375rem;
+  --button-font-size-sm: 0.8125rem;
+}
+  html[data-density="compact"] {
+  font-size: 14px;
+  --row-height: 40px;
+  --data-row-py: 6px;
+  --card-pad-x: 0.95rem;
+  --card-pad-y: 0.8rem;
+  --tile-pad: 0.95rem;
+  --metric-value-size: 2.55rem;
+  --metric-unit-size: 1rem;
+  --metric-meta-size: 0.6875rem;
+  --metric-label-size: 0.625rem;
+  --poster-rail-width: 132px;
+  --control-height: 34px;
+  --control-height-sm: 30px;
+  --control-height-lg: 38px;
+  --control-height-icon: 34px;
+  --field-pad-x: 0.65rem;
+  --field-group-pad: 0.85rem;
+  --field-label-size: 0.6875rem;
+  --field-help-size: 0.8125rem;
+  --field-control-size: 0.8125rem;
+  --field-label-gap: 0.45rem;
+  --type-micro: 0.625rem;
+  --type-caption: 0.6875rem;
+  --type-body-sm: 0.8125rem;
+  --type-body: 0.875rem;
+  --type-body-lg: 0.9375rem;
+  --type-title-sm: 1rem;
+  --type-title-md: 1.35rem;
+  --type-title-lg: 1.75rem;
+  --type-title-xl: 2.15rem;
+  --type-display: 2.55rem;
+  --content-max-width: 1760px;
+  --sidebar-width: 256px;
+  --content-outer-gap: clamp(0.5rem, 1vw, 1rem);
+  --content-pad-inline: clamp(0.65rem, 1.1vw, 1.25rem);
+  --content-pad-block: clamp(0.9rem, 1.2vw, 1.35rem);
+  --page-gap: 1rem;
+  --grid-gap: 0.75rem;
+  --library-grid-gap: 0.65rem;
+  --shell-brand-size: 15px;
+  --shell-subtle-size: 12px;
+  --shell-nav-size: 13px;
+  --shell-nav-badge-size: 9px;
+  --shell-pill-height: 38px;
+  --shell-nav-pad-x: 0.8rem;
+  --shell-nav-gap: 0.425rem;
+  --shell-action-gap: 0.2rem;
+  --shell-avatar-size: 1.5rem;
+  --shell-divider-height: 0.95rem;
+  --shell-kbd-size: 8.5px;
+  --shell-nav-radius: 0.65rem;
+  --shell-top-row-height: 42px;
+  --shell-nav-row-height: 50px;
+  --shell-mobile-row-height: 44px;
+  --shell-icon-button-size: 32px;
+  --shell-icon-size: 14px;
+  --shell-icon-size-sm: 13px;
+  --settings-nav-size: 0.8125rem;
+  --settings-nav-pad-y: 0.45rem;
+  --settings-nav-pad-x: 0.7rem;
+  --section-eyebrow-size: 0.625rem;
+  --section-subtitle-size: 0.8125rem;
+  --button-font-size: 0.8125rem;
+  --button-font-size-sm: 0.78125rem;
+}
+  html[data-density="comfortable"] {
+  font-size: 16px;
+  --row-height: 52px;
+  --data-row-py: 10px;
+  --card-pad-x: 1.25rem;
+  --card-pad-y: 1rem;
+  --tile-pad: 1.25rem;
+  --metric-value-size: 3rem;
+  --metric-unit-size: 1.125rem;
+  --metric-meta-size: 0.75rem;
+  --metric-label-size: 0.6875rem;
+  --poster-rail-width: 148px;
+  --control-height: 36px;
+  --control-height-sm: 32px;
+  --control-height-lg: 40px;
+  --control-height-icon: 36px;
+  --field-pad-x: 0.75rem;
+  --field-group-pad: 1rem;
+  --field-label-size: 0.75rem;
+  --field-help-size: 0.9rem;
+  --field-control-size: 0.9rem;
+  --field-label-gap: 0.55rem;
+  --type-micro: 0.6875rem;
+  --type-caption: 0.75rem;
+  --type-body-sm: 0.875rem;
+  --type-body: 0.9375rem;
+  --type-body-lg: 1rem;
+  --type-title-sm: 1.125rem;
+  --type-title-md: 1.5rem;
+  --type-title-lg: 2rem;
+  --type-title-xl: 2.5rem;
+  --type-display: 3rem;
+  --content-max-width: 1920px;
+  --sidebar-width: 280px;
+  --content-outer-gap: clamp(0.75rem, 1.4vw, 1.5rem);
+  --content-pad-inline: clamp(0.75rem, 1.4vw, 1.75rem);
+  --content-pad-block: clamp(1rem, 1.6vw, 1.75rem);
+  --page-gap: 1.25rem;
+  --grid-gap: 1rem;
+  --library-grid-gap: 0.9rem;
+  --shell-brand-size: 16px;
+  --shell-subtle-size: 12.5px;
+  --shell-nav-size: 14px;
+  --shell-nav-badge-size: 9.5px;
+  --shell-pill-height: 42px;
+  --shell-nav-pad-x: 0.95rem;
+  --shell-nav-gap: 0.5rem;
+  --shell-action-gap: 0.25rem;
+  --shell-avatar-size: 1.65rem;
+  --shell-divider-height: 1.05rem;
+  --shell-kbd-size: 9px;
+  --shell-nav-radius: 0.75rem;
+  --shell-top-row-height: 46px;
+  --shell-nav-row-height: 58px;
+  --shell-mobile-row-height: 46px;
+  --shell-icon-button-size: 34px;
+  --shell-icon-size: 15px;
+  --shell-icon-size-sm: 14px;
+  --settings-nav-size: 0.875rem;
+  --settings-nav-pad-y: 0.5rem;
+  --settings-nav-pad-x: 0.75rem;
+  --section-eyebrow-size: 0.6875rem;
+  --section-subtitle-size: 0.875rem;
+  --button-font-size: 0.84375rem;
+  --button-font-size-sm: 0.8125rem;
+}
+  html[data-density="spacious"] {
+    font-size: 18px;
+    --row-height: 68px;
+    --data-row-py: 15px;
+    --card-pad-x: 1.65rem;
+    --card-pad-y: 1.3rem;
+    --tile-pad: 1.6rem;
+    --metric-value-size: 3.5rem;
+    --metric-unit-size: 1.25rem;
+    --metric-meta-size: 0.8125rem;
+    --metric-label-size: 0.75rem;
+    --poster-rail-width: 172px;
+    --control-height: 44px;
+    --control-height-sm: 38px;
+    --control-height-lg: 48px;
+    --control-height-icon: 44px;
+    --field-pad-x: 1rem;
+    --field-group-pad: 1.2rem;
+    --field-label-size: 0.8125rem;
+    --field-help-size: 1rem;
+    --field-control-size: 1rem;
+    --field-label-gap: 0.65rem;
+    --type-micro: 0.75rem;
+    --type-caption: 0.8125rem;
+    --type-body-sm: 0.9375rem;
+    --type-body: 1rem;
+    --type-body-lg: 1.125rem;
+    --type-title-sm: 1.25rem;
+    --type-title-md: 1.75rem;
+    --type-title-lg: 2.25rem;
+    --type-title-xl: 3rem;
+    --type-display: 3.5rem;
+    --content-max-width: 2400px;
+    --sidebar-width: 300px;
+    --content-outer-gap: clamp(0.85rem, 1.2vw, 1.75rem);
+    --content-pad-inline: clamp(1rem, 1.55vw, 2.25rem);
+    --content-pad-block: clamp(1.25rem, 1.75vw, 2.25rem);
+    --page-gap: 1.5rem;
+    --grid-gap: 1.15rem;
+    --library-grid-gap: 1rem;
+    --shell-brand-size: 18px;
+    --shell-subtle-size: 14px;
+    --shell-nav-size: 16px;
+    --shell-nav-badge-size: 11px;
+    --shell-pill-height: 50px;
+    --shell-nav-pad-x: 1.15rem;
+    --shell-nav-gap: 0.65rem;
+    --shell-action-gap: 0.35rem;
+    --shell-avatar-size: 2rem;
+    --shell-divider-height: 1.25rem;
+    --shell-kbd-size: 10.5px;
+    --shell-nav-radius: 0.85rem;
+    --shell-top-row-height: 56px;
+    --shell-nav-row-height: 66px;
+    --shell-mobile-row-height: 52px;
+    --shell-icon-button-size: 42px;
+    --shell-icon-size: 16px;
+    --shell-icon-size-sm: 15px;
+    --settings-nav-size: 1rem;
+    --settings-nav-pad-y: 0.65rem;
+    --settings-nav-pad-x: 0.95rem;
+    --section-eyebrow-size: 0.8125rem;
+    --section-subtitle-size: 1rem;
+    --button-font-size: 0.9375rem;
+    --button-font-size-sm: 0.875rem;
+  }
+  html[data-density="expanded"] {
+    font-size: 20px;
+    --row-height: 80px;
+    --data-row-py: 18px;
+    --card-pad-x: 2rem;
+    --card-pad-y: 1.55rem;
+    --tile-pad: 1.9rem;
+    --metric-value-size: 4rem;
+    --metric-unit-size: 1.375rem;
+    --metric-meta-size: 0.875rem;
+    --metric-label-size: 0.75rem;
+    --poster-rail-width: 192px;
+    --control-height: 48px;
+    --control-height-sm: 42px;
+    --control-height-lg: 54px;
+    --control-height-icon: 48px;
+    --field-pad-x: 1.1rem;
+    --field-group-pad: 1.35rem;
+    --field-label-size: 0.875rem;
+    --field-help-size: 1.125rem;
+    --field-control-size: 1.125rem;
+    --field-label-gap: 0.75rem;
+    --type-micro: 0.8125rem;
+    --type-caption: 0.875rem;
+    --type-body-sm: 1rem;
+    --type-body: 1.0625rem;
+    --type-body-lg: 1.1875rem;
+    --type-title-sm: 1.375rem;
+    --type-title-md: 2rem;
+    --type-title-lg: 2.65rem;
+    --type-title-xl: 3.45rem;
+    --type-display: 4rem;
+    --content-max-width: 2880px;
+    --sidebar-width: 320px;
+    --content-outer-gap: clamp(0.75rem, 1vw, 2rem);
+    --content-pad-inline: clamp(1.15rem, 1.7vw, 2.75rem);
+    --content-pad-block: clamp(1.35rem, 1.9vw, 2.75rem);
+    --page-gap: 1.75rem;
+    --grid-gap: 1.25rem;
+    --library-grid-gap: 1.1rem;
+    --shell-brand-size: 21px;
+    --shell-subtle-size: 16px;
+    --shell-nav-size: 18px;
+    --shell-nav-badge-size: 12px;
+    --shell-pill-height: 56px;
+    --shell-nav-pad-x: 1.3rem;
+    --shell-nav-gap: 0.75rem;
+    --shell-action-gap: 0.45rem;
+    --shell-avatar-size: 2.25rem;
+    --shell-divider-height: 1.45rem;
+    --shell-kbd-size: 11px;
+    --shell-nav-radius: 0.95rem;
+    --shell-top-row-height: 64px;
+    --shell-nav-row-height: 74px;
+    --shell-mobile-row-height: 58px;
+    --shell-icon-button-size: 46px;
+    --shell-icon-size: 17px;
+    --shell-icon-size-sm: 16px;
+    --settings-nav-size: 1.125rem;
+    --settings-nav-pad-y: 0.75rem;
+    --settings-nav-pad-x: 1.05rem;
+    --section-eyebrow-size: 0.875rem;
+    --section-subtitle-size: 1.0625rem;
+    --button-font-size: 1rem;
+    --button-font-size-sm: 0.9375rem;
+  }
+
+/*
+  Typography normalization.
+  The app still contains legacy Tailwind text utilities and arbitrary pixel
+  classes from earlier UI passes. Density should not preserve every tiny
+  variation; it should collapse them into a small, predictable ladder.
+*/
+html body {
+  font-size: var(--type-body);
+}
+
+.text-dynamic-xs { font-size: var(--type-caption) !important; line-height: 1.35; }
+.text-dynamic-sm { font-size: var(--type-body-sm) !important; line-height: 1.45; }
+.text-dynamic-base { font-size: var(--type-body) !important; line-height: 1.5; }
+
+html .text-xs { font-size: var(--type-caption) !important; line-height: 1.35; }
+html .text-sm { font-size: var(--type-body-sm) !important; line-height: 1.45; }
+html .text-base { font-size: var(--type-body) !important; line-height: 1.5; }
+html .text-lg { font-size: var(--type-body-lg) !important; line-height: 1.5; }
+html .text-xl { font-size: var(--type-title-sm) !important; line-height: 1.25; }
+html .text-2xl { font-size: var(--type-title-md) !important; line-height: 1.18; }
+html .text-3xl { font-size: var(--type-title-lg) !important; line-height: 1.12; }
+html .text-4xl { font-size: var(--type-title-xl) !important; line-height: 1.08; }
+
+html .text-\[8\.5px\],
+html .text-\[9px\],
+html .text-\[9\.5px\],
+html .text-\[10px\],
+html .text-\[10\.5px\] {
+  font-size: var(--type-micro) !important;
+  line-height: 1.3 !important;
+}
+
+html .text-\[11px\],
+html .text-\[11\.5px\],
+html .text-\[12px\],
+html .text-\[12\.5px\] {
+  font-size: var(--type-caption) !important;
+  line-height: 1.35 !important;
+}
+
+html .text-\[13px\],
+html .text-\[13\.5px\],
+html .text-\[14px\],
+html .text-\[14\.5px\],
+html .text-\[15px\] {
+  font-size: var(--type-body-sm) !important;
+  line-height: 1.45 !important;
+}
+
+html .text-\[24px\],
+html .text-\[28px\] {
+  font-size: var(--type-title-md) !important;
+  line-height: 1.18 !important;
+}
+
+html .text-\[32px\],
+html .text-\[36px\] {
+  font-size: var(--type-title-lg) !important;
+  line-height: 1.12 !important;
+}
+
+html .text-\[40px\],
+html .text-\[44px\] {
+  font-size: var(--type-title-xl) !important;
+  line-height: 1.08 !important;
+}
+
+html .text-\[48px\],
+html .text-\[56px\],
+html .text-\[64px\] {
+  font-size: var(--type-display) !important;
+  line-height: 0.98 !important;
+}
+
+.data-table tbody td {
+  padding-top: var(--data-row-py);
+  padding-bottom: var(--data-row-py);
+  font-size: var(--type-body-sm);
+}
+
+.data-table thead th {
+  padding-top: calc(var(--data-row-py) * 0.8);
+  padding-bottom: calc(var(--data-row-py) * 0.8);
+  font-size: var(--type-micro);
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateX(-50%) translateY(12px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fade-in-up 0.22s var(--ease-emphasis) both;
+}
+
+/* ── PAGE ENTER / EXIT (used by framer-motion or CSS fallback) ── */
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(6px) scale(0.995); filter: blur(4px); }
+  to   { opacity: 1; transform: translateY(0)   scale(1);     filter: blur(0); }
+}
+.animate-page-enter {
+  animation: page-enter var(--dur-md) var(--ease-emphasis) both;
+}
+
+/* ── STAGGER: reveal N children with a cascading delay ── */
+@keyframes reveal-item {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.stagger > * {
+  animation: reveal-item var(--dur-md) var(--ease-emphasis) both;
+}
+.stagger > *:nth-child(1)  { animation-delay: calc(var(--stagger) * 0); }
+.stagger > *:nth-child(2)  { animation-delay: calc(var(--stagger) * 1); }
+.stagger > *:nth-child(3)  { animation-delay: calc(var(--stagger) * 2); }
+.stagger > *:nth-child(4)  { animation-delay: calc(var(--stagger) * 3); }
+.stagger > *:nth-child(5)  { animation-delay: calc(var(--stagger) * 4); }
+.stagger > *:nth-child(6)  { animation-delay: calc(var(--stagger) * 5); }
+.stagger > *:nth-child(7)  { animation-delay: calc(var(--stagger) * 6); }
+.stagger > *:nth-child(8)  { animation-delay: calc(var(--stagger) * 7); }
+.stagger > *:nth-child(9)  { animation-delay: calc(var(--stagger) * 8); }
+.stagger > *:nth-child(10) { animation-delay: calc(var(--stagger) * 9); }
+.stagger > *:nth-child(11) { animation-delay: calc(var(--stagger) * 10); }
+.stagger > *:nth-child(12) { animation-delay: calc(var(--stagger) * 11); }
+.stagger > *:nth-child(n+13) { animation-delay: calc(var(--stagger) * 12); }
+
+/* ── MICRO-INTERACTIONS ── */
+@keyframes lift {
+  from { transform: translateY(0);   box-shadow: var(--shadow-card); }
+  to   { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+}
+
+/* Sheen that rolls across primary buttons on hover */
+@keyframes sheen {
+  from { transform: translateX(-120%) skewX(-12deg); }
+  to   { transform: translateX(160%)  skewX(-12deg); }
+}

@@ -165,7 +165,7 @@ Each class should have:
 
 - a count
 - a plain-language explanation
-- an operator policy
+- a user policy
 - a safe action
 
 ## Page Architecture

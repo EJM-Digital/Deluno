@@ -1,0 +1,75 @@
+{
+  "name": "Deluno — Media Manager",
+  "short_name": "Deluno",
+  "description": "The premier self-hosted media automation platform. Movies, TV series, indexers, and download clients — all in one place.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "any",
+  "theme_color": "#6366f1",
+  "background_color": "#0e0f13",
+  "lang": "en",
+  "categories": ["utilities", "productivity"],
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Movies",
+      "short_name": "Movies",
+      "description": "Browse and manage your movie library",
+      "url": "/movies",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "TV Shows",
+      "short_name": "TV",
+      "description": "Browse and manage your TV show library",
+      "url": "/tv",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Activity",
+      "short_name": "Activity",
+      "description": "View download queue and activity log",
+      "url": "/activity",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "System",
+      "short_name": "System",
+      "description": "System health and audit timeline",
+      "url": "/system",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshot-wide.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Deluno dashboard overview"
+    }
+  ],
+  "prefer_related_applications": false,
+  "related_applications": []
+}

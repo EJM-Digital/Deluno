@@ -24,6 +24,17 @@ public sealed class MoviesSchemaInitializer(
                 release_year INTEGER NULL,
                 imdb_id TEXT NULL,
                 monitored INTEGER NOT NULL,
+                metadata_provider TEXT NULL,
+                metadata_provider_id TEXT NULL,
+                original_title TEXT NULL,
+                overview TEXT NULL,
+                poster_url TEXT NULL,
+                backdrop_url TEXT NULL,
+                rating REAL NULL,
+                genres TEXT NULL,
+                external_url TEXT NULL,
+                metadata_json TEXT NULL,
+                metadata_updated_utc TEXT NULL,
                 created_utc TEXT NOT NULL,
                 updated_utc TEXT NOT NULL
             );
@@ -38,6 +49,7 @@ public sealed class MoviesSchemaInitializer(
                 failure_kind TEXT NOT NULL,
                 summary TEXT NOT NULL,
                 recommended_action TEXT NOT NULL,
+                details_json TEXT NULL,
                 detected_utc TEXT NOT NULL
             );
 
@@ -94,8 +106,23 @@ public sealed class MoviesSchemaInitializer(
             """;
 
         await command.ExecuteNonQueryAsync(cancellationToken);
+        await EnsureMovieEntryColumnAsync(connection, "metadata_provider", "TEXT NULL", cancellationToken);
+        await EnsureMovieEntryColumnAsync(connection, "metadata_provider_id", "TEXT NULL", cancellationToken);
+        await EnsureMovieEntryColumnAsync(connection, "original_title", "TEXT NULL", cancellationToken);
+        await EnsureMovieEntryColumnAsync(connection, "overview", "TEXT NULL", cancellationToken);
+        await EnsureMovieEntryColumnAsync(connection, "poster_url", "TEXT NULL", cancellationToken);
+        await EnsureMovieEntryColumnAsync(connection, "backdrop_url", "TEXT NULL", cancellationToken);
+        await EnsureMovieEntryColumnAsync(connection, "rating", "REAL NULL", cancellationToken);
+        await EnsureMovieEntryColumnAsync(connection, "genres", "TEXT NULL", cancellationToken);
+        await EnsureMovieEntryColumnAsync(connection, "external_url", "TEXT NULL", cancellationToken);
+        await EnsureMovieEntryColumnAsync(connection, "metadata_json", "TEXT NULL", cancellationToken);
+        await EnsureMovieEntryColumnAsync(connection, "metadata_updated_utc", "TEXT NULL", cancellationToken);
         await EnsureWantedStateColumnAsync(connection, "current_quality", "TEXT NULL", cancellationToken);
         await EnsureWantedStateColumnAsync(connection, "target_quality", "TEXT NULL", cancellationToken);
+        await EnsureSearchHistoryColumnAsync(connection, "release_name", "TEXT NULL", cancellationToken);
+        await EnsureSearchHistoryColumnAsync(connection, "indexer_name", "TEXT NULL", cancellationToken);
+        await EnsureSearchHistoryColumnAsync(connection, "details_json", "TEXT NULL", cancellationToken);
+        await EnsureImportRecoveryColumnAsync(connection, "details_json", "TEXT NULL", cancellationToken);
         await MigrateWantedStateAsync(connection, cancellationToken);
 
         logger.LogInformation(
@@ -173,6 +200,38 @@ public sealed class MoviesSchemaInitializer(
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    private static async Task EnsureMovieEntryColumnAsync(
+        System.Data.Common.DbConnection connection,
+        string columnName,
+        string columnDefinition,
+        CancellationToken cancellationToken)
+    {
+        using var check = connection.CreateCommand();
+        check.CommandText = "PRAGMA table_info(movie_entries);";
+
+        var exists = false;
+        using (var reader = await check.ExecuteReaderAsync(cancellationToken))
+        {
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                if (string.Equals(reader.GetString(1), columnName, StringComparison.OrdinalIgnoreCase))
+                {
+                    exists = true;
+                    break;
+                }
+            }
+        }
+
+        if (exists)
+        {
+            return;
+        }
+
+        using var alter = connection.CreateCommand();
+        alter.CommandText = $"ALTER TABLE movie_entries ADD COLUMN {columnName} {columnDefinition};";
+        await alter.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     private static async Task EnsureWantedStateColumnAsync(
         System.Data.Common.DbConnection connection,
         string columnName,
@@ -202,6 +261,70 @@ public sealed class MoviesSchemaInitializer(
 
         using var alter = connection.CreateCommand();
         alter.CommandText = $"ALTER TABLE movie_wanted_state ADD COLUMN {columnName} {columnDefinition};";
+        await alter.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task EnsureSearchHistoryColumnAsync(
+        System.Data.Common.DbConnection connection,
+        string columnName,
+        string columnDefinition,
+        CancellationToken cancellationToken)
+    {
+        using var check = connection.CreateCommand();
+        check.CommandText = "PRAGMA table_info(movie_search_history);";
+
+        var exists = false;
+        using (var reader = await check.ExecuteReaderAsync(cancellationToken))
+        {
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                if (string.Equals(reader.GetString(1), columnName, StringComparison.OrdinalIgnoreCase))
+                {
+                    exists = true;
+                    break;
+                }
+            }
+        }
+
+        if (exists)
+        {
+            return;
+        }
+
+        using var alter = connection.CreateCommand();
+        alter.CommandText = $"ALTER TABLE movie_search_history ADD COLUMN {columnName} {columnDefinition};";
+        await alter.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task EnsureImportRecoveryColumnAsync(
+        System.Data.Common.DbConnection connection,
+        string columnName,
+        string columnDefinition,
+        CancellationToken cancellationToken)
+    {
+        using var check = connection.CreateCommand();
+        check.CommandText = "PRAGMA table_info(movie_import_recovery_cases);";
+
+        var exists = false;
+        using (var reader = await check.ExecuteReaderAsync(cancellationToken))
+        {
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                if (string.Equals(reader.GetString(1), columnName, StringComparison.OrdinalIgnoreCase))
+                {
+                    exists = true;
+                    break;
+                }
+            }
+        }
+
+        if (exists)
+        {
+            return;
+        }
+
+        using var alter = connection.CreateCommand();
+        alter.CommandText = $"ALTER TABLE movie_import_recovery_cases ADD COLUMN {columnName} {columnDefinition};";
         await alter.ExecuteNonQueryAsync(cancellationToken);
     }
 }

@@ -10,12 +10,38 @@ public interface ISeriesCatalogRepository
 
     Task<IReadOnlyList<SeriesListItem>> ListAsync(CancellationToken cancellationToken);
 
+    Task<int> UpdateMonitoredAsync(IReadOnlyList<string> seriesIds, bool monitored, CancellationToken cancellationToken);
+
+    Task<SeriesListItem?> UpdateMetadataAsync(
+        string id,
+        string? metadataProvider,
+        string? metadataProviderId,
+        string? originalTitle,
+        string? overview,
+        string? posterUrl,
+        string? backdropUrl,
+        double? rating,
+        string? genres,
+        string? externalUrl,
+        string? imdbId,
+        string? metadataJson,
+        CancellationToken cancellationToken);
+
+    Task<int> UpdateEpisodeMonitoredAsync(IReadOnlyList<string> episodeIds, bool monitored, CancellationToken cancellationToken);
+
     Task<SeriesWantedSummary> GetWantedSummaryAsync(CancellationToken cancellationToken);
+
+    Task<SeriesInventorySummary> GetInventorySummaryAsync(CancellationToken cancellationToken);
+
+    Task<SeriesInventoryDetail?> GetInventoryDetailAsync(string seriesId, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<SeriesSearchHistoryItem>> ListSearchHistoryAsync(CancellationToken cancellationToken);
 
     Task<IReadOnlyList<SeriesWantedItem>> ListEligibleWantedAsync(
         string libraryId,
         int take,
         DateTimeOffset now,
+        bool ignoreRetryWindow,
         CancellationToken cancellationToken);
 
     Task EnsureWantedStateAsync(
@@ -38,16 +64,21 @@ public interface ISeriesCatalogRepository
         string? currentQuality,
         string? targetQuality,
         bool qualityCutoffMet,
+        IReadOnlyList<ImportedEpisodeItem>? episodes,
         CancellationToken cancellationToken);
 
     Task RecordSearchAttemptAsync(
         string seriesId,
+        string? episodeId,
         string libraryId,
         string triggerKind,
         string outcome,
         DateTimeOffset now,
         DateTimeOffset? nextEligibleSearchUtc,
         string? lastSearchResult,
+        string? releaseName,
+        string? indexerName,
+        string? detailsJson,
         CancellationToken cancellationToken);
 
     Task<int> ReevaluateLibraryWantedStateAsync(

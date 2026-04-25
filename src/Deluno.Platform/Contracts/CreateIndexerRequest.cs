@@ -5,7 +5,9 @@ public sealed record CreateIndexerRequest(
     string? Protocol,
     string? Privacy,
     string? BaseUrl,
+    string? ApiKey,
     int? Priority,
     string? Categories,
     string? Tags,
+    string? MediaScope,
     bool IsEnabled);

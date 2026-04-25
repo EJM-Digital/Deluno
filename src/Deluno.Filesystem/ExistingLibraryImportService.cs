@@ -20,6 +20,8 @@ public sealed class ExistingLibraryImportService(
 
     private static readonly Regex YearPattern = new(@"\b(19|20)\d{2}\b", RegexOptions.Compiled);
     private static readonly Regex EpisodePattern = new(@"^(?<title>.+?)[\s._-]+S\d{1,2}E\d{1,2}", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex EpisodeNumberPattern = new(@"S(?<season>\d{1,2})(?<episodes>(?:E\d{1,2})+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex MultiEpisodeSegmentPattern = new(@"E(?<episode>\d{1,2})", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex CleanupTokensPattern = new(
         @"\b(remux|bluray|blu-ray|bdrip|web[-\s]?dl|webrip|web|hdtv|sdtv|dvd|x264|x265|hevc|av1|720p|1080p|2160p)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -121,6 +123,7 @@ public sealed class ExistingLibraryImportService(
             decision.CurrentQuality,
             decision.TargetQuality,
             decision.QualityCutoffMet,
+            item.Episodes,
             cancellationToken);
     }
 
@@ -168,24 +171,23 @@ public sealed class ExistingLibraryImportService(
 
     private static List<DetectedLibraryItem> DiscoverSeries(string rootPath)
     {
-        var items = new List<DetectedLibraryItem>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var items = new Dictionary<string, DetectedLibraryItem>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var directory in Directory.EnumerateDirectories(rootPath))
         {
-            if (!ContainsVideo(directory))
+            var videoFiles = EnumerateVideoFilesSafe(directory).ToArray();
+            if (videoFiles.Length == 0)
             {
                 continue;
             }
 
             var rawName = Path.GetFileName(directory);
             var parsed = ParseTitle(rawName);
-            var quality = LibraryQualityDecider.DetectQuality(rawName);
-            var key = $"{parsed.Title}|{parsed.Year}";
-            if (seen.Add(key))
-            {
-                items.Add(parsed with { DetectedQuality = quality });
-            }
+            var quality = videoFiles
+                .Select(file => LibraryQualityDecider.DetectQuality(Path.GetFileNameWithoutExtension(file)))
+                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+            var episodes = DetectEpisodes(videoFiles);
+            MergeSeriesCandidate(items, parsed with { DetectedQuality = quality, Episodes = episodes });
         }
 
         foreach (var file in Directory.EnumerateFiles(rootPath))
@@ -204,14 +206,14 @@ public sealed class ExistingLibraryImportService(
 
             var parsed = ParseTitle(match.Groups["title"].Value);
             var quality = LibraryQualityDecider.DetectQuality(name);
-            var key = $"{parsed.Title}|{parsed.Year}";
-            if (seen.Add(key))
-            {
-                items.Add(parsed with { DetectedQuality = quality });
-            }
+            var episodes = DetectEpisodes([file]);
+            MergeSeriesCandidate(items, parsed with { DetectedQuality = quality, Episodes = episodes });
         }
 
-        return items;
+        return items.Values
+            .OrderBy(item => item.Title, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(item => item.Year)
+            .ToList();
     }
 
     private static bool ContainsVideo(string path)
@@ -228,6 +230,18 @@ public sealed class ExistingLibraryImportService(
 
     private static bool IsVideoFile(string path)
         => VideoExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
+
+    private static IEnumerable<string> EnumerateVideoFilesSafe(string path)
+    {
+        try
+        {
+            return Directory.EnumerateFiles(path, "*.*", SearchOption.AllDirectories).Where(IsVideoFile);
+        }
+        catch
+        {
+            return [];
+        }
+    }
 
     private static DetectedLibraryItem ParseTitle(string raw)
     {
@@ -253,5 +267,63 @@ public sealed class ExistingLibraryImportService(
         return new DetectedLibraryItem(string.IsNullOrWhiteSpace(normalized) ? raw.Trim() : normalized, year);
     }
 
-    private sealed record DetectedLibraryItem(string Title, int? Year, string? DetectedQuality = null);
+    private static IReadOnlyList<Deluno.Series.Contracts.ImportedEpisodeItem> DetectEpisodes(IEnumerable<string> files)
+    {
+        return files
+            .SelectMany(file => ExtractEpisodes(Path.GetFileNameWithoutExtension(file)))
+            .Distinct()
+            .OrderBy(item => item.SeasonNumber)
+            .ThenBy(item => item.EpisodeNumber)
+            .ToArray();
+    }
+
+    private static IEnumerable<Deluno.Series.Contracts.ImportedEpisodeItem> ExtractEpisodes(string fileName)
+    {
+        var match = EpisodeNumberPattern.Match(fileName);
+        if (!match.Success)
+        {
+            yield break;
+        }
+
+        var seasonNumber = int.Parse(match.Groups["season"].Value);
+        foreach (Match episodeMatch in MultiEpisodeSegmentPattern.Matches(match.Groups["episodes"].Value))
+        {
+            yield return new Deluno.Series.Contracts.ImportedEpisodeItem(
+                SeasonNumber: seasonNumber,
+                EpisodeNumber: int.Parse(episodeMatch.Groups["episode"].Value),
+                HasFile: true);
+        }
+    }
+
+    private static void MergeSeriesCandidate(
+        Dictionary<string, DetectedLibraryItem> items,
+        DetectedLibraryItem item)
+    {
+        var key = $"{item.Title}|{item.Year}";
+        if (!items.TryGetValue(key, out var existing))
+        {
+            items[key] = item;
+            return;
+        }
+
+        var detectedQuality = existing.DetectedQuality ?? item.DetectedQuality;
+        var episodes = (existing.Episodes ?? [])
+            .Concat(item.Episodes ?? [])
+            .Distinct()
+            .OrderBy(entry => entry.SeasonNumber)
+            .ThenBy(entry => entry.EpisodeNumber)
+            .ToArray();
+
+        items[key] = existing with
+        {
+            DetectedQuality = detectedQuality,
+            Episodes = episodes
+        };
+    }
+
+    private sealed record DetectedLibraryItem(
+        string Title,
+        int? Year,
+        string? DetectedQuality = null,
+        IReadOnlyList<Deluno.Series.Contracts.ImportedEpisodeItem>? Episodes = null);
 }

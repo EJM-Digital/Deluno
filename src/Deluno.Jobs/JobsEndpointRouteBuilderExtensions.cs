@@ -18,12 +18,39 @@ public static class JobsEndpointRouteBuilderExtensions
             return Results.Ok(items);
         });
 
+        endpoints.MapPost("/api/jobs/retry-failed", async (
+            IJobQueueRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var retried = await repository.RetryFailedAsync(cancellationToken);
+            return Results.Ok(new { retried });
+        });
+
         endpoints.MapGet("/api/activity", async (
             int? take,
+            string? relatedEntityType,
+            string? relatedEntityId,
             IActivityFeedRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var items = await repository.ListActivityAsync(Math.Clamp(take ?? 50, 1, 200), cancellationToken);
+            var items = await repository.ListActivityAsync(
+                Math.Clamp(take ?? 50, 1, 200),
+                relatedEntityType,
+                relatedEntityId,
+                cancellationToken);
+            return Results.Ok(items);
+        });
+
+        endpoints.MapGet("/api/download-dispatches", async (
+            int? take,
+            string? mediaType,
+            IJobQueueRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var items = await repository.ListDownloadDispatchesAsync(
+                Math.Clamp(take ?? 20, 1, 100),
+                mediaType,
+                cancellationToken);
             return Results.Ok(items);
         });
 

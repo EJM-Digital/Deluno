@@ -4,7 +4,7 @@ public static class DelunoSystemManifest
 {
     public static IReadOnlyList<ModuleDescriptor> Modules { get; } =
     [
-        new("Platform", "Users, settings, notifications, audit, and system health."),
+        new("Platform", "Accounts, settings, notifications, audit, and system health."),
         new("Movies", "Movie catalog, monitoring, import workflow, and history."),
         new("Series", "Series catalog, monitoring, import workflow, and history."),
         new("Jobs", "Durable job scheduling, leasing, attempts, and worker heartbeats."),
@@ -22,4 +22,3 @@ public static class DelunoSystemManifest
         new("cache", "cache.db", "Provider payload cache and transient normalization artifacts.")
     ];
 }
-

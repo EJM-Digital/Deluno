@@ -6,6 +6,7 @@ public sealed record QualityProfileItem(
     string MediaType,
     string CutoffQuality,
     string AllowedQualities,
+    string CustomFormatIds,
     bool UpgradeUntilCutoff,
     bool UpgradeUnknownItems,
     DateTimeOffset CreatedUtc,

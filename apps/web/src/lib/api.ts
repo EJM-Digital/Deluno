@@ -1,3 +1,5 @@
+import { authedFetch } from "./use-auth";
+
 export interface DatabaseDescriptor {
   key: string;
   fileName: string;
@@ -22,6 +24,17 @@ export interface MovieListItem {
   releaseYear: number | null;
   imdbId: string | null;
   monitored: boolean;
+  metadataProvider: string | null;
+  metadataProviderId: string | null;
+  originalTitle: string | null;
+  overview: string | null;
+  posterUrl: string | null;
+  backdropUrl: string | null;
+  rating: number | null;
+  genres: string | null;
+  externalUrl: string | null;
+  metadataJson: string | null;
+  metadataUpdatedUtc: string | null;
   createdUtc: string;
   updatedUtc: string;
 }
@@ -32,6 +45,7 @@ export interface MovieImportRecoveryCase {
   failureKind: string;
   summary: string;
   recommendedAction: string;
+  detailsJson: string | null;
   detectedUtc: string;
 }
 
@@ -72,12 +86,35 @@ export interface MovieWantedSummary {
   recentItems: MovieWantedItem[];
 }
 
+export interface MovieSearchHistoryItem {
+  id: string;
+  movieId: string;
+  libraryId: string;
+  triggerKind: string;
+  outcome: string;
+  releaseName: string | null;
+  indexerName: string | null;
+  detailsJson: string | null;
+  createdUtc: string;
+}
+
 export interface SeriesListItem {
   id: string;
   title: string;
   startYear: number | null;
   imdbId: string | null;
   monitored: boolean;
+  metadataProvider: string | null;
+  metadataProviderId: string | null;
+  originalTitle: string | null;
+  overview: string | null;
+  posterUrl: string | null;
+  backdropUrl: string | null;
+  rating: number | null;
+  genres: string | null;
+  externalUrl: string | null;
+  metadataJson: string | null;
+  metadataUpdatedUtc: string | null;
   createdUtc: string;
   updatedUtc: string;
 }
@@ -88,6 +125,7 @@ export interface SeriesImportRecoveryCase {
   failureKind: string;
   summary: string;
   recommendedAction: string;
+  detailsJson: string | null;
   detectedUtc: string;
 }
 
@@ -128,6 +166,54 @@ export interface SeriesWantedSummary {
   recentItems: SeriesWantedItem[];
 }
 
+export interface SeriesInventorySummary {
+  seriesCount: number;
+  seasonCount: number;
+  episodeCount: number;
+  importedEpisodeCount: number;
+}
+
+export interface SeriesEpisodeInventoryItem {
+  episodeId: string;
+  seasonNumber: number;
+  episodeNumber: number;
+  title: string | null;
+  airDateUtc: string | null;
+  monitored: boolean;
+  hasFile: boolean;
+  wantedStatus: string;
+  wantedReason: string;
+  qualityCutoffMet: boolean;
+  lastSearchUtc: string | null;
+  nextEligibleSearchUtc: string | null;
+  updatedUtc: string;
+}
+
+export interface SeriesInventoryDetail {
+  seriesId: string;
+  title: string;
+  startYear: number | null;
+  seasonCount: number;
+  episodeCount: number;
+  importedEpisodeCount: number;
+  episodes: SeriesEpisodeInventoryItem[];
+}
+
+export interface SeriesSearchHistoryItem {
+  id: string;
+  seriesId: string;
+  episodeId: string | null;
+  seasonNumber: number | null;
+  episodeNumber: number | null;
+  libraryId: string;
+  triggerKind: string;
+  outcome: string;
+  releaseName: string | null;
+  indexerName: string | null;
+  detailsJson: string | null;
+  createdUtc: string;
+}
+
 export interface ValidationProblem {
   title?: string;
   errors?: Record<string, string[]>;
@@ -141,8 +227,59 @@ export interface PlatformSettingsSnapshot {
   incompleteDownloadsPath: string | null;
   autoStartJobs: boolean;
   enableNotifications: boolean;
+  renameOnImport: boolean;
+  useHardlinks: boolean;
+  cleanupEmptyFolders: boolean;
+  removeCompletedDownloads: boolean;
+  movieFolderFormat: string;
+  seriesFolderFormat: string;
+  episodeFileFormat: string;
+  hostBindAddress: string;
+  hostPort: number;
+  urlBase: string;
+  requireAuthentication: boolean;
+  uiTheme: string;
+  uiDensity: string;
+  defaultMovieView: string;
+  defaultShowView: string;
+  metadataNfoEnabled: boolean;
+  metadataArtworkEnabled: boolean;
+  metadataCertificationCountry: string;
+  metadataLanguage: string;
+  metadataTmdbApiKeyConfigured: boolean;
   updatedUtc: string;
 }
+
+export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
+  appInstanceName: "Deluno",
+  movieRootPath: null,
+  seriesRootPath: null,
+  downloadsPath: null,
+  incompleteDownloadsPath: null,
+  autoStartJobs: true,
+  enableNotifications: true,
+  renameOnImport: true,
+  useHardlinks: false,
+  cleanupEmptyFolders: true,
+  removeCompletedDownloads: false,
+  movieFolderFormat: "{Movie Title} ({Release Year})",
+  seriesFolderFormat: "{Series Title} ({Series Year})",
+  episodeFileFormat: "{Series Title} - S{season:00}E{episode:00} - {Episode Title}",
+  hostBindAddress: "127.0.0.1",
+  hostPort: 5099,
+  urlBase: "",
+  requireAuthentication: true,
+  uiTheme: "system",
+  uiDensity: "comfortable",
+  defaultMovieView: "grid",
+  defaultShowView: "grid",
+  metadataNfoEnabled: false,
+  metadataArtworkEnabled: true,
+  metadataCertificationCountry: "US",
+  metadataLanguage: "en",
+  metadataTmdbApiKeyConfigured: false,
+  updatedUtc: new Date(0).toISOString()
+};
 
 export interface LibraryItem {
   id: string;
@@ -170,14 +307,167 @@ export interface LibraryItem {
   updatedUtc: string;
 }
 
+export interface LibrarySourceLinkItem {
+  id: string;
+  libraryId: string;
+  indexerId: string;
+  indexerName: string;
+  priority: number;
+  requiredTags: string;
+  excludedTags: string;
+  createdUtc: string;
+  updatedUtc: string;
+}
+
+export interface LibraryDownloadClientLinkItem {
+  id: string;
+  libraryId: string;
+  downloadClientId: string;
+  downloadClientName: string;
+  priority: number;
+  createdUtc: string;
+  updatedUtc: string;
+}
+
+export interface LibraryRoutingSnapshot {
+  libraryId: string;
+  libraryName: string;
+  sources: LibrarySourceLinkItem[];
+  downloadClients: LibraryDownloadClientLinkItem[];
+}
+
 export interface QualityProfileItem {
   id: string;
   name: string;
   mediaType: string;
   cutoffQuality: string;
   allowedQualities: string;
+  customFormatIds: string;
   upgradeUntilCutoff: boolean;
   upgradeUnknownItems: boolean;
+  createdUtc: string;
+  updatedUtc: string;
+}
+
+export interface TagItem {
+  id: string;
+  name: string;
+  color: string;
+  description: string;
+  createdUtc: string;
+  updatedUtc: string;
+}
+
+export interface IntakeSourceItem {
+  id: string;
+  name: string;
+  provider: string;
+  feedUrl: string;
+  mediaType: string;
+  libraryId: string | null;
+  libraryName: string | null;
+  qualityProfileId: string | null;
+  qualityProfileName: string | null;
+  searchOnAdd: boolean;
+  isEnabled: boolean;
+  createdUtc: string;
+  updatedUtc: string;
+}
+
+export interface CustomFormatItem {
+  id: string;
+  name: string;
+  mediaType: string;
+  score: number;
+  conditions: string;
+  upgradeAllowed: boolean;
+  /** TRaSH Guide identifier when sourced from the built-in library */
+  trashId?: string | null;
+  createdUtc: string;
+  updatedUtc: string;
+}
+
+export interface DestinationRuleItem {
+  id: string;
+  name: string;
+  mediaType: string;
+  matchKind: string;
+  matchValue: string;
+  rootPath: string;
+  folderTemplate: string | null;
+  priority: number;
+  isEnabled: boolean;
+  createdUtc: string;
+  updatedUtc: string;
+}
+
+export interface ImportPreviewRequest {
+  sourcePath: string;
+  fileName?: string | null;
+  mediaType?: string | null;
+  title?: string | null;
+  year?: number | null;
+  genres?: string[] | null;
+  tags?: string[] | null;
+  studio?: string | null;
+  originalLanguage?: string | null;
+}
+
+export interface ImportPreviewResponse {
+  sourcePath: string;
+  destinationFolder: string;
+  destinationPath: string;
+  preferredTransferMode: string;
+  hardlinkAvailable: boolean;
+  matchedRuleId: string | null;
+  matchedRuleName: string | null;
+  sourceExists: boolean;
+  destinationExists: boolean;
+  sourceSizeBytes: number;
+  destinationSizeBytes: number;
+  isSupportedMediaFile: boolean;
+  transferExplanation: string;
+  warnings: string[];
+  explanation: string;
+  decisionSteps: string[];
+}
+
+export interface ImportExecuteRequest {
+  preview: ImportPreviewRequest;
+  transferMode?: "auto" | "hardlink" | "copy" | "move" | string | null;
+  overwrite: boolean;
+  allowCopyFallback: boolean;
+}
+
+export interface ImportExecuteResponse {
+  preview: ImportPreviewResponse;
+  executed: boolean;
+  transferModeUsed: string;
+  usedFallback: boolean;
+  catalogUpdated: boolean;
+  message: string;
+}
+
+export interface ImportJobResponse {
+  jobId: string;
+  preview: ImportPreviewResponse;
+  job: JobQueueItem;
+}
+
+export interface PolicySetItem {
+  id: string;
+  name: string;
+  mediaType: string;
+  qualityProfileId: string | null;
+  qualityProfileName: string | null;
+  destinationRuleId: string | null;
+  destinationRuleName: string | null;
+  customFormatIds: string;
+  searchIntervalOverrideHours: number | null;
+  retryDelayOverrideHours: number | null;
+  upgradeUntilCutoff: boolean;
+  isEnabled: boolean;
+  notes: string | null;
   createdUtc: string;
   updatedUtc: string;
 }
@@ -199,10 +489,13 @@ export interface IndexerItem {
   protocol: string;
   privacy: string;
   baseUrl: string;
+  apiKey?: string | null;
   priority: number;
   categories: string;
   tags: string;
   isEnabled: boolean;
+  /** Which media types this indexer covers: "movies" | "tv" | "both" */
+  mediaScope?: "movies" | "tv" | "both" | null;
   healthStatus: string;
   lastHealthMessage: string | null;
   createdUtc: string;
@@ -212,8 +505,17 @@ export interface IndexerItem {
 export interface DownloadClientItem {
   id: string;
   name: string;
+  /** qbittorrent | sabnzbd | nzbget | rtorrent | transmission | deluge | custom */
   protocol: string;
+  host?: string | null;
+  port?: number | null;
+  username?: string | null;
   endpointUrl: string | null;
+  /** Category used for movie downloads — maps to a folder/label in the client */
+  moviesCategory?: string | null;
+  /** Category used for TV show downloads */
+  tvCategory?: string | null;
+  /** Legacy single category — only used when moviesCategory/tvCategory are absent */
   categoryTemplate: string | null;
   priority: number;
   isEnabled: boolean;
@@ -221,6 +523,110 @@ export interface DownloadClientItem {
   lastHealthMessage: string | null;
   createdUtc: string;
   updatedUtc: string;
+}
+
+export interface DownloadTelemetrySummary {
+  activeCount: number;
+  queuedCount: number;
+  completedCount: number;
+  stalledCount: number;
+  importReadyCount: number;
+  totalSpeedMbps: number;
+}
+
+export interface DownloadQueueItem {
+  id: string;
+  clientId: string;
+  clientName: string;
+  protocol: string;
+  mediaType: string;
+  title: string;
+  releaseName: string;
+  category: string;
+  status: "downloading" | "queued" | "completed" | "stalled" | "importReady" | string;
+  progress: number;
+  speedMbps: number;
+  etaSeconds: number;
+  sizeBytes: number;
+  downloadedBytes: number;
+  peers: number;
+  indexerName: string;
+  errorMessage: string | null;
+  addedUtc: string;
+  sourcePath: string | null;
+}
+
+export interface DownloadClientHistoryItem {
+  id: string;
+  clientId: string;
+  clientName: string;
+  protocol: string;
+  mediaType: string;
+  title: string;
+  releaseName: string;
+  category: string;
+  outcome: string;
+  indexerName: string;
+  sizeBytes: number;
+  completedUtc: string;
+  errorMessage: string | null;
+  sourcePath: string | null;
+}
+
+export interface DownloadClientTelemetrySnapshot {
+  clientId: string;
+  clientName: string;
+  protocol: string;
+  endpointUrl: string | null;
+  healthStatus: string;
+  lastHealthMessage: string | null;
+  summary: DownloadTelemetrySummary;
+  queue: DownloadQueueItem[];
+  history: DownloadClientHistoryItem[];
+  capturedUtc: string;
+}
+
+export interface DownloadTelemetryOverview {
+  summary: DownloadTelemetrySummary;
+  clients: DownloadClientTelemetrySnapshot[];
+  capturedUtc: string;
+}
+
+export interface MetadataSearchResult {
+  provider: string;
+  providerId: string;
+  mediaType: string;
+  title: string;
+  originalTitle: string | null;
+  year: number | null;
+  overview: string | null;
+  posterUrl: string | null;
+  backdropUrl: string | null;
+  rating: number | null;
+  genres: string[];
+  imdbId: string | null;
+  externalUrl: string | null;
+}
+
+export interface MetadataProviderStatus {
+  provider: string;
+  isConfigured: boolean;
+  mode: "live" | "unconfigured" | string;
+  message: string;
+}
+
+export interface MetadataTestResponse {
+  provider: string;
+  isConfigured: boolean;
+  mode: string;
+  message: string;
+  resultCount: number;
+  sampleResults: MetadataSearchResult[];
+}
+
+export interface MetadataRefreshJobsResponse {
+  enqueuedCount: number;
+  jobs: JobQueueItem[];
 }
 
 export interface JobQueueItem {
@@ -245,6 +651,8 @@ export interface ActivityEventItem {
   id: string;
   category: string;
   message: string;
+  severity?: "info" | "success" | "warning" | "error";
+  detail?: string;
   detailsJson: string | null;
   relatedJobId: string | null;
   relatedEntityType: string | null;
@@ -252,10 +660,166 @@ export interface ActivityEventItem {
   createdUtc: string;
 }
 
+export interface BackupSettingsSnapshot {
+  enabled: boolean;
+  frequency: string;
+  timeOfDay: string;
+  retentionCount: number;
+  backupFolder: string;
+  lastRunUtc: string | null;
+  nextRunUtc: string | null;
+}
+
+export interface BackupItem {
+  id: string;
+  fileName: string;
+  fullPath: string;
+  sizeBytes: number;
+  createdUtc: string;
+  reason: string;
+}
+
+export interface RestorePreviewResponse {
+  valid: boolean;
+  message: string;
+  manifest: {
+    app: string;
+    version: string;
+    createdUtc: string;
+    reason: string;
+    files: string[];
+  } | null;
+  warnings: string[];
+}
+
+export interface UpdateStatusResponse {
+  currentVersion: string;
+  channel: string;
+  updateAvailable: boolean;
+  latestVersion: string | null;
+  message: string;
+  notes: string[];
+}
+
+export interface DownloadDispatchItem {
+  id: string;
+  libraryId: string;
+  mediaType: string;
+  entityType: string;
+  entityId: string;
+  releaseName: string;
+  indexerName: string;
+  downloadClientId: string;
+  downloadClientName: string;
+  status: string;
+  notesJson: string | null;
+  createdUtc: string;
+}
+
+export interface DirectoryBrowseEntry {
+  name: string;
+  path: string;
+  kind: "root" | "directory" | "preset";
+  description: string | null;
+}
+
+export interface DirectoryBrowseResponse {
+  currentPath: string | null;
+  parentPath: string | null;
+  entries: DirectoryBrowseEntry[];
+}
+
+export interface PathDiagnosticResponse {
+  path: string;
+  normalizedPath: string;
+  exists: boolean;
+  isDirectory: boolean;
+  parentExists: boolean;
+  readable: boolean;
+  writable: boolean;
+  serverCanBrowse: boolean;
+  isUncPath: boolean;
+  isLikelyDockerPath: boolean;
+  message: string;
+  warnings: string[];
+}
+
+export interface LibraryViewItem {
+  id: string;
+  userId: string;
+  variant: "movies" | "shows";
+  name: string;
+  quickFilter: string;
+  sortField: string;
+  sortDirection: "asc" | "desc";
+  viewMode: "grid" | "list";
+  cardSize: "sm" | "md" | "lg";
+  displayOptionsJson: string;
+  rulesJson: string;
+  createdUtc: string;
+  updatedUtc: string;
+}
+
+export interface CreateLibraryViewRequest {
+  variant: "movies" | "shows";
+  name: string;
+  quickFilter: string;
+  sortField: string;
+  sortDirection: "asc" | "desc";
+  viewMode: "grid" | "list";
+  cardSize: "sm" | "md" | "lg";
+  displayOptionsJson: string;
+  rulesJson: string;
+}
+
+export interface UpdateLibraryViewRequest {
+  name: string;
+  quickFilter: string;
+  sortField: string;
+  sortDirection: "asc" | "desc";
+  viewMode: "grid" | "list";
+  cardSize: "sm" | "md" | "lg";
+  displayOptionsJson: string;
+  rulesJson: string;
+}
+
+export class ApiRequestError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly path: string,
+    public readonly responseBody: string
+  ) {
+    super(message);
+    this.name = "ApiRequestError";
+  }
+}
+
 export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, init);
+  const response = await authedFetch(path, init);
   if (!response.ok) {
-    throw new Error(`Request failed for ${path} with status ${response.status}.`);
+    const responseBody = await response.text().catch(() => "");
+    let message = `Request failed for ${path} with status ${response.status}.`;
+
+    if (responseBody) {
+      try {
+        const parsed = JSON.parse(responseBody) as { message?: unknown; title?: unknown };
+        const serverMessage =
+          typeof parsed.message === "string"
+            ? parsed.message
+            : typeof parsed.title === "string"
+              ? parsed.title
+              : null;
+
+        if (serverMessage) {
+          message = serverMessage;
+        }
+      } catch {
+        message = responseBody;
+      }
+    }
+
+    throw new ApiRequestError(message, response.status, path, responseBody);
   }
 
   return (await response.json()) as T;

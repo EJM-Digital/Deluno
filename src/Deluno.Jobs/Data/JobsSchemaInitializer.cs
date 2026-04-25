@@ -39,6 +39,9 @@ public sealed class JobsSchemaInitializer(
             CREATE INDEX IF NOT EXISTS ix_job_queue_status_scheduled
                 ON job_queue (status, scheduled_utc);
 
+            CREATE INDEX IF NOT EXISTS ix_job_queue_type_status_scheduled
+                ON job_queue (job_type, status, scheduled_utc);
+
             CREATE TABLE IF NOT EXISTS activity_events (
                 id TEXT PRIMARY KEY,
                 category TEXT NOT NULL,
@@ -110,6 +113,24 @@ public sealed class JobsSchemaInitializer(
 
             CREATE INDEX IF NOT EXISTS ix_search_retry_windows_eligible
                 ON search_retry_windows (library_id, media_type, action_kind, next_eligible_utc);
+
+            CREATE TABLE IF NOT EXISTS download_dispatches (
+                id TEXT PRIMARY KEY,
+                library_id TEXT NOT NULL,
+                media_type TEXT NOT NULL,
+                entity_type TEXT NOT NULL,
+                entity_id TEXT NOT NULL,
+                release_name TEXT NOT NULL,
+                indexer_name TEXT NOT NULL,
+                download_client_id TEXT NOT NULL,
+                download_client_name TEXT NOT NULL,
+                status TEXT NOT NULL,
+                notes_json TEXT NULL,
+                created_utc TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS ix_download_dispatches_media_created
+                ON download_dispatches (media_type, created_utc DESC);
             """;
 
         await command.ExecuteNonQueryAsync(cancellationToken);

@@ -601,7 +601,7 @@ At minimum support:
 
 Later extensions:
 
-- domain-scoped permissions for movies-only or series-only operators
+- domain-scoped permissions for movies-only or series-only users
 - action-level permissions for import approval, delete, and config changes
 
 ## Observability and Recovery

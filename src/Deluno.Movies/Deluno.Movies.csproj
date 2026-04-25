@@ -3,6 +3,7 @@
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Deluno.Integrations\Deluno.Integrations.csproj" />
     <ProjectReference Include="..\Deluno.Infrastructure\Deluno.Infrastructure.csproj" />
     <ProjectReference Include="..\Deluno.Jobs\Deluno.Jobs.csproj" />
     <ProjectReference Include="..\Deluno.Platform\Deluno.Platform.csproj" />

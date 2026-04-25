@@ -1,4 +1,5 @@
 using Deluno.Contracts.Manifest;
+using Deluno.Api.Backup;
 using Deluno.Infrastructure.Storage;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -13,6 +14,9 @@ public static class DelunoApiExtensions
     public static IServiceCollection AddDelunoApi(this IServiceCollection services)
     {
         services.AddRouting();
+        services.AddSingleton<DelunoBackupService>();
+        services.AddSingleton<IDelunoBackupService>(sp => sp.GetRequiredService<DelunoBackupService>());
+        services.AddHostedService(sp => sp.GetRequiredService<DelunoBackupService>());
         return services;
     }
 

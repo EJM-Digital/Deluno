@@ -5,5 +5,6 @@ public sealed record CreateQualityProfileRequest(
     string? MediaType,
     string? CutoffQuality,
     string? AllowedQualities,
+    string? CustomFormatIds,
     bool UpgradeUntilCutoff,
     bool UpgradeUnknownItems);

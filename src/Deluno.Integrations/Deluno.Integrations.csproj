@@ -4,5 +4,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Deluno.Infrastructure\Deluno.Infrastructure.csproj" />
+    <ProjectReference Include="..\Deluno.Jobs\Deluno.Jobs.csproj" />
+    <ProjectReference Include="..\Deluno.Platform\Deluno.Platform.csproj" />
   </ItemGroup>
 </Project>

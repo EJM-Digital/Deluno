@@ -10,12 +10,32 @@ public interface IMovieCatalogRepository
 
     Task<IReadOnlyList<MovieListItem>> ListAsync(CancellationToken cancellationToken);
 
+    Task<int> UpdateMonitoredAsync(IReadOnlyList<string> movieIds, bool monitored, CancellationToken cancellationToken);
+
+    Task<MovieListItem?> UpdateMetadataAsync(
+        string id,
+        string? metadataProvider,
+        string? metadataProviderId,
+        string? originalTitle,
+        string? overview,
+        string? posterUrl,
+        string? backdropUrl,
+        double? rating,
+        string? genres,
+        string? externalUrl,
+        string? imdbId,
+        string? metadataJson,
+        CancellationToken cancellationToken);
+
     Task<MovieWantedSummary> GetWantedSummaryAsync(CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<MovieSearchHistoryItem>> ListSearchHistoryAsync(CancellationToken cancellationToken);
 
     Task<IReadOnlyList<MovieWantedItem>> ListEligibleWantedAsync(
         string libraryId,
         int take,
         DateTimeOffset now,
+        bool ignoreRetryWindow,
         CancellationToken cancellationToken);
 
     Task EnsureWantedStateAsync(
@@ -48,6 +68,9 @@ public interface IMovieCatalogRepository
         DateTimeOffset now,
         DateTimeOffset? nextEligibleSearchUtc,
         string? lastSearchResult,
+        string? releaseName,
+        string? indexerName,
+        string? detailsJson,
         CancellationToken cancellationToken);
 
     Task<int> ReevaluateLibraryWantedStateAsync(

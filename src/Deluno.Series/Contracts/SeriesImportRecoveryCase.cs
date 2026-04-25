@@ -6,4 +6,5 @@ public sealed record SeriesImportRecoveryCase(
     string FailureKind,
     string Summary,
     string RecommendedAction,
+    string? DetailsJson,
     DateTimeOffset DetectedUtc);

@@ -19,6 +19,17 @@ public sealed class SqliteMovieCatalogRepository(
             ReleaseYear: request.ReleaseYear,
             ImdbId: NormalizeExternalId(request.ImdbId),
             Monitored: request.Monitored,
+            MetadataProvider: NormalizeExternalId(request.MetadataProvider),
+            MetadataProviderId: NormalizeExternalId(request.MetadataProviderId),
+            OriginalTitle: NormalizeText(request.OriginalTitle),
+            Overview: NormalizeText(request.Overview),
+            PosterUrl: NormalizeText(request.PosterUrl),
+            BackdropUrl: NormalizeText(request.BackdropUrl),
+            Rating: request.Rating,
+            Genres: NormalizeText(request.Genres),
+            ExternalUrl: NormalizeText(request.ExternalUrl),
+            MetadataJson: NormalizeText(request.MetadataJson),
+            MetadataUpdatedUtc: string.IsNullOrWhiteSpace(request.MetadataProviderId) ? null : now,
             CreatedUtc: now,
             UpdatedUtc: now);
 
@@ -35,6 +46,17 @@ public sealed class SqliteMovieCatalogRepository(
                 release_year,
                 imdb_id,
                 monitored,
+                metadata_provider,
+                metadata_provider_id,
+                original_title,
+                overview,
+                poster_url,
+                backdrop_url,
+                rating,
+                genres,
+                external_url,
+                metadata_json,
+                metadata_updated_utc,
                 created_utc,
                 updated_utc
             )
@@ -44,6 +66,17 @@ public sealed class SqliteMovieCatalogRepository(
                 @releaseYear,
                 @imdbId,
                 @monitored,
+                @metadataProvider,
+                @metadataProviderId,
+                @originalTitle,
+                @overview,
+                @posterUrl,
+                @backdropUrl,
+                @rating,
+                @genres,
+                @externalUrl,
+                @metadataJson,
+                @metadataUpdatedUtc,
                 @createdUtc,
                 @updatedUtc
             );
@@ -54,6 +87,17 @@ public sealed class SqliteMovieCatalogRepository(
         AddParameter(command, "@releaseYear", movie.ReleaseYear);
         AddParameter(command, "@imdbId", movie.ImdbId);
         AddParameter(command, "@monitored", movie.Monitored ? 1 : 0);
+        AddParameter(command, "@metadataProvider", movie.MetadataProvider);
+        AddParameter(command, "@metadataProviderId", movie.MetadataProviderId);
+        AddParameter(command, "@originalTitle", movie.OriginalTitle);
+        AddParameter(command, "@overview", movie.Overview);
+        AddParameter(command, "@posterUrl", movie.PosterUrl);
+        AddParameter(command, "@backdropUrl", movie.BackdropUrl);
+        AddParameter(command, "@rating", movie.Rating);
+        AddParameter(command, "@genres", movie.Genres);
+        AddParameter(command, "@externalUrl", movie.ExternalUrl);
+        AddParameter(command, "@metadataJson", movie.MetadataJson);
+        AddParameter(command, "@metadataUpdatedUtc", movie.MetadataUpdatedUtc?.ToString("O"));
         AddParameter(command, "@createdUtc", movie.CreatedUtc.ToString("O"));
         AddParameter(command, "@updatedUtc", movie.UpdatedUtc.ToString("O"));
 
@@ -76,6 +120,17 @@ public sealed class SqliteMovieCatalogRepository(
                 release_year,
                 imdb_id,
                 monitored,
+                metadata_provider,
+                metadata_provider_id,
+                original_title,
+                overview,
+                poster_url,
+                backdrop_url,
+                rating,
+                genres,
+                external_url,
+                metadata_json,
+                metadata_updated_utc,
                 created_utc,
                 updated_utc
             FROM movie_entries
@@ -108,6 +163,17 @@ public sealed class SqliteMovieCatalogRepository(
                 release_year,
                 imdb_id,
                 monitored,
+                metadata_provider,
+                metadata_provider_id,
+                original_title,
+                overview,
+                poster_url,
+                backdrop_url,
+                rating,
+                genres,
+                external_url,
+                metadata_json,
+                metadata_updated_utc,
                 created_utc,
                 updated_utc
             FROM movie_entries
@@ -121,6 +187,106 @@ public sealed class SqliteMovieCatalogRepository(
         }
 
         return movies;
+    }
+
+    public async Task<int> UpdateMonitoredAsync(
+        IReadOnlyList<string> movieIds,
+        bool monitored,
+        CancellationToken cancellationToken)
+    {
+        if (movieIds.Count == 0)
+        {
+            return 0;
+        }
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        var updated = 0;
+        var now = timeProvider.GetUtcNow().ToString("O");
+        foreach (var movieId in movieIds.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                UPDATE movie_entries
+                SET monitored = @monitored,
+                    updated_utc = @updatedUtc
+                WHERE id = @id;
+                """;
+            AddParameter(command, "@id", movieId);
+            AddParameter(command, "@monitored", monitored ? 1 : 0);
+            AddParameter(command, "@updatedUtc", now);
+            updated += await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        return updated;
+    }
+
+    public async Task<MovieListItem?> UpdateMetadataAsync(
+        string id,
+        string? metadataProvider,
+        string? metadataProviderId,
+        string? originalTitle,
+        string? overview,
+        string? posterUrl,
+        string? backdropUrl,
+        double? rating,
+        string? genres,
+        string? externalUrl,
+        string? imdbId,
+        string? metadataJson,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE movie_entries
+            SET
+                imdb_id = COALESCE(@imdbId, imdb_id),
+                metadata_provider = @metadataProvider,
+                metadata_provider_id = @metadataProviderId,
+                original_title = @originalTitle,
+                overview = @overview,
+                poster_url = @posterUrl,
+                backdrop_url = @backdropUrl,
+                rating = @rating,
+                genres = @genres,
+                external_url = @externalUrl,
+                metadata_json = @metadataJson,
+                metadata_updated_utc = @metadataUpdatedUtc,
+                updated_utc = @updatedUtc
+            WHERE id = @id;
+            """;
+
+        AddParameter(command, "@id", id);
+        AddParameter(command, "@imdbId", NormalizeExternalId(imdbId));
+        AddParameter(command, "@metadataProvider", NormalizeExternalId(metadataProvider));
+        AddParameter(command, "@metadataProviderId", NormalizeExternalId(metadataProviderId));
+        AddParameter(command, "@originalTitle", NormalizeText(originalTitle));
+        AddParameter(command, "@overview", NormalizeText(overview));
+        AddParameter(command, "@posterUrl", NormalizeText(posterUrl));
+        AddParameter(command, "@backdropUrl", NormalizeText(backdropUrl));
+        AddParameter(command, "@rating", rating);
+        AddParameter(command, "@genres", NormalizeText(genres));
+        AddParameter(command, "@externalUrl", NormalizeText(externalUrl));
+        AddParameter(command, "@metadataJson", NormalizeText(metadataJson));
+        AddParameter(command, "@metadataUpdatedUtc", now.ToString("O"));
+        AddParameter(command, "@updatedUtc", now.ToString("O"));
+
+        if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
+        {
+            return null;
+        }
+
+        return await GetByIdAsync(id, cancellationToken);
     }
 
     public async Task<MovieWantedSummary> GetWantedSummaryAsync(CancellationToken cancellationToken)
@@ -184,10 +350,47 @@ public sealed class SqliteMovieCatalogRepository(
             RecentItems: items);
     }
 
+    public async Task<IReadOnlyList<MovieSearchHistoryItem>> ListSearchHistoryAsync(CancellationToken cancellationToken)
+    {
+        var items = new List<MovieSearchHistoryItem>();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT
+                id, movie_id, library_id, trigger_kind, outcome, release_name, indexer_name, details_json, created_utc
+            FROM movie_search_history
+            ORDER BY created_utc DESC
+            LIMIT 20;
+            """;
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            items.Add(new MovieSearchHistoryItem(
+                Id: reader.GetString(0),
+                MovieId: reader.GetString(1),
+                LibraryId: reader.GetString(2),
+                TriggerKind: reader.GetString(3),
+                Outcome: reader.GetString(4),
+                ReleaseName: reader.IsDBNull(5) ? null : reader.GetString(5),
+                IndexerName: reader.IsDBNull(6) ? null : reader.GetString(6),
+                DetailsJson: reader.IsDBNull(7) ? null : reader.GetString(7),
+                CreatedUtc: ParseTimestamp(reader.GetString(8))));
+        }
+
+        return items;
+    }
+
     public async Task<IReadOnlyList<MovieWantedItem>> ListEligibleWantedAsync(
         string libraryId,
         int take,
         DateTimeOffset now,
+        bool ignoreRetryWindow,
         CancellationToken cancellationToken)
     {
         var items = new List<MovieWantedItem>();
@@ -198,22 +401,38 @@ public sealed class SqliteMovieCatalogRepository(
 
         using var command = connection.CreateCommand();
         command.CommandText =
-            """
-            SELECT
-                m.id, m.title, m.release_year, m.imdb_id,
-                w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality, w.quality_cutoff_met,
-                w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc, w.last_search_result, w.updated_utc
-            FROM movie_wanted_state w
-            INNER JOIN movie_entries m ON m.id = w.movie_id
-            WHERE w.library_id = @libraryId
-              AND w.wanted_status IN ('missing', 'upgrade')
-              AND (w.next_eligible_search_utc IS NULL OR w.next_eligible_search_utc <= @now)
-            ORDER BY
-                CASE w.wanted_status WHEN 'missing' THEN 0 ELSE 1 END,
-                COALESCE(w.last_search_utc, w.missing_since_utc, w.updated_utc) ASC,
-                m.title ASC
-            LIMIT @take;
-            """;
+            ignoreRetryWindow
+                ? """
+                  SELECT
+                      m.id, m.title, m.release_year, m.imdb_id,
+                      w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality, w.quality_cutoff_met,
+                      w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc, w.last_search_result, w.updated_utc
+                  FROM movie_wanted_state w
+                  INNER JOIN movie_entries m ON m.id = w.movie_id
+                  WHERE w.library_id = @libraryId
+                    AND w.wanted_status IN ('missing', 'upgrade')
+                  ORDER BY
+                      CASE w.wanted_status WHEN 'missing' THEN 0 ELSE 1 END,
+                      COALESCE(w.last_search_utc, w.missing_since_utc, w.updated_utc) ASC,
+                      m.title ASC
+                  LIMIT @take;
+                  """
+                : """
+                  SELECT
+                      m.id, m.title, m.release_year, m.imdb_id,
+                      w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality, w.quality_cutoff_met,
+                      w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc, w.last_search_result, w.updated_utc
+                  FROM movie_wanted_state w
+                  INNER JOIN movie_entries m ON m.id = w.movie_id
+                  WHERE w.library_id = @libraryId
+                    AND w.wanted_status IN ('missing', 'upgrade')
+                    AND (w.next_eligible_search_utc IS NULL OR w.next_eligible_search_utc <= @now)
+                  ORDER BY
+                      CASE w.wanted_status WHEN 'missing' THEN 0 ELSE 1 END,
+                      COALESCE(w.last_search_utc, w.missing_since_utc, w.updated_utc) ASC,
+                      m.title ASC
+                  LIMIT @take;
+                  """;
 
         AddParameter(command, "@libraryId", libraryId);
         AddParameter(command, "@now", now.ToString("O"));
@@ -383,6 +602,9 @@ public sealed class SqliteMovieCatalogRepository(
         DateTimeOffset now,
         DateTimeOffset? nextEligibleSearchUtc,
         string? lastSearchResult,
+        string? releaseName,
+        string? indexerName,
+        string? detailsJson,
         CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -400,7 +622,7 @@ public sealed class SqliteMovieCatalogRepository(
                     id, movie_id, library_id, trigger_kind, outcome, release_name, indexer_name, details_json, created_utc
                 )
                 VALUES (
-                    @id, @movieId, @libraryId, @triggerKind, @outcome, NULL, NULL, NULL, @createdUtc
+                    @id, @movieId, @libraryId, @triggerKind, @outcome, @releaseName, @indexerName, @detailsJson, @createdUtc
                 );
                 """;
 
@@ -409,6 +631,9 @@ public sealed class SqliteMovieCatalogRepository(
             AddParameter(history, "@libraryId", libraryId);
             AddParameter(history, "@triggerKind", triggerKind);
             AddParameter(history, "@outcome", outcome);
+            AddParameter(history, "@releaseName", releaseName);
+            AddParameter(history, "@indexerName", indexerName);
+            AddParameter(history, "@detailsJson", detailsJson);
             AddParameter(history, "@createdUtc", now.ToString("O"));
             await history.ExecuteNonQueryAsync(cancellationToken);
         }
@@ -528,6 +753,7 @@ public sealed class SqliteMovieCatalogRepository(
                     failure_kind,
                     summary,
                     recommended_action,
+                    details_json,
                     detected_utc
                 FROM movie_import_recovery_cases
                 ORDER BY detected_utc DESC
@@ -543,7 +769,8 @@ public sealed class SqliteMovieCatalogRepository(
                     FailureKind: reader.GetString(2),
                     Summary: reader.GetString(3),
                     RecommendedAction: reader.GetString(4),
-                    DetectedUtc: ParseTimestamp(reader.GetString(5))));
+                    DetailsJson: reader.IsDBNull(5) ? null : reader.GetString(5),
+                    DetectedUtc: ParseTimestamp(reader.GetString(6))));
             }
         }
 
@@ -570,6 +797,7 @@ public sealed class SqliteMovieCatalogRepository(
             RecommendedAction: string.IsNullOrWhiteSpace(request.RecommendedAction)
                 ? "Review this import and decide whether Deluno should retry, rematch, or remove it."
                 : request.RecommendedAction.Trim(),
+            DetailsJson: string.IsNullOrWhiteSpace(request.DetailsJson) ? null : request.DetailsJson.Trim(),
             DetectedUtc: now);
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -585,6 +813,7 @@ public sealed class SqliteMovieCatalogRepository(
                 failure_kind,
                 summary,
                 recommended_action,
+                details_json,
                 detected_utc
             )
             VALUES (
@@ -593,6 +822,7 @@ public sealed class SqliteMovieCatalogRepository(
                 @failureKind,
                 @summary,
                 @recommendedAction,
+                @detailsJson,
                 @detectedUtc
             );
             """;
@@ -602,6 +832,7 @@ public sealed class SqliteMovieCatalogRepository(
         AddParameter(command, "@failureKind", item.FailureKind);
         AddParameter(command, "@summary", item.Summary);
         AddParameter(command, "@recommendedAction", item.RecommendedAction);
+        AddParameter(command, "@detailsJson", item.DetailsJson);
         AddParameter(command, "@detectedUtc", item.DetectedUtc.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
 
@@ -628,8 +859,19 @@ public sealed class SqliteMovieCatalogRepository(
             ReleaseYear: reader.IsDBNull(2) ? null : reader.GetInt32(2),
             ImdbId: reader.IsDBNull(3) ? null : reader.GetString(3),
             Monitored: reader.GetInt32(4) == 1,
-            CreatedUtc: ParseTimestamp(reader.GetString(5)),
-            UpdatedUtc: ParseTimestamp(reader.GetString(6)));
+            MetadataProvider: reader.IsDBNull(5) ? null : reader.GetString(5),
+            MetadataProviderId: reader.IsDBNull(6) ? null : reader.GetString(6),
+            OriginalTitle: reader.IsDBNull(7) ? null : reader.GetString(7),
+            Overview: reader.IsDBNull(8) ? null : reader.GetString(8),
+            PosterUrl: reader.IsDBNull(9) ? null : reader.GetString(9),
+            BackdropUrl: reader.IsDBNull(10) ? null : reader.GetString(10),
+            Rating: reader.IsDBNull(11) ? null : reader.GetDouble(11),
+            Genres: reader.IsDBNull(12) ? null : reader.GetString(12),
+            ExternalUrl: reader.IsDBNull(13) ? null : reader.GetString(13),
+            MetadataJson: reader.IsDBNull(14) ? null : reader.GetString(14),
+            MetadataUpdatedUtc: reader.IsDBNull(15) ? null : ParseTimestamp(reader.GetString(15)),
+            CreatedUtc: ParseTimestamp(reader.GetString(16)),
+            UpdatedUtc: ParseTimestamp(reader.GetString(17)));
     }
 
     private static MovieWantedItem ReadWantedMovie(System.Data.Common.DbDataReader reader)
@@ -669,6 +911,12 @@ public sealed class SqliteMovieCatalogRepository(
         }
 
         return value.Trim().ToLowerInvariant();
+    }
+
+    private static string? NormalizeText(string? value)
+    {
+        var normalized = value?.Trim();
+        return string.IsNullOrWhiteSpace(normalized) ? null : normalized;
     }
 
     private static string NormalizeFailureKind(string? value)

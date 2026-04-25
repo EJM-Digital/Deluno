@@ -4,4 +4,5 @@ public sealed record CreateSeriesImportRecoveryCaseRequest(
     string? Title,
     string? FailureKind,
     string? Summary,
-    string? RecommendedAction);
+    string? RecommendedAction,
+    string? DetailsJson = null);
