@@ -1277,7 +1277,6 @@ html {
   --library-table-min-width: calc(980px * var(--density-scale));
 
   --content-max-width: calc(2040px * var(--density-scale));
-  --sidebar-width: calc(280px * var(--density-scale));
   --content-outer-gap: clamp(calc(10px * var(--density-scale)), 1.2vw, calc(24px * var(--density-scale)));
   --content-pad-inline: clamp(calc(14px * var(--density-scale)), 1.08vw, calc(26px * var(--density-scale)));
   --content-pad-block: clamp(calc(16px * var(--density-scale)), 1.35vw, calc(28px * var(--density-scale)));
@@ -1294,6 +1293,7 @@ html {
   --shell-subtle-size: calc(12.5px * var(--font-scale));
   --shell-nav-size: calc(14px * var(--font-scale));
   --shell-nav-badge-size: calc(9.5px * var(--font-scale));
+  --shell-nav-text-min: calc(164px * var(--font-scale));
   --shell-pill-height: calc(42px * var(--density-scale));
   --shell-nav-pad-x: calc(15px * var(--density-scale));
   --shell-nav-gap: calc(8px * var(--density-scale));
@@ -1306,8 +1306,14 @@ html {
   --shell-nav-row-height: calc(58px * var(--density-scale));
   --shell-mobile-row-height: calc(46px * var(--density-scale));
   --shell-icon-button-size: calc(34px * var(--density-scale));
+  --shell-icon-col: calc(var(--shell-pill-height) * 0.68);
   --shell-icon-size: calc(15px * var(--density-scale));
   --shell-icon-size-sm: calc(14px * var(--density-scale));
+  --sidebar-width: clamp(
+    calc(250px * var(--density-scale)),
+    calc((var(--tile-pad) * 1.6) + (var(--shell-nav-pad-x) * 2) + var(--shell-icon-col) + var(--shell-nav-text-min) + (44px * var(--density-scale))),
+    calc(320px * var(--density-scale))
+  );
 
   --settings-nav-size: calc(14px * var(--font-scale));
   --settings-nav-pad-y: calc(8px * var(--density-scale));
@@ -1320,7 +1326,6 @@ html[data-density="compact"] {
   --density-scale: 0.84;
   --font-scale: 0.88;
   --content-max-width: calc(1840px * var(--density-scale));
-  --sidebar-width: calc(276px * var(--density-scale));
 }
 
 html[data-density="comfortable"] {
