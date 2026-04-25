@@ -130,32 +130,32 @@
   /* (--primary-2 = gradient end-stop, --primary-deep = deep shadow tone)*/
   /* ══════════════════════════════════════════════════════════════════ */
 
-  /* Default — Cobalt (premium, Linear/Arc vibe) */
+  /* Default - Deluno Gold (graphite luxury, status colours remain semantic) */
   :root,
   :root[data-accent="cobalt"] {
-    --primary: 214 95% 52%;
-    --primary-glow: 207 96% 60%;
-    --primary-2: 190 94% 46%;
-    --primary-deep: 214 88% 24%;
-    --primary-foreground: 0 0% 100%;
-    --accent: 214 72% 96%;
-    --accent-foreground: 214 74% 26%;
-    --ring: 214 95% 52%;
-    --sidebar-ring: 214 95% 52%;
-    --gradient-accent: linear-gradient(135deg, hsl(214 95% 52%) 0%, hsl(190 94% 46%) 100%);
+    --primary: 38 92% 45%;
+    --primary-glow: 43 96% 58%;
+    --primary-2: 26 88% 52%;
+    --primary-deep: 34 80% 22%;
+    --primary-foreground: 35 52% 9%;
+    --accent: 42 78% 95%;
+    --accent-foreground: 34 62% 23%;
+    --ring: 38 92% 45%;
+    --sidebar-ring: 38 92% 45%;
+    --gradient-accent: linear-gradient(135deg, hsl(43 96% 58%) 0%, hsl(26 88% 52%) 100%);
   }
   .dark,
   .dark[data-accent="cobalt"] {
-    --primary: 212 100% 66%;
-    --primary-glow: 199 100% 68%;
-    --primary-2: 188 92% 58%;
-    --primary-deep: 212 90% 14%;
-    --primary-foreground: 216 42% 8%;
+    --primary: 42 96% 66%;
+    --primary-glow: 46 98% 72%;
+    --primary-2: 28 92% 62%;
+    --primary-deep: 36 82% 15%;
+    --primary-foreground: 35 54% 9%;
     --accent: 222 14% 15%;
-    --accent-foreground: 212 100% 82%;
-    --ring: 212 100% 66%;
-    --sidebar-ring: 212 100% 66%;
-    --gradient-accent: linear-gradient(135deg, hsl(212 100% 66%) 0%, hsl(188 92% 58%) 100%);
+    --accent-foreground: 43 92% 78%;
+    --ring: 42 96% 66%;
+    --sidebar-ring: 42 96% 66%;
+    --gradient-accent: linear-gradient(135deg, hsl(42 96% 66%) 0%, hsl(28 92% 62%) 100%);
   }
 
   /* Indigo — deep classic enterprise (Stripe OG) */
