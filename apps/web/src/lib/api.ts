@@ -233,6 +233,7 @@ export interface PlatformSettingsSnapshot {
   useHardlinks: boolean;
   cleanupEmptyFolders: boolean;
   removeCompletedDownloads: boolean;
+  unmonitorWhenCutoffMet: boolean;
   movieFolderFormat: string;
   seriesFolderFormat: string;
   episodeFileFormat: string;
@@ -248,9 +249,28 @@ export interface PlatformSettingsSnapshot {
   metadataArtworkEnabled: boolean;
   metadataCertificationCountry: string;
   metadataLanguage: string;
+  metadataProviderMode: "broker" | "hybrid" | "direct" | string;
+  metadataBrokerUrl: string;
+  metadataBrokerConfigured: boolean;
   metadataTmdbApiKeyConfigured: boolean;
   metadataOmdbApiKeyConfigured: boolean;
+  releaseNeverGrabPatterns: string;
   updatedUtc: string;
+}
+
+export interface ApiKeyItem {
+  id: string;
+  name: string;
+  prefix: string;
+  scopes: string;
+  lastUsedUtc: string | null;
+  createdUtc: string;
+  updatedUtc: string;
+}
+
+export interface CreatedApiKeyResponse {
+  item: ApiKeyItem;
+  apiKey: string;
 }
 
 export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
@@ -265,6 +285,7 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   useHardlinks: false,
   cleanupEmptyFolders: true,
   removeCompletedDownloads: false,
+  unmonitorWhenCutoffMet: false,
   movieFolderFormat: "{Movie Title} ({Release Year})",
   seriesFolderFormat: "{Series Title} ({Series Year})",
   episodeFileFormat: "{Series Title} - S{season:00}E{episode:00} - {Episode Title}",
@@ -280,8 +301,12 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   metadataArtworkEnabled: true,
   metadataCertificationCountry: "US",
   metadataLanguage: "en",
+  metadataProviderMode: "direct",
+  metadataBrokerUrl: "",
+  metadataBrokerConfigured: false,
   metadataTmdbApiKeyConfigured: false,
   metadataOmdbApiKeyConfigured: false,
+  releaseNeverGrabPatterns: "cam\ncamrip\ntelesync\ntelecine\nworkprint\nscreener\nsample\ntrailer\nextras",
   updatedUtc: new Date(0).toISOString()
 };
 
@@ -297,6 +322,11 @@ export interface LibraryItem {
   cutoffQuality: string | null;
   upgradeUntilCutoff: boolean;
   upgradeUnknownItems: boolean;
+  importWorkflow: "standard" | "refine-before-import" | string;
+  processorName: string | null;
+  processorOutputPath: string | null;
+  processorTimeoutMinutes: number;
+  processorFailureMode: "block" | "import-original" | "manual-review" | string;
   autoSearchEnabled: boolean;
   missingSearchEnabled: boolean;
   upgradeSearchEnabled: boolean;
@@ -430,10 +460,52 @@ export interface ImportPreviewResponse {
   sourceSizeBytes: number;
   destinationSizeBytes: number;
   isSupportedMediaFile: boolean;
+  mediaProbe: MediaProbeInfo | null;
   transferExplanation: string;
   warnings: string[];
   explanation: string;
   decisionSteps: string[];
+}
+
+export interface MediaProbeInfo {
+  status: string;
+  tool: string;
+  message: string | null;
+  durationSeconds: number | null;
+  container: string | null;
+  bitrate: number | null;
+  videoStreams: MediaVideoStreamInfo[];
+  audioStreams: MediaAudioStreamInfo[];
+  subtitleStreams: MediaSubtitleStreamInfo[];
+}
+
+export interface MediaVideoStreamInfo {
+  index: number;
+  codec: string | null;
+  profile: string | null;
+  width: number | null;
+  height: number | null;
+  pixelFormat: string | null;
+  frameRate: number | null;
+  bitrate: number | null;
+  language: string | null;
+}
+
+export interface MediaAudioStreamInfo {
+  index: number;
+  codec: string | null;
+  profile: string | null;
+  channels: number | null;
+  channelLayout: string | null;
+  sampleRate: number | null;
+  bitrate: number | null;
+  language: string | null;
+}
+
+export interface MediaSubtitleStreamInfo {
+  index: number;
+  codec: string | null;
+  language: string | null;
 }
 
 export interface ImportExecuteRequest {
@@ -441,6 +513,7 @@ export interface ImportExecuteRequest {
   transferMode?: "auto" | "hardlink" | "copy" | "move" | string | null;
   overwrite: boolean;
   allowCopyFallback: boolean;
+  forceReplacement?: boolean;
 }
 
 export interface ImportExecuteResponse {
@@ -509,17 +582,17 @@ export interface IndexerItem {
 export interface DownloadClientItem {
   id: string;
   name: string;
-  /** qbittorrent | sabnzbd | nzbget | rtorrent | transmission | deluge | custom */
+  /** qbittorrent | sabnzbd | nzbget | transmission | deluge | utorrent */
   protocol: string;
   host?: string | null;
   port?: number | null;
   username?: string | null;
   endpointUrl: string | null;
-  /** Category used for movie downloads — maps to a folder/label in the client */
+  /** Category used for movie downloads; maps to a folder/label in the client */
   moviesCategory?: string | null;
   /** Category used for TV show downloads */
   tvCategory?: string | null;
-  /** Legacy single category — only used when moviesCategory/tvCategory are absent */
+  /** Legacy single category; only used when moviesCategory/tvCategory are absent */
   categoryTemplate: string | null;
   priority: number;
   isEnabled: boolean;
@@ -534,6 +607,7 @@ export interface DownloadTelemetrySummary {
   queuedCount: number;
   completedCount: number;
   stalledCount: number;
+  processingCount: number;
   importReadyCount: number;
   totalSpeedMbps: number;
 }
@@ -547,7 +621,7 @@ export interface DownloadQueueItem {
   title: string;
   releaseName: string;
   category: string;
-  status: "downloading" | "queued" | "completed" | "stalled" | "importReady" | string;
+  status: "downloading" | "queued" | "completed" | "stalled" | "processing" | "processed" | "waitingForProcessor" | "importReady" | "importQueued" | "importFailed" | "imported" | "processingFailed" | string;
   progress: number;
   speedMbps: number;
   etaSeconds: number;
@@ -596,6 +670,11 @@ export interface DownloadTelemetryOverview {
   capturedUtc: string;
 }
 
+export interface ConnectionTestResponse {
+  healthStatus: string;
+  message: string;
+}
+
 export interface MetadataSearchResult {
   provider: string;
   providerId: string;
@@ -627,6 +706,16 @@ export interface MetadataProviderStatus {
   provider: string;
   isConfigured: boolean;
   mode: "live" | "unconfigured" | string;
+  message: string;
+  sources: MetadataSourceStatus[];
+}
+
+export interface MetadataSourceStatus {
+  source: string;
+  label: string;
+  role: string;
+  isConfigured: boolean;
+  mode: string;
   message: string;
 }
 
@@ -660,6 +749,49 @@ export interface JobQueueItem {
   lastError: string | null;
   relatedEntityType: string | null;
   relatedEntityId: string | null;
+}
+
+export interface LibraryAutomationStateItem {
+  libraryId: string;
+  libraryName: string;
+  mediaType: string;
+  status: string;
+  searchRequested: boolean;
+  lastPlannedUtc: string | null;
+  lastStartedUtc: string | null;
+  lastCompletedUtc: string | null;
+  nextSearchUtc: string | null;
+  lastJobId: string | null;
+  lastError: string | null;
+  updatedUtc: string;
+}
+
+export interface SearchCycleRunItem {
+  id: string;
+  libraryId: string;
+  libraryName: string;
+  mediaType: string;
+  triggerKind: string;
+  status: string;
+  plannedCount: number;
+  queuedCount: number;
+  skippedCount: number;
+  notesJson: string | null;
+  startedUtc: string;
+  completedUtc: string | null;
+}
+
+export interface SearchRetryWindowItem {
+  entityType: string;
+  entityId: string;
+  libraryId: string;
+  mediaType: string;
+  actionKind: string;
+  nextEligibleUtc: string;
+  lastAttemptUtc: string;
+  attemptCount: number;
+  lastResult: string | null;
+  updatedUtc: string;
 }
 
 export interface ActivityEventItem {

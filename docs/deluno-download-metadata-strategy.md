@@ -4,6 +4,9 @@
 
 Deluno should support external download clients first. An embedded downloader is a bad near-term bet.
 
+For the user-facing workflow model around categories, grab records, tags, routing, import matching, metadata, and media probing, see
+[`wiki-media-operations-workflow.md`](wiki-media-operations-workflow.md).
+
 Mature clients already solve the transport-layer problems well:
 
 - qBittorrent
@@ -11,7 +14,6 @@ Mature clients already solve the transport-layer problems well:
 - NZBGet
 - Deluge
 - Transmission
-- rTorrent
 
 Those tools already handle protocol behavior, queues, bandwidth limits, repair/unpack, seeding, labels/categories, retries, and history. Deluno should not spend early product effort trying to beat them at transport.
 
@@ -24,6 +26,17 @@ Deluno's differentiated role is orchestration:
 - map categories or labels by media type and policy
 - explain why a release was sent to a specific client
 - normalize metrics so every client feels like one system
+
+Supported telemetry adapters should normalize popular clients behind the same queue/history model:
+
+- qBittorrent
+- SABnzbd
+- Transmission
+- Deluge
+- NZBGet
+- uTorrent-compatible Web UI
+
+The UI should not care which client produced the queue item. It should receive normalized status, progress, speed, ETA, category, source path, error, and import-ready state.
 
 ## Normalized Download Model
 

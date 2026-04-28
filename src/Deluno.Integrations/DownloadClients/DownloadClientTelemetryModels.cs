@@ -5,6 +5,7 @@ public sealed record DownloadTelemetrySummary(
     int QueuedCount,
     int CompletedCount,
     int StalledCount,
+    int ProcessingCount,
     int ImportReadyCount,
     double TotalSpeedMbps);
 

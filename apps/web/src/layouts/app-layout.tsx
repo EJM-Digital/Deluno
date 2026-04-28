@@ -21,11 +21,12 @@ import {
 import { useTheme } from "next-themes";
 import { useEffect, useMemo, useRef, useState, type ComponentType, type FormEvent } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
-import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, useLocation, useNavigate, useNavigation } from "react-router-dom";
 import { CommandPalette } from "../components/shell/command-palette";
 import { KeyboardHintOverlay } from "../components/shell/keyboard-hint-overlay";
 import { MobileShellNav } from "../components/shell/mobile-shell-nav";
 import { PageTransition } from "../components/shell/motion";
+import { RouteSkeleton } from "../components/shell/skeleton";
 import { Toaster } from "../components/shell/toaster";
 import { WsStatusBadge } from "../components/shell/ws-status-badge";
 import { Button } from "../components/ui/button";
@@ -89,6 +90,7 @@ function AppLayoutInner() {
 function AppLayoutContent() {
   const location = useLocation();
   const navigate = useNavigate();
+  const navigation = useNavigation();
   const { user, logout } = useAuth();
   const { resolvedTheme, setTheme } = useTheme();
   const attention = useAttention();
@@ -174,7 +176,7 @@ function AppLayoutContent() {
                 paddingBottom: "var(--content-pad-block)"
               }}
             >
-              <PageTransition />
+              {navigation.state === "idle" ? <PageTransition /> : <RouteSkeleton />}
             </main>
           </div>
         </div>

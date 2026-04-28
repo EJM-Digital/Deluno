@@ -170,6 +170,8 @@ public sealed class SeriesSchemaInitializer(
         await EnsureSeriesEntryColumnAsync(connection, "metadata_updated_utc", "TEXT NULL", cancellationToken);
         await EnsureWantedStateColumnAsync(connection, "current_quality", "TEXT NULL", cancellationToken);
         await EnsureWantedStateColumnAsync(connection, "target_quality", "TEXT NULL", cancellationToken);
+        await EnsureSearchHistoryColumnAsync(connection, "episode_id", "TEXT NULL", cancellationToken);
+        await EnsureSearchHistoryColumnAsync(connection, "library_id", "TEXT NULL", cancellationToken);
         await EnsureSearchHistoryColumnAsync(connection, "release_name", "TEXT NULL", cancellationToken);
         await EnsureSearchHistoryColumnAsync(connection, "indexer_name", "TEXT NULL", cancellationToken);
         await EnsureSearchHistoryColumnAsync(connection, "details_json", "TEXT NULL", cancellationToken);

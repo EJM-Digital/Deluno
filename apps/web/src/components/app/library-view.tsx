@@ -18,7 +18,7 @@ import {
   Zap,
 } from "lucide-react";
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate, useNavigation } from "react-router-dom";
 import type { MediaItem, MediaStatus } from "../../lib/media-types";
 import {
   ApiRequestError,
@@ -32,9 +32,9 @@ import {
 import { useDensity, type Density } from "../../lib/use-density";
 import { authedFetch } from "../../lib/use-auth";
 import { cn, formatBytesFromGb } from "../../lib/utils";
-import { MediaDetailSheet } from "./media-detail-sheet";
 import { GlassTile, PageHero, StatChip } from "../shell/page-hero";
 import { EmptyState } from "../shell/empty-state";
+import { LibraryGridSkeleton } from "../shell/skeleton";
 import { toast } from "../shell/toaster";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -362,15 +362,19 @@ const enumOptions: Partial<Record<FilterField, Array<{ value: string; label: str
 
 export function LibraryView({
   items,
+  isRouteLoading = false,
   metadataStatus,
   onReload,
   variant
 }: {
   items: MediaItem[];
+  isRouteLoading?: boolean;
   metadataStatus?: MetadataProviderStatus | null;
   onReload?: () => void;
   variant: Variant;
 }) {
+  const navigate = useNavigate();
+  const navigation = useNavigation();
   const { density } = useDensity();
   const [libraryItems, setLibraryItems] = useState(items);
   const [query, setQuery] = useState("");
@@ -393,7 +397,6 @@ export function LibraryView({
     setDisplayOptions(nextOptions);
     try { localStorage.setItem(DISPLAY_STORAGE_KEY(variant), JSON.stringify(nextOptions)); } catch { /* ignore */ }
   }
-  const [selected, setSelected] = useState<MediaItem | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
@@ -585,9 +588,6 @@ export function LibraryView({
             : item
         )
       );
-      setSelected((current) =>
-        current && selectedIds.includes(current.id) ? { ...current, monitored } : current
-      );
       toast.success(
         monitored
           ? `${selectedIds.length} title${selectedIds.length === 1 ? "" : "s"} now monitored`
@@ -646,11 +646,8 @@ export function LibraryView({
     setSelectedIds(allVisibleSelected ? [] : visibleIds);
   }
 
-  function handleItemUpdated(nextItem: MediaItem) {
-    setLibraryItems((current) =>
-      current.map((item) => (item.id === nextItem.id ? { ...item, ...nextItem } : item))
-    );
-    setSelected(nextItem);
+  function openWorkspace(item: MediaItem) {
+    navigate(item.type === "movie" ? `/movies/${item.id}` : `/tv/${item.id}`);
   }
 
   function addCustomRule() {
@@ -1230,7 +1227,11 @@ export function LibraryView({
         ) : null}
 
         {/* ═══════ POSTER GRID or LIST ═══════ */}
-        {filtered.length === 0 ? (
+        {(isRouteLoading || navigation.state !== "idle") && libraryItems.length === 0 ? (
+          <GlassTile className="p-[var(--tile-pad)]">
+            <LibraryGridSkeleton count={20} />
+          </GlassTile>
+        ) : filtered.length === 0 ? (
           libraryItems.length === 0 ? (
             <EmptyState
               variant="library"
@@ -1271,7 +1272,7 @@ export function LibraryView({
               displayOptions={displayOptions}
               selectedIds={selectedIds}
               keyBust={`${cardSize}-${quickFilter}-${query}-${sortField}-${sortDirection}-${displayOptions.showMeta}-${displayOptions.showStatusPill}-${displayOptions.showQualityBadge}-${displayOptions.showRating}`}
-              onSelect={setSelected}
+              onSelect={openWorkspace}
               onToggle={toggleSelectedId}
             />
         ) : (
@@ -1279,7 +1280,7 @@ export function LibraryView({
             <LibraryTable
               items={filtered}
               selectedIds={selectedIds}
-              onSelect={setSelected}
+              onSelect={openWorkspace}
               onToggle={toggleSelectedId}
               onToggleAll={toggleSelectAllVisible}
               allSelected={filtered.length > 0 && filtered.every((item) => selectedIds.includes(item.id))}
@@ -1289,11 +1290,6 @@ export function LibraryView({
         )}
       </section>
 
-      <MediaDetailSheet
-        item={selected}
-        onOpenChange={(open) => !open && setSelected(null)}
-        onItemUpdated={handleItemUpdated}
-      />
     </>
   );
 }
@@ -1568,6 +1564,14 @@ function StatusPill({ status }: { status: MediaStatus }) {
   const config = {
     downloaded: { dot: "bg-success", label: "Ready", tone: "border-success/30 bg-success/15 text-success" },
     downloading: { dot: "bg-info", label: "DL", tone: "border-info/30 bg-info/15 text-info" },
+    processing: { dot: "bg-primary", label: "Clean", tone: "border-primary/30 bg-primary/15 text-primary" },
+    processed: { dot: "bg-success", label: "Cleaned", tone: "border-success/30 bg-success/15 text-success" },
+    waitingForProcessor: { dot: "bg-warning", label: "Waiting", tone: "border-warning/30 bg-warning/15 text-warning" },
+    importReady: { dot: "bg-success", label: "Import", tone: "border-success/30 bg-success/15 text-success" },
+    importQueued: { dot: "bg-primary", label: "Queued", tone: "border-primary/30 bg-primary/15 text-primary" },
+    importFailed: { dot: "bg-destructive", label: "Import failed", tone: "border-destructive/30 bg-destructive/15 text-destructive" },
+    imported: { dot: "bg-success", label: "Imported", tone: "border-success/30 bg-success/15 text-success" },
+    processingFailed: { dot: "bg-destructive", label: "Review", tone: "border-destructive/30 bg-destructive/15 text-destructive" },
     monitored: { dot: "bg-primary", label: "Monitor", tone: "border-primary/30 bg-primary/15 text-primary" },
     missing: { dot: "bg-destructive", label: "Missing", tone: "border-destructive/30 bg-destructive/15 text-destructive" }
   }[status];
@@ -1589,6 +1593,14 @@ function StatusDot({ status }: { status: MediaStatus }) {
   const color = {
     downloaded: "bg-success",
     downloading: "bg-info animate-pulse",
+    processing: "bg-primary animate-pulse",
+    processed: "bg-success",
+    waitingForProcessor: "bg-warning animate-pulse",
+    importReady: "bg-success",
+    importQueued: "bg-primary animate-pulse",
+    importFailed: "bg-destructive",
+    imported: "bg-success",
+    processingFailed: "bg-destructive",
     monitored: "bg-primary",
     missing: "bg-destructive"
   }[status];
@@ -1599,12 +1611,28 @@ function StatusBadge({ status }: { status: MediaStatus }) {
   const variant = {
     downloaded: "success" as const,
     downloading: "info" as const,
+    processing: "default" as const,
+    processed: "success" as const,
+    waitingForProcessor: "warning" as const,
+    importReady: "success" as const,
+    importQueued: "default" as const,
+    importFailed: "destructive" as const,
+    imported: "success" as const,
+    processingFailed: "destructive" as const,
     monitored: "default" as const,
     missing: "destructive" as const
   }[status];
   const label = {
     downloaded: "Ready",
     downloading: "Downloading",
+    processing: "Processing",
+    processed: "Processed",
+    waitingForProcessor: "Waiting for processor",
+    importReady: "Import ready",
+    importQueued: "Import queued",
+    importFailed: "Import failed",
+    imported: "Imported",
+    processingFailed: "Processing failed",
     monitored: "Monitored",
     missing: "Missing"
   }[status];

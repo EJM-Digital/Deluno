@@ -2,7 +2,7 @@
  * First-run onboarding banner.
  *
  * Detects the "fresh install" state (no indexers, no download clients,
- * no libraries) and shows a compact 3-step checklist linking directly
+ * no libraries) and shows a compact setup checklist linking directly
  * into the relevant settings pages. Dismissible by the user; the
  * dismissed flag is stored in localStorage so it never nags after the
  * user explicitly chooses to hide it, even if they later delete their
@@ -13,7 +13,7 @@
  */
 
 import { Link } from "react-router-dom";
-import { CheckCircle2, Circle, Sparkles, X } from "lucide-react";
+import { ArrowRight, CheckCircle2, Circle, Sparkles, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { cn } from "../../lib/utils";
 
@@ -40,6 +40,18 @@ export function OnboardingBanner({ state }: { state: OnboardingState }) {
   if (allDone || dismissed) return null;
 
   const steps: { label: string; to: string; done: boolean; hint: string }[] = [
+    {
+      label: "Choose folders",
+      hint: "Where media and completed downloads live.",
+      to: "/setup-guide",
+      done: state.hasLibrary
+    },
+    {
+      label: "Set quality",
+      hint: "Simple quality and release rules.",
+      to: "/setup-guide",
+      done: state.hasLibrary
+    },
     {
       label: "Add an indexer",
       hint: "Providers Deluno queries for releases.",
@@ -104,10 +116,26 @@ export function OnboardingBanner({ state }: { state: OnboardingState }) {
             </span>
           </div>
           <p className="mt-0.5 text-[13px] text-muted-foreground">
-            Three quick steps, then your library will fill itself while you sleep.
+            Guided setup creates folders, quality profiles, release rules, provider routing, and the first library baseline.
           </p>
 
-          <ol className="mt-4 grid gap-2 sm:grid-cols-3">
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <Link
+              to="/setup-guide"
+              className="inline-flex h-[var(--control-height-sm)] items-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-semibold text-primary-foreground shadow-glow transition hover:-translate-y-0.5"
+            >
+              Start guided setup
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+            <Link
+              to="/settings"
+              className="inline-flex h-[var(--control-height-sm)] items-center rounded-xl border border-hairline bg-card px-4 text-[13px] font-semibold text-muted-foreground transition hover:text-foreground"
+            >
+              Advanced settings
+            </Link>
+          </div>
+
+          <ol className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
             {steps.map((step, i) => (
               <li key={step.label}>
                 <Link

@@ -12,6 +12,7 @@ public sealed record PlatformSettingsSnapshot(
     bool UseHardlinks,
     bool CleanupEmptyFolders,
     bool RemoveCompletedDownloads,
+    bool UnmonitorWhenCutoffMet,
     string MovieFolderFormat,
     string SeriesFolderFormat,
     string EpisodeFileFormat,
@@ -27,6 +28,10 @@ public sealed record PlatformSettingsSnapshot(
     bool MetadataArtworkEnabled,
     string MetadataCertificationCountry,
     string MetadataLanguage,
+    string MetadataProviderMode,
+    string MetadataBrokerUrl,
+    bool MetadataBrokerConfigured,
     bool MetadataTmdbApiKeyConfigured,
     bool MetadataOmdbApiKeyConfigured,
+    string ReleaseNeverGrabPatterns,
     DateTimeOffset UpdatedUtc);

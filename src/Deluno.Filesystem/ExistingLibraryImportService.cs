@@ -98,6 +98,7 @@ public sealed class ExistingLibraryImportService(
             decision.CurrentQuality,
             decision.TargetQuality,
             decision.QualityCutoffMet,
+            false,
             cancellationToken);
     }
 
@@ -123,6 +124,7 @@ public sealed class ExistingLibraryImportService(
             decision.CurrentQuality,
             decision.TargetQuality,
             decision.QualityCutoffMet,
+            false,
             item.Episodes,
             cancellationToken);
     }

@@ -35,10 +35,15 @@ public sealed class FeedMediaSearchPlanner(
             .Take(4)
             .ToArray();
 
+        var settings = await platformRepository.GetAsync(cancellationToken);
+        var neverGrabPatterns = settings.ReleaseNeverGrabPatterns
+            .Split(['\r', '\n', ','], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
         var liveCandidates = new List<MediaSearchCandidate>();
         foreach (var (source, indexer) in sourceIndexers)
         {
-            var candidates = await TrySearchIndexerAsync(indexer, source, title, year, mediaType, targetQuality, customFormats, cancellationToken);
+            var candidates = await TrySearchIndexerAsync(indexer, source, title, year, mediaType, currentQuality, targetQuality, customFormats, neverGrabPatterns, cancellationToken);
             liveCandidates.AddRange(candidates);
         }
 
@@ -60,7 +65,8 @@ public sealed class FeedMediaSearchPlanner(
 
         var normalizedTarget = LibraryQualityDecider.NormalizeQuality(targetQuality) ?? "WEB 1080p";
         var ordered = liveCandidates
-            .OrderByDescending(item => item.MeetsCutoff)
+            .OrderBy(item => item.DecisionStatus == "rejected")
+            .ThenByDescending(item => item.MeetsCutoff)
             .ThenByDescending(item => item.Score)
             .ThenByDescending(item => item.Seeders ?? 0)
             .ThenBy(item => item.IndexerName)
@@ -81,8 +87,10 @@ public sealed class FeedMediaSearchPlanner(
         string title,
         int? year,
         string mediaType,
+        string? currentQuality,
         string? targetQuality,
         IReadOnlyList<CustomFormatItem>? customFormats,
+        IReadOnlyList<string> neverGrabPatterns,
         CancellationToken cancellationToken)
     {
         if (!Uri.TryCreate(BuildSearchUrl(indexer, title, year, mediaType), UriKind.Absolute, out var uri))
@@ -102,7 +110,7 @@ public sealed class FeedMediaSearchPlanner(
 
             await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
             var document = await XDocument.LoadAsync(stream, LoadOptions.None, cancellationToken);
-            return ParseCandidates(document, indexer, source, targetQuality, customFormats);
+            return ParseCandidates(document, indexer, source, currentQuality, targetQuality, customFormats, neverGrabPatterns);
         }
         catch
         {
@@ -114,8 +122,10 @@ public sealed class FeedMediaSearchPlanner(
         XDocument document,
         IndexerItem indexer,
         LibrarySourceLinkItem source,
+        string? currentQuality,
         string? targetQuality,
-        IReadOnlyList<CustomFormatItem>? customFormats)
+        IReadOnlyList<CustomFormatItem>? customFormats,
+        IReadOnlyList<string> neverGrabPatterns)
     {
         XNamespace torznab = "http://torznab.com/schemas/2015/feed";
         XNamespace newznab = "http://www.newznab.com/DTD/2010/feeds/attributes/";
@@ -142,28 +152,39 @@ public sealed class FeedMediaSearchPlanner(
             var size = ReadLongAttr(attrs, "size") ?? ReadLong(item.Elements("enclosure").FirstOrDefault()?.Attribute("length")?.Value);
             var seeders = ReadIntAttr(attrs, "seeders");
             var quality = InferQuality(releaseName);
-            var meetsCutoff = QualityRank(quality) >= QualityRank(normalizedTarget);
-            var score = 900 - source.Priority + QualityRank(quality) * 20 + Math.Min(seeders ?? 0, 200);
             var customFormatBonus = EvaluateCustomFormats(releaseName, customFormats, out var matchedFormats);
-            score += customFormatBonus;
+            var decision = ReleaseDecisionEngine.Decide(new ReleaseDecisionInput(
+                releaseName,
+                quality,
+                CurrentQuality: currentQuality,
+                TargetQuality: normalizedTarget,
+                size,
+                seeders,
+                downloadUrl,
+                SourcePriorityScore: Math.Max(0, 200 - source.Priority),
+                customFormatBonus,
+                neverGrabPatterns));
 
             results.Add(new MediaSearchCandidate(
                 ReleaseName: releaseName,
                 IndexerId: indexer.Id,
                 IndexerName: indexer.Name,
                 Quality: quality,
-                Score: score,
-                MeetsCutoff: meetsCutoff,
-                Summary: BuildSummary(
-                    meetsCutoff
-                        ? "Feed result meets or exceeds the cutoff."
-                        : "Feed result is below cutoff but may still be useful.",
-                    matchedFormats,
-                    customFormatBonus,
-                    seeders),
+                Score: decision.Score,
+                MeetsCutoff: decision.MeetsCutoff,
+                Summary: BuildSummary(decision, matchedFormats),
                 DownloadUrl: downloadUrl,
                 SizeBytes: size,
-                Seeders: seeders));
+                Seeders: seeders,
+                DecisionStatus: decision.Status,
+                DecisionReasons: decision.Reasons,
+                RiskFlags: decision.RiskFlags,
+                QualityDelta: decision.QualityDelta,
+                CustomFormatScore: decision.CustomFormatScore,
+                SeederScore: decision.SeederScore,
+                SizeScore: decision.SizeScore,
+                ReleaseGroup: decision.ReleaseGroup,
+                EstimatedBitrateMbps: decision.EstimatedBitrateMbps));
         }
 
         return results;
@@ -231,23 +252,6 @@ public sealed class FeedMediaSearchPlanner(
         return $"{source} {resolution}";
     }
 
-    private static int QualityRank(string? quality)
-    {
-        var normalized = LibraryQualityDecider.NormalizeQuality(quality) ?? "WEB 1080p";
-        return normalized switch
-        {
-            "WEB 720p" => 1,
-            "HDTV 1080p" => 2,
-            "WEB 1080p" => 3,
-            "Bluray 1080p" => 4,
-            "Remux 1080p" => 5,
-            "WEB 2160p" => 6,
-            "Bluray 2160p" => 7,
-            "Remux 2160p" => 8,
-            _ => 3
-        };
-    }
-
     private static int EvaluateCustomFormats(string releaseName, IReadOnlyList<CustomFormatItem>? customFormats, out string[] matchedFormats)
     {
         if (customFormats is null || customFormats.Count == 0)
@@ -283,11 +287,14 @@ public sealed class FeedMediaSearchPlanner(
             : conditions.Trim();
     }
 
-    private static string BuildSummary(string baseSummary, IReadOnlyList<string> matchedFormats, int bonus, int? seeders)
+    private static string BuildSummary(ReleaseDecision decision, IReadOnlyList<string> matchedFormats)
     {
-        var parts = new List<string> { baseSummary };
-        if (seeders is not null) parts.Add($"{seeders.Value.ToString(CultureInfo.InvariantCulture)} seeders reported.");
-        if (matchedFormats.Count > 0 && bonus != 0) parts.Add($"Matched {string.Join(", ", matchedFormats)} (+{bonus}).");
+        var parts = new List<string> { decision.Summary };
+        if (matchedFormats.Count > 0 && decision.CustomFormatScore != 0)
+        {
+            parts.Add($"Matched {string.Join(", ", matchedFormats)} ({decision.CustomFormatScore.ToString("+#;-#;0", CultureInfo.InvariantCulture)}).");
+        }
+
         return string.Join(" ", parts);
     }
 

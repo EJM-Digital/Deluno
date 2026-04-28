@@ -44,6 +44,18 @@ public interface IPlatformSettingsRepository
         string newPassword,
         CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<ApiKeyItem>> ListApiKeysAsync(CancellationToken cancellationToken);
+
+    Task<CreatedApiKeyResponse> CreateApiKeyAsync(
+        CreateApiKeyRequest request,
+        CancellationToken cancellationToken);
+
+    Task<ApiKeyItem?> ValidateApiKeyAsync(
+        string apiKey,
+        CancellationToken cancellationToken);
+
+    Task<bool> DeleteApiKeyAsync(string id, CancellationToken cancellationToken);
+
     Task<UserItem> BootstrapUserAsync(
         BootstrapUserRequest request,
         CancellationToken cancellationToken);
@@ -119,6 +131,11 @@ public interface IPlatformSettingsRepository
     Task<LibraryItem?> UpdateLibraryQualityProfileAsync(
         string id,
         UpdateLibraryQualityProfileRequest request,
+        CancellationToken cancellationToken);
+
+    Task<LibraryItem?> UpdateLibraryWorkflowAsync(
+        string id,
+        UpdateLibraryWorkflowRequest request,
         CancellationToken cancellationToken);
 
     Task<IReadOnlyList<ConnectionItem>> ListConnectionsAsync(CancellationToken cancellationToken);

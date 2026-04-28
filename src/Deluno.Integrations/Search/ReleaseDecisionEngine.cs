@@ -1,0 +1,298 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
+using Deluno.Platform.Quality;
+
+namespace Deluno.Integrations.Search;
+
+public static partial class ReleaseDecisionEngine
+{
+    public static ReleaseDecision Decide(ReleaseDecisionInput input)
+    {
+        var normalizedCurrent = LibraryQualityDecider.NormalizeQuality(input.CurrentQuality);
+        var normalizedTarget = LibraryQualityDecider.NormalizeQuality(input.TargetQuality) ?? "WEB 1080p";
+        var normalizedCandidate = LibraryQualityDecider.NormalizeQuality(input.Quality) ?? input.Quality;
+        var candidateRank = QualityRank(normalizedCandidate);
+        var currentRank = QualityRank(normalizedCurrent);
+        var targetRank = QualityRank(normalizedTarget);
+        var qualityDelta = currentRank == 0 ? candidateRank : candidateRank - currentRank;
+        var meetsCutoff = candidateRank >= targetRank;
+        var reasons = new List<string>();
+        var risks = new List<string>();
+        var hardReject = false;
+
+        if (string.IsNullOrWhiteSpace(input.DownloadUrl))
+        {
+            risks.Add("No downloadable URL was returned by the indexer.");
+        }
+
+        if (LooksLikeSample(input.ReleaseName))
+        {
+            hardReject = true;
+            risks.Add("Release name looks like a sample, trailer, proof, or extras file.");
+        }
+
+        if (ContainsBlockedToken(input.ReleaseName))
+        {
+            hardReject = true;
+            risks.Add("Release name contains a blocked token such as CAM, Telesync, workprint, or screener.");
+        }
+
+        var matchedNeverGrab = MatchNeverGrabPattern(input.ReleaseName, input.NeverGrabPatterns);
+        if (!string.IsNullOrWhiteSpace(matchedNeverGrab))
+        {
+            hardReject = true;
+            risks.Add($"Release name matched the never-grab pattern '{matchedNeverGrab}'.");
+        }
+
+        reasons.Add(meetsCutoff
+            ? $"Quality {normalizedCandidate} meets or exceeds cutoff {normalizedTarget}."
+            : $"Quality {normalizedCandidate} is below cutoff {normalizedTarget}.");
+
+        if (currentRank > 0)
+        {
+            if (qualityDelta > 0) reasons.Add($"Quality rank improves current file by {qualityDelta} step(s).");
+            if (qualityDelta == 0) reasons.Add("Quality rank matches the current file, so custom formats and risk decide whether it is worthwhile.");
+            if (qualityDelta < 0)
+            {
+                risks.Add($"Quality rank is {Math.Abs(qualityDelta)} step(s) below the current file.");
+            }
+        }
+
+        var seederScore = ScoreSeeders(input.Seeders, risks, reasons);
+        var sizeScore = ScoreSize(input.SizeBytes, normalizedCandidate, risks, reasons, out var estimatedBitrate);
+        var releaseGroup = InferReleaseGroup(input.ReleaseName);
+        if (!string.IsNullOrWhiteSpace(releaseGroup))
+        {
+            reasons.Add($"Release group detected: {releaseGroup}.");
+        }
+
+        var codecScore = ScoreCodecAndHdr(input.ReleaseName, reasons, risks);
+        var score = 1000
+            + input.SourcePriorityScore
+            + candidateRank * 90
+            + Math.Max(-300, qualityDelta * 80)
+            + input.CustomFormatScore
+            + seederScore
+            + sizeScore
+            + codecScore;
+
+        if (!meetsCutoff) score -= 250;
+        if (risks.Count > 0) score -= Math.Min(400, risks.Count * 85);
+
+        var status = hardReject
+            ? "rejected"
+            : risks.Count >= 3
+                ? "risky"
+                : meetsCutoff
+                    ? "preferred"
+                    : "eligible";
+
+        if (hardReject)
+        {
+            score = Math.Min(score, -10000);
+        }
+
+        var summary = BuildSummary(status, normalizedCandidate, normalizedTarget, input.CustomFormatScore, input.Seeders, risks.Count);
+        return new ReleaseDecision(
+            status,
+            score,
+            meetsCutoff,
+            summary,
+            reasons,
+            risks,
+            qualityDelta,
+            input.CustomFormatScore,
+            seederScore,
+            sizeScore,
+            releaseGroup,
+            estimatedBitrate);
+    }
+
+    public static int QualityRank(string? quality)
+    {
+        var normalized = LibraryQualityDecider.NormalizeQuality(quality) ?? "WEB 1080p";
+        return normalized switch
+        {
+            "WEB 720p" => 1,
+            "HDTV 1080p" => 2,
+            "WEB 1080p" => 3,
+            "Bluray 1080p" => 4,
+            "Remux 1080p" => 5,
+            "WEB 2160p" => 6,
+            "Bluray 2160p" => 7,
+            "Remux 2160p" => 8,
+            _ => 3
+        };
+    }
+
+    private static int ScoreSeeders(int? seeders, ICollection<string> risks, ICollection<string> reasons)
+    {
+        if (seeders is null)
+        {
+            risks.Add("Indexer did not report seeders, so availability confidence is unknown.");
+            return -40;
+        }
+
+        if (seeders <= 0)
+        {
+            risks.Add("No seeders were reported.");
+            return -160;
+        }
+
+        if (seeders < 3)
+        {
+            risks.Add("Very low seed count may stall or fail.");
+            return -70;
+        }
+
+        var score = Math.Min(220, seeders.Value * 6);
+        reasons.Add($"{seeders.Value.ToString(CultureInfo.InvariantCulture)} seeders reported.");
+        return score;
+    }
+
+    private static int ScoreSize(long? sizeBytes, string quality, ICollection<string> risks, ICollection<string> reasons, out double? estimatedBitrate)
+    {
+        estimatedBitrate = null;
+        if (sizeBytes is null or <= 0)
+        {
+            risks.Add("Indexer did not report release size.");
+            return -50;
+        }
+
+        var sizeGb = sizeBytes.Value / 1_073_741_824d;
+        estimatedBitrate = Math.Round(sizeBytes.Value * 8d / (2.0 * 60 * 60) / 1_000_000, 1);
+        var (min, max) = ExpectedSizeRangeGb(quality);
+        if (sizeGb < min)
+        {
+            risks.Add($"Size {sizeGb:0.0} GB is unusually small for {quality}.");
+            return -180;
+        }
+
+        if (sizeGb > max)
+        {
+            risks.Add($"Size {sizeGb:0.0} GB is unusually large for {quality}.");
+            return -80;
+        }
+
+        reasons.Add($"Size {sizeGb:0.0} GB is within the expected range for {quality}.");
+        return 80;
+    }
+
+    private static (double Min, double Max) ExpectedSizeRangeGb(string quality)
+    {
+        var normalized = quality.ToLowerInvariant();
+        if (normalized.Contains("2160") && normalized.Contains("remux")) return (35, 130);
+        if (normalized.Contains("2160")) return (7, 60);
+        if (normalized.Contains("1080") && normalized.Contains("remux")) return (15, 60);
+        if (normalized.Contains("1080")) return (1.5, 25);
+        if (normalized.Contains("720")) return (0.5, 8);
+        return (0.5, 80);
+    }
+
+    private static int ScoreCodecAndHdr(string releaseName, ICollection<string> reasons, ICollection<string> risks)
+    {
+        var normalized = releaseName.ToLowerInvariant();
+        var score = 0;
+        if (normalized.Contains("x265") || normalized.Contains("h265") || normalized.Contains("hevc"))
+        {
+            score += 25;
+            reasons.Add("Modern HEVC/x265 video codec detected.");
+        }
+
+        if (normalized.Contains("av1"))
+        {
+            score += 15;
+            reasons.Add("AV1 video codec detected.");
+        }
+
+        if (normalized.Contains("dv") || normalized.Contains("dolby.vision") || normalized.Contains("hdr10"))
+        {
+            score += 20;
+            reasons.Add("HDR/Dolby Vision signal detected.");
+        }
+
+        if (normalized.Contains("hc") && normalized.Contains("sub"))
+        {
+            risks.Add("Hardcoded subtitles may not match user language preferences.");
+            score -= 80;
+        }
+
+        return score;
+    }
+
+    private static bool LooksLikeSample(string releaseName)
+        => SampleTokenRegex().IsMatch(releaseName);
+
+    private static bool ContainsBlockedToken(string releaseName)
+        => BlockedTokenRegex().IsMatch(releaseName);
+
+    private static string? MatchNeverGrabPattern(string releaseName, IReadOnlyList<string>? patterns)
+    {
+        if (patterns is null || patterns.Count == 0)
+        {
+            return null;
+        }
+
+        foreach (var pattern in patterns)
+        {
+            if (string.IsNullOrWhiteSpace(pattern))
+            {
+                continue;
+            }
+
+            if (releaseName.Contains(pattern.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                return pattern.Trim();
+            }
+        }
+
+        return null;
+    }
+
+    private static string? InferReleaseGroup(string releaseName)
+    {
+        var match = ReleaseGroupRegex().Match(releaseName);
+        return match.Success ? match.Groups["group"].Value : null;
+    }
+
+    private static string BuildSummary(string status, string quality, string target, int customFormatScore, int? seeders, int riskCount)
+    {
+        var pieces = new List<string>
+        {
+            status switch
+            {
+                "rejected" => "Rejected by hard safety rules.",
+                "risky" => "Usable only with caution.",
+                "preferred" => "Preferred candidate.",
+                _ => "Eligible candidate."
+            },
+            $"{quality} vs cutoff {target}."
+        };
+
+        if (customFormatScore != 0) pieces.Add($"Custom formats {customFormatScore:+#;-#;0}.");
+        if (seeders is not null) pieces.Add($"{seeders.Value} seeders.");
+        if (riskCount > 0) pieces.Add($"{riskCount} risk flag{(riskCount == 1 ? "" : "s")}.");
+        return string.Join(" ", pieces);
+    }
+
+    [GeneratedRegex(@"(^|[.\s_-])(sample|trailer|extras?|proof)([.\s_-]|$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex SampleTokenRegex();
+
+    [GeneratedRegex(@"(^|[.\s_-])(cam|camrip|ts|telesync|tc|telecine|wp|workprint|scr|screener)([.\s_-]|$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex BlockedTokenRegex();
+
+    [GeneratedRegex(@"-(?<group>[A-Za-z0-9]{2,20})$")]
+    private static partial Regex ReleaseGroupRegex();
+}
+
+public sealed record ReleaseDecisionInput(
+    string ReleaseName,
+    string Quality,
+    string? CurrentQuality,
+    string? TargetQuality,
+    long? SizeBytes,
+    int? Seeders,
+    string? DownloadUrl,
+    int SourcePriorityScore,
+    int CustomFormatScore,
+    IReadOnlyList<string>? NeverGrabPatterns = null);

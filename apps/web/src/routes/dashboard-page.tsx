@@ -18,8 +18,11 @@ import {
   type DownloadClientItem,
   type DownloadTelemetryOverview,
   type IndexerItem,
+  type LibraryAutomationStateItem,
   type MovieListItem,
   type MovieWantedSummary,
+  type SearchCycleRunItem,
+  type SearchRetryWindowItem,
   type SeriesInventoryDetail,
   type SeriesListItem,
   type SeriesWantedSummary
@@ -30,6 +33,7 @@ import { OnboardingBanner } from "../components/shell/onboarding-banner";
 import { AreaChart } from "../components/shell/area-chart";
 import { LiveWaveform } from "../components/app/live-waveform";
 import { Badge } from "../components/ui/badge";
+import { RouteSkeleton } from "../components/shell/skeleton";
 
 interface DashboardLoaderData {
   activeDownloads: ActiveDownload[];
@@ -44,6 +48,9 @@ interface DashboardLoaderData {
   upcoming: DashboardUpcomingItem[];
   upgradeCount: number;
   waitingCount: number;
+  automation: LibraryAutomationStateItem[];
+  searchCycles: SearchCycleRunItem[];
+  retryWindows: SearchRetryWindowItem[];
   onboarding: {
     hasIndexer: boolean;
     hasDownloadClient: boolean;
@@ -64,16 +71,18 @@ interface DashboardUpcomingItem {
 }
 
 export async function dashboardLoader(): Promise<DashboardLoaderData> {
-  try {
-    const [movieItems, movieWanted, showItems, showWanted, telemetry, indexers, clients] = await Promise.all([
-      fetchJson<MovieListItem[]>("/api/movies"),
-      fetchJson<MovieWantedSummary>("/api/movies/wanted"),
-      fetchJson<SeriesListItem[]>("/api/series"),
-      fetchJson<SeriesWantedSummary>("/api/series/wanted"),
-      fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry"),
-      fetchJson<IndexerItem[]>("/api/indexers"),
-      fetchJson<DownloadClientItem[]>("/api/download-clients")
-    ]);
+  const [movieItems, movieWanted, showItems, showWanted, telemetry, indexers, clients, automation, searchCycles, retryWindows] = await Promise.all([
+    fetchJson<MovieListItem[]>("/api/movies"),
+    fetchJson<MovieWantedSummary>("/api/movies/wanted"),
+    fetchJson<SeriesListItem[]>("/api/series"),
+    fetchJson<SeriesWantedSummary>("/api/series/wanted"),
+    fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry"),
+    fetchJson<IndexerItem[]>("/api/indexers"),
+    fetchJson<DownloadClientItem[]>("/api/download-clients"),
+    fetchJson<LibraryAutomationStateItem[]>("/api/library-automation"),
+    fetchJson<SearchCycleRunItem[]>("/api/search-cycles?take=8"),
+    fetchJson<SearchRetryWindowItem[]>("/api/search-retry-windows?take=8")
+  ]);
 
     const adaptedMovies = adaptMovieItems(movieItems, movieWanted);
     const adaptedShows = adaptSeriesItems(showItems, showWanted);
@@ -87,41 +96,44 @@ export async function dashboardLoader(): Promise<DashboardLoaderData> {
     const monitoredCount = allItems.filter((item) => item.monitored).length;
     const healthyCount = indexerHealth.filter((item) => item.status === "healthy").length;
 
-    return {
-      activeDownloads,
-      activeDownloadCount: telemetry.summary.activeCount + telemetry.summary.queuedCount + telemetry.summary.importReadyCount,
-      indexerHealth,
-      indexerHealthPercent: indexerHealth.length ? Math.round((healthyCount / indexerHealth.length) * 100) : 100,
-      librarySizeTb: (librarySizeGb / 1024).toFixed(1),
-      missingCount: movieWanted.missingCount + showWanted.missingCount,
-      monitoredCount,
-      recentlyAdded: allItems
-        .slice()
-        .sort((left, right) => right.added.localeCompare(left.added))
-        .slice(0, 14),
-      totalCount: allItems.length,
-      upcoming: buildDashboardUpcoming(seriesInventory, showItems, showWanted, movieWanted),
-      upgradeCount: movieWanted.upgradeCount + showWanted.upgradeCount,
-      waitingCount: movieWanted.waitingCount + showWanted.waitingCount,
-      onboarding: {
-        hasIndexer: indexers.length > 0,
-        hasDownloadClient: clients.length > 0,
-        hasLibrary: allItems.length > 0
-      }
-    };
-  } catch {
-    return emptyDashboardData();
-  }
+  return {
+    activeDownloads,
+    activeDownloadCount: telemetry.summary.activeCount + telemetry.summary.queuedCount + telemetry.summary.importReadyCount,
+    indexerHealth,
+    indexerHealthPercent: indexerHealth.length ? Math.round((healthyCount / indexerHealth.length) * 100) : 100,
+    librarySizeTb: (librarySizeGb / 1024).toFixed(1),
+    missingCount: movieWanted.missingCount + showWanted.missingCount,
+    monitoredCount,
+    recentlyAdded: allItems
+      .slice()
+      .sort((left, right) => right.added.localeCompare(left.added))
+      .slice(0, 14),
+    totalCount: allItems.length,
+    upcoming: buildDashboardUpcoming(seriesInventory, showItems, showWanted, movieWanted),
+    upgradeCount: movieWanted.upgradeCount + showWanted.upgradeCount,
+    waitingCount: movieWanted.waitingCount + showWanted.waitingCount,
+    automation,
+    searchCycles,
+    retryWindows,
+    onboarding: {
+      hasIndexer: indexers.length > 0,
+      hasDownloadClient: clients.length > 0,
+      hasLibrary: allItems.length > 0
+    }
+  };
 }
 
 export function DashboardPage() {
-  const data = (useLoaderData() as DashboardLoaderData | undefined) ?? emptyDashboardData();
+  const data = useLoaderData() as DashboardLoaderData | undefined;
+  if (!data) return <RouteSkeleton />;
   const healthIssues = data.indexerHealth.filter((item) => item.status !== "healthy").length;
   const topDownload = data.activeDownloads[0];
   const upcomingGroups = groupDashboardUpcoming(data.upcoming);
   const librarySparkline = buildSparkline(data.totalCount);
   const healthSparkline = buildSparkline(data.indexerHealthPercent);
   const queueLoad = Math.min(100, data.activeDownloadCount * 12 + data.waitingCount * 3);
+  const runningAutomation = data.automation.filter((item) => item.status === "running" || item.status === "queued" || item.searchRequested).length;
+  const latestCycle = data.searchCycles[0] ?? null;
 
   return (
     <div className="space-y-[var(--page-gap)]">
@@ -209,6 +221,18 @@ export function DashboardPage() {
               title={data.activeDownloadCount > 0 ? "Queue moving" : "Queue idle"}
               text={topDownload ? `${topDownload.title} is leading the active queue.` : "No active imports are waiting to be moved."}
               href="/queue"
+            />
+            <DecisionRow
+              tone={runningAutomation > 0 ? "info" : data.retryWindows.length > 0 ? "warn" : "neutral"}
+              title={runningAutomation > 0 ? "Automation active" : latestCycle ? "Last search cycle recorded" : "Automation waiting"}
+              text={
+                runningAutomation > 0
+                  ? `${runningAutomation} library search lane${runningAutomation === 1 ? "" : "s"} queued or running.`
+                  : latestCycle
+                    ? `${latestCycle.libraryName}: ${latestCycle.plannedCount} checked, ${latestCycle.queuedCount} sent, ${latestCycle.skippedCount} retry-delayed.`
+                    : "Scheduled searches will appear here once libraries are configured."
+              }
+              href="/system"
             />
           </div>
         </RenderPanel>
@@ -574,6 +598,14 @@ function statusDot(status: MediaItem["status"]) {
   return {
     downloaded: "bg-success",
     downloading: "bg-info animate-pulse",
+    processing: "bg-primary animate-pulse",
+    processed: "bg-success",
+    waitingForProcessor: "bg-warning animate-pulse",
+    importReady: "bg-success",
+    importQueued: "bg-primary animate-pulse",
+    importFailed: "bg-destructive",
+    imported: "bg-success",
+    processingFailed: "bg-destructive",
     monitored: "bg-primary",
     missing: "bg-destructive"
   }[status];
@@ -722,6 +754,9 @@ function emptyDashboardData(): DashboardLoaderData {
     upcoming: [],
     upgradeCount: 0,
     waitingCount: 0,
+    automation: [],
+    searchCycles: [],
+    retryWindows: [],
     onboarding: {
       hasIndexer: false,
       hasDownloadClient: false,

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Security.Cryptography;
+using System.Text;
 using Deluno.Infrastructure.Storage;
 using Deluno.Platform.Contracts;
 
@@ -40,6 +41,7 @@ public sealed class SqlitePlatformSettingsRepository(
         await UpsertSettingAsync(connection, transaction, "media.useHardlinks", request.UseHardlinks ? "true" : "false", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "media.cleanupEmptyFolders", request.CleanupEmptyFolders ? "true" : "false", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "media.removeCompletedDownloads", request.RemoveCompletedDownloads ? "true" : "false", updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "media.unmonitorWhenCutoffMet", request.UnmonitorWhenCutoffMet ? "true" : "false", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "media.movieFolderFormat", NormalizeName(request.MovieFolderFormat) ?? "{Movie Title} ({Release Year})", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "media.seriesFolderFormat", NormalizeName(request.SeriesFolderFormat) ?? "{Series Title} ({Series Year})", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "media.episodeFileFormat", NormalizeName(request.EpisodeFileFormat) ?? "{Series Title} - S{season:00}E{episode:00} - {Episode Title}", updatedUtc, cancellationToken);
@@ -55,6 +57,9 @@ public sealed class SqlitePlatformSettingsRepository(
         await UpsertSettingAsync(connection, transaction, "metadata.artworkEnabled", request.MetadataArtworkEnabled ? "true" : "false", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "metadata.certificationCountry", NormalizeName(request.MetadataCertificationCountry) ?? "US", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "metadata.language", NormalizeName(request.MetadataLanguage) ?? "en", updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "metadata.providerMode", NormalizeMetadataProviderMode(request.MetadataProviderMode), updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "metadata.brokerUrl", NormalizeMetadataBrokerUrl(request.MetadataBrokerUrl) ?? string.Empty, updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "search.neverGrabPatterns", NormalizeNeverGrabPatterns(request.ReleaseNeverGrabPatterns), updatedUtc, cancellationToken);
         if (!string.IsNullOrWhiteSpace(request.MetadataTmdbApiKey))
         {
             await UpsertSettingAsync(connection, transaction, "metadata.tmdbApiKey", request.MetadataTmdbApiKey.Trim(), updatedUtc, cancellationToken);
@@ -118,6 +123,7 @@ public sealed class SqlitePlatformSettingsRepository(
             SELECT
                 l.id, l.name, l.media_type, l.purpose, l.root_path, l.downloads_path,
                 l.quality_profile_id, q.name, q.cutoff_quality, q.upgrade_until_cutoff, q.upgrade_unknown_items,
+                l.import_workflow, l.processor_name, l.processor_output_path, l.processor_timeout_minutes, l.processor_failure_mode,
                 l.auto_search_enabled, l.missing_search_enabled, l.upgrade_search_enabled, l.search_interval_hours,
                 l.retry_delay_hours, l.max_items_per_run, l.created_utc, l.updated_utc
             FROM libraries l
@@ -408,15 +414,6 @@ public sealed class SqlitePlatformSettingsRepository(
         }
 
         var passwordHash = reader.GetString(3);
-        if (IsLegacySeedUser(
-                username: reader.GetString(1),
-                displayName: reader.GetString(2),
-                passwordHash: passwordHash,
-                avatarInitials: reader.GetString(4)))
-        {
-            return null;
-        }
-
         if (!VerifyPassword(password, passwordHash))
         {
             return null;
@@ -461,6 +458,138 @@ public sealed class SqlitePlatformSettingsRepository(
             DisplayName: reader.GetString(2),
             AvatarInitials: reader.GetString(3),
             CreatedUtc: ParseTimestamp(reader.GetString(4)));
+    }
+
+    public async Task<IReadOnlyList<ApiKeyItem>> ListApiKeysAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        var items = new List<ApiKeyItem>();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT id, name, prefix, scopes, last_used_utc, created_utc, updated_utc
+            FROM api_keys
+            ORDER BY created_utc DESC;
+            """;
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            items.Add(ReadApiKey(reader));
+        }
+
+        return items;
+    }
+
+    public async Task<CreatedApiKeyResponse> CreateApiKeyAsync(
+        CreateApiKeyRequest request,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        var now = timeProvider.GetUtcNow();
+        var rawKey = GenerateApiKey();
+        var prefix = BuildApiKeyPrefix(rawKey);
+        var item = new ApiKeyItem(
+            Guid.CreateVersion7().ToString("N"),
+            NormalizeName(request.Name) ?? "API key",
+            prefix,
+            NormalizeApiScopes(request.Scopes),
+            null,
+            now,
+            now);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            INSERT INTO api_keys (
+                id, name, key_hash, prefix, scopes, last_used_utc, created_utc, updated_utc
+            )
+            VALUES (
+                @id, @name, @keyHash, @prefix, @scopes, NULL, @createdUtc, @updatedUtc
+            );
+            """;
+        AddParameter(command, "@id", item.Id);
+        AddParameter(command, "@name", item.Name);
+        AddParameter(command, "@keyHash", HashApiKey(rawKey));
+        AddParameter(command, "@prefix", item.Prefix);
+        AddParameter(command, "@scopes", item.Scopes);
+        AddParameter(command, "@createdUtc", now.ToString("O"));
+        AddParameter(command, "@updatedUtc", now.ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+
+        return new CreatedApiKeyResponse(item, rawKey);
+    }
+
+    public async Task<ApiKeyItem?> ValidateApiKeyAsync(
+        string apiKey,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return null;
+        }
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        var keyHash = HashApiKey(apiKey.Trim());
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT id, name, prefix, scopes, last_used_utc, created_utc, updated_utc
+            FROM api_keys
+            WHERE key_hash = @keyHash
+            LIMIT 1;
+            """;
+        AddParameter(command, "@keyHash", keyHash);
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        var item = ReadApiKey(reader);
+        await reader.DisposeAsync();
+
+        using var update = connection.CreateCommand();
+        update.CommandText =
+            """
+            UPDATE api_keys
+            SET last_used_utc = @lastUsedUtc,
+                updated_utc = @updatedUtc
+            WHERE id = @id;
+            """;
+        var now = timeProvider.GetUtcNow();
+        AddParameter(update, "@id", item.Id);
+        AddParameter(update, "@lastUsedUtc", now.ToString("O"));
+        AddParameter(update, "@updatedUtc", now.ToString("O"));
+        await update.ExecuteNonQueryAsync(cancellationToken);
+
+        return item with
+        {
+            LastUsedUtc = now,
+            UpdatedUtc = now
+        };
+    }
+
+    public async Task<bool> DeleteApiKeyAsync(string id, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM api_keys WHERE id = @id;";
+        AddParameter(command, "@id", id);
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
     public async Task<bool> ChangeUserPasswordAsync(
@@ -512,9 +641,7 @@ public sealed class SqlitePlatformSettingsRepository(
             DelunoDatabaseNames.Platform,
             cancellationToken);
 
-        var existingBootstrapUser = await ReadLegacySeedUserAsync(connection, cancellationToken);
-        var requiresBootstrap = existingBootstrapUser is not null || !await HasUsersAsync(connection, cancellationToken);
-        if (!requiresBootstrap)
+        if (await HasUsersAsync(connection, cancellationToken))
         {
             throw new InvalidOperationException("Deluno has already been configured.");
         }
@@ -530,45 +657,22 @@ public sealed class SqlitePlatformSettingsRepository(
             CreatedUtc: now);
 
         using var command = connection.CreateCommand();
-        if (existingBootstrapUser is not null)
-        {
-            item = item with
-            {
-                Id = existingBootstrapUser.Id,
-                CreatedUtc = existingBootstrapUser.CreatedUtc
-            };
-
-            command.CommandText =
-                """
-                UPDATE users
-                SET
-                    username = @username,
-                    display_name = @displayName,
-                    password_hash = @passwordHash,
-                    avatar_initials = @avatarInitials,
-                    updated_utc = @updatedUtc
-                WHERE id = @id;
-                """;
-        }
-        else
-        {
-            command.CommandText =
-                """
-                INSERT INTO users (
-                    id, username, display_name, password_hash, avatar_initials, created_utc, updated_utc
-                )
-                VALUES (
-                    @id, @username, @displayName, @passwordHash, @avatarInitials, @createdUtc, @updatedUtc
-                );
-                """;
-            AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
-        }
+        command.CommandText =
+            """
+            INSERT INTO users (
+                id, username, display_name, password_hash, avatar_initials, created_utc, updated_utc
+            )
+            VALUES (
+                @id, @username, @displayName, @passwordHash, @avatarInitials, @createdUtc, @updatedUtc
+            );
+            """;
 
         AddParameter(command, "@id", item.Id);
         AddParameter(command, "@username", item.Username);
         AddParameter(command, "@displayName", item.DisplayName);
-        AddParameter(command, "@passwordHash", HashPassword(request.Password ?? "deluno"));
+        AddParameter(command, "@passwordHash", HashPassword(request.Password ?? string.Empty));
         AddParameter(command, "@avatarInitials", item.AvatarInitials);
+        AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
         AddParameter(command, "@updatedUtc", now.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
 
@@ -681,7 +785,7 @@ public sealed class SqlitePlatformSettingsRepository(
         var mediaType = NormalizeMediaType(request.MediaType);
         var item = new IntakeSourceItem(
             Id: Guid.CreateVersion7().ToString("N"),
-            Name: NormalizeName(request.Name) ?? "New intake source",
+            Name: NormalizeName(request.Name) ?? "New list source",
             Provider: NormalizeName(request.Provider) ?? "manual",
             FeedUrl: NormalizeName(request.FeedUrl) ?? string.Empty,
             MediaType: mediaType,
@@ -1285,6 +1389,11 @@ public sealed class SqlitePlatformSettingsRepository(
             CutoffQuality: null,
             UpgradeUntilCutoff: true,
             UpgradeUnknownItems: false,
+            ImportWorkflow: NormalizeImportWorkflow(request.ImportWorkflow),
+            ProcessorName: NormalizeName(request.ProcessorName),
+            ProcessorOutputPath: NormalizePath(request.ProcessorOutputPath),
+            ProcessorTimeoutMinutes: NormalizePositiveValue(request.ProcessorTimeoutMinutes, 360),
+            ProcessorFailureMode: NormalizeProcessorFailureMode(request.ProcessorFailureMode),
             AutoSearchEnabled: request.AutoSearchEnabled,
             MissingSearchEnabled: request.MissingSearchEnabled,
             UpgradeSearchEnabled: request.UpgradeSearchEnabled,
@@ -1316,12 +1425,16 @@ public sealed class SqlitePlatformSettingsRepository(
         command.CommandText =
             """
             INSERT INTO libraries (
-                id, name, media_type, purpose, root_path, downloads_path, quality_profile_id, auto_search_enabled,
+                id, name, media_type, purpose, root_path, downloads_path, quality_profile_id,
+                import_workflow, processor_name, processor_output_path, processor_timeout_minutes, processor_failure_mode,
+                auto_search_enabled,
                 missing_search_enabled, upgrade_search_enabled, search_interval_hours,
                 retry_delay_hours, max_items_per_run, created_utc, updated_utc
             )
             VALUES (
-                @id, @name, @mediaType, @purpose, @rootPath, @downloadsPath, @qualityProfileId, @autoSearchEnabled,
+                @id, @name, @mediaType, @purpose, @rootPath, @downloadsPath, @qualityProfileId,
+                @importWorkflow, @processorName, @processorOutputPath, @processorTimeoutMinutes, @processorFailureMode,
+                @autoSearchEnabled,
                 @missingSearchEnabled, @upgradeSearchEnabled, @searchIntervalHours,
                 @retryDelayHours, @maxItemsPerRun, @createdUtc, @updatedUtc
             );
@@ -1334,6 +1447,11 @@ public sealed class SqlitePlatformSettingsRepository(
         AddParameter(command, "@rootPath", item.RootPath);
         AddParameter(command, "@downloadsPath", item.DownloadsPath);
         AddParameter(command, "@qualityProfileId", qualityProfileId);
+        AddParameter(command, "@importWorkflow", item.ImportWorkflow);
+        AddParameter(command, "@processorName", item.ProcessorName);
+        AddParameter(command, "@processorOutputPath", item.ProcessorOutputPath);
+        AddParameter(command, "@processorTimeoutMinutes", item.ProcessorTimeoutMinutes);
+        AddParameter(command, "@processorFailureMode", item.ProcessorFailureMode);
         AddParameter(command, "@autoSearchEnabled", item.AutoSearchEnabled ? 1 : 0);
         AddParameter(command, "@missingSearchEnabled", item.MissingSearchEnabled ? 1 : 0);
         AddParameter(command, "@upgradeSearchEnabled", item.UpgradeSearchEnabled ? 1 : 0);
@@ -1437,6 +1555,49 @@ public sealed class SqlitePlatformSettingsRepository(
         AddParameter(command, "@qualityProfileId", qualityProfileId);
         AddParameter(command, "@updatedUtc", now.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
+
+        return await GetLibraryAsync(connection, id, cancellationToken);
+    }
+
+    public async Task<LibraryItem?> UpdateLibraryWorkflowAsync(
+        string id,
+        UpdateLibraryWorkflowRequest request,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        var workflow = NormalizeImportWorkflow(request.ImportWorkflow);
+        var processorOutputPath = NormalizePath(request.ProcessorOutputPath);
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE libraries
+            SET
+                import_workflow = @importWorkflow,
+                processor_name = @processorName,
+                processor_output_path = @processorOutputPath,
+                processor_timeout_minutes = @processorTimeoutMinutes,
+                processor_failure_mode = @processorFailureMode,
+                updated_utc = @updatedUtc
+            WHERE id = @id;
+            """;
+
+        AddParameter(command, "@id", id);
+        AddParameter(command, "@importWorkflow", workflow);
+        AddParameter(command, "@processorName", NormalizeName(request.ProcessorName));
+        AddParameter(command, "@processorOutputPath", processorOutputPath);
+        AddParameter(command, "@processorTimeoutMinutes", NormalizePositiveValue(request.ProcessorTimeoutMinutes, 360));
+        AddParameter(command, "@processorFailureMode", NormalizeProcessorFailureMode(request.ProcessorFailureMode));
+        AddParameter(command, "@updatedUtc", now.ToString("O"));
+
+        if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
+        {
+            return null;
+        }
 
         return await GetLibraryAsync(connection, id, cancellationToken);
     }
@@ -2051,6 +2212,8 @@ public sealed class SqlitePlatformSettingsRepository(
         IReadOnlyDictionary<string, string> settings,
         IReadOnlyDictionary<string, string> roots)
     {
+        var brokerUrl = NormalizeMetadataBrokerUrl(GetValue(settings, "metadata.brokerUrl")) ?? string.Empty;
+
         return new PlatformSettingsSnapshot(
             AppInstanceName: GetValue(settings, "app.instanceName") ?? "Deluno",
             MovieRootPath: GetValue(roots, "movies"),
@@ -2063,6 +2226,7 @@ public sealed class SqlitePlatformSettingsRepository(
             UseHardlinks: !string.Equals(GetValue(settings, "media.useHardlinks"), "false", StringComparison.OrdinalIgnoreCase),
             CleanupEmptyFolders: string.Equals(GetValue(settings, "media.cleanupEmptyFolders"), "true", StringComparison.OrdinalIgnoreCase),
             RemoveCompletedDownloads: string.Equals(GetValue(settings, "media.removeCompletedDownloads"), "true", StringComparison.OrdinalIgnoreCase),
+            UnmonitorWhenCutoffMet: string.Equals(GetValue(settings, "media.unmonitorWhenCutoffMet"), "true", StringComparison.OrdinalIgnoreCase),
             MovieFolderFormat: GetValue(settings, "media.movieFolderFormat") ?? "{Movie Title} ({Release Year})",
             SeriesFolderFormat: GetValue(settings, "media.seriesFolderFormat") ?? "{Series Title} ({Series Year})",
             EpisodeFileFormat: GetValue(settings, "media.episodeFileFormat") ?? "{Series Title} - S{season:00}E{episode:00} - {Episode Title}",
@@ -2078,8 +2242,12 @@ public sealed class SqlitePlatformSettingsRepository(
             MetadataArtworkEnabled: !string.Equals(GetValue(settings, "metadata.artworkEnabled"), "false", StringComparison.OrdinalIgnoreCase),
             MetadataCertificationCountry: NormalizeName(GetValue(settings, "metadata.certificationCountry")) ?? "US",
             MetadataLanguage: NormalizeName(GetValue(settings, "metadata.language")) ?? "en",
+            MetadataProviderMode: NormalizeMetadataProviderMode(GetValue(settings, "metadata.providerMode")),
+            MetadataBrokerUrl: brokerUrl,
+            MetadataBrokerConfigured: !string.IsNullOrWhiteSpace(brokerUrl),
             MetadataTmdbApiKeyConfigured: !string.IsNullOrWhiteSpace(GetValue(settings, "metadata.tmdbApiKey")),
             MetadataOmdbApiKeyConfigured: !string.IsNullOrWhiteSpace(GetValue(settings, "metadata.omdbApiKey")),
+            ReleaseNeverGrabPatterns: NormalizeNeverGrabPatterns(GetValue(settings, "search.neverGrabPatterns")),
             UpdatedUtc: DateTimeOffset.UtcNow);
     }
 
@@ -2221,6 +2389,11 @@ public sealed class SqlitePlatformSettingsRepository(
                 CutoffQuality: "WEB 1080p",
                 UpgradeUntilCutoff: true,
                 UpgradeUnknownItems: false,
+                ImportWorkflow: "standard",
+                ProcessorName: null,
+                ProcessorOutputPath: null,
+                ProcessorTimeoutMinutes: 360,
+                ProcessorFailureMode: "block",
                 AutoSearchEnabled: true,
                 MissingSearchEnabled: true,
                 UpgradeSearchEnabled: true,
@@ -2250,6 +2423,11 @@ public sealed class SqlitePlatformSettingsRepository(
                 CutoffQuality: "WEB 1080p",
                 UpgradeUntilCutoff: true,
                 UpgradeUnknownItems: false,
+                ImportWorkflow: "standard",
+                ProcessorName: null,
+                ProcessorOutputPath: null,
+                ProcessorTimeoutMinutes: 360,
+                ProcessorFailureMode: "block",
                 AutoSearchEnabled: true,
                 MissingSearchEnabled: true,
                 UpgradeSearchEnabled: true,
@@ -2270,12 +2448,16 @@ public sealed class SqlitePlatformSettingsRepository(
             command.CommandText =
                 """
                 INSERT INTO libraries (
-                    id, name, media_type, purpose, root_path, downloads_path, quality_profile_id, auto_search_enabled,
+                    id, name, media_type, purpose, root_path, downloads_path, quality_profile_id,
+                    import_workflow, processor_name, processor_output_path, processor_timeout_minutes, processor_failure_mode,
+                    auto_search_enabled,
                     missing_search_enabled, upgrade_search_enabled, search_interval_hours,
                     retry_delay_hours, max_items_per_run, created_utc, updated_utc
                 )
                 VALUES (
-                    @id, @name, @mediaType, @purpose, @rootPath, @downloadsPath, @qualityProfileId, @autoSearchEnabled,
+                    @id, @name, @mediaType, @purpose, @rootPath, @downloadsPath, @qualityProfileId,
+                    @importWorkflow, @processorName, @processorOutputPath, @processorTimeoutMinutes, @processorFailureMode,
+                    @autoSearchEnabled,
                     @missingSearchEnabled, @upgradeSearchEnabled, @searchIntervalHours,
                     @retryDelayHours, @maxItemsPerRun, @createdUtc, @updatedUtc
                 );
@@ -2288,6 +2470,11 @@ public sealed class SqlitePlatformSettingsRepository(
             AddParameter(command, "@rootPath", item.RootPath);
             AddParameter(command, "@downloadsPath", item.DownloadsPath);
             AddParameter(command, "@qualityProfileId", item.QualityProfileId);
+            AddParameter(command, "@importWorkflow", item.ImportWorkflow);
+            AddParameter(command, "@processorName", item.ProcessorName);
+            AddParameter(command, "@processorOutputPath", item.ProcessorOutputPath);
+            AddParameter(command, "@processorTimeoutMinutes", item.ProcessorTimeoutMinutes);
+            AddParameter(command, "@processorFailureMode", item.ProcessorFailureMode);
             AddParameter(command, "@autoSearchEnabled", item.AutoSearchEnabled ? 1 : 0);
             AddParameter(command, "@missingSearchEnabled", item.MissingSearchEnabled ? 1 : 0);
             AddParameter(command, "@upgradeSearchEnabled", item.UpgradeSearchEnabled ? 1 : 0);
@@ -2311,6 +2498,7 @@ public sealed class SqlitePlatformSettingsRepository(
             SELECT
                 l.id, l.name, l.media_type, l.purpose, l.root_path, l.downloads_path,
                 l.quality_profile_id, q.name, q.cutoff_quality, q.upgrade_until_cutoff, q.upgrade_unknown_items,
+                l.import_workflow, l.processor_name, l.processor_output_path, l.processor_timeout_minutes, l.processor_failure_mode,
                 l.auto_search_enabled, l.missing_search_enabled, l.upgrade_search_enabled, l.search_interval_hours,
                 l.retry_delay_hours, l.max_items_per_run, l.created_utc, l.updated_utc
             FROM libraries l
@@ -2459,68 +2647,7 @@ public sealed class SqlitePlatformSettingsRepository(
         System.Data.Common.DbConnection connection,
         CancellationToken cancellationToken)
     {
-        if (!await HasUsersAsync(connection, cancellationToken))
-        {
-            return true;
-        }
-
-        return await ReadLegacySeedUserAsync(connection, cancellationToken) is not null;
-    }
-
-    private static async Task<UserItem?> ReadLegacySeedUserAsync(
-        System.Data.Common.DbConnection connection,
-        CancellationToken cancellationToken)
-    {
-        using var command = connection.CreateCommand();
-        command.CommandText =
-            """
-            SELECT
-                id, username, display_name, password_hash, avatar_initials, created_utc
-            FROM users
-            ORDER BY created_utc ASC;
-            """;
-
-        using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        UserItem? legacy = null;
-        var count = 0;
-
-        while (await reader.ReadAsync(cancellationToken))
-        {
-            count++;
-            if (count > 1)
-            {
-                return null;
-            }
-
-            var username = reader.GetString(1);
-            var displayName = reader.GetString(2);
-            var passwordHash = reader.GetString(3);
-            var avatarInitials = reader.GetString(4);
-
-            if (!IsLegacySeedUser(username, displayName, passwordHash, avatarInitials))
-            {
-                return null;
-            }
-
-            legacy = new UserItem(
-                Id: reader.GetString(0),
-                Username: username,
-                DisplayName: displayName,
-                AvatarInitials: avatarInitials,
-                CreatedUtc: ParseTimestamp(reader.GetString(5)));
-        }
-
-        return legacy;
-    }
-
-    private static bool IsLegacySeedUser(
-        string username,
-        string displayName,
-        string passwordHash,
-        string avatarInitials)
-    {
-        return string.Equals(username, "admin", StringComparison.OrdinalIgnoreCase)
-            && VerifyPassword("deluno", passwordHash);
+        return !await HasUsersAsync(connection, cancellationToken);
     }
 
     private static async Task<string?> ResolveQualityProfileIdAsync(
@@ -2844,8 +2971,6 @@ public sealed class SqlitePlatformSettingsRepository(
             "nzbget" => "nzbget",
             "transmission" => "transmission",
             "deluge" => "deluge",
-            "rtorrent" => "rtorrent",
-            "rutorrent" => "rtorrent",
             "custom" => "custom",
             "usenet" => "usenet",
             "torrent" => "torrent",
@@ -2867,6 +2992,21 @@ public sealed class SqlitePlatformSettingsRepository(
             ", ",
             (value ?? string.Empty)
                 .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                .Distinct(StringComparer.OrdinalIgnoreCase));
+    }
+
+    private static string NormalizeNeverGrabPatterns(string? value)
+    {
+        var defaultPatterns = new[] { "cam", "camrip", "telesync", "telecine", "workprint", "screener", "sample", "trailer", "extras" };
+        var raw = string.IsNullOrWhiteSpace(value)
+            ? defaultPatterns
+            : value.Split([',', '\r', '\n'], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+        return string.Join(
+            "\n",
+            raw
+                .Select(item => item.Trim())
+                .Where(item => item.Length > 0)
                 .Distinct(StringComparer.OrdinalIgnoreCase));
     }
 
@@ -2901,6 +3041,50 @@ public sealed class SqlitePlatformSettingsRepository(
             "list" => "list",
             _ => "grid"
         };
+    }
+
+    private static string NormalizeImportWorkflow(string? value)
+    {
+        var normalized = value?.Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "refine-before-import" or "refine" or "processor" or "processing" => "refine-before-import",
+            _ => "standard"
+        };
+    }
+
+    private static string NormalizeProcessorFailureMode(string? value)
+    {
+        var normalized = value?.Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "import-original" or "fallback-original" or "fallback" => "import-original",
+            "manual-review" or "review" => "manual-review",
+            _ => "block"
+        };
+    }
+
+    private static string NormalizeMetadataProviderMode(string? value)
+    {
+        var normalized = value?.Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "broker" or "cloud" or "managed" => "broker",
+            "hybrid" or "broker-first" or "brokerfirst" => "hybrid",
+            "direct" or "direct-only" or "directonly" or "self-hosted" => "direct",
+            _ => "direct"
+        };
+    }
+
+    private static string? NormalizeMetadataBrokerUrl(string? value)
+    {
+        var normalized = NormalizeName(value);
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return null;
+        }
+
+        return normalized.TrimEnd('/');
     }
 
     private static string NormalizeCardSize(string? value)
@@ -2995,6 +3179,30 @@ public sealed class SqlitePlatformSettingsRepository(
         return CryptographicOperations.FixedTimeEquals(actual, expected);
     }
 
+    private static string GenerateApiKey()
+        => $"deluno_{Base64UrlEncode(RandomNumberGenerator.GetBytes(32))}";
+
+    private static string BuildApiKeyPrefix(string apiKey)
+    {
+        var value = apiKey.Trim();
+        return value.Length <= 18 ? value : $"{value[..14]}...";
+    }
+
+    private static string HashApiKey(string apiKey)
+        => Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(apiKey.Trim())));
+
+    private static string NormalizeApiScopes(string? value)
+    {
+        var normalized = NormalizeCsv(value);
+        return string.IsNullOrWhiteSpace(normalized) ? "all" : normalized;
+    }
+
+    private static string Base64UrlEncode(byte[] value)
+        => Convert.ToBase64String(value)
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+
     private static int NormalizePositiveValue(int? value, int fallback)
     {
         return value is > 0 ? value.Value : fallback;
@@ -3062,18 +3270,23 @@ public sealed class SqlitePlatformSettingsRepository(
             CutoffQuality: reader.IsDBNull(8) ? null : reader.GetString(8),
             UpgradeUntilCutoff: reader.IsDBNull(9) || reader.GetInt64(9) == 1,
             UpgradeUnknownItems: !reader.IsDBNull(10) && reader.GetInt64(10) == 1,
-            AutoSearchEnabled: reader.GetInt64(11) == 1,
-            MissingSearchEnabled: reader.GetInt64(12) == 1,
-            UpgradeSearchEnabled: reader.GetInt64(13) == 1,
-            SearchIntervalHours: reader.GetInt32(14),
-            RetryDelayHours: reader.GetInt32(15),
-            MaxItemsPerRun: reader.GetInt32(16),
+            ImportWorkflow: reader.IsDBNull(11) ? "standard" : NormalizeImportWorkflow(reader.GetString(11)),
+            ProcessorName: reader.IsDBNull(12) ? null : reader.GetString(12),
+            ProcessorOutputPath: reader.IsDBNull(13) ? null : reader.GetString(13),
+            ProcessorTimeoutMinutes: reader.IsDBNull(14) ? 360 : reader.GetInt32(14),
+            ProcessorFailureMode: reader.IsDBNull(15) ? "block" : NormalizeProcessorFailureMode(reader.GetString(15)),
+            AutoSearchEnabled: reader.GetInt64(16) == 1,
+            MissingSearchEnabled: reader.GetInt64(17) == 1,
+            UpgradeSearchEnabled: reader.GetInt64(18) == 1,
+            SearchIntervalHours: reader.GetInt32(19),
+            RetryDelayHours: reader.GetInt32(20),
+            MaxItemsPerRun: reader.GetInt32(21),
             AutomationStatus: "idle",
             SearchRequested: false,
             LastSearchedUtc: null,
             NextSearchUtc: null,
-            CreatedUtc: ParseTimestamp(reader.GetString(17)),
-            UpdatedUtc: ParseTimestamp(reader.GetString(18)));
+            CreatedUtc: ParseTimestamp(reader.GetString(22)),
+            UpdatedUtc: ParseTimestamp(reader.GetString(23)));
     }
 
     private static QualityProfileItem ReadQualityProfile(System.Data.Common.DbDataReader reader)
@@ -3195,6 +3408,18 @@ public sealed class SqlitePlatformSettingsRepository(
             DisplayName: reader.GetString(2),
             AvatarInitials: reader.GetString(3),
             CreatedUtc: ParseTimestamp(reader.GetString(4)));
+    }
+
+    private static ApiKeyItem ReadApiKey(System.Data.Common.DbDataReader reader)
+    {
+        return new ApiKeyItem(
+            Id: reader.GetString(0),
+            Name: reader.GetString(1),
+            Prefix: reader.GetString(2),
+            Scopes: reader.GetString(3),
+            LastUsedUtc: reader.IsDBNull(4) ? null : ParseTimestamp(reader.GetString(4)),
+            CreatedUtc: ParseTimestamp(reader.GetString(5)),
+            UpdatedUtc: ParseTimestamp(reader.GetString(6)));
     }
 
     private static async Task<IReadOnlyList<LibraryDownloadClientLinkItem>> ReadLibraryDownloadClientLinksAsync(

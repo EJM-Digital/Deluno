@@ -97,10 +97,11 @@ export function LoginPage() {
           ) : null}
 
           <div className="space-y-1.5">
-            <label className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            <label htmlFor="login-username" className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
               Username
             </label>
             <Input
+              id="login-username"
               type="text"
               autoComplete="username"
               autoFocus
@@ -113,11 +114,12 @@ export function LoginPage() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            <label htmlFor="login-password" className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
               Password
             </label>
             <div className="relative">
               <Input
+                id="login-password"
                 type={showPw ? "text" : "password"}
                 autoComplete="current-password"
                 value={password}

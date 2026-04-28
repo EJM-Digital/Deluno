@@ -97,7 +97,13 @@ public static class FilesystemEndpointRouteBuilderExtensions
             CancellationToken cancellationToken) =>
         {
             var preview = await importPipeline.PreviewAsync(request.Preview, cancellationToken);
-            if (!preview.SourceExists || !preview.IsSupportedMediaFile || preview.DestinationExists && !request.Overwrite)
+            if (!preview.SourceExists ||
+                !preview.IsSupportedMediaFile ||
+                IsSamePath(preview.SourcePath, preview.DestinationPath) ||
+                preview.MediaProbe is { Status: "failed" } ||
+                preview.MediaProbe is { Status: "succeeded", VideoStreams.Count: 0 } ||
+                preview.MediaProbe?.DurationSeconds is > 0 and < 120 ||
+                preview.DestinationExists && !request.Overwrite)
             {
                 return Results.BadRequest(new
                 {
@@ -116,6 +122,15 @@ public static class FilesystemEndpointRouteBuilderExtensions
                 cancellationToken);
 
             return Results.Ok(new ImportJobResponse(job.Id, preview, job));
+        });
+
+        endpoints.MapPost("/api/integrations/external/import-preview", async (
+            ImportPreviewRequest request,
+            IImportPipelineService importPipeline,
+            CancellationToken cancellationToken) =>
+        {
+            var preview = await importPipeline.PreviewAsync(request, cancellationToken);
+            return Results.Ok(preview);
         });
 
         filesystem.MapPost("/path-diagnostics", (PathDiagnosticRequest request) =>
@@ -329,6 +344,21 @@ public static class FilesystemEndpointRouteBuilderExtensions
 
     private static string NormalizeMediaType(string? mediaType)
         => mediaType?.Trim().ToLowerInvariant() is "tv" or "series" or "shows" ? "tv" : "movies";
+
+    private static bool IsSamePath(string first, string second)
+    {
+        try
+        {
+            return string.Equals(
+                Path.GetFullPath(first).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                Path.GetFullPath(second).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+        }
+        catch
+        {
+            return false;
+        }
+    }
 }
 
 public sealed record DirectoryBrowseResponse(
@@ -380,6 +410,7 @@ public sealed record ImportPreviewResponse(
     long SourceSizeBytes,
     long DestinationSizeBytes,
     bool IsSupportedMediaFile,
+    MediaProbeInfo? MediaProbe,
     string TransferExplanation,
     IReadOnlyList<string> Warnings,
     string Explanation,
@@ -389,7 +420,8 @@ public sealed record ImportExecuteRequest(
     ImportPreviewRequest Preview,
     string? TransferMode,
     bool Overwrite,
-    bool AllowCopyFallback);
+    bool AllowCopyFallback,
+    bool ForceReplacement = false);
 
 public sealed record ImportExecuteResponse(
     ImportPreviewResponse Preview,

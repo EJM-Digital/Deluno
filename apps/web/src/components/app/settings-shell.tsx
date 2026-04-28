@@ -34,7 +34,7 @@ export const settingsNavGroups = [
   {
     label: "Automation",
     items: [
-      { to: "/settings/lists", label: "Lists", end: false, tip: "Bring titles in from Trakt, IMDb, or other external intake sources" }
+      { to: "/settings/lists", label: "Lists", end: false, tip: "Bring titles in from Trakt, IMDb, or other external list sources" }
     ]
   },
   {
@@ -55,6 +55,8 @@ const SystemWorkspaceContext = createContext(false);
 const systemNavItems = [
   { to: "/system", label: "Health", end: true, tip: "Runtime health, jobs, providers, and current posture" },
   { to: "/system/audit", label: "Audit", end: false, tip: "Searchable event timeline and live activity stream" },
+  { to: "/system/api", label: "API", end: false, tip: "Generate and revoke API keys for integrations and automation" },
+  { to: "/system/docs", label: "Guide", end: false, tip: "Plain-English workflow guide for setup, routing, scoring, imports, and integrations" },
   { to: "/system/backups", label: "Backups", end: false, tip: "Manual backups, automatic schedule, restore preview, and downloads" },
   { to: "/system/updates", label: "Updates", end: false, tip: "Version status, signed release checks, and upgrade readiness" }
 ] as const;
@@ -99,7 +101,7 @@ const settingsPageMeta = [
   {
     match: (path: string) => path.startsWith("/settings/lists"),
     title: "Lists",
-    description: "External intake sources and automated discovery behaviour."
+    description: "External list sources and automated discovery behaviour."
   },
   {
     match: (path: string) => path.startsWith("/settings/metadata"),
@@ -133,6 +135,16 @@ const systemPageMeta = [
     match: (path: string) => path.startsWith("/system/audit"),
     title: "Audit Timeline",
     description: "Searchable activity, live events, errors, imports, searches, and notifications."
+  },
+  {
+    match: (path: string) => path.startsWith("/system/api"),
+    title: "API Access",
+    description: "Generate keys for trusted integrations, local scripts, dashboards, and external control-plane access."
+  },
+  {
+    match: (path: string) => path.startsWith("/system/docs"),
+    title: "Workflow Guide",
+    description: "How Deluno should be configured, routed, scored, integrated, and recovered in plain English."
   },
   {
     match: (path: string) => path.startsWith("/system/backups"),

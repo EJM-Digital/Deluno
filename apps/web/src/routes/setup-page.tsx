@@ -38,7 +38,7 @@ export function SetupPage() {
     setBusy(true);
     try {
       await bootstrap(displayName.trim(), username.trim(), password);
-      navigate(returnTo, { replace: true });
+      navigate(`/setup-guide?return=${encodeURIComponent(returnTo)}`, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Setup failed.");
     } finally {
@@ -96,10 +96,11 @@ export function SetupPage() {
           ) : null}
 
           <div className="space-y-1.5">
-            <label className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            <label htmlFor="setup-display-name" className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
               Display name
             </label>
             <Input
+              id="setup-display-name"
               type="text"
               autoFocus
               value={displayName}
@@ -111,10 +112,11 @@ export function SetupPage() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            <label htmlFor="setup-username" className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
               Username
             </label>
             <Input
+              id="setup-username"
               type="text"
               autoComplete="username"
               value={username}
@@ -126,11 +128,12 @@ export function SetupPage() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            <label htmlFor="setup-password" className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
               Password
             </label>
             <div className="relative">
               <Input
+                id="setup-password"
                 type={showPassword ? "text" : "password"}
                 autoComplete="new-password"
                 value={password}
@@ -155,10 +158,11 @@ export function SetupPage() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            <label htmlFor="setup-confirm-password" className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
               Confirm password
             </label>
             <Input
+              id="setup-confirm-password"
               type={showPassword ? "text" : "password"}
               autoComplete="new-password"
               value={confirmPassword}

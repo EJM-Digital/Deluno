@@ -449,6 +449,32 @@ public sealed class SqliteMovieCatalogRepository(
         return items;
     }
 
+    public async Task<int> CountRetryDelayedWantedAsync(
+        string libraryId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT COUNT(*)
+            FROM movie_wanted_state
+            WHERE library_id = @libraryId
+              AND wanted_status IN ('missing', 'upgrade')
+              AND next_eligible_search_utc IS NOT NULL
+              AND next_eligible_search_utc > @now;
+            """;
+
+        AddParameter(command, "@libraryId", libraryId);
+        AddParameter(command, "@now", now.ToString("O"));
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return Convert.ToInt32(value, CultureInfo.InvariantCulture);
+    }
+
     public async Task EnsureWantedStateAsync(
         string movieId,
         string libraryId,
@@ -509,6 +535,7 @@ public sealed class SqliteMovieCatalogRepository(
         string? currentQuality,
         string? targetQuality,
         bool qualityCutoffMet,
+        bool unmonitorWhenCutoffMet,
         CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -549,16 +576,31 @@ public sealed class SqliteMovieCatalogRepository(
                     id, title, release_year, imdb_id, monitored, created_utc, updated_utc
                 )
                 VALUES (
-                    @id, @title, @releaseYear, NULL, 1, @createdUtc, @updatedUtc
+                    @id, @title, @releaseYear, NULL, @monitored, @createdUtc, @updatedUtc
                 );
                 """;
 
             AddParameter(insert, "@id", movieId);
             AddParameter(insert, "@title", normalizedTitle);
             AddParameter(insert, "@releaseYear", releaseYear);
+            AddParameter(insert, "@monitored", unmonitorWhenCutoffMet && qualityCutoffMet ? 0 : 1);
             AddParameter(insert, "@createdUtc", now.ToString("O"));
             AddParameter(insert, "@updatedUtc", now.ToString("O"));
             await insert.ExecuteNonQueryAsync(cancellationToken);
+        }
+        else if (unmonitorWhenCutoffMet && qualityCutoffMet)
+        {
+            using var unmonitor = connection.CreateCommand();
+            unmonitor.CommandText =
+                """
+                UPDATE movie_entries
+                SET monitored = 0,
+                    updated_utc = @updatedUtc
+                WHERE id = @movieId;
+                """;
+            AddParameter(unmonitor, "@movieId", movieId);
+            AddParameter(unmonitor, "@updatedUtc", now.ToString("O"));
+            await unmonitor.ExecuteNonQueryAsync(cancellationToken);
         }
 
         using var wanted = connection.CreateCommand();

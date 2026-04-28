@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
-import { CheckCircle2, KeyRound, LoaderCircle, RefreshCw, SearchCheck } from "lucide-react";
+import { CheckCircle2, Cloud, KeyRound, LoaderCircle, RefreshCw, SearchCheck, ServerCog } from "lucide-react";
 import { SettingsShell } from "../components/app/settings-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
@@ -15,11 +15,13 @@ import {
   type LibraryItem,
   type MetadataRefreshJobsResponse,
   type MetadataProviderStatus,
+  type MetadataSourceStatus,
   type MetadataTestResponse,
   type PlatformSettingsSnapshot,
   type QualityProfileItem
 } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
+import { RouteSkeleton } from "../components/shell/skeleton";
 
 interface SettingsOverviewLoaderData {
   libraries: LibraryItem[];
@@ -39,12 +41,8 @@ export async function settingsMetadataLoader(): Promise<SettingsOverviewLoaderDa
 
 export function SettingsMetadataPage() {
   const loaderData = useLoaderData() as SettingsOverviewLoaderData | undefined;
-  const { libraries, metadataStatus, settings } = loaderData ?? {
-    libraries: [],
-    metadataStatus: null,
-    qualityProfiles: [],
-    settings: emptyPlatformSettingsSnapshot
-  };
+  if (!loaderData) return <RouteSkeleton />;
+  const { libraries, metadataStatus, settings } = loaderData;
   const revalidator = useRevalidator();
   const [formState, setFormState] = useState(settings);
   const [tmdbApiKey, setTmdbApiKey] = useState("");
@@ -65,6 +63,8 @@ export function SettingsMetadataPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...formState,
+          metadataProviderMode: formState.metadataProviderMode || "direct",
+          metadataBrokerUrl: formState.metadataBrokerUrl?.trim() || "",
           metadataTmdbApiKey: tmdbApiKey.trim() || undefined,
           metadataOmdbApiKey: omdbApiKey.trim() || undefined
         })
@@ -100,7 +100,7 @@ export function SettingsMetadataPage() {
       if (!result.isConfigured) {
         toast.warning(result.message);
       } else {
-        toast.success(`TMDb returned ${result.resultCount} result${result.resultCount === 1 ? "" : "s"}.`);
+        toast.success(`Metadata lookup returned ${result.resultCount} result${result.resultCount === 1 ? "" : "s"}.`);
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Metadata provider test failed.");
@@ -149,10 +149,10 @@ export function SettingsMetadataPage() {
           <CardContent>
             <div className="mb-4 grid gap-3 sm:grid-cols-3">
               <SetupStep
-                icon={<KeyRound className="h-4 w-4" />}
-                title="1. Add key"
-                copy={settings.metadataTmdbApiKeyConfigured ? "TMDb lookup is connected." : "Paste a TMDb API key once for lookup and artwork."}
-                complete={settings.metadataTmdbApiKeyConfigured}
+                icon={<ServerCog className="h-4 w-4" />}
+                title="1. Choose route"
+                copy={metadataStatus?.isConfigured ? "Metadata lookup has a usable provider route." : "Choose broker, hybrid, or direct lookup before adding titles."}
+                complete={Boolean(metadataStatus?.isConfigured)}
               />
               <SetupStep
                 icon={<SearchCheck className="h-4 w-4" />}
@@ -168,6 +168,59 @@ export function SettingsMetadataPage() {
               />
             </div>
             <form className="space-y-[calc(var(--field-group-pad)*0.9)]" onSubmit={handleSave}>
+              <Field label="Provider route">
+                <div className="grid gap-2 md:grid-cols-3">
+                  {[
+                    {
+                      value: "broker",
+                      title: "Deluno broker",
+                      copy: "Future hosted metadata path. No user API keys once the broker is available.",
+                      icon: <Cloud className="h-4 w-4" />
+                    },
+                    {
+                      value: "hybrid",
+                      title: "Hybrid",
+                      copy: "Try broker first, then use direct TMDb if a fallback key is configured.",
+                      icon: <ServerCog className="h-4 w-4" />
+                    },
+                    {
+                      value: "direct",
+                      title: "Direct keys",
+                      copy: "Self-hosted mode using your own TMDb key and optional OMDb key.",
+                      icon: <KeyRound className="h-4 w-4" />
+                    }
+                  ].map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setFormState((current) => ({ ...current, metadataProviderMode: option.value }))}
+                      className={`rounded-xl border p-3 text-left transition ${
+                        formState.metadataProviderMode === option.value
+                          ? "border-primary/45 bg-primary/10 text-foreground"
+                          : "border-hairline bg-background/35 text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <span className="flex items-center gap-2 font-semibold text-foreground">
+                        {option.icon}
+                        {option.title}
+                      </span>
+                      <span className="mt-2 block density-help leading-relaxed">{option.copy}</span>
+                    </button>
+                  ))}
+                </div>
+              </Field>
+
+              <Field label="Broker URL">
+                <Input
+                  value={formState.metadataBrokerUrl}
+                  onChange={(event) => setFormState((current) => ({ ...current, metadataBrokerUrl: event.target.value }))}
+                  placeholder="https://metadata.deluno.app"
+                />
+                <p className="density-help mt-2 text-muted-foreground">
+                  Optional now. This is the hosted/proxy metadata service path Deluno can use later so users do not need provider keys.
+                </p>
+              </Field>
+
               <div className="grid gap-3 sm:grid-cols-2">
                 <ToggleField
                   label="Write NFO sidecars"
@@ -194,7 +247,7 @@ export function SettingsMetadataPage() {
                     placeholder={settings.metadataTmdbApiKeyConfigured ? "Configured - enter a new key to replace" : "Paste TMDb API key"}
                   />
                   <p className="density-help mt-2 text-muted-foreground">
-                    Primary provider for search, posters, backdrops, overview, genres, IDs, and the TMDb community score.
+                    Direct or fallback provider for search, posters, backdrops, overview, genres, IDs, and the TMDb community score.
                   </p>
                 </Field>
                 <Field label="OMDb API key">
@@ -279,6 +332,10 @@ export function SettingsMetadataPage() {
           </CardHeader>
           <CardContent className="density-help space-y-3 text-muted-foreground">
             <BacklogRow
+              title="Provider route"
+              copy={`${settings.metadataProviderMode} mode${settings.metadataBrokerConfigured ? ` via ${settings.metadataBrokerUrl}` : ""}.`}
+            />
+            <BacklogRow
               title="Provider status"
               copy={
                 metadataStatus
@@ -287,8 +344,12 @@ export function SettingsMetadataPage() {
               }
             />
             <BacklogRow
-              title="TMDb key"
-              copy={settings.metadataTmdbApiKeyConfigured ? "A TMDb API key is stored for this Deluno install." : "No TMDb key is stored yet. Add-title lookup is disabled until a provider key is saved."}
+              title="Broker"
+              copy={settings.metadataBrokerConfigured ? "A Deluno metadata broker URL is stored for this install." : "No broker URL is stored yet. Direct TMDb can still be used today."}
+            />
+            <BacklogRow
+              title="Direct fallback"
+              copy={settings.metadataTmdbApiKeyConfigured ? "A TMDb API key is stored for direct or hybrid fallback lookup." : "No TMDb key is stored. Direct metadata lookup will stay unavailable until a key is saved."}
             />
             <BacklogRow
               title="Ratings enrichment"
@@ -306,6 +367,17 @@ export function SettingsMetadataPage() {
               title="Locale posture"
               copy={`Certification country ${formState.metadataCertificationCountry || "US"} and language ${formState.metadataLanguage || "en"} are now stored for future scraper/export flows.`}
             />
+            {metadataStatus?.sources?.length ? (
+              <div className="rounded-xl border border-hairline bg-surface-1 p-4">
+                <p className="font-medium text-foreground">Provider sources</p>
+                <p className="mt-1">Each source is isolated so Deluno can add providers without changing library workflows.</p>
+                <div className="mt-3 grid gap-2">
+                  {metadataStatus.sources.map((source) => (
+                    <SourceRow key={source.source} source={source} />
+                  ))}
+                </div>
+              </div>
+            ) : null}
             <div className="rounded-xl border border-hairline bg-surface-1 p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -441,6 +513,29 @@ function BacklogRow({ title, copy }: { title: string; copy: string }) {
     <div className="density-field rounded-xl border border-hairline bg-surface-1">
       <p className="font-medium text-foreground">{title}</p>
       <p className="mt-1">{copy}</p>
+    </div>
+  );
+}
+
+function SourceRow({ source }: { source: MetadataSourceStatus }) {
+  return (
+    <div className="rounded-lg border border-hairline bg-background/35 p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <p className="font-medium text-foreground">{source.label}</p>
+          <p className="mt-1 text-muted-foreground">{source.role}</p>
+        </div>
+        <span className={`rounded-full border px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em] ${
+          source.isConfigured
+            ? "border-success/35 bg-success/10 text-success"
+            : source.mode === "planned"
+              ? "border-info/35 bg-info/10 text-info"
+              : "border-warning/35 bg-warning/10 text-warning"
+        }`}>
+          {source.isConfigured ? "ready" : source.mode}
+        </span>
+      </div>
+      <p className="mt-2 text-muted-foreground">{source.message}</p>
     </div>
   );
 }

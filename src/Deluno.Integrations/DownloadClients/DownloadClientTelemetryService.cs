@@ -22,7 +22,9 @@ public sealed class DownloadClientTelemetryService(
     {
         var capturedUtc = timeProvider.GetUtcNow();
         var clients = await platformRepository.ListDownloadClientsAsync(cancellationToken);
+        var libraries = await platformRepository.ListLibrariesAsync(cancellationToken);
         var dispatches = await jobQueueRepository.ListDownloadDispatchesAsync(100, null, cancellationToken);
+        var importJobs = await jobQueueRepository.ListAsync(200, cancellationToken);
         var snapshots = new List<DownloadClientTelemetrySnapshot>();
 
         foreach (var client in clients.OrderBy(item => item.Priority).ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase))
@@ -36,10 +38,17 @@ public sealed class DownloadClientTelemetryService(
             var liveSnapshot = await TryGetLiveSnapshotAsync(client, capturedUtc, cancellationToken);
             if (liveSnapshot is not null)
             {
-                snapshots.Add(EnrichWithDispatchHistory(
-                    liveSnapshot,
-                    dispatches.Where(dispatch => string.Equals(dispatch.DownloadClientId, client.Id, StringComparison.OrdinalIgnoreCase)),
-                    capturedUtc));
+                var clientDispatches = dispatches
+                    .Where(dispatch => string.Equals(dispatch.DownloadClientId, client.Id, StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+                snapshots.Add(EnrichQueueImportState(
+                    EnrichWithDispatchHistory(
+                        liveSnapshot,
+                        clientDispatches,
+                        capturedUtc),
+                    libraries,
+                    clientDispatches,
+                    importJobs));
                 continue;
             }
 
@@ -699,6 +708,148 @@ public sealed class DownloadClientTelemetryService(
         };
     }
 
+    private static DownloadClientTelemetrySnapshot EnrichQueueImportState(
+        DownloadClientTelemetrySnapshot snapshot,
+        IReadOnlyList<LibraryItem> libraries,
+        IReadOnlyList<DownloadDispatchItem> dispatches,
+        IReadOnlyList<JobQueueItem> importJobs)
+    {
+        if (snapshot.Queue.Count == 0)
+        {
+            return snapshot;
+        }
+
+        var jobsBySource = importJobs
+            .Where(job => job.JobType == "filesystem.import.execute")
+            .Select(job => new { Job = job, SourcePath = TryReadImportSourcePath(job.PayloadJson) })
+            .Where(item => !string.IsNullOrWhiteSpace(item.SourcePath))
+            .GroupBy(item => NormalizeSourceKey(item.SourcePath!), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.OrderByDescending(item => item.Job.CreatedUtc).First().Job, StringComparer.OrdinalIgnoreCase);
+
+        var queue = snapshot.Queue.Select(item =>
+        {
+            if (item.Status is not ("importReady" or "completed"))
+            {
+                return item;
+            }
+
+            if (!string.IsNullOrWhiteSpace(item.SourcePath) &&
+                jobsBySource.TryGetValue(NormalizeSourceKey(item.SourcePath), out var job))
+            {
+                var status = job.Status switch
+                {
+                    "queued" or "running" => "importQueued",
+                    "completed" => "imported",
+                    "failed" => "importFailed",
+                    _ => item.Status
+                };
+                return item with { Status = status };
+            }
+
+            var library = ResolveLibraryForQueueItem(item, libraries, dispatches);
+            if (library is not null &&
+                string.Equals(library.ImportWorkflow, "refine-before-import", StringComparison.OrdinalIgnoreCase))
+            {
+                return item with { Status = "waitingForProcessor" };
+            }
+
+            return item;
+        }).ToArray();
+
+        return snapshot with
+        {
+            Queue = queue,
+            Summary = Summarize(queue)
+        };
+    }
+
+    private static LibraryItem? ResolveLibraryForQueueItem(
+        DownloadQueueItem item,
+        IReadOnlyList<LibraryItem> libraries,
+        IReadOnlyList<DownloadDispatchItem> dispatches)
+    {
+        var dispatch = dispatches
+            .OrderByDescending(dispatch => dispatch.CreatedUtc)
+            .FirstOrDefault(dispatch =>
+                string.Equals(dispatch.ReleaseName, item.ReleaseName, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(dispatch.ReleaseName, item.Title, StringComparison.OrdinalIgnoreCase));
+        if (dispatch is not null)
+        {
+            var dispatchedLibrary = libraries.FirstOrDefault(library =>
+                string.Equals(library.Id, dispatch.LibraryId, StringComparison.OrdinalIgnoreCase));
+            if (dispatchedLibrary is not null)
+            {
+                return dispatchedLibrary;
+            }
+        }
+
+        var normalizedMediaType = item.MediaType.Equals("tv", StringComparison.OrdinalIgnoreCase) ||
+            item.MediaType.Equals("series", StringComparison.OrdinalIgnoreCase)
+            ? "tv"
+            : "movies";
+        var mediaLibraries = libraries
+            .Where(library => string.Equals(library.MediaType, normalizedMediaType, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+
+        if (!string.IsNullOrWhiteSpace(item.SourcePath))
+        {
+            var source = NormalizeSourceKey(item.SourcePath);
+            var pathMatch = mediaLibraries.FirstOrDefault(library =>
+                !string.IsNullOrWhiteSpace(library.DownloadsPath) &&
+                source.StartsWith(NormalizeSourceKey(library.DownloadsPath), StringComparison.OrdinalIgnoreCase));
+            if (pathMatch is not null)
+            {
+                return pathMatch;
+            }
+        }
+
+        return mediaLibraries.FirstOrDefault();
+    }
+
+    private static string? TryReadImportSourcePath(string? payloadJson)
+    {
+        if (string.IsNullOrWhiteSpace(payloadJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            var root = document.RootElement;
+            if (!TryGetProperty(root, "preview", out var preview) ||
+                !TryGetProperty(preview, "sourcePath", out var sourcePath) ||
+                sourcePath.ValueKind != JsonValueKind.String)
+            {
+                return null;
+            }
+
+            return sourcePath.GetString();
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static bool TryGetProperty(JsonElement element, string name, out JsonElement value)
+    {
+        foreach (var property in element.EnumerateObject())
+        {
+            if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
+            {
+                value = property.Value;
+                return true;
+            }
+        }
+
+        value = default;
+        return false;
+    }
+
+    private static string NormalizeSourceKey(string value)
+        => value.Trim().TrimEnd('\\', '/').Replace('\\', '/');
+
     private async Task<IReadOnlyList<DownloadClientHistoryItem>> TryGetSabnzbdHistoryAsync(
         HttpClient http,
         DownloadClientItem client,
@@ -976,7 +1127,8 @@ public sealed class DownloadClientTelemetryService(
             QueuedCount: items.Count(item => item.Status == "queued"),
             CompletedCount: items.Count(item => item.Status == "completed"),
             StalledCount: items.Count(item => item.Status == "stalled"),
-            ImportReadyCount: items.Count(item => item.Status == "importReady"),
+            ProcessingCount: items.Count(item => item.Status is "processing" or "processed" or "processingFailed" or "waitingForProcessor" or "importQueued"),
+            ImportReadyCount: items.Count(item => item.Status is "importReady" or "completed"),
             TotalSpeedMbps: Math.Round(items.Sum(item => item.SpeedMbps), 1));
     }
 

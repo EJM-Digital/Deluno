@@ -44,6 +44,11 @@ public interface ISeriesCatalogRepository
         bool ignoreRetryWindow,
         CancellationToken cancellationToken);
 
+    Task<int> CountRetryDelayedWantedAsync(
+        string libraryId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken);
+
     Task EnsureWantedStateAsync(
         string seriesId,
         string libraryId,
@@ -64,6 +69,7 @@ public interface ISeriesCatalogRepository
         string? currentQuality,
         string? targetQuality,
         bool qualityCutoffMet,
+        bool unmonitorWhenCutoffMet,
         IReadOnlyList<ImportedEpisodeItem>? episodes,
         CancellationToken cancellationToken);
 

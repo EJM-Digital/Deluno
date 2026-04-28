@@ -26,6 +26,7 @@ import { Button } from "../components/ui/button";
 import { GlassTile, PageHero } from "../components/shell/page-hero";
 import { EmptyState } from "../components/shell/empty-state";
 import { Stagger, StaggerItem } from "../components/shell/motion";
+import { RouteSkeleton } from "../components/shell/skeleton";
 import { toast } from "../components/shell/toaster";
 
 interface ActivityLoaderData {
@@ -50,29 +51,8 @@ export async function activityLoader(): Promise<ActivityLoaderData> {
 
 export function ActivityPage() {
   const loaderData = useLoaderData() as ActivityLoaderData | undefined;
-  const { activity, dispatches, jobs, movieRecovery, seriesRecovery } = loaderData ?? {
-    activity: [],
-    dispatches: [],
-    jobs: [],
-    movieRecovery: {
-      openCount: 0,
-      qualityCount: 0,
-      unmatchedCount: 0,
-      corruptCount: 0,
-      downloadFailedCount: 0,
-      importFailedCount: 0,
-      recentCases: []
-    },
-    seriesRecovery: {
-      openCount: 0,
-      qualityCount: 0,
-      unmatchedCount: 0,
-      corruptCount: 0,
-      downloadFailedCount: 0,
-      importFailedCount: 0,
-      recentCases: []
-    }
-  };
+  if (!loaderData) return <RouteSkeleton />;
+  const { activity, dispatches, jobs, movieRecovery, seriesRecovery } = loaderData;
   const revalidator = useRevalidator();
 
   useEffect(() => {
@@ -725,6 +705,17 @@ function formatEventCategory(value: string) {
       return "Release dispatched";
     case "release.rejected":
       return "Release rejected";
+    case "filesystem.import.auto-queued":
+      return "Import auto-queued";
+    case "filesystem.import.completed":
+      return "Imported";
+    case "processing.waiting":
+      return "Waiting for processor";
+    case "movie.release.force-grabbed":
+    case "series.release.force-grabbed":
+      return "Force override";
+    case "library.search.executed":
+      return "Search cycle";
     default:
       return value;
   }
@@ -744,8 +735,9 @@ function formatDispatchStatus(status: string) {
 }
 
 function eventDotColor(category: string) {
-  if (category.includes("failed") || category.includes("rejected")) return "bg-destructive";
-  if (category.includes("completed") || category.includes("dispatched")) return "bg-success";
+  if (category.includes("failed") || category.includes("rejected") || category.includes("replacement")) return "bg-destructive";
+  if (category.includes("waiting") || category.includes("force")) return "bg-warning";
+  if (category.includes("completed") || category.includes("dispatched") || category.includes("auto-queued")) return "bg-success";
   if (category.includes("started") || category.includes("running")) return "bg-info";
   return "bg-muted-foreground/60";
 }

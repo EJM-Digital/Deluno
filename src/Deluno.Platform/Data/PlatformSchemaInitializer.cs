@@ -38,6 +38,11 @@ public sealed class PlatformSchemaInitializer(
                 root_path TEXT NOT NULL,
                 downloads_path TEXT NULL,
                 quality_profile_id TEXT NULL,
+                import_workflow TEXT NOT NULL DEFAULT 'standard',
+                processor_name TEXT NULL,
+                processor_output_path TEXT NULL,
+                processor_timeout_minutes INTEGER NOT NULL DEFAULT 360,
+                processor_failure_mode TEXT NOT NULL DEFAULT 'block',
                 auto_search_enabled INTEGER NOT NULL DEFAULT 1,
                 missing_search_enabled INTEGER NOT NULL DEFAULT 1,
                 upgrade_search_enabled INTEGER NOT NULL DEFAULT 1,
@@ -176,6 +181,20 @@ public sealed class PlatformSchemaInitializer(
             CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username
                 ON users (username COLLATE NOCASE);
 
+            CREATE TABLE IF NOT EXISTS api_keys (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                key_hash TEXT NOT NULL,
+                prefix TEXT NOT NULL,
+                scopes TEXT NOT NULL DEFAULT 'all',
+                last_used_utc TEXT NULL,
+                created_utc TEXT NOT NULL,
+                updated_utc TEXT NOT NULL
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS ix_api_keys_key_hash
+                ON api_keys (key_hash);
+
             CREATE TABLE IF NOT EXISTS app_connections (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -258,6 +277,11 @@ public sealed class PlatformSchemaInitializer(
 
         await command.ExecuteNonQueryAsync(cancellationToken);
         await EnsureLibraryColumnAsync(connection, "quality_profile_id", "TEXT NULL", cancellationToken);
+        await EnsureLibraryColumnAsync(connection, "import_workflow", "TEXT NOT NULL DEFAULT 'standard'", cancellationToken);
+        await EnsureLibraryColumnAsync(connection, "processor_name", "TEXT NULL", cancellationToken);
+        await EnsureLibraryColumnAsync(connection, "processor_output_path", "TEXT NULL", cancellationToken);
+        await EnsureLibraryColumnAsync(connection, "processor_timeout_minutes", "INTEGER NOT NULL DEFAULT 360", cancellationToken);
+        await EnsureLibraryColumnAsync(connection, "processor_failure_mode", "TEXT NOT NULL DEFAULT 'block'", cancellationToken);
         await EnsureLibraryColumnAsync(connection, "missing_search_enabled", "INTEGER NOT NULL DEFAULT 1", cancellationToken);
         await EnsureLibraryColumnAsync(connection, "upgrade_search_enabled", "INTEGER NOT NULL DEFAULT 1", cancellationToken);
         await EnsureLibraryColumnAsync(connection, "max_items_per_run", "INTEGER NOT NULL DEFAULT 25", cancellationToken);

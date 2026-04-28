@@ -1,4 +1,16 @@
-export type MediaStatus = "downloaded" | "downloading" | "missing" | "monitored";
+export type MediaStatus =
+  | "downloaded"
+  | "downloading"
+  | "missing"
+  | "monitored"
+  | "processing"
+  | "processed"
+  | "importReady"
+  | "waitingForProcessor"
+  | "importQueued"
+  | "importFailed"
+  | "imported"
+  | "processingFailed";
 export type MediaType = "movie" | "show";
 
 export interface MediaItem {

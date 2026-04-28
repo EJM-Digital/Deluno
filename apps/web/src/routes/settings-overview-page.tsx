@@ -18,6 +18,7 @@ import { Input } from "../components/ui/input";
 import { PathInput } from "../components/ui/path-input";
 import { PresetField } from "../components/ui/preset-field";
 import { authedFetch } from "../lib/use-auth";
+import { RouteSkeleton } from "../components/shell/skeleton";
 
 interface SettingsOverviewLoaderData {
   libraries: LibraryItem[];
@@ -95,11 +96,8 @@ export async function settingsOverviewLoader(): Promise<SettingsOverviewLoaderDa
 
 export function SettingsOverviewPage() {
   const loaderData = useLoaderData() as SettingsOverviewLoaderData | undefined;
-  const { libraries, qualityProfiles, settings } = loaderData ?? {
-    libraries: [],
-    qualityProfiles: [],
-    settings: emptyPlatformSettingsSnapshot
-  };
+  if (!loaderData) return <RouteSkeleton />;
+  const { libraries, qualityProfiles, settings } = loaderData;
   const revalidator = useRevalidator();
   const [formState, setFormState] = useState(settings);
   const [libraryForm, setLibraryForm] = useState<LibraryFormState>(() =>
@@ -312,6 +310,26 @@ export function SettingsOverviewPage() {
       title="Settings overview"
       description="Deluno identity, libraries, automation, and quality policy in one workspace while the deeper settings areas expand into their own routes."
     >
+      <Card className="settings-panel border-primary/25 bg-primary/5">
+        <CardHeader>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <CardTitle>Beginner setup or advanced control</CardTitle>
+              <CardDescription>
+                Use guided setup when you want Deluno to create the sensible baseline. Use the sections below when you want to tune the generated profile, routing, formats, and automation yourself.
+              </CardDescription>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button asChild>
+                <Link to="/setup-guide">Open guided setup</Link>
+              </Button>
+              <Button variant="secondary" asChild>
+                <Link to="/settings/profiles">Tune advanced quality</Link>
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+      </Card>
 
       <div className="fluid-kpi-grid">
         <KpiCard
@@ -376,7 +394,7 @@ export function SettingsOverviewPage() {
             <OverviewLinkCard
               to="/settings/lists"
               title="Automation"
-              description="Intake sources and recurring behaviours that decide what enters Deluno automatically."
+              description="List sources and recurring behaviours that decide what enters Deluno automatically."
             />
             <OverviewLinkCard
               to="/settings/general"

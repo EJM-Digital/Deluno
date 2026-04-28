@@ -8,6 +8,7 @@ public static class FilesystemServiceCollectionExtensions
     public static IServiceCollection AddDelunoFilesystemModule(this IServiceCollection services)
     {
         services.AddSingleton<IExistingLibraryImportService, ExistingLibraryImportService>();
+        services.AddSingleton<IMediaProbeService, FfprobeMediaProbeService>();
         services.AddScoped<IImportPipelineService, ImportPipelineService>();
         return services;
     }

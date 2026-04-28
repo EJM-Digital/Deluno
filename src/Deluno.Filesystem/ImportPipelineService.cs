@@ -17,7 +17,8 @@ public sealed class ImportPipelineService(
     IPlatformSettingsRepository platformRepository,
     IMovieCatalogRepository movieCatalogRepository,
     ISeriesCatalogRepository seriesCatalogRepository,
-    IActivityFeedRepository activityFeedRepository)
+    IActivityFeedRepository activityFeedRepository,
+    IMediaProbeService mediaProbeService)
     : IImportPipelineService
 {
     private static readonly HashSet<string> SupportedVideoExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -29,14 +30,15 @@ public sealed class ImportPipelineService(
     {
         var settings = await platformRepository.GetAsync(cancellationToken);
         var rules = await platformRepository.ListDestinationRulesAsync(cancellationToken);
-        return ResolveImportPreview(request, settings, rules);
+        var preview = ResolveImportPreview(request, settings, rules);
+        return await EnrichPreviewWithMediaProbeAsync(preview, cancellationToken);
     }
 
     public async Task<ImportPipelineResult> ExecuteAsync(ImportExecuteRequest request, CancellationToken cancellationToken)
     {
         var settings = await platformRepository.GetAsync(cancellationToken);
         var rules = await platformRepository.ListDestinationRulesAsync(cancellationToken);
-        var preview = ResolveImportPreview(request.Preview, settings, rules);
+        var preview = await EnrichPreviewWithMediaProbeAsync(ResolveImportPreview(request.Preview, settings, rules), cancellationToken);
         var mediaType = NormalizeMediaType(request.Preview.MediaType);
         var extension = Path.GetExtension(preview.DestinationPath);
 
@@ -66,6 +68,19 @@ public sealed class ImportPipelineService(
             return Failed(StatusCodes.Status404NotFound, message);
         }
 
+        if (IsSamePath(preview.SourcePath, preview.DestinationPath))
+        {
+            const string message = "The source and destination resolve to the same file. Deluno will not import a file onto itself.";
+            await RecordImportFailureAsync(
+                request,
+                request.Preview,
+                "samePath",
+                message,
+                "Choose a destination root that is separate from the completed download path, or adjust the file name/routing rule.",
+                cancellationToken);
+            return Failed(StatusCodes.Status409Conflict, message);
+        }
+
         if (File.Exists(preview.DestinationPath) && !request.Overwrite)
         {
             const string message = "The destination file already exists. Enable overwrite or choose a different naming/routing rule.";
@@ -77,6 +92,58 @@ public sealed class ImportPipelineService(
                 "Preview the route, confirm the existing file, then enable overwrite only if replacement is intentional.",
                 cancellationToken);
             return Failed(StatusCodes.Status409Conflict, message);
+        }
+
+        if (preview.MediaProbe is { Status: "failed" })
+        {
+            var message = preview.MediaProbe.Message ?? "Media probing failed. Deluno cannot confirm this file is playable.";
+            await RecordImportFailureAsync(
+                request,
+                request.Preview,
+                "mediaProbeFailed",
+                message,
+                "Check whether the file is complete, playable, and readable by ffprobe before importing.",
+                cancellationToken);
+            return Failed(StatusCodes.Status400BadRequest, message);
+        }
+
+        if (preview.MediaProbe is { Status: "succeeded", VideoStreams.Count: 0 })
+        {
+            const string message = "No video stream was detected in this file.";
+            await RecordImportFailureAsync(
+                request,
+                request.Preview,
+                "noVideoStream",
+                message,
+                "Choose a valid video file. Subtitle, sample, archive, or metadata-only files should not be imported.",
+                cancellationToken);
+            return Failed(StatusCodes.Status400BadRequest, message);
+        }
+
+        if (preview.MediaProbe?.DurationSeconds is > 0 and < 120)
+        {
+            const string message = "The detected runtime is under two minutes, so Deluno is treating this as a likely sample.";
+            await RecordImportFailureAsync(
+                request,
+                request.Preview,
+                "likelySample",
+                message,
+                "Import the full release file instead of a sample or trailer.",
+                cancellationToken);
+            return Failed(StatusCodes.Status400BadRequest, message);
+        }
+
+        var replacementRisk = await ValidateReplacementAsync(request, preview, cancellationToken);
+        if (replacementRisk is not null)
+        {
+            await RecordImportFailureAsync(
+                request,
+                request.Preview,
+                "replacementRejected",
+                replacementRisk,
+                "Use force replacement only after confirming the incoming file is intentionally better.",
+                cancellationToken);
+            return Failed(StatusCodes.Status409Conflict, replacementRisk);
         }
 
         var requestedMode = NormalizeTransferMode(request.TransferMode);
@@ -99,11 +166,18 @@ public sealed class ImportPipelineService(
             {
                 if (!preview.HardlinkAvailable)
                 {
+                    const string message = "Hardlinking is not available for these paths. Use copy fallback or choose paths on the same filesystem.";
                     if (!request.AllowCopyFallback)
                     {
-                        return Failed(
-                            StatusCodes.Status400BadRequest,
-                            "Hardlinking is not available for these paths. Use copy fallback or choose paths on the same filesystem.");
+                        RollBackPartialImport(preview.DestinationPath, backupPath);
+                        await RecordImportFailureAsync(
+                            request,
+                            request.Preview,
+                            "hardlinkUnavailable",
+                            message,
+                            "Enable copy fallback or place downloads and the library on the same filesystem so hardlinks can be created.",
+                            cancellationToken);
+                        return Failed(StatusCodes.Status400BadRequest, message);
                     }
 
                     AtomicCopy(preview.SourcePath, preview.DestinationPath, request.Overwrite);
@@ -114,6 +188,14 @@ public sealed class ImportPipelineService(
                 {
                     if (!request.AllowCopyFallback)
                     {
+                        RollBackPartialImport(preview.DestinationPath, backupPath);
+                        await RecordImportFailureAsync(
+                            request,
+                            request.Preview,
+                            "hardlinkFailed",
+                            hardlinkError,
+                            "Enable copy fallback, check filesystem permissions, or import from a path where the OS allows hardlinks.",
+                            cancellationToken);
                         return Failed(StatusCodes.Status400BadRequest, hardlinkError);
                     }
 
@@ -143,6 +225,7 @@ public sealed class ImportPipelineService(
                 preview,
                 mediaType,
                 libraries,
+                settings.UnmonitorWhenCutoffMet,
                 cancellationToken);
 
             await activityFeedRepository.RecordActivityAsync(
@@ -157,7 +240,8 @@ public sealed class ImportPipelineService(
                     usedFallback,
                     catalogUpdated,
                     preview.MatchedRuleId,
-                    preview.MatchedRuleName
+                    preview.MatchedRuleName,
+                    MediaProbe = preview.MediaProbe
                 }),
                 null,
                 mediaType == "tv" ? "series" : "movie",
@@ -211,6 +295,115 @@ public sealed class ImportPipelineService(
     private static ImportPipelineResult Failed(int statusCode, string message)
         => new(false, statusCode, null, message);
 
+    private async Task<ImportPreviewResponse> EnrichPreviewWithMediaProbeAsync(
+        ImportPreviewResponse preview,
+        CancellationToken cancellationToken)
+    {
+        if (!preview.SourceExists || !preview.IsSupportedMediaFile)
+        {
+            return preview;
+        }
+
+        var probe = await mediaProbeService.ProbeAsync(preview.SourcePath, cancellationToken);
+        var warnings = preview.Warnings.ToList();
+        var decisionSteps = preview.DecisionSteps.ToList();
+
+        if (probe.Status == "succeeded")
+        {
+            decisionSteps.Add(BuildProbeDecisionStep(probe));
+            if (probe.VideoStreams.Count == 0)
+            {
+                warnings.Add("ffprobe did not find a video stream in this file.");
+            }
+
+            if (probe.DurationSeconds is > 0 and < 120)
+            {
+                warnings.Add("Detected runtime is under two minutes. This is likely a sample.");
+            }
+        }
+        else if (probe.Status == "unavailable")
+        {
+            warnings.Add(probe.Message ?? "ffprobe is unavailable, so Deluno cannot validate streams before import.");
+            decisionSteps.Add("Probe: ffprobe is unavailable, so stream validation was skipped.");
+        }
+        else
+        {
+            warnings.Add(probe.Message ?? "ffprobe could not parse this file.");
+            decisionSteps.Add("Probe: ffprobe failed to parse the file, so import should be blocked until the file is verified.");
+        }
+
+        return preview with
+        {
+            MediaProbe = probe,
+            Warnings = warnings,
+            DecisionSteps = decisionSteps
+        };
+    }
+
+    private static string BuildProbeDecisionStep(MediaProbeInfo probe)
+    {
+        var duration = probe.DurationSeconds is > 0
+            ? TimeSpan.FromSeconds(probe.DurationSeconds.Value).ToString(@"hh\:mm\:ss")
+            : "unknown runtime";
+        var video = probe.VideoStreams.FirstOrDefault();
+        var videoSummary = video is null
+            ? "no video stream"
+            : $"{video.Codec ?? "unknown codec"} {video.Width?.ToString() ?? "?"}x{video.Height?.ToString() ?? "?"}";
+        return $"Probe: ffprobe detected {duration}, {videoSummary}, {probe.AudioStreams.Count} audio stream(s), and {probe.SubtitleStreams.Count} subtitle stream(s).";
+    }
+
+    private async Task<string?> ValidateReplacementAsync(
+        ImportExecuteRequest request,
+        ImportPreviewResponse preview,
+        CancellationToken cancellationToken)
+    {
+        if (!request.Overwrite || request.ForceReplacement || !File.Exists(preview.DestinationPath))
+        {
+            return null;
+        }
+
+        var incomingProbe = preview.MediaProbe;
+        if (incomingProbe?.Status != "succeeded")
+        {
+            return "Deluno will not replace an existing file until the incoming file is successfully probed.";
+        }
+
+        var existingProbe = await mediaProbeService.ProbeAsync(preview.DestinationPath, cancellationToken);
+        if (existingProbe.Status != "succeeded")
+        {
+            return null;
+        }
+
+        var incomingVideo = incomingProbe.VideoStreams.FirstOrDefault();
+        var existingVideo = existingProbe.VideoStreams.FirstOrDefault();
+        if (incomingVideo is null || existingVideo is null)
+        {
+            return "Deluno will not replace an existing file when either file is missing a video stream.";
+        }
+
+        if ((incomingVideo.Width ?? 0) < (existingVideo.Width ?? 0) ||
+            (incomingVideo.Height ?? 0) < (existingVideo.Height ?? 0))
+        {
+            return $"Replacement blocked: incoming video is {incomingVideo.Width ?? 0}x{incomingVideo.Height ?? 0}, existing video is {existingVideo.Width ?? 0}x{existingVideo.Height ?? 0}.";
+        }
+
+        if (incomingProbe.DurationSeconds is > 0 &&
+            existingProbe.DurationSeconds is > 0 &&
+            incomingProbe.DurationSeconds < existingProbe.DurationSeconds * 0.92)
+        {
+            return "Replacement blocked: incoming runtime is significantly shorter than the existing file.";
+        }
+
+        if (incomingProbe.Bitrate is > 0 &&
+            existingProbe.Bitrate is > 0 &&
+            incomingProbe.Bitrate < existingProbe.Bitrate * 0.65)
+        {
+            return "Replacement blocked: incoming bitrate is substantially lower than the existing file.";
+        }
+
+        return null;
+    }
+
     private static ImportPreviewResponse ResolveImportPreview(
         ImportPreviewRequest request,
         PlatformSettingsSnapshot settings,
@@ -258,6 +451,7 @@ public sealed class ImportPipelineService(
             SourceSizeBytes: sourceSize,
             DestinationSizeBytes: destinationSize,
             IsSupportedMediaFile: isSupportedMediaFile,
+            MediaProbe: null,
             TransferExplanation: BuildTransferExplanation(preferredMode, canHardlink, settings.UseHardlinks),
             Warnings: warnings,
             Explanation: explanation,
@@ -348,6 +542,7 @@ public sealed class ImportPipelineService(
         ImportPreviewResponse preview,
         string mediaType,
         IReadOnlyList<LibraryItem> libraries,
+        bool unmonitorWhenCutoffMet,
         CancellationToken cancellationToken)
     {
         var library = ResolveLibraryForImport(preview.DestinationPath, mediaType, libraries);
@@ -377,6 +572,7 @@ public sealed class ImportPipelineService(
                 decision.CurrentQuality,
                 decision.TargetQuality,
                 decision.QualityCutoffMet,
+                unmonitorWhenCutoffMet,
                 null,
                 cancellationToken);
         }
@@ -390,6 +586,7 @@ public sealed class ImportPipelineService(
             decision.CurrentQuality,
             decision.TargetQuality,
             decision.QualityCutoffMet,
+            unmonitorWhenCutoffMet,
             cancellationToken);
     }
 
@@ -404,8 +601,10 @@ public sealed class ImportPipelineService(
         var warnings = new List<string>();
         if (!isSupportedMediaFile) warnings.Add("This file extension is not configured as an importable video file.");
         if (!sourceExists) warnings.Add("Source file is not visible to Deluno. Check Docker mounts, UNC access, mapped drives, or service account permissions.");
+        if (sourceExists && IsSamePath(sourcePath, destinationPath)) warnings.Add("Source and destination resolve to the same file. Deluno will block this import.");
         if (destinationExists) warnings.Add("Destination already exists. Import will be blocked unless overwrite is enabled.");
         if (!hardlinkAvailable) warnings.Add("Hardlink is unlikely because source and destination appear to be on different filesystems. Copy fallback may be required.");
+        if (sourceExists && IsRecentlyWritten(sourcePath)) warnings.Add("Source was modified recently. If the download client is still writing, import may fail or be incomplete.");
 
         if (Path.GetPathRoot(sourcePath) is { } sourceRoot &&
             Path.GetPathRoot(destinationPath) is { } destinationRoot &&
@@ -415,6 +614,18 @@ public sealed class ImportPipelineService(
         }
 
         return warnings;
+    }
+
+    private static bool IsRecentlyWritten(string sourcePath)
+    {
+        try
+        {
+            return DateTime.UtcNow - File.GetLastWriteTimeUtc(sourcePath) < TimeSpan.FromSeconds(30);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static LibraryItem? ResolveLibraryForImport(
@@ -535,6 +746,21 @@ public sealed class ImportPipelineService(
             var destinationRoot = Path.GetPathRoot(Path.GetFullPath(destinationPath));
             return !string.IsNullOrWhiteSpace(sourceRoot) &&
                    string.Equals(sourceRoot, destinationRoot, StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool IsSamePath(string first, string second)
+    {
+        try
+        {
+            return string.Equals(
+                Path.GetFullPath(first).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                Path.GetFullPath(second).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
         }
         catch
         {

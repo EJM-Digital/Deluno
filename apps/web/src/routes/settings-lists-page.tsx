@@ -17,6 +17,7 @@ import {
 } from "../lib/api";
 import { settingsOverviewLoader } from "./settings-overview-page";
 import { authedFetch } from "../lib/use-auth";
+import { RouteSkeleton } from "../components/shell/skeleton";
 
 const INTAKE_PROVIDER_OPTIONS = [
   { label: "Trakt", value: "trakt" },
@@ -48,12 +49,8 @@ export async function settingsListsLoader(): Promise<SettingsListsLoaderData> {
 
 export function SettingsListsPage() {
   const loaderData = useLoaderData() as SettingsListsLoaderData | undefined;
-  const { intakeSources, libraries, qualityProfiles } = loaderData ?? {
-    libraries: [],
-    qualityProfiles: [],
-    settings: emptyPlatformSettingsSnapshot,
-    intakeSources: []
-  };
+  if (!loaderData) return <RouteSkeleton />;
+  const { intakeSources, libraries, qualityProfiles } = loaderData;
   const revalidator = useRevalidator();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formState, setFormState] = useState<Record<string, IntakeSourceItem>>(
@@ -85,7 +82,7 @@ export function SettingsListsPage() {
       });
 
       if (!response.ok) {
-        throw new Error("Intake source could not be created.");
+        throw new Error("List source could not be created.");
       }
 
       setCreateForm((current) => ({
@@ -93,10 +90,10 @@ export function SettingsListsPage() {
         name: "",
         feedUrl: ""
       }));
-      setMessage("Intake source created.");
+      setMessage("List source created.");
       revalidator.revalidate();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Intake source could not be created.");
+      setMessage(error instanceof Error ? error.message : "List source could not be created.");
     } finally {
       setBusyKey(null);
     }
@@ -128,14 +125,14 @@ export function SettingsListsPage() {
       });
 
       if (!response.ok) {
-        throw new Error("Intake source could not be updated.");
+        throw new Error("List source could not be updated.");
       }
 
       setEditingId(null);
-      setMessage("Intake source updated.");
+      setMessage("List source updated.");
       revalidator.revalidate();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Intake source could not be updated.");
+      setMessage(error instanceof Error ? error.message : "List source could not be updated.");
     } finally {
       setBusyKey(null);
     }
@@ -148,13 +145,13 @@ export function SettingsListsPage() {
     try {
       const response = await authedFetch(`/api/intake-sources/${id}`, { method: "DELETE" });
       if (!response.ok && response.status !== 204) {
-        throw new Error("Intake source could not be removed.");
+        throw new Error("List source could not be removed.");
       }
 
-      setMessage("Intake source removed.");
+      setMessage("List source removed.");
       revalidator.revalidate();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Intake source could not be removed.");
+      setMessage(error instanceof Error ? error.message : "List source could not be removed.");
     } finally {
       setBusyKey(null);
     }
@@ -163,7 +160,7 @@ export function SettingsListsPage() {
   return (
     <SettingsShell
       title="Lists"
-      description="Lists are now a real Deluno intake-source workspace for watchlists, discovery feeds, and automated title additions."
+      description="Configure watchlists, discovery feeds, and automatic title sources without needing to understand provider internals."
     >
       {message ? (
         <div className="density-help rounded-xl border border-hairline bg-surface-1 px-4 py-3 text-muted-foreground">
@@ -171,10 +168,80 @@ export function SettingsListsPage() {
         </div>
       ) : null}
 
-      <div className="settings-split settings-split-content-heavy">
-        <Card className="settings-panel order-2">
+      <div className="settings-split settings-split-config-heavy">
+        <Card className="settings-panel order-2 lg:order-1">
           <CardHeader>
-            <CardTitle>Configured list sources</CardTitle>
+            <CardTitle>Add source</CardTitle>
+            <CardDescription>Define how Deluno should ingest titles from external watchlists and discovery feeds.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form className="space-y-3" onSubmit={handleCreate}>
+              <Field label="Name">
+                <Input
+                  value={createForm.name}
+                  onChange={(event) => setCreateForm((state) => ({ ...state, name: event.target.value }))}
+                />
+              </Field>
+              <Field label="Provider">
+                <PresetField
+                  value={createForm.provider}
+                  onChange={(value) => setCreateForm((state) => ({ ...state, provider: value }))}
+                  options={INTAKE_PROVIDER_OPTIONS}
+                  customLabel="Custom provider"
+                  customPlaceholder="Provider key"
+                />
+              </Field>
+              <Field label="Feed URL / identifier">
+                <Input
+                  value={createForm.feedUrl}
+                  onChange={(event) => setCreateForm((state) => ({ ...state, feedUrl: event.target.value }))}
+                />
+              </Field>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Media type">
+                  <Select
+                    value={createForm.mediaType}
+                    onChange={(value) => setCreateForm((state) => ({ ...state, mediaType: value }))}
+                    options={[
+                      { label: "Movies", value: "movies" },
+                      { label: "TV", value: "tv" }
+                    ]}
+                  />
+                </Field>
+                <Field label="Library default">
+                  <Select
+                    value={createForm.libraryId ?? ""}
+                    onChange={(value) => setCreateForm((state) => ({ ...state, libraryId: value }))}
+                    options={[
+                      { label: "No default library", value: "" },
+                      ...libraries.map((library) => ({ label: library.name, value: library.id }))
+                    ]}
+                  />
+                </Field>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <ToggleField
+                  label="Search on add"
+                  checked={createForm.searchOnAdd}
+                  onChange={(checked) => setCreateForm((state) => ({ ...state, searchOnAdd: checked }))}
+                />
+                <ToggleField
+                  label="Enabled"
+                  checked={createForm.isEnabled}
+                  onChange={(checked) => setCreateForm((state) => ({ ...state, isEnabled: checked }))}
+                />
+              </div>
+              <Button type="submit" disabled={busyKey === "create"}>
+                {busyKey === "create" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+                Add source
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        <Card className="settings-panel order-1 lg:order-2">
+          <CardHeader>
+            <CardTitle>Current sources</CardTitle>
             <CardDescription>Saved watchlists and feed definitions Deluno can manage today.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -338,79 +405,6 @@ export function SettingsListsPage() {
                 description="Add a list source — IMDb, TMDB, Trakt — to auto-populate your libraries."
               />
             )}
-          </CardContent>
-        </Card>
-
-        <Card className="settings-panel order-1">
-          <CardHeader>
-            <CardTitle>Add list source</CardTitle>
-            <CardDescription>Define how Deluno should ingest titles from external watchlists and discovery feeds.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form className="space-y-3" onSubmit={handleCreate}>
-              <Field label="Name">
-                <Input
-                  value={createForm.name}
-                  onChange={(event) => setCreateForm((state) => ({ ...state, name: event.target.value }))}
-                />
-              </Field>
-              <Field label="Provider">
-                <PresetField
-                  value={createForm.provider}
-                  onChange={(value) => setCreateForm((state) => ({ ...state, provider: value }))}
-                  options={INTAKE_PROVIDER_OPTIONS}
-                  customLabel="Custom provider"
-                  customPlaceholder="Provider key"
-                />
-              </Field>
-              <Field label="Feed URL / identifier">
-                <Input
-                  value={createForm.feedUrl}
-                  onChange={(event) => setCreateForm((state) => ({ ...state, feedUrl: event.target.value }))}
-                />
-              </Field>
-              <Field label="Media type">
-                <Select
-                  value={createForm.mediaType}
-                  onChange={(value) => setCreateForm((state) => ({ ...state, mediaType: value }))}
-                  options={[
-                    { label: "Movies", value: "movies" },
-                    { label: "TV", value: "tv" }
-                  ]}
-                />
-              </Field>
-              <Field label="Library default">
-                <Select
-                  value={createForm.libraryId}
-                  onChange={(value) => setCreateForm((state) => ({ ...state, libraryId: value }))}
-                  options={libraries.map((library) => ({ label: library.name, value: library.id }))}
-                />
-              </Field>
-              <Field label="Quality profile default">
-                <Select
-                  value={createForm.qualityProfileId}
-                  onChange={(value) => setCreateForm((state) => ({ ...state, qualityProfileId: value }))}
-                  options={qualityProfiles.map((profile) => ({
-                    label: `${profile.name} (${profile.mediaType})`,
-                    value: profile.id
-                  }))}
-                />
-              </Field>
-              <ToggleField
-                label="Search on add"
-                checked={createForm.searchOnAdd}
-                onChange={(checked) => setCreateForm((state) => ({ ...state, searchOnAdd: checked }))}
-              />
-              <ToggleField
-                label="Enabled"
-                checked={createForm.isEnabled}
-                onChange={(checked) => setCreateForm((state) => ({ ...state, isEnabled: checked }))}
-              />
-              <Button type="submit" disabled={busyKey === "create"}>
-                {busyKey === "create" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-                Add source
-              </Button>
-            </form>
           </CardContent>
         </Card>
       </div>

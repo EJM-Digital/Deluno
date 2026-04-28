@@ -232,34 +232,37 @@ public static class SeriesEndpointRouteBuilderExtensions
                     routing!.Sources,
                     customFormats);
 
+            var bestCandidate = searchPlan.BestCandidate;
             var outcome = configuredSources == 0 || configuredClients == 0
                 ? "blocked"
-                : searchPlan.BestCandidate is null
+                : bestCandidate is null
                     ? "checked"
-                    : "matched";
+                    : IsSafeForAutomaticGrab(bestCandidate)
+                        ? "matched"
+                        : "held";
             DownloadClientGrabResult? grabResult = null;
 
             if (outcome == "matched" && !string.Equals(mode, "preview", StringComparison.OrdinalIgnoreCase))
             {
                 var downloadClient = routing!.DownloadClients.OrderBy(item => item.Priority).First();
-                grabResult = searchPlan.BestCandidate!.DownloadUrl is null
-                    ? new DownloadClientGrabResult(downloadClient.DownloadClientId, searchPlan.BestCandidate.ReleaseName, false, "planned", "No download URL was available.")
+                grabResult = bestCandidate!.DownloadUrl is null
+                    ? new DownloadClientGrabResult(downloadClient.DownloadClientId, bestCandidate.ReleaseName, false, "planned", "No download URL was available.")
                     : await downloadClientGrabService.GrabAsync(
                         downloadClient.DownloadClientId,
                         new DownloadClientGrabRequest(
-                            searchPlan.BestCandidate.ReleaseName,
-                            searchPlan.BestCandidate.DownloadUrl,
+                            bestCandidate.ReleaseName,
+                            bestCandidate.DownloadUrl,
                             "tv",
                             "tv",
-                            searchPlan.BestCandidate.IndexerName),
+                            bestCandidate.IndexerName),
                         cancellationToken);
                 await jobQueueRepository.RecordDownloadDispatchAsync(
                     library.Id,
                     "tv",
                     "series",
                     seriesItem.Id,
-                    searchPlan.BestCandidate!.ReleaseName,
-                    searchPlan.BestCandidate.IndexerName,
+                    bestCandidate!.ReleaseName,
+                    bestCandidate.IndexerName,
                     downloadClient.DownloadClientId,
                     downloadClient.DownloadClientName,
                     grabResult.Status,
@@ -276,8 +279,8 @@ public static class SeriesEndpointRouteBuilderExtensions
                 now,
                 now.AddHours(Math.Max(1, library.RetryDelayHours)),
                 BuildSearchResult(searchPlan, configuredClients),
-                searchPlan.BestCandidate?.ReleaseName,
-                searchPlan.BestCandidate?.IndexerName,
+                bestCandidate?.ReleaseName,
+                bestCandidate?.IndexerName,
                 searchPlan.Candidates.Count == 0 ? null : JsonSerializer.Serialize(searchPlan),
                 cancellationToken);
 
@@ -294,8 +297,8 @@ public static class SeriesEndpointRouteBuilderExtensions
             {
                 outcome,
                 summary = searchPlan.Summary,
-                releaseName = searchPlan.BestCandidate?.ReleaseName,
-                indexerName = searchPlan.BestCandidate?.IndexerName,
+                releaseName = bestCandidate?.ReleaseName,
+                indexerName = bestCandidate?.IndexerName,
                 dispatchStatus = grabResult?.Status,
                 dispatchMessage = grabResult?.Message,
                 candidates = searchPlan.Candidates.Select(candidate => new
@@ -308,7 +311,16 @@ public static class SeriesEndpointRouteBuilderExtensions
                     candidate.Summary,
                     candidate.DownloadUrl,
                     candidate.SizeBytes,
-                    candidate.Seeders
+                    candidate.Seeders,
+                    candidate.DecisionStatus,
+                    candidate.DecisionReasons,
+                    candidate.RiskFlags,
+                    candidate.QualityDelta,
+                    candidate.CustomFormatScore,
+                    candidate.SeederScore,
+                    candidate.SizeScore,
+                    candidate.ReleaseGroup,
+                    candidate.EstimatedBitrateMbps
                 }).ToArray()
             });
         });
@@ -347,6 +359,58 @@ public static class SeriesEndpointRouteBuilderExtensions
             await activityFeedRepository.RecordActivityAsync(
                 "metadata.series.refreshed",
                 $"{item.Title} metadata was refreshed from {match.Provider.ToUpperInvariant()}.",
+                JsonSerializer.Serialize(match),
+                null,
+                "series",
+                item.Id,
+                cancellationToken);
+
+            return updated is null ? Results.NotFound() : Results.Ok(updated);
+        });
+
+        series.MapPost("/{id}/metadata/link", async (
+            string id,
+            MetadataLinkRequest request,
+            HttpContext httpContext,
+            ISeriesCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
+            IMetadataProvider metadataProvider,
+            IActivityFeedRepository activityFeedRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var item = await repository.GetByIdAsync(id, cancellationToken);
+            if (item is null)
+            {
+                return Results.NotFound();
+            }
+
+            if (string.IsNullOrWhiteSpace(request.ProviderId))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["providerId"] = ["Choose the metadata match Deluno should link to this series."]
+                });
+            }
+
+            var matches = await metadataProvider.SearchAsync(
+                new MetadataLookupRequest(item.Title, "tv", item.StartYear, request.ProviderId.Trim()),
+                cancellationToken);
+            var match = matches.FirstOrDefault(match => string.Equals(match.ProviderId, request.ProviderId.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (match is null)
+            {
+                return Results.NotFound(new { message = "The selected metadata match could not be refreshed from the provider." });
+            }
+
+            var updated = await ApplyMetadataAsync(repository, item.Id, match, cancellationToken);
+            await activityFeedRepository.RecordActivityAsync(
+                "metadata.series.linked",
+                $"{item.Title} metadata was linked to {match.Provider.ToUpperInvariant()} item {match.ProviderId}.",
                 JsonSerializer.Serialize(match),
                 null,
                 "series",
@@ -565,22 +629,23 @@ public static class SeriesEndpointRouteBuilderExtensions
                     routing.Sources,
                     customFormats);
 
-                var outcome = searchPlan.BestCandidate is null ? "checked" : "matched";
+                var bestCandidate = searchPlan.BestCandidate;
+                var outcome = bestCandidate is null ? "checked" : IsSafeForAutomaticGrab(bestCandidate) ? "matched" : "held";
 
-                if (searchPlan.BestCandidate is not null)
+                if (outcome == "matched")
                 {
                     matchedCount++;
                     queuedCount++;
-                    var grabResult = searchPlan.BestCandidate.DownloadUrl is null
-                        ? new DownloadClientGrabResult(downloadClient.DownloadClientId, searchPlan.BestCandidate.ReleaseName, false, "planned", "No download URL was available.")
+                    var grabResult = bestCandidate!.DownloadUrl is null
+                        ? new DownloadClientGrabResult(downloadClient.DownloadClientId, bestCandidate.ReleaseName, false, "planned", "No download URL was available.")
                         : await downloadClientGrabService.GrabAsync(
                             downloadClient.DownloadClientId,
                             new DownloadClientGrabRequest(
-                                searchPlan.BestCandidate.ReleaseName,
-                                searchPlan.BestCandidate.DownloadUrl,
+                                bestCandidate.ReleaseName,
+                                bestCandidate.DownloadUrl,
                                 "tv",
                                 "tv",
-                                searchPlan.BestCandidate.IndexerName),
+                                bestCandidate.IndexerName),
                             cancellationToken);
                     if (grabResult.Status == "sent")
                     {
@@ -600,8 +665,8 @@ public static class SeriesEndpointRouteBuilderExtensions
                         "tv",
                         "episode",
                         episode.EpisodeId,
-                        searchPlan.BestCandidate.ReleaseName,
-                        searchPlan.BestCandidate.IndexerName,
+                        bestCandidate.ReleaseName,
+                        bestCandidate.IndexerName,
                         downloadClient.DownloadClientId,
                         downloadClient.DownloadClientName,
                         grabResult.Status,
@@ -743,6 +808,18 @@ public static class SeriesEndpointRouteBuilderExtensions
                     request.IndexerName?.Trim()),
                 cancellationToken);
 
+            var forceOverride = request.Force == true;
+            var overrideReason = string.IsNullOrWhiteSpace(request.OverrideReason)
+                ? "User manually forced this release from search results."
+                : request.OverrideReason.Trim();
+            var auditPayload = new
+            {
+                selectedRelease = request,
+                forceOverride,
+                overrideReason = forceOverride ? overrideReason : null,
+                grabResult
+            };
+
             await jobQueueRepository.RecordDownloadDispatchAsync(
                 library.Id,
                 "tv",
@@ -753,7 +830,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                 downloadClient.DownloadClientId,
                 downloadClient.DownloadClientName,
                 grabResult.Status,
-                JsonSerializer.Serialize(new { selectedRelease = request, grabResult }),
+                JsonSerializer.Serialize(auditPayload),
                 cancellationToken);
 
             var now = timeProvider.GetUtcNow();
@@ -761,20 +838,22 @@ public static class SeriesEndpointRouteBuilderExtensions
                 seriesItem.Id,
                 null,
                 library.Id,
-                "manual-grab",
+                forceOverride ? "manual-force-grab" : "manual-grab",
                 grabResult.Status == "sent" ? "matched" : "checked",
                 now,
                 now.AddHours(Math.Max(1, library.RetryDelayHours)),
-                grabResult.Message,
+                forceOverride ? $"{grabResult.Message} Force override: {overrideReason}" : grabResult.Message,
                 request.ReleaseName.Trim(),
                 request.IndexerName?.Trim(),
-                JsonSerializer.Serialize(new { selectedRelease = request, grabResult }),
+                JsonSerializer.Serialize(auditPayload),
                 cancellationToken);
 
             await activityFeedRepository.RecordActivityAsync(
-                "series.release.grabbed",
-                $"{seriesItem.Title} release was manually selected and sent to {downloadClient.DownloadClientName}.",
-                JsonSerializer.Serialize(new { selectedRelease = request, grabResult }),
+                forceOverride ? "series.release.force-grabbed" : "series.release.grabbed",
+                forceOverride
+                    ? $"{seriesItem.Title} release was force grabbed and sent to {downloadClient.DownloadClientName}."
+                    : $"{seriesItem.Title} release was manually selected and sent to {downloadClient.DownloadClientName}.",
+                JsonSerializer.Serialize(auditPayload),
                 null,
                 "series",
                 seriesItem.Id,
@@ -784,6 +863,8 @@ public static class SeriesEndpointRouteBuilderExtensions
             {
                 releaseName = request.ReleaseName.Trim(),
                 indexerName = request.IndexerName?.Trim(),
+                forceOverride,
+                overrideReason = forceOverride ? overrideReason : null,
                 dispatchStatus = grabResult.Status,
                 dispatchMessage = grabResult.Message
             });
@@ -901,29 +982,30 @@ public static class SeriesEndpointRouteBuilderExtensions
                 routing!.Sources,
                 customFormats);
 
-            var outcome = searchPlan.BestCandidate is null ? "checked" : "matched";
+            var bestCandidate = searchPlan.BestCandidate;
+            var outcome = bestCandidate is null ? "checked" : IsSafeForAutomaticGrab(bestCandidate) ? "matched" : "held";
             DownloadClientGrabResult? grabResult = null;
-            if (searchPlan.BestCandidate is not null)
+            if (outcome == "matched")
             {
                 var downloadClient = routing.DownloadClients.OrderBy(item => item.Priority).First();
-                grabResult = searchPlan.BestCandidate.DownloadUrl is null
-                    ? new DownloadClientGrabResult(downloadClient.DownloadClientId, searchPlan.BestCandidate.ReleaseName, false, "planned", "No download URL was available.")
+                grabResult = bestCandidate!.DownloadUrl is null
+                    ? new DownloadClientGrabResult(downloadClient.DownloadClientId, bestCandidate.ReleaseName, false, "planned", "No download URL was available.")
                     : await downloadClientGrabService.GrabAsync(
                         downloadClient.DownloadClientId,
                         new DownloadClientGrabRequest(
-                            searchPlan.BestCandidate.ReleaseName,
-                            searchPlan.BestCandidate.DownloadUrl,
+                            bestCandidate.ReleaseName,
+                            bestCandidate.DownloadUrl,
                             "tv",
                             "tv",
-                            searchPlan.BestCandidate.IndexerName),
+                            bestCandidate.IndexerName),
                         cancellationToken);
                 await jobQueueRepository.RecordDownloadDispatchAsync(
                     library.Id,
                     "tv",
                     "season",
                     $"{seriesItem.Id}:season:{seasonNumber}",
-                    searchPlan.BestCandidate.ReleaseName,
-                    searchPlan.BestCandidate.IndexerName,
+                    bestCandidate.ReleaseName,
+                    bestCandidate.IndexerName,
                     downloadClient.DownloadClientId,
                     downloadClient.DownloadClientName,
                     grabResult.Status,
@@ -1122,8 +1204,18 @@ public static class SeriesEndpointRouteBuilderExtensions
             return plan.Summary;
         }
 
+        if (!IsSafeForAutomaticGrab(plan.BestCandidate))
+        {
+            return $"{plan.Summary} Held for manual review because the best candidate is {plan.BestCandidate.DecisionStatus}.";
+        }
+
         return $"{plan.Summary} Ready to send to {configuredClients} download client{(configuredClients == 1 ? "" : "s")}.";
     }
+
+    private static bool IsSafeForAutomaticGrab(MediaSearchCandidate candidate)
+        => string.Equals(candidate.DecisionStatus, "preferred", StringComparison.OrdinalIgnoreCase) &&
+           candidate.MeetsCutoff &&
+           candidate.QualityDelta >= 0;
 
     private static string BuildEpisodeSearchTitle(string title, int seasonNumber, int episodeNumber)
     {
@@ -1188,11 +1280,15 @@ public static class SeriesEndpointRouteBuilderExtensions
     private sealed record ReleaseGrabRequest(
         string ReleaseName,
         string? IndexerName,
-        string? DownloadUrl);
+        string? DownloadUrl,
+        bool? Force,
+        string? OverrideReason);
 
     private sealed record MetadataRefreshJobsRequest(
         bool ForceAll,
         int? Take);
+
+    private sealed record MetadataLinkRequest(string? ProviderId);
 
     private sealed record MetadataRefreshJobsResponse(
         int EnqueuedCount,

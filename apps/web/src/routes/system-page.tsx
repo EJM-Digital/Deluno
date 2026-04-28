@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useLoaderData, useLocation } from "react-router-dom";
+import { useLoaderData, useLocation, useRevalidator } from "react-router-dom";
 import {
   Activity,
   BellRing,
@@ -9,6 +9,7 @@ import {
   RotateCcw,
   Server,
   ShieldCheck,
+  TimerReset,
   Upload,
   Wifi,
   WifiOff
@@ -28,8 +29,11 @@ import {
   type DownloadClientItem,
   type IndexerItem,
   type JobQueueItem,
+  type LibraryAutomationStateItem,
   type PlatformSettingsSnapshot,
   type RestorePreviewResponse,
+  type SearchCycleRunItem,
+  type SearchRetryWindowItem,
   type UpdateStatusResponse
 } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
@@ -37,6 +41,7 @@ import { densityDisplayName } from "../lib/use-density";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { PathInput } from "../components/ui/path-input";
+import { RouteSkeleton } from "../components/shell/skeleton";
 
 interface SystemLoaderData {
   activity: ActivityEventItem[];
@@ -47,10 +52,13 @@ interface SystemLoaderData {
   backups: BackupItem[];
   backupSettings: BackupSettingsSnapshot;
   updateStatus: UpdateStatusResponse;
+  automation: LibraryAutomationStateItem[];
+  searchCycles: SearchCycleRunItem[];
+  retryWindows: SearchRetryWindowItem[];
 }
 
 export async function systemLoader(): Promise<SystemLoaderData> {
-  const [settings, jobs, activity, indexers, downloadClients, backups, backupSettings, updateStatus] = await Promise.all([
+  const [settings, jobs, activity, indexers, downloadClients, backups, backupSettings, updateStatus, automation, searchCycles, retryWindows] = await Promise.all([
     fetchJson<PlatformSettingsSnapshot>("/api/settings"),
     fetchJson<JobQueueItem[]>("/api/jobs"),
     fetchJson<ActivityEventItem[]>("/api/activity?take=200"),
@@ -58,40 +66,21 @@ export async function systemLoader(): Promise<SystemLoaderData> {
     fetchJson<DownloadClientItem[]>("/api/download-clients"),
     fetchJson<BackupItem[]>("/api/backups"),
     fetchJson<BackupSettingsSnapshot>("/api/backups/settings"),
-    fetchJson<UpdateStatusResponse>("/api/updates/status")
+    fetchJson<UpdateStatusResponse>("/api/updates/status"),
+    fetchJson<LibraryAutomationStateItem[]>("/api/library-automation"),
+    fetchJson<SearchCycleRunItem[]>("/api/search-cycles?take=12"),
+    fetchJson<SearchRetryWindowItem[]>("/api/search-retry-windows?take=12")
   ]);
 
-  return { activity, backupSettings, backups, downloadClients, indexers, jobs, settings, updateStatus };
+  return { activity, automation, backupSettings, backups, downloadClients, indexers, jobs, retryWindows, searchCycles, settings, updateStatus };
 }
 
 export function SystemPage() {
   const location = useLocation();
+  const revalidator = useRevalidator();
   const loaderData = useLoaderData() as SystemLoaderData | undefined;
-  const { activity, backupSettings, backups, downloadClients, indexers, jobs, settings, updateStatus } = loaderData ?? {
-    activity: [],
-    backupSettings: {
-      enabled: false,
-      frequency: "daily",
-      timeOfDay: "03:00",
-      retentionCount: 7,
-      backupFolder: "",
-      lastRunUtc: null,
-      nextRunUtc: null
-    },
-    backups: [],
-    downloadClients: [],
-    indexers: [],
-    jobs: [],
-    settings: emptyPlatformSettingsSnapshot,
-    updateStatus: {
-      currentVersion: "0.0.0",
-      channel: "manual",
-      updateAvailable: false,
-      latestVersion: null,
-      message: "Update status unavailable.",
-      notes: []
-    }
-  };
+  if (!loaderData) return <RouteSkeleton />;
+  const { activity, automation, backupSettings, backups, downloadClients, indexers, jobs, retryWindows, searchCycles, settings, updateStatus } = loaderData;
   const activeJobs = jobs.filter((job) => job.status === "running" || job.status === "queued").length;
   const healthyIndexers = indexers.filter((item) => item.healthStatus === "healthy").length;
   const healthyClients = downloadClients.filter((item) => item.healthStatus === "healthy").length;
@@ -164,6 +153,10 @@ export function SystemPage() {
         ))}
       </CardContent>
     </Card>
+  );
+
+  const automationCard = (
+    <AutomationCard automation={automation} cycles={searchCycles} retryWindows={retryWindows} onRefresh={() => revalidator.revalidate()} />
   );
 
   const jobsCard = (
@@ -293,6 +286,7 @@ export function SystemPage() {
           <OperationsFlowCard />
           <BackupCard initialBackups={backups} initialSettings={backupSettings} />
           <UpgradeCard status={updateStatus} />
+          {automationCard}
           {/* Runtime posture */}
           <Card>
             <CardHeader>
@@ -349,6 +343,131 @@ export function SystemPage() {
         </div>
       </div>
     </SystemShell>
+  );
+}
+
+function AutomationCard({
+  automation,
+  cycles,
+  retryWindows,
+  onRefresh
+}: {
+  automation: LibraryAutomationStateItem[];
+  cycles: SearchCycleRunItem[];
+  retryWindows: SearchRetryWindowItem[];
+  onRefresh: () => void;
+}) {
+  const [busyLibraryId, setBusyLibraryId] = useState<string | null>(null);
+  const running = automation.filter((item) => item.status === "running" || item.status === "queued" || item.searchRequested).length;
+  const latest = cycles[0] ?? null;
+  const waiting = retryWindows.filter((item) => new Date(item.nextEligibleUtc).getTime() > Date.now()).length;
+
+  async function runNow(libraryId: string) {
+    setBusyLibraryId(libraryId);
+    try {
+      const response = await authedFetch(`/api/libraries/${libraryId}/search-now`, { method: "POST" });
+      if (!response.ok) {
+        throw new Error(await response.text().catch(() => "Search could not be requested."));
+      }
+      onRefresh();
+    } finally {
+      setBusyLibraryId(null);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <TimerReset className="h-4 w-4 text-primary" />
+          Search automation
+        </CardTitle>
+        <CardDescription>
+          Scheduled missing and upgrade searches with retry-window visibility.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-3 gap-2">
+          <AutomationMetric label="Active" value={running} />
+          <AutomationMetric label="Runs" value={cycles.length} />
+          <AutomationMetric label="Waiting" value={waiting} />
+        </div>
+
+        {latest ? (
+          <div className="rounded-xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.7)]">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-foreground">{latest.libraryName}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {latest.triggerKind} / {formatWhen(latest.startedUtc)}
+                </p>
+              </div>
+              <JobStatusBadge status={latest.status} />
+            </div>
+            <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+              <AutomationMetric label="Checked" value={latest.plannedCount} compact />
+              <AutomationMetric label="Sent" value={latest.queuedCount} compact />
+              <AutomationMetric label="Retry" value={latest.skippedCount} compact />
+            </div>
+          </div>
+        ) : (
+          <p className="rounded-xl border border-hairline bg-surface-1 p-4 text-sm text-muted-foreground">
+            No search cycles have run yet. Once libraries are enabled, Deluno will show every scheduled and manual pass here.
+          </p>
+        )}
+
+        {retryWindows.length ? (
+          <div className="space-y-2">
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Next retry windows</p>
+            {retryWindows.slice(0, 4).map((item) => (
+              <div key={`${item.entityType}:${item.entityId}:${item.actionKind}`} className="flex items-center justify-between gap-3 rounded-lg border border-hairline bg-background/40 px-3 py-2">
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-semibold text-foreground">{item.mediaType} / {item.actionKind}</p>
+                  <p className="text-[11px] text-muted-foreground">{item.lastResult || "Last search recorded"}</p>
+                </div>
+                <span className="font-mono text-[11px] text-muted-foreground">{formatWhen(item.nextEligibleUtc)}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {automation.length ? (
+          <div className="space-y-2">
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Libraries</p>
+            {automation.slice(0, 5).map((item) => (
+              <div key={item.libraryId} className="flex items-center justify-between gap-3 rounded-lg border border-hairline bg-background/40 px-3 py-2">
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-semibold text-foreground">{item.libraryName}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {item.status}{item.nextSearchUtc ? ` / next ${formatWhen(item.nextSearchUtc)}` : ""}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 shrink-0"
+                  disabled={busyLibraryId !== null}
+                  onClick={() => void runNow(item.libraryId)}
+                >
+                  {busyLibraryId === item.libraryId ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : null}
+                  Run now
+                </Button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function AutomationMetric({ label, value, compact = false }: { label: string; value: number | string; compact?: boolean }) {
+  return (
+    <div className="rounded-lg border border-hairline bg-background/35 px-3 py-2">
+      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
+      <p className={`${compact ? "text-lg" : "text-xl"} tabular font-display font-semibold text-foreground`}>{value}</p>
+    </div>
   );
 }
 
@@ -462,6 +581,9 @@ function BackupCard({
 
   async function restoreBackup() {
     if (!restoreFile) return;
+    if (!window.confirm("Restore this backup now? Deluno data files will be replaced and you should restart Deluno immediately after restore.")) {
+      return;
+    }
     setBusy("restore");
     setMessage(null);
     const formData = new FormData();
@@ -550,7 +672,7 @@ function BackupCard({
           </div>
           <div className="mt-3 flex items-center justify-between gap-3">
             <p className="text-xs text-muted-foreground">
-              Next run: {settings.nextRunUtc ? formatWhen(settings.nextRunUtc) : "Not scheduled"}
+              Next run: {settings.nextRunUtc ? formatWhen(settings.nextRunUtc) : "Not scheduled"} · Retains latest {settings.retentionCount} backup{settings.retentionCount === 1 ? "" : "s"}
             </p>
             <Button type="button" size="sm" variant="outline" onClick={() => void saveSchedule()} disabled={busy === "schedule"}>
               {busy === "schedule" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
@@ -563,6 +685,9 @@ function BackupCard({
           <p className="text-sm font-semibold text-foreground">Restore from backup</p>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
             Restore replaces Deluno data files. Create a backup first and restart Deluno after restore.
+          </p>
+          <p className="mt-2 rounded-lg border border-warning/35 bg-warning/10 px-3 py-2 text-xs leading-relaxed text-warning">
+            Restore is intentionally a two-step flow: preview first, then restore only after Deluno confirms the archive contains a valid manifest.
           </p>
           <Input
             className="mt-3"

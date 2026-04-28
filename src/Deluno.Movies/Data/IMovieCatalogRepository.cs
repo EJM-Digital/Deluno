@@ -38,6 +38,11 @@ public interface IMovieCatalogRepository
         bool ignoreRetryWindow,
         CancellationToken cancellationToken);
 
+    Task<int> CountRetryDelayedWantedAsync(
+        string libraryId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken);
+
     Task EnsureWantedStateAsync(
         string movieId,
         string libraryId,
@@ -58,6 +63,7 @@ public interface IMovieCatalogRepository
         string? currentQuality,
         string? targetQuality,
         bool qualityCutoffMet,
+        bool unmonitorWhenCutoffMet,
         CancellationToken cancellationToken);
 
     Task RecordSearchAttemptAsync(

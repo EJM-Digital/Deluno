@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
-import { FolderOpen, Link2, LoaderCircle, Sparkles, Trash2 } from "lucide-react";
+import { FolderOpen, Link2, LoaderCircle, Sparkles, Trash2, Workflow } from "lucide-react";
 import { SettingsShell } from "../components/app/settings-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
@@ -9,6 +9,7 @@ import { NamingFormatField } from "../components/app/naming-format-field";
 import { settingsOverviewLoader } from "./settings-overview-page";
 import { emptyPlatformSettingsSnapshot, type LibraryItem, type PlatformSettingsSnapshot, type QualityProfileItem } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
+import { RouteSkeleton } from "../components/shell/skeleton";
 
 interface SettingsOverviewLoaderData {
   libraries: LibraryItem[];
@@ -20,14 +21,12 @@ export const settingsMediaManagementLoader = settingsOverviewLoader;
 
 export function SettingsMediaManagementPage() {
   const loaderData = useLoaderData() as SettingsOverviewLoaderData | undefined;
-  const { libraries, settings } = loaderData ?? {
-    libraries: [],
-    qualityProfiles: [],
-    settings: emptyPlatformSettingsSnapshot
-  };
+  if (!loaderData) return <RouteSkeleton />;
+  const { libraries, settings } = loaderData;
   const revalidator = useRevalidator();
   const [formState, setFormState] = useState(settings);
   const [busy, setBusy] = useState(false);
+  const [workflowBusyKey, setWorkflowBusyKey] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   async function handleSave(event: FormEvent<HTMLFormElement>) {
@@ -52,6 +51,33 @@ export function SettingsMediaManagementPage() {
       setMessage(error instanceof Error ? error.message : "Media-management settings could not be saved.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleSaveWorkflow(
+    library: LibraryItem,
+    workflow: Pick<LibraryItem, "importWorkflow" | "processorName" | "processorOutputPath" | "processorTimeoutMinutes" | "processorFailureMode">
+  ) {
+    setWorkflowBusyKey(library.id);
+    setMessage(null);
+
+    try {
+      const response = await authedFetch(`/api/libraries/${library.id}/workflow`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(workflow)
+      });
+
+      if (!response.ok) {
+        throw new Error("Import workflow could not be saved.");
+      }
+
+      setMessage(`Import workflow saved for ${library.name}.`);
+      revalidator.revalidate();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Import workflow could not be saved.");
+    } finally {
+      setWorkflowBusyKey(null);
     }
   }
 
@@ -169,6 +195,14 @@ export function SettingsMediaManagementPage() {
                     setFormState((current) => ({ ...current, removeCompletedDownloads: checked }))
                   }
                 />
+                <ToggleField
+                  label="Unmonitor at cutoff"
+                  description="Stop watching a title after import reaches the selected cutoff quality."
+                  checked={formState.unmonitorWhenCutoffMet}
+                  onChange={(checked) =>
+                    setFormState((current) => ({ ...current, unmonitorWhenCutoffMet: checked }))
+                  }
+                />
                   </div>
                 </div>
               </div>
@@ -183,25 +217,142 @@ export function SettingsMediaManagementPage() {
 
         <Card className="settings-panel">
           <CardHeader>
-            <CardTitle>Library impact</CardTitle>
-            <CardDescription>Active libraries that will inherit these rules.</CardDescription>
+            <CardTitle>Import workflow by library</CardTitle>
+            <CardDescription>
+              Choose whether a finished download imports immediately or waits for a cleaner processor output first.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
+            <div className="rounded-2xl border border-hairline bg-surface-1 p-[var(--tile-pad)]">
+              <SectionIntro
+                icon={Workflow}
+                title="Standard or refined"
+                copy="Standard is the Radarr/Sonarr-style path. Refine before import is for workflows where another app cleans audio, subtitles, or tracks before Deluno imports and renames the finished file."
+              />
+            </div>
             {libraries.map((library) => (
-              <div key={library.id} className="rounded-xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.8)]">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="font-display text-base font-semibold text-foreground">{library.name}</p>
-                  <span className="rounded-full border border-hairline px-2.5 py-1 text-xs text-muted-foreground">
-                    {library.mediaType === "tv" ? "TV" : "Movies"}
-                  </span>
-                </div>
-                <p className="density-help mt-2 text-muted-foreground">{library.rootPath}</p>
-              </div>
+              <LibraryWorkflowCard
+                key={library.id}
+                library={library}
+                busy={workflowBusyKey === library.id}
+                onSave={handleSaveWorkflow}
+              />
             ))}
           </CardContent>
         </Card>
       </div>
     </SettingsShell>
+  );
+}
+
+function LibraryWorkflowCard({
+  busy,
+  library,
+  onSave
+}: {
+  busy: boolean;
+  library: LibraryItem;
+  onSave: (
+    library: LibraryItem,
+    workflow: Pick<LibraryItem, "importWorkflow" | "processorName" | "processorOutputPath" | "processorTimeoutMinutes" | "processorFailureMode">
+  ) => Promise<void>;
+}) {
+  const [state, setState] = useState({
+    importWorkflow: library.importWorkflow ?? "standard",
+    processorName: library.processorName ?? "",
+    processorOutputPath: library.processorOutputPath ?? "",
+    processorTimeoutMinutes: library.processorTimeoutMinutes || 360,
+    processorFailureMode: library.processorFailureMode ?? "block"
+  });
+  const isRefined = state.importWorkflow === "refine-before-import";
+
+  return (
+    <div className="rounded-xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.8)]">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-display text-base font-semibold text-foreground">{library.name}</p>
+          <p className="density-help mt-1 text-muted-foreground">{library.rootPath}</p>
+        </div>
+        <span className="rounded-full border border-hairline px-2.5 py-1 text-xs text-muted-foreground">
+          {library.mediaType === "tv" ? "TV" : "Movies"}
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-3">
+        <Field label="Workflow" description="Pick how Deluno should treat completed downloads for this library.">
+          <select
+            value={state.importWorkflow}
+            onChange={(event) => setState((current) => ({ ...current, importWorkflow: event.target.value }))}
+            className="density-control-text h-[var(--control-height)] w-full rounded-xl border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none"
+          >
+            <option value="standard">Standard import</option>
+            <option value="refine-before-import">Refine before import</option>
+          </select>
+        </Field>
+
+        {isRefined ? (
+          <>
+            <Field label="Processor" description="A friendly name for the cleaner app, for example External Refiner.">
+              <input
+                value={state.processorName}
+                onChange={(event) => setState((current) => ({ ...current, processorName: event.target.value }))}
+                className="density-control-text h-[var(--control-height)] w-full rounded-xl border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none"
+                placeholder="External Refiner"
+              />
+            </Field>
+            <Field label="Clean output folder" description="Deluno watches this folder for the processed file and imports that instead of the original download.">
+              <PathInput
+                value={state.processorOutputPath}
+                onChange={(nextValue) => setState((current) => ({ ...current, processorOutputPath: nextValue }))}
+                browseTitle="Choose processor output folder"
+              />
+            </Field>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Wait time" description="How long Deluno should wait before asking for review.">
+                <select
+                  value={String(state.processorTimeoutMinutes)}
+                  onChange={(event) => setState((current) => ({ ...current, processorTimeoutMinutes: Number(event.target.value) }))}
+                  className="density-control-text h-[var(--control-height)] w-full rounded-xl border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none"
+                >
+                  <option value="60">1 hour</option>
+                  <option value="180">3 hours</option>
+                  <option value="360">6 hours</option>
+                  <option value="720">12 hours</option>
+                  <option value="1440">24 hours</option>
+                </select>
+              </Field>
+              <Field label="If cleaning fails" description="Choose the safe fallback for failed processing jobs.">
+                <select
+                  value={state.processorFailureMode}
+                  onChange={(event) => setState((current) => ({ ...current, processorFailureMode: event.target.value }))}
+                  className="density-control-text h-[var(--control-height)] w-full rounded-xl border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none"
+                >
+                  <option value="block">Stop and ask me</option>
+                  <option value="manual-review">Send to manual review</option>
+                  <option value="import-original">Import the original file</option>
+                </select>
+              </Field>
+            </div>
+          </>
+        ) : (
+          <p className="rounded-xl border border-hairline bg-background/30 px-3 py-2.5 text-sm text-muted-foreground">
+            Completed downloads will go straight through Deluno&apos;s destination resolver, import mover, rename rules, and metadata refresh.
+          </p>
+        )}
+      </div>
+
+      <div className="mt-4 flex justify-end">
+        <Button
+          type="button"
+          size="sm"
+          disabled={busy || (isRefined && !state.processorOutputPath.trim())}
+          onClick={() => void onSave(library, state)}
+        >
+          {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+          Save workflow
+        </Button>
+      </div>
+    </div>
   );
 }
 

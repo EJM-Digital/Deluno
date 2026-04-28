@@ -12,6 +12,7 @@ using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Realtime;
 using System.Net.Http;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -24,6 +25,7 @@ public static class PlatformEndpointRouteBuilderExtensions
     {
         var settings = endpoints.MapGroup("/api/settings");
         var auth = endpoints.MapGroup("/api/auth");
+        var apiKeys = endpoints.MapGroup("/api/api-keys");
 
         settings.MapGet(string.Empty, async (IPlatformSettingsRepository repository, CancellationToken cancellationToken) =>
         {
@@ -63,6 +65,7 @@ public static class PlatformEndpointRouteBuilderExtensions
         var libraryViews = endpoints.MapGroup("/api/library-views");
         auth.MapPost("/login", async (
             LoginRequest request,
+            IDataProtectionProvider dataProtectionProvider,
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
@@ -82,7 +85,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             }
 
             return Results.Ok(new LoginResponse(
-                AccessToken: UserAuthorization.IssueAccessToken(login),
+                AccessToken: UserAuthorization.IssueAccessToken(dataProtectionProvider, login),
                 User: login));
         });
 
@@ -96,6 +99,7 @@ public static class PlatformEndpointRouteBuilderExtensions
 
         auth.MapPost("/bootstrap", async (
             BootstrapUserRequest request,
+            IDataProtectionProvider dataProtectionProvider,
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
@@ -115,7 +119,7 @@ public static class PlatformEndpointRouteBuilderExtensions
 
             var created = await repository.BootstrapUserAsync(request, cancellationToken);
             return Results.Ok(new LoginResponse(
-                AccessToken: UserAuthorization.IssueAccessToken(created),
+                AccessToken: UserAuthorization.IssueAccessToken(dataProtectionProvider, created),
                 User: created));
         });
 
@@ -157,6 +161,98 @@ public static class PlatformEndpointRouteBuilderExtensions
             }
 
             return Results.NoContent();
+        });
+
+        apiKeys.MapGet(string.Empty, async (
+            HttpContext httpContext,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var items = await repository.ListApiKeysAsync(cancellationToken);
+            return Results.Ok(items);
+        });
+
+        apiKeys.MapPost(string.Empty, async (
+            HttpContext httpContext,
+            CreateApiKeyRequest request,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Name))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["name"] = ["Give this API key a clear name."]
+                });
+            }
+
+            var created = await repository.CreateApiKeyAsync(request, cancellationToken);
+            return Results.Ok(created);
+        });
+
+        apiKeys.MapDelete("{id}", async (
+            string id,
+            HttpContext httpContext,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var removed = await repository.DeleteApiKeyAsync(id, cancellationToken);
+            return removed ? Results.NoContent() : Results.NotFound();
+        });
+
+        var setup = endpoints.MapGroup("/api/setup");
+
+        setup.MapPost("/completed", async (
+            HttpContext httpContext,
+            SetupCompletedRequest request,
+            IPlatformSettingsRepository repository,
+            IActivityFeedRepository activityFeedRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var details = JsonSerializer.Serialize(new
+            {
+                libraries = request.Libraries ?? [],
+                qualityProfiles = request.QualityProfiles ?? [],
+                customFormatCount = request.CustomFormatCount,
+                indexerName = request.IndexerName,
+                clientName = request.ClientName,
+                firstTitle = request.FirstTitle
+            });
+
+            var activity = await activityFeedRepository.RecordActivityAsync(
+                "system",
+                "Guided setup completed.",
+                details,
+                null,
+                "setup",
+                "guided",
+                cancellationToken);
+
+            return Results.Ok(activity);
         });
 
         qualityProfiles.MapGet(string.Empty, async (IPlatformSettingsRepository repository, CancellationToken cancellationToken) =>
@@ -792,6 +888,29 @@ public static class PlatformEndpointRouteBuilderExtensions
             return Results.Ok(item);
         });
 
+        endpoints.MapPut("/api/libraries/{id}/workflow", async (
+            string id,
+            HttpContext httpContext,
+            UpdateLibraryWorkflowRequest request,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var errors = ValidateLibraryWorkflow(request);
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            var item = await repository.UpdateLibraryWorkflowAsync(id, request, cancellationToken);
+            return item is null ? Results.NotFound() : Results.Ok(item);
+        });
+
         endpoints.MapPost("/api/libraries/{id}/search-now", async (
             string id,
             HttpContext httpContext,
@@ -897,6 +1016,46 @@ public static class PlatformEndpointRouteBuilderExtensions
             return Results.Ok(item);
         });
 
+        indexers.MapPost("test", async (
+            HttpContext httpContext,
+            CreateIndexerRequest request,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var errors = ValidateIndexer(request);
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            var draft = new IndexerItem(
+                "draft",
+                request.Name?.Trim() ?? "Draft indexer",
+                NormalizeIndexerProtocol(request.Protocol),
+                NormalizeIndexerPrivacy(request.Privacy),
+                request.BaseUrl?.Trim() ?? string.Empty,
+                request.ApiKey,
+                request.Priority ?? 10,
+                request.Categories?.Trim() ?? string.Empty,
+                request.Tags?.Trim() ?? string.Empty,
+                NormalizeMediaScope(request.MediaScope),
+                request.IsEnabled,
+                "testing",
+                null,
+                now,
+                now);
+
+            var (healthStatus, message) = await TestIndexerAsync(draft, cancellationToken);
+            return Results.Ok(new { healthStatus, message });
+        });
+
         indexers.MapDelete("{id}", async (
             string id,
             HttpContext httpContext,
@@ -976,6 +1135,48 @@ public static class PlatformEndpointRouteBuilderExtensions
 
             var item = await repository.CreateDownloadClientAsync(request, cancellationToken);
             return Results.Ok(item);
+        });
+
+        downloadClients.MapPost("test", async (
+            HttpContext httpContext,
+            CreateDownloadClientRequest request,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var errors = ValidateDownloadClient(request);
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            var draft = new DownloadClientItem(
+                "draft",
+                request.Name?.Trim() ?? "Draft download client",
+                NormalizeDownloadProtocol(request.Protocol),
+                string.IsNullOrWhiteSpace(request.Host) ? null : request.Host.Trim(),
+                request.Port,
+                string.IsNullOrWhiteSpace(request.Username) ? null : request.Username.Trim(),
+                string.IsNullOrWhiteSpace(request.Password) ? null : request.Password,
+                string.IsNullOrWhiteSpace(request.EndpointUrl) ? null : request.EndpointUrl.Trim(),
+                string.IsNullOrWhiteSpace(request.MoviesCategory) ? null : request.MoviesCategory.Trim(),
+                string.IsNullOrWhiteSpace(request.TvCategory) ? null : request.TvCategory.Trim(),
+                string.IsNullOrWhiteSpace(request.CategoryTemplate) ? null : request.CategoryTemplate.Trim(),
+                request.Priority ?? 10,
+                request.IsEnabled,
+                "testing",
+                null,
+                now,
+                now);
+
+            var (healthStatus, message) = await TestDownloadClientAsync(draft, cancellationToken);
+            return Results.Ok(new { healthStatus, message });
         });
 
         downloadClients.MapDelete("{id}", async (
@@ -1103,6 +1304,322 @@ public static class PlatformEndpointRouteBuilderExtensions
 
             var removed = await repository.DeleteConnectionAsync(id, cancellationToken);
             return removed ? Results.NoContent() : Results.NotFound();
+        });
+
+        var integrations = endpoints.MapGroup("/api/integrations");
+
+        integrations.MapGet("/external/manifest", async (
+            HttpContext httpContext,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var settings = await repository.GetAsync(cancellationToken);
+            var libraries = await repository.ListLibrariesAsync(cancellationToken);
+            var indexers = await repository.ListIndexersAsync(cancellationToken);
+            var clients = await repository.ListDownloadClientsAsync(cancellationToken);
+            var connections = await repository.ListConnectionsAsync(cancellationToken);
+
+            var manifest = new ExternalIntegrationManifest(
+                Product: "Deluno",
+                Version: "1",
+                InstanceName: settings.AppInstanceName,
+                Capabilities:
+                [
+                    "movies",
+                    "tv",
+                    "indexers",
+                    "download-clients",
+                    "library-routing",
+                    "destination-rules",
+                    "metadata",
+                    "media-probing",
+                    "pre-import-processing",
+                    "activity-feed",
+                    "signalr"
+                ],
+                RecommendedCategories: new Dictionary<string, string>
+                {
+                    ["movies"] = "deluno-movies",
+                    ["tv"] = "deluno-tv",
+                    ["anime"] = "deluno-anime",
+                    ["movies4k"] = "deluno-movies-4k",
+                    ["tv4k"] = "deluno-tv-4k"
+                },
+                Libraries: libraries.Select(library => new ExternalLibraryManifest(
+                    library.Id,
+                    library.Name,
+                    library.MediaType,
+                    library.RootPath,
+                    library.DownloadsPath,
+                    library.QualityProfileName,
+                    library.ImportWorkflow,
+                    library.ProcessorName,
+                    library.ProcessorOutputPath,
+                    library.ProcessorTimeoutMinutes,
+                    library.ProcessorFailureMode,
+                    library.MissingSearchEnabled,
+                    library.UpgradeSearchEnabled,
+                    library.MaxItemsPerRun,
+                    library.AutomationStatus)).ToArray(),
+                Indexers: indexers.Select(indexer => new ExternalIndexerManifest(
+                    indexer.Id,
+                    indexer.Name,
+                    indexer.Protocol,
+                    indexer.MediaScope,
+                    indexer.Priority,
+                    indexer.IsEnabled,
+                    indexer.HealthStatus)).ToArray(),
+                DownloadClients: clients.Select(client => new ExternalDownloadClientManifest(
+                    client.Id,
+                    client.Name,
+                    client.Protocol,
+                    client.MoviesCategory ?? "deluno-movies",
+                    client.TvCategory ?? "deluno-tv",
+                    client.CategoryTemplate,
+                    client.Priority,
+                    client.IsEnabled,
+                    client.HealthStatus)).ToArray(),
+                Connections: connections.Select(connection => new ExternalConnectionManifest(
+                    connection.Id,
+                    connection.Name,
+                    connection.ConnectionKind,
+                    connection.Role,
+                    connection.EndpointUrl,
+                    connection.IsEnabled)).ToArray());
+
+            return Results.Ok(manifest);
+        });
+
+        integrations.MapGet("/external/health", async (
+            HttpContext httpContext,
+            IPlatformSettingsRepository repository,
+            IJobQueueRepository jobs,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var settings = await repository.GetAsync(cancellationToken);
+            var libraries = await repository.ListLibrariesAsync(cancellationToken);
+            var indexers = await repository.ListIndexersAsync(cancellationToken);
+            var clients = await repository.ListDownloadClientsAsync(cancellationToken);
+            var queue = await jobs.ListAsync(50, cancellationToken);
+
+            return Results.Ok(new ExternalHealthResponse(
+                InstanceName: settings.AppInstanceName,
+                Status: "online",
+                LibraryCount: libraries.Count,
+                EnabledIndexerCount: indexers.Count(item => item.IsEnabled),
+                EnabledDownloadClientCount: clients.Count(item => item.IsEnabled),
+                ActiveJobCount: queue.Count(item => string.Equals(item.Status, "running", StringComparison.OrdinalIgnoreCase)),
+                ProblemCount:
+                    indexers.Count(item => item.IsEnabled && !string.Equals(item.HealthStatus, "ready", StringComparison.OrdinalIgnoreCase)) +
+                    clients.Count(item => item.IsEnabled && !string.Equals(item.HealthStatus, "ready", StringComparison.OrdinalIgnoreCase)),
+                CheckedUtc: DateTimeOffset.UtcNow));
+        });
+
+        integrations.MapGet("/external/queue", async (
+            HttpContext httpContext,
+            int? take,
+            string? mediaType,
+            IPlatformSettingsRepository repository,
+            IJobQueueRepository jobs,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var dispatches = await jobs.ListDownloadDispatchesAsync(Math.Clamp(take ?? 50, 1, 200), mediaType, cancellationToken);
+            var queue = await jobs.ListAsync(Math.Clamp(take ?? 50, 1, 200), cancellationToken);
+            return Results.Ok(new ExternalQueueResponse(queue, dispatches));
+        });
+
+        integrations.MapGet("/external/activity", async (
+            HttpContext httpContext,
+            int? take,
+            IPlatformSettingsRepository repository,
+            IActivityFeedRepository activityFeed,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var activity = await activityFeed.ListActivityAsync(Math.Clamp(take ?? 100, 1, 500), null, null, cancellationToken);
+            return Results.Ok(activity);
+        });
+
+        integrations.MapPost("/external/trigger-refresh", async (
+            HttpContext httpContext,
+            ExternalTriggerRefreshRequest request,
+            IPlatformSettingsRepository repository,
+            IJobQueueRepository jobs,
+            IActivityFeedRepository activityFeed,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var libraries = await repository.ListLibrariesAsync(cancellationToken);
+            var selected = libraries
+                .Where(library =>
+                    string.IsNullOrWhiteSpace(request.MediaType) ||
+                    string.Equals(library.MediaType, NormalizeMediaScope(request.MediaType), StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+
+            foreach (var library in selected)
+            {
+                await jobs.RequestLibrarySearchAsync(new LibraryAutomationPlanItem(
+                    LibraryId: library.Id,
+                    LibraryName: library.Name,
+                    MediaType: library.MediaType,
+                    AutoSearchEnabled: library.AutoSearchEnabled,
+                    MissingSearchEnabled: library.MissingSearchEnabled,
+                    UpgradeSearchEnabled: library.UpgradeSearchEnabled,
+                    SearchIntervalHours: library.SearchIntervalHours,
+                    RetryDelayHours: library.RetryDelayHours,
+                    MaxItemsPerRun: library.MaxItemsPerRun), cancellationToken);
+            }
+
+            await activityFeed.RecordActivityAsync(
+                "integration",
+                $"An external app requested refresh for {selected.Length} librar{(selected.Length == 1 ? "y" : "ies")}.",
+                JsonSerializer.Serialize(new { request.MediaType, request.Reason, libraries = selected.Select(item => item.Id) }),
+                null,
+                "integration",
+                "external",
+                cancellationToken);
+
+            return Results.Ok(new { enqueued = selected.Length });
+        });
+
+        integrations.MapPost("/processors/events", async (
+            HttpContext httpContext,
+            ProcessorEventRequest request,
+            IPlatformSettingsRepository repository,
+            IActivityFeedRepository activityFeed,
+            IJobScheduler jobScheduler,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var errors = ValidateProcessorEvent(request);
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            var status = NormalizeProcessorStatus(request.Status);
+            var processorName = string.IsNullOrWhiteSpace(request.ProcessorName)
+                ? "External processor"
+                : request.ProcessorName.Trim();
+            var entityType = string.IsNullOrWhiteSpace(request.EntityType) ? "processor" : request.EntityType.Trim();
+            var entityId = string.IsNullOrWhiteSpace(request.EntityId) ? null : request.EntityId.Trim();
+            var message = string.IsNullOrWhiteSpace(request.Message) ? null : request.Message.Trim();
+            var mediaType = NormalizeMediaScope(request.MediaType);
+
+            var activity = await activityFeed.RecordActivityAsync(
+                "processing",
+                $"{processorName} marked {entityId ?? "media item"} as {status}{(message is null ? "." : $": {message}")}",
+                JsonSerializer.Serialize(new
+                {
+                    request.LibraryId,
+                    MediaType = mediaType,
+                    EntityType = entityType,
+                    EntityId = entityId,
+                    request.SourcePath,
+                    request.OutputPath,
+                    Status = status,
+                    Message = message,
+                    ProcessorName = processorName
+                }),
+                null,
+                entityType,
+                entityId,
+                cancellationToken);
+
+            JobQueueItem? importJob = null;
+            if (status == "completed" && !string.IsNullOrWhiteSpace(request.OutputPath))
+            {
+                var libraries = await repository.ListLibrariesAsync(cancellationToken);
+                var library = !string.IsNullOrWhiteSpace(request.LibraryId)
+                    ? libraries.FirstOrDefault(item => string.Equals(item.Id, request.LibraryId, StringComparison.OrdinalIgnoreCase))
+                    : libraries.FirstOrDefault(item => string.Equals(item.MediaType, mediaType, StringComparison.OrdinalIgnoreCase));
+                var resolvedMediaType = library?.MediaType ?? (mediaType == "tv" ? "tv" : "movies");
+                var outputPath = request.OutputPath.Trim();
+                var title = string.IsNullOrWhiteSpace(entityId)
+                    ? Path.GetFileNameWithoutExtension(outputPath)
+                    : entityId;
+                var importPayload = new
+                {
+                    preview = new
+                    {
+                        sourcePath = outputPath,
+                        fileName = Path.GetFileName(outputPath),
+                        mediaType = resolvedMediaType,
+                        title,
+                        year = (int?)null,
+                        genres = Array.Empty<string>(),
+                        tags = new[] { "processed" },
+                        studio = (string?)null,
+                        originalLanguage = (string?)null
+                    },
+                    transferMode = "auto",
+                    overwrite = false,
+                    allowCopyFallback = true,
+                    forceReplacement = false
+                };
+
+                importJob = await jobScheduler.EnqueueAsync(
+                    new EnqueueJobRequest(
+                        JobType: "filesystem.import.execute",
+                        Source: "processor",
+                        PayloadJson: JsonSerializer.Serialize(importPayload),
+                        RelatedEntityType: resolvedMediaType == "tv" ? "series" : "movie",
+                        RelatedEntityId: null),
+                    cancellationToken);
+
+                await activityFeed.RecordActivityAsync(
+                    "processing.completed.import-queued",
+                    $"{processorName} produced a cleaned file; Deluno queued it for import.",
+                    JsonSerializer.Serialize(new
+                    {
+                        request.LibraryId,
+                        MediaType = resolvedMediaType,
+                        EntityType = entityType,
+                        EntityId = entityId,
+                        request.SourcePath,
+                        OutputPath = outputPath,
+                        JobId = importJob.Id
+                    }),
+                    importJob.Id,
+                    entityType,
+                    entityId,
+                    cancellationToken);
+            }
+
+            return Results.Json(new { status, activityId = activity.Id, importJobId = importJob?.Id }, statusCode: StatusCodes.Status202Accepted);
         });
 
         return endpoints;
@@ -1243,7 +1760,7 @@ public static class PlatformEndpointRouteBuilderExtensions
 
         if (string.IsNullOrWhiteSpace(name))
         {
-            errors["name"] = ["Give this intake source a name."];
+            errors["name"] = ["Give this list source a name."];
         }
 
         if (string.IsNullOrWhiteSpace(provider))
@@ -1396,6 +1913,42 @@ public static class PlatformEndpointRouteBuilderExtensions
         return errors;
     }
 
+    private static Dictionary<string, string[]> ValidateLibraryWorkflow(UpdateLibraryWorkflowRequest request)
+    {
+        var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+        var workflow = NormalizeImportWorkflow(request.ImportWorkflow);
+
+        if (workflow == "refine-before-import" && string.IsNullOrWhiteSpace(request.ProcessorOutputPath))
+        {
+            errors["processorOutputPath"] = ["Choose where the processor will write cleaned files before Deluno imports them."];
+        }
+
+        if (request.ProcessorTimeoutMinutes is <= 0)
+        {
+            errors["processorTimeoutMinutes"] = ["Choose how long Deluno should wait for the processor."];
+        }
+
+        return errors;
+    }
+
+    private static Dictionary<string, string[]> ValidateProcessorEvent(ProcessorEventRequest request)
+    {
+        var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+        var status = NormalizeProcessorStatus(request.Status);
+
+        if (status == "completed" && string.IsNullOrWhiteSpace(request.OutputPath))
+        {
+            errors["outputPath"] = ["Completed processor events must include the cleaned output path."];
+        }
+
+        if (status == "failed" && string.IsNullOrWhiteSpace(request.Message))
+        {
+            errors["message"] = ["Failed processor events should explain what went wrong."];
+        }
+
+        return errors;
+    }
+
     private static Dictionary<string, string[]> ValidateConnection(CreateConnectionRequest request)
     {
         var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
@@ -1429,6 +1982,62 @@ public static class PlatformEndpointRouteBuilderExtensions
 
         return errors;
     }
+
+    private static string NormalizeIndexerProtocol(string? value)
+        => value?.Trim().ToLowerInvariant() switch
+        {
+            "newznab" => "newznab",
+            "rss" => "rss",
+            _ => "torznab"
+        };
+
+    private static string NormalizeIndexerPrivacy(string? value)
+        => value?.Trim().ToLowerInvariant() switch
+        {
+            "public" => "public",
+            "semi-private" => "semi-private",
+            "usenet" => "usenet",
+            _ => "private"
+        };
+
+    private static string NormalizeMediaScope(string? value)
+        => value?.Trim().ToLowerInvariant() switch
+        {
+            "movies" => "movies",
+            "movie" => "movies",
+            "tv" => "tv",
+            "series" => "tv",
+            "shows" => "tv",
+            _ => "both"
+        };
+
+    private static string NormalizeImportWorkflow(string? value)
+        => value?.Trim().ToLowerInvariant() switch
+        {
+            "refine-before-import" or "refine" or "processor" or "processing" => "refine-before-import",
+            _ => "standard"
+        };
+
+    private static string NormalizeProcessorStatus(string? value)
+        => value?.Trim().ToLowerInvariant() switch
+        {
+            "accepted" => "accepted",
+            "started" or "processing" => "started",
+            "completed" or "processed" or "ready" => "completed",
+            "failed" or "error" => "failed",
+            _ => "accepted"
+        };
+
+    private static string NormalizeDownloadProtocol(string? value)
+        => value?.Trim().ToLowerInvariant() switch
+        {
+            "sabnzbd" => "sabnzbd",
+            "transmission" => "transmission",
+            "deluge" => "deluge",
+            "nzbget" => "nzbget",
+            "utorrent" => "utorrent",
+            _ => "qbittorrent"
+        };
 
     private static async Task<(string healthStatus, string message)> TestIndexerAsync(
         IndexerItem item,
@@ -1850,4 +2459,86 @@ public static class PlatformEndpointRouteBuilderExtensions
         return string.IsNullOrWhiteSpace(cleaned) ? "Untitled" : cleaned.Trim();
     }
 }
+
+public sealed record SetupCompletedRequest(
+    IReadOnlyList<string>? Libraries,
+    IReadOnlyList<string>? QualityProfiles,
+    int CustomFormatCount,
+    string? IndexerName,
+    string? ClientName,
+    string? FirstTitle);
+
+public sealed record ExternalIntegrationManifest(
+    string Product,
+    string Version,
+    string InstanceName,
+    IReadOnlyList<string> Capabilities,
+    IReadOnlyDictionary<string, string> RecommendedCategories,
+    IReadOnlyList<ExternalLibraryManifest> Libraries,
+    IReadOnlyList<ExternalIndexerManifest> Indexers,
+    IReadOnlyList<ExternalDownloadClientManifest> DownloadClients,
+    IReadOnlyList<ExternalConnectionManifest> Connections);
+
+public sealed record ExternalLibraryManifest(
+    string Id,
+    string Name,
+    string MediaType,
+    string RootPath,
+    string? DownloadsPath,
+    string? QualityProfileName,
+    string ImportWorkflow,
+    string? ProcessorName,
+    string? ProcessorOutputPath,
+    int ProcessorTimeoutMinutes,
+    string ProcessorFailureMode,
+    bool MissingSearchEnabled,
+    bool UpgradeSearchEnabled,
+    int MaxItemsPerRun,
+    string AutomationStatus);
+
+public sealed record ExternalIndexerManifest(
+    string Id,
+    string Name,
+    string Protocol,
+    string MediaScope,
+    int Priority,
+    bool IsEnabled,
+    string HealthStatus);
+
+public sealed record ExternalDownloadClientManifest(
+    string Id,
+    string Name,
+    string Protocol,
+    string MoviesCategory,
+    string TvCategory,
+    string? CategoryTemplate,
+    int Priority,
+    bool IsEnabled,
+    string HealthStatus);
+
+public sealed record ExternalConnectionManifest(
+    string Id,
+    string Name,
+    string ConnectionKind,
+    string Role,
+    string? EndpointUrl,
+    bool IsEnabled);
+
+public sealed record ExternalHealthResponse(
+    string InstanceName,
+    string Status,
+    int LibraryCount,
+    int EnabledIndexerCount,
+    int EnabledDownloadClientCount,
+    int ActiveJobCount,
+    int ProblemCount,
+    DateTimeOffset CheckedUtc);
+
+public sealed record ExternalQueueResponse(
+    IReadOnlyList<JobQueueItem> Jobs,
+    IReadOnlyList<DownloadDispatchItem> Dispatches);
+
+public sealed record ExternalTriggerRefreshRequest(
+    string? MediaType,
+    string? Reason);
 

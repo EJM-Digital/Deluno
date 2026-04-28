@@ -41,6 +41,40 @@ public static class JobsEndpointRouteBuilderExtensions
             return Results.Ok(items);
         });
 
+        endpoints.MapGet("/api/library-automation", async (
+            IJobQueueRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var items = await repository.ListLibraryAutomationStatesAsync(cancellationToken);
+            return Results.Ok(items.Values.OrderBy(item => item.MediaType).ThenBy(item => item.LibraryName));
+        });
+
+        endpoints.MapGet("/api/search-cycles", async (
+            int? take,
+            string? libraryId,
+            IJobQueueRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var items = await repository.ListSearchCycleRunsAsync(
+                Math.Clamp(take ?? 20, 1, 100),
+                libraryId,
+                cancellationToken);
+            return Results.Ok(items);
+        });
+
+        endpoints.MapGet("/api/search-retry-windows", async (
+            int? take,
+            string? libraryId,
+            IJobQueueRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var items = await repository.ListSearchRetryWindowsAsync(
+                Math.Clamp(take ?? 20, 1, 100),
+                libraryId,
+                cancellationToken);
+            return Results.Ok(items);
+        });
+
         endpoints.MapGet("/api/download-dispatches", async (
             int? take,
             string? mediaType,

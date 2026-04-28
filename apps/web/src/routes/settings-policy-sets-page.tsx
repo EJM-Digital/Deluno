@@ -21,6 +21,7 @@ import {
 } from "../lib/api";
 import { settingsOverviewLoader } from "./settings-overview-page";
 import { authedFetch } from "../lib/use-auth";
+import { RouteSkeleton } from "../components/shell/skeleton";
 
 const OVERRIDE_INTERVAL_OPTIONS = [
   { label: "Use library default", value: "" },
@@ -84,14 +85,8 @@ export async function settingsPolicySetsLoader(): Promise<SettingsPolicySetsLoad
 
 export function SettingsPolicySetsPage() {
   const loaderData = useLoaderData() as SettingsPolicySetsLoaderData | undefined;
-  const { libraries, qualityProfiles, customFormats, destinationRules, policySets } = loaderData ?? {
-    libraries: [],
-    qualityProfiles: [],
-    customFormats: [],
-    destinationRules: [],
-    policySets: [],
-    settings: emptyPlatformSettingsSnapshot
-  };
+  if (!loaderData) return <RouteSkeleton />;
+  const { libraries, qualityProfiles, customFormats, destinationRules, policySets } = loaderData;
   const revalidator = useRevalidator();
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);

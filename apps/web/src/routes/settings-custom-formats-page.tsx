@@ -34,6 +34,7 @@ import {
 import { settingsOverviewLoader } from "./settings-overview-page";
 import { cn } from "../lib/utils";
 import { authedFetch } from "../lib/use-auth";
+import { RouteSkeleton } from "../components/shell/skeleton";
 
 /* ── Loader ──────────────────────────────────────────────────────── */
 interface LoaderData {
@@ -98,12 +99,8 @@ function ScoreBadge({ score }: { score: number }) {
 /* ── Page ────────────────────────────────────────────────────────── */
 export function SettingsCustomFormatsPage() {
   const loaderData = useLoaderData() as LoaderData | undefined;
-  const { customFormats } = loaderData ?? {
-    libraries: [],
-    qualityProfiles: [],
-    settings: emptyPlatformSettingsSnapshot,
-    customFormats: [],
-  };
+  if (!loaderData) return <RouteSkeleton />;
+  const { customFormats } = loaderData;
   const revalidator = useRevalidator();
 
   const [tab, setTab] = useState<Tab>("library");

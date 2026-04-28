@@ -13,3 +13,8 @@ bin/
 obj/
 artifacts/
 data/
+.codex-logs/
+.codex-visual-qa/
+.playwright-data/
+apps/web/test-results/
+apps/web/playwright-report/

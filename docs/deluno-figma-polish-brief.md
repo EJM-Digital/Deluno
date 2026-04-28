@@ -189,7 +189,7 @@ Still needs desktop visual QA:
 Download clients:
 
 - Prioritize external clients first.
-- qBittorrent, SABnzbd, NZBGet, Deluge, Transmission, rTorrent, uTorrent should normalize into one telemetry model.
+- qBittorrent, SABnzbd, NZBGet, Deluge, Transmission, and uTorrent should normalize into one telemetry model.
 - Deluno should be orchestration/control plane, not a near-term embedded downloader.
 
 Metadata:
@@ -218,4 +218,3 @@ Filters:
 5. Add desktop and mobile layout frames.
 6. Add annotated problem callouts.
 7. Add next-polish checklist.
-

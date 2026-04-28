@@ -12,6 +12,7 @@ public sealed record UpdatePlatformSettingsRequest(
     bool UseHardlinks,
     bool CleanupEmptyFolders,
     bool RemoveCompletedDownloads,
+    bool UnmonitorWhenCutoffMet,
     string? MovieFolderFormat,
     string? SeriesFolderFormat,
     string? EpisodeFileFormat,
@@ -27,5 +28,8 @@ public sealed record UpdatePlatformSettingsRequest(
     bool MetadataArtworkEnabled,
     string? MetadataCertificationCountry,
     string? MetadataLanguage,
+    string? MetadataProviderMode,
+    string? MetadataBrokerUrl,
     string? MetadataTmdbApiKey,
-    string? MetadataOmdbApiKey);
+    string? MetadataOmdbApiKey,
+    string? ReleaseNeverGrabPatterns);

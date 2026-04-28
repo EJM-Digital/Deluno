@@ -11,6 +11,7 @@ using Deluno.Platform;
 using Deluno.Realtime;
 using Deluno.Series;
 using Deluno.Worker;
+using Microsoft.AspNetCore.DataProtection;
 
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 {
@@ -28,6 +29,15 @@ builder.Services.AddDelunoIntegrationsModule();
 builder.Services.AddDelunoFilesystemModule();
 builder.Services.AddDelunoRealtimeModule();
 builder.Services.AddDelunoWorkerModule();
+
+var configuredDataRoot = builder.Configuration["Storage:DataRoot"];
+var dataRoot = Path.GetFullPath(
+    string.IsNullOrWhiteSpace(configuredDataRoot) ? "data" : configuredDataRoot,
+    builder.Environment.ContentRootPath);
+builder.Services
+    .AddDataProtection()
+    .SetApplicationName("Deluno")
+    .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(dataRoot, "protection-keys")));
 
 var app = builder.Build();
 
@@ -58,6 +68,13 @@ app.Use(async (context, next) =>
         return;
     }
 
+    var scopeDenied = UserAuthorization.RequireApiScope(context, ResolveRequiredApiScopes(path, context.Request.Method));
+    if (scopeDenied is not null)
+    {
+        await scopeDenied.ExecuteAsync(context);
+        return;
+    }
+
     await next();
 });
 
@@ -74,3 +91,32 @@ app.MapDelunoRealtime();
 app.MapFallbackToFile("index.html");
 
 app.Run();
+
+static string[] ResolveRequiredApiScopes(PathString path, string method)
+{
+    var isRead = HttpMethods.IsGet(method) || HttpMethods.IsHead(method) || HttpMethods.IsOptions(method);
+
+    if (isRead)
+    {
+        return ["read"];
+    }
+
+    if (path.StartsWithSegments("/api/download-clients", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWithSegments("/api/download-dispatches", StringComparison.OrdinalIgnoreCase))
+    {
+        return ["queue"];
+    }
+
+    if (path.StartsWithSegments("/api/filesystem/import", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWithSegments("/api/integrations", StringComparison.OrdinalIgnoreCase))
+    {
+        return ["imports", "queue"];
+    }
+
+    if (path.StartsWithSegments("/api/backups", StringComparison.OrdinalIgnoreCase))
+    {
+        return ["system"];
+    }
+
+    return ["write"];
+}

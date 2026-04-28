@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Download,
   FileSearch,
+  GitBranch,
   HardDriveDownload,
   Loader2,
   Pause,
@@ -43,6 +44,7 @@ import { PathInput } from "../components/ui/path-input";
 import { EmptyState } from "../components/shell/empty-state";
 import { GlassTile, PageHero } from "../components/shell/page-hero";
 import { Stagger, StaggerItem } from "../components/shell/motion";
+import { RouteSkeleton } from "../components/shell/skeleton";
 import { toast } from "../components/shell/toaster";
 
 type QueueAction = "pause" | "resume" | "delete" | "recheck";
@@ -82,6 +84,7 @@ export async function queueLoader(): Promise<QueueLoaderData> {
 
 export function QueuePage() {
   const loaderData = useLoaderData() as QueueLoaderData | undefined;
+  if (!loaderData) return <RouteSkeleton />;
   const revalidator = useRevalidator();
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [importPreviews, setImportPreviews] = useState<Record<string, ImportPreviewResponse>>({});
@@ -97,12 +100,12 @@ export function QueuePage() {
   }));
   const [manualPreview, setManualPreview] = useState<ImportPreviewResponse | null>(null);
 
-  const telemetry = loaderData?.telemetry ?? emptyTelemetry();
-  const dispatches = loaderData?.dispatches ?? [];
-  const movieRecovery = loaderData?.movieRecovery ?? emptyMovieRecovery();
-  const seriesRecovery = loaderData?.seriesRecovery ?? emptySeriesRecovery();
-  const settings = loaderData?.settings;
-  const jobs = loaderData?.jobs ?? [];
+  const telemetry = loaderData.telemetry;
+  const dispatches = loaderData.dispatches;
+  const movieRecovery = loaderData.movieRecovery;
+  const seriesRecovery = loaderData.seriesRecovery;
+  const settings = loaderData.settings;
+  const jobs = loaderData.jobs;
 
   const allQueue = useMemo(
     () => telemetry.clients.flatMap((client) => client.queue.map((item) => ({ ...item, clientProtocol: client.protocol }))),
@@ -117,6 +120,7 @@ export function QueuePage() {
   );
   const importJobs = useMemo(() => jobs.filter((job) => job.jobType === "filesystem.import.execute"), [jobs]);
   const importReady = allQueue.filter((item) => item.status === "importReady" || item.status === "completed");
+  const processing = allQueue.filter((item) => ["processing", "processed", "processingFailed", "waitingForProcessor", "importQueued"].includes(item.status));
   const stalled = allQueue.filter((item) => item.status === "stalled" || item.errorMessage);
   const openRecovery = movieRecovery.openCount + seriesRecovery.openCount;
   const activeImportJobs = importJobs.filter((job) => job.status === "queued" || job.status === "running").length;
@@ -176,7 +180,8 @@ export function QueuePage() {
           preview: request,
           transferMode: "auto",
           overwrite: false,
-          allowCopyFallback: true
+          allowCopyFallback: true,
+          forceReplacement: false
         })
       });
       setImportPreviews((current) => ({ ...current, [item.id]: result.preview }));
@@ -201,7 +206,8 @@ export function QueuePage() {
           preview: request,
           transferMode: "auto",
           overwrite: false,
-          allowCopyFallback: true
+          allowCopyFallback: true,
+          forceReplacement: false
         })
       });
       setImportPreviews((current) => ({ ...current, [item.id]: result.preview }));
@@ -321,7 +327,8 @@ export function QueuePage() {
           preview: buildManualImportRequest(),
           transferMode: manualImport.transferMode,
           overwrite: false,
-          allowCopyFallback: true
+          allowCopyFallback: true,
+          forceReplacement: false
         })
       });
       setManualPreview(result.preview);
@@ -352,6 +359,7 @@ export function QueuePage() {
         }
         stats={[
           { label: "Active", value: telemetry.summary.activeCount.toString(), tone: "primary" },
+          { label: "Processing", value: (telemetry.summary.processingCount ?? processing.length).toString(), tone: processing.length ? "primary" : "neutral" },
           { label: "Import ready", value: telemetry.summary.importReadyCount.toString(), tone: "success" },
           { label: "Import jobs", value: activeImportJobs.toString(), tone: activeImportJobs ? "primary" : "neutral" },
           { label: "Recovery", value: openRecovery.toString(), tone: openRecovery ? "danger" : "neutral" }
@@ -381,6 +389,12 @@ export function QueuePage() {
         </StaggerItem>
         <StaggerItem>
           <MetricTile icon={FileSearch} label="Import ready" value={importReady.length} sub="safe to preview" tone="success" />
+        </StaggerItem>
+        <StaggerItem>
+          <MetricTile icon={Wand2} label="Processing" value={processing.length} sub="refine-before-import lane" tone={processing.length ? "primary" : "neutral"} />
+        </StaggerItem>
+        <StaggerItem>
+          <MetricTile icon={GitBranch} label="Import jobs" value={activeImportJobs} sub="queued or running" tone={activeImportJobs ? "primary" : "neutral"} />
         </StaggerItem>
         <StaggerItem>
           <MetricTile icon={AlertTriangle} label="Needs action" value={openRecovery + stalled.length} sub="stalled or recovery" tone={openRecovery + stalled.length ? "warn" : "neutral"} />
@@ -630,12 +644,16 @@ function QueueRow({
   onQueueImport: (item: DownloadQueueItem) => Promise<void>;
 }) {
   const isReady = item.status === "importReady" || item.status === "completed";
+  const isProcessing = item.status === "processing" || item.status === "processed" || item.status === "waitingForProcessor";
+  const isQueuedImport = item.status === "importQueued";
+  const isImported = item.status === "imported";
+  const isImportFailed = item.status === "importFailed";
   const isBusy = busyKey !== null;
-  const statusTone = item.status === "stalled" || item.errorMessage
+  const statusTone = item.status === "stalled" || item.errorMessage || isImportFailed
     ? "destructive"
-    : isReady
+    : isReady || isImported
       ? "success"
-    : item.status === "downloading"
+    : item.status === "downloading" || isProcessing || isQueuedImport
         ? "default"
         : "info";
 
@@ -645,7 +663,7 @@ function QueueRow({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <p className="truncate font-medium text-foreground">{item.title}</p>
-            <Badge variant={statusTone} className="text-[9.5px]">{item.status}</Badge>
+            <Badge variant={statusTone} className="text-[9.5px]">{queueStatusLabel(item.status)}</Badge>
             <span className="rounded-full border border-hairline px-1.5 py-0.5 text-[10px] font-semibold uppercase text-muted-foreground">
               {item.protocol}
             </span>
@@ -683,6 +701,30 @@ function QueueRow({
             </p>
           ) : null}
           {preview ? <ImportPreviewPanel preview={preview} /> : null}
+          {isProcessing ? (
+            <div className="mt-3 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-primary">Refine before import</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                This item is waiting for the configured processor to produce a cleaned output file. Deluno will import that output when it becomes ready.
+              </p>
+            </div>
+          ) : null}
+          {isQueuedImport ? (
+            <div className="mt-3 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-primary">Import queued</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Deluno has handed this completed download to the background import pipeline. The job monitor below will show move, hardlink, and catalog results.
+              </p>
+            </div>
+          ) : null}
+          {isImportFailed ? (
+            <div className="mt-3 rounded-xl border border-destructive/20 bg-destructive/5 px-3 py-2.5">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-destructive">Import failed</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Deluno blocked or failed this import. Check the recovery panel or failed import job for the exact reason before forcing a retry.
+              </p>
+            </div>
+          ) : null}
         </div>
 
         <div className="flex flex-wrap gap-1.5 lg:max-w-[360px] lg:justify-end">
@@ -726,12 +768,31 @@ function QueueRow({
 
 function ImportPreviewPanel({ preview }: { preview: ImportPreviewResponse }) {
   const hasWarnings = preview.warnings.length > 0;
+  const risk = getImportPreviewRisk(preview);
+  const probeSummary = formatProbeSummary(preview.mediaProbe);
   return (
-    <div className={cn("mt-3 rounded-xl border px-3 py-2.5", hasWarnings ? "border-warning/25 bg-warning/5" : "border-primary/20 bg-primary/5")}>
+    <div
+      className={cn(
+        "mt-3 rounded-xl border px-3 py-2.5",
+        risk.tone === "blocked"
+          ? "border-destructive/30 bg-destructive/5"
+          : risk.tone === "warning"
+            ? "border-warning/25 bg-warning/5"
+            : "border-primary/20 bg-primary/5"
+      )}
+    >
       <div className="flex flex-wrap items-center gap-2">
-        <p className={cn("text-[10px] font-semibold uppercase tracking-[0.14em]", hasWarnings ? "text-warning" : "text-primary")}>
+        <p
+          className={cn(
+            "text-[10px] font-semibold uppercase tracking-[0.14em]",
+            risk.tone === "blocked" ? "text-destructive" : risk.tone === "warning" ? "text-warning" : "text-primary"
+          )}
+        >
           Destination rule - {preview.preferredTransferMode}
         </p>
+        <Badge variant={risk.badgeVariant} className="text-[9px]">
+          {risk.label}
+        </Badge>
         <Badge variant={preview.sourceExists ? "success" : "destructive"} className="text-[9px]">
           source {preview.sourceExists ? "visible" : "missing"}
         </Badge>
@@ -741,6 +802,17 @@ function ImportPreviewPanel({ preview }: { preview: ImportPreviewResponse }) {
       </div>
       <p className="mt-1 break-all font-mono text-[10.5px] text-muted-foreground">{preview.destinationPath}</p>
       <p className="mt-1 text-[11px] text-muted-foreground">{preview.explanation} {preview.transferExplanation}</p>
+      <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        <PreviewFact label="Rule" value={preview.matchedRuleName || "Default resolver"} tone={preview.matchedRuleName ? "primary" : "neutral"} />
+        <PreviewFact label="Transfer" value={preview.hardlinkAvailable ? "Hardlink ready" : preview.preferredTransferMode} tone={preview.hardlinkAvailable ? "success" : "warning"} />
+        <PreviewFact label="Replacement" value={preview.destinationExists ? "Existing file" : "No conflict"} tone={preview.destinationExists ? "warning" : "success"} />
+        <PreviewFact label="Source" value={preview.sourceExists ? formatBytes(preview.sourceSizeBytes) : "Not visible"} tone={preview.sourceExists ? "success" : "danger"} />
+      </div>
+      {probeSummary ? (
+        <p className="mt-1 font-mono text-[10.5px] text-muted-foreground">
+          {probeSummary}
+        </p>
+      ) : null}
       {preview.decisionSteps.length ? (
         <div className="mt-2 rounded-lg border border-hairline bg-background/40 p-2">
           <p className="text-[9.5px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Decision path</p>
@@ -764,6 +836,61 @@ function ImportPreviewPanel({ preview }: { preview: ImportPreviewResponse }) {
           ))}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function getImportPreviewRisk(preview: ImportPreviewResponse) {
+  const warnings = preview.warnings.map((warning) => warning.toLowerCase());
+  const isBlocked =
+    !preview.sourceExists ||
+    !preview.isSupportedMediaFile ||
+    warnings.some((warning) => warning.includes("same file") || warning.includes("same path"));
+  const isWarning = preview.destinationExists || warnings.length > 0;
+  if (isBlocked) return { label: "Blocked", tone: "blocked" as const, badgeVariant: "destructive" as const };
+  if (isWarning) return { label: "Review", tone: "warning" as const, badgeVariant: "warning" as const };
+  return { label: "Ready", tone: "ready" as const, badgeVariant: "success" as const };
+}
+
+function formatProbeSummary(probe: ImportPreviewResponse["mediaProbe"]) {
+  if (!probe) return "";
+  const parts = [`Probe: ${probe.status}`];
+  if (probe.durationSeconds) parts.push(formatDuration(probe.durationSeconds));
+  const video = probe.videoStreams[0];
+  if (video) parts.push(`${video.codec ?? "video"} ${video.width ?? "?"}x${video.height ?? "?"}`);
+  parts.push(`${probe.audioStreams.length} audio`);
+  parts.push(`${probe.subtitleStreams.length} subs`);
+  return parts.join(" - ");
+}
+
+function formatDuration(seconds: number) {
+  const rounded = Math.max(0, Math.round(seconds));
+  const h = Math.floor(rounded / 3600).toString().padStart(2, "0");
+  const m = Math.floor((rounded % 3600) / 60).toString().padStart(2, "0");
+  const s = (rounded % 60).toString().padStart(2, "0");
+  return `${h}:${m}:${s}`;
+}
+
+function PreviewFact({
+  label,
+  value,
+  tone
+}: {
+  label: string;
+  value: string;
+  tone: "primary" | "success" | "warning" | "danger" | "neutral";
+}) {
+  const toneClass = {
+    primary: "border-primary/20 bg-primary/5 text-primary",
+    success: "border-success/20 bg-success/5 text-success",
+    warning: "border-warning/20 bg-warning/5 text-warning",
+    danger: "border-destructive/20 bg-destructive/5 text-destructive",
+    neutral: "border-hairline bg-background/30 text-muted-foreground"
+  }[tone];
+  return (
+    <div className={cn("rounded-lg border px-2.5 py-2", toneClass)}>
+      <p className="text-[9.5px] font-bold uppercase tracking-[0.14em] opacity-75">{label}</p>
+      <p className="mt-1 truncate text-[11px] font-semibold">{value}</p>
     </div>
   );
 }
@@ -1152,6 +1279,23 @@ function actionLabel(action: QueueAction) {
   }[action];
 }
 
+function queueStatusLabel(status: string) {
+  return {
+    downloading: "Downloading",
+    queued: "Queued",
+    completed: "Import ready",
+    importReady: "Import ready",
+    waitingForProcessor: "Waiting for processor",
+    processing: "Processing",
+    processed: "Processed",
+    processingFailed: "Processing failed",
+    importQueued: "Import queued",
+    importFailed: "Import failed",
+    imported: "Imported",
+    stalled: "Stalled"
+  }[status] ?? status;
+}
+
 function formatEta(seconds: number) {
   if (!Number.isFinite(seconds) || seconds <= 0) return "ETA unknown";
   const minutes = Math.round(seconds / 60);
@@ -1202,14 +1346,27 @@ function parseImportJobPayload(payloadJson: string | null): ParsedImportJobPaylo
         mediaType?: string | null;
         title?: string | null;
       } | null;
+      Preview?: {
+        SourcePath?: string | null;
+        FileName?: string | null;
+        MediaType?: string | null;
+        Title?: string | null;
+      } | null;
       transferMode?: string | null;
+      TransferMode?: string | null;
     };
+    const preview = value.preview ?? (value.Preview ? {
+      sourcePath: value.Preview.SourcePath,
+      fileName: value.Preview.FileName,
+      mediaType: value.Preview.MediaType,
+      title: value.Preview.Title
+    } : null);
     return {
-      sourcePath: value.preview?.sourcePath ?? null,
-      fileName: value.preview?.fileName ?? null,
-      mediaType: value.preview?.mediaType ?? null,
-      title: value.preview?.title ?? null,
-      transferMode: value.transferMode ?? null
+      sourcePath: preview?.sourcePath ?? null,
+      fileName: preview?.fileName ?? null,
+      mediaType: preview?.mediaType ?? null,
+      title: preview?.title ?? null,
+      transferMode: value.transferMode ?? value.TransferMode ?? null
     };
   } catch {
     return null;
@@ -1243,7 +1400,8 @@ function parseRecoveryRetryRequest(detailsJson: string | null): ImportExecuteReq
       },
       transferMode: stringValue(retry.transferMode ?? retry.TransferMode) ?? "auto",
       overwrite: booleanValue(retry.overwrite ?? retry.Overwrite),
-      allowCopyFallback: booleanValue(retry.allowCopyFallback ?? retry.AllowCopyFallback, true)
+      allowCopyFallback: booleanValue(retry.allowCopyFallback ?? retry.AllowCopyFallback, true),
+      forceReplacement: booleanValue(retry.forceReplacement ?? retry.ForceReplacement, false)
     };
   } catch {
     return null;
@@ -1270,7 +1428,7 @@ function stringArrayValue(value: unknown): string[] | null {
 
 function protocolCapabilities(protocol: string) {
   const key = protocol.toLowerCase();
-  const torrent = ["qbittorrent", "transmission", "deluge", "utorrent", "rtorrent"].includes(key);
+  const torrent = ["qbittorrent", "transmission", "deluge", "utorrent"].includes(key);
   const usenet = ["sabnzbd", "nzbget"].includes(key);
   return [
     { label: "Queue", supported: true },
@@ -1298,6 +1456,7 @@ function emptyTelemetry(): DownloadTelemetryOverview {
       completedCount: 0,
       stalledCount: 0,
       importReadyCount: 0,
+      processingCount: 0,
       totalSpeedMbps: 0
     }
   };

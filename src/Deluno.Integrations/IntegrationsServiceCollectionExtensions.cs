@@ -14,7 +14,8 @@ public static class IntegrationsServiceCollectionExtensions
         services.AddHttpClient("download-clients", client => client.Timeout = TimeSpan.FromSeconds(8));
         services.AddScoped<IDownloadClientTelemetryService, DownloadClientTelemetryService>();
         services.AddScoped<IDownloadClientGrabService, DownloadClientGrabService>();
-        services.AddHttpClient<IMetadataProvider, TmdbMetadataProvider>();
+        services.AddHttpClient<TmdbMetadataProvider>();
+        services.AddScoped<IMetadataProvider>(sp => sp.GetRequiredService<TmdbMetadataProvider>());
         services.AddHostedService<CacheSchemaInitializer>();
         return services;
     }

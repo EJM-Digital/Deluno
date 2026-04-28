@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
-import { LoaderCircle } from "lucide-react";
+import { LoaderCircle, Plus, RotateCcw, X } from "lucide-react";
 import { SettingsShell } from "../components/app/settings-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
@@ -11,6 +11,7 @@ import { toast } from "../components/shell/toaster";
 import { settingsOverviewLoader } from "./settings-overview-page";
 import { emptyPlatformSettingsSnapshot, type LibraryItem, type PlatformSettingsSnapshot, type QualityProfileItem } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
+import { RouteSkeleton } from "../components/shell/skeleton";
 
 interface SettingsOverviewLoaderData {
   libraries: LibraryItem[];
@@ -22,9 +23,11 @@ export const settingsGeneralLoader = settingsOverviewLoader;
 
 export function SettingsGeneralPage() {
   const loaderData = useLoaderData() as SettingsOverviewLoaderData | undefined;
-  const settings = loaderData?.settings ?? emptyPlatformSettingsSnapshot;
+  if (!loaderData) return <RouteSkeleton />;
+  const settings = loaderData.settings;
   const revalidator = useRevalidator();
   const [formState, setFormState] = useState(settings);
+  const [newNeverGrabRule, setNewNeverGrabRule] = useState("");
   const [busy, setBusy] = useState(false);
   const save = useSaveStatus();
 
@@ -54,6 +57,28 @@ export function SettingsGeneralPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function updateNeverGrabRules(rules: string[]) {
+    setFormState((current) => ({
+      ...current,
+      releaseNeverGrabPatterns: normalizeRules(rules).join("\n")
+    }));
+  }
+
+  function addNeverGrabRule() {
+    const value = newNeverGrabRule.trim();
+    if (!value) return;
+    updateNeverGrabRules([...splitRules(formState.releaseNeverGrabPatterns), value]);
+    setNewNeverGrabRule("");
+  }
+
+  function removeNeverGrabRule(rule: string) {
+    updateNeverGrabRules(splitRules(formState.releaseNeverGrabPatterns).filter((item) => item !== rule));
+  }
+
+  function restoreNeverGrabDefaults() {
+    updateNeverGrabRules(DEFAULT_NEVER_GRAB_RULES);
   }
 
   return (
@@ -147,6 +172,58 @@ export function SettingsGeneralPage() {
                 />
               </div>
 
+              <Field label="Never grab rules">
+                <div className="space-y-3">
+                  <div className="flex flex-wrap gap-2">
+                    {splitRules(formState.releaseNeverGrabPatterns).map((rule) => (
+                      <span
+                        key={rule}
+                        className="inline-flex items-center gap-2 rounded-full border border-hairline bg-background/60 px-3 py-1.5 text-sm font-medium text-foreground"
+                      >
+                        {rule}
+                        <button
+                          type="button"
+                          className="rounded-full text-muted-foreground transition hover:text-destructive"
+                          onClick={() => removeNeverGrabRule(rule)}
+                          aria-label={`Remove ${rule}`}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+                    <Input
+                      value={newNeverGrabRule}
+                      onChange={(event) => setNewNeverGrabRule(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          addNeverGrabRule();
+                        }
+                      }}
+                      placeholder="Add a word, phrase, or release group"
+                    />
+                    <Button type="button" variant="outline" onClick={addNeverGrabRule}>
+                      <Plus className="h-4 w-4" />
+                      Add
+                    </Button>
+                    <Button type="button" variant="ghost" onClick={restoreNeverGrabDefaults}>
+                      <RotateCcw className="h-4 w-4" />
+                      Defaults
+                    </Button>
+                  </div>
+                  <div className="rounded-xl border border-hairline bg-background/40 p-3">
+                    <p className="text-xs leading-relaxed text-muted-foreground">
+                      Plain matching, no regex required. If a release name contains any rule, Deluno rejects it for automation and shows Force as the explicit override path.
+                    </p>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Useful examples: <span className="text-foreground">hardsub</span>, <span className="text-foreground">dubbed</span>, <span className="text-foreground">cam</span>, <span className="text-foreground">bad-release-group</span>.
+                    </p>
+                  </div>
+                </div>
+              </Field>
+
               <Button type="submit" disabled={busy}>
                 {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
                 Save general settings
@@ -164,6 +241,7 @@ export function SettingsGeneralPage() {
             <GeneralStat label="Instance" value={settings.appInstanceName} />
             <GeneralStat label="Host" value={`${settings.hostBindAddress}:${settings.hostPort}`} />
             <GeneralStat label="Authentication" value="Required" />
+            <GeneralStat label="Never grab rules" value={`${splitRules(settings.releaseNeverGrabPatterns).length} active`} />
             <GeneralStat label="Updated" value={formatWhen(settings.updatedUtc)} />
           </CardContent>
         </Card>
@@ -215,3 +293,23 @@ function formatWhen(value: string) {
     minute: "2-digit"
   }).format(new Date(value));
 }
+
+function splitRules(value: string) {
+  return value.split(/\r?\n|,/).map((item) => item.trim()).filter(Boolean);
+}
+
+function normalizeRules(rules: string[]) {
+  return Array.from(new Set(rules.map((item) => item.trim()).filter(Boolean)));
+}
+
+const DEFAULT_NEVER_GRAB_RULES = [
+  "cam",
+  "camrip",
+  "telesync",
+  "telecine",
+  "workprint",
+  "screener",
+  "sample",
+  "trailer",
+  "extras"
+];

@@ -22,6 +22,7 @@ import {
 } from "../lib/api";
 import { settingsOverviewLoader } from "./settings-overview-page";
 import { authedFetch } from "../lib/use-auth";
+import { RouteSkeleton } from "../components/shell/skeleton";
 
 interface SettingsDestinationRulesLoaderData {
   libraries: LibraryItem[];
@@ -124,12 +125,8 @@ const MATCH_VALUE_OPTIONS: Record<string, { label: string; value: string }[]> = 
 
 export function SettingsDestinationRulesPage() {
   const loaderData = useLoaderData() as SettingsDestinationRulesLoaderData | undefined;
-  const { destinationRules, libraries, tags, settings } = loaderData ?? {
-    destinationRules: [],
-    libraries: [],
-    tags: [],
-    settings: emptyPlatformSettingsSnapshot
-  };
+  if (!loaderData) return <RouteSkeleton />;
+  const { destinationRules, libraries, tags, settings } = loaderData;
   const revalidator = useRevalidator();
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -504,6 +501,18 @@ export function SettingsDestinationRulesPage() {
                     <p className="text-sm text-muted-foreground">{preview.explanation}</p>
                     <DecisionPath label="Source" value={preview.sourcePath} icon={HardDrive} />
                     <DecisionPath label="Destination" value={preview.destinationPath} icon={ArrowRight} />
+                    {preview.mediaProbe ? (
+                      <div className="rounded-xl border border-hairline bg-background/40 p-3">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Media probe</p>
+                        <p className="mt-2 font-mono text-sm text-muted-foreground">
+                          {preview.mediaProbe.status}
+                          {preview.mediaProbe.durationSeconds ? ` · ${formatDuration(preview.mediaProbe.durationSeconds)}` : ""}
+                          {preview.mediaProbe.videoStreams[0] ? ` · ${preview.mediaProbe.videoStreams[0].codec ?? "video"} ${preview.mediaProbe.videoStreams[0].width ?? "?"}x${preview.mediaProbe.videoStreams[0].height ?? "?"}` : ""}
+                          {` · ${preview.mediaProbe.audioStreams.length} audio · ${preview.mediaProbe.subtitleStreams.length} subtitles`}
+                        </p>
+                        {preview.mediaProbe.message ? <p className="mt-2 text-sm text-muted-foreground">{preview.mediaProbe.message}</p> : null}
+                      </div>
+                    ) : null}
                     {preview.decisionSteps.length ? (
                       <div className="rounded-xl border border-hairline bg-background/40 p-3">
                         <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Decision path</p>
@@ -612,6 +621,14 @@ export function SettingsDestinationRulesPage() {
       </div>
     </SettingsShell>
   );
+}
+
+function formatDuration(seconds: number) {
+  const rounded = Math.max(0, Math.round(seconds));
+  const h = Math.floor(rounded / 3600).toString().padStart(2, "0");
+  const m = Math.floor((rounded % 3600) / 60).toString().padStart(2, "0");
+  const s = (rounded % 60).toString().padStart(2, "0");
+  return `${h}:${m}:${s}`;
 }
 
 function createDestinationRuleForm(defaultRootPath: string): DestinationRuleFormState {

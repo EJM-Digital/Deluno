@@ -15,6 +15,7 @@ import {
   type QualityProfileItem
 } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
+import { RouteSkeleton } from "../components/shell/skeleton";
 
 interface SettingsOverviewLoaderData {
   libraries: LibraryItem[];
@@ -49,14 +50,15 @@ const densityOptions: Array<{
   {
     value: "expanded",
     label: "Expanded",
-    description: "The most screen-filling workspace for 1440p, ultrawide, and long operator sessions.",
+    description: "The most screen-filling workspace for 1440p, ultrawide, and long management sessions.",
     icon: Monitor
   }
 ];
 
 export function SettingsUiPage() {
   const loaderData = useLoaderData() as SettingsOverviewLoaderData | undefined;
-  const settings = loaderData?.settings ?? emptyPlatformSettingsSnapshot;
+  if (!loaderData) return <RouteSkeleton />;
+  const settings = loaderData.settings;
   const revalidator = useRevalidator();
   const [formState, setFormState] = useState(settings);
   const [busy, setBusy] = useState(false);

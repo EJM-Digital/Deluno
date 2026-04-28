@@ -12,6 +12,12 @@ Deluno should feel like one premium app with three clearly separate working area
 
 These are not the same thing, and the product should not blur them together.
 
+For the detailed workflow vocabulary and import/download lifecycle, see
+[`wiki-media-operations-workflow.md`](wiki-media-operations-workflow.md).
+
+For future predictive scoring and visual workflow-builder direction, see
+[`deluno-intelligence-and-workflow-builder.md`](deluno-intelligence-and-workflow-builder.md).
+
 ## What Each Area Owns
 
 ### Movies

@@ -80,6 +80,55 @@ public static class MetadataEndpointRouteBuilderExtensions
                 results.Take(5).ToArray()));
         });
 
+        var broker = metadata.MapGroup("/broker");
+
+        broker.MapGet("/status", async (
+            HttpContext httpContext,
+            TmdbMetadataProvider provider,
+            IPlatformSettingsRepository platformRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformRepository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var appStatus = await provider.GetDirectStatusAsync(cancellationToken);
+            return Results.Ok(new MetadataBrokerStatusResponse(
+                "deluno-broker",
+                appStatus.IsConfigured,
+                "local-direct",
+                appStatus.IsConfigured
+                    ? "Local broker-compatible endpoint is backed by direct TMDb lookup. Hosted broker can implement the same /metadata/search contract later."
+                    : "Local broker-compatible endpoint is available, but direct TMDb lookup needs a key before it can return provider metadata."));
+        });
+
+        broker.MapGet("/search", async (
+            HttpContext httpContext,
+            string? query,
+            string? mediaType,
+            int? year,
+            string? providerId,
+            TmdbMetadataProvider provider,
+            IPlatformSettingsRepository platformRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformRepository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var lookup = new MetadataLookupRequest(query, mediaType, year, providerId);
+            var results = await provider.SearchDirectAsync(lookup, cancellationToken);
+            return Results.Ok(new MetadataBrokerSearchResponse(
+                "deluno-broker",
+                "local-direct",
+                results.Count,
+                results));
+        });
+
         return endpoints;
     }
 }
@@ -97,3 +146,15 @@ public sealed record MetadataTestResponse(
     string Message,
     int ResultCount,
     IReadOnlyList<MetadataSearchResult> SampleResults);
+
+public sealed record MetadataBrokerStatusResponse(
+    string Provider,
+    bool IsConfigured,
+    string Mode,
+    string Message);
+
+public sealed record MetadataBrokerSearchResponse(
+    string Provider,
+    string Mode,
+    int ResultCount,
+    IReadOnlyList<MetadataSearchResult> Results);

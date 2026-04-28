@@ -5,6 +5,7 @@ import { KpiCard } from "../components/app/kpi-card";
 import { settingsOverviewLoader } from "./settings-overview-page";
 import { emptyPlatformSettingsSnapshot, type LibraryItem, type PlatformSettingsSnapshot, type QualityProfileItem } from "../lib/api";
 import { Clapperboard, Film, ShieldCheck, SlidersHorizontal } from "lucide-react";
+import { RouteSkeleton } from "../components/shell/skeleton";
 
 interface SettingsOverviewLoaderData {
   libraries: LibraryItem[];
@@ -16,11 +17,8 @@ export const settingsQualityLoader = settingsOverviewLoader;
 
 export function SettingsQualityPage() {
   const loaderData = useLoaderData() as SettingsOverviewLoaderData | undefined;
-  const { libraries, qualityProfiles } = loaderData ?? {
-    libraries: [],
-    qualityProfiles: [],
-    settings: emptyPlatformSettingsSnapshot
-  };
+  if (!loaderData) return <RouteSkeleton />;
+  const { libraries, qualityProfiles } = loaderData;
 
   const uniqueAllowedQualities = Array.from(
     new Set(

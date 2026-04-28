@@ -2,14 +2,14 @@
  * Indexers & Download Clients page
  *
  * Three goals the old page missed:
- *   1. Adding an indexer should be guided — pick protocol → fill URL + key → test → done.
+ *   1. Adding an indexer should be guided: pick protocol, fill URL + key, test, done.
  *   2. Download clients must have SEPARATE movie and TV categories so they never conflict.
- *   3. Routing must filter by media type — a TV-only indexer should never appear
+ *   3. Routing must filter by media type: a TV-only indexer should never appear
  *      as an option for a movies library.
  */
 
 import { useState, useMemo } from "react";
-import { useLoaderData, useRevalidator } from "react-router-dom";
+import { useLoaderData, useNavigation, useRevalidator } from "react-router-dom";
 import {
   AlertTriangle,
   BadgeCheck,
@@ -54,6 +54,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { PresetField } from "../components/ui/preset-field";
 import { EmptyState } from "../components/shell/empty-state";
+import { CardSkeleton, RowSkeleton } from "../components/shell/skeleton";
 import { Stagger, StaggerItem } from "../components/shell/motion";
 import { toast } from "../components/shell/toaster";
 
@@ -135,7 +136,7 @@ const INDEXER_PRESETS: IndexerPreset[] = [
   {
     protocol: "torznab",
     label: "Torznab",
-    description: "Jackett, Prowlarr, or any Torznab-compatible tracker. Works with qBittorrent, Deluge, rTorrent.",
+    description: "Jackett, Prowlarr, or any Torznab-compatible tracker. Works with qBittorrent, Deluge, and Transmission.",
     icon: "⚡",
     requiresApiKey: true,
     defaultCategories: (scope) =>
@@ -173,12 +174,12 @@ const INDEXER_PRESETS: IndexerPreset[] = [
 ];
 
 const MEDIA_SCOPE_OPTIONS: { id: MediaScope; label: string; description: string; icon: typeof Film }[] = [
-  { id: "both",   label: "Movies + TV",  description: "Searches both — the most common choice", icon: Radio },
+  { id: "both",   label: "Movies + TV",  description: "Searches both; the most common choice", icon: Radio },
   { id: "movies", label: "Movies only",  description: "Only used for movie searches",            icon: Film  },
   { id: "tv",     label: "TV only",      description: "Only used for TV series searches",        icon: Tv    },
 ];
 
-/* ── Download client type presets ────────────────────────────────── */
+/* Download client type presets */
 interface ClientPreset {
   protocol: string;
   label: string;
@@ -195,7 +196,7 @@ const CLIENT_PRESETS: ClientPreset[] = [
     protocol: "qbittorrent",
     label: "qBittorrent",
     description: "The most popular torrent client. Free, open source, feature-rich.",
-    icon: "🌀",
+    icon: "QB",
     defaultPort: 8080,
     isUsenet: false,
     defaultMoviesCategory: "deluno-movies",
@@ -205,7 +206,7 @@ const CLIENT_PRESETS: ClientPreset[] = [
     protocol: "transmission",
     label: "Transmission",
     description: "Lightweight torrent client. Popular on Linux and NAS devices.",
-    icon: "⚙️",
+    icon: "TR",
     defaultPort: 9091,
     isUsenet: false,
     defaultMoviesCategory: "deluno-movies",
@@ -215,7 +216,7 @@ const CLIENT_PRESETS: ClientPreset[] = [
     protocol: "deluge",
     label: "Deluge",
     description: "Thin-client based torrent client. Highly customisable.",
-    icon: "💧",
+    icon: "DL",
     defaultPort: 8112,
     isUsenet: false,
     defaultMoviesCategory: "deluno-movies",
@@ -232,20 +233,10 @@ const CLIENT_PRESETS: ClientPreset[] = [
     defaultTvCategory: "deluno-tv",
   },
   {
-    protocol: "rtorrent",
-    label: "rTorrent / ruTorrent",
-    description: "CLI-based torrent client with ruTorrent web interface.",
-    icon: "🔧",
-    defaultPort: 80,
-    isUsenet: false,
-    defaultMoviesCategory: "deluno-movies",
-    defaultTvCategory: "deluno-tv",
-  },
-  {
     protocol: "sabnzbd",
     label: "SABnzbd",
     description: "The leading Usenet downloader. Requires a Usenet provider subscription.",
-    icon: "📦",
+    icon: "SAB",
     defaultPort: 8080,
     isUsenet: true,
     defaultMoviesCategory: "Movies",
@@ -255,25 +246,15 @@ const CLIENT_PRESETS: ClientPreset[] = [
     protocol: "nzbget",
     label: "NZBGet",
     description: "Efficient Usenet downloader. Lower resource usage than SABnzbd.",
-    icon: "📥",
+    icon: "NZB",
     defaultPort: 6789,
     isUsenet: true,
     defaultMoviesCategory: "Movies",
     defaultTvCategory: "TV",
   },
-  {
-    protocol: "custom",
-    label: "Custom / Other",
-    description: "Manual configuration for any other download client.",
-    icon: "🔌",
-    defaultPort: 80,
-    isUsenet: false,
-    defaultMoviesCategory: "movies",
-    defaultTvCategory: "tv",
-  },
 ];
 
-/* ── Health helpers ───────────────────────────────────────────────── */
+/* Health helpers */
 function healthVariant(v: string): "success" | "warning" | "destructive" {
   return v === "ready" ? "success" : v === "attention" ? "warning" : "destructive";
 }
@@ -364,20 +345,34 @@ function QueueActionButton({
   );
 }
 
-/* ── Section header ───────────────────────────────────────────────── */
+/* Section header */
 function ImportPreviewPanel({ preview }: { preview: ImportPreviewResponse }) {
   const hasWarnings = preview.warnings.length > 0;
+  const risk = getImportPreviewRisk(preview);
+  const probeSummary = formatProbeSummary(preview.mediaProbe);
   return (
     <div
       className={cn(
         "mt-2 rounded-lg border px-2.5 py-2",
-        hasWarnings ? "border-warning/25 bg-warning/5" : "border-primary/20 bg-primary/5"
+        risk.tone === "blocked"
+          ? "border-destructive/30 bg-destructive/5"
+          : risk.tone === "warning"
+            ? "border-warning/25 bg-warning/5"
+            : "border-primary/20 bg-primary/5"
       )}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <p className={cn("text-[10px] font-semibold uppercase tracking-[0.14em]", hasWarnings ? "text-warning" : "text-primary")}>
-          Import route · {preview.preferredTransferMode}
+        <p
+          className={cn(
+            "text-[10px] font-semibold uppercase tracking-[0.14em]",
+            risk.tone === "blocked" ? "text-destructive" : risk.tone === "warning" ? "text-warning" : "text-primary"
+          )}
+        >
+          Import route - {preview.preferredTransferMode}
         </p>
+        <Badge variant={risk.badgeVariant} className="text-[9px]">
+          {risk.label}
+        </Badge>
         <Badge variant={preview.sourceExists ? "success" : "destructive"} className="text-[9px]">
           source {preview.sourceExists ? "visible" : "missing"}
         </Badge>
@@ -391,6 +386,11 @@ function ImportPreviewPanel({ preview }: { preview: ImportPreviewResponse }) {
       <p className="mt-1 text-[10.5px] text-muted-foreground">
         {preview.explanation} {preview.transferExplanation}
       </p>
+      {probeSummary ? (
+        <p className="mt-1 font-mono text-[10px] text-muted-foreground">
+          {probeSummary}
+        </p>
+      ) : null}
       {preview.decisionSteps.length ? (
         <div className="mt-2 rounded-md border border-hairline bg-background/40 p-2">
           <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Decision path</p>
@@ -416,6 +416,37 @@ function ImportPreviewPanel({ preview }: { preview: ImportPreviewResponse }) {
       ) : null}
     </div>
   );
+}
+
+function getImportPreviewRisk(preview: ImportPreviewResponse) {
+  const warnings = preview.warnings.map((warning) => warning.toLowerCase());
+  const isBlocked =
+    !preview.sourceExists ||
+    !preview.isSupportedMediaFile ||
+    warnings.some((warning) => warning.includes("same file") || warning.includes("same path"));
+  const isWarning = preview.destinationExists || warnings.length > 0;
+  if (isBlocked) return { label: "Blocked", tone: "blocked" as const, badgeVariant: "destructive" as const };
+  if (isWarning) return { label: "Review", tone: "warning" as const, badgeVariant: "warning" as const };
+  return { label: "Ready", tone: "ready" as const, badgeVariant: "success" as const };
+}
+
+function formatProbeSummary(probe: ImportPreviewResponse["mediaProbe"]) {
+  if (!probe) return "";
+  const parts = [`Probe: ${probe.status}`];
+  if (probe.durationSeconds) parts.push(formatDuration(probe.durationSeconds));
+  const video = probe.videoStreams[0];
+  if (video) parts.push(`${video.codec ?? "video"} ${video.width ?? "?"}x${video.height ?? "?"}`);
+  parts.push(`${probe.audioStreams.length} audio`);
+  parts.push(`${probe.subtitleStreams.length} subs`);
+  return parts.join(" - ");
+}
+
+function formatDuration(seconds: number) {
+  const rounded = Math.max(0, Math.round(seconds));
+  const h = Math.floor(rounded / 3600).toString().padStart(2, "0");
+  const m = Math.floor((rounded % 3600) / 60).toString().padStart(2, "0");
+  const s = (rounded % 60).toString().padStart(2, "0");
+  return `${h}:${m}:${s}`;
 }
 
 function SectionHeader({ icon: Icon, title, meta, action }: {
@@ -1028,16 +1059,46 @@ function LibraryRoutingPanel({
 }
 
 /* ── Page ─────────────────────────────────────────────────────────── */
+function IndexersLoadingShell() {
+  return (
+    <div className="space-y-8" aria-busy="true" aria-live="polite">
+      <CardSkeleton />
+      <div className="fluid-kpi-grid">
+        <CardSkeleton />
+        <CardSkeleton />
+        <CardSkeleton />
+        <CardSkeleton />
+      </div>
+      <RouteSectionSkeleton />
+      <RouteSectionSkeleton />
+      <RouteSectionSkeleton />
+    </div>
+  );
+}
+
+function RouteSectionSkeleton() {
+  return (
+    <div className="rounded-2xl border border-hairline bg-card p-[var(--tile-pad)] shadow-card dark:border-white/[0.07]">
+      <RowSkeleton count={4} />
+    </div>
+  );
+}
+
 export function IndexersPage() {
   const loaderData = useLoaderData() as LoaderData | undefined;
-  const { clients, indexers, libraries, routing, settings, tags, telemetry } = loaderData ?? {
-    clients: [], indexers: [], libraries: [], routing: [], settings: null, tags: [], telemetry: null,
-  };
+  const navigation = useNavigation();
   const revalidator = useRevalidator();
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [showIndexerAdd, setShowIndexerAdd] = useState(false);
   const [showClientAdd, setShowClientAdd] = useState(false);
   const [importPreviews, setImportPreviews] = useState<Record<string, ImportPreviewResponse>>({});
+
+  if (!loaderData) {
+    return <IndexersLoadingShell />;
+  }
+
+  const { clients, indexers, libraries, routing, settings, tags, telemetry } = loaderData;
+  const isRouteLoading = navigation.state !== "idle";
 
   const healthyIndexers = indexers.filter((i) => i.healthStatus === "ready").length;
   const unhealthyCount = [...indexers, ...clients].filter((i) => i.healthStatus !== "ready").length;
@@ -1283,7 +1344,9 @@ export function IndexersPage() {
           />
         )}
 
-        {indexers.length > 0 ? (
+        {isRouteLoading && indexers.length === 0 ? (
+          <RouteSectionSkeleton />
+        ) : indexers.length > 0 ? (
           <div className="rounded-2xl border border-hairline overflow-hidden divide-y divide-hairline">
             {indexers.map((idx) => (
               <div key={idx.id} className="group flex items-center gap-3 px-[calc(var(--tile-pad)*0.8)] py-[calc(var(--tile-pad)*0.7)]">
@@ -1326,7 +1389,7 @@ export function IndexersPage() {
               </div>
             ))}
           </div>
-        ) : !showIndexerAdd && (
+        ) : !showIndexerAdd && !isRouteLoading && (
           <EmptyState
             size="sm"
             variant="custom"
@@ -1363,7 +1426,9 @@ export function IndexersPage() {
           />
         )}
 
-        {clients.length > 0 ? (
+        {isRouteLoading && clients.length === 0 ? (
+          <RouteSectionSkeleton />
+        ) : clients.length > 0 ? (
           <div className="rounded-2xl border border-hairline overflow-hidden divide-y divide-hairline">
             {clients.map((client) => {
               const clientTelemetry = telemetryByClientId.get(client.id);
@@ -1529,12 +1594,12 @@ export function IndexersPage() {
               );
             })}
           </div>
-        ) : !showClientAdd && (
+        ) : !showClientAdd && !isRouteLoading && (
           <EmptyState
             size="sm"
             variant="custom"
             title="No download clients"
-            description="Add qBittorrent, SABnzbd, or another client to dispatch downloads."
+            description="Add qBittorrent, SABnzbd, NZBGet, Deluge, Transmission, or uTorrent to dispatch downloads."
             action={
               <Button onClick={() => setShowClientAdd(true)} className="gap-2" size="sm">
                 <Plus className="h-4 w-4" />
@@ -1553,14 +1618,16 @@ export function IndexersPage() {
           meta="Connect each library to its indexers and clients. Movie libraries only see movie-scoped indexers."
         />
 
-        {libraries.length === 0 && (
+        {isRouteLoading && libraries.length === 0 ? (
+          <RouteSectionSkeleton />
+        ) : libraries.length === 0 ? (
           <EmptyState
             size="sm"
             variant="custom"
             title="No libraries yet"
             description="Create a movies or TV library first, then wire it to providers here."
           />
-        )}
+        ) : null}
 
         {/* Movies libraries */}
         {movieLibraries.length > 0 && (

@@ -53,8 +53,9 @@ function apiToTimeline(item: ActivityEventItem): TimelineEvent {
   return {
     id: item.id,
     message: item.message,
-    category: item.category ?? "system",
-    severity: (item.severity as Severity) ?? "info",
+    category: normalizeCategory(item.category ?? "system"),
+    severity: severityForCategory(item.category ?? "system"),
+    detail: item.detailsJson ?? undefined,
     createdUtc: item.createdUtc
   };
 }
@@ -105,6 +106,23 @@ function absoluteTime(iso: string) {
 }
 
 const ALL_CATEGORIES = Object.keys(CAT_CONFIG);
+
+function normalizeCategory(category: string): Category {
+  if (category.includes("download") || category.includes("dispatch")) return "download";
+  if (category.includes("import") || category.includes("filesystem")) return "import";
+  if (category.includes("search") || category.includes("release")) return "search";
+  if (category.includes("processing") || category.includes("processor")) return "system";
+  if (category.includes("failed") || category.includes("error") || category.includes("rejected") || category.includes("replacement")) return "error";
+  if (category.includes("notification")) return "notification";
+  return "system";
+}
+
+function severityForCategory(category: string): Severity {
+  if (category.includes("failed") || category.includes("error") || category.includes("rejected") || category.includes("replacement")) return "error";
+  if (category.includes("held") || category.includes("waiting") || category.includes("force") || category.includes("processing")) return "warning";
+  if (category.includes("completed") || category.includes("dispatched") || category.includes("auto-queued")) return "success";
+  return "info";
+}
 
 /* ── Component ───────────────────────────────────────────────────── */
 interface AuditTimelineProps {

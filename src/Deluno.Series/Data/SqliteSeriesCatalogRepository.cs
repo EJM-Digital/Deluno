@@ -510,21 +510,21 @@ public sealed class SqliteSeriesCatalogRepository(
         command.CommandText =
             """
             SELECT
-                h.id,
-                h.series_id,
+                COALESCE(h.id, ''),
+                COALESCE(h.series_id, ''),
                 h.episode_id,
                 e.season_number,
                 e.episode_number,
-                h.library_id,
-                h.trigger_kind,
-                h.outcome,
+                COALESCE(h.library_id, ''),
+                COALESCE(h.trigger_kind, 'manual'),
+                COALESCE(h.outcome, 'unknown'),
                 h.release_name,
                 h.indexer_name,
                 h.details_json,
-                h.created_utc
+                COALESCE(h.created_utc, '')
             FROM series_search_history h
             LEFT JOIN episode_entries e ON e.id = h.episode_id
-            ORDER BY created_utc DESC
+            ORDER BY h.created_utc DESC
             LIMIT 20;
             """;
 
@@ -532,18 +532,22 @@ public sealed class SqliteSeriesCatalogRepository(
         while (await reader.ReadAsync(cancellationToken))
         {
             items.Add(new SeriesSearchHistoryItem(
-                Id: reader.GetString(0),
-                SeriesId: reader.GetString(1),
+                Id: reader.IsDBNull(0) || string.IsNullOrWhiteSpace(reader.GetString(0))
+                    ? Guid.CreateVersion7().ToString("N")
+                    : reader.GetString(0),
+                SeriesId: reader.IsDBNull(1) ? string.Empty : reader.GetString(1),
                 EpisodeId: reader.IsDBNull(2) ? null : reader.GetString(2),
                 SeasonNumber: reader.IsDBNull(3) ? null : reader.GetInt32(3),
                 EpisodeNumber: reader.IsDBNull(4) ? null : reader.GetInt32(4),
-                LibraryId: reader.GetString(5),
-                TriggerKind: reader.GetString(6),
-                Outcome: reader.GetString(7),
+                LibraryId: reader.IsDBNull(5) ? string.Empty : reader.GetString(5),
+                TriggerKind: reader.IsDBNull(6) ? "manual" : reader.GetString(6),
+                Outcome: reader.IsDBNull(7) ? "unknown" : reader.GetString(7),
                 ReleaseName: reader.IsDBNull(8) ? null : reader.GetString(8),
                 IndexerName: reader.IsDBNull(9) ? null : reader.GetString(9),
                 DetailsJson: reader.IsDBNull(10) ? null : reader.GetString(10),
-                CreatedUtc: ParseTimestamp(reader.GetString(11))));
+                CreatedUtc: reader.IsDBNull(11) || string.IsNullOrWhiteSpace(reader.GetString(11))
+                    ? DateTimeOffset.UnixEpoch
+                    : ParseTimestamp(reader.GetString(11))));
         }
 
         return items;
@@ -610,6 +614,32 @@ public sealed class SqliteSeriesCatalogRepository(
         return items;
     }
 
+    public async Task<int> CountRetryDelayedWantedAsync(
+        string libraryId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT COUNT(*)
+            FROM series_wanted_state
+            WHERE library_id = @libraryId
+              AND wanted_status IN ('missing', 'upgrade')
+              AND next_eligible_search_utc IS NOT NULL
+              AND next_eligible_search_utc > @now;
+            """;
+
+        AddParameter(command, "@libraryId", libraryId);
+        AddParameter(command, "@now", now.ToString("O"));
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return Convert.ToInt32(value, CultureInfo.InvariantCulture);
+    }
+
     public async Task EnsureWantedStateAsync(
         string seriesId,
         string libraryId,
@@ -670,6 +700,7 @@ public sealed class SqliteSeriesCatalogRepository(
         string? currentQuality,
         string? targetQuality,
         bool qualityCutoffMet,
+        bool unmonitorWhenCutoffMet,
         IReadOnlyList<ImportedEpisodeItem>? episodes,
         CancellationToken cancellationToken)
     {
@@ -711,16 +742,31 @@ public sealed class SqliteSeriesCatalogRepository(
                     id, title, start_year, imdb_id, monitored, created_utc, updated_utc
                 )
                 VALUES (
-                    @id, @title, @startYear, NULL, 1, @createdUtc, @updatedUtc
+                    @id, @title, @startYear, NULL, @monitored, @createdUtc, @updatedUtc
                 );
                 """;
 
             AddParameter(insert, "@id", seriesId);
             AddParameter(insert, "@title", normalizedTitle);
             AddParameter(insert, "@startYear", startYear);
+            AddParameter(insert, "@monitored", unmonitorWhenCutoffMet && qualityCutoffMet ? 0 : 1);
             AddParameter(insert, "@createdUtc", now.ToString("O"));
             AddParameter(insert, "@updatedUtc", now.ToString("O"));
             await insert.ExecuteNonQueryAsync(cancellationToken);
+        }
+        else if (unmonitorWhenCutoffMet && qualityCutoffMet)
+        {
+            using var unmonitor = connection.CreateCommand();
+            unmonitor.CommandText =
+                """
+                UPDATE series_entries
+                SET monitored = 0,
+                    updated_utc = @updatedUtc
+                WHERE id = @seriesId;
+                """;
+            AddParameter(unmonitor, "@seriesId", seriesId);
+            AddParameter(unmonitor, "@updatedUtc", now.ToString("O"));
+            await unmonitor.ExecuteNonQueryAsync(cancellationToken);
         }
 
         using var wanted = connection.CreateCommand();

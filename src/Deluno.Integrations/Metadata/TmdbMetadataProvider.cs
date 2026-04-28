@@ -17,30 +17,107 @@ public sealed class TmdbMetadataProvider(
     : IMetadataProvider
 {
     private const string ProviderName = "tmdb";
+    private const string BrokerProviderName = "deluno";
     private static readonly JsonSerializerOptions CacheJsonOptions = new(JsonSerializerDefaults.Web);
 
     public async Task<MetadataProviderStatus> GetStatusAsync(CancellationToken cancellationToken)
     {
+        var config = await GetMetadataConfigurationAsync(cancellationToken);
+        var directConfigured = !string.IsNullOrWhiteSpace(config.TmdbApiKey);
+        var brokerConfigured = !string.IsNullOrWhiteSpace(config.BrokerUrl);
+        var sources = BuildSourceStatuses(config, directConfigured, brokerConfigured);
+
+        return config.ProviderMode switch
+        {
+            "broker" => new MetadataProviderStatus(
+                BrokerProviderName,
+                brokerConfigured,
+                brokerConfigured ? "broker" : "unconfigured",
+                brokerConfigured
+                    ? "Deluno metadata broker is configured. Users do not need local provider API keys for lookup."
+                    : "Deluno broker mode is selected, but no broker URL is configured yet.",
+                sources),
+            "hybrid" => new MetadataProviderStatus(
+                BrokerProviderName,
+                brokerConfigured || directConfigured,
+                brokerConfigured ? "hybrid" : directConfigured ? "direct-fallback" : "unconfigured",
+                brokerConfigured
+                    ? "Deluno will try the metadata broker first and fall back to local TMDb when a direct key exists."
+                    : directConfigured
+                        ? "Hybrid mode is selected. Broker is not configured, so Deluno is using local TMDb fallback."
+                        : "Hybrid mode needs either a broker URL or a local TMDb fallback key.",
+                sources),
+            _ => new MetadataProviderStatus(
+                ProviderName,
+                directConfigured,
+                directConfigured ? "direct" : "unconfigured",
+                directConfigured
+                    ? string.IsNullOrWhiteSpace(config.OmdbApiKey)
+                        ? "Direct TMDb metadata search is configured. Add OMDb to enrich IMDb, Rotten Tomatoes, and Metacritic ratings."
+                        : "Direct TMDb search and OMDb ratings enrichment are configured."
+                    : "Direct metadata mode needs a TMDb API key before provider lookup can run.",
+                sources)
+        };
+    }
+
+    public async Task<MetadataProviderStatus> GetDirectStatusAsync(CancellationToken cancellationToken)
+    {
         var apiKey = await GetApiKeyAsync(cancellationToken);
         var omdbApiKey = await GetOmdbApiKeyAsync(cancellationToken);
-        var status = string.IsNullOrWhiteSpace(apiKey)
-            ? new MetadataProviderStatus(
-                ProviderName,
-                false,
-                "unconfigured",
-                "TMDb API key is not configured. Metadata search will return no provider results until TMDb is configured.")
-            : new MetadataProviderStatus(
-                ProviderName,
-                true,
-                "live",
-                string.IsNullOrWhiteSpace(omdbApiKey)
-                    ? "TMDb metadata search is configured. Add OMDb to enrich stored metadata with IMDb, Rotten Tomatoes, and Metacritic ratings."
-                    : "TMDb metadata search and OMDb ratings enrichment are configured.");
-
-        return status;
+        var configured = !string.IsNullOrWhiteSpace(apiKey);
+        return new MetadataProviderStatus(
+            ProviderName,
+            configured,
+            configured ? "direct" : "unconfigured",
+            configured
+                ? string.IsNullOrWhiteSpace(omdbApiKey)
+                    ? "Direct TMDb lookup is configured. OMDb enrichment is not configured."
+                    : "Direct TMDb lookup and OMDb ratings enrichment are configured."
+                : "Direct TMDb lookup needs a TMDb API key.",
+            BuildSourceStatuses(
+                new MetadataProviderConfiguration("direct", null, apiKey, omdbApiKey),
+                configured,
+                false));
     }
 
     public async Task<IReadOnlyList<MetadataSearchResult>> SearchAsync(
+        MetadataLookupRequest request,
+        CancellationToken cancellationToken)
+    {
+        var query = request.Query?.Trim();
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return [];
+        }
+
+        var config = await GetMetadataConfigurationAsync(cancellationToken);
+        var mediaType = NormalizeMediaType(request.MediaType);
+        var cacheKey = BuildSearchCacheKey(config.ProviderMode, mediaType, query, request.Year, request.ProviderId);
+        var cached = await TryReadSearchCacheAsync(cacheKey, cancellationToken);
+        if (cached is not null)
+        {
+            return cached;
+        }
+
+        if (config.ProviderMode is "broker" or "hybrid" && !string.IsNullOrWhiteSpace(config.BrokerUrl))
+        {
+            var brokerResults = await TryBrokerSearchAsync(config.BrokerUrl, mediaType, request, query, cancellationToken);
+            if (brokerResults is { Count: > 0 })
+            {
+                await WriteSearchCacheAsync(cacheKey, mediaType, query, brokerResults, cancellationToken);
+                return brokerResults;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(config.TmdbApiKey) || config.ProviderMode == "broker")
+        {
+            return [];
+        }
+
+        return await SearchDirectAsync(request, config.TmdbApiKey, cacheKey, mediaType, query, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<MetadataSearchResult>> SearchDirectAsync(
         MetadataLookupRequest request,
         CancellationToken cancellationToken)
     {
@@ -57,12 +134,24 @@ public sealed class TmdbMetadataProvider(
         }
 
         var mediaType = NormalizeMediaType(request.MediaType);
-        var cacheKey = BuildSearchCacheKey(mediaType, query, request.Year, request.ProviderId);
+        var cacheKey = BuildSearchCacheKey($"{ProviderName}:direct", mediaType, query, request.Year, request.ProviderId);
         var cached = await TryReadSearchCacheAsync(cacheKey, cancellationToken);
         if (cached is not null)
         {
             return cached;
         }
+
+        return await SearchDirectAsync(request, apiKey, cacheKey, mediaType, query, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<MetadataSearchResult>> SearchDirectAsync(
+        MetadataLookupRequest request,
+        string apiKey,
+        string cacheKey,
+        string mediaType,
+        string query,
+        CancellationToken cancellationToken)
+    {
 
         if (!string.IsNullOrWhiteSpace(request.ProviderId) &&
             int.TryParse(request.ProviderId, NumberStyles.Integer, CultureInfo.InvariantCulture, out var providerId))
@@ -181,7 +270,10 @@ public sealed class TmdbMetadataProvider(
     }
 
     private static string BuildSearchCacheKey(string mediaType, string query, int? year, string? providerId)
-        => $"{ProviderName}:search:{mediaType}:{query.Trim().ToLowerInvariant()}:{year?.ToString(CultureInfo.InvariantCulture) ?? "any"}:{providerId?.Trim() ?? "none"}";
+        => BuildSearchCacheKey(ProviderName, mediaType, query, year, providerId);
+
+    private static string BuildSearchCacheKey(string source, string mediaType, string query, int? year, string? providerId)
+        => $"{source}:search:{mediaType}:{query.Trim().ToLowerInvariant()}:{year?.ToString(CultureInfo.InvariantCulture) ?? "any"}:{providerId?.Trim() ?? "none"}";
 
     private static void AddParameter(System.Data.Common.DbCommand command, string name, object? value)
     {
@@ -189,6 +281,76 @@ public sealed class TmdbMetadataProvider(
         parameter.ParameterName = name;
         parameter.Value = value ?? DBNull.Value;
         command.Parameters.Add(parameter);
+    }
+
+    private async Task<MetadataProviderConfiguration> GetMetadataConfigurationAsync(CancellationToken cancellationToken)
+    {
+        var settings = await platformRepository.GetAsync(cancellationToken);
+        return new MetadataProviderConfiguration(
+            settings.MetadataProviderMode,
+            ResolveBrokerUrl(settings.MetadataBrokerUrl),
+            await GetApiKeyAsync(cancellationToken),
+            await GetOmdbApiKeyAsync(cancellationToken));
+    }
+
+    private string? ResolveBrokerUrl(string? settingsValue)
+    {
+        var value = string.IsNullOrWhiteSpace(settingsValue) ? null : settingsValue.Trim();
+        value ??= configuration["Deluno:Metadata:BrokerUrl"]
+                  ?? configuration["DELUNO_METADATA_BROKER_URL"]
+                  ?? Environment.GetEnvironmentVariable("DELUNO_METADATA_BROKER_URL");
+        return string.IsNullOrWhiteSpace(value) ? null : value.TrimEnd('/');
+    }
+
+    private static IReadOnlyList<MetadataSourceStatus> BuildSourceStatuses(
+        MetadataProviderConfiguration config,
+        bool directConfigured,
+        bool brokerConfigured)
+    {
+        return
+        [
+            new MetadataSourceStatus(
+                "broker",
+                "Deluno broker",
+                "Primary managed lookup",
+                brokerConfigured,
+                config.ProviderMode is "broker" or "hybrid" ? config.ProviderMode : "available",
+                brokerConfigured
+                    ? "Broker URL is configured for managed metadata lookup."
+                    : "Not configured. Add a broker URL when hosted metadata is available."),
+            new MetadataSourceStatus(
+                "tmdb",
+                "TMDb",
+                "Movies, TV, artwork, genres, IDs",
+                directConfigured,
+                config.ProviderMode == "direct" ? "primary" : "fallback",
+                directConfigured
+                    ? "Direct TMDb key is stored and can resolve title search and artwork."
+                    : "No direct TMDb key is stored."),
+            new MetadataSourceStatus(
+                "omdb",
+                "OMDb",
+                "IMDb, Rotten Tomatoes, Metacritic",
+                !string.IsNullOrWhiteSpace(config.OmdbApiKey),
+                "enrichment",
+                !string.IsNullOrWhiteSpace(config.OmdbApiKey)
+                    ? "OMDb ratings enrichment is configured."
+                    : "Optional ratings enrichment is not configured."),
+            new MetadataSourceStatus(
+                "tvdb",
+                "TVDb",
+                "Future TV-specific enrichment",
+                false,
+                "planned",
+                "Reserved for future TV metadata fallback and episode-specific enrichment."),
+            new MetadataSourceStatus(
+                "fanart",
+                "Fanart.tv",
+                "Future artwork enrichment",
+                false,
+                "planned",
+                "Reserved for richer poster, logo, and background artwork.")
+        ];
     }
 
     private async Task<string?> GetApiKeyAsync(CancellationToken cancellationToken)
@@ -202,6 +364,55 @@ public sealed class TmdbMetadataProvider(
            ?? configuration["Deluno:Metadata:OMDbApiKey"]
            ?? configuration["OMDB_API_KEY"]
            ?? Environment.GetEnvironmentVariable("OMDB_API_KEY");
+
+    private async Task<IReadOnlyList<MetadataSearchResult>?> TryBrokerSearchAsync(
+        string brokerUrl,
+        string mediaType,
+        MetadataLookupRequest request,
+        string query,
+        CancellationToken cancellationToken)
+    {
+        var url =
+            $"{BuildBrokerSearchBaseUrl(brokerUrl)}?mediaType={Uri.EscapeDataString(mediaType)}&query={Uri.EscapeDataString(query)}";
+        if (request.Year is > 0)
+        {
+            url += $"&year={request.Year.Value.ToString(CultureInfo.InvariantCulture)}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.ProviderId))
+        {
+            url += $"&providerId={Uri.EscapeDataString(request.ProviderId.Trim())}";
+        }
+
+        try
+        {
+            using var response = await httpClient.GetAsync(url, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            var brokerResponse = await JsonSerializer.DeserializeAsync<MetadataBrokerSearchResponse>(
+                stream,
+                CacheJsonOptions,
+                cancellationToken);
+            return brokerResponse?.Results?.Take(12).ToArray();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string BuildBrokerSearchBaseUrl(string brokerUrl)
+    {
+        var trimmed = brokerUrl.TrimEnd('/');
+        return trimmed.EndsWith("/metadata/broker", StringComparison.OrdinalIgnoreCase) ||
+               trimmed.EndsWith("/api/metadata/broker", StringComparison.OrdinalIgnoreCase)
+            ? $"{trimmed}/search"
+            : $"{trimmed}/metadata/search";
+    }
 
     private async Task<MetadataSearchResult> ToResultAsync(
         TmdbSearchItem item,
@@ -529,6 +740,18 @@ public sealed class TmdbMetadataProvider(
         => DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed)
             ? parsed.Year
             : null;
+
+    private sealed record MetadataProviderConfiguration(
+        string ProviderMode,
+        string? BrokerUrl,
+        string? TmdbApiKey,
+        string? OmdbApiKey);
+
+    private sealed record MetadataBrokerSearchResponse(
+        string Provider,
+        string Mode,
+        int ResultCount,
+        IReadOnlyList<MetadataSearchResult> Results);
 
     private sealed record TmdbSearchResponse(
         [property: JsonPropertyName("results")] IReadOnlyList<TmdbSearchItem>? Results);

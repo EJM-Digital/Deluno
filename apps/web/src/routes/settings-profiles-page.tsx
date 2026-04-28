@@ -36,6 +36,7 @@ import { settingsOverviewLoader } from "./settings-overview-page";
 import { cn } from "../lib/utils";
 import { authedFetch } from "../lib/use-auth";
 import { findBundledCF } from "../lib/trash-guide-data";
+import { RouteSkeleton } from "../components/shell/skeleton";
 
 interface SettingsOverviewLoaderData {
   libraries: LibraryItem[];
@@ -169,12 +170,8 @@ function SortableProfileRow({
 /* ── Page ────────────────────────────────────────────────────────── */
 export function SettingsProfilesPage() {
   const loaderData = useLoaderData() as SettingsOverviewLoaderData | undefined;
-  const { libraries, qualityProfiles, customFormats } = loaderData ?? {
-    libraries: [],
-    qualityProfiles: [],
-    customFormats: [],
-    settings: emptyPlatformSettingsSnapshot
-  };
+  if (!loaderData) return <RouteSkeleton />;
+  const { libraries, qualityProfiles, customFormats } = loaderData;
   const revalidator = useRevalidator();
   const [orderedProfiles, setOrderedProfiles] = useState<QualityProfileItem[]>(qualityProfiles);
   const [busyKey, setBusyKey] = useState<string | null>(null);

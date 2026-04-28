@@ -14,6 +14,7 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { EmptyState } from "../components/shell/empty-state";
 import { Stagger, StaggerItem } from "../components/shell/motion";
+import { RouteSkeleton } from "../components/shell/skeleton";
 
 interface CalendarItem {
   id: string;
@@ -31,12 +32,11 @@ interface CalendarLoaderData {
 }
 
 export async function calendarLoader(): Promise<CalendarLoaderData> {
-  try {
-    const [series, seriesWanted, movieWanted] = await Promise.all([
-      fetchJson<SeriesListItem[]>("/api/series"),
-      fetchJson<SeriesWantedSummary>("/api/series/wanted"),
-      fetchJson<MovieWantedSummary>("/api/movies/wanted")
-    ]);
+  const [series, seriesWanted, movieWanted] = await Promise.all([
+    fetchJson<SeriesListItem[]>("/api/series"),
+    fetchJson<SeriesWantedSummary>("/api/series/wanted"),
+    fetchJson<MovieWantedSummary>("/api/movies/wanted")
+  ]);
 
     const inventory = await Promise.all(
       series.map((item) =>
@@ -92,15 +92,13 @@ export async function calendarLoader(): Promise<CalendarLoaderData> {
       .sort((left, right) => new Date(left.startsAt).getTime() - new Date(right.startsAt).getTime())
       .slice(0, 48);
 
-    return { items };
-  } catch {
-    return { items: [] };
-  }
+  return { items };
 }
 
 export function CalendarPage() {
   const loaderData = useLoaderData() as CalendarLoaderData | undefined;
-  const items = loaderData?.items ?? [];
+  if (!loaderData) return <RouteSkeleton />;
+  const items = loaderData.items;
   const [weekOffset, setWeekOffset] = useState(0);
   const week = useMemo(() => buildWeek(weekOffset), [weekOffset]);
 

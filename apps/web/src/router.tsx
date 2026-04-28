@@ -129,6 +129,13 @@ export const router = createBrowserRouter([
         })
       },
       {
+        path: "setup-guide",
+        lazy: withSkeleton(async () => {
+          const module = await import("./routes/setup-guide-page");
+          return { loader: module.setupGuideLoader, Component: module.SetupGuidePage };
+        })
+      },
+      {
         path: "movies",
         lazy: withSkeleton(async () => {
           const module = await import("./routes/library-page");
@@ -315,6 +322,20 @@ export const router = createBrowserRouter([
             lazy: withSkeleton(async () => {
               const module = await import("./routes/system-page");
               return { loader: module.systemLoader, Component: module.SystemPage };
+            })
+          },
+          {
+            path: "api",
+            lazy: withSkeleton(async () => {
+              const module = await import("./routes/system-api-page");
+              return { loader: module.systemApiLoader, Component: module.SystemApiPage };
+            })
+          },
+          {
+            path: "docs",
+            lazy: withSkeleton(async () => {
+              const module = await import("./routes/system-docs-page");
+              return { Component: module.SystemDocsPage };
             })
           },
           {

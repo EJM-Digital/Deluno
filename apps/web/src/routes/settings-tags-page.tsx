@@ -9,6 +9,7 @@ import { EmptyState } from "../components/shell/empty-state";
 import { emptyPlatformSettingsSnapshot, fetchJson, type LibraryItem, type PlatformSettingsSnapshot, type QualityProfileItem, type TagItem } from "../lib/api";
 import { settingsOverviewLoader } from "./settings-overview-page";
 import { authedFetch } from "../lib/use-auth";
+import { RouteSkeleton } from "../components/shell/skeleton";
 
 interface SettingsOverviewLoaderData {
   libraries: LibraryItem[];
@@ -31,12 +32,8 @@ export async function settingsTagsLoader(): Promise<SettingsTagsLoaderData> {
 
 export function SettingsTagsPage() {
   const loaderData = useLoaderData() as SettingsTagsLoaderData | undefined;
-  const { libraries, tags } = loaderData ?? {
-    libraries: [],
-    qualityProfiles: [],
-    settings: emptyPlatformSettingsSnapshot,
-    tags: []
-  };
+  if (!loaderData) return <RouteSkeleton />;
+  const { libraries, tags } = loaderData;
   const revalidator = useRevalidator();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formState, setFormState] = useState<Record<string, TagItem>>(
@@ -136,7 +133,7 @@ export function SettingsTagsPage() {
         </div>
       ) : null}
 
-      <div className="settings-split settings-split-content-heavy">
+      <div className="settings-split settings-split-config-heavy">
         <Card className="settings-panel order-2">
           <CardHeader>
             <CardTitle>Configured tags</CardTitle>

@@ -15,6 +15,8 @@ import {
   fetchJson,
   type ActivityEventItem,
   type DownloadDispatchItem,
+  type LibraryItem,
+  type MetadataSearchResult,
   type SeriesEpisodeInventoryItem,
   type SeriesImportRecoverySummary,
   type SeriesInventoryDetail,
@@ -29,12 +31,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../co
 import { KpiCard } from "../components/app/kpi-card";
 import { RatingStrip } from "../components/app/rating-strip";
 import { EmptyState } from "../components/shell/empty-state";
+import { RouteSkeleton } from "../components/shell/skeleton";
 
 interface ShowDetailLoaderData {
   activity: ActivityEventItem[];
   dispatches: DownloadDispatchItem[];
   importRecovery: SeriesImportRecoverySummary;
   inventory: SeriesInventoryDetail;
+  libraries: LibraryItem[];
   searchHistory: SeriesSearchHistoryItem[];
   series: SeriesListItem;
   wanted: SeriesWantedSummary;
@@ -48,7 +52,7 @@ export async function showDetailLoader({
   params: { id?: string };
 }): Promise<ShowDetailLoaderData> {
   const id = params.id!;
-  const [series, wanted, searchHistory, dispatches, importRecovery, inventory, activity] =
+  const [series, wanted, searchHistory, dispatches, importRecovery, inventory, activity, libraries] =
     await Promise.all([
       fetchJson<SeriesListItem>(`/api/series/${id}`),
       fetchJson<SeriesWantedSummary>("/api/series/wanted"),
@@ -58,68 +62,29 @@ export async function showDetailLoader({
       fetchJson<SeriesInventoryDetail>(`/api/series/${id}/inventory`),
       fetchJson<ActivityEventItem[]>(
         `/api/activity?relatedEntityType=series&relatedEntityId=${id}&take=20`
-      )
+      ),
+      fetchJson<LibraryItem[]>("/api/libraries")
     ]);
 
-  return { activity, dispatches, importRecovery, inventory, searchHistory, series, wanted };
+  return { activity, dispatches, importRecovery, inventory, libraries, searchHistory, series, wanted };
 }
 
 export function ShowDetailPage() {
   const loaderData = useLoaderData() as ShowDetailLoaderData | undefined;
-  const { activity, dispatches, importRecovery, inventory, searchHistory, series, wanted } = loaderData ?? {
-    activity: [],
-    dispatches: [],
-    importRecovery: {
-      openCount: 0,
-      qualityCount: 0,
-      unmatchedCount: 0,
-      corruptCount: 0,
-      downloadFailedCount: 0,
-      importFailedCount: 0,
-      recentCases: []
-    },
-    inventory: {
-      seriesId: "unknown",
-      title: "Unknown series",
-      startYear: null,
-      seasonCount: 0,
-      episodeCount: 0,
-      importedEpisodeCount: 0,
-      episodes: []
-    },
-    searchHistory: [],
-    series: {
-      id: "unknown",
-      title: "Unknown series",
-      startYear: null,
-      imdbId: null,
-      monitored: false,
-      metadataProvider: null,
-      metadataProviderId: null,
-      originalTitle: null,
-      overview: null,
-      posterUrl: null,
-      backdropUrl: null,
-      rating: null,
-      ratings: [],
-      genres: null,
-      externalUrl: null,
-      metadataJson: null,
-      metadataUpdatedUtc: null,
-      createdUtc: new Date(0).toISOString(),
-      updatedUtc: new Date(0).toISOString()
-    },
-    wanted: { totalWanted: 0, missingCount: 0, upgradeCount: 0, waitingCount: 0, recentItems: [] }
-  };
+  if (!loaderData) return <RouteSkeleton />;
+  const { activity, dispatches, importRecovery, inventory, libraries, searchHistory, series, wanted } = loaderData;
   const revalidator = useRevalidator();
   const [selectedEpisodeIds, setSelectedEpisodeIds] = useState<string[]>([]);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [metadataQuery, setMetadataQuery] = useState(series.title);
+  const [metadataMatches, setMetadataMatches] = useState<MetadataSearchResult[]>([]);
   const [releaseCandidates, setReleaseCandidates] = useState<SearchPlanCandidate[]>([]);
   const [episodeFilter, setEpisodeFilter] = useState<EpisodeFilter>("all");
   const [query, setQuery] = useState("");
 
   const wantedItem = wanted.recentItems.find((item) => item.seriesId === series.id) ?? null;
+  const library = wantedItem ? libraries.find((item) => item.id === wantedItem.libraryId) ?? null : null;
   const seriesSearches = searchHistory.filter((item) => item.seriesId === series.id);
   const seriesDispatches = dispatches.filter((item) => item.entityId === series.id);
   const importCases = importRecovery.recentCases.filter(
@@ -222,8 +187,8 @@ export function ShowDetailPage() {
     }
   }
 
-  async function handleGrabCandidate(candidate: SearchPlanCandidate) {
-    setBusyAction(`grab:${candidate.indexerName}:${candidate.releaseName}`);
+  async function handleGrabCandidate(candidate: SearchPlanCandidate, force = false, overrideReason?: string) {
+    setBusyAction(`${force ? "force-grab" : "grab"}:${candidate.indexerName}:${candidate.releaseName}`);
     setActionMessage(null);
 
     try {
@@ -233,7 +198,9 @@ export function ShowDetailPage() {
         body: JSON.stringify({
           releaseName: candidate.releaseName,
           indexerName: candidate.indexerName,
-          downloadUrl: candidate.downloadUrl
+          downloadUrl: candidate.downloadUrl,
+          force,
+          overrideReason: force ? overrideReason || `User forced this release despite scorer result: ${candidate.summary}` : null
         })
       });
 
@@ -244,6 +211,7 @@ export function ShowDetailPage() {
       const payload = (await response.json()) as {
         releaseName?: string;
         indexerName?: string | null;
+        forceOverride?: boolean;
         dispatchStatus?: string;
         dispatchMessage?: string;
       };
@@ -274,6 +242,45 @@ export function ShowDetailPage() {
       revalidator.revalidate();
     } catch {
       setActionMessage("Metadata refresh failed.");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleMetadataSearch() {
+    setBusyAction("metadata-search");
+    setActionMessage(null);
+    try {
+      const params = new URLSearchParams({
+        query: metadataQuery.trim() || series.title,
+        mediaType: "tv"
+      });
+      if (series.startYear) params.set("year", String(series.startYear));
+      const results = await fetchJson<MetadataSearchResult[]>(`/api/metadata/search?${params.toString()}`);
+      setMetadataMatches(results.slice(0, 6));
+      setActionMessage(results.length ? `${results.length} metadata match${results.length === 1 ? "" : "es"} found.` : "No metadata matches found.");
+    } catch {
+      setActionMessage("Metadata search failed.");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleMetadataLink(result: MetadataSearchResult) {
+    setBusyAction(`metadata-link:${result.providerId}`);
+    setActionMessage(null);
+    try {
+      const response = await authedFetch(`/api/series/${series.id}/metadata/link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ providerId: result.providerId })
+      });
+      if (!response.ok) throw new Error("metadata-link-failed");
+      setMetadataMatches([]);
+      setActionMessage(`Linked metadata to ${result.title}${result.year ? ` (${result.year})` : ""}.`);
+      revalidator.revalidate();
+    } catch {
+      setActionMessage("Metadata match could not be linked.");
     } finally {
       setBusyAction(null);
     }
@@ -753,6 +760,13 @@ export function ShowDetailPage() {
         </div>
 
         <div className="space-y-[var(--page-gap)]">
+          <RoutingCard
+            library={library}
+            currentQuality={wantedItem?.currentQuality ?? null}
+            targetQuality={wantedItem?.targetQuality ?? "WEB 1080p"}
+            workflow={library?.importWorkflow ?? "standard"}
+          />
+
           <Card>
             <CardHeader>
               <CardTitle>Metadata</CardTitle>
@@ -774,6 +788,15 @@ export function ShowDetailPage() {
                 <MetadataStat label="Genres" value={series.genres ?? "None"} />
               </div>
               <RatingStrip ratings={series.ratings} fallbackRating={series.rating} />
+              <MetadataCorrectionPanel
+                busyAction={busyAction}
+                mediaLabel="series"
+                query={metadataQuery}
+                matches={metadataMatches}
+                onQueryChange={setMetadataQuery}
+                onSearch={handleMetadataSearch}
+                onLink={handleMetadataLink}
+              />
               {series.externalUrl ? (
                 <Button asChild variant="outline" size="sm">
                   <a href={series.externalUrl} target="_blank" rel="noreferrer">
@@ -908,6 +931,99 @@ function MetadataStat({ label, value }: { label: string; value: string }) {
   );
 }
 
+function RoutingCard({
+  currentQuality,
+  library,
+  targetQuality,
+  workflow
+}: {
+  currentQuality: string | null;
+  library: LibraryItem | null;
+  targetQuality: string | null;
+  workflow: string;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Routing and destination</CardTitle>
+        <CardDescription>
+          Final episode filenames are previewed once Deluno has a source file. This shows the active series route now.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-3 sm:grid-cols-2">
+        <MetadataStat label="Library" value={library?.name ?? "Not linked"} />
+        <MetadataStat label="Root folder" value={library?.rootPath || "No root configured"} />
+        <MetadataStat label="Downloads folder" value={library?.downloadsPath || "Client default"} />
+        <MetadataStat label="Workflow" value={workflow === "refine-before-import" ? "Refine before import" : "Standard import"} />
+        <MetadataStat label="Current quality" value={currentQuality ?? "Unknown"} />
+        <MetadataStat label="Target quality" value={targetQuality ?? "WEB 1080p"} />
+      </CardContent>
+    </Card>
+  );
+}
+
+function MetadataCorrectionPanel({
+  busyAction,
+  matches,
+  mediaLabel,
+  onLink,
+  onQueryChange,
+  onSearch,
+  query
+}: {
+  busyAction: string | null;
+  matches: MetadataSearchResult[];
+  mediaLabel: string;
+  onLink: (result: MetadataSearchResult) => Promise<void>;
+  onQueryChange: (value: string) => void;
+  onSearch: () => Promise<void>;
+  query: string;
+}) {
+  return (
+    <div className="rounded-xl border border-hairline bg-surface-1 p-4">
+      <p className="font-display text-sm font-semibold tracking-tight text-foreground">Correct metadata match</p>
+      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+        Search the provider, choose the right {mediaLabel}, then Deluno refreshes artwork, IDs, genres, ratings, and overview from that match.
+      </p>
+      <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+        <input
+          value={query}
+          onChange={(event) => onQueryChange(event.target.value)}
+          className="h-10 rounded-lg border border-hairline bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
+          placeholder={`Search ${mediaLabel} metadata`}
+        />
+        <Button type="button" variant="outline" onClick={() => void onSearch()} disabled={busyAction === "metadata-search"}>
+          {busyAction === "metadata-search" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+          Find match
+        </Button>
+      </div>
+      {matches.length ? (
+        <div className="mt-3 space-y-2">
+          {matches.map((match) => (
+            <div key={`${match.provider}:${match.providerId}`} className="flex items-center justify-between gap-3 rounded-lg border border-hairline bg-background/40 p-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-foreground">
+                  {match.title} {match.year ? <span className="text-muted-foreground">({match.year})</span> : null}
+                </p>
+                <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{match.overview ?? `${match.provider.toUpperCase()} ${match.providerId}`}</p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => void onLink(match)}
+                disabled={busyAction === `metadata-link:${match.providerId}`}
+              >
+                {busyAction === `metadata-link:${match.providerId}` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+                Use
+              </Button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 const episodeFilterOptions: Array<{ key: EpisodeFilter; label: string }> = [
   { key: "all", label: "All" },
   { key: "missing", label: "Missing" },
@@ -995,6 +1111,15 @@ interface SearchPlanCandidate {
   downloadUrl?: string | null;
   sizeBytes?: number | null;
   seeders?: number | null;
+  decisionStatus?: string;
+  decisionReasons?: string[];
+  riskFlags?: string[];
+  qualityDelta?: number;
+  customFormatScore?: number;
+  seederScore?: number;
+  sizeScore?: number;
+  releaseGroup?: string | null;
+  estimatedBitrateMbps?: number | null;
 }
 
 function ReleaseCandidatePicker({
@@ -1004,7 +1129,7 @@ function ReleaseCandidatePicker({
 }: {
   candidates: SearchPlanCandidate[];
   busyAction: string | null;
-  onGrab: (candidate: SearchPlanCandidate) => Promise<void>;
+  onGrab: (candidate: SearchPlanCandidate, force?: boolean, overrideReason?: string) => Promise<void>;
 }) {
   return (
     <Card>
@@ -1017,14 +1142,25 @@ function ReleaseCandidatePicker({
       <CardContent className="space-y-3">
         {candidates.map((candidate, index) => {
           const busyKey = `grab:${candidate.indexerName}:${candidate.releaseName}`;
+          const forceBusyKey = `force-grab:${candidate.indexerName}:${candidate.releaseName}`;
+          const isRejected = candidate.decisionStatus === "rejected";
+          const shouldNudgeForce = isRejected || !candidate.meetsCutoff || index > 0;
           return (
             <div key={`${candidate.indexerName}:${candidate.releaseName}`} className="rounded-xl border border-hairline bg-surface-1 p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant={index === 0 ? "success" : "default"}>{index === 0 ? "Best match" : `#${index + 1}`}</Badge>
+                    <Badge variant={index === 0 && !isRejected ? "success" : "default"}>{index === 0 && !isRejected ? "Best match" : `#${index + 1}`}</Badge>
+                    <Badge variant={candidateGroupVariant(candidate)}>{candidateGroupLabel(candidate)}</Badge>
+                    <Badge variant={isRejected ? "destructive" : candidate.meetsCutoff ? "success" : "warning"}>{candidate.decisionStatus || (candidate.meetsCutoff ? "eligible" : "below cutoff")}</Badge>
                     <Badge variant={candidate.meetsCutoff ? "success" : "warning"}>{candidate.quality}</Badge>
                     <span className="font-mono text-[11px] text-muted-foreground">score {candidate.score}</span>
+                    {candidate.qualityDelta !== undefined ? (
+                      <span className="font-mono text-[11px] text-muted-foreground">qΔ {candidate.qualityDelta > 0 ? "+" : ""}{candidate.qualityDelta}</span>
+                    ) : null}
+                    {candidate.estimatedBitrateMbps ? (
+                      <span className="font-mono text-[11px] text-muted-foreground">{candidate.estimatedBitrateMbps} Mbps est.</span>
+                    ) : null}
                     {candidate.seeders !== null && candidate.seeders !== undefined ? (
                       <span className="font-mono text-[11px] text-muted-foreground">{candidate.seeders} seeders</span>
                     ) : null}
@@ -1034,15 +1170,34 @@ function ReleaseCandidatePicker({
                   </div>
                   <p className="mt-2 truncate text-sm font-semibold text-foreground">{candidate.releaseName}</p>
                   <p className="mt-1 text-xs text-muted-foreground">{candidate.indexerName} · {candidate.summary}</p>
+                  <DecisionReasonList candidate={candidate} />
                 </div>
-                <Button
-                  size="sm"
-                  disabled={busyAction !== null || !candidate.downloadUrl}
-                  onClick={() => void onGrab(candidate)}
-                >
-                  {busyAction === busyKey ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-                  {candidate.downloadUrl ? "Grab release" : "No URL"}
-                </Button>
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button
+                    size="sm"
+                    disabled={busyAction !== null || !candidate.downloadUrl}
+                    onClick={() => void onGrab(candidate, false)}
+                  >
+                    {busyAction === busyKey ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+                    {candidate.downloadUrl ? "Grab" : "No URL"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className={shouldNudgeForce ? "border-destructive/35 bg-destructive/10 text-destructive hover:bg-destructive/15" : undefined}
+                    disabled={busyAction !== null || !candidate.downloadUrl}
+                    title="Force sends this release even if Deluno would normally prefer or reject something else."
+                    onClick={() => {
+                      const reason = window.prompt("Why force this release? This reason is stored in activity and search history.", candidate.summary);
+                      if (reason !== null && reason.trim()) {
+                        void onGrab(candidate, true, reason.trim());
+                      }
+                    }}
+                  >
+                    {busyAction === forceBusyKey ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+                    Force
+                  </Button>
+                </div>
               </div>
             </div>
           );
@@ -1050,6 +1205,18 @@ function ReleaseCandidatePicker({
       </CardContent>
     </Card>
   );
+}
+
+function candidateGroupLabel(candidate: SearchPlanCandidate) {
+  if (candidate.decisionStatus === "rejected") return "Rejected";
+  if (["preferred", "eligible"].includes(candidate.decisionStatus || "") && candidate.meetsCutoff) return "Recommended";
+  return "Needs review";
+}
+
+function candidateGroupVariant(candidate: SearchPlanCandidate) {
+  if (candidate.decisionStatus === "rejected") return "destructive" as const;
+  if (["preferred", "eligible"].includes(candidate.decisionStatus || "") && candidate.meetsCutoff) return "success" as const;
+  return "warning" as const;
 }
 
 function SearchCandidateBreakdown({ detailsJson }: { detailsJson: string | null }) {
@@ -1074,6 +1241,33 @@ function SearchCandidateBreakdown({ detailsJson }: { detailsJson: string | null 
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function DecisionReasonList({ candidate }: { candidate: SearchPlanCandidate }) {
+  const reasons = candidate.decisionReasons?.slice(0, 3) ?? [];
+  const risks = candidate.riskFlags?.slice(0, 3) ?? [];
+  if (!reasons.length && !risks.length) return null;
+
+  return (
+    <div className="mt-3 grid gap-2 md:grid-cols-2">
+      {reasons.length ? (
+        <div className="rounded-lg border border-hairline bg-background/35 p-2">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Why Deluno likes it</p>
+          <ul className="mt-1 space-y-1 text-[11px] text-muted-foreground">
+            {reasons.map((reason) => <li key={reason}>{reason}</li>)}
+          </ul>
+        </div>
+      ) : null}
+      {risks.length ? (
+        <div className="rounded-lg border border-destructive/25 bg-destructive/5 p-2">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-destructive">Risks</p>
+          <ul className="mt-1 space-y-1 text-[11px] text-destructive/85">
+            {risks.map((risk) => <li key={risk}>{risk}</li>)}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1105,8 +1299,21 @@ function normalizeSearchCandidate(value: SearchPlanCandidate | Record<string, un
     summary: String(item.summary ?? item.Summary ?? ""),
     downloadUrl: (item.downloadUrl ?? item.DownloadUrl ?? null) as string | null,
     sizeBytes: (item.sizeBytes ?? item.SizeBytes ?? null) as number | null,
-    seeders: (item.seeders ?? item.Seeders ?? null) as number | null
+    seeders: (item.seeders ?? item.Seeders ?? null) as number | null,
+    decisionStatus: String(item.decisionStatus ?? item.DecisionStatus ?? ""),
+    decisionReasons: normalizeStringArray(item.decisionReasons ?? item.DecisionReasons),
+    riskFlags: normalizeStringArray(item.riskFlags ?? item.RiskFlags),
+    qualityDelta: Number(item.qualityDelta ?? item.QualityDelta ?? 0),
+    customFormatScore: Number(item.customFormatScore ?? item.CustomFormatScore ?? 0),
+    seederScore: Number(item.seederScore ?? item.SeederScore ?? 0),
+    sizeScore: Number(item.sizeScore ?? item.SizeScore ?? 0),
+    releaseGroup: (item.releaseGroup ?? item.ReleaseGroup ?? null) as string | null,
+    estimatedBitrateMbps: (item.estimatedBitrateMbps ?? item.EstimatedBitrateMbps ?? null) as number | null
   };
+}
+
+function normalizeStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.map((item) => String(item)).filter(Boolean) : [];
 }
 
 function formatFailureKind(value: string) {
@@ -1133,6 +1340,7 @@ function formatSearchActionMessage(
     summary?: string;
     dispatchStatus?: string | null;
     dispatchMessage?: string | null;
+    forceOverride?: boolean;
     candidates?: unknown[];
   }
 ) {
@@ -1142,16 +1350,17 @@ function formatSearchActionMessage(
 
   const candidateCount = payload.candidates?.length ?? 0;
   const candidateLabel = `${candidateCount} candidate${candidateCount === 1 ? "" : "s"} scored`;
+  const prefix = payload.forceOverride ? `Force grabbed ${mediaLabel}` : `Manual ${mediaLabel} search`;
 
   switch (payload.dispatchStatus) {
     case "sent":
-      return `Manual ${mediaLabel} search sent ${best} to the download client. ${candidateLabel}.`;
+      return `${prefix} sent ${best} to the download client. ${candidateLabel}.`;
     case "planned":
-      return `Manual ${mediaLabel} search matched ${best}, but no downloadable URL was available yet. ${candidateLabel}.`;
+      return `${prefix} matched ${best}, but no downloadable URL was available yet. ${candidateLabel}.`;
     case "failed":
-      return `Manual ${mediaLabel} search matched ${best}, but the download client rejected the grab${payload.dispatchMessage ? `: ${payload.dispatchMessage}` : "."}`;
+      return `${prefix} matched ${best}, but the download client rejected the grab${payload.dispatchMessage ? `: ${payload.dispatchMessage}` : "."}`;
     default:
-      return `Manual ${mediaLabel} search matched ${best}. ${candidateLabel}.`;
+      return `${prefix} matched ${best}. ${candidateLabel}.`;
   }
 }
 

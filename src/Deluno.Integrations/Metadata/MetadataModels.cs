@@ -35,4 +35,13 @@ public sealed record MetadataProviderStatus(
     string Provider,
     bool IsConfigured,
     string Mode,
+    string Message,
+    IReadOnlyList<MetadataSourceStatus> Sources);
+
+public sealed record MetadataSourceStatus(
+    string Source,
+    string Label,
+    string Role,
+    bool IsConfigured,
+    string Mode,
     string Message);
