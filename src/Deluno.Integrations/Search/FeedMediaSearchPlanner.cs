@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Xml.Linq;
+using Deluno.Infrastructure.Resilience;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Deluno.Platform.Quality;
@@ -9,7 +10,8 @@ namespace Deluno.Integrations.Search;
 
 public sealed class FeedMediaSearchPlanner(
     IPlatformSettingsRepository platformRepository,
-    IHttpClientFactory httpClientFactory)
+    IHttpClientFactory httpClientFactory,
+    IIntegrationResiliencePolicy resiliencePolicy)
     : IMediaSearchPlanner
 {
     public async Task<MediaSearchPlan> BuildPlanAsync(
@@ -98,24 +100,44 @@ public sealed class FeedMediaSearchPlanner(
             return [];
         }
 
-        try
-        {
-            var http = httpClientFactory.CreateClient("indexers");
-            http.Timeout = TimeSpan.FromSeconds(12);
-            using var response = await http.GetAsync(uri, cancellationToken);
-            if (!response.IsSuccessStatusCode)
+        var result = await resiliencePolicy.ExecuteAsync(
+            new IntegrationResilienceRequest(
+                $"indexer:{indexer.Id}:{SanitizeAddress(indexer.BaseUrl)}",
+                "indexer.search",
+                FailureThreshold: 2),
+            async token =>
             {
-                return [];
-            }
+                try
+                {
+                    var http = httpClientFactory.CreateClient("indexers");
+                    http.Timeout = TimeSpan.FromSeconds(12);
+                    using var response = await http.GetAsync(uri, token);
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        if (IntegrationResiliencePolicy.IsTransientHttpStatusCode(response.StatusCode))
+                        {
+                            throw new HttpRequestException(
+                                $"Indexer {indexer.Name} returned transient HTTP {(int)response.StatusCode}.",
+                                null,
+                                response.StatusCode);
+                        }
 
-            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            var document = await XDocument.LoadAsync(stream, LoadOptions.None, cancellationToken);
-            return ParseCandidates(document, indexer, source, currentQuality, targetQuality, customFormats, neverGrabPatterns);
-        }
-        catch
-        {
-            return [];
-        }
+                        return Array.Empty<MediaSearchCandidate>();
+                    }
+
+                    await using var stream = await response.Content.ReadAsStreamAsync(token);
+                    var document = await XDocument.LoadAsync(stream, LoadOptions.None, token);
+                    return ParseCandidates(document, indexer, source, currentQuality, targetQuality, customFormats, neverGrabPatterns);
+                }
+                catch (Exception exception) when (exception is not HttpRequestException and not TaskCanceledException and not IOException)
+                {
+                    return Array.Empty<MediaSearchCandidate>();
+                }
+            },
+            _ => IntegrationResilienceOutcome.Success,
+            cancellationToken);
+
+        return result.Value ?? [];
     }
 
     private static IReadOnlyList<MediaSearchCandidate> ParseCandidates(
@@ -220,6 +242,16 @@ public sealed class FeedMediaSearchPlanner(
         }
 
         return trimmed.TrimEnd('/') + "/api";
+    }
+
+    private static string SanitizeAddress(string value)
+    {
+        if (Uri.TryCreate(value, UriKind.Absolute, out var uri))
+        {
+            return $"{uri.Scheme}://{uri.Host}:{uri.Port}{uri.AbsolutePath.TrimEnd('/')}";
+        }
+
+        return value.Split('?', 2)[0].Trim().ToLowerInvariant();
     }
 
     private static Dictionary<string, string> ParseQuery(string query)

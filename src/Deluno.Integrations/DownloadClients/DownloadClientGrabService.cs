@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json.Serialization;
+using Deluno.Infrastructure.Resilience;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 
@@ -9,7 +10,8 @@ namespace Deluno.Integrations.DownloadClients;
 
 public sealed class DownloadClientGrabService(
     IPlatformSettingsRepository platformRepository,
-    IHttpClientFactory httpClientFactory)
+    IHttpClientFactory httpClientFactory,
+    IIntegrationResiliencePolicy resiliencePolicy)
     : IDownloadClientGrabService
 {
     public async Task<DownloadClientGrabResult> GrabAsync(
@@ -34,6 +36,37 @@ public sealed class DownloadClientGrabService(
             return Failed(client.Id, request, "planned", "No downloadable URL was available for this release.");
         }
 
+        var result = await resiliencePolicy.ExecuteAsync(
+            new IntegrationResilienceRequest(
+                BuildClientResilienceKey(client, "grab"),
+                "download-client.grab",
+                MaxAttempts: 1,
+                FailureThreshold: 3),
+            token => GrabCoreAsync(client, request, token),
+            value => value.Succeeded
+                ? IntegrationResilienceOutcome.Success
+                : value.Status == "failed"
+                    ? IntegrationResilienceOutcome.RetryableFailure
+                    : IntegrationResilienceOutcome.NonRetryableFailure,
+            cancellationToken);
+
+        if (result.CircuitOpen)
+        {
+            return Failed(
+                client.Id,
+                request,
+                "circuitOpen",
+                "Deluno paused grabs for this client after repeated failures. Test the client connection before sending another release.");
+        }
+
+        return result.Value ?? Failed(client.Id, request, "failed", result.FailureMessage ?? "Download client grab failed.");
+    }
+
+    private async Task<DownloadClientGrabResult> GrabCoreAsync(
+        DownloadClientItem client,
+        DownloadClientGrabRequest request,
+        CancellationToken cancellationToken)
+    {
         try
         {
             return client.Protocol switch
@@ -47,7 +80,7 @@ public sealed class DownloadClientGrabService(
                 _ => Failed(client.Id, request, "planned", $"{client.Protocol} release grabs are not supported by Deluno.")
             };
         }
-        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException)
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException or IOException)
         {
             return Failed(client.Id, request, "failed", exception.Message);
         }
@@ -214,6 +247,15 @@ public sealed class DownloadClientGrabService(
         var scheme = client.Host.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? string.Empty : "http://";
         var port = client.Port is > 0 ? $":{client.Port}" : string.Empty;
         return Uri.TryCreate(EnsureTrailingSlash($"{scheme}{client.Host}{port}"), UriKind.Absolute, out var uri) ? uri : null;
+    }
+
+    private static string BuildClientResilienceKey(DownloadClientItem client, string purpose)
+    {
+        var endpoint = ResolveEndpoint(client);
+        var address = endpoint is null
+            ? "unconfigured"
+            : $"{endpoint.Scheme}://{endpoint.Host}:{endpoint.Port}{endpoint.AbsolutePath.TrimEnd('/')}";
+        return $"download-client:{client.Id}:{client.Protocol}:{purpose}:{address}";
     }
 
     private static string ResolveCategory(DownloadClientItem client, DownloadClientGrabRequest request)

@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Deluno.Infrastructure.Resilience;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Platform.Contracts;
@@ -15,7 +16,8 @@ public sealed class DownloadClientTelemetryService(
     IPlatformSettingsRepository platformRepository,
     IJobQueueRepository jobQueueRepository,
     IHttpClientFactory httpClientFactory,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IIntegrationResiliencePolicy resiliencePolicy)
     : IDownloadClientTelemetryService
 {
     public async Task<DownloadTelemetryOverview> GetOverviewAsync(CancellationToken cancellationToken)
@@ -90,26 +92,91 @@ public sealed class DownloadClientTelemetryService(
             return new DownloadClientActionResult(client.Id, request.QueueItemId, request.Action, false, "Unsupported action.");
         }
 
+        var result = await resiliencePolicy.ExecuteAsync(
+            new IntegrationResilienceRequest(
+                BuildClientResilienceKey(client, "action"),
+                "download-client.action",
+                MaxAttempts: 1,
+                FailureThreshold: 3),
+            token => ExecuteActionCoreAsync(client, action, request.QueueItemId, token),
+            value => value.Succeeded
+                ? IntegrationResilienceOutcome.Success
+                : IntegrationResilienceOutcome.RetryableFailure,
+            cancellationToken);
+
+        if (result.CircuitOpen)
+        {
+            return new DownloadClientActionResult(
+                client.Id,
+                request.QueueItemId,
+                action,
+                false,
+                "Deluno paused queue actions for this client after repeated failures. Test the client connection before trying again.");
+        }
+
+        return result.Value ?? new DownloadClientActionResult(client.Id, request.QueueItemId, action, false, result.FailureMessage ?? "Download client action failed.");
+    }
+
+    private async Task<DownloadClientTelemetrySnapshot?> TryGetLiveSnapshotAsync(
+        DownloadClientItem client,
+        DateTimeOffset capturedUtc,
+        CancellationToken cancellationToken)
+    {
+        var result = await resiliencePolicy.ExecuteAsync(
+            new IntegrationResilienceRequest(
+                BuildClientResilienceKey(client, "telemetry"),
+                "download-client.telemetry",
+                FailureThreshold: 2),
+            token => GetLiveSnapshotCoreAsync(client, capturedUtc, token),
+            value => value is null
+                ? IntegrationResilienceOutcome.NonRetryableFailure
+                : value.HealthStatus == "healthy"
+                    ? IntegrationResilienceOutcome.Success
+                    : IntegrationResilienceOutcome.NonRetryableFailure,
+            cancellationToken);
+
+        if (result.CircuitOpen)
+        {
+            return CreateSnapshot(
+                client,
+                [],
+                capturedUtc,
+                "degraded",
+                "Live telemetry is temporarily paused after repeated connection failures.");
+        }
+
+        return result.Value ??
+            (result.FailureMessage is null
+                ? null
+                : CreateSnapshot(client, [], capturedUtc, "degraded", result.FailureMessage));
+    }
+
+    private async Task<DownloadClientActionResult> ExecuteActionCoreAsync(
+        DownloadClientItem client,
+        string action,
+        string queueItemId,
+        CancellationToken cancellationToken)
+    {
         try
         {
             return client.Protocol switch
             {
-                "qbittorrent" => await ExecuteQbittorrentActionAsync(client, action, request.QueueItemId, cancellationToken),
-                "sabnzbd" => await ExecuteSabnzbdActionAsync(client, action, request.QueueItemId, cancellationToken),
-                "transmission" => await ExecuteTransmissionActionAsync(client, action, request.QueueItemId, cancellationToken),
-                "deluge" => await ExecuteDelugeActionAsync(client, action, request.QueueItemId, cancellationToken),
-                "nzbget" => await ExecuteNzbGetActionAsync(client, action, request.QueueItemId, cancellationToken),
-                "utorrent" => await ExecuteUTorrentActionAsync(client, action, request.QueueItemId, cancellationToken),
-                _ => new DownloadClientActionResult(client.Id, request.QueueItemId, action, false, $"{client.Protocol} queue actions are not supported by Deluno.")
+                "qbittorrent" => await ExecuteQbittorrentActionAsync(client, action, queueItemId, cancellationToken),
+                "sabnzbd" => await ExecuteSabnzbdActionAsync(client, action, queueItemId, cancellationToken),
+                "transmission" => await ExecuteTransmissionActionAsync(client, action, queueItemId, cancellationToken),
+                "deluge" => await ExecuteDelugeActionAsync(client, action, queueItemId, cancellationToken),
+                "nzbget" => await ExecuteNzbGetActionAsync(client, action, queueItemId, cancellationToken),
+                "utorrent" => await ExecuteUTorrentActionAsync(client, action, queueItemId, cancellationToken),
+                _ => new DownloadClientActionResult(client.Id, queueItemId, action, false, $"{client.Protocol} queue actions are not supported by Deluno.")
             };
         }
-        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException)
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException or IOException)
         {
-            return new DownloadClientActionResult(client.Id, request.QueueItemId, action, false, exception.Message);
+            return new DownloadClientActionResult(client.Id, queueItemId, action, false, exception.Message);
         }
     }
 
-    private async Task<DownloadClientTelemetrySnapshot?> TryGetLiveSnapshotAsync(
+    private async Task<DownloadClientTelemetrySnapshot?> GetLiveSnapshotCoreAsync(
         DownloadClientItem client,
         DateTimeOffset capturedUtc,
         CancellationToken cancellationToken)
@@ -127,9 +194,9 @@ public sealed class DownloadClientTelemetryService(
                 _ => null
             };
         }
-        catch (Exception ex)
+        catch (Exception exception) when (exception is not HttpRequestException and not TaskCanceledException and not IOException)
         {
-            return CreateSnapshot(client, [], capturedUtc, "degraded", ex.Message);
+            return CreateSnapshot(client, [], capturedUtc, "degraded", exception.Message);
         }
     }
 
@@ -1150,6 +1217,15 @@ public sealed class DownloadClientTelemetryService(
         return Uri.TryCreate(EnsureTrailingSlash($"{scheme}{client.Host}{port}"), UriKind.Absolute, out var uri)
             ? uri
             : null;
+    }
+
+    private static string BuildClientResilienceKey(DownloadClientItem client, string purpose)
+    {
+        var endpoint = ResolveEndpoint(client);
+        var address = endpoint is null
+            ? "unconfigured"
+            : $"{endpoint.Scheme}://{endpoint.Host}:{endpoint.Port}{endpoint.AbsolutePath.TrimEnd('/')}";
+        return $"download-client:{client.Id}:{client.Protocol}:{purpose}:{address}";
     }
 
     private static string EnsureTrailingSlash(string value)

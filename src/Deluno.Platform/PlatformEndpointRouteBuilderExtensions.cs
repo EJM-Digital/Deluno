@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Deluno.Infrastructure.Observability;
+using Deluno.Infrastructure.Resilience;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Deluno.Jobs.Contracts;
@@ -1040,6 +1041,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             HttpContext httpContext,
             CreateIndexerRequest request,
             IPlatformSettingsRepository repository,
+            IIntegrationResiliencePolicy resiliencePolicy,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
@@ -1076,12 +1078,12 @@ public static class PlatformEndpointRouteBuilderExtensions
                 now);
 
             var started = Stopwatch.GetTimestamp();
-            var (healthStatus, message, failureCategory) = await TestIndexerAsync(draft, cancellationToken);
+            var health = await TestIndexerWithResilienceAsync(draft, resiliencePolicy, cancellationToken);
             return Results.Ok(new
             {
-                healthStatus,
-                message,
-                failureCategory,
+                healthStatus = health.HealthStatus,
+                message = health.Message,
+                failureCategory = health.FailureCategory,
                 latencyMs = ElapsedMilliseconds(started)
             });
         });
@@ -1107,6 +1109,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             HttpContext httpContext,
             IPlatformSettingsRepository repository,
             IRealtimeEventPublisher realtimeEventPublisher,
+            IIntegrationResiliencePolicy resiliencePolicy,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
@@ -1124,15 +1127,15 @@ public static class PlatformEndpointRouteBuilderExtensions
             }
 
             var started = Stopwatch.GetTimestamp();
-            var (healthStatus, message, failureCategory) = await TestIndexerAsync(item, cancellationToken);
-            var result = await repository.UpdateIndexerHealthAsync(id, healthStatus, message, failureCategory, ElapsedMilliseconds(started), cancellationToken);
-            RecordIntegrationHealthMetric("indexer", healthStatus);
+            var health = await TestIndexerWithResilienceAsync(item, resiliencePolicy, cancellationToken);
+            var result = await repository.UpdateIndexerHealthAsync(id, health.HealthStatus, health.Message, health.FailureCategory, ElapsedMilliseconds(started), cancellationToken);
+            RecordIntegrationHealthMetric("indexer", health.HealthStatus);
             if (result is not null)
             {
                 await realtimeEventPublisher.PublishHealthChangedAsync(
                     item.Name,
-                    healthStatus == "healthy" ? "healthy" : "degraded",
-                    message,
+                    health.HealthStatus == "healthy" ? "healthy" : "degraded",
+                    health.Message,
                     cancellationToken);
             }
 
@@ -1173,6 +1176,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             HttpContext httpContext,
             CreateDownloadClientRequest request,
             IPlatformSettingsRepository repository,
+            IIntegrationResiliencePolicy resiliencePolicy,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
@@ -1211,12 +1215,12 @@ public static class PlatformEndpointRouteBuilderExtensions
                 now);
 
             var started = Stopwatch.GetTimestamp();
-            var (healthStatus, message, failureCategory) = await TestDownloadClientAsync(draft, cancellationToken);
+            var health = await TestDownloadClientWithResilienceAsync(draft, resiliencePolicy, cancellationToken);
             return Results.Ok(new
             {
-                healthStatus,
-                message,
-                failureCategory,
+                healthStatus = health.HealthStatus,
+                message = health.Message,
+                failureCategory = health.FailureCategory,
                 latencyMs = ElapsedMilliseconds(started)
             });
         });
@@ -1242,6 +1246,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             HttpContext httpContext,
             IPlatformSettingsRepository repository,
             IRealtimeEventPublisher realtimeEventPublisher,
+            IIntegrationResiliencePolicy resiliencePolicy,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
@@ -1259,15 +1264,15 @@ public static class PlatformEndpointRouteBuilderExtensions
             }
 
             var started = Stopwatch.GetTimestamp();
-            var (healthStatus, message, failureCategory) = await TestDownloadClientAsync(item, cancellationToken);
-            var result = await repository.UpdateDownloadClientHealthAsync(id, healthStatus, message, failureCategory, ElapsedMilliseconds(started), cancellationToken);
-            RecordIntegrationHealthMetric("download-client", healthStatus);
+            var health = await TestDownloadClientWithResilienceAsync(item, resiliencePolicy, cancellationToken);
+            var result = await repository.UpdateDownloadClientHealthAsync(id, health.HealthStatus, health.Message, health.FailureCategory, ElapsedMilliseconds(started), cancellationToken);
+            RecordIntegrationHealthMetric("download-client", health.HealthStatus);
             if (result is not null)
             {
                 await realtimeEventPublisher.PublishHealthChangedAsync(
                     item.Name,
-                    healthStatus == "healthy" ? "healthy" : "degraded",
-                    message,
+                    health.HealthStatus == "healthy" ? "healthy" : "degraded",
+                    health.Message,
                     cancellationToken);
             }
 
@@ -2083,6 +2088,86 @@ public static class PlatformEndpointRouteBuilderExtensions
             _ => "qbittorrent"
         };
 
+    private static async Task<IntegrationHealthCheckResult> TestIndexerWithResilienceAsync(
+        IndexerItem item,
+        IIntegrationResiliencePolicy resiliencePolicy,
+        CancellationToken cancellationToken)
+    {
+        var result = await resiliencePolicy.ExecuteAsync(
+            new IntegrationResilienceRequest(
+                BuildIndexerResilienceKey(item),
+                "indexer.health-test",
+                FailureThreshold: 2),
+            async token =>
+            {
+                var (healthStatus, message, failureCategory) = await TestIndexerAsync(item, token);
+                return new IntegrationHealthCheckResult(healthStatus, message, failureCategory);
+            },
+            ClassifyIntegrationHealth,
+            cancellationToken);
+
+        return result.CircuitOpen
+            ? IntegrationHealthCheckResult.CircuitOpen(result.RetryAfterUtc)
+            : result.Value ?? new IntegrationHealthCheckResult("unreachable", result.FailureMessage ?? "Indexer test failed.", "connectivity");
+    }
+
+    private static async Task<IntegrationHealthCheckResult> TestDownloadClientWithResilienceAsync(
+        DownloadClientItem item,
+        IIntegrationResiliencePolicy resiliencePolicy,
+        CancellationToken cancellationToken)
+    {
+        var result = await resiliencePolicy.ExecuteAsync(
+            new IntegrationResilienceRequest(
+                BuildDownloadClientResilienceKey(item),
+                "download-client.health-test",
+                FailureThreshold: 2),
+            async token =>
+            {
+                var (healthStatus, message, failureCategory) = await TestDownloadClientAsync(item, token);
+                return new IntegrationHealthCheckResult(healthStatus, message, failureCategory);
+            },
+            ClassifyIntegrationHealth,
+            cancellationToken);
+
+        return result.CircuitOpen
+            ? IntegrationHealthCheckResult.CircuitOpen(result.RetryAfterUtc)
+            : result.Value ?? new IntegrationHealthCheckResult("unreachable", result.FailureMessage ?? "Download client test failed.", "connectivity");
+    }
+
+    private static IntegrationResilienceOutcome ClassifyIntegrationHealth(IntegrationHealthCheckResult result)
+    {
+        if (string.Equals(result.HealthStatus, "healthy", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(result.HealthStatus, "disabled", StringComparison.OrdinalIgnoreCase))
+        {
+            return IntegrationResilienceOutcome.Success;
+        }
+
+        return result.FailureCategory is "connectivity" or "http-transient"
+            ? IntegrationResilienceOutcome.RetryableFailure
+            : IntegrationResilienceOutcome.NonRetryableFailure;
+    }
+
+    private static string BuildIndexerResilienceKey(IndexerItem item)
+        => $"indexer:{item.Id}:{item.Protocol}:{SanitizeIntegrationAddress(item.BaseUrl)}";
+
+    private static string BuildDownloadClientResilienceKey(DownloadClientItem item)
+        => $"download-client:{item.Id}:{item.Protocol}:{SanitizeIntegrationAddress(item.EndpointUrl ?? $"{item.Host}:{item.Port}")}";
+
+    private static string SanitizeIntegrationAddress(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "unconfigured";
+        }
+
+        if (Uri.TryCreate(value, UriKind.Absolute, out var uri))
+        {
+            return $"{uri.Scheme}://{uri.Host}:{uri.Port}{uri.AbsolutePath.TrimEnd('/')}";
+        }
+
+        return value.Split('?', 2)[0].Trim().ToLowerInvariant();
+    }
+
     private static async Task<(string healthStatus, string message, string? failureCategory)> TestIndexerAsync(
         IndexerItem item,
         CancellationToken cancellationToken)
@@ -2121,7 +2206,9 @@ public static class PlatformEndpointRouteBuilderExtensions
 
             return IsAuthenticationFailure(response.StatusCode)
                 ? ("degraded", $"Reached {uri.Host}, but authentication failed with {(int)response.StatusCode}.", "auth")
-                : ("degraded", $"Reached {uri.Host}, but it returned {(int)response.StatusCode}.", "http");
+                : IntegrationResiliencePolicy.IsTransientHttpStatusCode(response.StatusCode)
+                    ? ("unreachable", $"Reached {uri.Host}, but it returned transient HTTP {(int)response.StatusCode}.", "http-transient")
+                    : ("degraded", $"Reached {uri.Host}, but it returned {(int)response.StatusCode}.", "http");
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException)
         {
@@ -2378,7 +2465,9 @@ public static class PlatformEndpointRouteBuilderExtensions
         HttpStatusCode statusCode)
         => IsAuthenticationFailure(statusCode)
             ? ("degraded", $"{integrationName} rejected authentication with {(int)statusCode}.", "auth")
-            : ("degraded", $"{integrationName} returned {(int)statusCode}.", "http");
+            : IntegrationResiliencePolicy.IsTransientHttpStatusCode(statusCode)
+                ? ("unreachable", $"{integrationName} returned transient HTTP {(int)statusCode}.", "http-transient")
+                : ("degraded", $"{integrationName} returned {(int)statusCode}.", "http");
 
     private static bool IsAuthenticationFailure(HttpStatusCode statusCode)
         => statusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden;
@@ -2398,6 +2487,20 @@ public static class PlatformEndpointRouteBuilderExtensions
     private sealed record NzbGetRequest(
         [property: JsonPropertyName("method")] string Method,
         [property: JsonPropertyName("params")] object[] Params);
+
+    private sealed record IntegrationHealthCheckResult(
+        string HealthStatus,
+        string Message,
+        string? FailureCategory)
+    {
+        public static IntegrationHealthCheckResult CircuitOpen(DateTimeOffset? retryAfterUtc)
+        {
+            var message = retryAfterUtc is null
+                ? "Deluno paused this integration test after repeated failures."
+                : $"Deluno paused this integration test after repeated failures. It will retry after {retryAfterUtc.Value:O}.";
+            return new IntegrationHealthCheckResult("unreachable", message, "circuit-open");
+        }
+    }
 
     private static LibraryItem MergeLibraryState(
         LibraryItem item,

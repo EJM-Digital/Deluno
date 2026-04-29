@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Deluno.Infrastructure.Resilience;
 using Deluno.Infrastructure.Storage;
 using Deluno.Platform.Data;
 using Microsoft.Extensions.Configuration;
@@ -13,7 +14,8 @@ public sealed class TmdbMetadataProvider(
     IConfiguration configuration,
     IPlatformSettingsRepository platformRepository,
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IIntegrationResiliencePolicy resiliencePolicy)
     : IMetadataProvider
 {
     private const string ProviderName = "tmdb";
@@ -175,27 +177,24 @@ public sealed class TmdbMetadataProvider(
                 : $"&year={request.Year.Value.ToString(CultureInfo.InvariantCulture)}";
         }
 
-        try
-        {
-            var response = await httpClient.GetFromJsonAsync<TmdbSearchResponse>(url, cancellationToken);
-            var items = response?.Results?
-                .Where(item => !string.IsNullOrWhiteSpace(item.Title ?? item.Name))
-                .Take(12)
-                .ToArray() ?? [];
+        var response = await GetJsonWithResilienceAsync<TmdbSearchResponse>(
+            url,
+            $"metadata:tmdb:search:{mediaType}",
+            "metadata.tmdb.search",
+            cancellationToken);
+        var items = response?.Results?
+            .Where(item => !string.IsNullOrWhiteSpace(item.Title ?? item.Name))
+            .Take(12)
+            .ToArray() ?? [];
 
-            var results = new List<MetadataSearchResult>(items.Length);
-            foreach (var item in items)
-            {
-                results.Add(await ToResultAsync(item, mediaType, apiKey, cancellationToken));
-            }
-
-            await WriteSearchCacheAsync(cacheKey, mediaType, query, results, cancellationToken);
-            return results;
-        }
-        catch
+        var results = new List<MetadataSearchResult>(items.Length);
+        foreach (var item in items)
         {
-            return [];
+            results.Add(await ToResultAsync(item, mediaType, apiKey, cancellationToken));
         }
+
+        await WriteSearchCacheAsync(cacheKey, mediaType, query, results, cancellationToken);
+        return results;
     }
 
     private async Task<IReadOnlyList<MetadataSearchResult>?> TryReadSearchCacheAsync(
@@ -384,25 +383,12 @@ public sealed class TmdbMetadataProvider(
             url += $"&providerId={Uri.EscapeDataString(request.ProviderId.Trim())}";
         }
 
-        try
-        {
-            using var response = await httpClient.GetAsync(url, cancellationToken);
-            if (!response.IsSuccessStatusCode)
-            {
-                return null;
-            }
-
-            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            var brokerResponse = await JsonSerializer.DeserializeAsync<MetadataBrokerSearchResponse>(
-                stream,
-                CacheJsonOptions,
-                cancellationToken);
-            return brokerResponse?.Results?.Take(12).ToArray();
-        }
-        catch
-        {
-            return null;
-        }
+        var brokerResponse = await GetJsonWithResilienceAsync<MetadataBrokerSearchResponse>(
+            url,
+            $"metadata:broker:{BuildHostKey(brokerUrl)}",
+            "metadata.broker.search",
+            cancellationToken);
+        return brokerResponse?.Results?.Take(12).ToArray();
     }
 
     private static string BuildBrokerSearchBaseUrl(string brokerUrl)
@@ -465,51 +451,48 @@ public sealed class TmdbMetadataProvider(
     {
         var path = mediaType == "tv" ? "tv" : "movie";
         var url = $"https://api.themoviedb.org/3/{path}/{id}?api_key={Uri.EscapeDataString(apiKey)}&append_to_response=external_ids";
-        try
-        {
-            var detail = await httpClient.GetFromJsonAsync<TmdbDetailItem>(url, cancellationToken);
-            if (detail is null || string.IsNullOrWhiteSpace(detail.Title ?? detail.Name))
-            {
-                return null;
-            }
-
-            var title = detail.Title ?? detail.Name ?? "Unknown title";
-            var releaseDate = mediaType == "tv" ? detail.FirstAirDate : detail.ReleaseDate;
-            var poster = string.IsNullOrWhiteSpace(detail.PosterPath)
-                ? null
-                : $"https://image.tmdb.org/t/p/w500{detail.PosterPath}";
-            var backdrop = string.IsNullOrWhiteSpace(detail.BackdropPath)
-                ? null
-                : $"https://image.tmdb.org/t/p/w1280{detail.BackdropPath}";
-
-            var ratings = await BuildRatingsAsync(
-                mediaType,
-                detail.Id,
-                detail.VoteAverage,
-                detail.VoteCount,
-                detail.ExternalIds?.ImdbId,
-                cancellationToken);
-
-            return new MetadataSearchResult(
-                Provider: ProviderName,
-                ProviderId: detail.Id.ToString(CultureInfo.InvariantCulture),
-                MediaType: mediaType,
-                Title: title,
-                OriginalTitle: detail.OriginalTitle ?? detail.OriginalName,
-                Year: TryParseYear(releaseDate),
-                Overview: detail.Overview,
-                PosterUrl: poster,
-                BackdropUrl: backdrop,
-                Rating: detail.VoteAverage,
-                Ratings: ratings,
-                Genres: detail.Genres?.Select(genre => genre.Name).Where(name => !string.IsNullOrWhiteSpace(name)).Cast<string>().ToArray() ?? [],
-                ImdbId: detail.ExternalIds?.ImdbId,
-                ExternalUrl: BuildTmdbUrl(mediaType, detail.Id));
-        }
-        catch
+        var detail = await GetJsonWithResilienceAsync<TmdbDetailItem>(
+            url,
+            $"metadata:tmdb:detail:{mediaType}",
+            "metadata.tmdb.detail",
+            cancellationToken);
+        if (detail is null || string.IsNullOrWhiteSpace(detail.Title ?? detail.Name))
         {
             return null;
         }
+
+        var title = detail.Title ?? detail.Name ?? "Unknown title";
+        var releaseDate = mediaType == "tv" ? detail.FirstAirDate : detail.ReleaseDate;
+        var poster = string.IsNullOrWhiteSpace(detail.PosterPath)
+            ? null
+            : $"https://image.tmdb.org/t/p/w500{detail.PosterPath}";
+        var backdrop = string.IsNullOrWhiteSpace(detail.BackdropPath)
+            ? null
+            : $"https://image.tmdb.org/t/p/w1280{detail.BackdropPath}";
+
+        var ratings = await BuildRatingsAsync(
+            mediaType,
+            detail.Id,
+            detail.VoteAverage,
+            detail.VoteCount,
+            detail.ExternalIds?.ImdbId,
+            cancellationToken);
+
+        return new MetadataSearchResult(
+            Provider: ProviderName,
+            ProviderId: detail.Id.ToString(CultureInfo.InvariantCulture),
+            MediaType: mediaType,
+            Title: title,
+            OriginalTitle: detail.OriginalTitle ?? detail.OriginalName,
+            Year: TryParseYear(releaseDate),
+            Overview: detail.Overview,
+            PosterUrl: poster,
+            BackdropUrl: backdrop,
+            Rating: detail.VoteAverage,
+            Ratings: ratings,
+            Genres: detail.Genres?.Select(genre => genre.Name).Where(name => !string.IsNullOrWhiteSpace(name)).Cast<string>().ToArray() ?? [],
+            ImdbId: detail.ExternalIds?.ImdbId,
+            ExternalUrl: BuildTmdbUrl(mediaType, detail.Id));
     }
 
     private async Task<TmdbExternalIds> GetExternalIdsAsync(
@@ -520,14 +503,11 @@ public sealed class TmdbMetadataProvider(
     {
         var path = mediaType == "tv" ? "tv" : "movie";
         var url = $"https://api.themoviedb.org/3/{path}/{id}/external_ids?api_key={Uri.EscapeDataString(apiKey)}";
-        try
-        {
-            return await httpClient.GetFromJsonAsync<TmdbExternalIds>(url, cancellationToken) ?? new TmdbExternalIds(null);
-        }
-        catch
-        {
-            return new TmdbExternalIds(null);
-        }
+        return await GetJsonWithResilienceAsync<TmdbExternalIds>(
+            url,
+            $"metadata:tmdb:external-ids:{mediaType}",
+            "metadata.tmdb.external-ids",
+            cancellationToken) ?? new TmdbExternalIds(null);
     }
 
     private static IReadOnlyList<string> ResolveGenreNames(string mediaType, IReadOnlyList<int>? ids)
@@ -543,6 +523,57 @@ public sealed class TmdbMetadataProvider(
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .Cast<string>()
             .ToArray();
+    }
+
+    private async Task<T?> GetJsonWithResilienceAsync<T>(
+        string url,
+        string key,
+        string operation,
+        CancellationToken cancellationToken)
+    {
+        var result = await resiliencePolicy.ExecuteAsync(
+            new IntegrationResilienceRequest(key, operation, FailureThreshold: 2),
+            async token =>
+            {
+                try
+                {
+                    using var response = await httpClient.GetAsync(url, token);
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        if (IntegrationResiliencePolicy.IsTransientHttpStatusCode(response.StatusCode))
+                        {
+                            throw new HttpRequestException(
+                                $"{operation} returned transient HTTP {(int)response.StatusCode}.",
+                                null,
+                                response.StatusCode);
+                        }
+
+                        return default;
+                    }
+
+                    return await response.Content.ReadFromJsonAsync<T>(CacheJsonOptions, token);
+                }
+                catch (Exception exception) when (exception is not HttpRequestException and not TaskCanceledException and not IOException)
+                {
+                    return default;
+                }
+            },
+            value => value is null
+                ? IntegrationResilienceOutcome.NonRetryableFailure
+                : IntegrationResilienceOutcome.Success,
+            cancellationToken);
+
+        return result.Value;
+    }
+
+    private static string BuildHostKey(string url)
+    {
+        if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            return $"{uri.Scheme}://{uri.Host}:{uri.Port}{uri.AbsolutePath.TrimEnd('/')}";
+        }
+
+        return url.Split('?', 2)[0].Trim().ToLowerInvariant();
     }
 
     private static string NormalizeMediaType(string? mediaType)
@@ -597,52 +628,49 @@ public sealed class TmdbMetadataProvider(
         var url =
             $"https://www.omdbapi.com/?apikey={Uri.EscapeDataString(apiKey)}&i={Uri.EscapeDataString(imdbId)}&plot=short&r=json";
 
-        try
-        {
-            var item = await httpClient.GetFromJsonAsync<OmdbTitleResponse>(url, cancellationToken);
-            if (item is null || string.Equals(item.Response, "False", StringComparison.OrdinalIgnoreCase))
-            {
-                return ratings;
-            }
-
-            AddRatingIfPresent(
-                ratings,
-                "imdb",
-                "IMDb",
-                ParseFraction(item.ImdbRating, 10),
-                10,
-                ParseVotes(item.ImdbVotes),
-                BuildImdbUrl(imdbId),
-                "community");
-
-            foreach (var rating in item.Ratings ?? [])
-            {
-                var source = NormalizeOmdbSource(rating.Source);
-                if (source is null)
-                {
-                    continue;
-                }
-
-                var parsed = ParseOmdbRating(rating.Value);
-                AddRatingIfPresent(
-                    ratings,
-                    source.Value.Source,
-                    source.Value.Label,
-                    parsed.Score,
-                    parsed.MaxScore,
-                    null,
-                    null,
-                    source.Value.Kind);
-            }
-
-            if (int.TryParse(item.Metascore, NumberStyles.Integer, CultureInfo.InvariantCulture, out var metascore))
-            {
-                AddRatingIfPresent(ratings, "metacritic", "Metacritic", metascore, 100, null, null, "critic");
-            }
-        }
-        catch
+        var item = await GetJsonWithResilienceAsync<OmdbTitleResponse>(
+            url,
+            "metadata:omdb:ratings",
+            "metadata.omdb.ratings",
+            cancellationToken);
+        if (item is null || string.Equals(item.Response, "False", StringComparison.OrdinalIgnoreCase))
         {
             return ratings;
+        }
+
+        AddRatingIfPresent(
+            ratings,
+            "imdb",
+            "IMDb",
+            ParseFraction(item.ImdbRating, 10),
+            10,
+            ParseVotes(item.ImdbVotes),
+            BuildImdbUrl(imdbId),
+            "community");
+
+        foreach (var rating in item.Ratings ?? [])
+        {
+            var source = NormalizeOmdbSource(rating.Source);
+            if (source is null)
+            {
+                continue;
+            }
+
+            var parsed = ParseOmdbRating(rating.Value);
+            AddRatingIfPresent(
+                ratings,
+                source.Value.Source,
+                source.Value.Label,
+                parsed.Score,
+                parsed.MaxScore,
+                null,
+                null,
+                source.Value.Kind);
+        }
+
+        if (int.TryParse(item.Metascore, NumberStyles.Integer, CultureInfo.InvariantCulture, out var metascore))
+        {
+            AddRatingIfPresent(ratings, "metacritic", "Metacritic", metascore, 100, null, null, "critic");
         }
 
         return ratings

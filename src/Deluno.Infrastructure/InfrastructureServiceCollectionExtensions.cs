@@ -1,5 +1,6 @@
 using Deluno.Infrastructure.Storage;
 using Deluno.Infrastructure.Storage.Migrations;
+using Deluno.Infrastructure.Resilience;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -28,6 +29,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<IDelunoDatabaseMigrator, SqliteDatabaseMigrator>();
         services.AddHostedService<DelunoStorageBootstrapService>();
         services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<IIntegrationResiliencePolicy, IntegrationResiliencePolicy>();
         return services;
     }
 }
