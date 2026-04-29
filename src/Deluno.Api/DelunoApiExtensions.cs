@@ -1,5 +1,6 @@
 using Deluno.Contracts.Manifest;
 using Deluno.Api.Backup;
+using Deluno.Api.Health;
 using Deluno.Infrastructure.Storage;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -17,11 +18,14 @@ public static class DelunoApiExtensions
         services.AddSingleton<DelunoBackupService>();
         services.AddSingleton<IDelunoBackupService>(sp => sp.GetRequiredService<DelunoBackupService>());
         services.AddHostedService(sp => sp.GetRequiredService<DelunoBackupService>());
+        services.AddSingleton<IDelunoReadinessService, DelunoReadinessService>();
         return services;
     }
 
     public static IEndpointRouteBuilder MapDelunoApi(this IEndpointRouteBuilder endpoints)
     {
+        endpoints.MapGet("/health", () => Results.Ok(DelunoReadinessService.Live()));
+
         var api = endpoints.MapGroup("/api");
 
         api.MapGet("/", () => Results.Ok(new
@@ -31,11 +35,19 @@ public static class DelunoApiExtensions
             architecture = "sqlite-first modular monolith"
         }));
 
-        api.MapGet("/health", () => Results.Ok(new
+        api.MapGet("/health/live", () => Results.Ok(DelunoReadinessService.Live()));
+
+        api.MapGet("/health/ready", async (
+            IDelunoReadinessService readiness,
+            CancellationToken cancellationToken) =>
         {
-            ok = true,
-            timestamp = DateTimeOffset.UtcNow
-        }));
+            var result = await readiness.CheckAsync(cancellationToken);
+            return Results.Json(
+                result,
+                statusCode: result.Ready
+                    ? StatusCodes.Status200OK
+                    : StatusCodes.Status503ServiceUnavailable);
+        });
 
         api.MapGet("/manifest", (IOptions<StoragePathOptions> storage) => Results.Ok(new
         {

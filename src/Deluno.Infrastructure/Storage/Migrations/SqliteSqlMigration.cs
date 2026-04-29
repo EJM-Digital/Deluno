@@ -12,7 +12,7 @@ public abstract class SqliteSqlMigration : IDelunoDatabaseMigration
     {
         _checksum = new Lazy<string>(() =>
         {
-            var input = $"{GetType().FullName}|{Version}|{Name}|{Sql}";
+            var input = $"{Version}|{Name}|{Sql}";
             return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(input))).ToLowerInvariant();
         });
     }

@@ -51,7 +51,8 @@ app.Use(async (context, next) =>
         (path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase) &&
          !path.Equals("/api/auth/login", StringComparison.OrdinalIgnoreCase) &&
          !path.Equals("/api/auth/bootstrap-status", StringComparison.OrdinalIgnoreCase) &&
-         !path.Equals("/api/auth/bootstrap", StringComparison.OrdinalIgnoreCase)) ||
+         !path.Equals("/api/auth/bootstrap", StringComparison.OrdinalIgnoreCase) &&
+         !path.StartsWithSegments("/api/health", StringComparison.OrdinalIgnoreCase)) ||
         path.StartsWithSegments("/hubs", StringComparison.OrdinalIgnoreCase);
 
     if (!requiresAuthentication)
