@@ -66,6 +66,7 @@ public static class PlatformEndpointRouteBuilderExtensions
         auth.MapPost("/login", async (
             LoginRequest request,
             IDataProtectionProvider dataProtectionProvider,
+            TimeProvider timeProvider,
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
@@ -84,9 +85,7 @@ public static class PlatformEndpointRouteBuilderExtensions
                 return Results.Unauthorized();
             }
 
-            return Results.Ok(new LoginResponse(
-                AccessToken: UserAuthorization.IssueAccessToken(dataProtectionProvider, login),
-                User: login));
+            return Results.Ok(UserAuthorization.IssueLoginResponse(dataProtectionProvider, timeProvider, login));
         });
 
         auth.MapGet("/bootstrap-status", async (
@@ -100,6 +99,7 @@ public static class PlatformEndpointRouteBuilderExtensions
         auth.MapPost("/bootstrap", async (
             BootstrapUserRequest request,
             IDataProtectionProvider dataProtectionProvider,
+            TimeProvider timeProvider,
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
@@ -118,9 +118,27 @@ public static class PlatformEndpointRouteBuilderExtensions
             }
 
             var created = await repository.BootstrapUserAsync(request, cancellationToken);
-            return Results.Ok(new LoginResponse(
-                AccessToken: UserAuthorization.IssueAccessToken(dataProtectionProvider, created),
-                User: created));
+            return Results.Ok(UserAuthorization.IssueLoginResponse(dataProtectionProvider, timeProvider, created));
+        });
+
+        auth.MapPost("/logout", async (
+            HttpContext httpContext,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (!UserAuthorization.TryReadUser(httpContext, out var user) || user is null)
+            {
+                return Results.Unauthorized();
+            }
+
+            await repository.RevokeUserAccessTokensAsync(user.Id, cancellationToken);
+            return Results.NoContent();
         });
 
         auth.MapPut("/password", async (

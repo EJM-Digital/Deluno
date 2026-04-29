@@ -13,14 +13,35 @@ public static class UserAuthorization
     private const string UserItemKey = "deluno.user";
     private const string ApiKeyItemKey = "deluno.apiKey";
     private const string UserTokenPurpose = "Deluno.UserAccessToken.v1";
+    private static readonly TimeSpan DefaultAccessTokenLifetime = TimeSpan.FromHours(12);
 
-    public static string IssueAccessToken(IDataProtectionProvider dataProtectionProvider, UserItem item)
+    public static LoginResponse IssueLoginResponse(
+        IDataProtectionProvider dataProtectionProvider,
+        TimeProvider timeProvider,
+        UserItem item)
+    {
+        var issuedUtc = timeProvider.GetUtcNow();
+        var expiresUtc = issuedUtc.Add(DefaultAccessTokenLifetime);
+        return new LoginResponse(
+            AccessToken: IssueAccessToken(dataProtectionProvider, item, issuedUtc, expiresUtc),
+            ExpiresUtc: expiresUtc,
+            User: item);
+    }
+
+    public static string IssueAccessToken(
+        IDataProtectionProvider dataProtectionProvider,
+        UserItem item,
+        DateTimeOffset issuedUtc,
+        DateTimeOffset expiresUtc)
     {
         var payload = new UserTokenPayload(
             item.Id,
             item.Username,
             item.DisplayName,
             item.AvatarInitials,
+            item.SecurityStamp,
+            issuedUtc,
+            expiresUtc,
             item.CreatedUtc);
 
         var protector = dataProtectionProvider.CreateProtector(UserTokenPurpose);
@@ -50,6 +71,11 @@ public static class UserAuthorization
 
         var current = await repository.GetUserByIdAsync(authenticated.Id, cancellationToken);
         if (current is null)
+        {
+            return Results.Unauthorized();
+        }
+
+        if (!string.Equals(current.SecurityStamp, authenticated.SecurityStamp, StringComparison.Ordinal))
         {
             return Results.Unauthorized();
         }
@@ -126,11 +152,23 @@ public static class UserAuthorization
                 return false;
             }
 
+            var timeProvider = httpContext.RequestServices.GetService<TimeProvider>() ?? TimeProvider.System;
+            if (payload.ExpiresUtc <= timeProvider.GetUtcNow())
+            {
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(payload.SecurityStamp))
+            {
+                return false;
+            }
+
             item = new UserItem(
                 payload.Id,
                 payload.Username,
                 payload.DisplayName,
                 payload.AvatarInitials,
+                payload.SecurityStamp,
                 payload.CreatedUtc);
 
             return true;
@@ -197,5 +235,8 @@ public static class UserAuthorization
         string Username,
         string DisplayName,
         string AvatarInitials,
+        string SecurityStamp,
+        DateTimeOffset IssuedUtc,
+        DateTimeOffset ExpiresUtc,
         DateTimeOffset CreatedUtc);
 }

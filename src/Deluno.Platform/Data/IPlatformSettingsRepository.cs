@@ -44,6 +44,10 @@ public interface IPlatformSettingsRepository
         string newPassword,
         CancellationToken cancellationToken);
 
+    Task<bool> RevokeUserAccessTokensAsync(
+        string userId,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<ApiKeyItem>> ListApiKeysAsync(CancellationToken cancellationToken);
 
     Task<CreatedApiKeyResponse> CreateApiKeyAsync(

@@ -18,6 +18,7 @@ export interface UserProfile {
 
 interface LoginPayload {
   accessToken: string;
+  expiresUtc: string;
   user: UserProfile;
 }
 
@@ -192,6 +193,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
+    const nextToken = token ?? readStored().token;
+    if (nextToken) {
+      void fetch("/api/auth/logout", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${nextToken}` }
+      }).catch(() => undefined);
+    }
+
     setToken(null);
     setUser(null);
     clearStored();

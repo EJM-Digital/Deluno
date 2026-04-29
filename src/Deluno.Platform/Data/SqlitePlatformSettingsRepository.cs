@@ -415,7 +415,7 @@ public sealed class SqlitePlatformSettingsRepository(
         command.CommandText =
             """
             SELECT
-                id, username, display_name, password_hash, avatar_initials, created_utc
+                id, username, display_name, password_hash, avatar_initials, security_stamp, created_utc
             FROM users
             WHERE username = @username COLLATE NOCASE
             LIMIT 1;
@@ -439,7 +439,8 @@ public sealed class SqlitePlatformSettingsRepository(
             Username: reader.GetString(1),
             DisplayName: reader.GetString(2),
             AvatarInitials: reader.GetString(4),
-            CreatedUtc: ParseTimestamp(reader.GetString(5)));
+            SecurityStamp: ReadSecurityStamp(reader, 5),
+            CreatedUtc: ParseTimestamp(reader.GetString(6)));
     }
 
     public async Task<UserItem?> GetUserByIdAsync(
@@ -454,7 +455,7 @@ public sealed class SqlitePlatformSettingsRepository(
         command.CommandText =
             """
             SELECT
-                id, username, display_name, avatar_initials, created_utc
+                id, username, display_name, avatar_initials, security_stamp, created_utc
             FROM users
             WHERE id = @id
             LIMIT 1;
@@ -472,7 +473,8 @@ public sealed class SqlitePlatformSettingsRepository(
             Username: reader.GetString(1),
             DisplayName: reader.GetString(2),
             AvatarInitials: reader.GetString(3),
-            CreatedUtc: ParseTimestamp(reader.GetString(4)));
+            SecurityStamp: ReadSecurityStamp(reader, 4),
+            CreatedUtc: ParseTimestamp(reader.GetString(5)));
     }
 
     public async Task<IReadOnlyList<ApiKeyItem>> ListApiKeysAsync(CancellationToken cancellationToken)
@@ -638,14 +640,39 @@ public sealed class SqlitePlatformSettingsRepository(
             """
             UPDATE users
             SET password_hash = @passwordHash,
+                security_stamp = @securityStamp,
                 updated_utc = @updatedUtc
             WHERE id = @id;
             """;
         AddParameter(updateCommand, "@id", userId);
         AddParameter(updateCommand, "@passwordHash", HashPassword(newPassword));
+        AddParameter(updateCommand, "@securityStamp", CreateSecurityStamp());
         AddParameter(updateCommand, "@updatedUtc", timeProvider.GetUtcNow().ToString("O"));
 
         return await updateCommand.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
+    public async Task<bool> RevokeUserAccessTokensAsync(
+        string userId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE users
+            SET security_stamp = @securityStamp,
+                updated_utc = @updatedUtc
+            WHERE id = @id;
+            """;
+        AddParameter(command, "@id", userId);
+        AddParameter(command, "@securityStamp", CreateSecurityStamp());
+        AddParameter(command, "@updatedUtc", timeProvider.GetUtcNow().ToString("O"));
+
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
     public async Task<UserItem> BootstrapUserAsync(
@@ -669,16 +696,17 @@ public sealed class SqlitePlatformSettingsRepository(
             Username: username,
             DisplayName: displayName,
             AvatarInitials: BuildAvatarInitials(displayName),
+            SecurityStamp: CreateSecurityStamp(),
             CreatedUtc: now);
 
         using var command = connection.CreateCommand();
         command.CommandText =
             """
             INSERT INTO users (
-                id, username, display_name, password_hash, avatar_initials, created_utc, updated_utc
+                id, username, display_name, password_hash, avatar_initials, security_stamp, created_utc, updated_utc
             )
             VALUES (
-                @id, @username, @displayName, @passwordHash, @avatarInitials, @createdUtc, @updatedUtc
+                @id, @username, @displayName, @passwordHash, @avatarInitials, @securityStamp, @createdUtc, @updatedUtc
             );
             """;
 
@@ -687,6 +715,7 @@ public sealed class SqlitePlatformSettingsRepository(
         AddParameter(command, "@displayName", item.DisplayName);
         AddParameter(command, "@passwordHash", HashPassword(request.Password ?? string.Empty));
         AddParameter(command, "@avatarInitials", item.AvatarInitials);
+        AddParameter(command, "@securityStamp", item.SecurityStamp);
         AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
         AddParameter(command, "@updatedUtc", now.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
@@ -2859,7 +2888,7 @@ public sealed class SqlitePlatformSettingsRepository(
         command.CommandText =
             """
             SELECT
-                id, username, display_name, avatar_initials, created_utc
+                id, username, display_name, avatar_initials, security_stamp, created_utc
             FROM users
             WHERE id = @id
             LIMIT 1;
@@ -3207,6 +3236,9 @@ public sealed class SqlitePlatformSettingsRepository(
     private static string GenerateApiKey()
         => $"deluno_{Base64UrlEncode(RandomNumberGenerator.GetBytes(32))}";
 
+    private static string CreateSecurityStamp()
+        => Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
+
     private static string BuildApiKeyPrefix(string apiKey)
     {
         var value = apiKey.Trim();
@@ -3432,8 +3464,14 @@ public sealed class SqlitePlatformSettingsRepository(
             Username: reader.GetString(1),
             DisplayName: reader.GetString(2),
             AvatarInitials: reader.GetString(3),
-            CreatedUtc: ParseTimestamp(reader.GetString(4)));
+            SecurityStamp: ReadSecurityStamp(reader, 4),
+            CreatedUtc: ParseTimestamp(reader.GetString(5)));
     }
+
+    private static string ReadSecurityStamp(System.Data.Common.DbDataReader reader, int ordinal)
+        => reader.IsDBNull(ordinal) || string.IsNullOrWhiteSpace(reader.GetString(ordinal))
+            ? CreateSecurityStamp()
+            : reader.GetString(ordinal);
 
     private static ApiKeyItem ReadApiKey(System.Data.Common.DbDataReader reader)
     {

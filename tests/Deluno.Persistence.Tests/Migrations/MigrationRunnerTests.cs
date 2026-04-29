@@ -89,7 +89,6 @@ public sealed class MigrationRunnerTests
 
         foreach (var databaseName in new[]
                  {
-                     DelunoDatabaseNames.Platform,
                      DelunoDatabaseNames.Movies,
                      DelunoDatabaseNames.Series,
                      DelunoDatabaseNames.Jobs,
@@ -100,6 +99,11 @@ public sealed class MigrationRunnerTests
             Assert.Equal(1, await ReadScalarAsync<int>(connection, "SELECT COUNT(*) FROM schema_migrations;"));
             Assert.Equal("initial_schema", await ReadScalarAsync<string>(connection, "SELECT name FROM schema_migrations WHERE version = 1;"));
         }
+
+        await using var platformConnection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Platform);
+        Assert.Equal(2, await ReadScalarAsync<int>(platformConnection, "SELECT COUNT(*) FROM schema_migrations;"));
+        Assert.Equal("initial_schema", await ReadScalarAsync<string>(platformConnection, "SELECT name FROM schema_migrations WHERE version = 1;"));
+        Assert.Equal("user_security_stamp", await ReadScalarAsync<string>(platformConnection, "SELECT name FROM schema_migrations WHERE version = 2;"));
     }
 
     private static async Task<T> ReadScalarAsync<T>(DbConnection connection, string sql)
