@@ -610,6 +610,8 @@ public sealed class SqliteMovieCatalogRepository(
         string? targetQuality,
         bool qualityCutoffMet,
         bool unmonitorWhenCutoffMet,
+        string? filePath,
+        long? fileSizeBytes,
         CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -617,6 +619,7 @@ public sealed class SqliteMovieCatalogRepository(
             cancellationToken);
 
         var normalizedTitle = title.Trim();
+        var normalizedFilePath = NormalizeText(filePath);
         var now = timeProvider.GetUtcNow();
         string? movieId = null;
 
@@ -682,11 +685,13 @@ public sealed class SqliteMovieCatalogRepository(
             """
             INSERT INTO movie_wanted_state (
                 movie_id, library_id, wanted_status, wanted_reason, has_file, quality_cutoff_met,
-                current_quality, target_quality, missing_since_utc, last_search_utc, next_eligible_search_utc, last_search_result, updated_utc
+                current_quality, target_quality, file_path, file_size_bytes, imported_utc, last_verified_utc,
+                missing_since_utc, last_search_utc, next_eligible_search_utc, last_search_result, updated_utc
             )
             VALUES (
                 @movieId, @libraryId, @wantedStatus, @wantedReason, 1, @qualityCutoffMet,
-                @currentQuality, @targetQuality, NULL, NULL, NULL, 'Imported from your existing library.', @updatedUtc
+                @currentQuality, @targetQuality, @filePath, @fileSizeBytes, @importedUtc, @lastVerifiedUtc,
+                NULL, NULL, NULL, 'Imported from your existing library.', @updatedUtc
             )
             ON CONFLICT(movie_id, library_id) DO UPDATE SET
                 wanted_status = excluded.wanted_status,
@@ -695,6 +700,11 @@ public sealed class SqliteMovieCatalogRepository(
                 current_quality = excluded.current_quality,
                 target_quality = excluded.target_quality,
                 quality_cutoff_met = excluded.quality_cutoff_met,
+                file_path = excluded.file_path,
+                file_size_bytes = excluded.file_size_bytes,
+                imported_utc = COALESCE(movie_wanted_state.imported_utc, excluded.imported_utc),
+                last_verified_utc = excluded.last_verified_utc,
+                missing_detected_utc = NULL,
                 last_search_result = excluded.last_search_result,
                 updated_utc = excluded.updated_utc;
             """;
@@ -706,10 +716,94 @@ public sealed class SqliteMovieCatalogRepository(
         AddParameter(wanted, "@currentQuality", currentQuality);
         AddParameter(wanted, "@targetQuality", targetQuality);
         AddParameter(wanted, "@qualityCutoffMet", qualityCutoffMet ? 1 : 0);
+        AddParameter(wanted, "@filePath", normalizedFilePath);
+        AddParameter(wanted, "@fileSizeBytes", fileSizeBytes);
+        AddParameter(wanted, "@importedUtc", normalizedFilePath is null ? null : now.ToString("O"));
+        AddParameter(wanted, "@lastVerifiedUtc", normalizedFilePath is null ? null : now.ToString("O"));
         AddParameter(wanted, "@updatedUtc", now.ToString("O"));
         await wanted.ExecuteNonQueryAsync(cancellationToken);
 
         return created;
+    }
+
+    public async Task<IReadOnlyList<MovieTrackedFileItem>> ListTrackedFilesAsync(
+        string libraryId,
+        CancellationToken cancellationToken)
+    {
+        var items = new List<MovieTrackedFileItem>();
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT
+                w.movie_id,
+                w.library_id,
+                m.title,
+                m.release_year,
+                w.file_path,
+                w.file_size_bytes,
+                w.imported_utc,
+                w.last_verified_utc
+            FROM movie_wanted_state w
+            INNER JOIN movie_entries m ON m.id = w.movie_id
+            WHERE w.library_id = @libraryId
+              AND w.has_file = 1
+              AND w.file_path IS NOT NULL
+            ORDER BY m.title COLLATE NOCASE;
+            """;
+        AddParameter(command, "@libraryId", libraryId);
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            items.Add(new MovieTrackedFileItem(
+                MovieId: reader.GetString(0),
+                LibraryId: reader.GetString(1),
+                Title: reader.GetString(2),
+                ReleaseYear: reader.IsDBNull(3) ? null : reader.GetInt32(3),
+                FilePath: reader.GetString(4),
+                FileSizeBytes: reader.IsDBNull(5) ? null : reader.GetInt64(5),
+                ImportedUtc: reader.IsDBNull(6) ? null : ParseTimestamp(reader.GetString(6)),
+                LastVerifiedUtc: reader.IsDBNull(7) ? null : ParseTimestamp(reader.GetString(7))));
+        }
+
+        return items;
+    }
+
+    public async Task<bool> MarkTrackedFileMissingAsync(
+        string movieId,
+        string libraryId,
+        string filePath,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE movie_wanted_state
+            SET has_file = 0,
+                wanted_status = 'missing',
+                wanted_reason = 'Reconciliation detected that the tracked library file is missing from disk.',
+                missing_since_utc = COALESCE(missing_since_utc, @now),
+                missing_detected_utc = @now,
+                last_verified_utc = @now,
+                updated_utc = @now
+            WHERE movie_id = @movieId
+              AND library_id = @libraryId
+              AND file_path = @filePath;
+            """;
+        AddParameter(command, "@movieId", movieId);
+        AddParameter(command, "@libraryId", libraryId);
+        AddParameter(command, "@filePath", filePath);
+        AddParameter(command, "@now", now.ToString("O"));
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
     public async Task RecordSearchAttemptAsync(

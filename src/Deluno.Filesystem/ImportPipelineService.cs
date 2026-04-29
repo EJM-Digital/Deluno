@@ -644,6 +644,8 @@ public sealed class ImportPipelineService(
                 decision.TargetQuality,
                 decision.QualityCutoffMet,
                 unmonitorWhenCutoffMet,
+                preview.DestinationPath,
+                GetFileSize(preview.DestinationPath),
                 null,
                 cancellationToken);
         }
@@ -658,7 +660,21 @@ public sealed class ImportPipelineService(
             decision.TargetQuality,
             decision.QualityCutoffMet,
             unmonitorWhenCutoffMet,
+            preview.DestinationPath,
+            GetFileSize(preview.DestinationPath),
             cancellationToken);
+    }
+
+    private static long? GetFileSize(string path)
+    {
+        try
+        {
+            return File.Exists(path) ? new FileInfo(path).Length : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static IReadOnlyList<string> BuildImportWarnings(

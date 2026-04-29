@@ -10,6 +10,7 @@ public static class FilesystemServiceCollectionExtensions
         services.AddSingleton<IExistingLibraryImportService, ExistingLibraryImportService>();
         services.AddSingleton<IMediaProbeService, FfprobeMediaProbeService>();
         services.AddScoped<IImportPipelineService, ImportPipelineService>();
+        services.AddScoped<IFilesystemReconciliationService, FilesystemReconciliationService>();
         return services;
     }
 }

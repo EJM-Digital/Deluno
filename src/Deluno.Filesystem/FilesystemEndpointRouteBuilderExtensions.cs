@@ -144,6 +144,28 @@ public static class FilesystemEndpointRouteBuilderExtensions
             return Results.Ok(BuildPathDiagnostic(path));
         });
 
+        filesystem.MapGet("/reconciliation", async (
+            IFilesystemReconciliationService reconciliationService,
+            CancellationToken cancellationToken) =>
+        {
+            var report = await reconciliationService.ScanAsync(cancellationToken);
+            return Results.Ok(report);
+        });
+
+        filesystem.MapPost("/reconciliation/repair", async (
+            FilesystemReconciliationRepairRequest request,
+            IFilesystemReconciliationService reconciliationService,
+            CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.IssueId) || string.IsNullOrWhiteSpace(request.Action))
+            {
+                return Results.BadRequest(new { message = "Issue id and repair action are required." });
+            }
+
+            var result = await reconciliationService.RepairAsync(request, cancellationToken);
+            return result.Repaired ? Results.Ok(result) : Results.Conflict(result);
+        });
+
         return endpoints;
     }
 

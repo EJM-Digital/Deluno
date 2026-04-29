@@ -70,7 +70,20 @@ public interface ISeriesCatalogRepository
         string? targetQuality,
         bool qualityCutoffMet,
         bool unmonitorWhenCutoffMet,
+        string? filePath,
+        long? fileSizeBytes,
         IReadOnlyList<ImportedEpisodeItem>? episodes,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<SeriesTrackedFileItem>> ListTrackedFilesAsync(
+        string libraryId,
+        CancellationToken cancellationToken);
+
+    Task<bool> MarkTrackedFileMissingAsync(
+        string seriesId,
+        string? episodeId,
+        string libraryId,
+        string filePath,
         CancellationToken cancellationToken);
 
     Task RecordSearchAttemptAsync(

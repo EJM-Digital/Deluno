@@ -775,6 +775,8 @@ public sealed class SqliteSeriesCatalogRepository(
         string? targetQuality,
         bool qualityCutoffMet,
         bool unmonitorWhenCutoffMet,
+        string? filePath,
+        long? fileSizeBytes,
         IReadOnlyList<ImportedEpisodeItem>? episodes,
         CancellationToken cancellationToken)
     {
@@ -783,6 +785,7 @@ public sealed class SqliteSeriesCatalogRepository(
             cancellationToken);
 
         var normalizedTitle = title.Trim();
+        var normalizedFilePath = NormalizeText(filePath);
         var now = timeProvider.GetUtcNow();
         string? seriesId = null;
 
@@ -848,11 +851,13 @@ public sealed class SqliteSeriesCatalogRepository(
             """
             INSERT INTO series_wanted_state (
                 series_id, library_id, wanted_status, wanted_reason, has_file, quality_cutoff_met,
-                current_quality, target_quality, missing_since_utc, last_search_utc, next_eligible_search_utc, last_search_result, updated_utc
+                current_quality, target_quality, file_path, file_size_bytes, imported_utc, last_verified_utc,
+                missing_since_utc, last_search_utc, next_eligible_search_utc, last_search_result, updated_utc
             )
             VALUES (
                 @seriesId, @libraryId, @wantedStatus, @wantedReason, 1, @qualityCutoffMet,
-                @currentQuality, @targetQuality, NULL, NULL, NULL, 'Imported from your existing library.', @updatedUtc
+                @currentQuality, @targetQuality, @filePath, @fileSizeBytes, @importedUtc, @lastVerifiedUtc,
+                NULL, NULL, NULL, 'Imported from your existing library.', @updatedUtc
             )
             ON CONFLICT(series_id, library_id) DO UPDATE SET
                 wanted_status = excluded.wanted_status,
@@ -861,6 +866,11 @@ public sealed class SqliteSeriesCatalogRepository(
                 current_quality = excluded.current_quality,
                 target_quality = excluded.target_quality,
                 quality_cutoff_met = excluded.quality_cutoff_met,
+                file_path = excluded.file_path,
+                file_size_bytes = excluded.file_size_bytes,
+                imported_utc = COALESCE(series_wanted_state.imported_utc, excluded.imported_utc),
+                last_verified_utc = excluded.last_verified_utc,
+                missing_detected_utc = NULL,
                 last_search_result = excluded.last_search_result,
                 updated_utc = excluded.updated_utc;
             """;
@@ -872,6 +882,10 @@ public sealed class SqliteSeriesCatalogRepository(
         AddParameter(wanted, "@currentQuality", currentQuality);
         AddParameter(wanted, "@targetQuality", targetQuality);
         AddParameter(wanted, "@qualityCutoffMet", qualityCutoffMet ? 1 : 0);
+        AddParameter(wanted, "@filePath", normalizedFilePath);
+        AddParameter(wanted, "@fileSizeBytes", fileSizeBytes);
+        AddParameter(wanted, "@importedUtc", normalizedFilePath is null ? null : now.ToString("O"));
+        AddParameter(wanted, "@lastVerifiedUtc", normalizedFilePath is null ? null : now.ToString("O"));
         AddParameter(wanted, "@updatedUtc", now.ToString("O"));
         await wanted.ExecuteNonQueryAsync(cancellationToken);
 
@@ -951,11 +965,13 @@ public sealed class SqliteSeriesCatalogRepository(
                             """
                             INSERT INTO episode_entries (
                                 id, series_id, season_id, season_number, episode_number, title, air_date_utc,
-                                monitored, has_file, quality_cutoff_met, created_utc, updated_utc
+                                monitored, has_file, quality_cutoff_met, file_path, file_size_bytes, imported_utc, last_verified_utc,
+                                created_utc, updated_utc
                             )
                             VALUES (
                                 @id, @seriesId, @seasonId, @seasonNumber, @episodeNumber, NULL, NULL,
-                                1, @hasFile, 0, @createdUtc, @updatedUtc
+                                1, @hasFile, 0, @filePath, @fileSizeBytes, @importedUtc, @lastVerifiedUtc,
+                                @createdUtc, @updatedUtc
                             );
                             """;
                         AddParameter(insertEpisode, "@id", episodeId);
@@ -964,6 +980,10 @@ public sealed class SqliteSeriesCatalogRepository(
                         AddParameter(insertEpisode, "@seasonNumber", seasonNumber);
                         AddParameter(insertEpisode, "@episodeNumber", episode.EpisodeNumber);
                         AddParameter(insertEpisode, "@hasFile", episode.HasFile ? 1 : 0);
+                        AddParameter(insertEpisode, "@filePath", NormalizeText(episode.FilePath));
+                        AddParameter(insertEpisode, "@fileSizeBytes", episode.FileSizeBytes);
+                        AddParameter(insertEpisode, "@importedUtc", NormalizeText(episode.FilePath) is null ? null : now.ToString("O"));
+                        AddParameter(insertEpisode, "@lastVerifiedUtc", NormalizeText(episode.FilePath) is null ? null : now.ToString("O"));
                         AddParameter(insertEpisode, "@createdUtc", now.ToString("O"));
                         AddParameter(insertEpisode, "@updatedUtc", now.ToString("O"));
                         await insertEpisode.ExecuteNonQueryAsync(cancellationToken);
@@ -977,12 +997,21 @@ public sealed class SqliteSeriesCatalogRepository(
                             SET
                                 season_id = @seasonId,
                                 has_file = @hasFile,
+                                file_path = @filePath,
+                                file_size_bytes = @fileSizeBytes,
+                                imported_utc = COALESCE(imported_utc, @importedUtc),
+                                last_verified_utc = @lastVerifiedUtc,
+                                missing_detected_utc = NULL,
                                 updated_utc = @updatedUtc
                             WHERE id = @id;
                             """;
                         AddParameter(updateEpisode, "@id", episodeId);
                         AddParameter(updateEpisode, "@seasonId", seasonId);
                         AddParameter(updateEpisode, "@hasFile", episode.HasFile ? 1 : 0);
+                        AddParameter(updateEpisode, "@filePath", NormalizeText(episode.FilePath));
+                        AddParameter(updateEpisode, "@fileSizeBytes", episode.FileSizeBytes);
+                        AddParameter(updateEpisode, "@importedUtc", NormalizeText(episode.FilePath) is null ? null : now.ToString("O"));
+                        AddParameter(updateEpisode, "@lastVerifiedUtc", NormalizeText(episode.FilePath) is null ? null : now.ToString("O"));
                         AddParameter(updateEpisode, "@updatedUtc", now.ToString("O"));
                         await updateEpisode.ExecuteNonQueryAsync(cancellationToken);
                     }
@@ -1029,6 +1058,173 @@ public sealed class SqliteSeriesCatalogRepository(
         }
 
         return created;
+    }
+
+    public async Task<IReadOnlyList<SeriesTrackedFileItem>> ListTrackedFilesAsync(
+        string libraryId,
+        CancellationToken cancellationToken)
+    {
+        var items = new List<SeriesTrackedFileItem>();
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using (var series = connection.CreateCommand())
+        {
+            series.CommandText =
+                """
+                SELECT
+                    w.series_id,
+                    w.library_id,
+                    s.title,
+                    s.start_year,
+                    w.file_path,
+                    w.file_size_bytes,
+                    w.imported_utc,
+                    w.last_verified_utc
+                FROM series_wanted_state w
+                INNER JOIN series_entries s ON s.id = w.series_id
+                WHERE w.library_id = @libraryId
+                  AND w.has_file = 1
+                  AND w.file_path IS NOT NULL
+                ORDER BY s.title COLLATE NOCASE;
+                """;
+            AddParameter(series, "@libraryId", libraryId);
+
+            using var reader = await series.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                items.Add(new SeriesTrackedFileItem(
+                    SeriesId: reader.GetString(0),
+                    EpisodeId: null,
+                    LibraryId: reader.GetString(1),
+                    Title: reader.GetString(2),
+                    StartYear: reader.IsDBNull(3) ? null : reader.GetInt32(3),
+                    SeasonNumber: null,
+                    EpisodeNumber: null,
+                    FilePath: reader.GetString(4),
+                    FileSizeBytes: reader.IsDBNull(5) ? null : reader.GetInt64(5),
+                    ImportedUtc: reader.IsDBNull(6) ? null : ParseTimestamp(reader.GetString(6)),
+                    LastVerifiedUtc: reader.IsDBNull(7) ? null : ParseTimestamp(reader.GetString(7))));
+            }
+        }
+
+        using (var episodes = connection.CreateCommand())
+        {
+            episodes.CommandText =
+                """
+                SELECT
+                    e.series_id,
+                    e.id,
+                    @libraryId,
+                    s.title,
+                    s.start_year,
+                    e.season_number,
+                    e.episode_number,
+                    e.file_path,
+                    e.file_size_bytes,
+                    e.imported_utc,
+                    e.last_verified_utc
+                FROM episode_entries e
+                INNER JOIN series_entries s ON s.id = e.series_id
+                INNER JOIN episode_wanted_state w ON w.episode_id = e.id
+                WHERE w.library_id = @libraryId
+                  AND e.has_file = 1
+                  AND e.file_path IS NOT NULL
+                ORDER BY s.title COLLATE NOCASE, e.season_number, e.episode_number;
+                """;
+            AddParameter(episodes, "@libraryId", libraryId);
+
+            using var reader = await episodes.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                items.Add(new SeriesTrackedFileItem(
+                    SeriesId: reader.GetString(0),
+                    EpisodeId: reader.GetString(1),
+                    LibraryId: reader.GetString(2),
+                    Title: reader.GetString(3),
+                    StartYear: reader.IsDBNull(4) ? null : reader.GetInt32(4),
+                    SeasonNumber: reader.GetInt32(5),
+                    EpisodeNumber: reader.GetInt32(6),
+                    FilePath: reader.GetString(7),
+                    FileSizeBytes: reader.IsDBNull(8) ? null : reader.GetInt64(8),
+                    ImportedUtc: reader.IsDBNull(9) ? null : ParseTimestamp(reader.GetString(9)),
+                    LastVerifiedUtc: reader.IsDBNull(10) ? null : ParseTimestamp(reader.GetString(10))));
+            }
+        }
+
+        return items;
+    }
+
+    public async Task<bool> MarkTrackedFileMissingAsync(
+        string seriesId,
+        string? episodeId,
+        string libraryId,
+        string filePath,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        if (!string.IsNullOrWhiteSpace(episodeId))
+        {
+            using var episode = connection.CreateCommand();
+            episode.CommandText =
+                """
+                UPDATE episode_entries
+                SET has_file = 0,
+                    missing_detected_utc = @now,
+                    last_verified_utc = @now,
+                    updated_utc = @now
+                WHERE id = @episodeId
+                  AND series_id = @seriesId
+                  AND file_path = @filePath;
+                """;
+            AddParameter(episode, "@episodeId", episodeId);
+            AddParameter(episode, "@seriesId", seriesId);
+            AddParameter(episode, "@filePath", filePath);
+            AddParameter(episode, "@now", now.ToString("O"));
+            var updatedEpisode = await episode.ExecuteNonQueryAsync(cancellationToken);
+
+            using var wanted = connection.CreateCommand();
+            wanted.CommandText =
+                """
+                UPDATE episode_wanted_state
+                SET wanted_status = 'missing',
+                    wanted_reason = 'Reconciliation detected that the tracked episode file is missing from disk.',
+                    updated_utc = @now
+                WHERE episode_id = @episodeId
+                  AND library_id = @libraryId;
+                """;
+            AddParameter(wanted, "@episodeId", episodeId);
+            AddParameter(wanted, "@libraryId", libraryId);
+            AddParameter(wanted, "@now", now.ToString("O"));
+            await wanted.ExecuteNonQueryAsync(cancellationToken);
+            return updatedEpisode > 0;
+        }
+
+        using var series = connection.CreateCommand();
+        series.CommandText =
+            """
+            UPDATE series_wanted_state
+            SET has_file = 0,
+                wanted_status = 'missing',
+                wanted_reason = 'Reconciliation detected that the tracked series file is missing from disk.',
+                missing_since_utc = COALESCE(missing_since_utc, @now),
+                missing_detected_utc = @now,
+                last_verified_utc = @now,
+                updated_utc = @now
+            WHERE series_id = @seriesId
+              AND library_id = @libraryId
+              AND file_path = @filePath;
+            """;
+        AddParameter(series, "@seriesId", seriesId);
+        AddParameter(series, "@libraryId", libraryId);
+        AddParameter(series, "@filePath", filePath);
+        AddParameter(series, "@now", now.ToString("O"));
+        return await series.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
     public async Task RecordSearchAttemptAsync(

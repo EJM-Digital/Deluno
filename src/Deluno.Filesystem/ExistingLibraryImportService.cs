@@ -99,6 +99,8 @@ public sealed class ExistingLibraryImportService(
             decision.TargetQuality,
             decision.QualityCutoffMet,
             false,
+            item.FilePath,
+            item.FileSizeBytes,
             cancellationToken);
     }
 
@@ -125,6 +127,8 @@ public sealed class ExistingLibraryImportService(
             decision.TargetQuality,
             decision.QualityCutoffMet,
             false,
+            item.FilePath,
+            item.FileSizeBytes,
             item.Episodes,
             cancellationToken);
     }
@@ -147,7 +151,7 @@ public sealed class ExistingLibraryImportService(
             var key = $"{parsed.Title}|{parsed.Year}";
             if (seen.Add(key))
             {
-                items.Add(parsed with { DetectedQuality = quality });
+                items.Add(parsed with { DetectedQuality = quality, FilePath = FirstVideoFile(directory), FileSizeBytes = FirstVideoFileSize(directory) });
             }
         }
 
@@ -164,7 +168,7 @@ public sealed class ExistingLibraryImportService(
             var key = $"{parsed.Title}|{parsed.Year}";
             if (seen.Add(key))
             {
-                items.Add(parsed with { DetectedQuality = quality });
+                items.Add(parsed with { DetectedQuality = quality, FilePath = file, FileSizeBytes = GetFileSize(file) });
             }
         }
 
@@ -189,7 +193,7 @@ public sealed class ExistingLibraryImportService(
                 .Select(file => LibraryQualityDecider.DetectQuality(Path.GetFileNameWithoutExtension(file)))
                 .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
             var episodes = DetectEpisodes(videoFiles);
-            MergeSeriesCandidate(items, parsed with { DetectedQuality = quality, Episodes = episodes });
+            MergeSeriesCandidate(items, parsed with { DetectedQuality = quality, FilePath = videoFiles.FirstOrDefault(), FileSizeBytes = videoFiles.FirstOrDefault() is { } first ? GetFileSize(first) : null, Episodes = episodes });
         }
 
         foreach (var file in Directory.EnumerateFiles(rootPath))
@@ -209,7 +213,7 @@ public sealed class ExistingLibraryImportService(
             var parsed = ParseTitle(match.Groups["title"].Value);
             var quality = LibraryQualityDecider.DetectQuality(name);
             var episodes = DetectEpisodes([file]);
-            MergeSeriesCandidate(items, parsed with { DetectedQuality = quality, Episodes = episodes });
+            MergeSeriesCandidate(items, parsed with { DetectedQuality = quality, FilePath = file, FileSizeBytes = GetFileSize(file), Episodes = episodes });
         }
 
         return items.Values
@@ -232,6 +236,24 @@ public sealed class ExistingLibraryImportService(
 
     private static bool IsVideoFile(string path)
         => VideoExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
+
+    private static string? FirstVideoFile(string path)
+        => EnumerateVideoFilesSafe(path).FirstOrDefault();
+
+    private static long? FirstVideoFileSize(string path)
+        => FirstVideoFile(path) is { } file ? GetFileSize(file) : null;
+
+    private static long? GetFileSize(string path)
+    {
+        try
+        {
+            return File.Exists(path) ? new FileInfo(path).Length : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
     private static IEnumerable<string> EnumerateVideoFilesSafe(string path)
     {
@@ -272,15 +294,16 @@ public sealed class ExistingLibraryImportService(
     private static IReadOnlyList<Deluno.Series.Contracts.ImportedEpisodeItem> DetectEpisodes(IEnumerable<string> files)
     {
         return files
-            .SelectMany(file => ExtractEpisodes(Path.GetFileNameWithoutExtension(file)))
+            .SelectMany(ExtractEpisodes)
             .Distinct()
             .OrderBy(item => item.SeasonNumber)
             .ThenBy(item => item.EpisodeNumber)
             .ToArray();
     }
 
-    private static IEnumerable<Deluno.Series.Contracts.ImportedEpisodeItem> ExtractEpisodes(string fileName)
+    private static IEnumerable<Deluno.Series.Contracts.ImportedEpisodeItem> ExtractEpisodes(string filePath)
     {
+        var fileName = Path.GetFileNameWithoutExtension(filePath);
         var match = EpisodeNumberPattern.Match(fileName);
         if (!match.Success)
         {
@@ -293,7 +316,9 @@ public sealed class ExistingLibraryImportService(
             yield return new Deluno.Series.Contracts.ImportedEpisodeItem(
                 SeasonNumber: seasonNumber,
                 EpisodeNumber: int.Parse(episodeMatch.Groups["episode"].Value),
-                HasFile: true);
+                HasFile: true,
+                FilePath: filePath,
+                FileSizeBytes: GetFileSize(filePath));
         }
     }
 
@@ -309,6 +334,8 @@ public sealed class ExistingLibraryImportService(
         }
 
         var detectedQuality = existing.DetectedQuality ?? item.DetectedQuality;
+        var filePath = existing.FilePath ?? item.FilePath;
+        var fileSizeBytes = existing.FileSizeBytes ?? item.FileSizeBytes;
         var episodes = (existing.Episodes ?? [])
             .Concat(item.Episodes ?? [])
             .Distinct()
@@ -319,6 +346,8 @@ public sealed class ExistingLibraryImportService(
         items[key] = existing with
         {
             DetectedQuality = detectedQuality,
+            FilePath = filePath,
+            FileSizeBytes = fileSizeBytes,
             Episodes = episodes
         };
     }
@@ -327,5 +356,7 @@ public sealed class ExistingLibraryImportService(
         string Title,
         int? Year,
         string? DetectedQuality = null,
+        string? FilePath = null,
+        long? FileSizeBytes = null,
         IReadOnlyList<Deluno.Series.Contracts.ImportedEpisodeItem>? Episodes = null);
 }

@@ -158,6 +158,102 @@ public sealed class ImportPipelineServiceTests
         Assert.Contains("Blade Runner 2017", recoveryCase.Title, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task Reconciliation_detects_missing_tracked_file_and_marks_it_missing_only_when_requested()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Conclave.2024.WEB.1080p.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 3072).Select(value => (byte)(value % 211)).ToArray());
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(platform, movieRootPath, downloadsPath);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, movies);
+        var import = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath,
+                    FileName: null,
+                    MediaType: "movies",
+                    Title: "Conclave",
+                    Year: 2024,
+                    Genres: ["Drama"],
+                    Tags: [],
+                    Studio: "Focus",
+                    OriginalLanguage: "en"),
+                TransferMode: "copy",
+                Overwrite: false,
+                AllowCopyFallback: true),
+            CancellationToken.None);
+        Assert.True(import.Succeeded);
+
+        File.Delete(import.Response!.Preview.DestinationPath);
+
+        var reconciliation = CreateReconciliationService(storage, timeProvider, platform, movies);
+        var report = await reconciliation.ScanAsync(CancellationToken.None);
+        var issue = Assert.Single(report.Issues, item => item.Kind == "missingTrackedFile");
+        Assert.Equal("critical", issue.Severity);
+        Assert.Contains("Conclave", issue.Title, StringComparison.OrdinalIgnoreCase);
+
+        var repair = await reconciliation.RepairAsync(
+            new FilesystemReconciliationRepairRequest(issue.Id, "mark-missing"),
+            CancellationToken.None);
+
+        Assert.True(repair.Repaired);
+        Assert.Empty(await movies.ListTrackedFilesAsync(issue.LibraryId, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Reconciliation_reports_orphans_and_cleans_only_deluno_artifacts_on_explicit_repair()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(platform, movieRootPath, downloadsPath);
+
+        var orphanPath = Path.Combine(movieRootPath, "Loose.Movie.2024.mkv");
+        var artifactPath = Path.Combine(movieRootPath, "Loose.Movie.2024.mkv.deluno-stage-test.tmp");
+        await File.WriteAllTextAsync(orphanPath, "orphan media");
+        await File.WriteAllTextAsync(artifactPath, "partial import");
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var reconciliation = CreateReconciliationService(storage, timeProvider, platform, movies);
+        var report = await reconciliation.ScanAsync(CancellationToken.None);
+
+        var orphan = Assert.Single(report.Issues, item => item.Kind == "orphanFile");
+        var artifact = Assert.Single(report.Issues, item => item.Kind == "partialImportArtifact");
+
+        var orphanRepair = await reconciliation.RepairAsync(
+            new FilesystemReconciliationRepairRequest(orphan.Id, "queue-import-review"),
+            CancellationToken.None);
+        Assert.True(orphanRepair.Repaired);
+        Assert.True(File.Exists(orphanPath));
+        Assert.Single((await movies.GetImportRecoverySummaryAsync(CancellationToken.None)).RecentCases);
+
+        var artifactRepair = await reconciliation.RepairAsync(
+            new FilesystemReconciliationRepairRequest(artifact.Id, "cleanup-artifact"),
+            CancellationToken.None);
+        Assert.True(artifactRepair.Repaired);
+        Assert.False(File.Exists(artifactPath));
+    }
+
     private static async Task InitializeAllAsync(TestStorage storage, TimeProvider timeProvider)
     {
         var migrator = new SqliteDatabaseMigrator(storage.Factory, timeProvider);
@@ -195,6 +291,44 @@ public sealed class ImportPipelineServiceTests
             new SqliteSeriesCatalogRepository(storage.Factory, timeProvider),
             new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher()),
             new SuccessfulProbeService());
+
+    private static FilesystemReconciliationService CreateReconciliationService(
+        TestStorage storage,
+        TimeProvider timeProvider,
+        SqlitePlatformSettingsRepository platform,
+        SqliteMovieCatalogRepository movies)
+        => new(
+            platform,
+            movies,
+            new SqliteSeriesCatalogRepository(storage.Factory, timeProvider),
+            new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher()),
+            timeProvider);
+
+    private static async Task CreateMovieLibraryAsync(
+        SqlitePlatformSettingsRepository platform,
+        string movieRootPath,
+        string downloadsPath)
+    {
+        var request = new CreateLibraryRequest(
+            Name: "Movies",
+            MediaType: "movies",
+            Purpose: "Main",
+            RootPath: movieRootPath,
+            DownloadsPath: downloadsPath,
+            QualityProfileId: null,
+            ImportWorkflow: "standard",
+            ProcessorName: null,
+            ProcessorOutputPath: null,
+            ProcessorTimeoutMinutes: null,
+            ProcessorFailureMode: null,
+            AutoSearchEnabled: true,
+            MissingSearchEnabled: true,
+            UpgradeSearchEnabled: true,
+            SearchIntervalHours: 6,
+            RetryDelayHours: 24,
+            MaxItemsPerRun: 25);
+        await platform.CreateLibraryAsync(request, CancellationToken.None);
+    }
 
     private static async Task SaveSettingsAsync(
         SqlitePlatformSettingsRepository platform,

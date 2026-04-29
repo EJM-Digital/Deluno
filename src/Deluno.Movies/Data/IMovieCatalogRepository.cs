@@ -64,6 +64,18 @@ public interface IMovieCatalogRepository
         string? targetQuality,
         bool qualityCutoffMet,
         bool unmonitorWhenCutoffMet,
+        string? filePath,
+        long? fileSizeBytes,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<MovieTrackedFileItem>> ListTrackedFilesAsync(
+        string libraryId,
+        CancellationToken cancellationToken);
+
+    Task<bool> MarkTrackedFileMissingAsync(
+        string movieId,
+        string libraryId,
+        string filePath,
         CancellationToken cancellationToken);
 
     Task RecordSearchAttemptAsync(
