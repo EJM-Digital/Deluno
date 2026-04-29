@@ -67,7 +67,7 @@ public sealed class DelunoHeartbeatWorker(
             var jobQueueRepository = scope.ServiceProvider.GetRequiredService<IJobQueueRepository>();
             var jobScheduler = scope.ServiceProvider.GetRequiredService<IJobScheduler>();
             var platformSettingsRepository = scope.ServiceProvider.GetRequiredService<IPlatformSettingsRepository>();
-            var mediaSearchPlanner = scope.ServiceProvider.GetRequiredService<IMediaSearchPlanner>();
+            var acquisitionPipeline = scope.ServiceProvider.GetRequiredService<IAcquisitionDecisionPipeline>();
             var downloadClientGrabService = scope.ServiceProvider.GetRequiredService<IDownloadClientGrabService>();
             var downloadClientTelemetryService = scope.ServiceProvider.GetRequiredService<IDownloadClientTelemetryService>();
             var metadataProvider = scope.ServiceProvider.GetRequiredService<IMetadataProvider>();
@@ -137,7 +137,7 @@ public sealed class DelunoHeartbeatWorker(
                     job,
                     jobQueueRepository,
                     platformSettingsRepository,
-                    mediaSearchPlanner,
+                    acquisitionPipeline,
                     downloadClientGrabService,
                     metadataProvider,
                     importPipelineService,
@@ -321,7 +321,7 @@ public sealed class DelunoHeartbeatWorker(
         Deluno.Jobs.Contracts.JobQueueItem job,
         IJobQueueRepository jobQueueRepository,
         IPlatformSettingsRepository platformSettingsRepository,
-        IMediaSearchPlanner mediaSearchPlanner,
+        IAcquisitionDecisionPipeline acquisitionPipeline,
         IDownloadClientGrabService downloadClientGrabService,
         IMetadataProvider metadataProvider,
         IImportPipelineService importPipelineService,
@@ -367,27 +367,20 @@ public sealed class DelunoHeartbeatWorker(
 
                     foreach (var candidate in candidates)
                     {
-                        var searchPlan = configuredSources == 0 || configuredClients == 0
-                            ? new MediaSearchPlan(null, [], configuredSources == 0
-                                ? "No indexers are linked to this library yet."
-                                : "No download client is linked to this library yet.")
-                            : await mediaSearchPlanner.BuildPlanAsync(
+                        var decisionPlan = await acquisitionPipeline.PlanAsync(
+                            new AcquisitionDecisionRequest(
                                 candidate.Title,
                                 candidate.ReleaseYear,
                                 "movies",
                                 candidate.CurrentQuality,
                                 candidate.TargetQuality,
-                                routing!.Sources,
-                                customFormats);
-
+                                routing?.Sources ?? [],
+                                routing?.DownloadClients ?? [],
+                                customFormats),
+                            cancellationToken);
+                        var searchPlan = decisionPlan.SearchPlan;
                         var bestCandidate = searchPlan.BestCandidate;
-                        var outcome = configuredSources == 0 || configuredClients == 0
-                            ? "blocked"
-                            : bestCandidate is null
-                                ? "checked"
-                                : IsSafeForAutomaticGrab(bestCandidate)
-                                    ? "matched"
-                                    : "held";
+                        var outcome = decisionPlan.Outcome;
 
                         if (outcome == "matched")
                         {
@@ -406,17 +399,14 @@ public sealed class DelunoHeartbeatWorker(
                             checkedCount++;
                         }
 
-                        if (outcome == "matched")
+                        if (decisionPlan.ShouldDispatch && decisionPlan.SelectedDownloadClient is not null && decisionPlan.DispatchRequest is not null)
                         {
-                            var downloadClient = routing!.DownloadClients
-                                .OrderBy(item => item.Priority)
-                                .First();
+                            var downloadClient = decisionPlan.SelectedDownloadClient;
                             var grabResult = await GrabBestCandidateAsync(
                                 downloadClientGrabService,
                                 downloadClient.DownloadClientId,
                                 bestCandidate!,
-                                "movies",
-                                "movies",
+                                decisionPlan.DispatchRequest,
                                 cancellationToken);
 
                             await jobQueueRepository.RecordDownloadDispatchAsync(
@@ -440,7 +430,7 @@ public sealed class DelunoHeartbeatWorker(
                             outcome,
                             now,
                             now.AddHours(Math.Max(1, payload.RetryDelayHours)),
-                            BuildSearchResult(searchPlan, configuredClients),
+                            decisionPlan.SearchResult,
                             bestCandidate?.ReleaseName,
                             bestCandidate?.IndexerName,
                             SerializeSearchPlan(searchPlan),
@@ -504,27 +494,20 @@ public sealed class DelunoHeartbeatWorker(
 
                 foreach (var candidate in seriesCandidates)
                 {
-                    var searchPlan = configuredSources == 0 || configuredClients == 0
-                        ? new MediaSearchPlan(null, [], configuredSources == 0
-                            ? "No indexers are linked to this library yet."
-                            : "No download client is linked to this library yet.")
-                        : await mediaSearchPlanner.BuildPlanAsync(
+                    var decisionPlan = await acquisitionPipeline.PlanAsync(
+                        new AcquisitionDecisionRequest(
                             candidate.Title,
                             candidate.StartYear,
                             "tv",
                             candidate.CurrentQuality,
                             candidate.TargetQuality,
-                            routing!.Sources,
-                            customFormats);
-
+                            routing?.Sources ?? [],
+                            routing?.DownloadClients ?? [],
+                            customFormats),
+                        cancellationToken);
+                    var searchPlan = decisionPlan.SearchPlan;
                     var bestCandidate = searchPlan.BestCandidate;
-                    var outcome = configuredSources == 0 || configuredClients == 0
-                        ? "blocked"
-                        : bestCandidate is null
-                            ? "checked"
-                            : IsSafeForAutomaticGrab(bestCandidate)
-                                ? "matched"
-                                : "held";
+                    var outcome = decisionPlan.Outcome;
 
                     if (outcome == "matched")
                     {
@@ -543,17 +526,14 @@ public sealed class DelunoHeartbeatWorker(
                         seriesCheckedCount++;
                     }
 
-                    if (outcome == "matched")
+                    if (decisionPlan.ShouldDispatch && decisionPlan.SelectedDownloadClient is not null && decisionPlan.DispatchRequest is not null)
                     {
-                        var downloadClient = routing!.DownloadClients
-                            .OrderBy(item => item.Priority)
-                            .First();
+                        var downloadClient = decisionPlan.SelectedDownloadClient;
                         var grabResult = await GrabBestCandidateAsync(
                             downloadClientGrabService,
                             downloadClient.DownloadClientId,
                             bestCandidate!,
-                            "tv",
-                            "tv",
+                            decisionPlan.DispatchRequest,
                             cancellationToken);
 
                         await jobQueueRepository.RecordDownloadDispatchAsync(
@@ -578,7 +558,7 @@ public sealed class DelunoHeartbeatWorker(
                         outcome,
                         now,
                         now.AddHours(Math.Max(1, payload.RetryDelayHours)),
-                        BuildSearchResult(searchPlan, configuredClients),
+                        decisionPlan.SearchResult,
                         bestCandidate?.ReleaseName,
                         bestCandidate?.IndexerName,
                         SerializeSearchPlan(searchPlan),
@@ -1075,31 +1055,11 @@ public sealed class DelunoHeartbeatWorker(
         return $"Finished checking {libraryName}. Deluno reviewed {candidateCount} {mediaLabel}{(candidateCount == 1 ? "" : "s")} for new or better releases.";
     }
 
-    private static string BuildSearchResult(MediaSearchPlan plan, int configuredClients)
-    {
-        if (plan.BestCandidate is null)
-        {
-            return plan.Summary;
-        }
-
-        if (!IsSafeForAutomaticGrab(plan.BestCandidate))
-        {
-            return $"{plan.Summary} Held for manual review because the best candidate is {plan.BestCandidate.DecisionStatus}.";
-        }
-
-        return $"{plan.Summary} Ready to send to {configuredClients} download client{(configuredClients == 1 ? "" : "s")}.";
-    }
-
-    private static bool IsSafeForAutomaticGrab(MediaSearchCandidate candidate)
-        => string.Equals(candidate.DecisionStatus, "preferred", StringComparison.OrdinalIgnoreCase) ||
-           string.Equals(candidate.DecisionStatus, "eligible", StringComparison.OrdinalIgnoreCase);
-
     private static async Task<DownloadClientGrabResult> GrabBestCandidateAsync(
         IDownloadClientGrabService downloadClientGrabService,
         string downloadClientId,
         MediaSearchCandidate candidate,
-        string mediaType,
-        string category,
+        DownloadClientGrabRequest request,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(candidate.DownloadUrl))
@@ -1114,12 +1074,7 @@ public sealed class DelunoHeartbeatWorker(
 
         return await downloadClientGrabService.GrabAsync(
             downloadClientId,
-            new DownloadClientGrabRequest(
-                candidate.ReleaseName,
-                candidate.DownloadUrl,
-                mediaType,
-                category,
-                candidate.IndexerName),
+            request,
             cancellationToken);
     }
 

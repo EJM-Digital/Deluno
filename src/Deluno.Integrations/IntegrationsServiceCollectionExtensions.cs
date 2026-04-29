@@ -10,6 +10,7 @@ public static class IntegrationsServiceCollectionExtensions
     public static IServiceCollection AddDelunoIntegrationsModule(this IServiceCollection services)
     {
         services.AddScoped<IMediaSearchPlanner, FeedMediaSearchPlanner>();
+        services.AddScoped<IAcquisitionDecisionPipeline, AcquisitionDecisionPipeline>();
         services.AddHttpClient("indexers", client => client.Timeout = TimeSpan.FromSeconds(10));
         services.AddHttpClient("download-clients", client => client.Timeout = TimeSpan.FromSeconds(8));
         services.AddScoped<IDownloadClientTelemetryService, DownloadClientTelemetryService>();

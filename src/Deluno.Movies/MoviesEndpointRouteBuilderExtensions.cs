@@ -129,7 +129,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IMovieCatalogRepository repository,
             IPlatformSettingsRepository platformSettingsRepository,
             IJobQueueRepository jobQueueRepository,
-            IMediaSearchPlanner mediaSearchPlanner,
+            IAcquisitionDecisionPipeline acquisitionPipeline,
             IDownloadClientGrabService downloadClientGrabService,
             IActivityFeedRepository activityFeedRepository,
             TimeProvider timeProvider,
@@ -168,52 +168,32 @@ public static class MoviesEndpointRouteBuilderExtensions
             }
 
             var routing = await platformSettingsRepository.GetLibraryRoutingAsync(library.Id, cancellationToken);
-            var configuredSources = routing?.Sources.Count ?? 0;
-            var configuredClients = routing?.DownloadClients.Count ?? 0;
             var now = timeProvider.GetUtcNow();
             var customFormats = await ResolveCustomFormatsAsync(platformSettingsRepository, library.QualityProfileId, cancellationToken);
 
-            var searchPlan = configuredSources == 0 || configuredClients == 0
-                ? new MediaSearchPlan(
-                    null,
-                    [],
-                    configuredSources == 0
-                        ? "No indexers are linked to this library yet."
-                        : "No download client is linked to this library yet.")
-                : await mediaSearchPlanner.BuildPlanAsync(
+            var decisionPlan = await acquisitionPipeline.PlanAsync(
+                new AcquisitionDecisionRequest(
                     movie.Title,
                     movie.ReleaseYear,
                     "movies",
                     wantedItem.CurrentQuality,
                     wantedItem.TargetQuality,
-                    routing!.Sources,
-                    customFormats);
-
+                    routing?.Sources ?? [],
+                    routing?.DownloadClients ?? [],
+                    customFormats,
+                    PreviewOnly: string.Equals(mode, "preview", StringComparison.OrdinalIgnoreCase)),
+                cancellationToken);
+            var searchPlan = decisionPlan.SearchPlan;
             var bestCandidate = searchPlan.BestCandidate;
-            var outcome = configuredSources == 0 || configuredClients == 0
-                ? "blocked"
-                : bestCandidate is null
-                    ? "checked"
-                    : IsSafeForAutomaticGrab(bestCandidate)
-                        ? "matched"
-                        : "held";
+            var outcome = decisionPlan.Outcome;
             DownloadClientGrabResult? grabResult = null;
 
-            if (outcome == "matched" && !string.Equals(mode, "preview", StringComparison.OrdinalIgnoreCase))
+            if (decisionPlan.ShouldDispatch && decisionPlan.SelectedDownloadClient is not null && decisionPlan.DispatchRequest is not null)
             {
-                var downloadClient = routing!.DownloadClients.OrderBy(item => item.Priority).First();
-                var category = library.MediaType == "tv" ? "tv" : "movies";
+                var downloadClient = decisionPlan.SelectedDownloadClient;
                 grabResult = bestCandidate!.DownloadUrl is null
                     ? new DownloadClientGrabResult(downloadClient.DownloadClientId, bestCandidate.ReleaseName, false, "planned", "No download URL was available.")
-                    : await downloadClientGrabService.GrabAsync(
-                        downloadClient.DownloadClientId,
-                        new DownloadClientGrabRequest(
-                            bestCandidate.ReleaseName,
-                            bestCandidate.DownloadUrl,
-                            "movies",
-                            category,
-                            bestCandidate.IndexerName),
-                        cancellationToken);
+                    : await downloadClientGrabService.GrabAsync(downloadClient.DownloadClientId, decisionPlan.DispatchRequest, cancellationToken);
                 await jobQueueRepository.RecordDownloadDispatchAsync(
                     library.Id,
                     "movies",
@@ -235,7 +215,7 @@ public static class MoviesEndpointRouteBuilderExtensions
                 outcome,
                 now,
                 now.AddHours(Math.Max(1, library.RetryDelayHours)),
-                BuildSearchResult(searchPlan, configuredClients),
+                decisionPlan.SearchResult,
                 bestCandidate?.ReleaseName,
                 bestCandidate?.IndexerName,
                 searchPlan.Candidates.Count == 0 ? null : JsonSerializer.Serialize(searchPlan),
@@ -245,20 +225,20 @@ public static class MoviesEndpointRouteBuilderExtensions
                 new DecisionExplanationPayload(
                     Scope: "movie.search",
                     Status: outcome,
-                    Reason: BuildSearchResult(searchPlan, configuredClients),
+                    Reason: decisionPlan.SearchResult,
                     Inputs: new Dictionary<string, string?>
                     {
                         ["title"] = movie.Title,
                         ["year"] = movie.ReleaseYear?.ToString(),
                         ["libraryId"] = library.Id,
-                        ["sourceCount"] = configuredSources.ToString(),
-                        ["downloadClientCount"] = configuredClients.ToString(),
+                        ["sourceCount"] = decisionPlan.SourceCount.ToString(),
+                        ["downloadClientCount"] = decisionPlan.DownloadClientCount.ToString(),
                         ["mode"] = string.Equals(mode, "preview", StringComparison.OrdinalIgnoreCase) ? "preview" : "manual"
                     },
                     Outcome: grabResult is null
                         ? searchPlan.Summary
                         : $"{grabResult.Status}: {grabResult.Message}",
-                    Alternatives: BuildDecisionAlternatives(searchPlan)),
+                    Alternatives: decisionPlan.Alternatives),
                 null,
                 "movie",
                 movie.Id,
@@ -312,6 +292,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IMovieCatalogRepository repository,
             IPlatformSettingsRepository platformSettingsRepository,
             IJobQueueRepository jobQueueRepository,
+            IAcquisitionDecisionPipeline acquisitionPipeline,
             IDownloadClientGrabService downloadClientGrabService,
             IActivityFeedRepository activityFeedRepository,
             TimeProvider timeProvider,
@@ -366,6 +347,28 @@ public static class MoviesEndpointRouteBuilderExtensions
             }
 
             var category = library.MediaType == "tv" ? "tv" : "movies";
+            var forceOverride = request.Force == true;
+            var overrideReason = string.IsNullOrWhiteSpace(request.OverrideReason)
+                ? "User manually forced this release from search results."
+                : request.OverrideReason.Trim();
+            var selectedDecision = acquisitionPipeline.EvaluateSelectedRelease(
+                new AcquisitionSelectedReleaseRequest(
+                    request.ReleaseName.Trim(),
+                    null,
+                    request.IndexerName?.Trim(),
+                    request.DownloadUrl!.Trim(),
+                    wantedItem.CurrentQuality,
+                    wantedItem.TargetQuality,
+                    ForceOverride: forceOverride,
+                    OverrideReason: forceOverride ? overrideReason : null));
+            if (!selectedDecision.CanDispatch)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["force"] = [$"{selectedDecision.Reason} Use force override if you still want this exact release."]
+                });
+            }
+
             var grabResult = await downloadClientGrabService.GrabAsync(
                 downloadClient.DownloadClientId,
                 new DownloadClientGrabRequest(
@@ -376,13 +379,10 @@ public static class MoviesEndpointRouteBuilderExtensions
                     request.IndexerName?.Trim()),
                 cancellationToken);
 
-            var forceOverride = request.Force == true;
-            var overrideReason = string.IsNullOrWhiteSpace(request.OverrideReason)
-                ? "User manually forced this release from search results."
-                : request.OverrideReason.Trim();
             var auditPayload = new
             {
                 selectedRelease = request,
+                decision = selectedDecision,
                 forceOverride,
                 overrideReason = forceOverride ? overrideReason : null,
                 grabResult
@@ -432,7 +432,7 @@ public static class MoviesEndpointRouteBuilderExtensions
                     Status: grabResult.Status,
                     Reason: forceOverride
                         ? $"User override selected {request.ReleaseName.Trim()}: {overrideReason}"
-                        : $"User selected {request.ReleaseName.Trim()} from {request.IndexerName?.Trim() ?? "manual search results"}.",
+                        : selectedDecision.Reason,
                     Inputs: new Dictionary<string, string?>
                     {
                         ["releaseName"] = request.ReleaseName.Trim(),
@@ -442,7 +442,7 @@ public static class MoviesEndpointRouteBuilderExtensions
                         ["forceOverride"] = forceOverride.ToString()
                     },
                     Outcome: grabResult.Message,
-                    Alternatives: []),
+                    Alternatives: selectedDecision.Alternatives),
                 null,
                 "movie",
                 movie.Id,
@@ -743,36 +743,6 @@ public static class MoviesEndpointRouteBuilderExtensions
 
         return errors;
     }
-
-    private static string BuildSearchResult(MediaSearchPlan plan, int configuredClients)
-    {
-        if (plan.BestCandidate is null)
-        {
-            return plan.Summary;
-        }
-
-        if (!IsSafeForAutomaticGrab(plan.BestCandidate))
-        {
-            return $"{plan.Summary} Held for manual review because the best candidate is {plan.BestCandidate.DecisionStatus}.";
-        }
-
-        return $"{plan.Summary} Ready to send to {configuredClients} download client{(configuredClients == 1 ? "" : "s")}.";
-    }
-
-    private static bool IsSafeForAutomaticGrab(MediaSearchCandidate candidate)
-        => string.Equals(candidate.DecisionStatus, "preferred", StringComparison.OrdinalIgnoreCase) &&
-           candidate.MeetsCutoff &&
-           candidate.QualityDelta >= 0;
-
-    private static IReadOnlyList<DecisionAlternativeExplanation> BuildDecisionAlternatives(MediaSearchPlan plan)
-        => plan.Candidates
-            .Take(12)
-            .Select(candidate => new DecisionAlternativeExplanation(
-                Name: candidate.ReleaseName,
-                Status: candidate.DecisionStatus,
-                Reason: candidate.Summary,
-                Score: candidate.Score))
-            .ToArray();
 
     private static async Task<IReadOnlyList<CustomFormatItem>> ResolveCustomFormatsAsync(
         IPlatformSettingsRepository repository,
