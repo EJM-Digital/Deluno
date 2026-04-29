@@ -1,6 +1,7 @@
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Persistence.Tests.Support;
+using Deluno.Infrastructure.Storage.Migrations;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Deluno.Persistence.Tests.Movies;
@@ -15,6 +16,7 @@ public sealed class MovieWantedStatePersistenceTests
 
         await new MoviesSchemaInitializer(
             storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
             NullLogger<MoviesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
 
         var repository = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);

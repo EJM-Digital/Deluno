@@ -1,6 +1,7 @@
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Persistence.Tests.Support;
+using Deluno.Infrastructure.Storage.Migrations;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Deluno.Persistence.Tests.Jobs;
@@ -15,6 +16,7 @@ public sealed class JobStoreTests
 
         await new JobsSchemaInitializer(
             storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
             NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
 
         var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher());

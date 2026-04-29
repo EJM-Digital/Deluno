@@ -1,6 +1,7 @@
 using Deluno.Persistence.Tests.Support;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
+using Deluno.Infrastructure.Storage.Migrations;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Deluno.Persistence.Tests.Platform;
@@ -15,6 +16,7 @@ public sealed class PlatformSettingsPersistenceTests
 
         await new PlatformSchemaInitializer(
             storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
             NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
 
         var repository = new SqlitePlatformSettingsRepository(storage.Factory, timeProvider);

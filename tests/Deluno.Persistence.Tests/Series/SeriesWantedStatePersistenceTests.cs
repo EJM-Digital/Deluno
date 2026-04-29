@@ -1,6 +1,7 @@
 using Deluno.Persistence.Tests.Support;
 using Deluno.Series.Contracts;
 using Deluno.Series.Data;
+using Deluno.Infrastructure.Storage.Migrations;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Deluno.Persistence.Tests.Series;
@@ -15,6 +16,7 @@ public sealed class SeriesWantedStatePersistenceTests
 
         await new SeriesSchemaInitializer(
             storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
             NullLogger<SeriesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
 
         var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
