@@ -1084,6 +1084,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             CreateSeriesRequest request,
             ISeriesCatalogRepository repository,
             IPlatformSettingsRepository platformSettingsRepository,
+            IMediaDecisionService mediaDecisionService,
             IJobScheduler jobScheduler,
             CancellationToken cancellationToken) =>
         {
@@ -1103,13 +1104,13 @@ public static class SeriesEndpointRouteBuilderExtensions
             var libraries = await platformSettingsRepository.ListLibrariesAsync(cancellationToken);
             foreach (var library in libraries.Where(entry => entry.MediaType == "tv"))
             {
-                var decision = LibraryQualityDecider.Decide(
-                    mediaLabel: "TV show",
-                    hasFile: false,
-                    currentQuality: null,
-                    cutoffQuality: library.CutoffQuality,
-                    upgradeUntilCutoff: library.UpgradeUntilCutoff,
-                    upgradeUnknownItems: library.UpgradeUnknownItems);
+                var decision = mediaDecisionService.DecideWantedState(new MediaWantedDecisionInput(
+                    MediaType: library.MediaType,
+                    HasFile: false,
+                    CurrentQuality: null,
+                    CutoffQuality: library.CutoffQuality,
+                    UpgradeUntilCutoff: library.UpgradeUntilCutoff,
+                    UpgradeUnknownItems: library.UpgradeUnknownItems));
 
                 await repository.EnsureWantedStateAsync(
                     item.Id,

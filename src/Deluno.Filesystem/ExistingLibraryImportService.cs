@@ -10,7 +10,8 @@ namespace Deluno.Filesystem;
 public sealed class ExistingLibraryImportService(
     IPlatformSettingsRepository platformSettingsRepository,
     IMovieCatalogRepository movieCatalogRepository,
-    ISeriesCatalogRepository seriesCatalogRepository)
+    ISeriesCatalogRepository seriesCatalogRepository,
+    IMediaDecisionService mediaDecisionService)
     : IExistingLibraryImportService
 {
     private static readonly string[] VideoExtensions =
@@ -81,13 +82,13 @@ public sealed class ExistingLibraryImportService(
         DetectedLibraryItem item,
         CancellationToken cancellationToken)
     {
-        var decision = LibraryQualityDecider.Decide(
-            mediaLabel: "movie",
-            hasFile: true,
-            currentQuality: item.DetectedQuality,
-            cutoffQuality: library.CutoffQuality,
-            upgradeUntilCutoff: library.UpgradeUntilCutoff,
-            upgradeUnknownItems: library.UpgradeUnknownItems);
+        var decision = mediaDecisionService.DecideWantedState(new MediaWantedDecisionInput(
+            MediaType: library.MediaType,
+            HasFile: true,
+            CurrentQuality: item.DetectedQuality,
+            CutoffQuality: library.CutoffQuality,
+            UpgradeUntilCutoff: library.UpgradeUntilCutoff,
+            UpgradeUnknownItems: library.UpgradeUnknownItems));
 
         return await movieCatalogRepository.ImportExistingAsync(
             library.Id,
@@ -109,13 +110,13 @@ public sealed class ExistingLibraryImportService(
         DetectedLibraryItem item,
         CancellationToken cancellationToken)
     {
-        var decision = LibraryQualityDecider.Decide(
-            mediaLabel: "TV show",
-            hasFile: true,
-            currentQuality: item.DetectedQuality,
-            cutoffQuality: library.CutoffQuality,
-            upgradeUntilCutoff: library.UpgradeUntilCutoff,
-            upgradeUnknownItems: library.UpgradeUnknownItems);
+        var decision = mediaDecisionService.DecideWantedState(new MediaWantedDecisionInput(
+            MediaType: library.MediaType,
+            HasFile: true,
+            CurrentQuality: item.DetectedQuality,
+            CutoffQuality: library.CutoffQuality,
+            UpgradeUntilCutoff: library.UpgradeUntilCutoff,
+            UpgradeUnknownItems: library.UpgradeUnknownItems));
 
         return await seriesCatalogRepository.ImportExistingAsync(
             library.Id,

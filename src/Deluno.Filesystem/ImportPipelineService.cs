@@ -18,7 +18,8 @@ public sealed class ImportPipelineService(
     IMovieCatalogRepository movieCatalogRepository,
     ISeriesCatalogRepository seriesCatalogRepository,
     IActivityFeedRepository activityFeedRepository,
-    IMediaProbeService mediaProbeService)
+    IMediaProbeService mediaProbeService,
+    IMediaDecisionService mediaDecisionService)
     : IImportPipelineService
 {
     private static readonly HashSet<string> SupportedVideoExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -622,14 +623,14 @@ public sealed class ImportPipelineService(
             return false;
         }
 
-        var quality = LibraryQualityDecider.DetectQuality($"{preview.SourcePath} {preview.DestinationPath}");
-        var decision = LibraryQualityDecider.Decide(
-            mediaType == "tv" ? "TV show" : "movie",
-            hasFile: true,
-            currentQuality: quality,
-            cutoffQuality: library.CutoffQuality,
-            upgradeUntilCutoff: library.UpgradeUntilCutoff,
-            upgradeUnknownItems: library.UpgradeUnknownItems);
+        var quality = mediaDecisionService.DetectQuality($"{preview.SourcePath} {preview.DestinationPath}");
+        var decision = mediaDecisionService.DecideWantedState(new MediaWantedDecisionInput(
+            MediaType: mediaType,
+            HasFile: true,
+            CurrentQuality: quality,
+            CutoffQuality: library.CutoffQuality,
+            UpgradeUntilCutoff: library.UpgradeUntilCutoff,
+            UpgradeUnknownItems: library.UpgradeUnknownItems));
         var title = TitleForActivity(request);
 
         if (mediaType == "tv")

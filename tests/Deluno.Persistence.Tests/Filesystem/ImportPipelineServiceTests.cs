@@ -5,6 +5,7 @@ using Deluno.Movies.Data;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
+using Deluno.Platform.Quality;
 using Deluno.Series.Data;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -290,7 +291,8 @@ public sealed class ImportPipelineServiceTests
             movies,
             new SqliteSeriesCatalogRepository(storage.Factory, timeProvider),
             new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher()),
-            new SuccessfulProbeService());
+            new SuccessfulProbeService(),
+            new MediaDecisionService());
 
     private static FilesystemReconciliationService CreateReconciliationService(
         TestStorage storage,

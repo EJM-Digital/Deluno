@@ -913,13 +913,13 @@ public sealed class SqliteMovieCatalogRepository(
         var updated = 0;
         foreach (var item in items)
         {
-            var decision = LibraryQualityDecider.Decide(
-                mediaLabel: "movie",
-                hasFile: item.HasFile,
-                currentQuality: item.CurrentQuality,
-                cutoffQuality: cutoffQuality,
-                upgradeUntilCutoff: upgradeUntilCutoff,
-                upgradeUnknownItems: upgradeUnknownItems);
+            var decision = MediaDecisionRules.DecideWantedState(new MediaWantedDecisionInput(
+                MediaType: "movies",
+                HasFile: item.HasFile,
+                CurrentQuality: item.CurrentQuality,
+                CutoffQuality: cutoffQuality,
+                UpgradeUntilCutoff: upgradeUntilCutoff,
+                UpgradeUnknownItems: upgradeUnknownItems));
 
             using var update = connection.CreateCommand();
             update.CommandText =

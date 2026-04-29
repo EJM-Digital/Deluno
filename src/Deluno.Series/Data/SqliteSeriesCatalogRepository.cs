@@ -1359,13 +1359,13 @@ public sealed class SqliteSeriesCatalogRepository(
         var updated = 0;
         foreach (var item in items)
         {
-            var decision = LibraryQualityDecider.Decide(
-                mediaLabel: "TV show",
-                hasFile: item.HasFile,
-                currentQuality: item.CurrentQuality,
-                cutoffQuality: cutoffQuality,
-                upgradeUntilCutoff: upgradeUntilCutoff,
-                upgradeUnknownItems: upgradeUnknownItems);
+            var decision = MediaDecisionRules.DecideWantedState(new MediaWantedDecisionInput(
+                MediaType: "tv",
+                HasFile: item.HasFile,
+                CurrentQuality: item.CurrentQuality,
+                CutoffQuality: cutoffQuality,
+                UpgradeUntilCutoff: upgradeUntilCutoff,
+                UpgradeUnknownItems: upgradeUnknownItems));
 
             using var update = connection.CreateCommand();
             update.CommandText =

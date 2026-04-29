@@ -584,6 +584,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             CreateMovieRequest request,
             IMovieCatalogRepository repository,
             IPlatformSettingsRepository platformSettingsRepository,
+            IMediaDecisionService mediaDecisionService,
             IJobScheduler jobScheduler,
             CancellationToken cancellationToken) =>
         {
@@ -603,13 +604,13 @@ public static class MoviesEndpointRouteBuilderExtensions
             var libraries = await platformSettingsRepository.ListLibrariesAsync(cancellationToken);
             foreach (var library in libraries.Where(item => item.MediaType == "movies"))
             {
-                var decision = LibraryQualityDecider.Decide(
-                    mediaLabel: "movie",
-                    hasFile: false,
-                    currentQuality: null,
-                    cutoffQuality: library.CutoffQuality,
-                    upgradeUntilCutoff: library.UpgradeUntilCutoff,
-                    upgradeUnknownItems: library.UpgradeUnknownItems);
+                var decision = mediaDecisionService.DecideWantedState(new MediaWantedDecisionInput(
+                    MediaType: library.MediaType,
+                    HasFile: false,
+                    CurrentQuality: null,
+                    CutoffQuality: library.CutoffQuality,
+                    UpgradeUntilCutoff: library.UpgradeUntilCutoff,
+                    UpgradeUnknownItems: library.UpgradeUnknownItems));
 
                 await repository.EnsureWantedStateAsync(
                     movie.Id,
