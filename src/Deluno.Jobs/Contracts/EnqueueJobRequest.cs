@@ -6,4 +6,7 @@ public sealed record EnqueueJobRequest(
     string? PayloadJson,
     string? RelatedEntityType,
     string? RelatedEntityId,
-    DateTimeOffset? ScheduledUtc = null);
+    DateTimeOffset? ScheduledUtc = null,
+    string? IdempotencyKey = null,
+    string? DedupeKey = null,
+    int? MaxAttempts = null);

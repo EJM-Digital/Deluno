@@ -15,4 +15,9 @@ public sealed record JobQueueItem(
     string? WorkerId,
     string? LastError,
     string? RelatedEntityType,
-    string? RelatedEntityId);
+    string? RelatedEntityId,
+    string? IdempotencyKey,
+    string? DedupeKey,
+    int MaxAttempts,
+    DateTimeOffset? LastAttemptUtc,
+    DateTimeOffset? NextAttemptUtc);

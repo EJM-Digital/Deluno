@@ -91,7 +91,6 @@ public sealed class MigrationRunnerTests
                  {
                      DelunoDatabaseNames.Movies,
                      DelunoDatabaseNames.Series,
-                     DelunoDatabaseNames.Jobs,
                      DelunoDatabaseNames.Cache
                  })
         {
@@ -104,6 +103,11 @@ public sealed class MigrationRunnerTests
         Assert.Equal(2, await ReadScalarAsync<int>(platformConnection, "SELECT COUNT(*) FROM schema_migrations;"));
         Assert.Equal("initial_schema", await ReadScalarAsync<string>(platformConnection, "SELECT name FROM schema_migrations WHERE version = 1;"));
         Assert.Equal("user_security_stamp", await ReadScalarAsync<string>(platformConnection, "SELECT name FROM schema_migrations WHERE version = 2;"));
+
+        await using var jobsConnection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Jobs);
+        Assert.Equal(2, await ReadScalarAsync<int>(jobsConnection, "SELECT COUNT(*) FROM schema_migrations;"));
+        Assert.Equal("initial_schema", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 1;"));
+        Assert.Equal("job_integrity", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 2;"));
     }
 
     private static async Task<T> ReadScalarAsync<T>(DbConnection connection, string sql)
