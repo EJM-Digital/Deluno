@@ -5,6 +5,7 @@ using System.Text.Json;
 using Deluno.Infrastructure.Observability;
 using Deluno.Infrastructure.Storage;
 using Deluno.Jobs.Contracts;
+using Deluno.Jobs.Decisions;
 using Deluno.Realtime;
 using Microsoft.Data.Sqlite;
 
@@ -235,6 +236,28 @@ public sealed class SqliteJobStore(
             category: "job.retry",
             message: $"{failedJobs.Count} failed job{(failedJobs.Count == 1 ? string.Empty : "s")} requeued.",
             detailsJson: null,
+            relatedJobId: null,
+            relatedEntityType: "job",
+            relatedEntityId: null,
+            createdUtc: now,
+            cancellationToken: cancellationToken);
+
+        await InsertActivityAsync(
+            connection,
+            transaction,
+            category: DecisionExplanationActivity.Category,
+            message: $"job.retry: {failedJobs.Count} failed job{(failedJobs.Count == 1 ? string.Empty : "s")} were requeued by explicit retry.",
+            detailsJson: JsonSerializer.Serialize(new DecisionExplanationPayload(
+                Scope: "job.retry",
+                Status: "requeued",
+                Reason: $"{failedJobs.Count} failed job{(failedJobs.Count == 1 ? string.Empty : "s")} were selected from failed/dead-letter states and scheduled for another attempt.",
+                Inputs: new Dictionary<string, string?>
+                {
+                    ["failedJobCount"] = failedJobs.Count.ToString(CultureInfo.InvariantCulture),
+                    ["scheduledUtc"] = now.ToString("O")
+                },
+                Outcome: "Jobs were moved back to queued with a fresh scheduled time.",
+                Alternatives: [])),
             relatedJobId: null,
             relatedEntityType: "job",
             relatedEntityId: null,
@@ -519,6 +542,38 @@ public sealed class SqliteJobStore(
                 ? $"{errorMessage} The job reached its retry limit and moved to dead-letter."
                 : $"{errorMessage} Deluno will retry after {nextAttemptUtc:O}.",
             detailsJson: job.PayloadJson,
+            relatedJobId: job.Id,
+            relatedEntityType: job.RelatedEntityType,
+            relatedEntityId: job.RelatedEntityId,
+            createdUtc: now,
+            cancellationToken: cancellationToken);
+
+        await InsertActivityAsync(
+            connection,
+            transaction,
+            category: DecisionExplanationActivity.Category,
+            message: shouldDeadLetter
+                ? $"job.failure: {job.JobType} moved to dead-letter after exhausting retries."
+                : $"job.failure: {job.JobType} will retry after {nextAttemptUtc:O}.",
+            detailsJson: JsonSerializer.Serialize(new DecisionExplanationPayload(
+                Scope: "job.failure",
+                Status: nextStatus,
+                Reason: shouldDeadLetter
+                    ? $"{job.JobType} reached the retry limit of {job.MaxAttempts} attempts and was moved to dead-letter."
+                    : $"{job.JobType} failed on attempt {attempts}; Deluno scheduled the next attempt after exponential backoff.",
+                Inputs: new Dictionary<string, string?>
+                {
+                    ["jobId"] = job.Id,
+                    ["jobType"] = job.JobType,
+                    ["attempts"] = attempts.ToString(CultureInfo.InvariantCulture),
+                    ["maxAttempts"] = job.MaxAttempts.ToString(CultureInfo.InvariantCulture),
+                    ["error"] = errorMessage,
+                    ["nextAttemptUtc"] = nextAttemptUtc?.ToString("O")
+                },
+                Outcome: shouldDeadLetter
+                    ? "No further automatic retries will run until the user retries failed jobs."
+                    : $"Next automatic retry is scheduled for {nextAttemptUtc:O}.",
+                Alternatives: [])),
             relatedJobId: job.Id,
             relatedEntityType: job.RelatedEntityType,
             relatedEntityId: job.RelatedEntityId,

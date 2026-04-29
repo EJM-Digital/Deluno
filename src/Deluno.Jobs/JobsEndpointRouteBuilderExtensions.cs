@@ -1,4 +1,5 @@
 using Deluno.Jobs.Data;
+using Deluno.Jobs.Decisions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -39,6 +40,24 @@ public static class JobsEndpointRouteBuilderExtensions
                 relatedEntityId,
                 cancellationToken);
             return Results.Ok(items);
+        });
+
+        endpoints.MapGet("/api/decisions", async (
+            int? take,
+            string? relatedEntityType,
+            string? relatedEntityId,
+            IActivityFeedRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var items = await repository.ListActivityAsync(
+                Math.Clamp(take ?? 100, 1, 500),
+                relatedEntityType,
+                relatedEntityId,
+                cancellationToken);
+            return Results.Ok(items
+                .Select(DecisionExplanationActivity.FromActivity)
+                .OfType<DecisionExplanationItem>()
+                .ToArray());
         });
 
         endpoints.MapGet("/api/library-automation", async (

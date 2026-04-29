@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
+using Deluno.Jobs.Decisions;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.Search;
 using Deluno.Integrations.Metadata;
@@ -282,6 +283,29 @@ public static class SeriesEndpointRouteBuilderExtensions
                 bestCandidate?.ReleaseName,
                 bestCandidate?.IndexerName,
                 searchPlan.Candidates.Count == 0 ? null : JsonSerializer.Serialize(searchPlan),
+                cancellationToken);
+
+            await activityFeedRepository.RecordDecisionAsync(
+                new DecisionExplanationPayload(
+                    Scope: "series.search",
+                    Status: outcome,
+                    Reason: BuildSearchResult(searchPlan, configuredClients),
+                    Inputs: new Dictionary<string, string?>
+                    {
+                        ["title"] = seriesItem.Title,
+                        ["year"] = seriesItem.StartYear?.ToString(),
+                        ["libraryId"] = library.Id,
+                        ["sourceCount"] = configuredSources.ToString(),
+                        ["downloadClientCount"] = configuredClients.ToString(),
+                        ["mode"] = string.Equals(mode, "preview", StringComparison.OrdinalIgnoreCase) ? "preview" : "manual"
+                    },
+                    Outcome: grabResult is null
+                        ? searchPlan.Summary
+                        : $"{grabResult.Status}: {grabResult.Message}",
+                    Alternatives: BuildDecisionAlternatives(searchPlan)),
+                null,
+                "series",
+                seriesItem.Id,
                 cancellationToken);
 
             await activityFeedRepository.RecordActivityAsync(
@@ -726,6 +750,28 @@ public static class SeriesEndpointRouteBuilderExtensions
                 seriesItem.Id,
                 cancellationToken);
 
+            await activityFeedRepository.RecordDecisionAsync(
+                new DecisionExplanationPayload(
+                    Scope: "series.episode-search",
+                    Status: matchedCount > 0 ? "matched" : "checked",
+                    Reason: matchedCount > 0
+                        ? $"{matchedCount} episode search result{(matchedCount == 1 ? string.Empty : "s")} met the active quality and policy rules."
+                        : "No selected episodes produced a release that satisfied the active quality and policy rules.",
+                    Inputs: new Dictionary<string, string?>
+                    {
+                        ["title"] = seriesItem.Title,
+                        ["libraryId"] = library.Id,
+                        ["episodeCount"] = targetEpisodes.Count.ToString(),
+                        ["sourceCount"] = configuredSources.ToString(),
+                        ["downloadClientCount"] = configuredClients.ToString()
+                    },
+                    Outcome: $"{sentCount} sent, {plannedCount} planned, {failedCount} failed.",
+                    Alternatives: []),
+                null,
+                "series",
+                seriesItem.Id,
+                cancellationToken);
+
             return Results.Ok(new
             {
                 outcome = matchedCount > 0 ? "matched" : "checked",
@@ -854,6 +900,28 @@ public static class SeriesEndpointRouteBuilderExtensions
                     ? $"{seriesItem.Title} release was force grabbed and sent to {downloadClient.DownloadClientName}."
                     : $"{seriesItem.Title} release was manually selected and sent to {downloadClient.DownloadClientName}.",
                 JsonSerializer.Serialize(auditPayload),
+                null,
+                "series",
+                seriesItem.Id,
+                cancellationToken);
+
+            await activityFeedRepository.RecordDecisionAsync(
+                new DecisionExplanationPayload(
+                    Scope: forceOverride ? "series.grab.force" : "series.grab.manual",
+                    Status: grabResult.Status,
+                    Reason: forceOverride
+                        ? $"User override selected {request.ReleaseName.Trim()}: {overrideReason}"
+                        : $"User selected {request.ReleaseName.Trim()} from {request.IndexerName?.Trim() ?? "manual search results"}.",
+                    Inputs: new Dictionary<string, string?>
+                    {
+                        ["releaseName"] = request.ReleaseName.Trim(),
+                        ["indexerName"] = request.IndexerName?.Trim(),
+                        ["downloadClientId"] = downloadClient.DownloadClientId,
+                        ["downloadClientName"] = downloadClient.DownloadClientName,
+                        ["forceOverride"] = forceOverride.ToString()
+                    },
+                    Outcome: grabResult.Message,
+                    Alternatives: []),
                 null,
                 "series",
                 seriesItem.Id,
@@ -1065,6 +1133,29 @@ public static class SeriesEndpointRouteBuilderExtensions
                 seriesItem.Id,
                 cancellationToken);
 
+            await activityFeedRepository.RecordDecisionAsync(
+                new DecisionExplanationPayload(
+                    Scope: "series.season-search",
+                    Status: outcome,
+                    Reason: BuildSearchResult(searchPlan, configuredClients),
+                    Inputs: new Dictionary<string, string?>
+                    {
+                        ["title"] = seriesItem.Title,
+                        ["seasonNumber"] = seasonNumber.ToString(),
+                        ["libraryId"] = library.Id,
+                        ["episodeCount"] = seasonEpisodes.Count.ToString(),
+                        ["sourceCount"] = configuredSources.ToString(),
+                        ["downloadClientCount"] = configuredClients.ToString()
+                    },
+                    Outcome: grabResult is null
+                        ? searchPlan.Summary
+                        : $"{grabResult.Status}: {grabResult.Message}",
+                    Alternatives: BuildDecisionAlternatives(searchPlan)),
+                null,
+                "series",
+                seriesItem.Id,
+                cancellationToken);
+
             return Results.Ok(new
             {
                 outcome,
@@ -1217,6 +1308,16 @@ public static class SeriesEndpointRouteBuilderExtensions
         => string.Equals(candidate.DecisionStatus, "preferred", StringComparison.OrdinalIgnoreCase) &&
            candidate.MeetsCutoff &&
            candidate.QualityDelta >= 0;
+
+    private static IReadOnlyList<DecisionAlternativeExplanation> BuildDecisionAlternatives(MediaSearchPlan plan)
+        => plan.Candidates
+            .Take(12)
+            .Select(candidate => new DecisionAlternativeExplanation(
+                Name: candidate.ReleaseName,
+                Status: candidate.DecisionStatus,
+                Reason: candidate.Summary,
+                Score: candidate.Score))
+            .ToArray();
 
     private static string BuildEpisodeSearchTitle(string title, int seasonNumber, int episodeNumber)
     {

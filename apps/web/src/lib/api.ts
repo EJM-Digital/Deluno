@@ -813,6 +813,27 @@ export interface ActivityEventItem {
   createdUtc: string;
 }
 
+export interface DecisionAlternativeExplanation {
+  name: string;
+  status: string;
+  reason: string;
+  score: number | null;
+}
+
+export interface DecisionExplanationItem {
+  id: string;
+  occurredUtc: string;
+  scope: string;
+  status: string;
+  reason: string;
+  inputs: Record<string, string | null>;
+  outcome: string;
+  alternatives: DecisionAlternativeExplanation[];
+  relatedJobId: string | null;
+  relatedEntityType: string | null;
+  relatedEntityId: string | null;
+}
+
 export interface BackupSettingsSnapshot {
   enabled: boolean;
   frequency: string;

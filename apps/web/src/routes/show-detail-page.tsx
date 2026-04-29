@@ -14,6 +14,7 @@ import {
 import {
   fetchJson,
   type ActivityEventItem,
+  type DecisionExplanationItem,
   type DownloadDispatchItem,
   type LibraryItem,
   type MetadataSearchResult,
@@ -29,12 +30,14 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { KpiCard } from "../components/app/kpi-card";
+import { DecisionExplanationList } from "../components/app/decision-explanation-list";
 import { RatingStrip } from "../components/app/rating-strip";
 import { EmptyState } from "../components/shell/empty-state";
 import { RouteSkeleton } from "../components/shell/skeleton";
 
 interface ShowDetailLoaderData {
   activity: ActivityEventItem[];
+  decisions: DecisionExplanationItem[];
   dispatches: DownloadDispatchItem[];
   importRecovery: SeriesImportRecoverySummary;
   inventory: SeriesInventoryDetail;
@@ -52,7 +55,7 @@ export async function showDetailLoader({
   params: { id?: string };
 }): Promise<ShowDetailLoaderData> {
   const id = params.id!;
-  const [series, wanted, searchHistory, dispatches, importRecovery, inventory, activity, libraries] =
+  const [series, wanted, searchHistory, dispatches, importRecovery, inventory, activity, decisions, libraries] =
     await Promise.all([
       fetchJson<SeriesListItem>(`/api/series/${id}`),
       fetchJson<SeriesWantedSummary>("/api/series/wanted"),
@@ -63,16 +66,17 @@ export async function showDetailLoader({
       fetchJson<ActivityEventItem[]>(
         `/api/activity?relatedEntityType=series&relatedEntityId=${id}&take=20`
       ),
+      fetchJson<DecisionExplanationItem[]>(`/api/decisions?relatedEntityType=series&relatedEntityId=${id}&take=40`),
       fetchJson<LibraryItem[]>("/api/libraries")
     ]);
 
-  return { activity, dispatches, importRecovery, inventory, libraries, searchHistory, series, wanted };
+  return { activity, decisions, dispatches, importRecovery, inventory, libraries, searchHistory, series, wanted };
 }
 
 export function ShowDetailPage() {
   const loaderData = useLoaderData() as ShowDetailLoaderData | undefined;
   if (!loaderData) return <RouteSkeleton />;
-  const { activity, dispatches, importRecovery, inventory, libraries, searchHistory, series, wanted } = loaderData;
+  const { activity, decisions, dispatches, importRecovery, inventory, libraries, searchHistory, series, wanted } = loaderData;
   const revalidator = useRevalidator();
   const [selectedEpisodeIds, setSelectedEpisodeIds] = useState<string[]>([]);
   const [busyAction, setBusyAction] = useState<string | null>(null);
@@ -804,6 +808,18 @@ export function ShowDetailPage() {
                   </a>
                 </Button>
               ) : null}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Decision trail</CardTitle>
+              <CardDescription>
+                Search, grab, import, and retry decisions recorded for this series.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <DecisionExplanationList decisions={decisions} />
             </CardContent>
           </Card>
 

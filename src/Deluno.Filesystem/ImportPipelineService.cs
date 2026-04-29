@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using Deluno.Infrastructure.Observability;
 using Deluno.Jobs.Data;
+using Deluno.Jobs.Decisions;
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Platform.Contracts;
@@ -252,6 +253,31 @@ public sealed class ImportPipelineService(
                     preview.MatchedRuleName,
                     MediaProbe = preview.MediaProbe
                 }),
+                null,
+                mediaType == "tv" ? "series" : "movie",
+                null,
+                cancellationToken);
+
+            await activityFeedRepository.RecordDecisionAsync(
+                new DecisionExplanationPayload(
+                    Scope: "filesystem.import",
+                    Status: "completed",
+                    Reason: usedFallback
+                        ? "Deluno imported with copy fallback because the preferred hardlink path was unavailable."
+                        : $"Deluno imported using {mode} because that transfer mode was selected by preview and user settings.",
+                    Inputs: new Dictionary<string, string?>
+                    {
+                        ["sourcePath"] = preview.SourcePath,
+                        ["destinationPath"] = preview.DestinationPath,
+                        ["preferredTransferMode"] = preview.PreferredTransferMode,
+                        ["requestedTransferMode"] = request.TransferMode,
+                        ["transferModeUsed"] = mode,
+                        ["matchedRuleId"] = preview.MatchedRuleId,
+                        ["matchedRuleName"] = preview.MatchedRuleName,
+                        ["catalogUpdated"] = catalogUpdated.ToString()
+                    },
+                    Outcome: $"{TitleForActivity(request.Preview)} imported to {preview.DestinationPath}.",
+                    Alternatives: []),
                 null,
                 mediaType == "tv" ? "series" : "movie",
                 null,
@@ -585,6 +611,30 @@ public sealed class ImportPipelineService(
             mediaType == "tv" ? "series" : "movie",
             null,
             cancellationToken);
+
+        await activityFeedRepository.RecordDecisionAsync(
+            new DecisionExplanationPayload(
+                Scope: "filesystem.import",
+                Status: "failed",
+                Reason: summary,
+                Inputs: new Dictionary<string, string?>
+                {
+                    ["failureKind"] = failureKind,
+                    ["sourcePath"] = executeRequest.Preview.SourcePath,
+                    ["fileName"] = executeRequest.Preview.FileName,
+                    ["mediaType"] = executeRequest.Preview.MediaType,
+                    ["title"] = executeRequest.Preview.Title,
+                    ["transferMode"] = executeRequest.TransferMode,
+                    ["overwrite"] = executeRequest.Overwrite.ToString(),
+                    ["allowCopyFallback"] = executeRequest.AllowCopyFallback.ToString(),
+                    ["forceReplacement"] = executeRequest.ForceReplacement.ToString()
+                },
+                Outcome: recommendedAction,
+                Alternatives: []),
+            null,
+            mediaType == "tv" ? "series" : "movie",
+            null,
+            cancellationToken);
     }
 
     private async Task RecordImportStartedAsync(
@@ -609,6 +659,28 @@ public sealed class ImportPipelineService(
                 preview.MatchedRuleName,
                 MediaProbe = preview.MediaProbe
             }),
+            null,
+            mediaType == "tv" ? "series" : "movie",
+            null,
+            cancellationToken);
+
+        await activityFeedRepository.RecordDecisionAsync(
+            new DecisionExplanationPayload(
+                Scope: "filesystem.import.transfer",
+                Status: "started",
+                Reason: $"Deluno chose {preview.PreferredTransferMode} during preview and will honor the requested transfer mode {request.TransferMode}.",
+                Inputs: new Dictionary<string, string?>
+                {
+                    ["sourcePath"] = preview.SourcePath,
+                    ["destinationPath"] = preview.DestinationPath,
+                    ["preferredTransferMode"] = preview.PreferredTransferMode,
+                    ["requestedTransferMode"] = request.TransferMode,
+                    ["hardlinkAvailable"] = preview.HardlinkAvailable.ToString(),
+                    ["matchedRuleId"] = preview.MatchedRuleId,
+                    ["matchedRuleName"] = preview.MatchedRuleName
+                },
+                Outcome: "Import execution started with explicit staging and rollback protection.",
+                Alternatives: []),
             null,
             mediaType == "tv" ? "series" : "movie",
             null,

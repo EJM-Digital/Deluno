@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
+using Deluno.Jobs.Decisions;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.Search;
 using Deluno.Integrations.Metadata;
@@ -240,6 +241,29 @@ public static class MoviesEndpointRouteBuilderExtensions
                 searchPlan.Candidates.Count == 0 ? null : JsonSerializer.Serialize(searchPlan),
                 cancellationToken);
 
+            await activityFeedRepository.RecordDecisionAsync(
+                new DecisionExplanationPayload(
+                    Scope: "movie.search",
+                    Status: outcome,
+                    Reason: BuildSearchResult(searchPlan, configuredClients),
+                    Inputs: new Dictionary<string, string?>
+                    {
+                        ["title"] = movie.Title,
+                        ["year"] = movie.ReleaseYear?.ToString(),
+                        ["libraryId"] = library.Id,
+                        ["sourceCount"] = configuredSources.ToString(),
+                        ["downloadClientCount"] = configuredClients.ToString(),
+                        ["mode"] = string.Equals(mode, "preview", StringComparison.OrdinalIgnoreCase) ? "preview" : "manual"
+                    },
+                    Outcome: grabResult is null
+                        ? searchPlan.Summary
+                        : $"{grabResult.Status}: {grabResult.Message}",
+                    Alternatives: BuildDecisionAlternatives(searchPlan)),
+                null,
+                "movie",
+                movie.Id,
+                cancellationToken);
+
             await activityFeedRepository.RecordActivityAsync(
                 "movie.search.manual",
                 $"{movie.Title} was searched manually from the Deluno workspace.",
@@ -397,6 +421,28 @@ public static class MoviesEndpointRouteBuilderExtensions
                     ? $"{movie.Title} release was force grabbed and sent to {downloadClient.DownloadClientName}."
                     : $"{movie.Title} release was manually selected and sent to {downloadClient.DownloadClientName}.",
                 JsonSerializer.Serialize(auditPayload),
+                null,
+                "movie",
+                movie.Id,
+                cancellationToken);
+
+            await activityFeedRepository.RecordDecisionAsync(
+                new DecisionExplanationPayload(
+                    Scope: forceOverride ? "movie.grab.force" : "movie.grab.manual",
+                    Status: grabResult.Status,
+                    Reason: forceOverride
+                        ? $"User override selected {request.ReleaseName.Trim()}: {overrideReason}"
+                        : $"User selected {request.ReleaseName.Trim()} from {request.IndexerName?.Trim() ?? "manual search results"}.",
+                    Inputs: new Dictionary<string, string?>
+                    {
+                        ["releaseName"] = request.ReleaseName.Trim(),
+                        ["indexerName"] = request.IndexerName?.Trim(),
+                        ["downloadClientId"] = downloadClient.DownloadClientId,
+                        ["downloadClientName"] = downloadClient.DownloadClientName,
+                        ["forceOverride"] = forceOverride.ToString()
+                    },
+                    Outcome: grabResult.Message,
+                    Alternatives: []),
                 null,
                 "movie",
                 movie.Id,
@@ -717,6 +763,16 @@ public static class MoviesEndpointRouteBuilderExtensions
         => string.Equals(candidate.DecisionStatus, "preferred", StringComparison.OrdinalIgnoreCase) &&
            candidate.MeetsCutoff &&
            candidate.QualityDelta >= 0;
+
+    private static IReadOnlyList<DecisionAlternativeExplanation> BuildDecisionAlternatives(MediaSearchPlan plan)
+        => plan.Candidates
+            .Take(12)
+            .Select(candidate => new DecisionAlternativeExplanation(
+                Name: candidate.ReleaseName,
+                Status: candidate.DecisionStatus,
+                Reason: candidate.Summary,
+                Score: candidate.Score))
+            .ToArray();
 
     private static async Task<IReadOnlyList<CustomFormatItem>> ResolveCustomFormatsAsync(
         IPlatformSettingsRepository repository,

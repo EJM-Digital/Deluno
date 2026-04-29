@@ -12,6 +12,7 @@ import {
 import {
   fetchJson,
   type ActivityEventItem,
+  type DecisionExplanationItem,
   type DownloadDispatchItem,
   type LibraryItem,
   type MetadataSearchResult,
@@ -25,12 +26,14 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { KpiCard } from "../components/app/kpi-card";
+import { DecisionExplanationList } from "../components/app/decision-explanation-list";
 import { RatingStrip } from "../components/app/rating-strip";
 import { EmptyState } from "../components/shell/empty-state";
 import { RouteSkeleton } from "../components/shell/skeleton";
 
 interface MovieDetailLoaderData {
   activity: ActivityEventItem[];
+  decisions: DecisionExplanationItem[];
   dispatches: DownloadDispatchItem[];
   importRecovery: MovieImportRecoverySummary;
   libraries: LibraryItem[];
@@ -45,23 +48,24 @@ export async function movieDetailLoader({
   params: { id?: string };
 }): Promise<MovieDetailLoaderData> {
   const id = params.id!;
-  const [movie, wanted, searchHistory, dispatches, importRecovery, activity, libraries] = await Promise.all([
+  const [movie, wanted, searchHistory, dispatches, importRecovery, activity, decisions, libraries] = await Promise.all([
     fetchJson<MovieListItem>(`/api/movies/${id}`),
     fetchJson<MovieWantedSummary>("/api/movies/wanted"),
     fetchJson<MovieSearchHistoryItem[]>("/api/movies/search-history"),
     fetchJson<DownloadDispatchItem[]>("/api/download-dispatches?mediaType=movies"),
     fetchJson<MovieImportRecoverySummary>("/api/movies/import-recovery"),
     fetchJson<ActivityEventItem[]>(`/api/activity?relatedEntityType=movie&relatedEntityId=${id}&take=20`),
+    fetchJson<DecisionExplanationItem[]>(`/api/decisions?relatedEntityType=movie&relatedEntityId=${id}&take=40`),
     fetchJson<LibraryItem[]>("/api/libraries")
   ]);
 
-  return { activity, dispatches, importRecovery, libraries, movie, searchHistory, wanted };
+  return { activity, decisions, dispatches, importRecovery, libraries, movie, searchHistory, wanted };
 }
 
 export function MovieDetailPage() {
   const loaderData = useLoaderData() as MovieDetailLoaderData | undefined;
   if (!loaderData) return <RouteSkeleton />;
-  const { activity, dispatches, importRecovery, libraries, movie, searchHistory, wanted } = loaderData;
+  const { activity, decisions, dispatches, importRecovery, libraries, movie, searchHistory, wanted } = loaderData;
   const revalidator = useRevalidator();
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -479,6 +483,18 @@ export function MovieDetailPage() {
                   </a>
                 </Button>
               ) : null}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Decision trail</CardTitle>
+              <CardDescription>
+                Search, grab, import, and retry decisions recorded for this movie.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <DecisionExplanationList decisions={decisions} />
             </CardContent>
           </Card>
 
