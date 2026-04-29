@@ -54,6 +54,7 @@ public sealed class AcquisitionDecisionPipeline(IMediaSearchPlanner mediaSearchP
 
         return new AcquisitionDecisionPlan(
             SearchPlan: searchPlan,
+            PolicyVersion: bestCandidate?.PolicyVersion ?? Deluno.Platform.Quality.MediaPolicyCatalog.CurrentVersion,
             Outcome: outcome,
             SearchResult: BuildSearchResult(searchPlan, clientCount),
             SourceCount: sourceCount,
@@ -100,12 +101,14 @@ public sealed class AcquisitionDecisionPipeline(IMediaSearchPlanner mediaSearchP
             SeederScore: decision.SeederScore,
             SizeScore: decision.SizeScore,
             ReleaseGroup: decision.ReleaseGroup,
-            EstimatedBitrateMbps: decision.EstimatedBitrateMbps);
+            EstimatedBitrateMbps: decision.EstimatedBitrateMbps,
+            PolicyVersion: decision.PolicyVersion);
 
         var safe = IsSafeForAutomaticDispatch(candidate);
         var canDispatch = safe || request.ForceOverride;
         return new AcquisitionSelectedReleaseDecision(
             Candidate: candidate,
+            PolicyVersion: decision.PolicyVersion,
             CanDispatch: canDispatch,
             RequiresOverride: !safe,
             Reason: safe
@@ -181,6 +184,7 @@ public sealed record AcquisitionDecisionRequest(
 
 public sealed record AcquisitionDecisionPlan(
     MediaSearchPlan SearchPlan,
+    string PolicyVersion,
     string Outcome,
     string SearchResult,
     int SourceCount,
@@ -205,6 +209,7 @@ public sealed record AcquisitionSelectedReleaseRequest(
 
 public sealed record AcquisitionSelectedReleaseDecision(
     MediaSearchCandidate Candidate,
+    string PolicyVersion,
     bool CanDispatch,
     bool RequiresOverride,
     string Reason,

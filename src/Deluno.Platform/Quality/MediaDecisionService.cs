@@ -7,23 +7,28 @@ public interface IMediaDecisionService
     LibraryQualityDecision DecideWantedState(MediaWantedDecisionInput input);
 
     string? DetectQuality(string? raw);
+
+    string CurrentPolicyVersion { get; }
 }
 
-public sealed class MediaDecisionService : IMediaDecisionService
+public sealed class MediaDecisionService(IVersionedMediaPolicyEngine policyEngine) : IMediaDecisionService
 {
+    public string CurrentPolicyVersion => policyEngine.CurrentVersion;
+
     public LibraryQualityDecision DecideWantedState(MediaWantedDecisionInput input)
     {
-        var decision = MediaDecisionRules.DecideWantedState(input);
+        var decision = policyEngine.DecideWantedState(input);
         DelunoObservability.DecisionOutcomes.Add(
             1,
-            new("media.type", MediaDecisionRules.NormalizeMediaType(input.MediaType)),
+            new("media.type", MediaPolicyCatalog.NormalizeMediaType(input.MediaType)),
             new("wanted.status", decision.WantedStatus),
+            new("policy.version", decision.PolicyVersion),
             new("has.file", input.HasFile));
         return decision;
     }
 
     public string? DetectQuality(string? raw)
-        => LibraryQualityDecider.DetectQuality(raw);
+        => policyEngine.DetectQuality(raw);
 }
 
 public sealed record MediaWantedDecisionInput(
@@ -36,15 +41,11 @@ public sealed record MediaWantedDecisionInput(
 
 public static class MediaDecisionRules
 {
+    private static readonly IVersionedMediaPolicyEngine Engine = new VersionedMediaPolicyEngine();
+
     public static LibraryQualityDecision DecideWantedState(MediaWantedDecisionInput input)
-        => LibraryQualityDecider.Decide(
-            mediaLabel: NormalizeMediaType(input.MediaType) == "tv" ? "TV show" : "movie",
-            hasFile: input.HasFile,
-            currentQuality: input.CurrentQuality,
-            cutoffQuality: input.CutoffQuality,
-            upgradeUntilCutoff: input.UpgradeUntilCutoff,
-            upgradeUnknownItems: input.UpgradeUnknownItems);
+        => Engine.DecideWantedState(input);
 
     public static string NormalizeMediaType(string? mediaType)
-        => mediaType?.Trim().ToLowerInvariant() is "tv" or "series" or "shows" ? "tv" : "movies";
+        => MediaPolicyCatalog.NormalizeMediaType(mediaType);
 }

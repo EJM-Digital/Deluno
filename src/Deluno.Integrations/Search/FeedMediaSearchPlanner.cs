@@ -206,7 +206,8 @@ public sealed class FeedMediaSearchPlanner(
                 SeederScore: decision.SeederScore,
                 SizeScore: decision.SizeScore,
                 ReleaseGroup: decision.ReleaseGroup,
-                EstimatedBitrateMbps: decision.EstimatedBitrateMbps));
+                EstimatedBitrateMbps: decision.EstimatedBitrateMbps,
+                PolicyVersion: decision.PolicyVersion));
         }
 
         return results;

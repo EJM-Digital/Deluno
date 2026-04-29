@@ -233,6 +233,7 @@ public static class MoviesEndpointRouteBuilderExtensions
                         ["libraryId"] = library.Id,
                         ["sourceCount"] = decisionPlan.SourceCount.ToString(),
                         ["downloadClientCount"] = decisionPlan.DownloadClientCount.ToString(),
+                        ["policyVersion"] = decisionPlan.PolicyVersion,
                         ["mode"] = string.Equals(mode, "preview", StringComparison.OrdinalIgnoreCase) ? "preview" : "manual"
                     },
                     Outcome: grabResult is null
@@ -280,7 +281,8 @@ public static class MoviesEndpointRouteBuilderExtensions
                     candidate.SeederScore,
                     candidate.SizeScore,
                     candidate.ReleaseGroup,
-                    candidate.EstimatedBitrateMbps
+                    candidate.EstimatedBitrateMbps,
+                    candidate.PolicyVersion
                 }).ToArray()
             });
         });
@@ -439,6 +441,7 @@ public static class MoviesEndpointRouteBuilderExtensions
                         ["indexerName"] = request.IndexerName?.Trim(),
                         ["downloadClientId"] = downloadClient.DownloadClientId,
                         ["downloadClientName"] = downloadClient.DownloadClientName,
+                        ["policyVersion"] = selectedDecision.PolicyVersion,
                         ["forceOverride"] = forceOverride.ToString()
                     },
                     Outcome: grabResult.Message,

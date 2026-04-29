@@ -5,4 +5,5 @@ public sealed record LibraryQualityDecision(
     string WantedReason,
     bool QualityCutoffMet,
     string? CurrentQuality,
-    string? TargetQuality);
+    string? TargetQuality,
+    string PolicyVersion);

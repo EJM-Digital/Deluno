@@ -11,6 +11,7 @@ public static class PlatformServiceCollectionExtensions
     public static IServiceCollection AddDelunoPlatformModule(this IServiceCollection services)
     {
         services.AddSingleton<IPlatformSettingsRepository, SqlitePlatformSettingsRepository>();
+        services.AddSingleton<IVersionedMediaPolicyEngine, VersionedMediaPolicyEngine>();
         services.AddSingleton<IMediaDecisionService, MediaDecisionService>();
         services.AddSingleton<IMigrationAssistantService, MigrationAssistantService>();
         services.AddSingleton<ISecretProtector, DataProtectionSecretProtector>();

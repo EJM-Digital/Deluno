@@ -278,6 +278,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                         ["libraryId"] = library.Id,
                         ["sourceCount"] = decisionPlan.SourceCount.ToString(),
                         ["downloadClientCount"] = decisionPlan.DownloadClientCount.ToString(),
+                        ["policyVersion"] = decisionPlan.PolicyVersion,
                         ["mode"] = string.Equals(mode, "preview", StringComparison.OrdinalIgnoreCase) ? "preview" : "manual"
                     },
                     Outcome: grabResult is null
@@ -325,7 +326,8 @@ public static class SeriesEndpointRouteBuilderExtensions
                     candidate.SeederScore,
                     candidate.SizeScore,
                     candidate.ReleaseGroup,
-                    candidate.EstimatedBitrateMbps
+                    candidate.EstimatedBitrateMbps,
+                    candidate.PolicyVersion
                 }).ToArray()
             });
         });
@@ -739,7 +741,8 @@ public static class SeriesEndpointRouteBuilderExtensions
                         ["libraryId"] = library.Id,
                         ["episodeCount"] = targetEpisodes.Count.ToString(),
                         ["sourceCount"] = configuredSources.ToString(),
-                        ["downloadClientCount"] = configuredClients.ToString()
+                        ["downloadClientCount"] = configuredClients.ToString(),
+                        ["policyVersion"] = Deluno.Platform.Quality.MediaPolicyCatalog.CurrentVersion
                     },
                     Outcome: $"{sentCount} sent, {plannedCount} planned, {failedCount} failed.",
                     Alternatives: []),
@@ -914,6 +917,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                         ["indexerName"] = request.IndexerName?.Trim(),
                         ["downloadClientId"] = downloadClient.DownloadClientId,
                         ["downloadClientName"] = downloadClient.DownloadClientName,
+                        ["policyVersion"] = selectedDecision.PolicyVersion,
                         ["forceOverride"] = forceOverride.ToString()
                     },
                     Outcome: grabResult.Message,
@@ -1136,7 +1140,8 @@ public static class SeriesEndpointRouteBuilderExtensions
                         ["libraryId"] = library.Id,
                         ["episodeCount"] = seasonEpisodes.Count.ToString(),
                         ["sourceCount"] = configuredSources.ToString(),
-                        ["downloadClientCount"] = configuredClients.ToString()
+                        ["downloadClientCount"] = configuredClients.ToString(),
+                        ["policyVersion"] = decisionPlan.PolicyVersion
                     },
                     Outcome: grabResult is null
                         ? searchPlan.Summary

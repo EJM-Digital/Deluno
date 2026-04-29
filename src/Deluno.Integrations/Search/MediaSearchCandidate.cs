@@ -19,4 +19,5 @@ public sealed record MediaSearchCandidate(
     int SeederScore = 0,
     int SizeScore = 0,
     string? ReleaseGroup = null,
-    double? EstimatedBitrateMbps = null);
+    double? EstimatedBitrateMbps = null,
+    string PolicyVersion = Deluno.Platform.Quality.MediaPolicyCatalog.CurrentVersion);

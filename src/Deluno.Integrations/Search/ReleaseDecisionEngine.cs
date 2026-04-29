@@ -94,6 +94,7 @@ public static partial class ReleaseDecisionEngine
 
         var summary = BuildSummary(status, normalizedCandidate, normalizedTarget, input.CustomFormatScore, input.Seeders, risks.Count);
         return new ReleaseDecision(
+            MediaPolicyCatalog.CurrentVersion,
             status,
             score,
             meetsCutoff,
@@ -109,21 +110,7 @@ public static partial class ReleaseDecisionEngine
     }
 
     public static int QualityRank(string? quality)
-    {
-        var normalized = LibraryQualityDecider.NormalizeQuality(quality) ?? "WEB 1080p";
-        return normalized switch
-        {
-            "WEB 720p" => 1,
-            "HDTV 1080p" => 2,
-            "WEB 1080p" => 3,
-            "Bluray 1080p" => 4,
-            "Remux 1080p" => 5,
-            "WEB 2160p" => 6,
-            "Bluray 2160p" => 7,
-            "Remux 2160p" => 8,
-            _ => 3
-        };
-    }
+        => LibraryQualityDecider.GetRank(quality);
 
     private static int ScoreSeeders(int? seeders, ICollection<string> risks, ICollection<string> reasons)
     {

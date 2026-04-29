@@ -292,7 +292,7 @@ public sealed class ImportPipelineServiceTests
             new SqliteSeriesCatalogRepository(storage.Factory, timeProvider),
             new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher()),
             new SuccessfulProbeService(),
-            new MediaDecisionService(),
+            new MediaDecisionService(new VersionedMediaPolicyEngine()),
             NullLogger<ImportPipelineService>.Instance);
 
     private static FilesystemReconciliationService CreateReconciliationService(

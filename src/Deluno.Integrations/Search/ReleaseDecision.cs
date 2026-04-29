@@ -1,6 +1,7 @@
 namespace Deluno.Integrations.Search;
 
 public sealed record ReleaseDecision(
+    string PolicyVersion,
     string Status,
     int Score,
     bool MeetsCutoff,
