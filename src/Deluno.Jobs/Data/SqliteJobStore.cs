@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Deluno.Infrastructure.Observability;
 using Deluno.Infrastructure.Storage;
 using Deluno.Jobs.Contracts;
 using Deluno.Realtime;
@@ -132,6 +133,7 @@ public sealed class SqliteJobStore(
             SeverityForCategory("job.queued"),
             now.ToString("O"),
             cancellationToken);
+        DelunoObservability.JobsQueued.Add(1, new("job.type", job.JobType), new("source", job.Source));
         return job;
     }
 
@@ -259,6 +261,7 @@ public sealed class SqliteJobStore(
             now.ToString("O"),
             cancellationToken);
 
+        DelunoObservability.JobRetries.Add(failedJobs.Count);
         return failedJobs.Count;
     }
 
@@ -452,6 +455,7 @@ public sealed class SqliteJobStore(
             SeverityForCategory("job.completed"),
             now.ToString("O"),
             cancellationToken);
+        DelunoObservability.JobsCompleted.Add(1, new("job.type", job.JobType), new("source", job.Source));
     }
 
     public async Task FailAsync(string jobId, string workerId, string errorMessage, CancellationToken cancellationToken)
@@ -532,6 +536,13 @@ public sealed class SqliteJobStore(
             SeverityForCategory(shouldDeadLetter ? "job.dead-letter" : "job.failed"),
             now.ToString("O"),
             cancellationToken);
+        DelunoObservability.JobsFailed.Add(1, new("job.type", job.JobType), new("status", nextStatus));
+        if (!shouldDeadLetter)
+        {
+            DelunoObservability.JobRetries.Add(
+                1,
+                [new KeyValuePair<string, object?>("job.type", job.JobType)]);
+        }
     }
 
     public async Task HeartbeatAsync(string workerId, CancellationToken cancellationToken)

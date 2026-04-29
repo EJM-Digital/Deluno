@@ -1,3 +1,4 @@
+using Deluno.Infrastructure.Observability;
 using Deluno.Realtime.Hubs;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Hosting;
@@ -133,6 +134,9 @@ public sealed class SignalRRealtimeEventPublisher(
     {
         if (!_events.Writer.TryWrite(new RealtimeEnvelope(eventName, payload)))
         {
+            DelunoObservability.RealtimeEventsDropped.Add(
+                1,
+                [new KeyValuePair<string, object?>("event.name", eventName)]);
             logger.LogDebug("Realtime event {EventName} was dropped because the outbound queue is saturated.", eventName);
         }
     }

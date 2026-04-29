@@ -6,6 +6,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Deluno.Infrastructure.Observability;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Deluno.Jobs.Contracts;
@@ -1113,6 +1114,7 @@ public static class PlatformEndpointRouteBuilderExtensions
 
             var (healthStatus, message) = await TestIndexerAsync(item, cancellationToken);
             var result = await repository.UpdateIndexerHealthAsync(id, healthStatus, message, cancellationToken);
+            RecordIntegrationHealthMetric("indexer", healthStatus);
             if (result is not null)
             {
                 await realtimeEventPublisher.PublishHealthChangedAsync(
@@ -1236,6 +1238,7 @@ public static class PlatformEndpointRouteBuilderExtensions
 
             var (healthStatus, message) = await TestDownloadClientAsync(item, cancellationToken);
             var result = await repository.UpdateDownloadClientHealthAsync(id, healthStatus, message, cancellationToken);
+            RecordIntegrationHealthMetric("download-client", healthStatus);
             if (result is not null)
             {
                 await realtimeEventPublisher.PublishHealthChangedAsync(
@@ -2475,6 +2478,19 @@ public static class PlatformEndpointRouteBuilderExtensions
         var invalid = Path.GetInvalidFileNameChars();
         var cleaned = new string(value.Select(character => invalid.Contains(character) ? '-' : character).ToArray());
         return string.IsNullOrWhiteSpace(cleaned) ? "Untitled" : cleaned.Trim();
+    }
+
+    private static void RecordIntegrationHealthMetric(string integrationType, string healthStatus)
+    {
+        if (healthStatus is "ready")
+        {
+            return;
+        }
+
+        DelunoObservability.IntegrationFailures.Add(
+            1,
+            new("integration.type", integrationType),
+            new("health.status", healthStatus));
     }
 }
 

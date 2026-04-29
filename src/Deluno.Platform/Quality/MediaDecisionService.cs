@@ -1,3 +1,5 @@
+using Deluno.Infrastructure.Observability;
+
 namespace Deluno.Platform.Quality;
 
 public interface IMediaDecisionService
@@ -10,7 +12,15 @@ public interface IMediaDecisionService
 public sealed class MediaDecisionService : IMediaDecisionService
 {
     public LibraryQualityDecision DecideWantedState(MediaWantedDecisionInput input)
-        => MediaDecisionRules.DecideWantedState(input);
+    {
+        var decision = MediaDecisionRules.DecideWantedState(input);
+        DelunoObservability.DecisionOutcomes.Add(
+            1,
+            new("media.type", MediaDecisionRules.NormalizeMediaType(input.MediaType)),
+            new("wanted.status", decision.WantedStatus),
+            new("has.file", input.HasFile));
+        return decision;
+    }
 
     public string? DetectQuality(string? raw)
         => LibraryQualityDecider.DetectQuality(raw);

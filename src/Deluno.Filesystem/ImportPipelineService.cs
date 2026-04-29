@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using Deluno.Infrastructure.Observability;
 using Deluno.Jobs.Data;
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
@@ -10,6 +11,7 @@ using Deluno.Platform.Quality;
 using Deluno.Series.Contracts;
 using Deluno.Series.Data;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 
 namespace Deluno.Filesystem;
 
@@ -19,7 +21,8 @@ public sealed class ImportPipelineService(
     ISeriesCatalogRepository seriesCatalogRepository,
     IActivityFeedRepository activityFeedRepository,
     IMediaProbeService mediaProbeService,
-    IMediaDecisionService mediaDecisionService)
+    IMediaDecisionService mediaDecisionService,
+    ILogger<ImportPipelineService> logger)
     : IImportPipelineService
 {
     private static readonly HashSet<string> SupportedVideoExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -269,6 +272,15 @@ public sealed class ImportPipelineService(
             {
                 TryDelete(backupPath);
             }
+
+            DelunoObservability.ImportCompleted.Add(1, new("media.type", mediaType), new("transfer.mode", mode));
+            logger.LogInformation(
+                "Import completed for {MediaType} title {Title} using {TransferMode}. Destination={DestinationPath} Fallback={UsedFallback}",
+                mediaType,
+                TitleForActivity(request.Preview),
+                mode,
+                preview.DestinationPath,
+                usedFallback);
 
             return new ImportPipelineResult(true, StatusCodes.Status200OK, response, response.Message);
         }
@@ -529,6 +541,14 @@ public sealed class ImportPipelineService(
     {
         var title = TitleForActivity(request);
         var mediaType = NormalizeMediaType(request.MediaType);
+        DelunoObservability.ImportFailed.Add(1, new("media.type", mediaType), new("failure.kind", failureKind));
+        logger.LogWarning(
+            "Import failed for {MediaType} title {Title}. FailureKind={FailureKind} Source={SourcePath} Message={Summary}",
+            mediaType,
+            title,
+            failureKind,
+            request.SourcePath,
+            summary);
 
         if (mediaType == "tv")
         {
