@@ -34,7 +34,8 @@ export const settingsNavGroups = [
   {
     label: "Automation",
     items: [
-      { to: "/settings/lists", label: "Intake Sources", end: false, tip: "Bring titles in from Trakt, IMDb, or other external list sources" }
+      { to: "/settings/lists", label: "Intake Sources", end: false, tip: "Bring titles in from Trakt, IMDb, or other external list sources" },
+      { to: "/settings/migration", label: "Migration", end: false, tip: "Safely import Radarr, Sonarr, Prowlarr, and compatible configuration" }
     ]
   },
   {
@@ -102,6 +103,11 @@ const settingsPageMeta = [
     match: (path: string) => path.startsWith("/settings/lists"),
     title: "Intake Sources",
     description: "External list sources and automated discovery behaviour."
+  },
+  {
+    match: (path: string) => path.startsWith("/settings/migration"),
+    title: "Migration Assistant",
+    description: "Preview and import external media automation configuration without overwriting existing Deluno setup."
   },
   {
     match: (path: string) => path.startsWith("/settings/metadata"),

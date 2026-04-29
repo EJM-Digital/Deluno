@@ -11,6 +11,7 @@ using Deluno.Infrastructure.Observability;
 using Deluno.Infrastructure.Resilience;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
+using Deluno.Platform.Migration;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Realtime;
@@ -66,6 +67,42 @@ public static class PlatformEndpointRouteBuilderExtensions
         var destinationRules = endpoints.MapGroup("/api/destination-rules");
         var policySets = endpoints.MapGroup("/api/policy-sets");
         var libraryViews = endpoints.MapGroup("/api/library-views");
+        var migration = endpoints.MapGroup("/api/migration");
+
+        migration.MapPost("/preview", async (
+            HttpContext httpContext,
+            MigrationImportRequest request,
+            IPlatformSettingsRepository repository,
+            IMigrationAssistantService migrationAssistant,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var report = await migrationAssistant.PreviewAsync(request, cancellationToken);
+            return Results.Ok(report);
+        });
+
+        migration.MapPost("/apply", async (
+            HttpContext httpContext,
+            MigrationImportRequest request,
+            IPlatformSettingsRepository repository,
+            IMigrationAssistantService migrationAssistant,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var result = await migrationAssistant.ApplyAsync(request, cancellationToken);
+            return result.Report.Valid ? Results.Ok(result) : Results.BadRequest(result.Report);
+        });
+
         auth.MapPost("/login", async (
             LoginRequest request,
             IDataProtectionProvider dataProtectionProvider,

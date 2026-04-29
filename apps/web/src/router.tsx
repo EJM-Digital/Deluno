@@ -276,6 +276,13 @@ export const router = createBrowserRouter([
             })
           },
           {
+            path: "migration",
+            lazy: withSkeleton(async () => {
+              const module = await import("./routes/settings-migration-page");
+              return { Component: module.SettingsMigrationPage };
+            })
+          },
+          {
             path: "metadata",
             lazy: withSkeleton(async () => {
               const module = await import("./routes/settings-metadata-page");

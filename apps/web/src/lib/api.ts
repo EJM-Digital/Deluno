@@ -934,6 +934,58 @@ export interface LibraryViewItem {
   updatedUtc: string;
 }
 
+export interface MigrationImportRequest {
+  sourceKind: "radarr" | "sonarr" | "prowlarr" | "recyclarr" | "custom" | string;
+  sourceName: string;
+  payloadJson: string;
+}
+
+export interface MigrationReportSummary {
+  createCount: number;
+  skipCount: number;
+  conflictCount: number;
+  unsupportedCount: number;
+  warningCount: number;
+  titleCount: number;
+  monitoredCount: number;
+  wantedCount: number;
+}
+
+export interface MigrationReportOperation {
+  id: string;
+  category: string;
+  targetType: string;
+  name: string;
+  action: "create" | "skip" | "conflict" | "unsupported" | "report" | string;
+  canApply: boolean;
+  reason: string;
+  data: Record<string, string | null>;
+  warnings: string[];
+}
+
+export interface MigrationReport {
+  sourceKind: string;
+  sourceName: string;
+  valid: boolean;
+  summary: MigrationReportSummary;
+  operations: MigrationReportOperation[];
+  warnings: string[];
+  errors: string[];
+}
+
+export interface MigrationAppliedItem {
+  operationId: string;
+  targetType: string;
+  name: string;
+  createdId: string;
+  result: string;
+}
+
+export interface MigrationApplyResponse {
+  report: MigrationReport;
+  applied: MigrationAppliedItem[];
+}
+
 export interface CreateLibraryViewRequest {
   variant: "movies" | "shows";
   name: string;
