@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend build and tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore backend dependencies
+        run: dotnet restore Deluno.slnx
+
+      - name: Build backend
+        run: dotnet build Deluno.slnx --configuration Release --no-restore
+
+      - name: Run backend tests
+        run: dotnet test Deluno.slnx --configuration Release --no-build --logger "trx;LogFileName=backend-tests.trx"
+
+      - name: Upload backend test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: "**/TestResults/*.trx"
+          if-no-files-found: ignore
+
+  frontend:
+    name: Frontend build and smoke tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Restore backend dependencies
+        run: dotnet restore Deluno.slnx
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install browser dependencies
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+
+      - name: Build frontend
+        run: npm run build:web
+
+      - name: Run frontend smoke tests
+        run: npm run test:web
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/
+          if-no-files-found: ignore

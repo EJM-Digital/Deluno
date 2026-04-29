@@ -69,6 +69,21 @@ npm.cmd run build:web
 .\.dotnet\dotnet.exe build .\Deluno.slnx
 ```
 
+### Run validation locally
+
+The GitHub Actions workflow in `.github/workflows/ci.yml` runs the same backend and frontend gates on every push and pull request to `main`.
+
+```powershell
+.\.dotnet\dotnet.exe restore .\Deluno.slnx
+.\.dotnet\dotnet.exe build .\Deluno.slnx --no-restore
+.\.dotnet\dotnet.exe test .\Deluno.slnx --no-build
+npm.cmd ci
+npm.cmd run build:web
+npm.cmd run test:web
+```
+
+Backend failures are reported by the .NET restore, build, and test steps. Frontend failures are reported by the Vite build and Playwright smoke-test steps, with Playwright reports uploaded as CI artifacts when available.
+
 ### Run the single Deluno host
 
 ```powershell
