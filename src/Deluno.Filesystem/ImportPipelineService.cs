@@ -154,9 +154,13 @@ public sealed class ImportPipelineService(
         var backupPath = destinationPreExisted && request.Overwrite
             ? BuildTemporaryPath(preview.DestinationPath, ".deluno-backup")
             : null;
+        var stagingPath = BuildTemporaryPath(preview.DestinationPath, ".deluno-stage");
+        var restoreSourceOnFailure = false;
 
         try
         {
+            await RecordImportStartedAsync(request, preview, mediaType, cancellationToken);
+
             if (backupPath is not null)
             {
                 File.Move(preview.DestinationPath, backupPath, overwrite: true);
@@ -169,7 +173,7 @@ public sealed class ImportPipelineService(
                     const string message = "Hardlinking is not available for these paths. Use copy fallback or choose paths on the same filesystem.";
                     if (!request.AllowCopyFallback)
                     {
-                        RollBackPartialImport(preview.DestinationPath, backupPath);
+                        RollBackPartialImport(preview.SourcePath, preview.DestinationPath, stagingPath, backupPath, restoreSourceOnFailure);
                         await RecordImportFailureAsync(
                             request,
                             request.Preview,
@@ -180,15 +184,15 @@ public sealed class ImportPipelineService(
                         return Failed(StatusCodes.Status400BadRequest, message);
                     }
 
-                    AtomicCopy(preview.SourcePath, preview.DestinationPath, request.Overwrite);
+                    AtomicCopy(preview.SourcePath, stagingPath, overwrite: false);
                     usedFallback = true;
                     mode = "copy";
                 }
-                else if (!TryCreateHardlink(preview.SourcePath, preview.DestinationPath, out var hardlinkError))
+                else if (!TryCreateHardlink(preview.SourcePath, stagingPath, out var hardlinkError))
                 {
                     if (!request.AllowCopyFallback)
                     {
-                        RollBackPartialImport(preview.DestinationPath, backupPath);
+                        RollBackPartialImport(preview.SourcePath, preview.DestinationPath, stagingPath, backupPath, restoreSourceOnFailure);
                         await RecordImportFailureAsync(
                             request,
                             request.Preview,
@@ -199,25 +203,26 @@ public sealed class ImportPipelineService(
                         return Failed(StatusCodes.Status400BadRequest, hardlinkError);
                     }
 
-                    AtomicCopy(preview.SourcePath, preview.DestinationPath, request.Overwrite);
+                    TryDelete(stagingPath);
+                    AtomicCopy(preview.SourcePath, stagingPath, overwrite: false);
                     usedFallback = true;
                     mode = "copy";
                 }
             }
             else if (mode == "move")
             {
-                File.Move(preview.SourcePath, preview.DestinationPath, overwrite: request.Overwrite);
+                File.Move(preview.SourcePath, stagingPath, overwrite: false);
+                restoreSourceOnFailure = true;
             }
             else
             {
-                AtomicCopy(preview.SourcePath, preview.DestinationPath, request.Overwrite);
+                AtomicCopy(preview.SourcePath, stagingPath, overwrite: false);
                 mode = "copy";
             }
 
-            if (backupPath is not null && File.Exists(backupPath))
-            {
-                File.Delete(backupPath);
-            }
+            var stagedSize = VerifyStagedImport(stagingPath);
+            File.Move(stagingPath, preview.DestinationPath, overwrite: request.Overwrite);
+            VerifyFinalImport(preview.DestinationPath, stagedSize);
 
             var libraries = await platformRepository.ListLibrariesAsync(cancellationToken);
             var catalogUpdated = await MarkCatalogImportedAsync(
@@ -258,11 +263,17 @@ public sealed class ImportPipelineService(
                     ? "Import completed with copy fallback because hardlink creation was not possible."
                     : $"Import completed using {mode}.");
 
+            restoreSourceOnFailure = false;
+            if (backupPath is not null)
+            {
+                TryDelete(backupPath);
+            }
+
             return new ImportPipelineResult(true, StatusCodes.Status200OK, response, response.Message);
         }
         catch (UnauthorizedAccessException)
         {
-            RollBackPartialImport(preview.DestinationPath, backupPath);
+            RollBackPartialImport(preview.SourcePath, preview.DestinationPath, stagingPath, backupPath, restoreSourceOnFailure);
             const string message = "Deluno does not have permission to import this file.";
             await RecordImportFailureAsync(
                 request,
@@ -275,7 +286,7 @@ public sealed class ImportPipelineService(
         }
         catch (IOException ioException)
         {
-            RollBackPartialImport(preview.DestinationPath, backupPath);
+            RollBackPartialImport(preview.SourcePath, preview.DestinationPath, stagingPath, backupPath, restoreSourceOnFailure);
             await RecordImportFailureAsync(
                 request,
                 request.Preview,
@@ -285,10 +296,17 @@ public sealed class ImportPipelineService(
                 cancellationToken);
             return Failed(StatusCodes.Status400BadRequest, ioException.Message);
         }
-        catch
+        catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            RollBackPartialImport(preview.DestinationPath, backupPath);
-            throw;
+            RollBackPartialImport(preview.SourcePath, preview.DestinationPath, stagingPath, backupPath, restoreSourceOnFailure);
+            await RecordImportFailureAsync(
+                request,
+                request.Preview,
+                "importFailed",
+                exception.Message,
+                "Review the recovery case, confirm whether the source and destination files are intact, then retry the import.",
+                cancellationToken);
+            return Failed(StatusCodes.Status500InternalServerError, exception.Message);
         }
     }
 
@@ -509,17 +527,70 @@ public sealed class ImportPipelineService(
         CancellationToken cancellationToken)
     {
         var title = TitleForActivity(request);
+        var mediaType = NormalizeMediaType(request.MediaType);
 
-        if (NormalizeMediaType(request.MediaType) == "tv")
+        if (mediaType == "tv")
         {
             await seriesCatalogRepository.AddImportRecoveryCaseAsync(
                 new CreateSeriesImportRecoveryCaseRequest(title, failureKind, summary, recommendedAction, SerializeRecoveryDetails(executeRequest)),
                 cancellationToken);
-            return;
+        }
+        else
+        {
+            await movieCatalogRepository.AddImportRecoveryCaseAsync(
+                new CreateMovieImportRecoveryCaseRequest(title, failureKind, summary, recommendedAction, SerializeRecoveryDetails(executeRequest)),
+                cancellationToken);
         }
 
-        await movieCatalogRepository.AddImportRecoveryCaseAsync(
-            new CreateMovieImportRecoveryCaseRequest(title, failureKind, summary, recommendedAction, SerializeRecoveryDetails(executeRequest)),
+        await activityFeedRepository.RecordActivityAsync(
+            "filesystem.import.failed",
+            $"{title} import failed: {summary}",
+            JsonSerializer.Serialize(new
+            {
+                FailureKind = failureKind,
+                Summary = summary,
+                RecommendedAction = recommendedAction,
+                executeRequest.Preview.SourcePath,
+                executeRequest.Preview.FileName,
+                executeRequest.Preview.MediaType,
+                executeRequest.Preview.Title,
+                executeRequest.Preview.Year,
+                executeRequest.TransferMode,
+                executeRequest.Overwrite,
+                executeRequest.AllowCopyFallback,
+                executeRequest.ForceReplacement
+            }),
+            null,
+            mediaType == "tv" ? "series" : "movie",
+            null,
+            cancellationToken);
+    }
+
+    private async Task RecordImportStartedAsync(
+        ImportExecuteRequest request,
+        ImportPreviewResponse preview,
+        string mediaType,
+        CancellationToken cancellationToken)
+    {
+        await activityFeedRepository.RecordActivityAsync(
+            "filesystem.import.started",
+            $"{TitleForActivity(request.Preview)} import started.",
+            JsonSerializer.Serialize(new
+            {
+                preview.SourcePath,
+                preview.DestinationPath,
+                preview.PreferredTransferMode,
+                RequestedTransferMode = request.TransferMode,
+                request.Overwrite,
+                request.AllowCopyFallback,
+                request.ForceReplacement,
+                preview.MatchedRuleId,
+                preview.MatchedRuleName,
+                MediaProbe = preview.MediaProbe
+            }),
+            null,
+            mediaType == "tv" ? "series" : "movie",
+            null,
             cancellationToken);
     }
 
@@ -658,18 +729,72 @@ public sealed class ImportPipelineService(
         }
     }
 
-    private static void RollBackPartialImport(string destinationPath, string? backupPath)
+    private static long VerifyStagedImport(string stagingPath)
     {
-        if (backupPath is null)
+        if (!File.Exists(stagingPath))
         {
-            TryDelete(destinationPath);
-            return;
+            throw new IOException("The import staging file was not created.");
         }
 
+        var length = new FileInfo(stagingPath).Length;
+        if (length <= 0)
+        {
+            throw new IOException("The import staging file is empty.");
+        }
+
+        return length;
+    }
+
+    private static void VerifyFinalImport(string destinationPath, long expectedSize)
+    {
+        if (!File.Exists(destinationPath))
+        {
+            throw new IOException("The imported file was not placed at its final destination.");
+        }
+
+        var length = new FileInfo(destinationPath).Length;
+        if (length != expectedSize)
+        {
+            throw new IOException($"The final imported file size ({length}) does not match the staged file size ({expectedSize}).");
+        }
+    }
+
+    private static void RollBackPartialImport(
+        string sourcePath,
+        string destinationPath,
+        string stagingPath,
+        string? backupPath,
+        bool restoreSourceOnFailure)
+    {
+        RestoreMovedSourceIfNeeded(sourcePath, destinationPath, stagingPath, restoreSourceOnFailure);
+        TryDelete(stagingPath);
         TryDelete(destinationPath);
         if (File.Exists(backupPath))
         {
             File.Move(backupPath, destinationPath, overwrite: true);
+        }
+    }
+
+    private static void RestoreMovedSourceIfNeeded(
+        string sourcePath,
+        string destinationPath,
+        string stagingPath,
+        bool restoreSourceOnFailure)
+    {
+        if (!restoreSourceOnFailure || File.Exists(sourcePath))
+        {
+            return;
+        }
+
+        if (File.Exists(stagingPath))
+        {
+            File.Move(stagingPath, sourcePath, overwrite: false);
+            return;
+        }
+
+        if (File.Exists(destinationPath))
+        {
+            File.Move(destinationPath, sourcePath, overwrite: false);
         }
     }
 
