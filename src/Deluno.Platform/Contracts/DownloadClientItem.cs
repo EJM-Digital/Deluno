@@ -18,5 +18,8 @@ public sealed record DownloadClientItem(
     bool IsEnabled,
     string HealthStatus,
     string? LastHealthMessage,
+    string? LastHealthFailureCategory,
+    int? LastHealthLatencyMs,
+    DateTimeOffset? LastHealthTestUtc,
     DateTimeOffset CreatedUtc,
     DateTimeOffset UpdatedUtc);

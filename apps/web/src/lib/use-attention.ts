@@ -37,7 +37,7 @@ export function useAttention(pollMs = 45000) {
       ]);
 
       const failedJobs = jobs.filter((j) => j.status === "failed").length;
-      const indexerAlerts = indexers.filter((i) => i.healthStatus !== "ready").length;
+      const indexerAlerts = indexers.filter((i) => i.isEnabled && i.healthStatus !== "healthy").length;
 
       setSnapshot({
         failedJobs,

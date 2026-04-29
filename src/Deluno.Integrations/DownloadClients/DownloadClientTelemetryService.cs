@@ -1199,11 +1199,15 @@ public sealed class DownloadClientTelemetryService(
     private static string NormalizeHealth(string value)
         => value.Equals("healthy", StringComparison.OrdinalIgnoreCase) || value.Equals("ready", StringComparison.OrdinalIgnoreCase)
             ? "healthy"
-            : value.Equals("paused", StringComparison.OrdinalIgnoreCase)
+            : value.Equals("paused", StringComparison.OrdinalIgnoreCase) || value.Equals("disabled", StringComparison.OrdinalIgnoreCase)
                 ? "paused"
-                : value.Equals("attention", StringComparison.OrdinalIgnoreCase) || value.Equals("degraded", StringComparison.OrdinalIgnoreCase)
+                : value.Equals("attention", StringComparison.OrdinalIgnoreCase) ||
+                  value.Equals("degraded", StringComparison.OrdinalIgnoreCase) ||
+                  value.Equals("untested", StringComparison.OrdinalIgnoreCase)
                     ? "degraded"
-                    : "unknown";
+                    : value.Equals("unreachable", StringComparison.OrdinalIgnoreCase)
+                        ? "down"
+                        : "unknown";
 
     private static string NormalizeHistoryOutcome(string value)
     {

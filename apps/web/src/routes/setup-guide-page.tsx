@@ -587,7 +587,7 @@ export function SetupGuidePage() {
       });
       if (!response.ok) throw new Error(await response.text().catch(() => "Indexer test failed."));
       const payload = await response.json().catch(() => null) as ConnectionTestResponse | null;
-      if (payload?.healthStatus !== "ready") throw new Error(payload?.message ?? "Indexer test needs attention.");
+      if (payload?.healthStatus !== "healthy") throw new Error(payload?.message ?? "Indexer test needs attention.");
       setServiceTest((current) => ({ ...current, indexer: "passed", indexerMessage: payload?.message ?? "Indexer test passed." }));
     } catch (err) {
       setServiceTest((current) => ({
@@ -613,7 +613,7 @@ export function SetupGuidePage() {
       });
       if (!response.ok) throw new Error(await response.text().catch(() => "Download client test failed."));
       const payload = await response.json().catch(() => null) as ConnectionTestResponse | null;
-      if (payload?.healthStatus !== "ready") throw new Error(payload?.message ?? "Download client test needs attention.");
+      if (payload?.healthStatus !== "healthy") throw new Error(payload?.message ?? "Download client test needs attention.");
       setServiceTest((current) => ({ ...current, client: "passed", clientMessage: payload?.message ?? "Download client test passed." }));
     } catch (err) {
       setServiceTest((current) => ({

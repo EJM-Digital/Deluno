@@ -256,10 +256,15 @@ const CLIENT_PRESETS: ClientPreset[] = [
 
 /* Health helpers */
 function healthVariant(v: string): "success" | "warning" | "destructive" {
-  return v === "ready" ? "success" : v === "attention" ? "warning" : "destructive";
+  return v === "healthy" ? "success" : v === "degraded" || v === "untested" ? "warning" : "destructive";
 }
 function healthLabel(v: string) {
-  return v === "ready" ? "Ready" : v === "attention" ? "Attention" : "Offline";
+  if (v === "healthy") return "Healthy";
+  if (v === "untested") return "Untested";
+  if (v === "degraded") return "Degraded";
+  if (v === "disabled") return "Disabled";
+  if (v === "unreachable") return "Unreachable";
+  return "Offline";
 }
 
 function actionLabel(action: "pause" | "resume" | "delete" | "recheck") {
@@ -1100,8 +1105,8 @@ export function IndexersPage() {
   const { clients, indexers, libraries, routing, settings, tags, telemetry } = loaderData;
   const isRouteLoading = navigation.state !== "idle";
 
-  const healthyIndexers = indexers.filter((i) => i.healthStatus === "ready").length;
-  const unhealthyCount = [...indexers, ...clients].filter((i) => i.healthStatus !== "ready").length;
+  const healthyIndexers = indexers.filter((i) => i.healthStatus === "healthy").length;
+  const unhealthyCount = [...indexers, ...clients].filter((i) => i.isEnabled && i.healthStatus !== "healthy").length;
   const linkedSources = routing.reduce((n, r) => n + r.sources.length, 0);
   const linkedClients = routing.reduce((n, r) => n + r.downloadClients.length, 0);
   const telemetryByClientId = new Map(telemetry?.clients.map((item) => [item.clientId, item]) ?? []);
@@ -1694,7 +1699,7 @@ export function IndexersPage() {
           <SectionHeader icon={ShieldAlert} title="Health alerts" meta="Indexers or clients needing attention" />
           <div className="rounded-2xl border border-destructive/20 bg-destructive/5 divide-y divide-destructive/10 overflow-hidden">
             {[...indexers, ...clients]
-              .filter((item) => item.healthStatus !== "ready")
+              .filter((item) => item.isEnabled && item.healthStatus !== "healthy")
               .map((item) => (
                 <div key={item.id} className="flex items-start gap-3 px-4 py-3.5">
                   <WifiOff className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />

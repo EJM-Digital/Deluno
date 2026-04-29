@@ -1693,7 +1693,9 @@ public sealed class SqlitePlatformSettingsRepository(
             """
             SELECT
                 id, name, protocol, privacy, base_url, api_key, priority, categories, tags,
-                media_scope, is_enabled, health_status, last_health_message, created_utc, updated_utc
+                media_scope, is_enabled, health_status, last_health_message,
+                last_health_failure_category, last_health_latency_ms, last_health_test_utc,
+                created_utc, updated_utc
             FROM indexer_sources
             ORDER BY priority ASC, name ASC;
             """;
@@ -1715,8 +1717,11 @@ public sealed class SqlitePlatformSettingsRepository(
                 IsEnabled: reader.GetInt64(10) == 1,
                 HealthStatus: reader.GetString(11),
                 LastHealthMessage: reader.IsDBNull(12) ? null : reader.GetString(12),
-                CreatedUtc: ParseTimestamp(reader.GetString(13)),
-                UpdatedUtc: ParseTimestamp(reader.GetString(14))));
+                LastHealthFailureCategory: reader.IsDBNull(13) ? null : reader.GetString(13),
+                LastHealthLatencyMs: reader.IsDBNull(14) ? null : reader.GetInt32(14),
+                LastHealthTestUtc: reader.IsDBNull(15) ? null : ParseTimestamp(reader.GetString(15)),
+                CreatedUtc: ParseTimestamp(reader.GetString(16)),
+                UpdatedUtc: ParseTimestamp(reader.GetString(17))));
         }
 
         return items;
@@ -1736,7 +1741,9 @@ public sealed class SqlitePlatformSettingsRepository(
             SELECT
                 id, name, protocol, host, port, username, secret, endpoint_url,
                 movies_category, tv_category, category_template, priority,
-                is_enabled, health_status, last_health_message, created_utc, updated_utc
+                is_enabled, health_status, last_health_message,
+                last_health_failure_category, last_health_latency_ms, last_health_test_utc,
+                created_utc, updated_utc
             FROM download_clients
             ORDER BY priority ASC, name ASC;
             """;
@@ -1760,8 +1767,11 @@ public sealed class SqlitePlatformSettingsRepository(
                 IsEnabled: reader.GetInt64(12) == 1,
                 HealthStatus: reader.GetString(13),
                 LastHealthMessage: reader.IsDBNull(14) ? null : reader.GetString(14),
-                CreatedUtc: ParseTimestamp(reader.GetString(15)),
-                UpdatedUtc: ParseTimestamp(reader.GetString(16))));
+                LastHealthFailureCategory: reader.IsDBNull(15) ? null : reader.GetString(15),
+                LastHealthLatencyMs: reader.IsDBNull(16) ? null : reader.GetInt32(16),
+                LastHealthTestUtc: reader.IsDBNull(17) ? null : ParseTimestamp(reader.GetString(17)),
+                CreatedUtc: ParseTimestamp(reader.GetString(18)),
+                UpdatedUtc: ParseTimestamp(reader.GetString(19))));
         }
 
         return items;
@@ -1827,8 +1837,11 @@ public sealed class SqlitePlatformSettingsRepository(
             Tags: NormalizeCsv(request.Tags),
             MediaScope: NormalizeMediaScope(request.MediaScope),
             IsEnabled: request.IsEnabled,
-            HealthStatus: request.IsEnabled ? "ready" : "paused",
-            LastHealthMessage: request.IsEnabled ? "Ready to test and use." : "Disabled until you turn it on.",
+            HealthStatus: request.IsEnabled ? "untested" : "disabled",
+            LastHealthMessage: request.IsEnabled ? "Not tested yet." : "Disabled until you turn it on.",
+            LastHealthFailureCategory: null,
+            LastHealthLatencyMs: null,
+            LastHealthTestUtc: null,
             CreatedUtc: now,
             UpdatedUtc: now);
 
@@ -1893,8 +1906,11 @@ public sealed class SqlitePlatformSettingsRepository(
             CategoryTemplate: NormalizeName(request.CategoryTemplate),
             Priority: request.Priority is >= 1 ? request.Priority.Value : 100,
             IsEnabled: request.IsEnabled,
-            HealthStatus: request.IsEnabled ? "ready" : "paused",
-            LastHealthMessage: request.IsEnabled ? "Ready to route downloads." : "Disabled until you turn it on.",
+            HealthStatus: request.IsEnabled ? "untested" : "disabled",
+            LastHealthMessage: request.IsEnabled ? "Not tested yet." : "Disabled until you turn it on.",
+            LastHealthFailureCategory: null,
+            LastHealthLatencyMs: null,
+            LastHealthTestUtc: null,
             CreatedUtc: now,
             UpdatedUtc: now);
 
@@ -1948,6 +1964,8 @@ public sealed class SqlitePlatformSettingsRepository(
         string id,
         string healthStatus,
         string message,
+        string? failureCategory,
+        int? latencyMs,
         CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
@@ -1963,6 +1981,9 @@ public sealed class SqlitePlatformSettingsRepository(
             SET
                 health_status = @healthStatus,
                 last_health_message = @lastHealthMessage,
+                last_health_failure_category = @lastHealthFailureCategory,
+                last_health_latency_ms = @lastHealthLatencyMs,
+                last_health_test_utc = @lastHealthTestUtc,
                 updated_utc = @updatedUtc
             WHERE id = @id;
             """;
@@ -1970,6 +1991,9 @@ public sealed class SqlitePlatformSettingsRepository(
         AddParameter(command, "@id", id);
         AddParameter(command, "@healthStatus", healthStatus);
         AddParameter(command, "@lastHealthMessage", message);
+        AddParameter(command, "@lastHealthFailureCategory", failureCategory);
+        AddParameter(command, "@lastHealthLatencyMs", latencyMs);
+        AddParameter(command, "@lastHealthTestUtc", now.ToString("O"));
         AddParameter(command, "@updatedUtc", now.ToString("O"));
 
         if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
@@ -1981,6 +2005,8 @@ public sealed class SqlitePlatformSettingsRepository(
             Id: id,
             HealthStatus: healthStatus,
             Message: message,
+            FailureCategory: failureCategory,
+            LatencyMs: latencyMs,
             TestedUtc: now);
     }
 
@@ -1988,6 +2014,8 @@ public sealed class SqlitePlatformSettingsRepository(
         string id,
         string healthStatus,
         string message,
+        string? failureCategory,
+        int? latencyMs,
         CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
@@ -2003,6 +2031,9 @@ public sealed class SqlitePlatformSettingsRepository(
             SET
                 health_status = @healthStatus,
                 last_health_message = @lastHealthMessage,
+                last_health_failure_category = @lastHealthFailureCategory,
+                last_health_latency_ms = @lastHealthLatencyMs,
+                last_health_test_utc = @lastHealthTestUtc,
                 updated_utc = @updatedUtc
             WHERE id = @id;
             """;
@@ -2010,6 +2041,9 @@ public sealed class SqlitePlatformSettingsRepository(
         AddParameter(command, "@id", id);
         AddParameter(command, "@healthStatus", healthStatus);
         AddParameter(command, "@lastHealthMessage", message);
+        AddParameter(command, "@lastHealthFailureCategory", failureCategory);
+        AddParameter(command, "@lastHealthLatencyMs", latencyMs);
+        AddParameter(command, "@lastHealthTestUtc", now.ToString("O"));
         AddParameter(command, "@updatedUtc", now.ToString("O"));
 
         if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
@@ -2021,6 +2055,8 @@ public sealed class SqlitePlatformSettingsRepository(
             Id: id,
             HealthStatus: healthStatus,
             Message: message,
+            FailureCategory: failureCategory,
+            LatencyMs: latencyMs,
             TestedUtc: now);
     }
 

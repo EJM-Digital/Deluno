@@ -171,12 +171,16 @@ public interface IPlatformSettingsRepository
         string id,
         string healthStatus,
         string message,
+        string? failureCategory,
+        int? latencyMs,
         CancellationToken cancellationToken);
 
     Task<IndexerTestResult?> UpdateDownloadClientHealthAsync(
         string id,
         string healthStatus,
         string message,
+        string? failureCategory,
+        int? latencyMs,
         CancellationToken cancellationToken);
 
     Task<bool> DeleteLibraryAsync(string id, CancellationToken cancellationToken);

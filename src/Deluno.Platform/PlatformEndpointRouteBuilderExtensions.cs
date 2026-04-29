@@ -1,4 +1,5 @@
 using Deluno.Contracts;
+using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
@@ -1068,11 +1069,21 @@ public static class PlatformEndpointRouteBuilderExtensions
                 request.IsEnabled,
                 "testing",
                 null,
+                null,
+                null,
+                null,
                 now,
                 now);
 
-            var (healthStatus, message) = await TestIndexerAsync(draft, cancellationToken);
-            return Results.Ok(new { healthStatus, message });
+            var started = Stopwatch.GetTimestamp();
+            var (healthStatus, message, failureCategory) = await TestIndexerAsync(draft, cancellationToken);
+            return Results.Ok(new
+            {
+                healthStatus,
+                message,
+                failureCategory,
+                latencyMs = ElapsedMilliseconds(started)
+            });
         });
 
         indexers.MapDelete("{id}", async (
@@ -1112,14 +1123,15 @@ public static class PlatformEndpointRouteBuilderExtensions
                 return Results.NotFound();
             }
 
-            var (healthStatus, message) = await TestIndexerAsync(item, cancellationToken);
-            var result = await repository.UpdateIndexerHealthAsync(id, healthStatus, message, cancellationToken);
+            var started = Stopwatch.GetTimestamp();
+            var (healthStatus, message, failureCategory) = await TestIndexerAsync(item, cancellationToken);
+            var result = await repository.UpdateIndexerHealthAsync(id, healthStatus, message, failureCategory, ElapsedMilliseconds(started), cancellationToken);
             RecordIntegrationHealthMetric("indexer", healthStatus);
             if (result is not null)
             {
                 await realtimeEventPublisher.PublishHealthChangedAsync(
                     item.Name,
-                    healthStatus == "ready" ? "healthy" : "degraded",
+                    healthStatus == "healthy" ? "healthy" : "degraded",
                     message,
                     cancellationToken);
             }
@@ -1192,11 +1204,21 @@ public static class PlatformEndpointRouteBuilderExtensions
                 request.IsEnabled,
                 "testing",
                 null,
+                null,
+                null,
+                null,
                 now,
                 now);
 
-            var (healthStatus, message) = await TestDownloadClientAsync(draft, cancellationToken);
-            return Results.Ok(new { healthStatus, message });
+            var started = Stopwatch.GetTimestamp();
+            var (healthStatus, message, failureCategory) = await TestDownloadClientAsync(draft, cancellationToken);
+            return Results.Ok(new
+            {
+                healthStatus,
+                message,
+                failureCategory,
+                latencyMs = ElapsedMilliseconds(started)
+            });
         });
 
         downloadClients.MapDelete("{id}", async (
@@ -1236,14 +1258,15 @@ public static class PlatformEndpointRouteBuilderExtensions
                 return Results.NotFound();
             }
 
-            var (healthStatus, message) = await TestDownloadClientAsync(item, cancellationToken);
-            var result = await repository.UpdateDownloadClientHealthAsync(id, healthStatus, message, cancellationToken);
+            var started = Stopwatch.GetTimestamp();
+            var (healthStatus, message, failureCategory) = await TestDownloadClientAsync(item, cancellationToken);
+            var result = await repository.UpdateDownloadClientHealthAsync(id, healthStatus, message, failureCategory, ElapsedMilliseconds(started), cancellationToken);
             RecordIntegrationHealthMetric("download-client", healthStatus);
             if (result is not null)
             {
                 await realtimeEventPublisher.PublishHealthChangedAsync(
                     item.Name,
-                    healthStatus == "ready" ? "healthy" : "degraded",
+                    healthStatus == "healthy" ? "healthy" : "degraded",
                     message,
                     cancellationToken);
             }
@@ -1443,8 +1466,8 @@ public static class PlatformEndpointRouteBuilderExtensions
                 EnabledDownloadClientCount: clients.Count(item => item.IsEnabled),
                 ActiveJobCount: queue.Count(item => string.Equals(item.Status, "running", StringComparison.OrdinalIgnoreCase)),
                 ProblemCount:
-                    indexers.Count(item => item.IsEnabled && !string.Equals(item.HealthStatus, "ready", StringComparison.OrdinalIgnoreCase)) +
-                    clients.Count(item => item.IsEnabled && !string.Equals(item.HealthStatus, "ready", StringComparison.OrdinalIgnoreCase)),
+                    indexers.Count(item => item.IsEnabled && !string.Equals(item.HealthStatus, "healthy", StringComparison.OrdinalIgnoreCase)) +
+                    clients.Count(item => item.IsEnabled && !string.Equals(item.HealthStatus, "healthy", StringComparison.OrdinalIgnoreCase)),
                 CheckedUtc: DateTimeOffset.UtcNow));
         });
 
@@ -2060,14 +2083,19 @@ public static class PlatformEndpointRouteBuilderExtensions
             _ => "qbittorrent"
         };
 
-    private static async Task<(string healthStatus, string message)> TestIndexerAsync(
+    private static async Task<(string healthStatus, string message, string? failureCategory)> TestIndexerAsync(
         IndexerItem item,
         CancellationToken cancellationToken)
     {
+        if (!item.IsEnabled)
+        {
+            return ("disabled", "Disabled until you turn it on.", null);
+        }
+
         var testUrl = BuildIndexerTestUrl(item);
         if (!Uri.TryCreate(testUrl, UriKind.Absolute, out var uri))
         {
-            return ("attention", "The address is not valid yet.");
+            return ("degraded", "The address is not valid yet.", "configuration");
         }
 
         try
@@ -2085,17 +2113,19 @@ public static class PlatformEndpointRouteBuilderExtensions
                 var body = await response.Content.ReadAsStringAsync(cancellationToken);
                 if (LooksLikeIndexerResponse(item.Protocol, body))
                 {
-                    return ("ready", $"Reached {uri.Host} and received a valid {FormatIndexerProtocol(item.Protocol)} response.");
+                    return ("healthy", $"Reached {uri.Host} and received a valid {FormatIndexerProtocol(item.Protocol)} response.", null);
                 }
 
-                return ("attention", $"Reached {uri.Host}, but the response did not look like {FormatIndexerProtocol(item.Protocol)}.");
+                return ("degraded", $"Reached {uri.Host}, but the response did not look like {FormatIndexerProtocol(item.Protocol)}.", "unexpected-response");
             }
 
-            return ("attention", $"Reached {uri.Host}, but it returned {(int)response.StatusCode}.");
+            return IsAuthenticationFailure(response.StatusCode)
+                ? ("degraded", $"Reached {uri.Host}, but authentication failed with {(int)response.StatusCode}.", "auth")
+                : ("degraded", $"Reached {uri.Host}, but it returned {(int)response.StatusCode}.", "http");
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException)
         {
-            return ("attention", ex.Message);
+            return ("unreachable", ex.Message, "connectivity");
         }
     }
 
@@ -2146,14 +2176,19 @@ public static class PlatformEndpointRouteBuilderExtensions
         };
     }
 
-    private static async Task<(string healthStatus, string message)> TestDownloadClientAsync(
+    private static async Task<(string healthStatus, string message, string? failureCategory)> TestDownloadClientAsync(
         DownloadClientItem item,
         CancellationToken cancellationToken)
     {
+        if (!item.IsEnabled)
+        {
+            return ("disabled", "Disabled until you turn it on.", null);
+        }
+
         var uri = ResolveDownloadClientEndpoint(item);
         if (uri is null)
         {
-            return ("attention", "Add the client address before testing.");
+            return ("degraded", "Add the client address before testing.", "configuration");
         }
 
         try
@@ -2169,13 +2204,13 @@ public static class PlatformEndpointRouteBuilderExtensions
                 _ => await TestGenericDownloadClientAsync(item, uri, cancellationToken)
             };
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException)
         {
-            return ("attention", ex.Message);
+            return ("unreachable", ex.Message, "connectivity");
         }
     }
 
-    private static async Task<(string healthStatus, string message)> TestQbittorrentAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken)
+    private static async Task<(string healthStatus, string message, string? failureCategory)> TestQbittorrentAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken)
     {
         using var handler = new HttpClientHandler { CookieContainer = new CookieContainer() };
         using var client = new HttpClient(handler) { BaseAddress = uri, Timeout = TimeSpan.FromSeconds(8) };
@@ -2191,32 +2226,32 @@ public static class PlatformEndpointRouteBuilderExtensions
                 cancellationToken);
             if (!login.IsSuccessStatusCode)
             {
-                return ("attention", $"qBittorrent rejected the login with {(int)login.StatusCode}.");
+                return ("degraded", $"qBittorrent rejected the login with {(int)login.StatusCode}.", "auth");
             }
         }
 
         using var response = await client.GetAsync("api/v2/app/version", cancellationToken);
         return response.IsSuccessStatusCode
-            ? ("ready", $"Connected to qBittorrent at {uri.Host}:{uri.Port}.")
-            : ("attention", $"qBittorrent returned {(int)response.StatusCode}.");
+            ? ("healthy", $"Connected to qBittorrent at {uri.Host}:{uri.Port}.", null)
+            : HealthFromStatusCode("qBittorrent", response.StatusCode);
     }
 
-    private static async Task<(string healthStatus, string message)> TestSabnzbdAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken)
+    private static async Task<(string healthStatus, string message, string? failureCategory)> TestSabnzbdAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(item.Secret))
         {
-            return ("attention", "SABnzbd API key is missing.");
+            return ("degraded", "SABnzbd API key is missing.", "auth");
         }
 
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
         var url = new Uri(uri, $"api?mode=version&output=json&apikey={Uri.EscapeDataString(item.Secret)}");
         using var response = await client.GetAsync(url, cancellationToken);
         return response.IsSuccessStatusCode
-            ? ("ready", $"Connected to SABnzbd at {uri.Host}:{uri.Port}.")
-            : ("attention", $"SABnzbd returned {(int)response.StatusCode}.");
+            ? ("healthy", $"Connected to SABnzbd at {uri.Host}:{uri.Port}.", null)
+            : HealthFromStatusCode("SABnzbd", response.StatusCode);
     }
 
-    private static async Task<(string healthStatus, string message)> TestTransmissionAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken)
+    private static async Task<(string healthStatus, string message, string? failureCategory)> TestTransmissionAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken)
     {
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
         AddBasicAuth(client, item);
@@ -2235,32 +2270,32 @@ public static class PlatformEndpointRouteBuilderExtensions
                 Headers = { { "X-Transmission-Session-Id", values.FirstOrDefault() ?? string.Empty } }
             }, cancellationToken);
             return retry.IsSuccessStatusCode
-                ? ("ready", $"Connected to Transmission at {uri.Host}:{uri.Port}.")
-                : ("attention", $"Transmission returned {(int)retry.StatusCode}.");
+                ? ("healthy", $"Connected to Transmission at {uri.Host}:{uri.Port}.", null)
+                : HealthFromStatusCode("Transmission", retry.StatusCode);
         }
 
         return response.IsSuccessStatusCode
-            ? ("ready", $"Connected to Transmission at {uri.Host}:{uri.Port}.")
-            : ("attention", $"Transmission returned {(int)response.StatusCode}.");
+            ? ("healthy", $"Connected to Transmission at {uri.Host}:{uri.Port}.", null)
+            : HealthFromStatusCode("Transmission", response.StatusCode);
     }
 
-    private static async Task<(string healthStatus, string message)> TestDelugeAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken)
+    private static async Task<(string healthStatus, string message, string? failureCategory)> TestDelugeAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken)
     {
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
         var login = new DelugeRequest("auth.login", [item.Secret ?? string.Empty]);
         using var response = await client.PostAsJsonAsync(new Uri(uri, "json"), login, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            return ("attention", $"Deluge returned {(int)response.StatusCode}.");
+            return HealthFromStatusCode("Deluge", response.StatusCode);
         }
 
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
         return body.Contains("true", StringComparison.OrdinalIgnoreCase)
-            ? ("ready", $"Connected to Deluge at {uri.Host}:{uri.Port}.")
-            : ("attention", "Deluge login failed. Check the Web UI password.");
+            ? ("healthy", $"Connected to Deluge at {uri.Host}:{uri.Port}.", null)
+            : ("degraded", "Deluge login failed. Check the Web UI password.", "auth");
     }
 
-    private static async Task<(string healthStatus, string message)> TestNzbGetAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken)
+    private static async Task<(string healthStatus, string message, string? failureCategory)> TestNzbGetAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken)
     {
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
         AddBasicAuth(client, item);
@@ -2269,21 +2304,21 @@ public static class PlatformEndpointRouteBuilderExtensions
             new NzbGetRequest("version", []),
             cancellationToken);
         return response.IsSuccessStatusCode
-            ? ("ready", $"Connected to NZBGet at {uri.Host}:{uri.Port}.")
-            : ("attention", $"NZBGet returned {(int)response.StatusCode}.");
+            ? ("healthy", $"Connected to NZBGet at {uri.Host}:{uri.Port}.", null)
+            : HealthFromStatusCode("NZBGet", response.StatusCode);
     }
 
-    private static async Task<(string healthStatus, string message)> TestUTorrentAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken)
+    private static async Task<(string healthStatus, string message, string? failureCategory)> TestUTorrentAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken)
     {
         using var handler = new HttpClientHandler { CookieContainer = new CookieContainer(), Credentials = BuildCredential(item) };
         using var client = new HttpClient(handler) { BaseAddress = uri, Timeout = TimeSpan.FromSeconds(8) };
         var html = await client.GetStringAsync("gui/token.html", cancellationToken);
         return html.Contains("<div", StringComparison.OrdinalIgnoreCase)
-            ? ("ready", $"Connected to uTorrent at {uri.Host}:{uri.Port}.")
-            : ("attention", "uTorrent token endpoint did not return the expected response.");
+            ? ("healthy", $"Connected to uTorrent at {uri.Host}:{uri.Port}.", null)
+            : ("degraded", "uTorrent token endpoint did not return the expected response.", "unexpected-response");
     }
 
-    private static async Task<(string healthStatus, string message)> TestGenericDownloadClientAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken)
+    private static async Task<(string healthStatus, string message, string? failureCategory)> TestGenericDownloadClientAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken)
     {
         using var client = new HttpClient
         {
@@ -2293,12 +2328,12 @@ public static class PlatformEndpointRouteBuilderExtensions
         using var request = new HttpRequestMessage(HttpMethod.Head, uri);
         using var response = await client.SendAsync(request, cancellationToken);
 
-        if ((int)response.StatusCode >= 200 && (int)response.StatusCode < 500)
+        if ((int)response.StatusCode >= 200 && (int)response.StatusCode < 400)
         {
-            return ("ready", $"Reached {item.Name} at {uri.Host}:{uri.Port}.");
+            return ("healthy", $"Reached {item.Name} at {uri.Host}:{uri.Port}.", null);
         }
 
-        return ("attention", $"Reached {uri.Host}, but it returned {(int)response.StatusCode}.");
+        return HealthFromStatusCode(item.Name, response.StatusCode);
     }
 
     private static Uri? ResolveDownloadClientEndpoint(DownloadClientItem item)
@@ -2337,6 +2372,19 @@ public static class PlatformEndpointRouteBuilderExtensions
         => string.IsNullOrWhiteSpace(item.Username) && string.IsNullOrWhiteSpace(item.Secret)
             ? null
             : new NetworkCredential(item.Username ?? string.Empty, item.Secret ?? string.Empty);
+
+    private static (string healthStatus, string message, string? failureCategory) HealthFromStatusCode(
+        string integrationName,
+        HttpStatusCode statusCode)
+        => IsAuthenticationFailure(statusCode)
+            ? ("degraded", $"{integrationName} rejected authentication with {(int)statusCode}.", "auth")
+            : ("degraded", $"{integrationName} returned {(int)statusCode}.", "http");
+
+    private static bool IsAuthenticationFailure(HttpStatusCode statusCode)
+        => statusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden;
+
+    private static int ElapsedMilliseconds(long startTimestamp)
+        => (int)Math.Max(0, Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds);
 
     private sealed record TransmissionRequest(
         [property: JsonPropertyName("method")] string Method,
@@ -2482,7 +2530,7 @@ public static class PlatformEndpointRouteBuilderExtensions
 
     private static void RecordIntegrationHealthMetric(string integrationType, string healthStatus)
     {
-        if (healthStatus is "ready")
+        if (healthStatus is "healthy" or "disabled" or "untested")
         {
             return;
         }

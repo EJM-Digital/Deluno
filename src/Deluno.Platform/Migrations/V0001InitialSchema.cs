@@ -7,7 +7,8 @@ public static class PlatformDatabaseMigrations
     public static readonly IReadOnlyList<IDelunoDatabaseMigration> All =
     [
         new V0001InitialSchema(),
-        new V0002UserSecurityStamp()
+        new V0002UserSecurityStamp(),
+        new V0003IntegrationHealth()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

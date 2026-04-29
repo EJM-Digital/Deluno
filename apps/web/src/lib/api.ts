@@ -575,6 +575,9 @@ export interface IndexerItem {
   mediaScope?: "movies" | "tv" | "both" | null;
   healthStatus: string;
   lastHealthMessage: string | null;
+  lastHealthFailureCategory?: string | null;
+  lastHealthLatencyMs?: number | null;
+  lastHealthTestUtc?: string | null;
   createdUtc: string;
   updatedUtc: string;
 }
@@ -598,6 +601,9 @@ export interface DownloadClientItem {
   isEnabled: boolean;
   healthStatus: string;
   lastHealthMessage: string | null;
+  lastHealthFailureCategory?: string | null;
+  lastHealthLatencyMs?: number | null;
+  lastHealthTestUtc?: string | null;
   createdUtc: string;
   updatedUtc: string;
 }

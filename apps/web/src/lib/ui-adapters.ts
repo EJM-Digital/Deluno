@@ -284,26 +284,22 @@ export function adaptIndexerHealth(
   const sources = indexers.map((item) => ({
     id: item.id,
     name: item.name,
-    status:
-      item.healthStatus === "ready"
-        ? ("healthy" as const)
-        : item.healthStatus === "attention"
-          ? ("degraded" as const)
-          : ("down" as const),
-    responseMs: null
+    status: normalizeIntegrationHealth(item.healthStatus),
+    responseMs: item.lastHealthLatencyMs ?? null
   }));
 
   const clientItems = clients.slice(0, 2).map((item) => ({
     id: item.id,
     name: item.name,
-    status:
-      item.healthStatus === "ready"
-        ? ("healthy" as const)
-        : item.healthStatus === "attention"
-          ? ("degraded" as const)
-          : ("down" as const),
-    responseMs: null
+    status: normalizeIntegrationHealth(item.healthStatus),
+    responseMs: item.lastHealthLatencyMs ?? null
   }));
 
   return [...sources, ...clientItems].slice(0, 6);
+}
+
+function normalizeIntegrationHealth(status: string): "healthy" | "degraded" | "down" {
+  if (status === "healthy") return "healthy";
+  if (status === "degraded" || status === "untested") return "degraded";
+  return "down";
 }
