@@ -75,8 +75,8 @@ export const navigationCommands: CommandItem[] = [
   },
   {
     id: "nav.indexers",
-    label: "Indexers",
-    keywords: ["providers", "prowlarr", "sources"],
+    label: "Sources and clients",
+    keywords: ["providers", "prowlarr", "sources", "indexers", "download clients"],
     group: "navigation",
     icon: RadioTower,
     to: "/indexers",
@@ -212,8 +212,8 @@ export const settingsCommands: CommandItem[] = [
   },
   {
     id: "settings.lists",
-    label: "Settings · Automation · Lists",
-    keywords: ["automation", "imdb", "trakt", "intake", "source", "auto import"],
+    label: "Settings · Automation · Intake Sources",
+    keywords: ["automation", "imdb", "trakt", "intake", "source", "auto import", "lists"],
     group: "navigation",
     icon: ListChecks,
     to: "/settings/lists"

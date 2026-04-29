@@ -82,7 +82,7 @@ export function SettingsListsPage() {
       });
 
       if (!response.ok) {
-        throw new Error("List source could not be created.");
+        throw new Error("Intake source could not be created.");
       }
 
       setCreateForm((current) => ({
@@ -90,10 +90,10 @@ export function SettingsListsPage() {
         name: "",
         feedUrl: ""
       }));
-      setMessage("List source created.");
+      setMessage("Intake source created.");
       revalidator.revalidate();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "List source could not be created.");
+      setMessage(error instanceof Error ? error.message : "Intake source could not be created.");
     } finally {
       setBusyKey(null);
     }
@@ -125,14 +125,14 @@ export function SettingsListsPage() {
       });
 
       if (!response.ok) {
-        throw new Error("List source could not be updated.");
+        throw new Error("Intake source could not be updated.");
       }
 
       setEditingId(null);
-      setMessage("List source updated.");
+      setMessage("Intake source updated.");
       revalidator.revalidate();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "List source could not be updated.");
+      setMessage(error instanceof Error ? error.message : "Intake source could not be updated.");
     } finally {
       setBusyKey(null);
     }
@@ -145,13 +145,13 @@ export function SettingsListsPage() {
     try {
       const response = await authedFetch(`/api/intake-sources/${id}`, { method: "DELETE" });
       if (!response.ok && response.status !== 204) {
-        throw new Error("List source could not be removed.");
+        throw new Error("Intake source could not be removed.");
       }
 
-      setMessage("List source removed.");
+      setMessage("Intake source removed.");
       revalidator.revalidate();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "List source could not be removed.");
+      setMessage(error instanceof Error ? error.message : "Intake source could not be removed.");
     } finally {
       setBusyKey(null);
     }
@@ -159,7 +159,7 @@ export function SettingsListsPage() {
 
   return (
     <SettingsShell
-      title="Lists"
+      title="Intake Sources"
       description="Configure watchlists, discovery feeds, and automatic title sources without needing to understand provider internals."
     >
       {message ? (
@@ -169,9 +169,9 @@ export function SettingsListsPage() {
       ) : null}
 
       <div className="settings-split settings-split-config-heavy">
-        <Card className="settings-panel order-2 lg:order-1">
+        <Card className="settings-panel">
           <CardHeader>
-            <CardTitle>Add source</CardTitle>
+            <CardTitle>Add intake source</CardTitle>
             <CardDescription>Define how Deluno should ingest titles from external watchlists and discovery feeds.</CardDescription>
           </CardHeader>
           <CardContent>
@@ -233,15 +233,15 @@ export function SettingsListsPage() {
               </div>
               <Button type="submit" disabled={busyKey === "create"}>
                 {busyKey === "create" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-                Add source
+                Add intake source
               </Button>
             </form>
           </CardContent>
         </Card>
 
-        <Card className="settings-panel order-1 lg:order-2">
+        <Card className="settings-panel">
           <CardHeader>
-            <CardTitle>Current sources</CardTitle>
+            <CardTitle>Configured sources</CardTitle>
             <CardDescription>Saved watchlists and feed definitions Deluno can manage today.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -390,7 +390,7 @@ export function SettingsListsPage() {
                       <div className="mt-4">
                         <Button onClick={() => void handleSave(item.id)} disabled={busyKey === `save:${item.id}`}>
                           {busyKey === `save:${item.id}` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-                          Save list source
+                          Save intake source
                         </Button>
                       </div>
                     ) : null}
@@ -401,8 +401,8 @@ export function SettingsListsPage() {
               <EmptyState
                 size="sm"
                 variant="custom"
-                title="No list sources yet"
-                description="Add a list source — IMDb, TMDB, Trakt — to auto-populate your libraries."
+                title="No intake sources yet"
+                description="Add an intake source such as IMDb, TMDB, or Trakt to auto-populate your libraries."
               />
             )}
           </CardContent>

@@ -1,5 +1,5 @@
 /**
- * Indexers & Download Clients page
+ * Sources and clients page
  *
  * Three goals the old page missed:
  *   1. Adding an indexer should be guided: pick protocol, fill URL + key, test, done.
@@ -49,6 +49,7 @@ import {
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
 import { KpiCard } from "../components/app/kpi-card";
+import { OperationPathBanner } from "../components/app/operations-guide";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -1313,12 +1314,18 @@ export function IndexersPage() {
     <div className="space-y-8">
       {/* Page header */}
       <div>
-        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Sources & Destinations</p>
-        <h1 className="font-display text-3xl font-semibold text-foreground sm:text-4xl">Indexers & Download Clients</h1>
+        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Sources and destinations</p>
+        <h1 className="font-display text-3xl font-semibold text-foreground sm:text-4xl">Sources and clients</h1>
         <p className="mt-1 text-[13px] text-muted-foreground">
           Add search providers and download clients. Movies and TV are always routed separately to prevent conflicts.
         </p>
       </div>
+
+      <OperationPathBanner
+        pathId="sources"
+        actionTo="/queue"
+        actionLabel="Open queue"
+      />
 
       {/* KPI row */}
       <Stagger className="fluid-kpi-grid">

@@ -27,14 +27,14 @@ export const settingsNavGroups = [
     items: [
       { to: "/settings/policy-sets", label: "Policy Sets", end: false, tip: "Combine quality targets and destination rules into reusable acquisition policies" },
       { to: "/settings/profiles", label: "Profiles", end: false, tip: "Quality targets and upgrade policy per media policy set" },
-      { to: "/settings/quality", label: "Quality Sizes", end: false, tip: "Minimum and maximum size boundaries for each quality tier" },
+      { to: "/settings/quality", label: "Size Rules", end: false, tip: "Minimum and maximum size boundaries for each quality tier" },
       { to: "/settings/custom-formats", label: "Custom Formats", end: false, tip: "Score releases by HDR, source, codec, language, and more" }
     ]
   },
   {
     label: "Automation",
     items: [
-      { to: "/settings/lists", label: "Lists", end: false, tip: "Bring titles in from Trakt, IMDb, or other external list sources" }
+      { to: "/settings/lists", label: "Intake Sources", end: false, tip: "Bring titles in from Trakt, IMDb, or other external list sources" }
     ]
   },
   {
@@ -90,7 +90,7 @@ const settingsPageMeta = [
   },
   {
     match: (path: string) => path.startsWith("/settings/quality"),
-    title: "Quality Sizes",
+    title: "Size Rules",
     description: "Size limits that keep downloads sane and predictable across qualities."
   },
   {
@@ -100,7 +100,7 @@ const settingsPageMeta = [
   },
   {
     match: (path: string) => path.startsWith("/settings/lists"),
-    title: "Lists",
+    title: "Intake Sources",
     description: "External list sources and automated discovery behaviour."
   },
   {

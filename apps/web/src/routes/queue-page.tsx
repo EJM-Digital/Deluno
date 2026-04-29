@@ -41,6 +41,7 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { PathInput } from "../components/ui/path-input";
+import { OperationPathBanner } from "../components/app/operations-guide";
 import { EmptyState } from "../components/shell/empty-state";
 import { GlassTile, PageHero } from "../components/shell/page-hero";
 import { Stagger, StaggerItem } from "../components/shell/motion";
@@ -378,6 +379,12 @@ export function QueuePage() {
             </Button>
           </>
         }
+      />
+
+      <OperationPathBanner
+        pathId="queue"
+        actionTo="/indexers"
+        actionLabel="Configure clients"
       />
 
       <Stagger className="fluid-kpi-grid">

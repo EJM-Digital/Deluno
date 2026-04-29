@@ -51,7 +51,7 @@ const primaryNav = [
   { to: "/tv", label: "TV Shows", icon: Tv, end: false, attention: "tv" as const },
   { to: "/calendar", label: "Calendar", icon: Calendar, end: false, attention: "none" as const },
   { to: "/queue", label: "Queue", icon: Download, end: false, attention: "activity" as const },
-  { to: "/indexers", label: "Indexers", icon: RadioTower, end: false, attention: "indexers" as const },
+  { to: "/indexers", label: "Sources", icon: RadioTower, end: false, attention: "indexers" as const },
   { to: "/activity", label: "Activity", icon: Activity, end: false, attention: "activity" as const }
 ] as const;
 
@@ -68,7 +68,7 @@ const routeMeta = [
   { match: (path: string) => path.startsWith("/tv"), title: "TV Shows", subtitle: "Series, episodes, and monitoring" },
   { match: (path: string) => path.startsWith("/calendar"), title: "Calendar", subtitle: "Upcoming releases and retry windows" },
   { match: (path: string) => path.startsWith("/queue"), title: "Queue", subtitle: "Unified download client telemetry" },
-  { match: (path: string) => path.startsWith("/indexers"), title: "Indexers", subtitle: "Search sources and provider health" },
+  { match: (path: string) => path.startsWith("/indexers"), title: "Sources and clients", subtitle: "Indexers, download clients, and provider health" },
   { match: (path: string) => path.startsWith("/activity"), title: "Activity", subtitle: "Events, history, and automation" },
   { match: (path: string) => path.startsWith("/settings"), title: "Settings", subtitle: "Guided setup and configuration" },
   { match: (path: string) => path.startsWith("/system"), title: "System", subtitle: "Health, backups, updates, and audit" }

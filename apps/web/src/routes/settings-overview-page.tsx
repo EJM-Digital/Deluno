@@ -10,6 +10,7 @@ import {
   type QualityProfileItem
 } from "../lib/api";
 import { KpiCard } from "../components/app/kpi-card";
+import { OperationsGuide } from "../components/app/operations-guide";
 import { SettingsShell } from "../components/app/settings-shell";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -310,26 +311,7 @@ export function SettingsOverviewPage() {
       title="Settings overview"
       description="Deluno identity, libraries, automation, and quality policy in one workspace while the deeper settings areas expand into their own routes."
     >
-      <Card className="settings-panel border-primary/25 bg-primary/5">
-        <CardHeader>
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <CardTitle>Beginner setup or advanced control</CardTitle>
-              <CardDescription>
-                Use guided setup when you want Deluno to create the sensible baseline. Use the sections below when you want to tune the generated profile, routing, formats, and automation yourself.
-              </CardDescription>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button asChild>
-                <Link to="/setup-guide">Open guided setup</Link>
-              </Button>
-              <Button variant="secondary" asChild>
-                <Link to="/settings/profiles">Tune advanced quality</Link>
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-      </Card>
+      <OperationsGuide />
 
       <div className="fluid-kpi-grid">
         <KpiCard
@@ -365,47 +347,6 @@ export function SettingsOverviewPage() {
       <div className="settings-split settings-split-config-heavy">
         <Card className="settings-panel">
           <CardHeader>
-            <CardTitle>Control plane</CardTitle>
-            <CardDescription>
-              Settings are grouped by decision, not by a long flat list of technical pages.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-2">
-            <OverviewLinkCard
-              to="/settings/media-management"
-              title="Library"
-              description="Roots, naming, metadata, and tags that decide where media lands and how it is organised."
-            />
-            <OverviewLinkCard
-              to="/settings/destination-rules"
-              title="Destination rules"
-              description="Route movies and shows into different roots based on genre, tag, language, quality, or library intent."
-            />
-            <OverviewLinkCard
-              to="/settings/profiles"
-              title="Quality"
-              description="Profiles, size boundaries, and custom formats that determine what Deluno prefers."
-            />
-            <OverviewLinkCard
-              to="/settings/policy-sets"
-              title="Policy sets"
-              description="Combine quality profiles and destination rules into reusable single-install acquisition policies."
-            />
-            <OverviewLinkCard
-              to="/settings/lists"
-              title="Automation"
-              description="List sources and recurring behaviours that decide what enters Deluno automatically."
-            />
-            <OverviewLinkCard
-              to="/settings/general"
-              title="System"
-              description="Instance identity, runtime posture, notifications, and interface behaviour."
-            />
-          </CardContent>
-        </Card>
-
-        <Card className="settings-panel">
-          <CardHeader>
             <CardTitle>Single-install direction</CardTitle>
             <CardDescription>
               Deluno should replace multiple Arr instances with policy-driven routing inside one install.
@@ -413,14 +354,37 @@ export function SettingsOverviewPage() {
           </CardHeader>
           <CardContent className="space-y-3 text-sm text-muted-foreground">
             <p>
-              The next settings depth should support destination rules and policy sets, so users can separate
-              4K, anime, kids, language, or genre libraries without running extra instances.
+              Destination rules and policy sets let users separate 4K, anime, kids, language, genre, or workflow
+              libraries without running extra Deluno instances.
             </p>
             <div className="flex flex-wrap gap-2">
               <Badge variant="info">Destination rules</Badge>
               <Badge variant="info">Policy sets</Badge>
               <Badge variant="info">Multi-version targets</Badge>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card className="settings-panel">
+          <CardHeader>
+            <CardTitle>Daily work stays out of settings</CardTitle>
+            <CardDescription>
+              Search, queue, imports, and provider health have canonical pages. Settings only controls defaults and advanced policy.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 sm:grid-cols-2">
+            <Button asChild>
+              <Link to="/setup-guide">Open guided setup</Link>
+            </Button>
+            <Button variant="secondary" asChild>
+              <Link to="/queue">Open import queue</Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link to="/indexers">Configure sources</Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link to="/settings/profiles">Tune quality</Link>
+            </Button>
           </CardContent>
         </Card>
       </div>
@@ -869,26 +833,6 @@ function SettingsStat({ label, value }: { label: string; value: string }) {
       <p className="density-label uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
       <p className="mt-2 break-words text-sm text-foreground">{value}</p>
     </div>
-  );
-}
-
-function OverviewLinkCard({
-  to,
-  title,
-  description
-}: {
-  to: string;
-  title: string;
-  description: string;
-}) {
-  return (
-    <Link
-      to={to}
-      className="rounded-xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.8)] transition-colors hover:border-primary/30 hover:bg-surface-2"
-    >
-      <p className="font-display text-base font-semibold text-foreground">{title}</p>
-      <p className="mt-2 text-sm text-muted-foreground">{description}</p>
-    </Link>
   );
 }
 
