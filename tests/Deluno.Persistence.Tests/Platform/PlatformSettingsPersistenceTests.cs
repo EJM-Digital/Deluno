@@ -19,7 +19,10 @@ public sealed class PlatformSettingsPersistenceTests
             new SqliteDatabaseMigrator(storage.Factory, timeProvider),
             NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
 
-        var repository = new SqlitePlatformSettingsRepository(storage.Factory, timeProvider);
+        var repository = new SqlitePlatformSettingsRepository(
+            storage.Factory,
+            timeProvider,
+            TestSecretProtection.Create(storage));
 
         var saved = await repository.SaveAsync(
             new UpdatePlatformSettingsRequest(

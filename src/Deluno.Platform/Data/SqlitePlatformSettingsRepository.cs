@@ -3,12 +3,14 @@ using System.Security.Cryptography;
 using System.Text;
 using Deluno.Infrastructure.Storage;
 using Deluno.Platform.Contracts;
+using Deluno.Platform.Security;
 
 namespace Deluno.Platform.Data;
 
 public sealed class SqlitePlatformSettingsRepository(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    ISecretProtector secretProtector)
     : IPlatformSettingsRepository
 {
     public async Task<PlatformSettingsSnapshot> GetAsync(CancellationToken cancellationToken)
@@ -62,11 +64,23 @@ public sealed class SqlitePlatformSettingsRepository(
         await UpsertSettingAsync(connection, transaction, "search.neverGrabPatterns", NormalizeNeverGrabPatterns(request.ReleaseNeverGrabPatterns), updatedUtc, cancellationToken);
         if (!string.IsNullOrWhiteSpace(request.MetadataTmdbApiKey))
         {
-            await UpsertSettingAsync(connection, transaction, "metadata.tmdbApiKey", request.MetadataTmdbApiKey.Trim(), updatedUtc, cancellationToken);
+            await UpsertSettingAsync(
+                connection,
+                transaction,
+                "metadata.tmdbApiKey",
+                secretProtector.Protect("metadata:tmdb", request.MetadataTmdbApiKey.Trim()),
+                updatedUtc,
+                cancellationToken);
         }
         if (!string.IsNullOrWhiteSpace(request.MetadataOmdbApiKey))
         {
-            await UpsertSettingAsync(connection, transaction, "metadata.omdbApiKey", request.MetadataOmdbApiKey.Trim(), updatedUtc, cancellationToken);
+            await UpsertSettingAsync(
+                connection,
+                transaction,
+                "metadata.omdbApiKey",
+                secretProtector.Protect("metadata:omdb", request.MetadataOmdbApiKey.Trim()),
+                updatedUtc,
+                cancellationToken);
         }
 
         await UpsertRootAsync(connection, transaction, "movies", NormalizePath(request.MovieRootPath), updatedUtc, cancellationToken);
@@ -102,7 +116,8 @@ public sealed class SqlitePlatformSettingsRepository(
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT setting_value FROM system_settings WHERE setting_key = @settingKey;";
         AddParameter(command, "@settingKey", settingKey);
-        return await command.ExecuteScalarAsync(cancellationToken) as string;
+        var stored = await command.ExecuteScalarAsync(cancellationToken) as string;
+        return secretProtector.Unprotect($"metadata:{provider.Trim().ToLowerInvariant()}", stored);
     }
 
     public async Task<IReadOnlyList<LibraryItem>> ListLibrariesAsync(CancellationToken cancellationToken)
@@ -1663,7 +1678,7 @@ public sealed class SqlitePlatformSettingsRepository(
                 Protocol: reader.GetString(2),
                 Privacy: reader.GetString(3),
                 BaseUrl: reader.GetString(4),
-                ApiKey: reader.IsDBNull(5) ? null : reader.GetString(5),
+                ApiKey: reader.IsDBNull(5) ? null : secretProtector.Unprotect("indexer:api-key", reader.GetString(5)),
                 Priority: reader.GetInt32(6),
                 Categories: reader.GetString(7),
                 Tags: reader.GetString(8),
@@ -1707,7 +1722,7 @@ public sealed class SqlitePlatformSettingsRepository(
                 Host: reader.IsDBNull(3) ? null : reader.GetString(3),
                 Port: reader.IsDBNull(4) ? null : reader.GetInt32(4),
                 Username: reader.IsDBNull(5) ? null : reader.GetString(5),
-                Secret: reader.IsDBNull(6) ? null : reader.GetString(6),
+                Secret: reader.IsDBNull(6) ? null : secretProtector.Unprotect("download-client:secret", reader.GetString(6)),
                 EndpointUrl: reader.IsDBNull(7) ? null : reader.GetString(7),
                 MoviesCategory: reader.IsDBNull(8) ? null : reader.GetString(8),
                 TvCategory: reader.IsDBNull(9) ? null : reader.GetString(9),
@@ -1810,7 +1825,12 @@ public sealed class SqlitePlatformSettingsRepository(
         AddParameter(command, "@protocol", item.Protocol);
         AddParameter(command, "@privacy", item.Privacy);
         AddParameter(command, "@baseUrl", item.BaseUrl);
-        AddParameter(command, "@apiKey", item.ApiKey);
+        AddParameter(
+            command,
+            "@apiKey",
+            string.IsNullOrWhiteSpace(item.ApiKey)
+                ? null
+                : secretProtector.Protect("indexer:api-key", item.ApiKey));
         AddParameter(command, "@priority", item.Priority);
         AddParameter(command, "@categories", item.Categories);
         AddParameter(command, "@tags", item.Tags);
@@ -1874,7 +1894,12 @@ public sealed class SqlitePlatformSettingsRepository(
         AddParameter(command, "@host", item.Host);
         AddParameter(command, "@port", item.Port);
         AddParameter(command, "@username", item.Username);
-        AddParameter(command, "@secret", item.Secret);
+        AddParameter(
+            command,
+            "@secret",
+            string.IsNullOrWhiteSpace(item.Secret)
+                ? null
+                : secretProtector.Protect("download-client:secret", item.Secret));
         AddParameter(command, "@endpointUrl", item.EndpointUrl);
         AddParameter(command, "@moviesCategory", item.MoviesCategory);
         AddParameter(command, "@tvCategory", item.TvCategory);
