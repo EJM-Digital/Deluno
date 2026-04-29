@@ -6,7 +6,8 @@ public static class MoviesDatabaseMigrations
 {
     public static readonly IReadOnlyList<IDelunoDatabaseMigration> All =
     [
-        new V0001InitialSchema()
+        new V0001InitialSchema(),
+        new V0002MovieIdempotencyIndexes()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

@@ -9,6 +9,41 @@ namespace Deluno.Persistence.Tests.Movies;
 public sealed class MovieWantedStatePersistenceTests
 {
     [Fact]
+    public async Task AddAsync_returns_existing_movie_for_duplicate_identity()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T02:00:00Z"));
+
+        await new MoviesSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<MoviesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var repository = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+
+        var first = await repository.AddAsync(
+            new CreateMovieRequest(
+                Title: "Dune Part Two",
+                ReleaseYear: 2024,
+                ImdbId: "tt15239678",
+                MetadataProvider: "tmdb",
+                MetadataProviderId: "693134"),
+            CancellationToken.None);
+
+        var duplicate = await repository.AddAsync(
+            new CreateMovieRequest(
+                Title: "dune part two",
+                ReleaseYear: 2024,
+                ImdbId: "tt15239678",
+                MetadataProvider: "tmdb",
+                MetadataProviderId: "693134"),
+            CancellationToken.None);
+
+        Assert.Equal(first.Id, duplicate.Id);
+        Assert.Single(await repository.ListAsync(CancellationToken.None));
+    }
+
+    [Fact]
     public async Task EnsureWantedStateAsync_creates_and_updates_one_state_per_movie_and_library()
     {
         using var storage = TestStorage.Create();

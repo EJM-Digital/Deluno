@@ -3,6 +3,7 @@ using System.Text.Json;
 using Deluno.Infrastructure.Storage;
 using Deluno.Movies.Contracts;
 using Deluno.Platform.Quality;
+using Microsoft.Data.Sqlite;
 
 namespace Deluno.Movies.Data;
 
@@ -38,6 +39,12 @@ public sealed class SqliteMovieCatalogRepository(
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Movies,
             cancellationToken);
+
+        var existing = await FindExistingMovieAsync(connection, movie, cancellationToken);
+        if (existing is not null)
+        {
+            return existing;
+        }
 
         using var command = connection.CreateCommand();
         command.CommandText =
@@ -103,7 +110,21 @@ public sealed class SqliteMovieCatalogRepository(
         AddParameter(command, "@createdUtc", movie.CreatedUtc.ToString("O"));
         AddParameter(command, "@updatedUtc", movie.UpdatedUtc.ToString("O"));
 
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        try
+        {
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        catch (SqliteException ex) when (ex.SqliteErrorCode == 19)
+        {
+            existing = await FindExistingMovieAsync(connection, movie, cancellationToken);
+            if (existing is not null)
+            {
+                return existing;
+            }
+
+            throw;
+        }
+
         return movie;
     }
 
@@ -146,6 +167,59 @@ public sealed class SqliteMovieCatalogRepository(
         return await reader.ReadAsync(cancellationToken)
             ? ReadMovie(reader)
             : null;
+    }
+
+    private static async Task<MovieListItem?> FindExistingMovieAsync(
+        System.Data.Common.DbConnection connection,
+        MovieListItem movie,
+        CancellationToken cancellationToken)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT
+                id,
+                title,
+                release_year,
+                imdb_id,
+                monitored,
+                metadata_provider,
+                metadata_provider_id,
+                original_title,
+                overview,
+                poster_url,
+                backdrop_url,
+                rating,
+                genres,
+                external_url,
+                metadata_json,
+                metadata_updated_utc,
+                created_utc,
+                updated_utc
+            FROM movie_entries
+            WHERE
+                (@imdbId IS NOT NULL AND imdb_id = @imdbId)
+                OR (
+                    @metadataProvider IS NOT NULL
+                    AND @metadataProviderId IS NOT NULL
+                    AND metadata_provider = @metadataProvider
+                    AND metadata_provider_id = @metadataProviderId
+                )
+                OR (
+                    lower(title) = lower(@title)
+                    AND COALESCE(release_year, -1) = COALESCE(@releaseYear, -1)
+                )
+            ORDER BY created_utc ASC
+            LIMIT 1;
+            """;
+        AddParameter(command, "@imdbId", movie.ImdbId);
+        AddParameter(command, "@metadataProvider", movie.MetadataProvider);
+        AddParameter(command, "@metadataProviderId", movie.MetadataProviderId);
+        AddParameter(command, "@title", movie.Title);
+        AddParameter(command, "@releaseYear", movie.ReleaseYear);
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? ReadMovie(reader) : null;
     }
 
     public async Task<IReadOnlyList<MovieListItem>> ListAsync(CancellationToken cancellationToken)

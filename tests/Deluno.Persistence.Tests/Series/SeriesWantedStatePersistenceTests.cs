@@ -9,6 +9,41 @@ namespace Deluno.Persistence.Tests.Series;
 public sealed class SeriesWantedStatePersistenceTests
 {
     [Fact]
+    public async Task AddAsync_returns_existing_series_for_duplicate_identity()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T03:00:00Z"));
+
+        await new SeriesSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<SeriesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+
+        var first = await repository.AddAsync(
+            new CreateSeriesRequest(
+                Title: "Severance",
+                StartYear: 2022,
+                ImdbId: "tt11280740",
+                MetadataProvider: "tmdb",
+                MetadataProviderId: "95396"),
+            CancellationToken.None);
+
+        var duplicate = await repository.AddAsync(
+            new CreateSeriesRequest(
+                Title: "severance",
+                StartYear: 2022,
+                ImdbId: "tt11280740",
+                MetadataProvider: "tmdb",
+                MetadataProviderId: "95396"),
+            CancellationToken.None);
+
+        Assert.Equal(first.Id, duplicate.Id);
+        Assert.Single(await repository.ListAsync(CancellationToken.None));
+    }
+
+    [Fact]
     public async Task EnsureWantedStateAsync_creates_and_updates_one_state_per_series_and_library()
     {
         using var storage = TestStorage.Create();

@@ -3,6 +3,7 @@ using System.Text.Json;
 using Deluno.Infrastructure.Storage;
 using Deluno.Platform.Quality;
 using Deluno.Series.Contracts;
+using Microsoft.Data.Sqlite;
 
 namespace Deluno.Series.Data;
 
@@ -38,6 +39,12 @@ public sealed class SqliteSeriesCatalogRepository(
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Series,
             cancellationToken);
+
+        var existing = await FindExistingSeriesAsync(connection, series, cancellationToken);
+        if (existing is not null)
+        {
+            return existing;
+        }
 
         using var command = connection.CreateCommand();
         command.CommandText =
@@ -103,7 +110,21 @@ public sealed class SqliteSeriesCatalogRepository(
         AddParameter(command, "@createdUtc", series.CreatedUtc.ToString("O"));
         AddParameter(command, "@updatedUtc", series.UpdatedUtc.ToString("O"));
 
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        try
+        {
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        catch (SqliteException ex) when (ex.SqliteErrorCode == 19)
+        {
+            existing = await FindExistingSeriesAsync(connection, series, cancellationToken);
+            if (existing is not null)
+            {
+                return existing;
+            }
+
+            throw;
+        }
+
         return series;
     }
 
@@ -146,6 +167,59 @@ public sealed class SqliteSeriesCatalogRepository(
         return await reader.ReadAsync(cancellationToken)
             ? ReadSeries(reader)
             : null;
+    }
+
+    private static async Task<SeriesListItem?> FindExistingSeriesAsync(
+        System.Data.Common.DbConnection connection,
+        SeriesListItem series,
+        CancellationToken cancellationToken)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT
+                id,
+                title,
+                start_year,
+                imdb_id,
+                monitored,
+                metadata_provider,
+                metadata_provider_id,
+                original_title,
+                overview,
+                poster_url,
+                backdrop_url,
+                rating,
+                genres,
+                external_url,
+                metadata_json,
+                metadata_updated_utc,
+                created_utc,
+                updated_utc
+            FROM series_entries
+            WHERE
+                (@imdbId IS NOT NULL AND imdb_id = @imdbId)
+                OR (
+                    @metadataProvider IS NOT NULL
+                    AND @metadataProviderId IS NOT NULL
+                    AND metadata_provider = @metadataProvider
+                    AND metadata_provider_id = @metadataProviderId
+                )
+                OR (
+                    lower(title) = lower(@title)
+                    AND COALESCE(start_year, -1) = COALESCE(@startYear, -1)
+                )
+            ORDER BY created_utc ASC
+            LIMIT 1;
+            """;
+        AddParameter(command, "@imdbId", series.ImdbId);
+        AddParameter(command, "@metadataProvider", series.MetadataProvider);
+        AddParameter(command, "@metadataProviderId", series.MetadataProviderId);
+        AddParameter(command, "@title", series.Title);
+        AddParameter(command, "@startYear", series.StartYear);
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? ReadSeries(reader) : null;
     }
 
     public async Task<IReadOnlyList<SeriesListItem>> ListAsync(CancellationToken cancellationToken)
