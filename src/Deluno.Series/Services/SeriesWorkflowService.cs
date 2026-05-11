@@ -107,7 +107,7 @@ public sealed class SeriesWorkflowService : ISeriesWorkflowService
             candidateQuality: input.CandidateQuality,
             targetQuality: input.TargetQuality,
             qualityDelta: delta,
-            wantedStatus: wantedDecision.WantedStatus,
+            wantedStatus: wantedDecision.WantedStatus ?? "unknown",
             isReplacementAllowed: isReplacementAllowed);
     }
 

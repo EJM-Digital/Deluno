@@ -17,6 +17,7 @@ public static class PlatformServiceCollectionExtensions
         services.AddSingleton<IMigrationAssistantService, MigrationAssistantService>();
         services.AddSingleton<ISecretProtector, DataProtectionSecretProtector>();
         services.AddSingleton<IOutboundNotificationService, OutboundNotificationService>();
+        services.AddSingleton<INotificationService, InMemoryNotificationService>();
         services.AddHttpClient("notifications");
         services.AddHostedService<PlatformSchemaInitializer>();
         services.AddHostedService<NotificationEventPublisher>();

@@ -112,12 +112,14 @@ public sealed class ReleaseDecisionEngineTests
     [Fact]
     public void Decide_returns_risky_when_three_or_more_risk_flags()
     {
-        // Three risks: downgrade (-delta), no seeders, too-small size
+        // Three risks: downgrade (-delta), no seeders, too-small size.
+        // Target is 2160p so the current 1080p file doesn't meet it — the
+        // downgrade becomes a risk flag rather than a hard reject.
         var decision = ReleaseDecisionEngine.Decide(GoodInput(
             releaseName: "Movie.2024.720p.WEB-GRP",
             quality: "WEB 720p",
             currentQuality: "WEB 1080p",
-            targetQuality: "WEB 1080p",
+            targetQuality: "WEB 2160p",
             sizeBytes: 100_000,
             seeders: 0));
 
@@ -155,11 +157,13 @@ public sealed class ReleaseDecisionEngineTests
     [Fact]
     public void Decide_quality_delta_is_negative_for_downgrade()
     {
+        // Target 2160p so current 1080p doesn't meet cutoff — the downgrade
+        // becomes a "below the current file" risk flag, not a hard reject.
         var decision = ReleaseDecisionEngine.Decide(GoodInput(
             releaseName: "Movie.2024.720p.WEB-DL-GRP",
             quality: "WEB 720p",
             currentQuality: "WEB 1080p",
-            targetQuality: "WEB 1080p"));
+            targetQuality: "WEB 2160p"));
 
         Assert.True(decision.QualityDelta < 0,
             $"Expected negative delta, got {decision.QualityDelta}");

@@ -1,11 +1,11 @@
 namespace Deluno.Series.Contracts;
 
 public sealed record EpisodeWorkflowDecision(
-    string EpisodeId,
-    string Decision,
-    string? Reason,
-    string? WantedStatus,
-    bool IsReplacementAllowed,
-    int? QualityDelta,
-    string? CurrentQuality,
-    string? TargetQuality);
+    string EpisodeId = "",
+    string Decision = "",
+    string? Reason = null,
+    string? WantedStatus = null,
+    bool IsReplacementAllowed = false,
+    int? QualityDelta = null,
+    string? CurrentQuality = null,
+    string? TargetQuality = null);

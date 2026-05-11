@@ -1,8 +1,9 @@
 /**
  * CRUD flow smoke tests.
  *
- * These tests use page.request (authenticated via the browser session cookie)
- * to set up data via the API, then verify the UI renders and responds correctly.
+ * These tests use page.request (authenticated via Bearer token extracted from
+ * sessionStorage after browser login) to set up data via the API, then verify
+ * the UI renders and responds correctly.
  * This is more reliable than testing form submission directly, which is brittle
  * against label/placeholder changes.
  */
@@ -15,6 +16,7 @@ const fallbackCredentials = {
 };
 
 let credentials: { username: string; password: string } | null = null;
+let authToken: string | null = null;
 
 test.describe("indexer and download client CRUD", () => {
   test.beforeAll(async ({ request }) => {
@@ -57,14 +59,21 @@ test.describe("indexer and download client CRUD", () => {
     await page.getByLabel("Password", { exact: true }).fill(credentials!.password);
     await page.getByRole("button", { name: /sign in/i }).click();
     await expect(page).not.toHaveURL(/\/login/);
+
+    // The app stores auth in sessionStorage (not cookies), so page.request calls
+    // need an explicit Authorization header. Extract the token here for test use.
+    authToken = await page.evaluate(() => sessionStorage.getItem("deluno-auth-token"));
   });
+
+  function authHeaders(): Record<string, string> {
+    return authToken ? { Authorization: `Bearer ${authToken}` } : {};
+  }
 
   // ── Indexer CRUD ──────────────────────────────────────────────────────────
 
   test("indexer created via API appears on the indexers page", async ({ page }) => {
     const uniqueName = `Smoke-Indexer-${Date.now()}`;
 
-    // Create via API using the browser session (authenticated cookies)
     const createResp = await page.request.post("/api/indexers", {
       data: {
         name: uniqueName,
@@ -77,17 +86,18 @@ test.describe("indexer and download client CRUD", () => {
         tags: "",
         mediaScope: "movies",
         isEnabled: true
-      }
+      },
+      headers: authHeaders()
     });
     expect(createResp.ok(), `POST /api/indexers failed: ${createResp.status()}`).toBe(true);
     const indexer = await createResp.json() as { id: string };
 
     try {
       await page.goto("/indexers");
-      await expect(page.getByText(uniqueName)).toBeVisible();
+      await expect(page.getByText(uniqueName).first()).toBeVisible();
     } finally {
       // Cleanup
-      await page.request.delete(`/api/indexers/${indexer.id}`);
+      await page.request.delete(`/api/indexers/${indexer.id}`, { headers: authHeaders() });
     }
   });
 
@@ -106,17 +116,18 @@ test.describe("indexer and download client CRUD", () => {
         tags: "",
         mediaScope: "both",
         isEnabled: false
-      }
+      },
+      headers: authHeaders()
     });
     expect(createResp.ok()).toBe(true);
     const indexer = await createResp.json() as { id: string };
 
     // Verify it shows
     await page.goto("/indexers");
-    await expect(page.getByText(uniqueName)).toBeVisible();
+    await expect(page.getByText(uniqueName).first()).toBeVisible();
 
     // Delete via API
-    const deleteResp = await page.request.delete(`/api/indexers/${indexer.id}`);
+    const deleteResp = await page.request.delete(`/api/indexers/${indexer.id}`, { headers: authHeaders() });
     expect(deleteResp.ok()).toBe(true);
 
     // Reload and verify gone
@@ -163,7 +174,8 @@ test.describe("indexer and download client CRUD", () => {
         tags: "",
         mediaScope: "movies",
         isEnabled: true
-      }
+      },
+      headers: authHeaders()
     });
     expect(createResp.ok()).toBe(true);
     const indexer = await createResp.json() as { id: string; mediaScope: string };
@@ -182,7 +194,8 @@ test.describe("indexer and download client CRUD", () => {
           tags: null,
           mediaScope: null,
           isEnabled: null
-        }
+        },
+        headers: authHeaders()
       });
       expect(updateResp.ok(), `PUT /api/indexers/${indexer.id} failed: ${updateResp.status()}`).toBe(true);
 
@@ -190,7 +203,7 @@ test.describe("indexer and download client CRUD", () => {
       expect(updated.name).toBe(`${uniqueName}-renamed`);
       expect(updated.mediaScope).toBe("movies"); // must be unchanged — was broken before the fix
     } finally {
-      await page.request.delete(`/api/indexers/${indexer.id}`);
+      await page.request.delete(`/api/indexers/${indexer.id}`, { headers: authHeaders() });
     }
   });
 
@@ -213,16 +226,17 @@ test.describe("indexer and download client CRUD", () => {
         categoryTemplate: null,
         priority: 1,
         isEnabled: false
-      }
+      },
+      headers: authHeaders()
     });
     expect(createResp.ok(), `POST /api/download-clients failed: ${createResp.status()}`).toBe(true);
     const client = await createResp.json() as { id: string };
 
     try {
       await page.goto("/indexers");
-      await expect(page.getByText(uniqueName)).toBeVisible();
+      await expect(page.getByText(uniqueName).first()).toBeVisible();
     } finally {
-      await page.request.delete(`/api/download-clients/${client.id}`);
+      await page.request.delete(`/api/download-clients/${client.id}`, { headers: authHeaders() });
     }
   });
 
@@ -243,23 +257,24 @@ test.describe("indexer and download client CRUD", () => {
         categoryTemplate: null,
         priority: 1,
         isEnabled: false
-      }
+      },
+      headers: authHeaders()
     });
     expect(createResp.ok()).toBe(true);
     const client = await createResp.json() as { id: string };
 
     await page.goto("/indexers");
-    await expect(page.getByText(uniqueName)).toBeVisible();
+    await expect(page.getByText(uniqueName).first()).toBeVisible();
 
-    await page.request.delete(`/api/download-clients/${client.id}`);
+    await page.request.delete(`/api/download-clients/${client.id}`, { headers: authHeaders() });
 
     await page.reload();
     await expect(page.getByText(uniqueName)).toHaveCount(0);
   });
 
-  test("download clients page shows Add download client button", async ({ page }) => {
+  test("download clients page shows Add client button", async ({ page }) => {
     await page.goto("/indexers");
-    await expect(page.getByRole("button", { name: /Add download client/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Add client/i })).toBeVisible();
   });
 
   test("updated download client fields are returned correctly by the API", async ({ page }) => {
@@ -279,7 +294,8 @@ test.describe("indexer and download client CRUD", () => {
         categoryTemplate: null,
         priority: 1,
         isEnabled: false
-      }
+      },
+      headers: authHeaders()
     });
     expect(createResp.ok()).toBe(true);
     const client = await createResp.json() as { id: string };
@@ -300,7 +316,8 @@ test.describe("indexer and download client CRUD", () => {
           categoryTemplate: null,
           priority: null,
           isEnabled: null
-        }
+        },
+        headers: authHeaders()
       });
       expect(updateResp.ok(), `PUT /api/download-clients/${client.id} failed: ${updateResp.status()}`).toBe(true);
 
@@ -309,7 +326,7 @@ test.describe("indexer and download client CRUD", () => {
       expect(updated.host).toBe("192.168.1.50"); // host updated
       expect(updated.port).toBe(8080);           // port preserved (null patch)
     } finally {
-      await page.request.delete(`/api/download-clients/${client.id}`);
+      await page.request.delete(`/api/download-clients/${client.id}`, { headers: authHeaders() });
     }
   });
 });
