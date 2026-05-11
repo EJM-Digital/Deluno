@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -21,7 +22,7 @@ public static class DownloadClientEndpointRouteBuilderExtensions
         endpoints.MapPost("/api/download-clients/{clientId}/queue/actions", async (
             string clientId,
             HttpContext httpContext,
-            DownloadClientActionRequest request,
+            [FromBody] DownloadClientActionRequest request,
             IPlatformSettingsRepository platformRepository,
             IDownloadClientTelemetryService telemetryService,
             CancellationToken cancellationToken) =>
@@ -39,7 +40,7 @@ public static class DownloadClientEndpointRouteBuilderExtensions
         endpoints.MapPost("/api/download-clients/{clientId}/grab", async (
             string clientId,
             HttpContext httpContext,
-            DownloadClientGrabRequest request,
+            [FromBody] DownloadClientGrabRequest request,
             IPlatformSettingsRepository platformRepository,
             IDownloadClientGrabService grabService,
             CancellationToken cancellationToken) =>

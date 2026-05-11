@@ -106,6 +106,33 @@ public interface IMovieCatalogRepository
 
     Task<bool> DeleteImportRecoveryCaseAsync(string id, CancellationToken cancellationToken);
 
+    Task<MovieImportRecoveryCase?> ResolveImportRecoveryCaseAsync(string id, string status, CancellationToken cancellationToken);
+
+    Task AddImportRecoveryEventAsync(string caseId, string eventKind, string message, string? metadataJson, CancellationToken cancellationToken);
+
+    Task<int> CleanupImportRecoveryCasesAsync(DateTimeOffset olderThan, CancellationToken cancellationToken);
+
+    Task<MovieWantedItem?> GetMovieWantedStateAsync(
+        string movieId,
+        string libraryId,
+        CancellationToken cancellationToken);
+
+    Task<bool> UpdateMovieReplacementPolicyAsync(
+        string movieId,
+        string libraryId,
+        bool preventLowerQualityReplacements,
+        CancellationToken cancellationToken);
+
+    Task<bool> UpdateMovieQualityDeltaAsync(
+        string movieId,
+        string libraryId,
+        int? qualityDelta,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<CrossLibraryDuplicateItem>> FindCrossLibraryDuplicatesAsync(CancellationToken cancellationToken);
+
+    Task<int> ReassignLibraryAsync(IReadOnlyList<string> movieIds, string fromLibraryId, string toLibraryId, CancellationToken cancellationToken);
+
     /// <summary>Delete a movie and all its related data</summary>
     Task<bool> DeleteAsync(string movieId, CancellationToken cancellationToken);
 

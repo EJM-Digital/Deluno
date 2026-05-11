@@ -23,6 +23,8 @@ public sealed record LibraryItem(
     int SearchIntervalHours,
     int RetryDelayHours,
     int MaxItemsPerRun,
+    int? SearchWindowStartHour,
+    int? SearchWindowEndHour,
     string AutomationStatus,
     bool SearchRequested,
     DateTimeOffset? LastSearchedUtc,

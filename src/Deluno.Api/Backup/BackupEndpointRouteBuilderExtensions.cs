@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Mvc;
 using System.Reflection;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
@@ -26,7 +27,7 @@ public static class BackupEndpointRouteBuilderExtensions
         });
 
         backup.MapPut("/settings", async (
-            UpdateBackupSettingsRequest request,
+            [FromBody] UpdateBackupSettingsRequest request,
             IDelunoBackupService service,
             CancellationToken cancellationToken) =>
         {
@@ -35,7 +36,7 @@ public static class BackupEndpointRouteBuilderExtensions
         });
 
         backup.MapPost(string.Empty, async (
-            BackupCreateRequest request,
+            [FromBody] BackupCreateRequest request,
             IDelunoBackupService service,
             CancellationToken cancellationToken) =>
         {

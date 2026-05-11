@@ -330,7 +330,7 @@ export function SettingsMetadataPage() {
 
         <Card className="settings-panel">
           <CardHeader>
-            <CardTitle>Current posture</CardTitle>
+            <CardTitle>Current settings</CardTitle>
             <CardDescription>What Deluno will use for lookup, enrichment jobs, and future sidecar generation.</CardDescription>
           </CardHeader>
           <CardContent className="density-help space-y-3 text-muted-foreground">
@@ -367,8 +367,8 @@ export function SettingsMetadataPage() {
               copy={`${formState.metadataNfoEnabled ? "Enabled" : "Disabled"} NFO output and ${formState.metadataArtworkEnabled ? "enabled" : "disabled"} artwork sidecars are now persisted at the platform level.`}
             />
             <BacklogRow
-              title="Locale posture"
-              copy={`Certification country ${formState.metadataCertificationCountry || "US"} and language ${formState.metadataLanguage || "en"} are now stored for future scraper/export flows.`}
+              title="Region and language"
+              copy={`Certification country ${formState.metadataCertificationCountry || "US"} and language ${formState.metadataLanguage || "en"} have been saved.`}
             />
             {metadataStatus?.sources?.length ? (
               <div className="rounded-xl border border-hairline bg-surface-1 p-4">

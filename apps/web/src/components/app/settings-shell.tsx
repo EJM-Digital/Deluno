@@ -12,7 +12,7 @@ export const settingsNavGroups = [
   {
     label: "Overview",
     items: [
-      { to: "/settings", label: "Settings Home", end: true, tip: "Configuration health, quick actions, and setup posture" }
+      { to: "/settings", label: "Settings Home", end: true, tip: "Overview of all settings and quick actions" }
     ]
   },
   {
@@ -44,6 +44,7 @@ export const settingsNavGroups = [
     label: "System",
     items: [
       { to: "/settings/general", label: "General", end: false, tip: "Instance identity, host settings, notifications, and startup behaviour" },
+      { to: "/settings/notifications", label: "Notifications", end: false, tip: "Outbound webhook endpoints for Discord, Slack, Gotify, ntfy, and any HTTP service" },
       { to: "/settings/ui", label: "Interface", end: false, tip: "Theme, density, default views, and experience preferences" }
     ]
   }
@@ -56,7 +57,7 @@ const SettingsWorkspaceContext = createContext(false);
 const SystemWorkspaceContext = createContext(false);
 
 const systemNavItems = [
-  { to: "/system", label: "Health", end: true, tip: "Runtime health, jobs, providers, and current posture" },
+  { to: "/system", label: "Health", end: true, tip: "Provider health, background jobs, and system status" },
   { to: "/system/audit", label: "Audit", end: false, tip: "Searchable event timeline and live activity stream" },
   { to: "/system/api", label: "API", end: false, tip: "Generate and revoke API keys for integrations and automation" },
   { to: "/system/docs", label: "Guide", end: false, tip: "Plain-English workflow guide for setup, routing, scoring, imports, and integrations" },
@@ -89,7 +90,7 @@ const settingsPageMeta = [
   {
     match: (path: string) => path.startsWith("/settings/profiles"),
     title: "Profiles",
-    description: "Quality targets, cutoffs, and upgrade behaviour for each library intent."
+    description: "Quality targets and upgrade settings for each library."
   },
   {
     match: (path: string) => path.startsWith("/settings/quality"),
@@ -127,6 +128,11 @@ const settingsPageMeta = [
     description: "Host identity, runtime defaults, startup behaviour, and notifications."
   },
   {
+    match: (path: string) => path.startsWith("/settings/notifications"),
+    title: "Notifications",
+    description: "Outbound webhook events for grabs, imports, upgrades, and health alerts."
+  },
+  {
     match: (path: string) => path.startsWith("/settings/ui"),
     title: "Interface",
     description: "Theme, density, default views, and how Deluno should feel on your display."
@@ -137,7 +143,7 @@ const systemPageMeta = [
   {
     match: (path: string) => path === "/system",
     title: "System Health",
-    description: "Runtime health, background jobs, provider posture, and operational state."
+    description: "Provider health, background jobs, and current system state."
   },
   {
     match: (path: string) => path.startsWith("/system/audit"),

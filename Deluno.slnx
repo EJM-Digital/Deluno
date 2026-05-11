@@ -14,6 +14,7 @@
     <Project Path="src/Deluno.Worker/Deluno.Worker.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Deluno.Movies.Tests/Deluno.Movies.Tests.csproj" />
     <Project Path="tests/Deluno.Persistence.Tests/Deluno.Persistence.Tests.csproj" />
     <Project Path="tests/Deluno.Platform.Tests/Deluno.Platform.Tests.csproj" />
   </Folder>

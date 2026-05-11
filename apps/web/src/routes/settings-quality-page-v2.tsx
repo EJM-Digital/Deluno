@@ -38,7 +38,7 @@ export function SettingsQualityPage() {
   return (
     <SettingsShell
       title="Quality"
-      description="Quality is Deluno's raw acceptance layer: cutoffs, allowed ladders, and upgrade posture that profiles assign to libraries."
+      description="Set the minimum quality you'll accept and when to automatically grab better versions."
     >
       <div className="fluid-kpi-grid">
         <KpiCard
@@ -74,8 +74,8 @@ export function SettingsQualityPage() {
       <div className="settings-split settings-split-config-heavy">
         <Card className="settings-panel">
           <CardHeader>
-            <CardTitle>Profile quality matrix</CardTitle>
-            <CardDescription>Current cutoff and allowed-quality posture coming from live Deluno profiles.</CardDescription>
+            <CardTitle>Quality profiles</CardTitle>
+            <CardDescription>Your current quality settings — what's allowed and where upgrades stop.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {qualityProfiles.map((profile) => (
@@ -84,12 +84,12 @@ export function SettingsQualityPage() {
                   <div>
                     <p className="font-display text-base font-semibold text-foreground">{profile.name}</p>
                     <p className="mt-1 text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                      {profile.mediaType === "tv" ? "TV" : "Movies"} · cutoff {profile.cutoffQuality}
+                      {profile.mediaType === "tv" ? "TV" : "Movies"} · stops at {profile.cutoffQuality}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <span className="rounded-full border border-hairline px-2.5 py-1 text-xs text-muted-foreground">
-                      Upgrade to cutoff: {profile.upgradeUntilCutoff ? "On" : "Off"}
+                      Upgrade until target: {profile.upgradeUntilCutoff ? "On" : "Off"}
                     </span>
                     <span className="rounded-full border border-hairline px-2.5 py-1 text-xs text-muted-foreground">
                       Upgrade unknown: {profile.upgradeUnknownItems ? "On" : "Off"}
@@ -120,7 +120,7 @@ export function SettingsQualityPage() {
           <Card>
             <CardHeader>
               <CardTitle>Quality coverage</CardTitle>
-              <CardDescription>Distinct allowed-quality values currently modeled in Deluno.</CardDescription>
+              <CardDescription>All quality levels used across your profiles.</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-wrap gap-2">
               {uniqueAllowedQualities.map((quality) => (

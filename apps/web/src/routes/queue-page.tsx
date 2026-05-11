@@ -356,8 +356,7 @@ export function QueuePage() {
         }
         subtitle={
           <>
-            Normalized telemetry from external clients, destination-rule previews before import, and recovery
-            cases when Deluno cannot safely move media.
+            Live download status from your download clients, with a preview before files are moved into your library.
           </>
         }
         stats={[
@@ -371,7 +370,7 @@ export function QueuePage() {
           <>
             <Button size="lg" className="gap-2" onClick={() => revalidator.revalidate()}>
               <RefreshCw className="h-4 w-4" />
-              Refresh telemetry
+              Refresh
             </Button>
             <Button asChild size="lg" variant="secondary" className="gap-2">
               <Link to="/indexers">
@@ -391,16 +390,16 @@ export function QueuePage() {
 
       <Stagger className="fluid-kpi-grid">
         <StaggerItem>
-          <MetricTile icon={Download} label="Connected clients" value={`${activeClients}/${telemetry.clients.length}`} sub="ready endpoints" tone="primary" />
+          <MetricTile icon={Download} label="Connected clients" value={`${activeClients}/${telemetry.clients.length}`} sub="download clients" tone="primary" />
         </StaggerItem>
         <StaggerItem>
-          <MetricTile icon={ArrowDownToLine} label="Total speed" value={`${telemetry.summary.totalSpeedMbps.toFixed(1)}`} unit="MB/s" sub="normalized throughput" tone="success" />
+          <MetricTile icon={ArrowDownToLine} label="Total speed" value={`${telemetry.summary.totalSpeedMbps.toFixed(1)}`} unit="MB/s" sub="combined speed" tone="success" />
         </StaggerItem>
         <StaggerItem>
           <MetricTile icon={FileSearch} label="Import ready" value={importReady.length} sub="safe to preview" tone="success" />
         </StaggerItem>
         <StaggerItem>
-          <MetricTile icon={Wand2} label="Processing" value={processing.length} sub="refine-before-import lane" tone={processing.length ? "primary" : "neutral"} />
+          <MetricTile icon={Wand2} label="Processing" value={processing.length} sub="being checked" tone={processing.length ? "primary" : "neutral"} />
         </StaggerItem>
         <StaggerItem>
           <MetricTile icon={GitBranch} label="Import jobs" value={activeImportJobs} sub="queued or running" tone={activeImportJobs ? "primary" : "neutral"} />
@@ -414,8 +413,8 @@ export function QueuePage() {
         <div className="space-y-[var(--page-gap)]">
           <GlassTile>
             <PanelHeader
-              title="Unified client queue"
-              subtitle="Every external downloader normalized into one model."
+              title="Download queue"
+              subtitle="Everything currently being downloaded."
               meta={`${allQueue.length} queue items`}
             />
             {allQueue.length ? (

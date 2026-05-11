@@ -127,10 +127,16 @@ public sealed class TmdbMetadataProvider(
 
         if (string.IsNullOrWhiteSpace(config.TmdbApiKey))
         {
-            return [];
+            return await TryReadStaleCacheAsync(cacheKey, cancellationToken) ?? [];
         }
 
-        return await SearchDirectAsync(request, config.TmdbApiKey, cacheKey, mediaType, query, cancellationToken);
+        var live = await SearchDirectAsync(request, config.TmdbApiKey, cacheKey, mediaType, query, cancellationToken);
+        if (live.Count > 0)
+        {
+            return live;
+        }
+
+        return await TryReadStaleCacheAsync(cacheKey, cancellationToken) ?? [];
     }
 
     public async Task<IReadOnlyList<MetadataSearchResult>> SearchDirectAsync(
@@ -245,6 +251,61 @@ public sealed class TmdbMetadataProvider(
         {
             return null;
         }
+    }
+
+    private async Task<IReadOnlyList<MetadataSearchResult>?> TryReadStaleCacheAsync(
+        string cacheKey,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Cache,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT result_json
+            FROM search_result_cache
+            WHERE cache_key = @cacheKey
+            ORDER BY created_utc DESC
+            LIMIT 1;
+            """;
+        AddParameter(command, "@cacheKey", cacheKey);
+
+        var payload = await command.ExecuteScalarAsync(cancellationToken) as string;
+        if (string.IsNullOrWhiteSpace(payload))
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<IReadOnlyList<MetadataSearchResult>>(payload, CacheJsonOptions);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public async Task InvalidateCacheAsync(string? mediaType, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Cache,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        if (string.IsNullOrWhiteSpace(mediaType))
+        {
+            command.CommandText = "DELETE FROM search_result_cache;";
+        }
+        else
+        {
+            command.CommandText = "DELETE FROM search_result_cache WHERE media_type = @mediaType;";
+            AddParameter(command, "@mediaType", NormalizeMediaType(mediaType));
+        }
+
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private async Task WriteSearchCacheAsync(

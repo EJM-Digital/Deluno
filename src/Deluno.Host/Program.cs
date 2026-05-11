@@ -37,6 +37,7 @@ builder.Services.AddDelunoIntegrationsModule();
 builder.Services.AddDelunoFilesystemModule();
 builder.Services.AddDelunoRealtimeModule();
 builder.Services.AddDelunoWorkerModule();
+builder.Services.AddHostedService<Deluno.Host.ImportRecoveryCleanupService>();
 
 var configuredDataRoot = builder.Configuration["Storage:DataRoot"];
 var dataRoot = Path.GetFullPath(
@@ -75,6 +76,18 @@ app.Use(async (context, next) =>
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.UseDelunoCorrelation();
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path;
+
+    if (path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWithSegments("/hubs", StringComparison.OrdinalIgnoreCase))
+    {
+        context.Response.Headers.CacheControl = "no-store";
+    }
+
+    await next();
+});
 app.Use(async (context, next) =>
 {
     var path = context.Request.Path;

@@ -128,8 +128,8 @@ export function SystemPage() {
   const runtimeCard = (
     <Card>
       <CardHeader>
-        <CardTitle>Runtime posture</CardTitle>
-        <CardDescription>Persisted host and UI defaults for this instance.</CardDescription>
+        <CardTitle>System status</CardTitle>
+        <CardDescription>Host settings and defaults for this instance.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         <HealthRow label="Bind address" status={`${settings.hostBindAddress}:${settings.hostPort}`} />
@@ -144,7 +144,7 @@ export function SystemPage() {
     <Card>
       <CardHeader>
         <CardTitle>Provider health</CardTitle>
-        <CardDescription>Current indexer and client posture.</CardDescription>
+        <CardDescription>Current health of your search providers and download clients.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         {indexers.slice(0, 6).map((indexer) => (
@@ -292,8 +292,8 @@ export function SystemPage() {
           {/* Runtime posture */}
           <Card>
             <CardHeader>
-              <CardTitle>Runtime posture</CardTitle>
-              <CardDescription>Persisted host and UI defaults for this instance.</CardDescription>
+              <CardTitle>System status</CardTitle>
+              <CardDescription>Host settings and defaults for this instance.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <HealthRow label="Bind address" status={`${settings.hostBindAddress}:${settings.hostPort}`} />
@@ -307,7 +307,7 @@ export function SystemPage() {
           <Card>
             <CardHeader>
               <CardTitle>Provider health</CardTitle>
-              <CardDescription>Current indexer and client posture.</CardDescription>
+              <CardDescription>Current health of your search providers and download clients.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {indexers.slice(0, 6).map((indexer) => (
@@ -385,7 +385,7 @@ function AutomationCard({
           Search automation
         </CardTitle>
         <CardDescription>
-          Scheduled missing and upgrade searches with retry-window visibility.
+          Scheduled searches for missing and upgradeable titles.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -420,7 +420,7 @@ function AutomationCard({
 
         {retryWindows.length ? (
           <div className="space-y-2">
-            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Next retry windows</p>
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Searches held back until</p>
             {retryWindows.slice(0, 4).map((item) => (
               <div key={`${item.entityType}:${item.entityId}:${item.actionKind}`} className="flex items-center justify-between gap-3 rounded-lg border border-hairline bg-background/40 px-3 py-2">
                 <div className="min-w-0">

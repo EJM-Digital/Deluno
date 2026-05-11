@@ -8,7 +8,9 @@ public static class SeriesDatabaseMigrations
     [
         new V0001InitialSchema(),
         new V0002SeriesIdempotencyIndexes(),
-        new V0003SeriesTrackedFiles()
+        new V0003SeriesTrackedFiles(),
+        new V0004SeriesEpisodeQualityTracking(),
+        new V0005SeriesImportRecoveryStatus()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

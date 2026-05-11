@@ -39,7 +39,7 @@ const densityOptions: Array<{
   {
     value: "comfortable",
     label: "Standard",
-    description: "The default workspace posture: readable, efficient, and suitable for most screens.",
+    description: "Readable and efficient — works well on most screens.",
     icon: LayoutGrid
   },
   {
@@ -195,7 +195,7 @@ export function SettingsUiPage() {
             <CardHeader>
               <CardTitle>Current defaults</CardTitle>
               <CardDescription>
-                What Deluno will treat as the preferred interface posture for this install.
+                Your saved interface preferences for this install.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-[calc(var(--field-group-pad)*0.7)]">

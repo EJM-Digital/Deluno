@@ -7,7 +7,7 @@ import {
   type SeriesWantedSummary
 } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
-import { JOB_STATUS, type JobStatus } from "../lib/job-status-constants";
+import { JOB_STATUS } from "../lib/job-status-constants";
 import { cn } from "../lib/utils";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";

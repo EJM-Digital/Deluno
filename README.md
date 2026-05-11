@@ -1,127 +1,134 @@
 # Deluno
 
-Deluno is a clean-room media automation app built to deliver one product with fully separated movie and series engines.
+**A personal media manager built the way I needed it — not the way everyone else does it.**
 
-The architecture is now locked to:
+---
 
-- `Frontend`: React 19 + React Router v7 + Vite + TypeScript
-- `Backend`: ASP.NET Core 10
-- `Storage`: SQLite only, split into multiple database files
-- `Realtime`: SignalR
-- `Workers`: durable hosted background workers
+## The honest story
 
-## Core Principles
+I can't code. I mean it. I can barely write a `for` loop without looking it up. But I've been using media management software for years and always hit the same wall — they were built by coders, for coders, in ways that made sense to the people who wrote them. Not to me.
 
-- one app for users
-- hard module boundaries internally
-- no shared movie/series business rules
-- Windows-first and Docker-first packaging
-- no required companion database service
+So I vibe coded this. Every line of it. I described what I wanted, Claude built it, I broke it, we fixed it, repeat. Hundreds of iterations across weeks. I have enormous respect for the people who actually know what they're doing — the engineers who build tools like this properly, from first principles, with real expertise. I am not that. What I am is someone who needed something that worked **my** way, and now it does.
 
-## Repo Layout
+Deluno is the result. It's opinionated, it's mine, and if it happens to be useful to you too — great. If you're a developer looking at this codebase: yes, an AI helped write it. No, I'm not embarrassed about that. The tool I needed exists now. That's what matters.
 
-- `apps/web`: React frontend shell
-- `src/Deluno.Host`: ASP.NET Core host and composition root
-- `src/Deluno.Worker`: worker registration and background services
-- `src/Deluno.Contracts`: shared contracts and system manifest
-- `src/Deluno.Platform`: platform module
-- `src/Deluno.Movies`: movie module
-- `src/Deluno.Series`: series module
-- `src/Deluno.Jobs`: jobs module
-- `src/Deluno.Integrations`: provider and client abstractions
-- `src/Deluno.Realtime`: SignalR hub wiring
-- `src/Deluno.Filesystem`: filesystem policies and services
-- `src/Deluno.Infrastructure`: storage and runtime infrastructure
-- `docs`: architecture and strategy docs
-- `AGENTS.md`: compact agent map for Codex-style development
+---
 
-## Current State
+## Screenshots
 
-The architecture is now running as one authenticated Deluno application:
+### Overview — the full picture at a glance
+![Overview dashboard showing live download throughput, library stats, and decision feed](docs/screenshots/01-overview.jpg)
 
-- the ASP.NET Core host serves the React frontend and the `/api/*` surface
-- the storage bootstrap creates `platform.db`, `movies.db`, `series.db`, `jobs.db`, and `cache.db`
-- the platform module owns bootstrap, sign-in, settings, libraries, quality profiles, tags, lists, and custom formats
-- the movies and series modules each own catalog, wanted state, manual search, history, and import recovery
-- SignalR is wired at `/hubs/deluno` for live activity and system updates
+### Movies — browse, filter, and manage your film library
+![Movies library with filtering, status badges, and quick actions](docs/screenshots/02-movies.jpg)
 
-## Local Development
+### TV Shows — series and episode tracking
+![TV Shows workspace with series management](docs/screenshots/03-tv.jpg)
 
-### Prerequisites
+### Sources & Clients — indexers, download clients, and routing
+![Sources page showing indexers, download clients, and library routing](docs/screenshots/04-sources.jpg)
 
-- Node.js with `npm`
-- the repo-local .NET SDK in `.dotnet/`
+### Activity — every job, every decision, logged
+![Activity page with background job queue and live event stream](docs/screenshots/05-activity.jpg)
 
-### Install frontend dependencies
+### Quality Profiles — set your standards and stick to them
+![Quality settings with profile matrix and library assignments](docs/screenshots/06-quality.jpg)
 
-```powershell
-npm.cmd install
+### Calendar — what's coming and what's due
+![Calendar view showing upcoming and recent media](docs/screenshots/07-calendar.jpg)
+
+---
+
+## What it does
+
+Deluno manages the full pipeline from "I want this" to "it's in my library":
+
+- **Completely separate movie and TV engines** — no shared logic, no conflicting folders, no bleedover
+- **Quality profiles** — set a cutoff (e.g. WEB 1080p) and Deluno only grabs what meets it
+- **Replacement protection** — won't swap a 1080p file for a 720p one unless you say so
+- **Custom format scoring** — filter and rank releases by name patterns, release groups, and tags
+- **Library routing** — each library gets its own indexers and download client categories
+- **Automatic search scheduling** — searches for missing and upgradeable items on a configurable timer
+- **Live download telemetry** — real-time queue, speed, and status pulled from your download client
+- **Full activity log** — every decision explained, every job recorded
+- **Webhook notifications** — fire off a hook for any event you care about
+
+---
+
+## Getting started
+
+### Requirements
+- [.NET 10 SDK](https://dotnet.microsoft.com/download)
+- [Node.js 20+](https://nodejs.org)
+
+### Run locally
+
+```bash
+# Install frontend dependencies
+npm install
+
+# Start backend + frontend dev server together
+npm run dev
 ```
 
-### Build the frontend bundle
+Open **http://localhost:5173** — first visit walks you through creating your account.
 
-```powershell
-npm.cmd run build:web
+### Docker
+
+```bash
+docker compose up
 ```
 
-### Build the backend
+---
 
-```powershell
-.\.dotnet\dotnet.exe build .\Deluno.slnx
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | React 19 · React Router v7 · TypeScript · Vite |
+| Backend | ASP.NET Core 10 · C# |
+| Database | SQLite (WAL mode, one file per domain) |
+| Realtime | SignalR WebSockets |
+| Background workers | .NET hosted services |
+| Auth | PBKDF2/SHA-256 · JWT |
+| Tests | xUnit · Playwright |
+
+Movies and TV are hard-separated at the module level — they share no business logic. If you want to understand the structure, start with [`AGENTS.md`](AGENTS.md) and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+---
+
+## Repo layout
+
+```
+apps/web/          React frontend
+src/
+  Deluno.Host/     ASP.NET Core host and composition root
+  Deluno.Platform/ Settings, libraries, quality, auth
+  Deluno.Movies/   Movie catalog, wanted state, search, import
+  Deluno.Series/   TV catalog, episodes, wanted state, search
+  Deluno.Jobs/     Background job scheduling and execution
+  Deluno.Integrations/ Indexer and download client abstractions
+  Deluno.Realtime/ SignalR hub wiring
+  Deluno.Filesystem/ Import pipeline and file policies
+  Deluno.Infrastructure/ Storage, migrations, runtime
+tests/             xUnit persistence and unit tests
+docs/              Architecture, strategy, and product docs
 ```
 
-### Run validation locally
+---
 
-The GitHub Actions workflow in `.github/workflows/ci.yml` runs the same backend and frontend gates on every push and pull request to `main`.
+## Contributing
 
-```powershell
-.\.dotnet\dotnet.exe restore .\Deluno.slnx
-.\.dotnet\dotnet.exe build .\Deluno.slnx --no-restore
-.\.dotnet\dotnet.exe test .\Deluno.slnx --no-build
-npm.cmd ci
-npm.cmd run build:web
-npm.cmd run test:web
-npm.cmd run validate:agents
-```
+PRs are welcome. The `main` branch is protected — CI (backend tests + Playwright smoke suite) must pass before anything merges.
 
-Backend failures are reported by the .NET restore, build, and test steps. Frontend failures are reported by the Vite build and Playwright smoke-test steps, with Playwright reports uploaded as CI artifacts when available.
+For small fixes, just open a PR. For bigger changes, open an issue first so we can agree on direction before you spend time on it.
 
-### Run the single Deluno host
+---
 
-```powershell
-.\.dotnet\dotnet.exe run --project src/Deluno.Host/Deluno.Host.csproj --urls http://127.0.0.1:5099
-```
+## A note on how this was built
 
-Open [http://127.0.0.1:5099](http://127.0.0.1:5099).
+Every line of code in this repo was written by an AI (primarily Claude) based on my descriptions, feedback, and direction. I provided the product vision, the UX requirements, the bug reports, and the "this doesn't feel right" moments. Claude provided the implementation.
 
-### Optional frontend-only dev server
+I have deep respect for software engineers. Building something like this from scratch, from memory, is a skill I don't have and probably never will. But the tooling has reached a point where someone like me — opinionated, persistent, and clear about what I want — can direct the creation of something genuinely useful. That's remarkable, and I don't take it for granted.
 
-Run the backend first on `http://127.0.0.1:5099`, then in another shell:
-
-```powershell
-npm.cmd run dev --workspace apps/web
-```
-
-The Vite dev server proxies `/api` and `/hubs` to the backend host.
-
-## Agent-First Development
-
-Deluno keeps product and engineering context inside the repository so agents can inspect and update it directly.
-
-- Start with [AGENTS.md](AGENTS.md).
-- Use [docs/README.md](docs/README.md) as the knowledge-base index.
-- Use [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for module boundaries.
-- Use [docs/QUALITY_SCORE.md](docs/QUALITY_SCORE.md) and [docs/exec-plans/tech-debt-tracker.md](docs/exec-plans/tech-debt-tracker.md) for cleanup and quality drift.
-
-## Packaging
-
-- Docker scaffolding: [Dockerfile](Dockerfile), [compose.yaml](compose.yaml)
-- Windows publish script: [publish-windows.ps1](scripts/publish-windows.ps1)
-- Packaging notes: [packaging.md](docs/packaging.md)
-
-## Next Steps
-
-1. Deepen movie and TV operational workflows, especially episode-level wanted/import resolution.
-2. Replace simulated acquisition behavior with real downstream indexer and download-client integrations.
-3. Expand realtime coverage and harden the authenticated single-user flow.
-4. Polish and tighten the UI now that the main product surfaces exist.
+To the developers whose open-source media tools inspired this: thank you. The ideas came from watching you do it right.

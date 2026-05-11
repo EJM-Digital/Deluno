@@ -145,7 +145,8 @@ public sealed class SqlitePlatformSettingsRepository(
                 l.quality_profile_id, q.name, q.cutoff_quality, q.upgrade_until_cutoff, q.upgrade_unknown_items,
                 l.import_workflow, l.processor_name, l.processor_output_path, l.processor_timeout_minutes, l.processor_failure_mode,
                 l.auto_search_enabled, l.missing_search_enabled, l.upgrade_search_enabled, l.search_interval_hours,
-                l.retry_delay_hours, l.max_items_per_run, l.created_utc, l.updated_utc
+                l.retry_delay_hours, l.max_items_per_run, l.search_window_start_hour, l.search_window_end_hour,
+                l.created_utc, l.updated_utc
             FROM libraries l
             LEFT JOIN quality_profiles q ON q.id = l.quality_profile_id
             ORDER BY l.media_type ASC, l.name ASC;
@@ -175,7 +176,8 @@ public sealed class SqlitePlatformSettingsRepository(
             """
             SELECT
                 id, name, media_type, cutoff_quality, allowed_qualities, custom_format_ids,
-                upgrade_until_cutoff, upgrade_unknown_items, created_utc, updated_utc
+                upgrade_until_cutoff, upgrade_unknown_items, allow_lower_quality_replacements,
+                preset_id, preset_version, created_utc, updated_utc
             FROM quality_profiles
             ORDER BY sort_order ASC, media_type ASC, name ASC;
             """;
@@ -745,6 +747,10 @@ public sealed class SqlitePlatformSettingsRepository(
             CustomFormatIds: NormalizeCsv(request.CustomFormatIds),
             UpgradeUntilCutoff: request.UpgradeUntilCutoff,
             UpgradeUnknownItems: request.UpgradeUnknownItems,
+            AllowLowerQualityReplacements: false,
+            PresetId: null,
+            PresetVersion: null,
+            PresetDrifted: false,
             CreatedUtc: now,
             UpdatedUtc: now);
 
@@ -752,6 +758,48 @@ public sealed class SqlitePlatformSettingsRepository(
             DelunoDatabaseNames.Platform,
             cancellationToken);
 
+        await InsertQualityProfileAsync(connection, item, cancellationToken);
+        return item;
+    }
+
+    public async Task<QualityProfileItem> CreateQualityProfileFromPresetAsync(
+        string presetId,
+        string? nameOverride,
+        CancellationToken cancellationToken)
+    {
+        var preset = Presets.QualityProfilePresetCatalog.FindById(presetId)
+            ?? throw new InvalidOperationException($"Preset '{presetId}' not found.");
+
+        var now = timeProvider.GetUtcNow();
+        var item = new QualityProfileItem(
+            Id: Guid.CreateVersion7().ToString("N"),
+            Name: NormalizeName(nameOverride) ?? preset.Name,
+            MediaType: preset.MediaType,
+            CutoffQuality: preset.CutoffQuality,
+            AllowedQualities: preset.AllowedQualities,
+            CustomFormatIds: string.Empty,
+            UpgradeUntilCutoff: preset.UpgradeUntilCutoff,
+            UpgradeUnknownItems: preset.UpgradeUnknownItems,
+            AllowLowerQualityReplacements: false,
+            PresetId: preset.Id,
+            PresetVersion: preset.Version,
+            PresetDrifted: false,
+            CreatedUtc: now,
+            UpdatedUtc: now);
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        await InsertQualityProfileAsync(connection, item, cancellationToken);
+        return item;
+    }
+
+    private async Task InsertQualityProfileAsync(
+        System.Data.Common.DbConnection connection,
+        QualityProfileItem item,
+        CancellationToken cancellationToken)
+    {
         var sortOrder = await GetNextQualityProfileSortOrderAsync(connection, cancellationToken);
 
         using var command = connection.CreateCommand();
@@ -759,11 +807,13 @@ public sealed class SqlitePlatformSettingsRepository(
             """
             INSERT INTO quality_profiles (
                 id, name, media_type, sort_order, cutoff_quality, allowed_qualities, custom_format_ids,
-                upgrade_until_cutoff, upgrade_unknown_items, created_utc, updated_utc
+                upgrade_until_cutoff, upgrade_unknown_items, allow_lower_quality_replacements,
+                preset_id, preset_version, created_utc, updated_utc
             )
             VALUES (
                 @id, @name, @mediaType, @sortOrder, @cutoffQuality, @allowedQualities, @customFormatIds,
-                @upgradeUntilCutoff, @upgradeUnknownItems, @createdUtc, @updatedUtc
+                @upgradeUntilCutoff, @upgradeUnknownItems, @allowLowerQualityReplacements,
+                @presetId, @presetVersion, @createdUtc, @updatedUtc
             );
             """;
 
@@ -776,11 +826,12 @@ public sealed class SqlitePlatformSettingsRepository(
         AddParameter(command, "@customFormatIds", item.CustomFormatIds);
         AddParameter(command, "@upgradeUntilCutoff", item.UpgradeUntilCutoff ? 1 : 0);
         AddParameter(command, "@upgradeUnknownItems", item.UpgradeUnknownItems ? 1 : 0);
+        AddParameter(command, "@allowLowerQualityReplacements", item.AllowLowerQualityReplacements ? 1 : 0);
+        AddParameter(command, "@presetId", item.PresetId);
+        AddParameter(command, "@presetVersion", (object?)item.PresetVersion ?? DBNull.Value);
         AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
         AddParameter(command, "@updatedUtc", item.UpdatedUtc.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
-
-        return item;
     }
 
     public async Task<TagItem> CreateTagAsync(
@@ -1450,6 +1501,8 @@ public sealed class SqlitePlatformSettingsRepository(
             SearchIntervalHours: NormalizePositiveValue(request.SearchIntervalHours, 6),
             RetryDelayHours: NormalizePositiveValue(request.RetryDelayHours, 24),
             MaxItemsPerRun: NormalizePositiveValue(request.MaxItemsPerRun, 25),
+            SearchWindowStartHour: null,
+            SearchWindowEndHour: null,
             AutomationStatus: "idle",
             SearchRequested: false,
             LastSearchedUtc: null,
@@ -1479,14 +1532,18 @@ public sealed class SqlitePlatformSettingsRepository(
                 import_workflow, processor_name, processor_output_path, processor_timeout_minutes, processor_failure_mode,
                 auto_search_enabled,
                 missing_search_enabled, upgrade_search_enabled, search_interval_hours,
-                retry_delay_hours, max_items_per_run, created_utc, updated_utc
+                retry_delay_hours, max_items_per_run,
+                search_window_start_hour, search_window_end_hour,
+                created_utc, updated_utc
             )
             VALUES (
                 @id, @name, @mediaType, @purpose, @rootPath, @downloadsPath, @qualityProfileId,
                 @importWorkflow, @processorName, @processorOutputPath, @processorTimeoutMinutes, @processorFailureMode,
                 @autoSearchEnabled,
                 @missingSearchEnabled, @upgradeSearchEnabled, @searchIntervalHours,
-                @retryDelayHours, @maxItemsPerRun, @createdUtc, @updatedUtc
+                @retryDelayHours, @maxItemsPerRun,
+                @searchWindowStartHour, @searchWindowEndHour,
+                @createdUtc, @updatedUtc
             );
             """;
 
@@ -1508,6 +1565,8 @@ public sealed class SqlitePlatformSettingsRepository(
         AddParameter(command, "@searchIntervalHours", item.SearchIntervalHours);
         AddParameter(command, "@retryDelayHours", item.RetryDelayHours);
         AddParameter(command, "@maxItemsPerRun", item.MaxItemsPerRun);
+        AddParameter(command, "@searchWindowStartHour", item.SearchWindowStartHour);
+        AddParameter(command, "@searchWindowEndHour", item.SearchWindowEndHour);
         AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
         AddParameter(command, "@updatedUtc", item.UpdatedUtc.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
@@ -1545,6 +1604,8 @@ public sealed class SqlitePlatformSettingsRepository(
                     search_interval_hours = @searchIntervalHours,
                     retry_delay_hours = @retryDelayHours,
                     max_items_per_run = @maxItemsPerRun,
+                    search_window_start_hour = @searchWindowStartHour,
+                    search_window_end_hour = @searchWindowEndHour,
                     updated_utc = @updatedUtc
                 WHERE id = @id;
                 """;
@@ -1556,6 +1617,8 @@ public sealed class SqlitePlatformSettingsRepository(
             AddParameter(command, "@searchIntervalHours", NormalizePositiveValue(request.SearchIntervalHours, 6));
             AddParameter(command, "@retryDelayHours", NormalizePositiveValue(request.RetryDelayHours, 24));
             AddParameter(command, "@maxItemsPerRun", NormalizePositiveValue(request.MaxItemsPerRun, 25));
+            AddParameter(command, "@searchWindowStartHour", NormalizeSearchWindowHour(request.SearchWindowStartHour));
+            AddParameter(command, "@searchWindowEndHour", NormalizeSearchWindowHour(request.SearchWindowEndHour));
             AddParameter(command, "@updatedUtc", now.ToString("O"));
 
             if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
@@ -1701,6 +1764,7 @@ public sealed class SqlitePlatformSettingsRepository(
                 id, name, protocol, privacy, base_url, api_key, priority, categories, tags,
                 media_scope, is_enabled, health_status, last_health_message,
                 last_health_failure_category, last_health_latency_ms, last_health_test_utc,
+                consecutive_failures, rate_limited_until_utc, disabled_reason,
                 created_utc, updated_utc
             FROM indexer_sources
             ORDER BY priority ASC, name ASC;
@@ -1726,8 +1790,11 @@ public sealed class SqlitePlatformSettingsRepository(
                 LastHealthFailureCategory: reader.IsDBNull(13) ? null : reader.GetString(13),
                 LastHealthLatencyMs: reader.IsDBNull(14) ? null : reader.GetInt32(14),
                 LastHealthTestUtc: reader.IsDBNull(15) ? null : ParseTimestamp(reader.GetString(15)),
-                CreatedUtc: ParseTimestamp(reader.GetString(16)),
-                UpdatedUtc: ParseTimestamp(reader.GetString(17))));
+                ConsecutiveFailures: reader.IsDBNull(16) ? 0 : reader.GetInt32(16),
+                RateLimitedUntilUtc: reader.IsDBNull(17) ? null : ParseTimestamp(reader.GetString(17)),
+                DisabledReason: reader.IsDBNull(18) ? null : reader.GetString(18),
+                CreatedUtc: ParseTimestamp(reader.GetString(19)),
+                UpdatedUtc: ParseTimestamp(reader.GetString(20))));
         }
 
         return items;
@@ -1848,6 +1915,9 @@ public sealed class SqlitePlatformSettingsRepository(
             LastHealthFailureCategory: null,
             LastHealthLatencyMs: null,
             LastHealthTestUtc: null,
+            ConsecutiveFailures: 0,
+            RateLimitedUntilUtc: null,
+            DisabledReason: null,
             CreatedUtc: now,
             UpdatedUtc: now);
 
@@ -1910,16 +1980,14 @@ public sealed class SqlitePlatformSettingsRepository(
         if (existing is null) return null;
 
         var newName     = NormalizeName(request.Name) ?? existing.Name;
-        var newProtocol = NormalizeIndexerProtocol(request.Protocol) is { } p && p != "unknown" ? p : existing.Protocol;
-        var newPrivacy  = NormalizeIndexerPrivacy(request.Privacy) is { } pr && pr != "unknown" ? pr : existing.Privacy;
+        var newProtocol = request.Protocol is not null ? NormalizeIndexerProtocol(request.Protocol) : existing.Protocol;
+        var newPrivacy  = request.Privacy is not null ? NormalizeIndexerPrivacy(request.Privacy) : existing.Privacy;
         var newBaseUrl  = NormalizePath(request.BaseUrl) ?? existing.BaseUrl;
         var newApiKey   = request.ApiKey is not null ? NormalizeName(request.ApiKey) : existing.ApiKey;
         var newPriority = request.Priority is >= 1 ? request.Priority.Value : existing.Priority;
         var newCats     = request.Categories is not null ? NormalizeCsv(request.Categories) : existing.Categories;
         var newTags     = request.Tags is not null ? NormalizeCsv(request.Tags) : existing.Tags;
-        var newScope    = NormalizeMediaScope(request.MediaScope) is { } s && s != "both" || request.MediaScope is not null
-                          ? NormalizeMediaScope(request.MediaScope)
-                          : existing.MediaScope;
+        var newScope    = request.MediaScope is not null ? NormalizeMediaScope(request.MediaScope) : existing.MediaScope;
         var newEnabled  = request.IsEnabled ?? existing.IsEnabled;
 
         // If enabling a previously-disabled indexer, reset health status so the UI prompts a test
@@ -2076,7 +2144,7 @@ public sealed class SqlitePlatformSettingsRepository(
         if (existing is null) return null;
 
         var newName     = NormalizeName(request.Name) ?? existing.Name;
-        var newProtocol = NormalizeDownloadProtocol(request.Protocol) is { } p && p != "unknown" ? p : existing.Protocol;
+        var newProtocol = request.Protocol is not null ? NormalizeDownloadProtocol(request.Protocol) : existing.Protocol;
         var newHost     = request.Host is not null ? NormalizeName(request.Host) : existing.Host;
         var newPort     = request.Port is >= 1 ? request.Port : existing.Port;
         var newUsername = request.Username is not null ? NormalizeName(request.Username) : existing.Username;
@@ -2167,10 +2235,34 @@ public sealed class SqlitePlatformSettingsRepository(
         CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
+        var isFailure = healthStatus is "degraded" or "failing" or "timeout" or "unreachable";
+        var isRateLimit = failureCategory is "rateLimit" or "rateLimited" or "rate_limit";
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
             cancellationToken);
+
+        // Read current consecutive_failures so we can increment
+        int currentFailures = 0;
+        using (var read = connection.CreateCommand())
+        {
+            read.CommandText = "SELECT consecutive_failures FROM indexer_sources WHERE id = @id;";
+            AddParameter(read, "@id", id);
+            var scalar = await read.ExecuteScalarAsync(cancellationToken);
+            if (scalar is null) return null;
+            currentFailures = Convert.ToInt32(scalar);
+        }
+
+        var newFailures = isFailure ? currentFailures + 1 : 0;
+        DateTimeOffset? rateLimitedUntil = null;
+        if (isRateLimit)
+        {
+            rateLimitedUntil = now.AddMinutes(60);
+        }
+        else if (isFailure && newFailures >= 5)
+        {
+            rateLimitedUntil = now.AddMinutes(30);
+        }
 
         using var command = connection.CreateCommand();
         command.CommandText =
@@ -2182,6 +2274,8 @@ public sealed class SqlitePlatformSettingsRepository(
                 last_health_failure_category = @lastHealthFailureCategory,
                 last_health_latency_ms = @lastHealthLatencyMs,
                 last_health_test_utc = @lastHealthTestUtc,
+                consecutive_failures = @consecutiveFailures,
+                rate_limited_until_utc = @rateLimitedUntilUtc,
                 updated_utc = @updatedUtc
             WHERE id = @id;
             """;
@@ -2192,6 +2286,8 @@ public sealed class SqlitePlatformSettingsRepository(
         AddParameter(command, "@lastHealthFailureCategory", failureCategory);
         AddParameter(command, "@lastHealthLatencyMs", latencyMs);
         AddParameter(command, "@lastHealthTestUtc", now.ToString("O"));
+        AddParameter(command, "@consecutiveFailures", newFailures);
+        AddParameter(command, "@rateLimitedUntilUtc", rateLimitedUntil?.ToString("O"));
         AddParameter(command, "@updatedUtc", now.ToString("O"));
 
         if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
@@ -2206,6 +2302,38 @@ public sealed class SqlitePlatformSettingsRepository(
             FailureCategory: failureCategory,
             LatencyMs: latencyMs,
             TestedUtc: now);
+    }
+
+    public async Task<IndexerItem?> ResetIndexerCircuitAsync(string id, CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE indexer_sources
+            SET
+                consecutive_failures = 0,
+                rate_limited_until_utc = NULL,
+                health_status = CASE WHEN is_enabled = 1 THEN 'untested' ELSE 'disabled' END,
+                last_health_message = 'Circuit reset manually.',
+                updated_utc = @updatedUtc
+            WHERE id = @id;
+            """;
+        AddParameter(command, "@id", id);
+        AddParameter(command, "@updatedUtc", now.ToString("O"));
+
+        if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
+        {
+            return null;
+        }
+
+        var items = await ListIndexersAsync(cancellationToken);
+        return items.FirstOrDefault(i => i.Id == id);
     }
 
     public async Task<IndexerTestResult?> UpdateDownloadClientHealthAsync(
@@ -2688,6 +2816,8 @@ public sealed class SqlitePlatformSettingsRepository(
                 SearchIntervalHours: 6,
                 RetryDelayHours: 24,
                 MaxItemsPerRun: 25,
+                SearchWindowStartHour: null,
+                SearchWindowEndHour: null,
                 AutomationStatus: "idle",
                 SearchRequested: false,
                 LastSearchedUtc: null,
@@ -2722,6 +2852,8 @@ public sealed class SqlitePlatformSettingsRepository(
                 SearchIntervalHours: 6,
                 RetryDelayHours: 24,
                 MaxItemsPerRun: 25,
+                SearchWindowStartHour: null,
+                SearchWindowEndHour: null,
                 AutomationStatus: "idle",
                 SearchRequested: false,
                 LastSearchedUtc: null,
@@ -2740,14 +2872,18 @@ public sealed class SqlitePlatformSettingsRepository(
                     import_workflow, processor_name, processor_output_path, processor_timeout_minutes, processor_failure_mode,
                     auto_search_enabled,
                     missing_search_enabled, upgrade_search_enabled, search_interval_hours,
-                    retry_delay_hours, max_items_per_run, created_utc, updated_utc
+                    retry_delay_hours, max_items_per_run,
+                    search_window_start_hour, search_window_end_hour,
+                    created_utc, updated_utc
                 )
                 VALUES (
                     @id, @name, @mediaType, @purpose, @rootPath, @downloadsPath, @qualityProfileId,
                     @importWorkflow, @processorName, @processorOutputPath, @processorTimeoutMinutes, @processorFailureMode,
                     @autoSearchEnabled,
                     @missingSearchEnabled, @upgradeSearchEnabled, @searchIntervalHours,
-                    @retryDelayHours, @maxItemsPerRun, @createdUtc, @updatedUtc
+                    @retryDelayHours, @maxItemsPerRun,
+                    @searchWindowStartHour, @searchWindowEndHour,
+                    @createdUtc, @updatedUtc
                 );
                 """;
 
@@ -2769,6 +2905,8 @@ public sealed class SqlitePlatformSettingsRepository(
             AddParameter(command, "@searchIntervalHours", item.SearchIntervalHours);
             AddParameter(command, "@retryDelayHours", item.RetryDelayHours);
             AddParameter(command, "@maxItemsPerRun", item.MaxItemsPerRun);
+            AddParameter(command, "@searchWindowStartHour", item.SearchWindowStartHour);
+            AddParameter(command, "@searchWindowEndHour", item.SearchWindowEndHour);
             AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
             AddParameter(command, "@updatedUtc", item.UpdatedUtc.ToString("O"));
             await command.ExecuteNonQueryAsync(cancellationToken);
@@ -2788,7 +2926,8 @@ public sealed class SqlitePlatformSettingsRepository(
                 l.quality_profile_id, q.name, q.cutoff_quality, q.upgrade_until_cutoff, q.upgrade_unknown_items,
                 l.import_workflow, l.processor_name, l.processor_output_path, l.processor_timeout_minutes, l.processor_failure_mode,
                 l.auto_search_enabled, l.missing_search_enabled, l.upgrade_search_enabled, l.search_interval_hours,
-                l.retry_delay_hours, l.max_items_per_run, l.created_utc, l.updated_utc
+                l.retry_delay_hours, l.max_items_per_run, l.search_window_start_hour, l.search_window_end_hour,
+                l.created_utc, l.updated_utc
             FROM libraries l
             LEFT JOIN quality_profiles q ON q.id = l.quality_profile_id
             WHERE l.id = @id
@@ -2822,10 +2961,10 @@ public sealed class SqlitePlatformSettingsRepository(
         var now = DateTimeOffset.UtcNow;
         var seeds = new[]
         {
-            new QualityProfileItem(Guid.CreateVersion7().ToString("N"), "Movies / Standard", "movies", "WEB 1080p", "WEB 1080p, Bluray 1080p, Remux 1080p", string.Empty, true, false, now, now),
-            new QualityProfileItem(Guid.CreateVersion7().ToString("N"), "Movies / Premium 4K", "movies", "Remux 2160p", "WEB 2160p, Bluray 2160p, Remux 2160p", string.Empty, true, true, now, now),
-            new QualityProfileItem(Guid.CreateVersion7().ToString("N"), "TV Shows / Standard", "tv", "WEB 1080p", "WEB 720p, WEB 1080p, HDTV 1080p", string.Empty, true, false, now, now),
-            new QualityProfileItem(Guid.CreateVersion7().ToString("N"), "TV Shows / Premium 4K", "tv", "WEB 2160p", "WEB 1080p, WEB 2160p, Bluray 2160p", string.Empty, true, true, now, now)
+            new QualityProfileItem(Guid.CreateVersion7().ToString("N"), "Movies / Standard", "movies", "WEB 1080p", "WEB 1080p, Bluray 1080p, Remux 1080p", string.Empty, true, false, false, null, null, false, now, now),
+            new QualityProfileItem(Guid.CreateVersion7().ToString("N"), "Movies / Premium 4K", "movies", "Remux 2160p", "WEB 2160p, Bluray 2160p, Remux 2160p", string.Empty, true, true, false, null, null, false, now, now),
+            new QualityProfileItem(Guid.CreateVersion7().ToString("N"), "TV Shows / Standard", "tv", "WEB 1080p", "WEB 720p, WEB 1080p, HDTV 1080p", string.Empty, true, false, false, null, null, false, now, now),
+            new QualityProfileItem(Guid.CreateVersion7().ToString("N"), "TV Shows / Premium 4K", "tv", "WEB 2160p", "WEB 1080p, WEB 2160p, Bluray 2160p", string.Empty, true, true, false, null, null, false, now, now)
         };
 
         foreach (var item in seeds)
@@ -2836,11 +2975,11 @@ public sealed class SqlitePlatformSettingsRepository(
                 """
                 INSERT INTO quality_profiles (
                     id, name, media_type, sort_order, cutoff_quality, allowed_qualities, custom_format_ids,
-                    upgrade_until_cutoff, upgrade_unknown_items, created_utc, updated_utc
+                    upgrade_until_cutoff, upgrade_unknown_items, allow_lower_quality_replacements, created_utc, updated_utc
                 )
                 VALUES (
                     @id, @name, @mediaType, @sortOrder, @cutoffQuality, @allowedQualities, @customFormatIds,
-                    @upgradeUntilCutoff, @upgradeUnknownItems, @createdUtc, @updatedUtc
+                    @upgradeUntilCutoff, @upgradeUnknownItems, @allowLowerQualityReplacements, @createdUtc, @updatedUtc
                 );
                 """;
 
@@ -2853,6 +2992,7 @@ public sealed class SqlitePlatformSettingsRepository(
             AddParameter(command, "@customFormatIds", item.CustomFormatIds);
             AddParameter(command, "@upgradeUntilCutoff", item.UpgradeUntilCutoff ? 1 : 0);
             AddParameter(command, "@upgradeUnknownItems", item.UpgradeUnknownItems ? 1 : 0);
+            AddParameter(command, "@allowLowerQualityReplacements", item.AllowLowerQualityReplacements ? 1 : 0);
             AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
             AddParameter(command, "@updatedUtc", item.UpdatedUtc.ToString("O"));
             await command.ExecuteNonQueryAsync(cancellationToken);
@@ -2991,7 +3131,8 @@ public sealed class SqlitePlatformSettingsRepository(
             """
             SELECT
                 id, name, media_type, cutoff_quality, allowed_qualities, custom_format_ids,
-                upgrade_until_cutoff, upgrade_unknown_items, created_utc, updated_utc
+                upgrade_until_cutoff, upgrade_unknown_items, allow_lower_quality_replacements,
+                preset_id, preset_version, created_utc, updated_utc
             FROM quality_profiles
             WHERE id = @id
             LIMIT 1;
@@ -3420,6 +3561,9 @@ public sealed class SqlitePlatformSettingsRepository(
         }
     }
 
+    private static int? NormalizeSearchWindowHour(int? value)
+        => value is null ? null : Math.Clamp(value.Value, 0, 23);
+
     private static string NormalizeTagColor(string? value)
     {
         var normalized = value?.Trim().ToLowerInvariant();
@@ -3572,16 +3716,28 @@ public sealed class SqlitePlatformSettingsRepository(
             SearchIntervalHours: reader.GetInt32(19),
             RetryDelayHours: reader.GetInt32(20),
             MaxItemsPerRun: reader.GetInt32(21),
+            SearchWindowStartHour: reader.IsDBNull(22) ? null : reader.GetInt32(22),
+            SearchWindowEndHour: reader.IsDBNull(23) ? null : reader.GetInt32(23),
             AutomationStatus: "idle",
             SearchRequested: false,
             LastSearchedUtc: null,
             NextSearchUtc: null,
-            CreatedUtc: ParseTimestamp(reader.GetString(22)),
-            UpdatedUtc: ParseTimestamp(reader.GetString(23)));
+            CreatedUtc: ParseTimestamp(reader.GetString(24)),
+            UpdatedUtc: ParseTimestamp(reader.GetString(25)));
     }
 
     private static QualityProfileItem ReadQualityProfile(System.Data.Common.DbDataReader reader)
     {
+        var presetId = reader.IsDBNull(9) ? null : reader.GetString(9);
+        var presetVersion = reader.IsDBNull(10) ? (int?)null : reader.GetInt32(10);
+
+        var presetDrifted = false;
+        if (presetId is not null && presetVersion.HasValue)
+        {
+            var currentPreset = Presets.QualityProfilePresetCatalog.FindById(presetId);
+            presetDrifted = currentPreset is null || currentPreset.Version != presetVersion.Value;
+        }
+
         return new QualityProfileItem(
             Id: reader.GetString(0),
             Name: reader.GetString(1),
@@ -3591,8 +3747,12 @@ public sealed class SqlitePlatformSettingsRepository(
             CustomFormatIds: reader.IsDBNull(5) ? string.Empty : reader.GetString(5),
             UpgradeUntilCutoff: reader.GetInt64(6) == 1,
             UpgradeUnknownItems: reader.GetInt64(7) == 1,
-            CreatedUtc: ParseTimestamp(reader.GetString(8)),
-            UpdatedUtc: ParseTimestamp(reader.GetString(9)));
+            AllowLowerQualityReplacements: reader.GetInt64(8) == 1,
+            PresetId: presetId,
+            PresetVersion: presetVersion,
+            PresetDrifted: presetDrifted,
+            CreatedUtc: ParseTimestamp(reader.GetString(11)),
+            UpdatedUtc: ParseTimestamp(reader.GetString(12)));
     }
 
     private static TagItem ReadTag(System.Data.Common.DbDataReader reader)
@@ -3768,5 +3928,144 @@ public sealed class SqlitePlatformSettingsRepository(
 
     private static DateTimeOffset ParseTimestamp(string value)
         => DateTimeOffset.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+
+    public async Task<IReadOnlyList<NotificationWebhookItem>> ListNotificationWebhooksAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT id, name, url, event_filters, is_enabled, last_fired_utc, last_error, created_utc, updated_utc
+            FROM notification_webhooks
+            ORDER BY name ASC;
+            """;
+
+        var items = new List<NotificationWebhookItem>();
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            items.Add(ReadNotificationWebhook(reader));
+        }
+
+        return items;
+    }
+
+    public async Task<NotificationWebhookItem> CreateNotificationWebhookAsync(
+        CreateNotificationWebhookRequest request,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        var id = Guid.CreateVersion7().ToString("N");
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            INSERT INTO notification_webhooks (id, name, url, event_filters, is_enabled, last_fired_utc, last_error, created_utc, updated_utc)
+            VALUES (@id, @name, @url, @eventFilters, @isEnabled, NULL, NULL, @createdUtc, @updatedUtc);
+
+            SELECT id, name, url, event_filters, is_enabled, last_fired_utc, last_error, created_utc, updated_utc
+            FROM notification_webhooks WHERE id = @id;
+            """;
+
+        AddParameter(command, "@id", id);
+        AddParameter(command, "@name", NormalizeName(request.Name) ?? "Webhook");
+        AddParameter(command, "@url", request.Url?.Trim() ?? string.Empty);
+        AddParameter(command, "@eventFilters", NormalizeCsv(request.EventFilters));
+        AddParameter(command, "@isEnabled", request.IsEnabled ? 1 : 0);
+        AddParameter(command, "@createdUtc", now.ToString("O"));
+        AddParameter(command, "@updatedUtc", now.ToString("O"));
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        await reader.ReadAsync(cancellationToken);
+        return ReadNotificationWebhook(reader);
+    }
+
+    public async Task<NotificationWebhookItem?> UpdateNotificationWebhookAsync(
+        string id,
+        UpdateNotificationWebhookRequest request,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE notification_webhooks
+            SET name = @name, url = @url, event_filters = @eventFilters, is_enabled = @isEnabled, updated_utc = @updatedUtc
+            WHERE id = @id;
+
+            SELECT id, name, url, event_filters, is_enabled, last_fired_utc, last_error, created_utc, updated_utc
+            FROM notification_webhooks WHERE id = @id;
+            """;
+
+        AddParameter(command, "@id", id);
+        AddParameter(command, "@name", NormalizeName(request.Name) ?? "Webhook");
+        AddParameter(command, "@url", request.Url?.Trim() ?? string.Empty);
+        AddParameter(command, "@eventFilters", NormalizeCsv(request.EventFilters));
+        AddParameter(command, "@isEnabled", request.IsEnabled ? 1 : 0);
+        AddParameter(command, "@updatedUtc", now.ToString("O"));
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? ReadNotificationWebhook(reader) : null;
+    }
+
+    public async Task<bool> DeleteNotificationWebhookAsync(string id, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM notification_webhooks WHERE id = @id;";
+        AddParameter(command, "@id", id);
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
+    public async Task RecordNotificationWebhookFiredAsync(string id, string? error, CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE notification_webhooks
+            SET last_fired_utc = @lastFiredUtc, last_error = @lastError, updated_utc = @updatedUtc
+            WHERE id = @id;
+            """;
+        AddParameter(command, "@id", id);
+        AddParameter(command, "@lastFiredUtc", now.ToString("O"));
+        AddParameter(command, "@lastError", error);
+        AddParameter(command, "@updatedUtc", now.ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static NotificationWebhookItem ReadNotificationWebhook(System.Data.Common.DbDataReader reader)
+    {
+        return new NotificationWebhookItem(
+            Id: reader.GetString(0),
+            Name: reader.GetString(1),
+            Url: reader.GetString(2),
+            EventFilters: reader.GetString(3),
+            IsEnabled: reader.GetInt64(4) == 1,
+            LastFiredUtc: reader.IsDBNull(5) ? null : ParseTimestamp(reader.GetString(5)),
+            LastError: reader.IsDBNull(6) ? null : reader.GetString(6),
+            CreatedUtc: ParseTimestamp(reader.GetString(7)),
+            UpdatedUtc: ParseTimestamp(reader.GetString(8)));
+    }
 }
 

@@ -20,5 +20,8 @@ public sealed record IndexerItem(
     string? LastHealthFailureCategory,
     int? LastHealthLatencyMs,
     DateTimeOffset? LastHealthTestUtc,
+    int ConsecutiveFailures,
+    DateTimeOffset? RateLimitedUntilUtc,
+    string? DisabledReason,
     DateTimeOffset CreatedUtc,
     DateTimeOffset UpdatedUtc);

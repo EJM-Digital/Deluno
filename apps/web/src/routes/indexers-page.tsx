@@ -22,6 +22,7 @@ import {
   Plus,
   Radio,
   RadioTower,
+  RefreshCw,
   Route,
   ShieldAlert,
   Trash2,
@@ -292,7 +293,7 @@ function healthVariant(v: string): "success" | "warning" | "destructive" {
 
 function healthLabel(v: string) {
   if (v === "healthy") return "Healthy";
-  if (v === "untested") return "Untested";
+  if (v === "untested") return "Not tested yet";
   if (v === "degraded") return "Degraded";
   if (v === "disabled") return "Disabled";
   if (v === "unreachable") return "Unreachable";
@@ -1048,7 +1049,7 @@ function LibraryRoutingPanel({
                   />
                   <div className="min-w-0 flex-1">
                     <p className="text-[12.5px] font-medium text-foreground">{idx.name}</p>
-                    <p className="text-[10.5px] text-muted-foreground">{idx.protocol} · P{idx.priority}</p>
+                    <p className="text-[10.5px] text-muted-foreground">{idx.protocol.toUpperCase()} · Priority {idx.priority}</p>
                   </div>
                   <Badge variant={healthVariant(idx.healthStatus)} className="text-[9px]">
                     {healthLabel(idx.healthStatus)}
@@ -1181,7 +1182,7 @@ export function IndexersPage() {
   const { clients, indexers, libraries, routing, settings, tags, telemetry } = loaderData;
   const isRouteLoading = navigation.state !== "idle";
 
-  useSignalREvent("DownloadTelemetryChanged", () => {
+  useSignalREvent("DownloadProgress", () => {
     const now = Date.now();
     if (revalidator.state === "idle" && now - lastTelemetryEventRefresh.current > 5000) {
       lastTelemetryEventRefresh.current = now;
@@ -1372,6 +1373,21 @@ export function IndexersPage() {
     }
   }
 
+  async function handleResetCircuit(id: string, name: string) {
+    setBusyKey(`reset:${id}`);
+    try {
+      const res = await authedFetch(`/api/indexers/${id}/reset-circuit`, { method: "POST" });
+      if (!res.ok) throw new Error("Could not reset circuit.");
+      toast.success(`Circuit reset for "${name}"`);
+      revalidator.revalidate();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Reset failed.");
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+
   async function handleToggleIndexer(id: string, name: string, enabled: boolean) {
     setBusyKey(`toggle:${id}`);
     try {
@@ -1499,15 +1515,34 @@ export function IndexersPage() {
                       {idx.protocol}
                     </span>
                     <span className="rounded-full border border-hairline px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-                      P{idx.priority}
+                      Priority {idx.priority}
                     </span>
                   </div>
                   <p className="mt-0.5 font-mono text-[11px] text-muted-foreground truncate">{idx.baseUrl}</p>
                   {idx.lastHealthMessage && idx.isEnabled && (
                     <p className="mt-0.5 text-[11px] text-muted-foreground">{idx.lastHealthMessage}</p>
                   )}
+                  {idx.consecutiveFailures > 0 && idx.isEnabled && (
+                    <p className="mt-0.5 text-[11px] text-warning">
+                      {idx.consecutiveFailures} consecutive failure{idx.consecutiveFailures !== 1 ? "s" : ""}
+                      {idx.disabledReason ? ` — ${idx.disabledReason}` : ""}
+                    </p>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {idx.consecutiveFailures > 0 && idx.isEnabled && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void handleResetCircuit(idx.id, idx.name)}
+                      disabled={busyKey === `reset:${idx.id}`}
+                      title="Reset the circuit breaker and clear consecutive failure count"
+                      className="gap-1.5 border-warning/40 text-warning hover:bg-warning/10"
+                    >
+                      {busyKey === `reset:${idx.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                      Reset
+                    </Button>
+                  )}
                   <Button
                     size="sm"
                     variant="outline"
@@ -1646,10 +1681,10 @@ export function IndexersPage() {
                     <p className="mt-1 text-[11px] text-muted-foreground">{client.lastHealthMessage}</p>
                   ) : null}
                   <div className="mt-2 grid gap-1.5 text-[10.5px] text-muted-foreground sm:grid-cols-3">
-                    <HealthFact label="Endpoint" value={client.endpointUrl ?? ([client.host, client.port].filter(Boolean).join(":") || "Not configured")} />
-                    <HealthFact label="Last test" value={client.lastHealthTestUtc ? formatClientHistoryTime(client.lastHealthTestUtc) : "Not tested"} />
-                    <HealthFact label="Latency" value={client.lastHealthLatencyMs != null ? `${client.lastHealthLatencyMs} ms` : "No sample"} />
-                    {client.lastHealthFailureCategory ? <HealthFact label="Failure" value={client.lastHealthFailureCategory} /> : null}
+                    <HealthFact label="Address" value={client.endpointUrl ?? ([client.host, client.port].filter(Boolean).join(":") || "Not configured")} />
+                    <HealthFact label="Last tested" value={client.lastHealthTestUtc ? formatClientHistoryTime(client.lastHealthTestUtc) : "Never"} />
+                    <HealthFact label="Response time" value={client.lastHealthLatencyMs != null ? `${client.lastHealthLatencyMs} ms` : "Not yet measured"} />
+                    {client.lastHealthFailureCategory ? <HealthFact label="Error" value={client.lastHealthFailureCategory} /> : null}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">

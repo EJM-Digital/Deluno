@@ -40,6 +40,8 @@ interface LibraryFormState {
   searchIntervalHours: number;
   retryDelayHours: number;
   maxItemsPerRun: number;
+  searchWindowStartHour: number | null;
+  searchWindowEndHour: number | null;
 }
 
 interface QualityProfileFormState {
@@ -74,6 +76,18 @@ const MAX_PER_RUN_OPTIONS = [
   { label: "Balanced (10)", value: "10" },
   { label: "Heavy (25)", value: "25" },
   { label: "Aggressive (50)", value: "50" }
+];
+
+const HOUR_OPTIONS = [
+  { label: "Midnight (0)", value: "0" },
+  { label: "1 AM", value: "1" },
+  { label: "2 AM", value: "2" },
+  { label: "6 AM", value: "6" },
+  { label: "8 AM", value: "8" },
+  { label: "Noon (12)", value: "12" },
+  { label: "6 PM (18)", value: "18" },
+  { label: "10 PM (22)", value: "22" },
+  { label: "11 PM (23)", value: "23" }
 ];
 
 const QUALITY_OPTIONS = [
@@ -232,7 +246,7 @@ export function SettingsOverviewPage() {
 
   async function handleUpdateLibraryAutomation(
     library: LibraryItem,
-    patch: Partial<Pick<LibraryItem, "autoSearchEnabled" | "missingSearchEnabled" | "upgradeSearchEnabled" | "searchIntervalHours" | "retryDelayHours" | "maxItemsPerRun">>
+    patch: Partial<Pick<LibraryItem, "autoSearchEnabled" | "missingSearchEnabled" | "upgradeSearchEnabled" | "searchIntervalHours" | "retryDelayHours" | "maxItemsPerRun" | "searchWindowStartHour" | "searchWindowEndHour">>
   ) {
     setBusyKey(`automation:${library.id}`);
     setActionMessage(null);
@@ -247,7 +261,9 @@ export function SettingsOverviewPage() {
           upgradeSearchEnabled: patch.upgradeSearchEnabled ?? library.upgradeSearchEnabled,
           searchIntervalHours: patch.searchIntervalHours ?? library.searchIntervalHours,
           retryDelayHours: patch.retryDelayHours ?? library.retryDelayHours,
-          maxItemsPerRun: patch.maxItemsPerRun ?? library.maxItemsPerRun
+          maxItemsPerRun: patch.maxItemsPerRun ?? library.maxItemsPerRun,
+          searchWindowStartHour: "searchWindowStartHour" in patch ? patch.searchWindowStartHour : library.searchWindowStartHour,
+          searchWindowEndHour: "searchWindowEndHour" in patch ? patch.searchWindowEndHour : library.searchWindowEndHour
         })
       });
 
@@ -551,6 +567,28 @@ export function SettingsOverviewPage() {
                 <Field label="Max items per run">
                   <PresetField inputType="number" value={String(libraryForm.maxItemsPerRun)} onChange={(value) => setLibraryForm((current) => ({ ...current, maxItemsPerRun: Number(value || 10) }))} options={MAX_PER_RUN_OPTIONS} customLabel="Custom max" customPlaceholder="Items per run" />
                 </Field>
+                <Field label="Search window start (hour)">
+                  <PresetField
+                    inputType="number"
+                    value={libraryForm.searchWindowStartHour !== null ? String(libraryForm.searchWindowStartHour) : ""}
+                    onChange={(value) => setLibraryForm((current) => ({ ...current, searchWindowStartHour: value === "" ? null : Number(value) }))}
+                    options={HOUR_OPTIONS}
+                    customLabel="Custom hour (0–23)"
+                    customPlaceholder="Hour 0–23"
+                  />
+                  <p className="density-help mt-1 text-muted-foreground">Earliest hour searches may run. Leave blank for anytime.</p>
+                </Field>
+                <Field label="Search window end (hour)">
+                  <PresetField
+                    inputType="number"
+                    value={libraryForm.searchWindowEndHour !== null ? String(libraryForm.searchWindowEndHour) : ""}
+                    onChange={(value) => setLibraryForm((current) => ({ ...current, searchWindowEndHour: value === "" ? null : Number(value) }))}
+                    options={HOUR_OPTIONS}
+                    customLabel="Custom hour (0–23)"
+                    customPlaceholder="Hour 0–23"
+                  />
+                  <p className="density-help mt-1 text-muted-foreground">Latest hour searches may run. Leave blank for anytime.</p>
+                </Field>
                 <div className="grid gap-3 sm:col-span-2 sm:grid-cols-3">
                   <ToggleField label="Auto search" checked={libraryForm.autoSearchEnabled} onChange={(checked) => setLibraryForm((current) => ({ ...current, autoSearchEnabled: checked }))} />
                   <ToggleField label="Missing search" checked={libraryForm.missingSearchEnabled} onChange={(checked) => setLibraryForm((current) => ({ ...current, missingSearchEnabled: checked }))} />
@@ -570,7 +608,7 @@ export function SettingsOverviewPage() {
             <CardHeader>
               <CardTitle>Libraries</CardTitle>
               <CardDescription>
-                Current library containers, automation posture, and live operations.
+                Your libraries and their current automation settings.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-[calc(var(--field-group-pad)*0.9)]">
@@ -630,6 +668,26 @@ export function SettingsOverviewPage() {
                         customPlaceholder="Items per run"
                       />
                     </Field>
+                    <Field label="Window start (h)">
+                      <PresetField
+                        inputType="number"
+                        value={library.searchWindowStartHour !== null && library.searchWindowStartHour !== undefined ? String(library.searchWindowStartHour) : ""}
+                        onChange={(value) => void handleUpdateLibraryAutomation(library, { searchWindowStartHour: value === "" ? null : Number(value) })}
+                        options={HOUR_OPTIONS}
+                        customLabel="Custom hour"
+                        customPlaceholder="0–23"
+                      />
+                    </Field>
+                    <Field label="Window end (h)">
+                      <PresetField
+                        inputType="number"
+                        value={library.searchWindowEndHour !== null && library.searchWindowEndHour !== undefined ? String(library.searchWindowEndHour) : ""}
+                        onChange={(value) => void handleUpdateLibraryAutomation(library, { searchWindowEndHour: value === "" ? null : Number(value) })}
+                        options={HOUR_OPTIONS}
+                        customLabel="Custom hour"
+                        customPlaceholder="0–23"
+                      />
+                    </Field>
                   </div>
                   <div className="mt-3 grid gap-3 md:grid-cols-3">
                     <ToggleField label="Automation" checked={library.autoSearchEnabled} onChange={(checked) => void handleUpdateLibraryAutomation(library, { autoSearchEnabled: checked })} />
@@ -680,7 +738,7 @@ export function SettingsOverviewPage() {
           <Card>
             <CardHeader>
               <CardTitle>Create quality profile</CardTitle>
-              <CardDescription>Define cutoff and allowed quality policy.</CardDescription>
+              <CardDescription>Set the minimum quality and which versions are allowed.</CardDescription>
             </CardHeader>
             <CardContent>
               <form className="grid gap-[var(--grid-gap)]" onSubmit={handleCreateProfile}>
@@ -697,7 +755,7 @@ export function SettingsOverviewPage() {
                     <option value="tv">TV</option>
                   </select>
                 </Field>
-                <Field label="Cutoff quality">
+                <Field label="Upgrade stops at">
                   <PresetField value={profileForm.cutoffQuality} onChange={(value) => setProfileForm((current) => ({ ...current, cutoffQuality: value }))} options={QUALITY_OPTIONS} customLabel="Custom quality" customPlaceholder="Quality name" />
                 </Field>
                 <Field label="Allowed qualities">
@@ -714,7 +772,7 @@ export function SettingsOverviewPage() {
                     customPlaceholder="Comma-separated quality names"
                   />
                 </Field>
-                <ToggleField label="Upgrade until cutoff" checked={profileForm.upgradeUntilCutoff} onChange={(checked) => setProfileForm((current) => ({ ...current, upgradeUntilCutoff: checked }))} />
+                <ToggleField label="Keep upgrading until target quality" checked={profileForm.upgradeUntilCutoff} onChange={(checked) => setProfileForm((current) => ({ ...current, upgradeUntilCutoff: checked }))} />
                 <ToggleField label="Upgrade unknown items" checked={profileForm.upgradeUnknownItems} onChange={(checked) => setProfileForm((current) => ({ ...current, upgradeUnknownItems: checked }))} />
                 <Button type="submit" disabled={busyKey === "create-profile"}>
                   {busyKey === "create-profile" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
@@ -728,7 +786,7 @@ export function SettingsOverviewPage() {
             <CardHeader>
               <CardTitle>Quality profiles</CardTitle>
               <CardDescription>
-                Cutoff and allowed quality policy currently available to libraries.
+                Quality settings available to your libraries.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-[calc(var(--field-group-pad)*0.9)]">
@@ -738,7 +796,7 @@ export function SettingsOverviewPage() {
                     <p className="font-display text-base font-semibold text-foreground">{profile.name}</p>
                     <Badge variant="info">{profile.mediaType === "tv" ? "TV" : "Movies"}</Badge>
                   </div>
-                  <p className="mt-2 text-sm text-muted-foreground">Cutoff {profile.cutoffQuality}</p>
+                  <p className="mt-2 text-sm text-muted-foreground">Stops at {profile.cutoffQuality}</p>
                   <p className="mt-1 text-xs text-muted-foreground">{profile.allowedQualities}</p>
                 </div>
               ))}
@@ -747,9 +805,9 @@ export function SettingsOverviewPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Operational split</CardTitle>
+              <CardTitle>Movies vs TV</CardTitle>
               <CardDescription>
-                How Deluno is currently divided between movie and TV management.
+                How your libraries are split between movies and TV shows.
               </CardDescription>
             </CardHeader>
             <CardContent className="grid grid-cols-2 gap-4">
@@ -786,7 +844,9 @@ function createEmptyLibraryForm(defaultProfileId: string): LibraryFormState {
     upgradeSearchEnabled: false,
     searchIntervalHours: 6,
     retryDelayHours: 12,
-    maxItemsPerRun: 25
+    maxItemsPerRun: 25,
+    searchWindowStartHour: null,
+    searchWindowEndHour: null
   };
 }
 

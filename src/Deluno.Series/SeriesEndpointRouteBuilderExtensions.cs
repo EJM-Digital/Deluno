@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
@@ -11,6 +12,7 @@ using Deluno.Platform;
 using Deluno.Platform.Quality;
 using Deluno.Series.Contracts;
 using Deluno.Series.Data;
+using Deluno.Series.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -64,7 +66,7 @@ public static class SeriesEndpointRouteBuilderExtensions
 
         series.MapPost("/import-recovery", async (
             HttpContext httpContext,
-            CreateSeriesImportRecoveryCaseRequest request,
+            [FromBody] CreateSeriesImportRecoveryCaseRequest request,
             ISeriesCatalogRepository repository,
             IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
@@ -83,6 +85,52 @@ public static class SeriesEndpointRouteBuilderExtensions
 
             var item = await repository.AddImportRecoveryCaseAsync(request, cancellationToken);
             return Results.Ok(item);
+        });
+
+        series.MapPost("/import-recovery/{id}/resolve", async (
+            string id,
+            HttpContext httpContext,
+            ISeriesCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var updated = await repository.ResolveImportRecoveryCaseAsync(id, "resolved", cancellationToken);
+            if (updated is null)
+            {
+                return Results.NotFound();
+            }
+
+            await repository.AddImportRecoveryEventAsync(id, "case_resolved", "Case marked resolved by user.", null, cancellationToken);
+            return Results.Ok(updated);
+        });
+
+        series.MapPost("/import-recovery/{id}/dismiss", async (
+            string id,
+            HttpContext httpContext,
+            ISeriesCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var updated = await repository.ResolveImportRecoveryCaseAsync(id, "dismissed", cancellationToken);
+            if (updated is null)
+            {
+                return Results.NotFound();
+            }
+
+            await repository.AddImportRecoveryEventAsync(id, "case_dismissed", "Case dismissed by user.", null, cancellationToken);
+            return Results.Ok(updated);
         });
 
         series.MapDelete("/import-recovery/{id}", async (
@@ -110,7 +158,7 @@ public static class SeriesEndpointRouteBuilderExtensions
 
         series.MapPut("/monitoring", async (
             HttpContext httpContext,
-            UpdateSeriesMonitoringRequest request,
+            [FromBody] UpdateSeriesMonitoringRequest request,
             ISeriesCatalogRepository repository,
             IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
@@ -139,7 +187,7 @@ public static class SeriesEndpointRouteBuilderExtensions
 
         series.MapPut("/episodes/monitoring", async (
             HttpContext httpContext,
-            UpdateEpisodeMonitoringRequest request,
+            [FromBody] UpdateEpisodeMonitoringRequest request,
             ISeriesCatalogRepository repository,
             IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
@@ -379,7 +427,7 @@ public static class SeriesEndpointRouteBuilderExtensions
 
         series.MapPost("/{id}/metadata/link", async (
             string id,
-            MetadataLinkRequest request,
+            [FromBody] MetadataLinkRequest request,
             HttpContext httpContext,
             ISeriesCatalogRepository repository,
             IPlatformSettingsRepository platformSettingsRepository,
@@ -463,7 +511,7 @@ public static class SeriesEndpointRouteBuilderExtensions
 
         series.MapPost("/metadata/jobs", async (
             HttpContext httpContext,
-            MetadataRefreshJobsRequest request,
+            [FromBody] MetadataRefreshJobsRequest request,
             ISeriesCatalogRepository repository,
             IPlatformSettingsRepository platformSettingsRepository,
             IJobScheduler jobScheduler,
@@ -503,7 +551,7 @@ public static class SeriesEndpointRouteBuilderExtensions
         series.MapPost("/{id}/episodes/search", async (
             string id,
             HttpContext httpContext,
-            SearchSeriesEpisodesRequest request,
+            [FromBody] SearchSeriesEpisodesRequest request,
             ISeriesCatalogRepository repository,
             IPlatformSettingsRepository platformSettingsRepository,
             IJobQueueRepository jobQueueRepository,
@@ -541,6 +589,7 @@ public static class SeriesEndpointRouteBuilderExtensions
 
             var targetEpisodes = inventory.Episodes
                 .Where(item => request.EpisodeIds.Contains(item.EpisodeId, StringComparer.OrdinalIgnoreCase))
+                .Where(item => !request.MonitoredOnly || item.Monitored)
                 .OrderBy(item => item.SeasonNumber)
                 .ThenBy(item => item.EpisodeNumber)
                 .ToList();
@@ -549,7 +598,9 @@ public static class SeriesEndpointRouteBuilderExtensions
             {
                 return Results.ValidationProblem(new Dictionary<string, string[]>
                 {
-                    ["episodeIds"] = ["Deluno could not find those episodes in the tracked inventory."]
+                    ["episodeIds"] = [request.MonitoredOnly
+                        ? "No monitored episodes were found in the provided list."
+                        : "Deluno could not find those episodes in the tracked inventory."]
                 });
             }
 
@@ -889,7 +940,7 @@ public static class SeriesEndpointRouteBuilderExtensions
 
         series.MapPost("/{id}/grab", async (
             string id,
-            ReleaseGrabRequest request,
+            [FromBody] ReleaseGrabRequest request,
             HttpContext httpContext,
             ISeriesCatalogRepository repository,
             IPlatformSettingsRepository platformSettingsRepository,
@@ -1295,9 +1346,161 @@ public static class SeriesEndpointRouteBuilderExtensions
             });
         });
 
+        series.MapGet("/{id}/workflow-status", async (
+            string id,
+            ISeriesCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
+            ISeriesWorkflowService workflowService,
+            CancellationToken cancellationToken) =>
+        {
+            var seriesItem = await repository.GetByIdAsync(id, cancellationToken);
+            if (seriesItem is null)
+            {
+                return Results.NotFound();
+            }
+
+            var wanted = await repository.GetWantedSummaryAsync(cancellationToken);
+            var wantedItem = wanted.RecentItems.FirstOrDefault(item => item.SeriesId == id);
+            if (wantedItem is null)
+            {
+                return Results.Ok(new
+                {
+                    wantedStatus = "untracked",
+                    reason = "This series is not linked to any library.",
+                    isReplacementAllowed = true,
+                    qualityDelta = (int?)null,
+                    currentQuality = (string?)null,
+                    targetQuality = (string?)null,
+                    preventLowerQualityReplacements = true,
+                    lastQualityDeltaDecision = (int?)null
+                });
+            }
+
+            var libraries = await platformSettingsRepository.ListLibrariesAsync(cancellationToken);
+            var library = libraries.FirstOrDefault(item => item.Id == wantedItem.LibraryId);
+            var upgradeUntilCutoff = library?.UpgradeUntilCutoff ?? false;
+            var upgradeUnknownItems = library?.UpgradeUnknownItems ?? false;
+            var qualityCutoffMet = wantedItem.QualityCutoffMet;
+
+            var decision = workflowService.EvaluateEpisodeWantedStatus(
+                wantedItem.CurrentQuality,
+                wantedItem.TargetQuality,
+                qualityCutoffMet,
+                upgradeUntilCutoff,
+                upgradeUnknownItems);
+
+            return Results.Ok(new
+            {
+                wantedStatus = decision.WantedStatus,
+                reason = decision.Reason,
+                isReplacementAllowed = decision.IsReplacementAllowed,
+                qualityDelta = decision.QualityDelta,
+                currentQuality = wantedItem.CurrentQuality,
+                targetQuality = wantedItem.TargetQuality,
+                preventLowerQualityReplacements = wantedItem.PreventLowerQualityReplacements,
+                lastQualityDeltaDecision = wantedItem.LastQualityDeltaDecision
+            });
+        });
+
+        series.MapPut("/{id}/replacement-protection", async (
+            string id,
+            [FromBody] UpdateSeriesReplacementProtectionRequest request,
+            HttpContext httpContext,
+            ISeriesCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var seriesItem = await repository.GetByIdAsync(id, cancellationToken);
+            if (seriesItem is null)
+            {
+                return Results.NotFound();
+            }
+
+            var wanted = await repository.GetWantedSummaryAsync(cancellationToken);
+            var wantedItem = wanted.RecentItems.FirstOrDefault(item => item.SeriesId == id);
+            if (wantedItem is null)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["seriesId"] = ["This series is not currently linked to a searchable library."]
+                });
+            }
+
+            var updated = await repository.UpdateSeriesReplacementPolicyAsync(
+                id,
+                wantedItem.LibraryId,
+                request.PreventLowerQualityReplacements,
+                cancellationToken);
+
+            return updated ? Results.Ok(new { updated = true }) : Results.NotFound();
+        });
+
+        series.MapGet("/{id}/monitored-missing", async (
+            string id,
+            ISeriesCatalogRepository repository,
+            ISeriesWorkflowService workflowService,
+            CancellationToken cancellationToken) =>
+        {
+            var seriesItem = await repository.GetByIdAsync(id, cancellationToken);
+            if (seriesItem is null)
+            {
+                return Results.NotFound();
+            }
+
+            var wanted = await repository.GetWantedSummaryAsync(cancellationToken);
+            var wantedItem = wanted.RecentItems.FirstOrDefault(item => item.SeriesId == id);
+            if (wantedItem is null)
+            {
+                return Results.Ok(new { episodes = Array.Empty<object>(), seasonPackRecommendations = Array.Empty<object>() });
+            }
+
+            var missingEpisodes = await repository.ListMonitoredMissingEpisodesAsync(id, wantedItem.LibraryId, cancellationToken);
+
+            var seasonGroups = missingEpisodes
+                .GroupBy(e => e.SeasonNumber)
+                .Select(g =>
+                {
+                    var inventory = (IReadOnlyList<SeriesEpisodeInventoryItem>)g.ToList();
+                    var allSeasonEpisodes = missingEpisodes.Where(e => e.SeasonNumber == g.Key).ToList();
+                    var seasonDecision = workflowService.EvaluateSeasonPackStrategy(allSeasonEpisodes, monitoredOnly: true);
+                    return new
+                    {
+                        seasonNumber = g.Key,
+                        missingEpisodeCount = g.Count(),
+                        preferSeasonPack = seasonDecision.PreferSeasonPack,
+                        reason = seasonDecision.Reason,
+                        monitoredMissingCount = seasonDecision.MonitoredMissingCount,
+                        totalMonitoredCount = seasonDecision.TotalMonitoredCount
+                    };
+                })
+                .ToArray();
+
+            return Results.Ok(new
+            {
+                seriesId = id,
+                totalMissingMonitored = missingEpisodes.Count,
+                episodes = missingEpisodes.Select(e => new
+                {
+                    e.EpisodeId,
+                    e.SeasonNumber,
+                    e.EpisodeNumber,
+                    e.Title,
+                    e.WantedStatus,
+                    e.LastSearchUtc
+                }).ToArray(),
+                seasonPackRecommendations = seasonGroups
+            });
+        });
+
         series.MapPost("/", async (
             HttpContext httpContext,
-            CreateSeriesRequest request,
+            [FromBody] CreateSeriesRequest request,
             ISeriesCatalogRepository repository,
             IPlatformSettingsRepository platformSettingsRepository,
             IMediaDecisionService mediaDecisionService,
@@ -1490,4 +1693,7 @@ public static class SeriesEndpointRouteBuilderExtensions
     private sealed record MetadataRefreshJobsResponse(
         int EnqueuedCount,
         IReadOnlyList<Deluno.Jobs.Contracts.JobQueueItem> Jobs);
+
+    private sealed record UpdateSeriesReplacementProtectionRequest(
+        bool PreventLowerQualityReplacements);
 }

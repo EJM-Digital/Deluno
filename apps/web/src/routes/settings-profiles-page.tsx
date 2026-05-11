@@ -144,7 +144,7 @@ function SortableProfileRow({
           </span>
         </div>
         <p className="mt-0.5 text-[12px] text-muted-foreground">
-          Stop upgrading at <strong className="text-foreground">{profile.cutoffQuality}</strong>
+          Stops at: <strong className="text-foreground">{profile.cutoffQuality}</strong>
           {allowedCount > 0 && ` · ${allowedCount} quality tier${allowedCount === 1 ? "" : "s"} allowed`}
           {cfCount > 0 && ` · ${cfCount} custom format${cfCount === 1 ? "" : "s"}`}
         </p>

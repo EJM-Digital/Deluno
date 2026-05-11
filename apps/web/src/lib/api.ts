@@ -351,6 +351,8 @@ export interface LibraryItem {
   searchIntervalHours: number;
   retryDelayHours: number;
   maxItemsPerRun: number;
+  searchWindowStartHour: number | null;
+  searchWindowEndHour: number | null;
   automationStatus: string;
   searchRequested: boolean;
   lastSearchedUtc: string | null;
@@ -596,6 +598,21 @@ export interface IndexerItem {
   lastHealthFailureCategory?: string | null;
   lastHealthLatencyMs?: number | null;
   lastHealthTestUtc?: string | null;
+  consecutiveFailures: number;
+  rateLimitedUntilUtc: string | null;
+  disabledReason: string | null;
+  createdUtc: string;
+  updatedUtc: string;
+}
+
+export interface NotificationWebhookItem {
+  id: string;
+  name: string;
+  url: string;
+  eventFilters: string;
+  isEnabled: boolean;
+  lastFiredUtc: string | null;
+  lastError: string | null;
   createdUtc: string;
   updatedUtc: string;
 }
@@ -1051,7 +1068,7 @@ export class ApiRequestError extends Error {
 }
 
 export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await authedFetch(path, init);
+  const response = await authedFetch(path, { cache: "no-store", ...init });
   if (!response.ok) {
     const responseBody = await response.text().catch(() => "");
     let message = `Request failed for ${path} with status ${response.status}.`;

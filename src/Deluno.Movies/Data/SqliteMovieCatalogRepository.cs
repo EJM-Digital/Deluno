@@ -405,7 +405,8 @@ public sealed class SqliteMovieCatalogRepository(
             SELECT
                 m.id, m.title, m.release_year, m.imdb_id,
                 w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality, w.quality_cutoff_met,
-                w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc, w.last_search_result, w.updated_utc
+                w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc, w.last_search_result, w.updated_utc,
+                w.prevent_lower_quality_replacements, w.quality_delta_last_decision
             FROM movie_wanted_state w
             INNER JOIN movie_entries m ON m.id = w.movie_id
             ORDER BY w.updated_utc DESC, m.title ASC
@@ -482,7 +483,8 @@ public sealed class SqliteMovieCatalogRepository(
                   SELECT
                       m.id, m.title, m.release_year, m.imdb_id,
                       w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality, w.quality_cutoff_met,
-                      w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc, w.last_search_result, w.updated_utc
+                      w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc, w.last_search_result, w.updated_utc,
+                      w.prevent_lower_quality_replacements, w.quality_delta_last_decision
                   FROM movie_wanted_state w
                   INNER JOIN movie_entries m ON m.id = w.movie_id
                   WHERE w.library_id = @libraryId
@@ -497,7 +499,8 @@ public sealed class SqliteMovieCatalogRepository(
                   SELECT
                       m.id, m.title, m.release_year, m.imdb_id,
                       w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality, w.quality_cutoff_met,
-                      w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc, w.last_search_result, w.updated_utc
+                      w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc, w.last_search_result, w.updated_utc,
+                      w.prevent_lower_quality_replacements, w.quality_delta_last_decision
                   FROM movie_wanted_state w
                   INNER JOIN movie_entries m ON m.id = w.movie_id
                   WHERE w.library_id = @libraryId
@@ -571,11 +574,13 @@ public sealed class SqliteMovieCatalogRepository(
             """
             INSERT INTO movie_wanted_state (
                 movie_id, library_id, wanted_status, wanted_reason, has_file, quality_cutoff_met,
-                current_quality, target_quality, missing_since_utc, last_search_utc, next_eligible_search_utc, last_search_result, updated_utc
+                current_quality, target_quality, missing_since_utc, last_search_utc, next_eligible_search_utc, last_search_result, updated_utc,
+                prevent_lower_quality_replacements, quality_delta_last_decision
             )
             VALUES (
                 @movieId, @libraryId, @wantedStatus, @wantedReason, @hasFile, @qualityCutoffMet,
-                @currentQuality, @targetQuality, @missingSinceUtc, NULL, NULL, NULL, @updatedUtc
+                @currentQuality, @targetQuality, @missingSinceUtc, NULL, NULL, NULL, @updatedUtc,
+                1, 0
             )
             ON CONFLICT(movie_id, library_id) DO UPDATE SET
                 wanted_status = excluded.wanted_status,
@@ -686,12 +691,14 @@ public sealed class SqliteMovieCatalogRepository(
             INSERT INTO movie_wanted_state (
                 movie_id, library_id, wanted_status, wanted_reason, has_file, quality_cutoff_met,
                 current_quality, target_quality, file_path, file_size_bytes, imported_utc, last_verified_utc,
-                missing_since_utc, last_search_utc, next_eligible_search_utc, last_search_result, updated_utc
+                missing_since_utc, last_search_utc, next_eligible_search_utc, last_search_result, updated_utc,
+                prevent_lower_quality_replacements, quality_delta_last_decision
             )
             VALUES (
                 @movieId, @libraryId, @wantedStatus, @wantedReason, 1, @qualityCutoffMet,
                 @currentQuality, @targetQuality, @filePath, @fileSizeBytes, @importedUtc, @lastVerifiedUtc,
-                NULL, NULL, NULL, 'Imported from your existing library.', @updatedUtc
+                NULL, NULL, NULL, 'Imported from your existing library.', @updatedUtc,
+                1, 0
             )
             ON CONFLICT(movie_id, library_id) DO UPDATE SET
                 wanted_status = excluded.wanted_status,
@@ -949,11 +956,18 @@ public sealed class SqliteMovieCatalogRepository(
 
     public async Task<MovieImportRecoverySummary> GetImportRecoverySummaryAsync(CancellationToken cancellationToken)
     {
-        var cases = new List<MovieImportRecoveryCase>();
+        var openCases = new List<MovieImportRecoveryCase>();
+        int openCount = 0;
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Movies,
             cancellationToken);
+
+        using (var countCmd = connection.CreateCommand())
+        {
+            countCmd.CommandText = "SELECT COUNT(*) FROM movie_import_recovery_cases WHERE status = 'open';";
+            openCount = Convert.ToInt32(await countCmd.ExecuteScalarAsync(cancellationToken));
+        }
 
         using (var command = connection.CreateCommand())
         {
@@ -963,11 +977,14 @@ public sealed class SqliteMovieCatalogRepository(
                     id,
                     title,
                     failure_kind,
+                    status,
                     summary,
                     recommended_action,
                     details_json,
-                    detected_utc
+                    detected_utc,
+                    resolved_utc
                 FROM movie_import_recovery_cases
+                WHERE status = 'open'
                 ORDER BY detected_utc DESC
                 LIMIT 12;
                 """;
@@ -975,25 +992,18 @@ public sealed class SqliteMovieCatalogRepository(
             using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
-                cases.Add(new MovieImportRecoveryCase(
-                    Id: reader.GetString(0),
-                    Title: reader.GetString(1),
-                    FailureKind: reader.GetString(2),
-                    Summary: reader.GetString(3),
-                    RecommendedAction: reader.GetString(4),
-                    DetailsJson: reader.IsDBNull(5) ? null : reader.GetString(5),
-                    DetectedUtc: ParseTimestamp(reader.GetString(6))));
+                openCases.Add(ReadImportRecoveryCase(reader));
             }
         }
 
         return new MovieImportRecoverySummary(
-            OpenCount: cases.Count,
-            QualityCount: cases.Count(item => item.FailureKind == "quality"),
-            UnmatchedCount: cases.Count(item => item.FailureKind == "unmatched"),
-            CorruptCount: cases.Count(item => item.FailureKind == "corrupt"),
-            DownloadFailedCount: cases.Count(item => item.FailureKind == "downloadFailed"),
-            ImportFailedCount: cases.Count(item => item.FailureKind == "importFailed"),
-            RecentCases: cases);
+            OpenCount: openCount,
+            QualityCount: openCases.Count(item => item.FailureKind == "quality"),
+            UnmatchedCount: openCases.Count(item => item.FailureKind == "unmatched"),
+            CorruptCount: openCases.Count(item => item.FailureKind == "corrupt"),
+            DownloadFailedCount: openCases.Count(item => item.FailureKind == "downloadFailed"),
+            ImportFailedCount: openCases.Count(item => item.FailureKind == "importFailed"),
+            RecentCases: openCases);
     }
 
     public async Task<MovieImportRecoveryCase> AddImportRecoveryCaseAsync(
@@ -1005,12 +1015,14 @@ public sealed class SqliteMovieCatalogRepository(
             Id: Guid.CreateVersion7().ToString("N"),
             Title: request.Title!.Trim(),
             FailureKind: NormalizeFailureKind(request.FailureKind),
+            Status: "open",
             Summary: request.Summary!.Trim(),
             RecommendedAction: string.IsNullOrWhiteSpace(request.RecommendedAction)
                 ? "Review this import and decide whether Deluno should retry, rematch, or remove it."
                 : request.RecommendedAction.Trim(),
             DetailsJson: string.IsNullOrWhiteSpace(request.DetailsJson) ? null : request.DetailsJson.Trim(),
-            DetectedUtc: now);
+            DetectedUtc: now,
+            ResolvedUtc: null);
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Movies,
@@ -1023,6 +1035,7 @@ public sealed class SqliteMovieCatalogRepository(
                 id,
                 title,
                 failure_kind,
+                status,
                 summary,
                 recommended_action,
                 details_json,
@@ -1032,6 +1045,7 @@ public sealed class SqliteMovieCatalogRepository(
                 @id,
                 @title,
                 @failureKind,
+                'open',
                 @summary,
                 @recommendedAction,
                 @detailsJson,
@@ -1048,6 +1062,8 @@ public sealed class SqliteMovieCatalogRepository(
         AddParameter(command, "@detectedUtc", item.DetectedUtc.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
 
+        await AddImportRecoveryEventAsync(item.Id, "case_opened", "Import recovery case created.", null, cancellationToken);
+
         return item;
     }
 
@@ -1060,6 +1076,196 @@ public sealed class SqliteMovieCatalogRepository(
         using var command = connection.CreateCommand();
         command.CommandText = "DELETE FROM movie_import_recovery_cases WHERE id = @id;";
         AddParameter(command, "@id", id);
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
+    public async Task<MovieImportRecoveryCase?> ResolveImportRecoveryCaseAsync(
+        string id,
+        string status,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        using (var update = connection.CreateCommand())
+        {
+            update.CommandText =
+                """
+                UPDATE movie_import_recovery_cases
+                SET status = @status, resolved_utc = @resolvedUtc
+                WHERE id = @id AND status = 'open';
+                """;
+            AddParameter(update, "@id", id);
+            AddParameter(update, "@status", status);
+            AddParameter(update, "@resolvedUtc", now.ToString("O"));
+            var rows = await update.ExecuteNonQueryAsync(cancellationToken);
+            if (rows == 0)
+            {
+                return null;
+            }
+        }
+
+        using var select = connection.CreateCommand();
+        select.CommandText =
+            """
+            SELECT id, title, failure_kind, status, summary, recommended_action, details_json, detected_utc, resolved_utc
+            FROM movie_import_recovery_cases
+            WHERE id = @id;
+            """;
+        AddParameter(select, "@id", id);
+        using var reader = await select.ExecuteReaderAsync(cancellationToken);
+        if (await reader.ReadAsync(cancellationToken))
+        {
+            return ReadImportRecoveryCase(reader);
+        }
+
+        return null;
+    }
+
+    public async Task AddImportRecoveryEventAsync(
+        string caseId,
+        string eventKind,
+        string message,
+        string? metadataJson,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            INSERT INTO movie_import_recovery_events (id, case_id, event_kind, message, metadata_json, created_utc)
+            VALUES (@id, @caseId, @eventKind, @message, @metadataJson, @createdUtc);
+            """;
+        AddParameter(command, "@id", Guid.CreateVersion7().ToString("N"));
+        AddParameter(command, "@caseId", caseId);
+        AddParameter(command, "@eventKind", eventKind);
+        AddParameter(command, "@message", message);
+        AddParameter(command, "@metadataJson", metadataJson);
+        AddParameter(command, "@createdUtc", timeProvider.GetUtcNow().ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<int> CleanupImportRecoveryCasesAsync(DateTimeOffset olderThan, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            DELETE FROM movie_import_recovery_cases
+            WHERE status IN ('resolved', 'dismissed')
+              AND resolved_utc < @olderThan;
+            """;
+        AddParameter(command, "@olderThan", olderThan.ToString("O"));
+        return await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static MovieImportRecoveryCase ReadImportRecoveryCase(System.Data.Common.DbDataReader reader) =>
+        new MovieImportRecoveryCase(
+            Id: reader.GetString(0),
+            Title: reader.GetString(1),
+            FailureKind: reader.GetString(2),
+            Status: reader.GetString(3),
+            Summary: reader.GetString(4),
+            RecommendedAction: reader.GetString(5),
+            DetailsJson: reader.IsDBNull(6) ? null : reader.GetString(6),
+            DetectedUtc: ParseTimestamp(reader.GetString(7)),
+            ResolvedUtc: reader.IsDBNull(8) ? null : ParseTimestamp(reader.GetString(8)));
+
+    public async Task<MovieWantedItem?> GetMovieWantedStateAsync(
+        string movieId,
+        string libraryId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT
+                m.id, m.title, m.release_year, m.imdb_id,
+                w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality, w.quality_cutoff_met,
+                w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc, w.last_search_result, w.updated_utc,
+                w.prevent_lower_quality_replacements, w.quality_delta_last_decision
+            FROM movie_wanted_state w
+            INNER JOIN movie_entries m ON m.id = w.movie_id
+            WHERE w.movie_id = @movieId
+              AND w.library_id = @libraryId
+            LIMIT 1;
+            """;
+
+        AddParameter(command, "@movieId", movieId);
+        AddParameter(command, "@libraryId", libraryId);
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? ReadWantedMovie(reader) : null;
+    }
+
+    public async Task<bool> UpdateMovieReplacementPolicyAsync(
+        string movieId,
+        string libraryId,
+        bool preventLowerQualityReplacements,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE movie_wanted_state
+            SET prevent_lower_quality_replacements = @preventLowerQuality,
+                updated_utc = @updatedUtc
+            WHERE movie_id = @movieId
+              AND library_id = @libraryId;
+            """;
+
+        AddParameter(command, "@movieId", movieId);
+        AddParameter(command, "@libraryId", libraryId);
+        AddParameter(command, "@preventLowerQuality", preventLowerQualityReplacements ? 1 : 0);
+        AddParameter(command, "@updatedUtc", now.ToString("O"));
+
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
+    public async Task<bool> UpdateMovieQualityDeltaAsync(
+        string movieId,
+        string libraryId,
+        int? qualityDelta,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE movie_wanted_state
+            SET quality_delta_last_decision = @qualityDelta,
+                updated_utc = @updatedUtc
+            WHERE movie_id = @movieId
+              AND library_id = @libraryId;
+            """;
+
+        AddParameter(command, "@movieId", movieId);
+        AddParameter(command, "@libraryId", libraryId);
+        AddParameter(command, "@qualityDelta", qualityDelta);
+        AddParameter(command, "@updatedUtc", now.ToString("O"));
+
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
@@ -1131,7 +1337,9 @@ public sealed class SqliteMovieCatalogRepository(
             LastSearchUtc: reader.IsDBNull(12) ? null : ParseTimestamp(reader.GetString(12)),
             NextEligibleSearchUtc: reader.IsDBNull(13) ? null : ParseTimestamp(reader.GetString(13)),
             LastSearchResult: reader.IsDBNull(14) ? null : reader.GetString(14),
-            UpdatedUtc: ParseTimestamp(reader.GetString(15)));
+            UpdatedUtc: ParseTimestamp(reader.GetString(15)),
+            PreventLowerQualityReplacements: reader.GetInt64(16) == 1,
+            LastQualityDeltaDecision: reader.IsDBNull(17) ? null : reader.GetInt32(17));
     }
 
     private static void AddParameter(System.Data.Common.DbCommand command, string name, object? value)
@@ -1295,6 +1503,99 @@ public sealed class SqliteMovieCatalogRepository(
             "import failed" => "importFailed",
             _ => "importFailed"
         };
+    }
+
+    public async Task<IReadOnlyList<CrossLibraryDuplicateItem>> FindCrossLibraryDuplicatesAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT
+                m.id, m.title, m.release_year, m.imdb_id,
+                w.library_id, w.wanted_status, w.has_file, w.current_quality
+            FROM movie_entries m
+            JOIN movie_wanted_state w ON w.movie_id = m.id
+            WHERE m.id IN (
+                SELECT movie_id
+                FROM movie_wanted_state
+                GROUP BY movie_id
+                HAVING COUNT(DISTINCT library_id) > 1
+            )
+            ORDER BY m.title ASC, m.id ASC, w.library_id ASC;
+            """;
+
+        var byMovieId = new Dictionary<string, (string Title, int? Year, string? ImdbId, List<DuplicateLibraryEntry> Entries)>();
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var movieId = reader.GetString(0);
+            var libraryEntry = new DuplicateLibraryEntry(
+                LibraryId: reader.GetString(4),
+                LibraryName: reader.GetString(4),
+                WantedStatus: reader.GetString(5),
+                HasFile: reader.GetInt64(6) == 1,
+                CurrentQuality: reader.IsDBNull(7) ? null : reader.GetString(7));
+
+            if (!byMovieId.TryGetValue(movieId, out var existing))
+            {
+                byMovieId[movieId] = (
+                    Title: reader.GetString(1),
+                    Year: reader.IsDBNull(2) ? null : reader.GetInt32(2),
+                    ImdbId: reader.IsDBNull(3) ? null : reader.GetString(3),
+                    Entries: [libraryEntry]);
+            }
+            else
+            {
+                existing.Entries.Add(libraryEntry);
+            }
+        }
+
+        return byMovieId.Select(kvp => new CrossLibraryDuplicateItem(
+            MovieId: kvp.Key,
+            Title: kvp.Value.Title,
+            ReleaseYear: kvp.Value.Year,
+            ImdbId: kvp.Value.ImdbId,
+            Libraries: kvp.Value.Entries)).ToArray();
+    }
+
+    public async Task<int> ReassignLibraryAsync(
+        IReadOnlyList<string> movieIds,
+        string fromLibraryId,
+        string toLibraryId,
+        CancellationToken cancellationToken)
+    {
+        if (movieIds.Count == 0)
+        {
+            return 0;
+        }
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        var ids = string.Join(",", movieIds.Select((_, i) => $"@id{i}"));
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            $"""
+            UPDATE movie_wanted_state
+            SET library_id = @toLibraryId
+            WHERE library_id = @fromLibraryId
+              AND movie_id IN ({ids});
+            """;
+
+        AddParameter(command, "@fromLibraryId", fromLibraryId);
+        AddParameter(command, "@toLibraryId", toLibraryId);
+        for (var i = 0; i < movieIds.Count; i++)
+        {
+            AddParameter(command, $"@id{i}", movieIds[i]);
+        }
+
+        return await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private static string NormalizeWantedStatus(string? value)

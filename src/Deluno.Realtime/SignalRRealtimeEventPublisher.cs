@@ -111,6 +111,73 @@ public sealed class SignalRRealtimeEventPublisher(
         return Task.CompletedTask;
     }
 
+    public Task PublishQueueItemStatusChangedAsync(
+        string id,
+        string status,
+        string? errorMessage,
+        CancellationToken cancellationToken)
+    {
+        Enqueue(
+            "QueueItemStatusChanged",
+            new
+            {
+                id,
+                status,
+                errorMessage
+            });
+        return Task.CompletedTask;
+    }
+
+    public Task PublishSearchRunCompletedAsync(
+        string libraryId,
+        string libraryName,
+        string mediaType,
+        int plannedCount,
+        int queuedCount,
+        int skippedCount,
+        string completedUtc,
+        CancellationToken cancellationToken)
+    {
+        Enqueue(
+            "SearchRunCompleted",
+            new
+            {
+                libraryId,
+                libraryName,
+                mediaType,
+                plannedCount,
+                queuedCount,
+                skippedCount,
+                completedUtc
+            });
+        return Task.CompletedTask;
+    }
+
+    public Task PublishImportStateChangedAsync(
+        string jobId,
+        string state,
+        string? entityType,
+        string? entityId,
+        string? title,
+        string? errorMessage,
+        string changedUtc,
+        CancellationToken cancellationToken)
+    {
+        Enqueue(
+            "ImportStateChanged",
+            new
+            {
+                jobId,
+                state,
+                entityType,
+                entityId,
+                title,
+                errorMessage,
+                changedUtc
+            });
+        return Task.CompletedTask;
+    }
+
     public Task PublishDispatchGrabAttemptAsync(
         string dispatchId,
         string releaseName,

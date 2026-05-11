@@ -154,7 +154,7 @@ export function DashboardPage() {
         <MetricPlane
           label="Monitored"
           value={data.monitoredCount.toLocaleString()}
-          meta="Titles under policy"
+          meta="Titles being tracked"
           icon={Film}
           tone="neutral"
         />
@@ -177,7 +177,7 @@ export function DashboardPage() {
           label="Health"
           value={`${data.indexerHealthPercent}`}
           unit="%"
-          meta={healthIssues > 0 ? `${healthIssues} providers need review` : "All providers nominal"}
+          meta={healthIssues > 0 ? `${healthIssues} providers need review` : "All providers healthy"}
           icon={RadioTower}
           tone={healthIssues > 0 ? "warn" : "success"}
           visual={<MiniSparkline data={healthSparkline} tone={healthIssues > 0 ? "warn" : "success"} />}
@@ -188,7 +188,7 @@ export function DashboardPage() {
         <RenderPanel className="xl:col-span-8">
           <PanelHeader
             eyebrow="Network"
-            title="Live download fabric"
+            title="Downloads"
             action={
               <Link to="/queue" className="inline-flex items-center gap-1 text-[length:var(--type-caption)] font-semibold text-primary">
                 Open queue
@@ -198,17 +198,17 @@ export function DashboardPage() {
           />
           <LiveWaveform
             seed={[22, 24, 23, 26, 25, 27, 31, 34, 30, 28, 26, 24, 22, 19, 16, 22, 28, 32, 30, 28]}
-            label="Aggregate throughput"
-            subLabel="qBittorrent, SABnzbd, Transmission, Deluge, NZBGet, and import-ready telemetry"
+            label="Download speed"
+            subLabel="Combined speed across all your download clients"
           />
         </RenderPanel>
 
         <RenderPanel className="xl:col-span-4">
-          <PanelHeader eyebrow="Decision feed" title="Needs attention" />
+          <PanelHeader eyebrow="Status" title="Needs attention" />
           <div className="space-y-3">
             <DecisionRow
               tone={data.missingCount > 0 ? "warn" : "success"}
-              title={data.missingCount > 0 ? "Missing media waiting" : "Search posture clean"}
+              title={data.missingCount > 0 ? "Missing media waiting" : "Everything looks good"}
               text={data.missingCount > 0 ? `${data.missingCount} titles are missing or still waiting for a valid release.` : "No missing media currently requires manual attention."}
               href="/movies"
             />
@@ -229,9 +229,9 @@ export function DashboardPage() {
               title={runningAutomation > 0 ? "Automation active" : latestCycle ? "Last search cycle recorded" : "Automation waiting"}
               text={
                 runningAutomation > 0
-                  ? `${runningAutomation} library search lane${runningAutomation === 1 ? "" : "s"} queued or running.`
+                  ? `${runningAutomation} library search${runningAutomation === 1 ? "" : "es"} queued or running.`
                   : latestCycle
-                    ? `${latestCycle.libraryName}: ${latestCycle.plannedCount} checked, ${latestCycle.queuedCount} sent, ${latestCycle.skippedCount} retry-delayed.`
+                    ? `${latestCycle.libraryName}: ${latestCycle.plannedCount} checked, ${latestCycle.queuedCount} sent, ${latestCycle.skippedCount} held back.`
                     : "Scheduled searches will appear here once libraries are configured."
               }
               href="/system"
@@ -285,7 +285,7 @@ export function DashboardPage() {
           </RenderPanel>
 
           <RenderPanel>
-            <PanelHeader eyebrow="Providers" title="Indexer network" icon={RadioTower} />
+            <PanelHeader eyebrow="Providers" title="Search providers" icon={RadioTower} />
             <div className="space-y-2">
               {data.indexerHealth.length ? (
                 data.indexerHealth.slice(0, 6).map((item) => <HealthRow key={item.id} item={item} />)
@@ -501,7 +501,7 @@ function HealthRow({ item }: { item: IndexerHealthItem }) {
       <span className="min-w-0">
         <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{item.name}</span>
         <span className="block text-[length:var(--type-caption)] text-muted-foreground">
-          {item.responseMs === null ? "No response sample" : `${item.responseMs} ms`}
+          {item.responseMs === null ? "Never checked" : `${item.responseMs} ms`}
         </span>
       </span>
       <span className="flex items-center gap-2 text-[length:var(--type-caption)] font-semibold capitalize text-muted-foreground">

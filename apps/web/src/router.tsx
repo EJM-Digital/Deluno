@@ -373,6 +373,13 @@ export const router = createBrowserRouter([
             })
           },
           {
+            path: "notifications",
+            lazy: withSkeleton(async () => {
+              const module = await import("./routes/settings-notifications-page");
+              return { loader: module.settingsNotificationsLoader, Component: module.SettingsNotificationsPage };
+            })
+          },
+          {
             path: "ui",
             lazy: withSkeleton(async () => {
               const module = await import("./routes/settings-ui-page");

@@ -113,7 +113,7 @@ type SetupCompletion = {
 const STEPS: { id: StepId; label: string; copy: string }[] = [
   { id: "mode", label: "Goal", copy: "Choose simple setup or jump to advanced controls." },
   { id: "folders", label: "Folders", copy: "Tell Deluno where media and downloads live." },
-  { id: "quality", label: "Quality", copy: "Pick a safe profile and automation posture." },
+  { id: "quality", label: "Quality", copy: "Choose how strict Deluno should be about quality." },
   { id: "services", label: "Services", copy: "Connect optional indexers and download clients." },
   { id: "finish", label: "Finish", copy: "Create the baseline and hand off to the app." }
 ];
@@ -440,8 +440,8 @@ export function SetupGuidePage() {
               Get Deluno working first. Tune it later.
             </h1>
             <p className="mt-3 max-w-4xl text-[length:var(--type-body)] leading-relaxed text-muted-foreground">
-              This path creates a sensible baseline: media folders, quality profile, automation defaults, optional indexer/client wiring, and backup posture.
-              Advanced users can skip and configure everything manually.
+              This sets up everything you need to get started: media folders, quality settings, and optional search providers and download clients.
+              Advanced users can skip this and configure everything manually.
             </p>
             <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
               <SetupOutcome label="Folders" value="Movies, TV, downloads" />
@@ -713,7 +713,7 @@ function QualityStep({ form, patch }: { form: GuideForm; patch: (patchValue: Par
         <div className="mb-3">
           <p className="text-sm font-semibold text-foreground">Picture quality</p>
           <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-            Choose the outcome. Deluno creates the actual qualities, cutoff, and upgrade behaviour for you.
+            Choose a preset and Deluno handles the details. You can fine-tune everything later.
           </p>
         </div>
         <div className="grid gap-4 lg:grid-cols-2">
@@ -798,7 +798,7 @@ function ServicesStep({
 }) {
   return (
     <div className="grid gap-4 xl:grid-cols-2">
-      <FieldShell icon={RadioTower} label="Search source" copy="Optional. Add a Torznab/Newznab/RSS source now, or leave it blank and add providers later.">
+      <FieldShell icon={RadioTower} label="Search source" copy="Optional. Connect a search provider now, or skip this and add one later.">
         <div className="grid gap-3">
           <div className="grid gap-2 sm:grid-cols-2">
             {INDEXER_SETUP_PRESETS.map((preset) => (

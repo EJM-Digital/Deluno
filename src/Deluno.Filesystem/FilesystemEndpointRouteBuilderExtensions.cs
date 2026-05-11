@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -66,7 +67,7 @@ public static class FilesystemEndpointRouteBuilderExtensions
         });
 
         filesystem.MapPost("/import/preview", async (
-            ImportPreviewRequest request,
+            [FromBody] ImportPreviewRequest request,
             IImportPipelineService importPipeline,
             CancellationToken cancellationToken) =>
         {
@@ -75,7 +76,7 @@ public static class FilesystemEndpointRouteBuilderExtensions
         });
 
         filesystem.MapPost("/import/execute", async (
-            ImportExecuteRequest request,
+            [FromBody] ImportExecuteRequest request,
             IImportPipelineService importPipeline,
             CancellationToken cancellationToken) =>
         {
@@ -91,7 +92,7 @@ public static class FilesystemEndpointRouteBuilderExtensions
         });
 
         filesystem.MapPost("/import/jobs", async (
-            ImportExecuteRequest request,
+            [FromBody] ImportExecuteRequest request,
             IImportPipelineService importPipeline,
             IJobScheduler jobScheduler,
             CancellationToken cancellationToken) =>
@@ -125,7 +126,7 @@ public static class FilesystemEndpointRouteBuilderExtensions
         });
 
         endpoints.MapPost("/api/integrations/external/import-preview", async (
-            ImportPreviewRequest request,
+            [FromBody] ImportPreviewRequest request,
             IImportPipelineService importPipeline,
             CancellationToken cancellationToken) =>
         {
@@ -153,7 +154,7 @@ public static class FilesystemEndpointRouteBuilderExtensions
         });
 
         filesystem.MapPost("/reconciliation/repair", async (
-            FilesystemReconciliationRepairRequest request,
+            [FromBody] FilesystemReconciliationRepairRequest request,
             IFilesystemReconciliationService reconciliationService,
             CancellationToken cancellationToken) =>
         {

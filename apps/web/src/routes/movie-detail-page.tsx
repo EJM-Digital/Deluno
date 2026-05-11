@@ -40,6 +40,18 @@ interface MovieDetailLoaderData {
   movie: MovieListItem;
   searchHistory: MovieSearchHistoryItem[];
   wanted: MovieWantedSummary;
+  workflowStatus: MovieWorkflowStatus | null;
+}
+
+interface MovieWorkflowStatus {
+  wantedStatus: string;
+  reason: string;
+  isReplacementAllowed: boolean;
+  qualityDelta: number | null;
+  currentQuality: string | null;
+  targetQuality: string | null;
+  preventLowerQualityReplacements: boolean;
+  lastQualityDeltaDecision: number | null;
 }
 
 export async function movieDetailLoader({
@@ -48,7 +60,7 @@ export async function movieDetailLoader({
   params: { id?: string };
 }): Promise<MovieDetailLoaderData> {
   const id = params.id!;
-  const [movie, wanted, searchHistory, dispatches, importRecovery, activity, decisions, libraries] = await Promise.all([
+  const [movie, wanted, searchHistory, dispatches, importRecovery, activity, decisions, libraries, workflowStatus] = await Promise.all([
     fetchJson<MovieListItem>(`/api/movies/${id}`),
     fetchJson<MovieWantedSummary>("/api/movies/wanted"),
     fetchJson<MovieSearchHistoryItem[]>("/api/movies/search-history"),
@@ -56,22 +68,24 @@ export async function movieDetailLoader({
     fetchJson<MovieImportRecoverySummary>("/api/movies/import-recovery"),
     fetchJson<ActivityEventItem[]>(`/api/activity?relatedEntityType=movie&relatedEntityId=${id}&take=20`),
     fetchJson<DecisionExplanationItem[]>(`/api/decisions?relatedEntityType=movie&relatedEntityId=${id}&take=40`),
-    fetchJson<LibraryItem[]>("/api/libraries")
+    fetchJson<LibraryItem[]>("/api/libraries"),
+    fetchJson<MovieWorkflowStatus>(`/api/movies/${id}/workflow-status`).catch(() => null)
   ]);
 
-  return { activity, decisions, dispatches, importRecovery, libraries, movie, searchHistory, wanted };
+  return { activity, decisions, dispatches, importRecovery, libraries, movie, searchHistory, wanted, workflowStatus };
 }
 
 export function MovieDetailPage() {
   const loaderData = useLoaderData() as MovieDetailLoaderData | undefined;
   if (!loaderData) return <RouteSkeleton />;
-  const { activity, decisions, dispatches, importRecovery, libraries, movie, searchHistory, wanted } = loaderData;
+  const { activity, decisions, dispatches, importRecovery, libraries, movie, searchHistory, wanted, workflowStatus } = loaderData;
   const revalidator = useRevalidator();
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [metadataQuery, setMetadataQuery] = useState(movie.title);
   const [metadataMatches, setMetadataMatches] = useState<MetadataSearchResult[]>([]);
   const [releaseCandidates, setReleaseCandidates] = useState<SearchPlanCandidate[]>([]);
+  const [preventLowerQuality, setPreventLowerQuality] = useState(workflowStatus?.preventLowerQualityReplacements ?? true);
 
   const wantedItem = wanted.recentItems.find((item) => item.movieId === movie.id) ?? null;
   const library = wantedItem ? libraries.find((item) => item.id === wantedItem.libraryId) ?? null : null;
@@ -252,6 +266,31 @@ export function MovieDetailPage() {
     }
   }
 
+  async function handleUpdateReplacementProtection(enabled: boolean) {
+    setBusyAction("replacement-protection");
+    setActionMessage(null);
+
+    try {
+      const response = await authedFetch(`/api/movies/${movie.id}/replacement-protection`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ preventLowerQualityReplacements: enabled })
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to update replacement protection setting.");
+      }
+
+      setPreventLowerQuality(enabled);
+      setActionMessage(enabled ? "Replacement protection enabled." : "Replacement protection disabled.");
+      revalidator.revalidate();
+    } catch (error) {
+      setActionMessage(error instanceof Error ? error.message : "Failed to update replacement protection.");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
   return (
     <div className="space-y-[var(--page-gap)]">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
@@ -315,6 +354,20 @@ export function MovieDetailPage() {
             <ShieldCheck className="h-4 w-4" />
           )}
           {movie.monitored ? "Unmonitor" : "Monitor"}
+        </Button>
+        <Button
+          variant={preventLowerQuality ? "outline" : "outline"}
+          className={preventLowerQuality ? "border-primary/50 bg-primary/5" : ""}
+          onClick={() => void handleUpdateReplacementProtection(!preventLowerQuality)}
+          disabled={busyAction !== null}
+          title="Prevent Deluno from replacing your current file with a lower quality release"
+        >
+          {busyAction === "replacement-protection" ? (
+            <LoaderCircle className="h-4 w-4 animate-spin" />
+          ) : (
+            <ShieldCheck className="h-4 w-4" />
+          )}
+          {preventLowerQuality ? "Replacement protection ON" : "Replacement protection OFF"}
         </Button>
         <Button
           variant="outline"
@@ -383,9 +436,10 @@ export function MovieDetailPage() {
         <div className="space-y-[var(--page-gap)]">
           <RoutingCard
             library={library}
-            currentQuality={wantedItem?.currentQuality ?? null}
-            targetQuality={wantedItem?.targetQuality ?? "WEB 1080p"}
+            currentQuality={workflowStatus?.currentQuality ?? wantedItem?.currentQuality ?? null}
+            targetQuality={workflowStatus?.targetQuality ?? wantedItem?.targetQuality ?? "WEB 1080p"}
             workflow={library?.importWorkflow ?? "standard"}
+            workflowStatus={workflowStatus}
           />
 
           <Card>
@@ -567,13 +621,19 @@ function RoutingCard({
   currentQuality,
   library,
   targetQuality,
-  workflow
+  workflow,
+  workflowStatus
 }: {
   currentQuality: string | null;
   library: LibraryItem | null;
   targetQuality: string | null;
   workflow: string;
+  workflowStatus: MovieWorkflowStatus | null;
 }) {
+  const qualityCutoffMet = workflowStatus && currentQuality && targetQuality
+    ? workflowStatus.qualityDelta !== null && workflowStatus.qualityDelta >= 0
+    : null;
+
   return (
     <Card>
       <CardHeader>
@@ -582,13 +642,51 @@ function RoutingCard({
           Final filenames are previewed once Deluno has a source file. This shows the active library route now.
         </CardDescription>
       </CardHeader>
-      <CardContent className="grid gap-3 sm:grid-cols-2">
-        <MetadataStat label="Library" value={library?.name ?? "Not linked"} />
-        <MetadataStat label="Root folder" value={library?.rootPath || "No root configured"} />
-        <MetadataStat label="Downloads folder" value={library?.downloadsPath || "Client default"} />
-        <MetadataStat label="Workflow" value={workflow === "refine-before-import" ? "Refine before import" : "Standard import"} />
-        <MetadataStat label="Current quality" value={currentQuality ?? "Unknown"} />
-        <MetadataStat label="Target quality" value={targetQuality ?? "WEB 1080p"} />
+      <CardContent className="space-y-[calc(var(--field-group-pad)*0.9)]">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <MetadataStat label="Library" value={library?.name ?? "Not linked"} />
+          <MetadataStat label="Root folder" value={library?.rootPath || "No root configured"} />
+          <MetadataStat label="Downloads folder" value={library?.downloadsPath || "Client default"} />
+          <MetadataStat label="Workflow" value={workflow === "refine-before-import" ? "Refine before import" : "Standard import"} />
+          <MetadataStat label="Current quality" value={currentQuality ?? "Unknown"} />
+          <MetadataStat label="Target quality" value={targetQuality ?? "WEB 1080p"} />
+        </div>
+        {workflowStatus && (
+          <div className="rounded-xl border border-hairline bg-surface-1 p-4">
+            <p className="font-display text-sm font-semibold tracking-tight text-foreground">Quality status</p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Cutoff status</p>
+                <p className="mt-1 text-sm font-medium text-foreground">
+                  {qualityCutoffMet === true ? (
+                    <span className="text-green-600 dark:text-green-400">✓ Met</span>
+                  ) : qualityCutoffMet === false ? (
+                    <span className="text-amber-600 dark:text-amber-400">⚠ Below target</span>
+                  ) : (
+                    <span className="text-muted-foreground">No data</span>
+                  )}
+                </p>
+              </div>
+              {workflowStatus.qualityDelta !== null && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Last quality delta</p>
+                  <p className="mt-1 text-sm font-medium text-foreground font-mono">
+                    {workflowStatus.qualityDelta > 0 ? (
+                      <span className="text-green-600 dark:text-green-400">+{workflowStatus.qualityDelta}</span>
+                    ) : workflowStatus.qualityDelta < 0 ? (
+                      <span className="text-red-600 dark:text-red-400">{workflowStatus.qualityDelta}</span>
+                    ) : (
+                      <span className="text-muted-foreground">0</span>
+                    )}
+                  </p>
+                </div>
+              )}
+            </div>
+            {workflowStatus.reason && (
+              <p className="mt-3 text-sm text-muted-foreground">{workflowStatus.reason}</p>
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

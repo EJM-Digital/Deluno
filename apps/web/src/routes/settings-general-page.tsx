@@ -242,7 +242,7 @@ export function SettingsGeneralPage() {
         <Card className="settings-panel">
           <CardHeader>
             <CardTitle>Status</CardTitle>
-            <CardDescription>Current persisted general posture.</CardDescription>
+            <CardDescription>Current general settings for this instance.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <GeneralStat label="Instance" value={settings.appInstanceName} />

@@ -11,6 +11,10 @@ public sealed record SeriesEpisodeInventoryItem(
     string WantedStatus,
     string WantedReason,
     bool QualityCutoffMet,
+    string? CurrentQuality,
+    string? TargetQuality,
+    bool PreventLowerQualityReplacements,
+    int? LastQualityDeltaDecision,
     DateTimeOffset? LastSearchUtc,
     DateTimeOffset? NextEligibleSearchUtc,
     DateTimeOffset UpdatedUtc);

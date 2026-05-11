@@ -440,6 +440,7 @@ public sealed class SqliteSeriesCatalogRepository(
             SELECT
                 s.id, s.title, s.start_year, s.imdb_id,
                 w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality, w.quality_cutoff_met,
+                w.prevent_lower_quality_replacements, w.quality_delta_last_decision,
                 w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc, w.last_search_result, w.updated_utc
             FROM series_wanted_state w
             INNER JOIN series_entries s ON s.id = w.series_id
@@ -531,7 +532,11 @@ public sealed class SqliteSeriesCatalogRepository(
                     e.has_file,
                     COALESCE(w.wanted_status, CASE WHEN e.has_file = 1 THEN 'covered' ELSE 'missing' END),
                     COALESCE(w.wanted_reason, CASE WHEN e.has_file = 1 THEN 'Episode already has an imported file.' ELSE 'Episode is missing from the library.' END),
-                    e.quality_cutoff_met,
+                    COALESCE(w.quality_cutoff_met, e.quality_cutoff_met),
+                    w.current_quality,
+                    w.target_quality,
+                    COALESCE(w.prevent_lower_quality_replacements, 1),
+                    w.quality_delta_last_decision,
                     w.last_search_utc,
                     w.next_eligible_search_utc,
                     e.updated_utc
@@ -556,9 +561,13 @@ public sealed class SqliteSeriesCatalogRepository(
                     WantedStatus: episodeReader.GetString(7),
                     WantedReason: episodeReader.GetString(8),
                     QualityCutoffMet: episodeReader.GetInt64(9) == 1,
-                    LastSearchUtc: episodeReader.IsDBNull(10) ? null : ParseTimestamp(episodeReader.GetString(10)),
-                    NextEligibleSearchUtc: episodeReader.IsDBNull(11) ? null : ParseTimestamp(episodeReader.GetString(11)),
-                    UpdatedUtc: ParseTimestamp(episodeReader.GetString(12))));
+                    CurrentQuality: episodeReader.IsDBNull(10) ? null : episodeReader.GetString(10),
+                    TargetQuality: episodeReader.IsDBNull(11) ? null : episodeReader.GetString(11),
+                    PreventLowerQualityReplacements: episodeReader.GetInt64(12) == 1,
+                    LastQualityDeltaDecision: episodeReader.IsDBNull(13) ? null : episodeReader.GetInt32(13),
+                    LastSearchUtc: episodeReader.IsDBNull(14) ? null : ParseTimestamp(episodeReader.GetString(14)),
+                    NextEligibleSearchUtc: episodeReader.IsDBNull(15) ? null : ParseTimestamp(episodeReader.GetString(15)),
+                    UpdatedUtc: ParseTimestamp(episodeReader.GetString(16))));
             }
         }
 
@@ -647,6 +656,7 @@ public sealed class SqliteSeriesCatalogRepository(
                   SELECT
                       s.id, s.title, s.start_year, s.imdb_id,
                       w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality, w.quality_cutoff_met,
+                      w.prevent_lower_quality_replacements, w.quality_delta_last_decision,
                       w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc, w.last_search_result, w.updated_utc
                   FROM series_wanted_state w
                   INNER JOIN series_entries s ON s.id = w.series_id
@@ -662,6 +672,7 @@ public sealed class SqliteSeriesCatalogRepository(
                   SELECT
                       s.id, s.title, s.start_year, s.imdb_id,
                       w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality, w.quality_cutoff_met,
+                      w.prevent_lower_quality_replacements, w.quality_delta_last_decision,
                       w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc, w.last_search_result, w.updated_utc
                   FROM series_wanted_state w
                   INNER JOIN series_entries s ON s.id = w.series_id
@@ -1395,11 +1406,18 @@ public sealed class SqliteSeriesCatalogRepository(
 
     public async Task<SeriesImportRecoverySummary> GetImportRecoverySummaryAsync(CancellationToken cancellationToken)
     {
-        var cases = new List<SeriesImportRecoveryCase>();
+        var openCases = new List<SeriesImportRecoveryCase>();
+        int openCount = 0;
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Series,
             cancellationToken);
+
+        using (var countCmd = connection.CreateCommand())
+        {
+            countCmd.CommandText = "SELECT COUNT(*) FROM series_import_recovery_cases WHERE status = 'open';";
+            openCount = Convert.ToInt32(await countCmd.ExecuteScalarAsync(cancellationToken));
+        }
 
         using (var command = connection.CreateCommand())
         {
@@ -1409,11 +1427,14 @@ public sealed class SqliteSeriesCatalogRepository(
                     id,
                     title,
                     failure_kind,
+                    status,
                     summary,
                     recommended_action,
                     details_json,
-                    detected_utc
+                    detected_utc,
+                    resolved_utc
                 FROM series_import_recovery_cases
+                WHERE status = 'open'
                 ORDER BY detected_utc DESC
                 LIMIT 12;
                 """;
@@ -1421,25 +1442,18 @@ public sealed class SqliteSeriesCatalogRepository(
             using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
-                cases.Add(new SeriesImportRecoveryCase(
-                    Id: reader.GetString(0),
-                    Title: reader.GetString(1),
-                    FailureKind: reader.GetString(2),
-                    Summary: reader.GetString(3),
-                    RecommendedAction: reader.GetString(4),
-                    DetailsJson: reader.IsDBNull(5) ? null : reader.GetString(5),
-                    DetectedUtc: ParseTimestamp(reader.GetString(6))));
+                openCases.Add(ReadImportRecoveryCase(reader));
             }
         }
 
         return new SeriesImportRecoverySummary(
-            OpenCount: cases.Count,
-            QualityCount: cases.Count(item => item.FailureKind == "quality"),
-            UnmatchedCount: cases.Count(item => item.FailureKind == "unmatched"),
-            CorruptCount: cases.Count(item => item.FailureKind == "corrupt"),
-            DownloadFailedCount: cases.Count(item => item.FailureKind == "downloadFailed"),
-            ImportFailedCount: cases.Count(item => item.FailureKind == "importFailed"),
-            RecentCases: cases);
+            OpenCount: openCount,
+            QualityCount: openCases.Count(item => item.FailureKind == "quality"),
+            UnmatchedCount: openCases.Count(item => item.FailureKind == "unmatched"),
+            CorruptCount: openCases.Count(item => item.FailureKind == "corrupt"),
+            DownloadFailedCount: openCases.Count(item => item.FailureKind == "downloadFailed"),
+            ImportFailedCount: openCases.Count(item => item.FailureKind == "importFailed"),
+            RecentCases: openCases);
     }
 
     public async Task<SeriesImportRecoveryCase> AddImportRecoveryCaseAsync(
@@ -1451,12 +1465,14 @@ public sealed class SqliteSeriesCatalogRepository(
             Id: Guid.CreateVersion7().ToString("N"),
             Title: request.Title!.Trim(),
             FailureKind: NormalizeFailureKind(request.FailureKind),
+            Status: "open",
             Summary: request.Summary!.Trim(),
             RecommendedAction: string.IsNullOrWhiteSpace(request.RecommendedAction)
                 ? "Review this import and decide whether Deluno should retry, rematch, or remove it."
                 : request.RecommendedAction.Trim(),
             DetailsJson: string.IsNullOrWhiteSpace(request.DetailsJson) ? null : request.DetailsJson.Trim(),
-            DetectedUtc: now);
+            DetectedUtc: now,
+            ResolvedUtc: null);
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Series,
@@ -1469,6 +1485,7 @@ public sealed class SqliteSeriesCatalogRepository(
                 id,
                 title,
                 failure_kind,
+                status,
                 summary,
                 recommended_action,
                 details_json,
@@ -1478,6 +1495,7 @@ public sealed class SqliteSeriesCatalogRepository(
                 @id,
                 @title,
                 @failureKind,
+                'open',
                 @summary,
                 @recommendedAction,
                 @detailsJson,
@@ -1494,6 +1512,8 @@ public sealed class SqliteSeriesCatalogRepository(
         AddParameter(command, "@detectedUtc", item.DetectedUtc.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
 
+        await AddImportRecoveryEventAsync(item.Id, "case_opened", "Import recovery case created.", null, cancellationToken);
+
         return item;
     }
 
@@ -1508,6 +1528,107 @@ public sealed class SqliteSeriesCatalogRepository(
         AddParameter(command, "@id", id);
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
+
+    public async Task<SeriesImportRecoveryCase?> ResolveImportRecoveryCaseAsync(
+        string id,
+        string status,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using (var update = connection.CreateCommand())
+        {
+            update.CommandText =
+                """
+                UPDATE series_import_recovery_cases
+                SET status = @status, resolved_utc = @resolvedUtc
+                WHERE id = @id AND status = 'open';
+                """;
+            AddParameter(update, "@id", id);
+            AddParameter(update, "@status", status);
+            AddParameter(update, "@resolvedUtc", now.ToString("O"));
+            var rows = await update.ExecuteNonQueryAsync(cancellationToken);
+            if (rows == 0)
+            {
+                return null;
+            }
+        }
+
+        using var select = connection.CreateCommand();
+        select.CommandText =
+            """
+            SELECT id, title, failure_kind, status, summary, recommended_action, details_json, detected_utc, resolved_utc
+            FROM series_import_recovery_cases
+            WHERE id = @id;
+            """;
+        AddParameter(select, "@id", id);
+        using var reader = await select.ExecuteReaderAsync(cancellationToken);
+        if (await reader.ReadAsync(cancellationToken))
+        {
+            return ReadImportRecoveryCase(reader);
+        }
+
+        return null;
+    }
+
+    public async Task AddImportRecoveryEventAsync(
+        string caseId,
+        string eventKind,
+        string message,
+        string? metadataJson,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            INSERT INTO series_import_recovery_events (id, case_id, event_kind, message, metadata_json, created_utc)
+            VALUES (@id, @caseId, @eventKind, @message, @metadataJson, @createdUtc);
+            """;
+        AddParameter(command, "@id", Guid.CreateVersion7().ToString("N"));
+        AddParameter(command, "@caseId", caseId);
+        AddParameter(command, "@eventKind", eventKind);
+        AddParameter(command, "@message", message);
+        AddParameter(command, "@metadataJson", metadataJson);
+        AddParameter(command, "@createdUtc", timeProvider.GetUtcNow().ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<int> CleanupImportRecoveryCasesAsync(DateTimeOffset olderThan, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            DELETE FROM series_import_recovery_cases
+            WHERE status IN ('resolved', 'dismissed')
+              AND resolved_utc < @olderThan;
+            """;
+        AddParameter(command, "@olderThan", olderThan.ToString("O"));
+        return await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static SeriesImportRecoveryCase ReadImportRecoveryCase(System.Data.Common.DbDataReader reader) =>
+        new SeriesImportRecoveryCase(
+            Id: reader.GetString(0),
+            Title: reader.GetString(1),
+            FailureKind: reader.GetString(2),
+            Status: reader.GetString(3),
+            Summary: reader.GetString(4),
+            RecommendedAction: reader.GetString(5),
+            DetailsJson: reader.IsDBNull(6) ? null : reader.GetString(6),
+            DetectedUtc: ParseTimestamp(reader.GetString(7)),
+            ResolvedUtc: reader.IsDBNull(8) ? null : ParseTimestamp(reader.GetString(8)));
 
     public async Task<bool> DeleteAsync(string seriesId, CancellationToken cancellationToken)
     {
@@ -1676,11 +1797,13 @@ public sealed class SqliteSeriesCatalogRepository(
             CurrentQuality: reader.IsDBNull(8) ? null : reader.GetString(8),
             TargetQuality: reader.IsDBNull(9) ? null : reader.GetString(9),
             QualityCutoffMet: reader.GetInt64(10) == 1,
-            MissingSinceUtc: reader.IsDBNull(11) ? null : ParseTimestamp(reader.GetString(11)),
-            LastSearchUtc: reader.IsDBNull(12) ? null : ParseTimestamp(reader.GetString(12)),
-            NextEligibleSearchUtc: reader.IsDBNull(13) ? null : ParseTimestamp(reader.GetString(13)),
-            LastSearchResult: reader.IsDBNull(14) ? null : reader.GetString(14),
-            UpdatedUtc: ParseTimestamp(reader.GetString(15)));
+            PreventLowerQualityReplacements: reader.GetInt64(11) == 1,
+            LastQualityDeltaDecision: reader.IsDBNull(12) ? null : reader.GetInt32(12),
+            MissingSinceUtc: reader.IsDBNull(13) ? null : ParseTimestamp(reader.GetString(13)),
+            LastSearchUtc: reader.IsDBNull(14) ? null : ParseTimestamp(reader.GetString(14)),
+            NextEligibleSearchUtc: reader.IsDBNull(15) ? null : ParseTimestamp(reader.GetString(15)),
+            LastSearchResult: reader.IsDBNull(16) ? null : reader.GetString(16),
+            UpdatedUtc: ParseTimestamp(reader.GetString(17)));
     }
 
     private static void AddParameter(System.Data.Common.DbCommand command, string name, object? value)
@@ -1855,6 +1978,134 @@ public sealed class SqliteSeriesCatalogRepository(
             "waiting" => "waiting",
             _ => "missing"
         };
+    }
+
+    public async Task<SeriesWantedItem?> GetSeriesWantedStateAsync(
+        string seriesId,
+        string libraryId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT
+                s.id, s.title, s.start_year, s.imdb_id,
+                w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality, w.quality_cutoff_met,
+                w.prevent_lower_quality_replacements, w.quality_delta_last_decision,
+                w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc, w.last_search_result, w.updated_utc
+            FROM series_wanted_state w
+            INNER JOIN series_entries s ON s.id = w.series_id
+            WHERE w.series_id = @seriesId AND w.library_id = @libraryId
+            LIMIT 1;
+            """;
+        AddParameter(command, "@seriesId", seriesId);
+        AddParameter(command, "@libraryId", libraryId);
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        return ReadWantedSeries(reader);
+    }
+
+    public async Task<bool> UpdateSeriesReplacementPolicyAsync(
+        string seriesId,
+        string libraryId,
+        bool preventLowerQualityReplacements,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE series_wanted_state
+            SET prevent_lower_quality_replacements = @value,
+                updated_utc = @updatedUtc
+            WHERE series_id = @seriesId AND library_id = @libraryId;
+            """;
+        AddParameter(command, "@seriesId", seriesId);
+        AddParameter(command, "@libraryId", libraryId);
+        AddParameter(command, "@value", preventLowerQualityReplacements ? 1 : 0);
+        AddParameter(command, "@updatedUtc", DateTimeOffset.UtcNow.ToString("O"));
+
+        var affected = await command.ExecuteNonQueryAsync(cancellationToken);
+        return affected > 0;
+    }
+
+    public async Task<IReadOnlyList<SeriesEpisodeInventoryItem>> ListMonitoredMissingEpisodesAsync(
+        string seriesId,
+        string libraryId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT
+                e.id,
+                e.season_number,
+                e.episode_number,
+                e.title,
+                e.air_date_utc,
+                e.monitored,
+                e.has_file,
+                COALESCE(w.wanted_status, 'missing'),
+                COALESCE(w.wanted_reason, 'Episode is missing from the library.'),
+                COALESCE(w.quality_cutoff_met, e.quality_cutoff_met),
+                w.current_quality,
+                w.target_quality,
+                COALESCE(w.prevent_lower_quality_replacements, 1),
+                w.quality_delta_last_decision,
+                w.last_search_utc,
+                w.next_eligible_search_utc,
+                e.updated_utc
+            FROM episode_entries e
+            LEFT JOIN episode_wanted_state w ON w.episode_id = e.id AND w.library_id = @libraryId
+            WHERE e.series_id = @seriesId
+              AND e.monitored = 1
+              AND e.has_file = 0
+            ORDER BY e.season_number ASC, e.episode_number ASC;
+            """;
+        AddParameter(command, "@seriesId", seriesId);
+        AddParameter(command, "@libraryId", libraryId);
+
+        var episodes = new List<SeriesEpisodeInventoryItem>();
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            episodes.Add(new SeriesEpisodeInventoryItem(
+                EpisodeId: reader.GetString(0),
+                SeasonNumber: reader.GetInt32(1),
+                EpisodeNumber: reader.GetInt32(2),
+                Title: reader.IsDBNull(3) ? null : reader.GetString(3),
+                AirDateUtc: reader.IsDBNull(4) ? null : ParseTimestamp(reader.GetString(4)),
+                Monitored: reader.GetInt64(5) == 1,
+                HasFile: reader.GetInt64(6) == 1,
+                WantedStatus: reader.GetString(7),
+                WantedReason: reader.GetString(8),
+                QualityCutoffMet: reader.GetInt64(9) == 1,
+                CurrentQuality: reader.IsDBNull(10) ? null : reader.GetString(10),
+                TargetQuality: reader.IsDBNull(11) ? null : reader.GetString(11),
+                PreventLowerQualityReplacements: reader.GetInt64(12) == 1,
+                LastQualityDeltaDecision: reader.IsDBNull(13) ? null : reader.GetInt32(13),
+                LastSearchUtc: reader.IsDBNull(14) ? null : ParseTimestamp(reader.GetString(14)),
+                NextEligibleSearchUtc: reader.IsDBNull(15) ? null : ParseTimestamp(reader.GetString(15)),
+                UpdatedUtc: ParseTimestamp(reader.GetString(16))));
+        }
+
+        return episodes;
     }
 
     private static DateTimeOffset ParseTimestamp(string value)

@@ -16,4 +16,6 @@ public sealed record MovieWantedItem(
     DateTimeOffset? LastSearchUtc,
     DateTimeOffset? NextEligibleSearchUtc,
     string? LastSearchResult,
+    bool PreventLowerQualityReplacements,
+    int? LastQualityDeltaDecision,
     DateTimeOffset UpdatedUtc);

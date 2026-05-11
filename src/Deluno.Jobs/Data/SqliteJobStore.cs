@@ -479,6 +479,18 @@ public sealed class SqliteJobStore(
             SeverityForCategory("job.completed"),
             now.ToString("O"),
             cancellationToken);
+        if (job.JobType == "filesystem.import.execute")
+        {
+            await realtimeEventPublisher.PublishImportStateChangedAsync(
+                job.Id,
+                "completed",
+                job.RelatedEntityType,
+                job.RelatedEntityId,
+                completionMessage,
+                null,
+                now.ToString("O"),
+                cancellationToken);
+        }
         DelunoObservability.JobsCompleted.Add(1, new("job.type", job.JobType), new("source", job.Source));
     }
 
@@ -583,6 +595,11 @@ public sealed class SqliteJobStore(
 
         await transaction.CommitAsync(cancellationToken);
         await realtimeEventPublisher.PublishQueueItemRemovedAsync(job.Id, cancellationToken);
+        await realtimeEventPublisher.PublishQueueItemStatusChangedAsync(
+            job.Id,
+            nextStatus,
+            storedError,
+            cancellationToken);
         await realtimeEventPublisher.PublishActivityEventAddedAsync(
             Guid.CreateVersion7().ToString("N"),
             shouldDeadLetter
@@ -592,6 +609,18 @@ public sealed class SqliteJobStore(
             SeverityForCategory(shouldDeadLetter ? "job.dead-letter" : "job.failed"),
             now.ToString("O"),
             cancellationToken);
+        if (job.JobType == "filesystem.import.execute")
+        {
+            await realtimeEventPublisher.PublishImportStateChangedAsync(
+                job.Id,
+                shouldDeadLetter ? "failed" : "retrying",
+                job.RelatedEntityType,
+                job.RelatedEntityId,
+                null,
+                storedError,
+                now.ToString("O"),
+                cancellationToken);
+        }
         DelunoObservability.JobsFailed.Add(1, new("job.type", job.JobType), new("status", nextStatus));
         if (!shouldDeadLetter)
         {
@@ -928,6 +957,35 @@ public sealed class SqliteJobStore(
             var hasPendingJob = pendingJobLibraries.Contains(library.LibraryId);
             var dueForScheduledSearch = library.AutoSearchEnabled &&
                 (state.NextSearchUtc is null || state.NextSearchUtc <= now);
+
+            // Respect time-of-day search window (manual requests bypass the window)
+            if (dueForScheduledSearch && !state.SearchRequested &&
+                library.SearchWindowStartHour.HasValue && library.SearchWindowEndHour.HasValue)
+            {
+                var currentHour = now.Hour;
+                var windowStart = library.SearchWindowStartHour.Value;
+                var windowEnd = library.SearchWindowEndHour.Value;
+                var inWindow = windowStart <= windowEnd
+                    ? currentHour >= windowStart && currentHour < windowEnd
+                    : currentHour >= windowStart || currentHour < windowEnd; // wraps midnight
+
+                if (!inWindow)
+                {
+                    // Advance next_search_utc to the next window opening
+                    var hoursUntilWindow = windowStart > currentHour
+                        ? windowStart - currentHour
+                        : 24 - currentHour + windowStart;
+                    var nextWindowOpen = now.AddHours(hoursUntilWindow);
+
+                    await UpdateAutomationIdleAsync(
+                        connection, transaction,
+                        library.LibraryId, library.LibraryName, library.MediaType,
+                        "idle", nextSearchUtc: nextWindowOpen, searchRequested: false,
+                        updatedUtc: now, cancellationToken);
+
+                    continue;
+                }
+            }
 
             var shouldQueue = state.SearchRequested || dueForScheduledSearch;
             if (!shouldQueue)
@@ -1322,12 +1380,22 @@ public sealed class SqliteJobStore(
             cancellationToken: cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
+        var cycleTimestamp = (request.CompletedUtc ?? request.StartedUtc).ToString("O");
         await realtimeEventPublisher.PublishActivityEventAddedAsync(
             Guid.CreateVersion7().ToString("N"),
             $"Checked {request.LibraryName}: {request.PlannedCount} planned, {request.QueuedCount} sent, {request.SkippedCount} waiting.",
             "library.search.cycle",
             SeverityForCategory("library.search.cycle"),
-            (request.CompletedUtc ?? request.StartedUtc).ToString("O"),
+            cycleTimestamp,
+            cancellationToken);
+        await realtimeEventPublisher.PublishSearchRunCompletedAsync(
+            request.LibraryId,
+            request.LibraryName,
+            request.MediaType,
+            request.PlannedCount,
+            request.QueuedCount,
+            request.SkippedCount,
+            cycleTimestamp,
             cancellationToken);
     }
 

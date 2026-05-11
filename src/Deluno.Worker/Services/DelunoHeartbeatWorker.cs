@@ -99,7 +99,9 @@ public sealed class DelunoHeartbeatWorker(
                         UpgradeSearchEnabled: library.UpgradeSearchEnabled,
                         SearchIntervalHours: library.SearchIntervalHours,
                         RetryDelayHours: library.RetryDelayHours,
-                        MaxItemsPerRun: library.MaxItemsPerRun))
+                        MaxItemsPerRun: library.MaxItemsPerRun,
+                        SearchWindowStartHour: library.SearchWindowStartHour,
+                        SearchWindowEndHour: library.SearchWindowEndHour))
                     .ToArray();
 
                 await jobQueueRepository.PlanLibrarySearchesAsync(automationPlans, stoppingToken);

@@ -11,11 +11,14 @@
  *   - Dev mode: logs events to console when VITE_WS_DEBUG=1
  *
  * Events emitted by the hub (mirror backend contracts):
- *   DownloadProgress   { id, title, progress, speedMbps, eta }
- *   QueueItemAdded     { id, title, type, status }
- *   QueueItemRemoved   { id }
- *   HealthChanged      { source, status, message }
- *   ActivityEventAdded { id, message, category, severity, createdUtc }
+ *   DownloadProgress        { id, title, progress, speedMbps, eta, status }
+ *   QueueItemAdded          { id, title, type, status }
+ *   QueueItemRemoved        { id }
+ *   QueueItemStatusChanged  { id, status, errorMessage }
+ *   HealthChanged           { source, status, message }
+ *   ActivityEventAdded      { id, message, category, severity, createdUtc }
+ *   SearchRunCompleted      { libraryId, libraryName, mediaType, plannedCount, queuedCount, skippedCount, completedUtc }
+ *   ImportStateChanged      { jobId, state, entityType, entityId, title, errorMessage, changedUtc }
  */
 
 import {
@@ -64,44 +67,41 @@ export interface ActivityEventAddedEvent {
   createdUtc: string;
 }
 
-export interface SearchProgressEvent {
+export interface QueueItemStatusChangedEvent {
   id: string;
-  title: string;
-  progress: number; // 0-100
-  totalResults: number;
-  eta: string | null;
-  status: "searching" | "completed" | "failed";
+  status: string;
+  errorMessage: string | null;
 }
 
-export interface ImportStatusEvent {
-  id: string;
-  releaseName: string;
-  progress: number; // 0-100
-  status: "importing" | "completed" | "failed";
-  importedPath?: string;
-  failureReason?: string;
-}
-
-export interface AutomationStatusEvent {
-  automationId: string;
+export interface SearchRunCompletedEvent {
   libraryId: string;
-  status: "queued" | "running" | "completed" | "failed";
-  itemsProcessed: number;
-  totalItems: number;
-  lastRunUtc: string;
-  nextRunUtc: string;
+  libraryName: string;
+  mediaType: string;
+  plannedCount: number;
+  queuedCount: number;
+  skippedCount: number;
+  completedUtc: string;
+}
+
+export interface ImportStateChangedEvent {
+  jobId: string;
+  state: string;
+  entityType: string | null;
+  entityId: string | null;
+  title: string | null;
+  errorMessage: string | null;
+  changedUtc: string;
 }
 
 type EventMap = {
   DownloadProgress: DownloadProgressEvent;
   QueueItemAdded: QueueItemAddedEvent;
   QueueItemRemoved: QueueItemRemovedEvent;
+  QueueItemStatusChanged: QueueItemStatusChangedEvent;
   HealthChanged: HealthChangedEvent;
   ActivityEventAdded: ActivityEventAddedEvent;
-  SearchProgress: SearchProgressEvent;
-  ImportStatus: ImportStatusEvent;
-  AutomationStatus: AutomationStatusEvent;
-  DownloadTelemetryChanged: Record<string, never>;
+  SearchRunCompleted: SearchRunCompletedEvent;
+  ImportStateChanged: ImportStateChangedEvent;
 };
 
 export type SignalREventName = keyof EventMap;
@@ -167,8 +167,11 @@ export function SignalRProvider({
       "DownloadProgress",
       "QueueItemAdded",
       "QueueItemRemoved",
+      "QueueItemStatusChanged",
       "HealthChanged",
-      "ActivityEventAdded"
+      "ActivityEventAdded",
+      "SearchRunCompleted",
+      "ImportStateChanged"
     ];
 
     for (const name of eventNames) {

@@ -9,4 +9,6 @@ public sealed record LibraryAutomationPlanItem(
     bool UpgradeSearchEnabled,
     int SearchIntervalHours,
     int RetryDelayHours,
-    int MaxItemsPerRun);
+    int MaxItemsPerRun,
+    int? SearchWindowStartHour,
+    int? SearchWindowEndHour);

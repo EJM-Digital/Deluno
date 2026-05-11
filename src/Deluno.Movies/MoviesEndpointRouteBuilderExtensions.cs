@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
@@ -7,6 +8,7 @@ using Deluno.Integrations.Search;
 using Deluno.Integrations.Metadata;
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
+using Deluno.Movies.Services;
 using Deluno.Platform.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform;
@@ -49,7 +51,7 @@ public static class MoviesEndpointRouteBuilderExtensions
 
         movies.MapPost("/import-recovery", async (
             HttpContext httpContext,
-            CreateMovieImportRecoveryCaseRequest request,
+            [FromBody] CreateMovieImportRecoveryCaseRequest request,
             IMovieCatalogRepository repository,
             IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
@@ -68,6 +70,52 @@ public static class MoviesEndpointRouteBuilderExtensions
 
             var item = await repository.AddImportRecoveryCaseAsync(request, cancellationToken);
             return Results.Ok(item);
+        });
+
+        movies.MapPost("/import-recovery/{id}/resolve", async (
+            string id,
+            HttpContext httpContext,
+            IMovieCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var updated = await repository.ResolveImportRecoveryCaseAsync(id, "resolved", cancellationToken);
+            if (updated is null)
+            {
+                return Results.NotFound();
+            }
+
+            await repository.AddImportRecoveryEventAsync(id, "case_resolved", "Case marked resolved by user.", null, cancellationToken);
+            return Results.Ok(updated);
+        });
+
+        movies.MapPost("/import-recovery/{id}/dismiss", async (
+            string id,
+            HttpContext httpContext,
+            IMovieCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var updated = await repository.ResolveImportRecoveryCaseAsync(id, "dismissed", cancellationToken);
+            if (updated is null)
+            {
+                return Results.NotFound();
+            }
+
+            await repository.AddImportRecoveryEventAsync(id, "case_dismissed", "Case dismissed by user.", null, cancellationToken);
+            return Results.Ok(updated);
         });
 
         movies.MapDelete("/import-recovery/{id}", async (
@@ -95,7 +143,7 @@ public static class MoviesEndpointRouteBuilderExtensions
 
         movies.MapPut("/monitoring", async (
             HttpContext httpContext,
-            UpdateMovieMonitoringRequest request,
+            [FromBody] UpdateMovieMonitoringRequest request,
             IMovieCatalogRepository repository,
             IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
@@ -284,7 +332,8 @@ public static class MoviesEndpointRouteBuilderExtensions
                     candidate.SizeScore,
                     candidate.ReleaseGroup,
                     candidate.EstimatedBitrateMbps,
-                    candidate.PolicyVersion
+                    candidate.PolicyVersion,
+                    candidate.MatchedCustomFormats
                 }).ToArray()
             });
         });
@@ -409,7 +458,7 @@ public static class MoviesEndpointRouteBuilderExtensions
 
         movies.MapPost("/{id}/grab", async (
             string id,
-            ReleaseGrabRequest request,
+            [FromBody] ReleaseGrabRequest request,
             HttpContext httpContext,
             IMovieCatalogRepository repository,
             IPlatformSettingsRepository platformSettingsRepository,
@@ -584,6 +633,141 @@ public static class MoviesEndpointRouteBuilderExtensions
             });
         });
 
+        movies.MapGet("/{id}/workflow-status", async (
+            string id,
+            IMovieCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
+            IMovieWorkflowService workflowService,
+            CancellationToken cancellationToken) =>
+        {
+            var wanted = await repository.GetWantedSummaryAsync(cancellationToken);
+            var wantedItem = wanted.RecentItems.FirstOrDefault(item => item.MovieId == id);
+            if (wantedItem is null)
+            {
+                return Results.NotFound();
+            }
+
+            var libraries = await platformSettingsRepository.ListLibrariesAsync(cancellationToken);
+            var library = libraries.FirstOrDefault(item => item.Id == wantedItem.LibraryId);
+
+            QualityProfileItem? profile = null;
+            if (library?.QualityProfileId is not null)
+            {
+                var profiles = await platformSettingsRepository.ListQualityProfilesAsync(cancellationToken);
+                profile = profiles.FirstOrDefault(item => item.Id == library.QualityProfileId);
+            }
+
+            var decision = workflowService.EvaluateWantedStatus(
+                wantedItem.CurrentQuality,
+                wantedItem.TargetQuality,
+                wantedItem.QualityCutoffMet,
+                profile?.UpgradeUntilCutoff ?? true,
+                profile?.UpgradeUnknownItems ?? false);
+
+            return Results.Ok(new
+            {
+                movieId = wantedItem.MovieId,
+                title = wantedItem.Title,
+                releaseYear = wantedItem.ReleaseYear,
+                libraryId = wantedItem.LibraryId,
+                wantedStatus = decision.WantedStatus,
+                reason = decision.Reason,
+                currentQuality = decision.CurrentQuality,
+                targetQuality = decision.TargetQuality,
+                preventLowerQualityReplacements = wantedItem.PreventLowerQualityReplacements,
+                lastQualityDeltaDecision = wantedItem.LastQualityDeltaDecision
+            });
+        });
+
+        movies.MapPut("/{id}/replacement-protection", async (
+            string id,
+            [FromBody] UpdateReplacementProtectionRequest request,
+            HttpContext httpContext,
+            IMovieCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var wanted = await repository.GetWantedSummaryAsync(cancellationToken);
+            var wantedItem = wanted.RecentItems.FirstOrDefault(item => item.MovieId == id);
+            if (wantedItem is null)
+            {
+                return Results.NotFound();
+            }
+
+            var updated = await repository.UpdateMovieReplacementPolicyAsync(
+                id,
+                wantedItem.LibraryId,
+                request.PreventLowerQualityReplacements,
+                cancellationToken);
+
+            if (!updated)
+            {
+                return Results.NotFound();
+            }
+
+            return Results.NoContent();
+        });
+
+        movies.MapPost("/{id}/evaluate-candidate", async (
+            string id,
+            [FromBody] EvaluateCandidateRequest request,
+            IMovieCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
+            IMovieWorkflowService workflowService,
+            CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.CandidateQuality))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["candidateQuality"] = ["Provide the quality of the candidate release."]
+                });
+            }
+
+            var wanted = await repository.GetWantedSummaryAsync(cancellationToken);
+            var wantedItem = wanted.RecentItems.FirstOrDefault(item => item.MovieId == id);
+            if (wantedItem is null)
+            {
+                return Results.NotFound();
+            }
+
+            var libraries = await platformSettingsRepository.ListLibrariesAsync(cancellationToken);
+            var library = libraries.FirstOrDefault(item => item.Id == wantedItem.LibraryId);
+
+            QualityProfileItem? profile = null;
+            if (library?.QualityProfileId is not null)
+            {
+                var profiles = await platformSettingsRepository.ListQualityProfilesAsync(cancellationToken);
+                profile = profiles.FirstOrDefault(item => item.Id == library.QualityProfileId);
+            }
+
+            var evaluation = workflowService.EvaluateCandidate(new MovieCandidateEvaluationInput(
+                MovieId: id,
+                CurrentQuality: wantedItem.CurrentQuality,
+                CandidateQuality: request.CandidateQuality.Trim(),
+                TargetQuality: wantedItem.TargetQuality,
+                UpgradeUntilCutoff: profile?.UpgradeUntilCutoff ?? true,
+                UpgradeUnknownItems: profile?.UpgradeUnknownItems ?? false,
+                PreventLowerQualityReplacements: wantedItem.PreventLowerQualityReplacements,
+                Profile: profile));
+
+            return Results.Ok(new
+            {
+                evaluation.WantedStatus,
+                evaluation.Reason,
+                evaluation.IsReplacementAllowed,
+                evaluation.QualityDelta,
+                evaluation.CurrentQuality,
+                evaluation.TargetQuality
+            });
+        });
+
         movies.MapPost("/{id}/metadata/refresh", async (
             string id,
             HttpContext httpContext,
@@ -629,7 +813,7 @@ public static class MoviesEndpointRouteBuilderExtensions
 
         movies.MapPost("/{id}/metadata/link", async (
             string id,
-            MetadataLinkRequest request,
+            [FromBody] MetadataLinkRequest request,
             HttpContext httpContext,
             IMovieCatalogRepository repository,
             IPlatformSettingsRepository platformSettingsRepository,
@@ -713,7 +897,7 @@ public static class MoviesEndpointRouteBuilderExtensions
 
         movies.MapPost("/metadata/jobs", async (
             HttpContext httpContext,
-            MetadataRefreshJobsRequest request,
+            [FromBody] MetadataRefreshJobsRequest request,
             IMovieCatalogRepository repository,
             IPlatformSettingsRepository platformSettingsRepository,
             IJobScheduler jobScheduler,
@@ -752,7 +936,7 @@ public static class MoviesEndpointRouteBuilderExtensions
 
         movies.MapPost("/", async (
             HttpContext httpContext,
-            CreateMovieRequest request,
+            [FromBody] CreateMovieRequest request,
             IMovieCatalogRepository repository,
             IPlatformSettingsRepository platformSettingsRepository,
             IMediaDecisionService mediaDecisionService,
@@ -809,6 +993,131 @@ public static class MoviesEndpointRouteBuilderExtensions
                     RelatedEntityId: movie.Id),
                 cancellationToken);
             return Results.Created($"/api/movies/{movie.Id}", movie);
+        });
+
+        movies.MapGet("/duplicates", async (
+            IMovieCatalogRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var duplicates = await repository.FindCrossLibraryDuplicatesAsync(cancellationToken);
+            return Results.Ok(duplicates);
+        });
+
+        movies.MapPost("/bulk/search", async (
+            HttpContext httpContext,
+            [FromBody] BulkSearchRequest request,
+            IMovieCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
+            IJobQueueRepository jobQueueRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (request.MovieIds is not { Count: > 0 })
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["movieIds"] = ["Choose at least one movie to search for."]
+                });
+            }
+
+            var wanted = await repository.GetWantedSummaryAsync(cancellationToken);
+            var libraryIds = wanted.RecentItems
+                .Where(item => request.MovieIds.Contains(item.MovieId, StringComparer.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(item.LibraryId))
+                .Select(item => item.LibraryId!)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            var libraries = await platformSettingsRepository.ListLibrariesAsync(cancellationToken);
+            var triggered = 0;
+            foreach (var libraryId in libraryIds)
+            {
+                var library = libraries.FirstOrDefault(l => string.Equals(l.Id, libraryId, StringComparison.OrdinalIgnoreCase));
+                if (library is null)
+                {
+                    continue;
+                }
+
+                await jobQueueRepository.RequestLibrarySearchAsync(new LibraryAutomationPlanItem(
+                    LibraryId: library.Id,
+                    LibraryName: library.Name,
+                    MediaType: library.MediaType,
+                    AutoSearchEnabled: library.AutoSearchEnabled,
+                    MissingSearchEnabled: library.MissingSearchEnabled,
+                    UpgradeSearchEnabled: library.UpgradeSearchEnabled,
+                    SearchIntervalHours: library.SearchIntervalHours,
+                    RetryDelayHours: library.RetryDelayHours,
+                    MaxItemsPerRun: library.MaxItemsPerRun,
+                    SearchWindowStartHour: library.SearchWindowStartHour,
+                    SearchWindowEndHour: library.SearchWindowEndHour), cancellationToken);
+                triggered++;
+            }
+
+            return Results.Ok(new { searchesTriggered = triggered, libraryCount = libraryIds.Length });
+        });
+
+        movies.MapDelete("/bulk", async (
+            HttpContext httpContext,
+            [FromBody] BulkDeleteMoviesRequest request,
+            IMovieCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (request.MovieIds is not { Count: > 0 })
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["movieIds"] = ["Choose at least one movie to remove."]
+                });
+            }
+
+            var removed = await repository.UpdateMonitoredAsync(request.MovieIds, false, cancellationToken);
+            return Results.Ok(new { unmonitored = removed });
+        });
+
+        movies.MapPost("/bulk/reassign-library", async (
+            HttpContext httpContext,
+            [FromBody] BulkReassignLibraryRequest request,
+            IMovieCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (request.MovieIds is null || request.MovieIds.Count == 0)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["movieIds"] = ["At least one movie ID is required."]
+                });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.FromLibraryId) || string.IsNullOrWhiteSpace(request.ToLibraryId))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["libraryId"] = ["Both fromLibraryId and toLibraryId are required."]
+                });
+            }
+
+            var count = await repository.ReassignLibraryAsync(
+                request.MovieIds, request.FromLibraryId, request.ToLibraryId, cancellationToken);
+
+            return Results.Ok(new { reassigned = count });
         });
 
         return endpoints;
@@ -935,4 +1244,19 @@ public static class MoviesEndpointRouteBuilderExtensions
     private sealed record MetadataRefreshJobsResponse(
         int EnqueuedCount,
         IReadOnlyList<Deluno.Jobs.Contracts.JobQueueItem> Jobs);
+
+    private sealed record UpdateReplacementProtectionRequest(
+        bool PreventLowerQualityReplacements);
+
+    private sealed record EvaluateCandidateRequest(
+        string CandidateQuality);
+
+    private sealed record BulkReassignLibraryRequest(
+        IReadOnlyList<string>? MovieIds,
+        string? FromLibraryId,
+        string? ToLibraryId);
+
+    private sealed record BulkSearchRequest(IReadOnlyList<string>? MovieIds);
+
+    private sealed record BulkDeleteMoviesRequest(IReadOnlyList<string>? MovieIds);
 }

@@ -12,6 +12,8 @@ public sealed record SeriesWantedItem(
     string? CurrentQuality,
     string? TargetQuality,
     bool QualityCutoffMet,
+    bool PreventLowerQualityReplacements,
+    int? LastQualityDeltaDecision,
     DateTimeOffset? MissingSinceUtc,
     DateTimeOffset? LastSearchUtc,
     DateTimeOffset? NextEligibleSearchUtc,

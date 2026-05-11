@@ -211,7 +211,8 @@ public sealed class FeedMediaSearchPlanner(
                 SizeScore: decision.SizeScore,
                 ReleaseGroup: decision.ReleaseGroup,
                 EstimatedBitrateMbps: decision.EstimatedBitrateMbps,
-                PolicyVersion: decision.PolicyVersion));
+                PolicyVersion: decision.PolicyVersion,
+                MatchedCustomFormats: matchedFormats));
         }
 
         return results;

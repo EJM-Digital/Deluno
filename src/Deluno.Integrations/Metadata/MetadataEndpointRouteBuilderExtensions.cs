@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -50,7 +51,7 @@ public static class MetadataEndpointRouteBuilderExtensions
 
         metadata.MapPost("/test", async (
             HttpContext httpContext,
-            MetadataTestRequest request,
+            [FromBody] MetadataTestRequest request,
             IMetadataProvider provider,
             IPlatformSettingsRepository platformRepository,
             CancellationToken cancellationToken) =>
@@ -78,6 +79,23 @@ public static class MetadataEndpointRouteBuilderExtensions
                 status.Message,
                 results.Count,
                 results.Take(5).ToArray()));
+        });
+
+        metadata.MapDelete("/cache", async (
+            HttpContext httpContext,
+            string? mediaType,
+            TmdbMetadataProvider provider,
+            IPlatformSettingsRepository platformRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformRepository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            await provider.InvalidateCacheAsync(mediaType, cancellationToken);
+            return Results.Ok(new { cleared = true, mediaType = mediaType ?? "all" });
         });
 
         var broker = metadata.MapGroup("/broker");

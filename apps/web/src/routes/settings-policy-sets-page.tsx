@@ -451,8 +451,8 @@ export function SettingsPolicySetsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Library posture today</CardTitle>
-              <CardDescription>Libraries that policy sets will eventually assign into more precisely.</CardDescription>
+              <CardTitle>Your libraries</CardTitle>
+              <CardDescription>Libraries available for policy set assignment.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {libraries.map((library) => (

@@ -103,7 +103,11 @@ public sealed class DelunoBackupService(
                 foreach (var file in dataFiles)
                 {
                     var relativePath = Path.GetRelativePath(DataRoot, file).Replace('\\', '/');
-                    archive.CreateEntryFromFile(file, $"data/{relativePath}", CompressionLevel.Optimal);
+                    var entry = archive.CreateEntry($"data/{relativePath}", CompressionLevel.Optimal);
+                    entry.LastWriteTime = File.GetLastWriteTime(file);
+                    using var sourceStream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                    using var entryStream = entry.Open();
+                    sourceStream.CopyTo(entryStream);
                 }
             }
 
@@ -285,7 +289,8 @@ public sealed class DelunoBackupService(
         return Directory
             .EnumerateFiles(DataRoot, "*", SearchOption.AllDirectories)
             .Where(file => excludedRoots.All(excluded => !Path.GetFullPath(file).StartsWith(Path.GetFullPath(excluded), StringComparison.OrdinalIgnoreCase)))
-            .Where(file => !file.EndsWith(".pre-restore", StringComparison.OrdinalIgnoreCase));
+            .Where(file => !file.EndsWith(".pre-restore", StringComparison.OrdinalIgnoreCase))
+            .Where(file => !file.EndsWith(".db-shm", StringComparison.OrdinalIgnoreCase));
     }
 
     private BackupItem? ReadBackupItem(string file)

@@ -68,6 +68,11 @@ public interface IPlatformSettingsRepository
         CreateQualityProfileRequest request,
         CancellationToken cancellationToken);
 
+    Task<QualityProfileItem> CreateQualityProfileFromPresetAsync(
+        string presetId,
+        string? nameOverride,
+        CancellationToken cancellationToken);
+
     Task<TagItem> CreateTagAsync(
         CreateTagRequest request,
         CancellationToken cancellationToken);
@@ -185,6 +190,8 @@ public interface IPlatformSettingsRepository
         int? latencyMs,
         CancellationToken cancellationToken);
 
+    Task<IndexerItem?> ResetIndexerCircuitAsync(string id, CancellationToken cancellationToken);
+
     Task<IndexerTestResult?> UpdateDownloadClientHealthAsync(
         string id,
         string healthStatus,
@@ -211,5 +218,15 @@ public interface IPlatformSettingsRepository
     Task<bool> DeleteDestinationRuleAsync(string id, CancellationToken cancellationToken);
     Task<bool> DeletePolicySetAsync(string id, CancellationToken cancellationToken);
     Task<bool> DeleteLibraryViewAsync(string userId, string id, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<NotificationWebhookItem>> ListNotificationWebhooksAsync(CancellationToken cancellationToken);
+
+    Task<NotificationWebhookItem> CreateNotificationWebhookAsync(CreateNotificationWebhookRequest request, CancellationToken cancellationToken);
+
+    Task<NotificationWebhookItem?> UpdateNotificationWebhookAsync(string id, UpdateNotificationWebhookRequest request, CancellationToken cancellationToken);
+
+    Task<bool> DeleteNotificationWebhookAsync(string id, CancellationToken cancellationToken);
+
+    Task RecordNotificationWebhookFiredAsync(string id, string? error, CancellationToken cancellationToken);
 
 }
