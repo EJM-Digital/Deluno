@@ -105,6 +105,20 @@ jobs:
             -p:Version=${{ steps.version.outputs.version }} `
             -o artifacts/windows/bin
 
+      - name: Bundle ffprobe.exe
+        shell: pwsh
+        run: |
+          # Download the latest static ffprobe build from BtbN FFmpeg-Builds
+          $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+          $zip = "$env:RUNNER_TEMP\ffmpeg.zip"
+          Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+          Expand-Archive $zip -DestinationPath "$env:RUNNER_TEMP\ffmpeg-extract"
+          $probe = Get-ChildItem "$env:RUNNER_TEMP\ffmpeg-extract" -Recurse -Filter "ffprobe.exe" |
+                   Select-Object -First 1
+          if (-not $probe) { Write-Error "ffprobe.exe not found in archive"; exit 1 }
+          Copy-Item $probe.FullName "artifacts/windows/bin/ffprobe.exe"
+          Write-Host "Bundled ffprobe.exe ($([math]::Round((Get-Item 'artifacts/windows/bin/ffprobe.exe').Length/1MB,1)) MB)"
+
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
 

@@ -34,7 +34,8 @@ Compression              = lzma2/ultra64
 SolidCompression         = yes
 WizardStyle              = modern
 WizardSizePercent        = 110
-SetupIconFile            =
+SetupIconFile            = deluno.ico
+UninstallDisplayIcon     = {commonappdata}\Deluno\bin\Deluno.exe
 UninstallDisplayName     = {#AppName} {#AppVersion}
 CloseApplications        = yes
 RestartApplications      = yes
@@ -46,7 +47,31 @@ ArchitecturesInstallIn64BitMode = x64compatible
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
-; ── Custom pages ──────────────────────────────────────────────────────────────
+[Files]
+; All published tray app files (self-contained, includes .NET runtime + wwwroot frontend)
+Source: "{#BinDir}\*"; DestDir: "{#BinInstDir}"; \
+  Flags: ignoreversion recursesubdirs createallsubdirs; \
+  Excludes: "*.pdb,*.xml,createdump.exe"
+
+[Icons]
+Name: "{group}\Deluno";           Filename: "{#BinInstDir}\{#AppExeName}"; \
+  IconFilename: "{#BinInstDir}\{#AppExeName}"
+Name: "{group}\Uninstall Deluno"; Filename: "{uninstallexe}"
+
+[Run]
+; Tray mode: launch immediately after install
+Filename: "{#BinInstDir}\{#AppExeName}"; \
+  Description: "Start Deluno now"; \
+  Flags: nowait postinstall skipifsilent; \
+  Check: RbTray.Checked
+
+; Tray mode: open browser to the configured port
+Filename: "http://localhost:{code:GetPort}"; \
+  Description: "Open Deluno in your browser"; \
+  Flags: nowait postinstall skipifsilent shellexec; \
+  Check: RbTray.Checked
+
+; ── Custom pages and install logic ────────────────────────────────────────────
 
 [Code]
 var
@@ -63,6 +88,12 @@ var
   PortPage:       TWizardPage;
   TbPort:         TEdit;
   LblPortStatus:  TLabel;
+
+{ Called from [Run] — returns the port the user chose }
+function GetPort(Param: String): String;
+begin
+  Result := TbPort.Text;
+end;
 
 procedure UpdateCredentialVisibility(Sender: TObject);
 begin
@@ -226,10 +257,12 @@ begin
 
   if RbTray.Checked then
   begin
+    { Register in HKCU Run so the tray app starts when the user logs in }
     RegWriteStringValue(HKCU,
       'Software\Microsoft\Windows\CurrentVersion\Run',
       'Deluno', '"' + ExePath + '"');
-    RegDeleteValue(HKLM, 'SYSTEM\CurrentControlSet\Services\Deluno', 'ImagePath');
+    { Remove any existing service if switching from service mode }
+    Exec('sc.exe', 'stop Deluno',   '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
     Exec('sc.exe', 'delete Deluno', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   end
   else if RbLocalSystem.Checked then
@@ -285,38 +318,4 @@ begin
       DelTree(DataDir, True, True, True);
     end;
   end;
-end;
-
-[Files]
-; All published tray app files
-Source: "{#BinDir}\*"; DestDir: "{#BinInstDir}"; \
-  Flags: ignoreversion recursesubdirs createallsubdirs; \
-  Excludes: "*.pdb"
-
-[Icons]
-Name: "{group}\Deluno";           Filename: "{#BinInstDir}\{#AppExeName}"
-Name: "{group}\Uninstall Deluno"; Filename: "{uninstallexe}"
-Name: "{commonstartup}\Deluno";   Filename: "{#BinInstDir}\{#AppExeName}"; \
-  Check: not RbTray.Checked  ; Tasks: not startuptask
-
-[Tasks]
-Name: startuptask; \
-  Description: "Start Deluno automatically when Windows starts"; \
-  Check: RbTray.Checked
-
-[Run]
-Filename: "{#BinInstDir}\{#AppExeName}"; \
-  Description: "Start Deluno now"; \
-  Flags: nowait postinstall skipifsilent; \
-  Check: RbTray.Checked
-
-Filename: "http://localhost:{code:GetPort}"; \
-  Description: "Open Deluno in browser"; \
-  Flags: nowait postinstall skipifsilent shellexec; \
-  Check: RbTray.Checked
-
-[Code]
-function GetPort(Param: String): String;
-begin
-  Result := TbPort.Text;
 end;

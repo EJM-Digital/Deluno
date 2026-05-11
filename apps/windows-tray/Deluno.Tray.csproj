@@ -13,6 +13,8 @@
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <!-- Version injected at publish time via /p:Version -->
     <Version>0.1.0</Version>
+    <!-- Brand icon embedded in the exe and shown in taskbar/alt-tab -->
+    <ApplicationIcon>..\..\installer\deluno.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -32,12 +34,12 @@
     <ProjectReference Include="..\..\src\Deluno.Worker\Deluno.Worker.csproj" />
   </ItemGroup>
 
-  <!-- On non-Windows CI, build as an empty library — restore validates dependencies,
-       WinExe OutputType would require an entry point even with no source files. -->
-  <PropertyGroup Condition="!$([MSBuild]::IsOSPlatform('Windows'))">
+  <!-- On non-Windows CI (or SimulateLinuxCI=true for local testing), build as an
+       empty library. WinExe requires an entry point even with no source files. -->
+  <PropertyGroup Condition="!$([MSBuild]::IsOSPlatform('Windows')) or '$(SimulateLinuxCI)' == 'true'">
     <OutputType>Library</OutputType>
   </PropertyGroup>
-  <ItemGroup Condition="!$([MSBuild]::IsOSPlatform('Windows'))">
+  <ItemGroup Condition="!$([MSBuild]::IsOSPlatform('Windows')) or '$(SimulateLinuxCI)' == 'true'">
     <Compile Remove="**/*.cs" />
   </ItemGroup>
 

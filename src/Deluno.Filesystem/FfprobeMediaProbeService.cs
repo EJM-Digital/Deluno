@@ -126,12 +126,18 @@ public sealed class FfprobeMediaProbeService : IMediaProbeService
 
     private static string? ResolveExecutable()
     {
+        // 1. Explicit override via environment variable
         var configured = Environment.GetEnvironmentVariable("DELUNO_FFPROBE_PATH");
         if (!string.IsNullOrWhiteSpace(configured) && File.Exists(configured))
-        {
             return configured;
-        }
 
+        // 2. Bundled next to the application executable (Windows installer puts it here)
+        var exeName = OperatingSystem.IsWindows() ? "ffprobe.exe" : "ffprobe";
+        var bundled = Path.Combine(AppContext.BaseDirectory, exeName);
+        if (File.Exists(bundled))
+            return bundled;
+
+        // 3. System PATH
         return "ffprobe";
     }
 
