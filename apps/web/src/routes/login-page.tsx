@@ -64,12 +64,12 @@ export function LoginPage() {
             }}
           >
             <svg width="28" height="28" viewBox="0 0 30 30" fill="none" aria-hidden>
-              <rect x="5.5" y="9" width="19" height="12" rx="2.5" stroke="white" strokeWidth="1.3" strokeOpacity="0.9" />
-              <rect x="5.5" y="11.25" width="2.5" height="2.25" rx="0.5" fill="white" fillOpacity="0.7" />
-              <rect x="5.5" y="16.5" width="2.5" height="2.25" rx="0.5" fill="white" fillOpacity="0.7" />
-              <rect x="22" y="11.25" width="2.5" height="2.25" rx="0.5" fill="white" fillOpacity="0.7" />
-              <rect x="22" y="16.5" width="2.5" height="2.25" rx="0.5" fill="white" fillOpacity="0.7" />
-              <path d="M13.75 12.75L19 15L13.75 17.25V12.75Z" fill="white" fillOpacity="0.95" />
+              <rect x="4.5" y="7.5" width="21" height="15" rx="2.1" stroke="white" strokeWidth="1.5" fill="none" />
+              <rect x="2.7" y="10.8" width="3.6" height="2.7" rx="0.6" fill="white" />
+              <rect x="2.7" y="16.5" width="3.6" height="2.7" rx="0.6" fill="white" />
+              <rect x="23.7" y="10.8" width="3.6" height="2.7" rx="0.6" fill="white" />
+              <rect x="23.7" y="16.5" width="3.6" height="2.7" rx="0.6" fill="white" />
+              <polygon points="12.3,12 12.3,18 17.7,15" fill="white" />
             </svg>
           </div>
           <div className="text-center">

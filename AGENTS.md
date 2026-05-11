@@ -32,13 +32,17 @@ This file is the small entry point for agent work. It is a map, not the full man
 
 ## Validation
 
-Use the smallest relevant checks while working, then run the broader gates before committing substantial changes:
+Run the smallest relevant checks while working. Before every push, run the CI gate:
 
-```powershell
-.\.dotnet\dotnet.exe test .\Deluno.slnx --configuration Release
-npm.cmd run build:web
-npm.cmd run test:web
-npm.cmd run validate:agents
+```bash
+bash scripts/ci-check.sh        # backend build + frontend build + agent readiness
+```
+
+Before merging, also run the full test suite:
+
+```bash
+dotnet test Deluno.slnx --configuration Release
+npm run test:web
 ```
 
 ## Mechanical Guardrails

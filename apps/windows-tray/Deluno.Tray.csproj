@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Deluno.Tray</RootNamespace>
+    <AssemblyName>Deluno</AssemblyName>
+    <Platforms>x64</Platforms>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+    <!-- Allows dotnet restore/build on Linux CI for the windows-targeted project -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <!-- Version injected at publish time via /p:Version -->
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Deluno.Api\Deluno.Api.csproj" />
+    <ProjectReference Include="..\..\src\Deluno.Filesystem\Deluno.Filesystem.csproj" />
+    <ProjectReference Include="..\..\src\Deluno.Infrastructure\Deluno.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Deluno.Integrations\Deluno.Integrations.csproj" />
+    <ProjectReference Include="..\..\src\Deluno.Jobs\Deluno.Jobs.csproj" />
+    <ProjectReference Include="..\..\src\Deluno.Movies\Deluno.Movies.csproj" />
+    <ProjectReference Include="..\..\src\Deluno.Platform\Deluno.Platform.csproj" />
+    <ProjectReference Include="..\..\src\Deluno.Realtime\Deluno.Realtime.csproj" />
+    <ProjectReference Include="..\..\src\Deluno.Series\Deluno.Series.csproj" />
+    <ProjectReference Include="..\..\src\Deluno.Worker\Deluno.Worker.csproj" />
+  </ItemGroup>
+
+  <!-- On non-Windows CI, build as an empty library — restore validates dependencies,
+       WinExe OutputType would require an entry point even with no source files. -->
+  <PropertyGroup Condition="!$([MSBuild]::IsOSPlatform('Windows'))">
+    <OutputType>Library</OutputType>
+  </PropertyGroup>
+  <ItemGroup Condition="!$([MSBuild]::IsOSPlatform('Windows'))">
+    <Compile Remove="**/*.cs" />
+  </ItemGroup>
+
+  <!-- Bundle the compiled web frontend if it has been built -->
+  <ItemGroup Condition="Exists('..\..\apps\web\dist')">
+    <Content Include="..\..\apps\web\dist\**\*">
+      <Link>wwwroot\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+</Project>

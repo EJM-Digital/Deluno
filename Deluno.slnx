@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/apps/">
+    <Project Path="apps/windows-tray/Deluno.Tray.csproj" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/Deluno.Api/Deluno.Api.csproj" />
     <Project Path="src/Deluno.Contracts/Deluno.Contracts.csproj" />

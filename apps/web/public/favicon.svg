@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFD060"/>
+      <stop offset="100%" stop-color="#F5A028"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background: 100×100, rx≈22% matching iOS squircle -->
+  <rect width="100" height="100" rx="22" fill="url(#bg)"/>
+
+  <!-- Screen outline: 70% wide × 50% tall, centred -->
+  <!-- x=15 y=25 w=70 h=50 → left=15 right=85 top=25 bottom=75 -->
+  <rect x="15" y="25" width="70" height="50" rx="7" stroke="white" stroke-width="5.5" fill="none"/>
+
+  <!-- Film strip tabs — left edge (straddle x=15, two tabs in upper/lower thirds) -->
+  <rect x="9"  y="36" width="12" height="9" rx="2" fill="white"/>
+  <rect x="9"  y="55" width="12" height="9" rx="2" fill="white"/>
+
+  <!-- Film strip tabs — right edge (straddle x=85) -->
+  <rect x="79" y="36" width="12" height="9" rx="2" fill="white"/>
+  <rect x="79" y="55" width="12" height="9" rx="2" fill="white"/>
+
+  <!-- Play triangle — visually centred at (50,50), ~40% of screen height -->
+  <!-- height=20, width=18; visual mid-x=(41+59)/2=50, visual mid-y=(40+60)/2=50 -->
+  <polygon points="41,40 41,60 59,50" fill="white"/>
+</svg>
