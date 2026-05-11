@@ -1,4 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from "react";
+import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { BookOpenText, Copy, KeyRound, LoaderCircle, ShieldCheck, Trash2 } from "lucide-react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { SaveStatus, useSaveStatus } from "../components/shell/save-status";
@@ -32,6 +33,7 @@ export function SystemApiPage() {
   const [createdKey, setCreatedKey] = useState<CreatedApiKeyResponse | null>(null);
   const [busy, setBusy] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<ApiKeyItem | null>(null);
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -65,10 +67,13 @@ export function SystemApiPage() {
   }
 
   async function handleDelete(item: ApiKeyItem) {
-    if (!window.confirm(`Revoke "${item.name}"? Anything using this key will stop authenticating immediately.`)) {
-      return;
-    }
+    setRevokeTarget(item);
+  }
 
+  async function confirmDelete() {
+    if (!revokeTarget) return;
+    const item = revokeTarget;
+    setRevokeTarget(null);
     setDeletingId(item.id);
     try {
       const response = await authedFetch(`/api/api-keys/${item.id}`, { method: "DELETE" });
@@ -271,6 +276,17 @@ curl -H "Authorization: Bearer deluno_..." http://127.0.0.1:5099/api/integration
           )}
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={revokeTarget !== null}
+        onOpenChange={(open) => { if (!open) setRevokeTarget(null); }}
+        title={`Revoke "${revokeTarget?.name}"?`}
+        description="Anything currently using this key will stop authenticating immediately. This cannot be undone."
+        confirmLabel="Revoke key"
+        confirmVariant="destructive"
+        busy={deletingId !== null}
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }

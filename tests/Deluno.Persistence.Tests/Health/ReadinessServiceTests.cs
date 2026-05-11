@@ -98,7 +98,7 @@ public sealed class ReadinessServiceTests
             migrator,
             NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
 
-        return new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher());
+        return new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
     }
 
     private static void AddParameter(System.Data.Common.DbCommand command, string name, object value)

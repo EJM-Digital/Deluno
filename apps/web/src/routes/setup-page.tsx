@@ -30,6 +30,11 @@ export function SetupPage() {
     event.preventDefault();
     setError(null);
 
+    if (password.length < 8) {
+      setError("Use at least 8 characters for the password.");
+      return;
+    }
+
     if (password !== confirmPassword) {
       setError("Passwords do not match.");
       return;

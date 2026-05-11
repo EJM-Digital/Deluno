@@ -4,6 +4,7 @@ import { LayoutGrid, LoaderCircle, Monitor, PanelTop, Rows3 } from "lucide-react
 import { SettingsShell } from "../components/app/settings-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
+import { InputDescription } from "../components/ui/input-description";
 import { SaveStatus, useSaveStatus } from "../components/shell/save-status";
 import { toast } from "../components/shell/toaster";
 import { settingsOverviewLoader } from "./settings-overview-page";
@@ -117,7 +118,7 @@ export function SettingsUiPage() {
           </CardHeader>
           <CardContent>
             <form className="space-y-[var(--grid-gap)]" onSubmit={handleSave}>
-              <Field label="Theme">
+              <Field label="Theme" description="Choose between dark mode, light mode, or auto-follow your system preference.">
                 <Select
                   value={formState.uiTheme}
                   onChange={(value) => setFormState((current) => ({ ...current, uiTheme: value }))}
@@ -129,7 +130,7 @@ export function SettingsUiPage() {
                 />
               </Field>
 
-              <Field label="Density">
+              <Field label="Density" description="Adjust workspace spacing and typography scale to match your hardware and preferences.">
                 <div className="grid gap-[calc(var(--grid-gap)*0.75)] md:grid-cols-2">
                   {densityOptions.map((option) => {
                     const Icon = option.icon;
@@ -160,7 +161,7 @@ export function SettingsUiPage() {
                 </div>
               </Field>
 
-              <Field label="Default Movies view">
+              <Field label="Default Movies view" description="Grid shows poster art; List shows dense metadata. Changes apply only to new library views.">
                 <Select
                   value={formState.defaultMovieView}
                   onChange={(value) => setFormState((current) => ({ ...current, defaultMovieView: value }))}
@@ -170,7 +171,7 @@ export function SettingsUiPage() {
                   ]}
                 />
               </Field>
-              <Field label="Default TV view">
+              <Field label="Default TV view" description="Grid shows poster art; List shows series metadata. Changes apply only to new library views.">
                 <Select
                   value={formState.defaultShowView}
                   onChange={(value) => setFormState((current) => ({ ...current, defaultShowView: value }))}
@@ -242,11 +243,12 @@ export function SettingsUiPage() {
 
 export const settingsUiLoader = settingsOverviewLoader;
 
-function Field({ children, label }: { children: ReactNode; label: string }) {
+function Field({ children, label, description }: { children: ReactNode; label: string; description?: string }) {
   return (
     <div className="density-field rounded-xl border border-hairline bg-surface-1">
       <p className="density-label uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
       <div style={{ marginTop: "var(--field-label-gap)" }}>{children}</div>
+      {description && <InputDescription>{description}</InputDescription>}
     </div>
   );
 }

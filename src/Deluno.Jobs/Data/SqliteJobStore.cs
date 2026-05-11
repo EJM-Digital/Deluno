@@ -14,7 +14,8 @@ namespace Deluno.Jobs.Data;
 public sealed class SqliteJobStore(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
     TimeProvider timeProvider,
-    IRealtimeEventPublisher realtimeEventPublisher)
+    IRealtimeEventPublisher realtimeEventPublisher,
+    IDownloadDispatchesRepository downloadDispatchesRepository)
     : IJobScheduler, IJobQueueRepository, IActivityFeedRepository
 {
     private static readonly JsonSerializerOptions PayloadJsonOptions = new()
@@ -760,10 +761,58 @@ public sealed class SqliteJobStore(
                 DownloadClientName: reader.GetString(8),
                 Status: reader.GetString(9),
                 NotesJson: reader.IsDBNull(10) ? null : reader.GetString(10),
-                CreatedUtc: ParseTimestamp(reader.GetString(11))));
+                CreatedUtc: ParseTimestamp(reader.GetString(11)),
+                GrabStatus: null,
+                GrabAttemptedUtc: null,
+                GrabResponseCode: null,
+                GrabMessage: null,
+                GrabFailureCode: null,
+                GrabResponseJson: null,
+                DetectedUtc: null,
+                TorrentHashOrItemId: null,
+                DownloadedBytes: null,
+                ImportStatus: null,
+                ImportDetectedUtc: null,
+                ImportCompletedUtc: null,
+                ImportedFilePath: null,
+                ImportFailureCode: null,
+                ImportFailureMessage: null,
+                CircuitOpenUntilUtc: null));
         }
 
         return items;
+    }
+
+    public async Task<string?> FindRecentDispatchIdAsync(
+        string downloadClientId,
+        string releaseName,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT id FROM download_dispatches
+            WHERE download_client_id = @downloadClientId
+              AND release_name = @releaseName
+              AND created_utc > datetime('now', '-6 hours')
+            ORDER BY created_utc DESC
+            LIMIT 1;
+            """;
+
+        AddParameter(command, "@downloadClientId", downloadClientId);
+        AddParameter(command, "@releaseName", releaseName);
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (await reader.ReadAsync(cancellationToken))
+        {
+            return reader.GetString(0);
+        }
+
+        return null;
     }
 
     public async Task<bool> RequestLibrarySearchAsync(
@@ -1012,7 +1061,114 @@ public sealed class SqliteJobStore(
         await transaction.CommitAsync(cancellationToken);
     }
 
-    public async Task RecordDownloadDispatchAsync(
+    public async Task PlanEpisodeSearchesAsync(
+        string libraryId,
+        IReadOnlyList<EpisodeSearchPlanItem> episodes,
+        CancellationToken cancellationToken)
+    {
+        if (episodes.Count == 0)
+        {
+            return;
+        }
+
+        var now = timeProvider.GetUtcNow();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        foreach (var episode in episodes)
+        {
+            var payload = JsonSerializer.Serialize(new
+            {
+                episodeId = episode.EpisodeId,
+                seriesId = episode.SeriesId,
+                libraryId,
+                seasonNumber = episode.SeasonNumber,
+                episodeNumber = episode.EpisodeNumber,
+                title = episode.Title
+            });
+            var idempotencyKey = $"episode.search:{episode.EpisodeId}:schedule";
+            var dedupeKey = $"episode.search:{episode.EpisodeId}";
+
+            var job = new JobQueueItem(
+                Id: Guid.CreateVersion7().ToString("N"),
+                JobType: "episode.search",
+                Source: "series",
+                Status: "queued",
+                PayloadJson: payload,
+                Attempts: 0,
+                CreatedUtc: now,
+                ScheduledUtc: now,
+                StartedUtc: null,
+                CompletedUtc: null,
+                LeasedUntilUtc: null,
+                WorkerId: null,
+                LastError: null,
+                RelatedEntityType: "episode",
+                RelatedEntityId: episode.EpisodeId,
+                IdempotencyKey: idempotencyKey,
+                DedupeKey: dedupeKey,
+                MaxAttempts: DefaultMaxAttempts,
+                LastAttemptUtc: null,
+                NextAttemptUtc: now);
+
+            var duplicate = await FindDuplicateActiveJobAsync(
+                connection,
+                transaction,
+                idempotencyKey,
+                dedupeKey,
+                cancellationToken);
+            if (duplicate is not null)
+            {
+                continue;
+            }
+
+            await InsertJobAsync(connection, transaction, job, cancellationToken);
+
+            var nextEligibleSearchUtc = now.AddDays(1);
+            using (var update = connection.CreateCommand())
+            {
+                update.Transaction = transaction;
+                update.CommandText =
+                    """
+                    UPDATE episode_wanted_state
+                    SET
+                        last_search_utc = @lastSearchUtc,
+                        next_eligible_search_utc = @nextEligibleSearchUtc,
+                        updated_utc = @updatedUtc
+                    WHERE episode_id = @episodeId AND library_id = @libraryId;
+                    """;
+
+                AddParameter(update, "@episodeId", episode.EpisodeId);
+                AddParameter(update, "@libraryId", libraryId);
+                AddParameter(update, "@lastSearchUtc", now.ToString("O"));
+                AddParameter(update, "@nextEligibleSearchUtc", nextEligibleSearchUtc.ToString("O"));
+                AddParameter(update, "@updatedUtc", now.ToString("O"));
+                await update.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await InsertActivityAsync(
+                connection,
+                transaction,
+                category: "job.queued",
+                message: $"Episode search scheduled: S{episode.SeasonNumber:D2}E{episode.EpisodeNumber:D2} - {episode.Title}",
+                detailsJson: payload,
+                relatedJobId: job.Id,
+                relatedEntityType: job.RelatedEntityType,
+                relatedEntityId: job.RelatedEntityId,
+                createdUtc: now,
+                cancellationToken: cancellationToken);
+
+            DelunoObservability.JobsQueued.Add(1, new("job.type", "episode.search"), new("source", "series"));
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task<string> RecordDownloadDispatchAsync(
         string libraryId,
         string mediaType,
         string entityType,
@@ -1023,7 +1179,9 @@ public sealed class SqliteJobStore(
         string downloadClientName,
         string status,
         string? notesJson,
-        CancellationToken cancellationToken)
+        int? grabResponseCode = null,
+        string? grabFailureCode = null,
+        CancellationToken cancellationToken = default)
     {
         var now = timeProvider.GetUtcNow();
         var dispatchId = Guid.CreateVersion7().ToString("N");
@@ -1077,6 +1235,19 @@ public sealed class SqliteJobStore(
             cancellationToken: cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
+
+        var grabStatus = MapStatusToGrabStatus(status);
+        var responseCode = grabResponseCode ?? (string.Equals(status, "sent", StringComparison.OrdinalIgnoreCase) ? 200 : 400);
+
+        await downloadDispatchesRepository.RecordGrabAsync(
+            dispatchId: dispatchId,
+            grabStatus: grabStatus,
+            grabResponseCode: responseCode,
+            grabMessage: status,
+            grabFailureCode: grabFailureCode,
+            grabResponseJson: notesJson,
+            cancellationToken: cancellationToken);
+
         await realtimeEventPublisher.PublishDownloadProgressAsync(
             dispatchId,
             releaseName,
@@ -1092,6 +1263,8 @@ public sealed class SqliteJobStore(
             SeverityForCategory("download.dispatch.recorded"),
             now.ToString("O"),
             cancellationToken);
+
+        return dispatchId;
     }
 
     public async Task RecordSearchCycleRunAsync(
@@ -1994,4 +2167,16 @@ public sealed class SqliteJobStore(
         int MaxItems,
         int RetryDelayHours,
         string TriggeredBy);
+
+    private static string MapStatusToGrabStatus(string status) =>
+        status switch
+        {
+            "sent" => "succeeded",
+            "failed" => "failed",
+            "planned" => "planned",
+            "circuitOpen" => "circuit_open",
+            "notFound" => "not_found",
+            "paused" => "paused",
+            _ => status
+        };
 }

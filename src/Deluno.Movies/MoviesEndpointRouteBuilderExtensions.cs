@@ -205,7 +205,9 @@ public static class MoviesEndpointRouteBuilderExtensions
                     downloadClient.DownloadClientName,
                     grabResult.Status,
                     JsonSerializer.Serialize(new { searchPlan, grabResult }),
-                    cancellationToken);
+                    grabResponseCode: grabResult.Succeeded ? 200 : 400,
+                    grabFailureCode: null,
+                    cancellationToken: cancellationToken);
             }
 
             await repository.RecordSearchAttemptAsync(
@@ -285,6 +287,124 @@ public static class MoviesEndpointRouteBuilderExtensions
                     candidate.PolicyVersion
                 }).ToArray()
             });
+        });
+
+        movies.MapPost("/bulk", async (
+            HttpContext httpContext,
+            BulkMovieRequest request,
+            IMovieCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
+            IJobScheduler jobScheduler,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (request.MovieIds is not { Count: > 0 })
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["movieIds"] = ["Select at least one movie before performing bulk operations."]
+                });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Operation))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["operation"] = ["Specify which operation to perform: remove, quality, monitoring, search, or grab."]
+                });
+            }
+
+            var operation = request.Operation.ToLowerInvariant();
+            var results = new List<BulkMovieItemResult>();
+            int successCount = 0;
+            int failureCount = 0;
+
+            foreach (var movieId in request.MovieIds)
+            {
+                try
+                {
+                    var movie = await repository.GetByIdAsync(movieId, cancellationToken);
+                    if (movie is null)
+                    {
+                        failureCount++;
+                        results.Add(new BulkMovieItemResult(movieId, "Unknown", false, "Movie not found"));
+                        continue;
+                    }
+
+                    switch (operation)
+                    {
+                        case "remove":
+                            await repository.DeleteAsync(movie.Id, cancellationToken);
+                            successCount++;
+                            results.Add(new BulkMovieItemResult(movie.Id, movie.Title, true));
+                            break;
+
+                        case "monitoring":
+                            if (!request.Monitored.HasValue)
+                            {
+                                failureCount++;
+                                results.Add(new BulkMovieItemResult(movie.Id, movie.Title, false,
+                                    "Monitored state must be specified for monitoring operation"));
+                            }
+                            else
+                            {
+                                await repository.UpdateMonitoredAsync([movie.Id], request.Monitored.Value, cancellationToken);
+                                successCount++;
+                                results.Add(new BulkMovieItemResult(movie.Id, movie.Title, true, null,
+                                    new Dictionary<string, string?> { ["monitored"] = request.Monitored.Value.ToString() }));
+                            }
+                            break;
+
+                        case "quality":
+                            if (string.IsNullOrWhiteSpace(request.QualityProfileId))
+                            {
+                                failureCount++;
+                                results.Add(new BulkMovieItemResult(movie.Id, movie.Title, false,
+                                    "Quality profile ID must be specified for quality operation"));
+                            }
+                            else
+                            {
+                                await repository.UpdateQualityProfileAsync(movie.Id, request.QualityProfileId, cancellationToken);
+                                successCount++;
+                                results.Add(new BulkMovieItemResult(movie.Id, movie.Title, true, null,
+                                    new Dictionary<string, string?> { ["qualityProfileId"] = request.QualityProfileId }));
+                            }
+                            break;
+
+                        case "search":
+                            var job = await jobScheduler.EnqueueAsync(
+                                new EnqueueJobRequest(
+                                    JobType: "movies.search.manual",
+                                    Source: "bulk",
+                                    PayloadJson: JsonSerializer.Serialize(new { movie.Id, movie.Title, movie.ReleaseYear }),
+                                    RelatedEntityType: "movie",
+                                    RelatedEntityId: movie.Id),
+                                cancellationToken);
+                            successCount++;
+                            results.Add(new BulkMovieItemResult(movie.Id, movie.Title, true, null,
+                                new Dictionary<string, string?> { ["jobId"] = job.Id }));
+                            break;
+
+                        default:
+                            failureCount++;
+                            results.Add(new BulkMovieItemResult(movie.Id, movie.Title, false,
+                                $"Unknown operation: {request.Operation}"));
+                            break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    failureCount++;
+                    results.Add(new BulkMovieItemResult(movieId, "Unknown", false, ex.Message));
+                }
+            }
+
+            return Results.Ok(new BulkMovieResponse(request.MovieIds.Count, successCount, failureCount, operation, results));
         });
 
         movies.MapPost("/{id}/grab", async (
@@ -401,7 +521,9 @@ public static class MoviesEndpointRouteBuilderExtensions
                 downloadClient.DownloadClientName,
                 grabResult.Status,
                 JsonSerializer.Serialize(auditPayload),
-                cancellationToken);
+                grabResponseCode: grabResult.Succeeded ? 200 : 400,
+                grabFailureCode: null,
+                cancellationToken: cancellationToken);
 
             var now = timeProvider.GetUtcNow();
             await repository.RecordSearchAttemptAsync(

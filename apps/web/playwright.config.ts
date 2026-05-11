@@ -7,7 +7,7 @@ const repoRoot = path.resolve(__dirname, "../..");
 const smokeDataRoot = path.join(repoRoot, ".playwright-data");
 
 export default defineConfig({
-  testDir: "./tests/smoke",
+  testDir: "./tests",
   timeout: 30_000,
   expect: {
     timeout: 5_000

@@ -1063,6 +1063,32 @@ public sealed class SqliteMovieCatalogRepository(
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
+    public async Task<bool> DeleteAsync(string movieId, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM movies WHERE id = @id;";
+        AddParameter(command, "@id", movieId);
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
+    public async Task<bool> UpdateQualityProfileAsync(string movieId, string qualityProfileId, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE movies SET quality_profile_id = @qualityProfileId, updated_utc = @now WHERE id = @id;";
+        AddParameter(command, "@id", movieId);
+        AddParameter(command, "@qualityProfileId", qualityProfileId);
+        AddParameter(command, "@now", DateTimeOffset.UtcNow.ToString("O"));
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
     private static MovieListItem ReadMovie(System.Data.Common.DbDataReader reader)
     {
         return new MovieListItem(

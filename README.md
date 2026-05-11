@@ -33,6 +33,7 @@ The architecture is now locked to:
 - `src/Deluno.Filesystem`: filesystem policies and services
 - `src/Deluno.Infrastructure`: storage and runtime infrastructure
 - `docs`: architecture and strategy docs
+- `AGENTS.md`: compact agent map for Codex-style development
 
 ## Current State
 
@@ -80,6 +81,7 @@ The GitHub Actions workflow in `.github/workflows/ci.yml` runs the same backend 
 npm.cmd ci
 npm.cmd run build:web
 npm.cmd run test:web
+npm.cmd run validate:agents
 ```
 
 Backend failures are reported by the .NET restore, build, and test steps. Frontend failures are reported by the Vite build and Playwright smoke-test steps, with Playwright reports uploaded as CI artifacts when available.
@@ -102,11 +104,20 @@ npm.cmd run dev --workspace apps/web
 
 The Vite dev server proxies `/api` and `/hubs` to the backend host.
 
+## Agent-First Development
+
+Deluno keeps product and engineering context inside the repository so agents can inspect and update it directly.
+
+- Start with [AGENTS.md](AGENTS.md).
+- Use [docs/README.md](docs/README.md) as the knowledge-base index.
+- Use [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for module boundaries.
+- Use [docs/QUALITY_SCORE.md](docs/QUALITY_SCORE.md) and [docs/exec-plans/tech-debt-tracker.md](docs/exec-plans/tech-debt-tracker.md) for cleanup and quality drift.
+
 ## Packaging
 
-- Docker scaffolding: [Dockerfile](/C:/Users/User/Deluno/Dockerfile), [compose.yaml](/C:/Users/User/Deluno/compose.yaml)
-- Windows publish script: [publish-windows.ps1](/C:/Users/User/Deluno/scripts/publish-windows.ps1)
-- Packaging notes: [packaging.md](/C:/Users/User/Deluno/docs/packaging.md)
+- Docker scaffolding: [Dockerfile](Dockerfile), [compose.yaml](compose.yaml)
+- Windows publish script: [publish-windows.ps1](scripts/publish-windows.ps1)
+- Packaging notes: [packaging.md](docs/packaging.md)
 
 ## Next Steps
 

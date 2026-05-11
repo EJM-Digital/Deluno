@@ -1,4 +1,5 @@
 using Deluno.Infrastructure.Observability;
+using Deluno.Infrastructure.Storage;
 using Microsoft.Extensions.Logging;
 using System.Net;
 
@@ -41,6 +42,7 @@ public enum IntegrationResilienceOutcome
 
 public sealed class IntegrationResiliencePolicy(
     TimeProvider timeProvider,
+    IDelunoDatabaseConnectionFactory databaseConnectionFactory,
     ILogger<IntegrationResiliencePolicy> logger)
     : IIntegrationResiliencePolicy
 {
@@ -49,6 +51,7 @@ public sealed class IntegrationResiliencePolicy(
     private static readonly TimeSpan DefaultBreakDuration = TimeSpan.FromMinutes(1);
     private readonly object _sync = new();
     private readonly Dictionary<string, CircuitState> _circuits = new(StringComparer.OrdinalIgnoreCase);
+    private volatile bool _stateLoaded;
 
     public async Task<IntegrationResilienceResult<T>> ExecuteAsync<T>(
         IntegrationResilienceRequest request,
@@ -60,6 +63,7 @@ public sealed class IntegrationResiliencePolicy(
         ArgumentNullException.ThrowIfNull(operation);
         ArgumentNullException.ThrowIfNull(classifyResult);
 
+        await EnsureStateLoadedAsync(cancellationToken);
         var normalized = Normalize(request);
         if (TryGetOpenCircuit(normalized.Key, out var retryAfterUtc))
         {
@@ -216,19 +220,115 @@ public sealed class IntegrationResiliencePolicy(
 
     private DateTimeOffset? RecordRetryableFailure(IntegrationResilienceRequest request)
     {
+        DateTimeOffset? openedUntil;
+        int failureCount;
+        var openedUtc = timeProvider.GetUtcNow();
+
         lock (_sync)
         {
             _circuits.TryGetValue(request.Key, out var current);
-            var failureCount = (current?.FailureCount ?? 0) + 1;
-            DateTimeOffset? openedUntil = null;
+            failureCount = (current?.FailureCount ?? 0) + 1;
+            openedUntil = null;
             if (failureCount >= request.FailureThreshold)
             {
-                openedUntil = timeProvider.GetUtcNow().Add(request.BreakDuration ?? DefaultBreakDuration);
+                openedUntil = openedUtc.Add(request.BreakDuration ?? DefaultBreakDuration);
                 failureCount = 0;
             }
 
             _circuits[request.Key] = new CircuitState(failureCount, openedUntil);
-            return openedUntil;
+        }
+
+        if (openedUntil is not null)
+        {
+            _ = PersistCircuitOpenAsync(request.Key, openedUntil.Value, openedUtc, request.FailureThreshold);
+        }
+
+        return openedUntil;
+    }
+
+    private async Task EnsureStateLoadedAsync(CancellationToken cancellationToken)
+    {
+        if (_stateLoaded) return;
+
+        try
+        {
+            await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+                DelunoDatabaseNames.Jobs, cancellationToken);
+            using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                SELECT integration_key, circuit_open_until_utc, failure_count
+                FROM integration_circuit_states
+                WHERE circuit_open_until_utc > @now
+                """;
+            var param = command.CreateParameter();
+            param.ParameterName = "@now";
+            param.Value = timeProvider.GetUtcNow().ToString("O");
+            command.Parameters.Add(param);
+
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            lock (_sync)
+            {
+                while (reader.Read())
+                {
+                    var key = reader.GetString(0);
+                    var openUntil = DateTimeOffset.Parse(reader.GetString(1));
+                    var count = reader.IsDBNull(2) ? 0 : reader.GetInt32(2);
+                    _circuits[key] = new CircuitState(count, openUntil);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to load persisted circuit breaker states.");
+        }
+        finally
+        {
+            _stateLoaded = true;
+        }
+    }
+
+    private async Task PersistCircuitOpenAsync(
+        string key,
+        DateTimeOffset openUntilUtc,
+        DateTimeOffset openedUtc,
+        int failureCount)
+    {
+        try
+        {
+            await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+                DelunoDatabaseNames.Jobs, CancellationToken.None);
+            using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                INSERT INTO integration_circuit_states
+                    (integration_key, circuit_open_until_utc, opened_utc, failure_count)
+                VALUES
+                    (@key, @openUntil, @openedUtc, @failureCount)
+                ON CONFLICT(integration_key) DO UPDATE SET
+                    circuit_open_until_utc = excluded.circuit_open_until_utc,
+                    opened_utc = excluded.opened_utc,
+                    failure_count = excluded.failure_count
+                """;
+
+            void AddParam(string name, object value)
+            {
+                var p = command.CreateParameter();
+                p.ParameterName = name;
+                p.Value = value;
+                command.Parameters.Add(p);
+            }
+
+            AddParam("@key", key);
+            AddParam("@openUntil", openUntilUtc.ToString("O"));
+            AddParam("@openedUtc", openedUtc.ToString("O"));
+            AddParam("@failureCount", failureCount);
+
+            await command.ExecuteNonQueryAsync(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to persist circuit breaker state for {Key}.", key);
         }
     }
 

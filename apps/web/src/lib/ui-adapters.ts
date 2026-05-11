@@ -8,6 +8,7 @@ import type {
   SeriesListItem,
   SeriesWantedSummary
 } from "./api";
+import { downloadQueueStatuses } from "./download-telemetry";
 import type { ActiveDownload, IndexerHealthItem, MediaItem } from "./media-types";
 
 function hashValue(value: string) {
@@ -252,13 +253,17 @@ export function adaptActiveDownloads(dispatches: DownloadDispatchItem[]): Active
 export function adaptTelemetryDownloads(telemetry: DownloadTelemetryOverview): ActiveDownload[] {
   return telemetry.clients
     .flatMap((client) => client.queue)
-    .filter((item) => item.status === "downloading" || item.status === "queued" || item.status === "importReady")
+    .filter((item) => item.status === downloadQueueStatuses.downloading || item.status === downloadQueueStatuses.queued || item.status === downloadQueueStatuses.importReady)
     .sort((a, b) => {
       if (a.status === b.status) {
         return new Date(b.addedUtc).getTime() - new Date(a.addedUtc).getTime();
       }
 
-      const rank = { downloading: 0, importReady: 1, queued: 2 } as Record<string, number>;
+      const rank = {
+        [downloadQueueStatuses.downloading]: 0,
+        [downloadQueueStatuses.importReady]: 1,
+        [downloadQueueStatuses.queued]: 2
+      } as Record<string, number>;
       return (rank[a.status] ?? 9) - (rank[b.status] ?? 9);
     })
     .slice(0, 6)

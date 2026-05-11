@@ -19,6 +19,16 @@ import {
   type MovieImportRecoverySummary,
   type SeriesImportRecoverySummary
 } from "../lib/api";
+import {
+  JOB_STATUS,
+  type JobStatus,
+  isJobActive,
+  isJobInProgress,
+  isJobSuccessful,
+  isJobFailed,
+  getJobStatusLabel,
+  getJobStatusVariant
+} from "../lib/job-status-constants";
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
 import { Badge } from "../components/ui/badge";
@@ -62,10 +72,10 @@ export function ActivityPage() {
     return () => window.clearInterval(timer);
   }, [revalidator]);
 
-  const activeJobs = jobs.filter((job) => job.status === "queued" || job.status === "running").length;
-  const runningJobs = jobs.filter((job) => job.status === "running").length;
-  const completedJobs = jobs.filter((job) => job.status === "completed").length;
-  const failedJobs = jobs.filter((job) => job.status === "failed").length;
+  const activeJobs = jobs.filter((job) => isJobActive(job.status as JobStatus)).length;
+  const runningJobs = jobs.filter((job) => isJobInProgress(job.status as JobStatus)).length;
+  const completedJobs = jobs.filter((job) => isJobSuccessful(job.status as JobStatus)).length;
+  const failedJobs = jobs.filter((job) => isJobFailed(job.status as JobStatus)).length;
   const openRecovery = movieRecovery.openCount + seriesRecovery.openCount;
 
   async function handleRetryFailedJobs() {
@@ -520,28 +530,28 @@ function PulseMetric({
 
 function StatusPulse({ status }: { status: string }) {
   const cfg = {
-    running: {
+    [JOB_STATUS.RUNNING]: {
       color: "bg-info",
       pulse: true,
       glow: "shadow-[0_0_8px_hsl(var(--info)/0.6)]"
     },
-    queued: {
+    [JOB_STATUS.QUEUED]: {
       color: "bg-warning",
       pulse: false,
       glow: "shadow-[0_0_6px_hsl(var(--warning)/0.4)]"
     },
-    completed: {
+    [JOB_STATUS.COMPLETED]: {
       color: "bg-success",
       pulse: false,
       glow: "shadow-[0_0_6px_hsl(var(--success)/0.5)]"
     },
-    failed: {
+    [JOB_STATUS.FAILED]: {
       color: "bg-destructive",
       pulse: true,
       glow: "shadow-[0_0_8px_hsl(var(--destructive)/0.6)]"
     }
   };
-  const c = cfg[status as keyof typeof cfg] ?? cfg.queued;
+  const c = cfg[status as keyof typeof cfg] ?? cfg[JOB_STATUS.QUEUED];
   return (
     <span className="flex h-5 items-center justify-center">
       <span
@@ -637,13 +647,13 @@ function formatJobType(value: string) {
 
 function formatJobStatus(value: string) {
   switch (value) {
-    case "queued":
+    case JOB_STATUS.QUEUED:
       return "Waiting";
-    case "running":
+    case JOB_STATUS.RUNNING:
       return "Running";
-    case "completed":
+    case JOB_STATUS.COMPLETED:
       return "Completed";
-    case "failed":
+    case JOB_STATUS.FAILED:
       return "Attention";
     default:
       return value;
@@ -654,11 +664,11 @@ function jobStatusVariant(
   value: string
 ): "default" | "success" | "warning" | "destructive" | "info" {
   switch (value) {
-    case "running":
+    case JOB_STATUS.RUNNING:
       return "info";
-    case "completed":
+    case JOB_STATUS.COMPLETED:
       return "success";
-    case "failed":
+    case JOB_STATUS.FAILED:
       return "destructive";
     default:
       return "warning";

@@ -111,6 +111,108 @@ public sealed class SignalRRealtimeEventPublisher(
         return Task.CompletedTask;
     }
 
+    public Task PublishDispatchGrabAttemptAsync(
+        string dispatchId,
+        string releaseName,
+        string clientId,
+        string clientName,
+        CancellationToken cancellationToken)
+    {
+        Enqueue(
+            "DispatchGrabAttempt",
+            new
+            {
+                dispatchId,
+                releaseName,
+                clientId,
+                clientName,
+                timestamp = DateTimeOffset.UtcNow.ToString("O")
+            });
+        return Task.CompletedTask;
+    }
+
+    public Task PublishDispatchGrabCompletedAsync(
+        string dispatchId,
+        string releaseName,
+        string clientId,
+        bool succeeded,
+        string? message,
+        CancellationToken cancellationToken)
+    {
+        Enqueue(
+            "DispatchGrabCompleted",
+            new
+            {
+                dispatchId,
+                releaseName,
+                clientId,
+                succeeded,
+                message,
+                timestamp = DateTimeOffset.UtcNow.ToString("O")
+            });
+        return Task.CompletedTask;
+    }
+
+    public Task PublishDispatchDetectedAsync(
+        string dispatchId,
+        string releaseName,
+        string? torrentHash,
+        long? downloadedBytes,
+        CancellationToken cancellationToken)
+    {
+        Enqueue(
+            "DispatchDetected",
+            new
+            {
+                dispatchId,
+                releaseName,
+                torrentHash,
+                downloadedBytes,
+                timestamp = DateTimeOffset.UtcNow.ToString("O")
+            });
+        return Task.CompletedTask;
+    }
+
+    public Task PublishDispatchImportStartedAsync(
+        string dispatchId,
+        string releaseName,
+        string mediaType,
+        CancellationToken cancellationToken)
+    {
+        Enqueue(
+            "DispatchImportStarted",
+            new
+            {
+                dispatchId,
+                releaseName,
+                mediaType,
+                timestamp = DateTimeOffset.UtcNow.ToString("O")
+            });
+        return Task.CompletedTask;
+    }
+
+    public Task PublishDispatchImportCompletedAsync(
+        string dispatchId,
+        string releaseName,
+        bool succeeded,
+        string? importedPath,
+        string? failureReason,
+        CancellationToken cancellationToken)
+    {
+        Enqueue(
+            "DispatchImportCompleted",
+            new
+            {
+                dispatchId,
+                releaseName,
+                succeeded,
+                importedPath,
+                failureReason,
+                timestamp = DateTimeOffset.UtcNow.ToString("O")
+            });
+        return Task.CompletedTask;
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await foreach (var envelope in _events.Reader.ReadAllAsync(stoppingToken))

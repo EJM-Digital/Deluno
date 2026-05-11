@@ -1141,6 +1141,24 @@ public static class PlatformEndpointRouteBuilderExtensions
             return removed ? Results.NoContent() : Results.NotFound();
         });
 
+        indexers.MapPut("{id}", async (
+            string id,
+            HttpContext httpContext,
+            UpdateIndexerRequest request,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var item = await repository.UpdateIndexerAsync(id, request, cancellationToken);
+            return item is null ? Results.NotFound() : Results.Ok(item);
+        });
+
+
         indexers.MapPost("{id}/test", async (
             string id,
             HttpContext httpContext,
@@ -1276,6 +1294,23 @@ public static class PlatformEndpointRouteBuilderExtensions
 
             var removed = await repository.DeleteDownloadClientAsync(id, cancellationToken);
             return removed ? Results.NoContent() : Results.NotFound();
+        });
+
+        downloadClients.MapPut("{id}", async (
+            string id,
+            HttpContext httpContext,
+            UpdateDownloadClientRequest request,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var item = await repository.UpdateDownloadClientAsync(id, request, cancellationToken);
+            return item is null ? Results.NotFound() : Results.Ok(item);
         });
 
         downloadClients.MapPost("{id}/test", async (
@@ -1708,6 +1743,143 @@ public static class PlatformEndpointRouteBuilderExtensions
             return Results.Json(new { status, activityId = activity.Id, importJobId = importJob?.Id }, statusCode: StatusCodes.Status202Accepted);
         });
 
+        // Notification endpoints
+        var notifications = endpoints.MapGroup("/api/notifications");
+
+        notifications.MapGet(string.Empty, async (
+            HttpContext httpContext,
+            INotificationService notificationService,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var items = await notificationService.GetNotificationsAsync(50, 0, cancellationToken);
+            return Results.Ok(items);
+        });
+
+        notifications.MapGet("/unread-count", async (
+            HttpContext httpContext,
+            INotificationService notificationService,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var count = await notificationService.GetUnreadCountAsync(cancellationToken);
+            return Results.Ok(new { unreadCount = count });
+        });
+
+        notifications.MapPost("/{notificationId}/read", async (
+            HttpContext httpContext,
+            string notificationId,
+            INotificationService notificationService,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            await notificationService.MarkAsReadAsync(notificationId, cancellationToken);
+            return Results.Ok();
+        });
+
+        notifications.MapPost("/read-all", async (
+            HttpContext httpContext,
+            INotificationService notificationService,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            await notificationService.MarkAllAsReadAsync(cancellationToken);
+            return Results.Ok();
+        });
+
+        notifications.MapDelete("/{notificationId}", async (
+            HttpContext httpContext,
+            string notificationId,
+            INotificationService notificationService,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            await notificationService.DeleteNotificationAsync(notificationId, cancellationToken);
+            return Results.Ok();
+        });
+
+        notifications.MapDelete(string.Empty, async (
+            HttpContext httpContext,
+            INotificationService notificationService,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            await notificationService.ClearAllNotificationsAsync(cancellationToken);
+            return Results.Ok();
+        });
+
+        // Notification preferences endpoints
+        var preferences = endpoints.MapGroup("/api/notification-preferences");
+
+        preferences.MapGet(string.Empty, async (
+            HttpContext httpContext,
+            INotificationService notificationService,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var prefs = await notificationService.GetPreferencesAsync(cancellationToken);
+            return Results.Ok(prefs);
+        });
+
+        preferences.MapPut(string.Empty, async (
+            HttpContext httpContext,
+            NotificationPreferences request,
+            INotificationService notificationService,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            await notificationService.UpdatePreferencesAsync(request, cancellationToken);
+            return Results.Ok();
+        });
+
         return endpoints;
     }
 
@@ -1932,6 +2104,10 @@ public static class PlatformEndpointRouteBuilderExtensions
         if (string.IsNullOrWhiteSpace(password))
         {
             errors["password"] = ["Give this user a password."];
+        }
+        else if (password.Length < 8)
+        {
+            errors["password"] = ["Use at least 8 characters for the password."];
         }
 
         return errors;

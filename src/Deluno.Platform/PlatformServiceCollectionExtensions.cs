@@ -15,7 +15,9 @@ public static class PlatformServiceCollectionExtensions
         services.AddSingleton<IMediaDecisionService, MediaDecisionService>();
         services.AddSingleton<IMigrationAssistantService, MigrationAssistantService>();
         services.AddSingleton<ISecretProtector, DataProtectionSecretProtector>();
+        services.AddSingleton<INotificationService, InMemoryNotificationService>();
         services.AddHostedService<PlatformSchemaInitializer>();
+        services.AddHostedService<NotificationEventPublisher>();
         return services;
     }
 }

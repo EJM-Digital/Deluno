@@ -28,6 +28,8 @@ import {
   type SeriesWantedSummary
 } from "../lib/api";
 import { adaptIndexerHealth, adaptMovieItems, adaptSeriesItems, adaptTelemetryDownloads } from "../lib/ui-adapters";
+import { downloadQueueStatuses } from "../lib/download-telemetry";
+import { JOB_STATUS, isJobActive, type JobStatus } from "../lib/job-status-constants";
 import { cn } from "../lib/utils";
 import { OnboardingBanner } from "../components/shell/onboarding-banner";
 import { AreaChart } from "../components/shell/area-chart";
@@ -132,7 +134,7 @@ export function DashboardPage() {
   const librarySparkline = buildSparkline(data.totalCount);
   const healthSparkline = buildSparkline(data.indexerHealthPercent);
   const queueLoad = Math.min(100, data.activeDownloadCount * 12 + data.waitingCount * 3);
-  const runningAutomation = data.automation.filter((item) => item.status === "running" || item.status === "queued" || item.searchRequested).length;
+  const runningAutomation = data.automation.filter((item) => isJobActive(item.status as JobStatus) || item.searchRequested).length;
   const latestCycle = data.searchCycles[0] ?? null;
 
   return (
@@ -597,15 +599,15 @@ function toneStroke(tone: "primary" | "success" | "warn") {
 function statusDot(status: MediaItem["status"]) {
   return {
     downloaded: "bg-success",
-    downloading: "bg-info animate-pulse",
-    processing: "bg-primary animate-pulse",
-    processed: "bg-success",
-    waitingForProcessor: "bg-warning animate-pulse",
-    importReady: "bg-success",
-    importQueued: "bg-primary animate-pulse",
-    importFailed: "bg-destructive",
-    imported: "bg-success",
-    processingFailed: "bg-destructive",
+    [downloadQueueStatuses.downloading]: "bg-info animate-pulse",
+    [downloadQueueStatuses.processing]: "bg-primary animate-pulse",
+    [downloadQueueStatuses.processed]: "bg-success",
+    [downloadQueueStatuses.waitingForProcessor]: "bg-warning animate-pulse",
+    [downloadQueueStatuses.importReady]: "bg-success",
+    [downloadQueueStatuses.importQueued]: "bg-primary animate-pulse",
+    [downloadQueueStatuses.importFailed]: "bg-destructive",
+    [downloadQueueStatuses.imported]: "bg-success",
+    [downloadQueueStatuses.processingFailed]: "bg-destructive",
     monitored: "bg-primary",
     missing: "bg-destructive"
   }[status];

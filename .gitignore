@@ -12,7 +12,7 @@ dotnet-install.ps1
 bin/
 obj/
 artifacts/
-data/
+src/Deluno.Host/data/
 .codex-logs/
 .codex-visual-qa/
 .playwright-data/

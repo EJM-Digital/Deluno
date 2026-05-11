@@ -216,6 +216,24 @@ export interface SeriesSearchHistoryItem {
   createdUtc: string;
 }
 
+export interface EpisodeSearchEligibilityItem {
+  episodeId: string;
+  seriesId: string;
+  seasonNumber: number;
+  episodeNumber: number;
+  title: string;
+  lastSearchUtc: string | null;
+  nextEligibleSearchUtc: string | null;
+}
+
+export interface EpisodeWorkflowDecision {
+  episodeId: string;
+  status: "wanted" | "archived" | "satisfied";
+  targetQuality: string | null;
+  currentQuality: string | null;
+  reason: string;
+}
+
 export interface ValidationProblem {
   title?: string;
   errors?: Record<string, string[]>;
@@ -657,6 +675,16 @@ export interface DownloadClientHistoryItem {
   sourcePath: string | null;
 }
 
+export interface DownloadClientTelemetryCapabilities {
+  supportsQueue: boolean;
+  supportsHistory: boolean;
+  supportsPauseResume: boolean;
+  supportsRemove: boolean;
+  supportsRecheck: boolean;
+  supportsImportPath: boolean;
+  authMode: string;
+}
+
 export interface DownloadClientTelemetrySnapshot {
   clientId: string;
   clientName: string;
@@ -664,6 +692,7 @@ export interface DownloadClientTelemetrySnapshot {
   endpointUrl: string | null;
   healthStatus: string;
   lastHealthMessage: string | null;
+  capabilities: DownloadClientTelemetryCapabilities;
   summary: DownloadTelemetrySummary;
   queue: DownloadQueueItem[];
   history: DownloadClientHistoryItem[];

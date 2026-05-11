@@ -45,7 +45,12 @@ public interface IJobQueueRepository
         IReadOnlyList<LibraryAutomationPlanItem> libraries,
         CancellationToken cancellationToken);
 
-    Task RecordDownloadDispatchAsync(
+    Task PlanEpisodeSearchesAsync(
+        string libraryId,
+        IReadOnlyList<EpisodeSearchPlanItem> episodes,
+        CancellationToken cancellationToken);
+
+    Task<string> RecordDownloadDispatchAsync(
         string libraryId,
         string mediaType,
         string entityType,
@@ -56,7 +61,9 @@ public interface IJobQueueRepository
         string downloadClientName,
         string status,
         string? notesJson,
-        CancellationToken cancellationToken);
+        int? grabResponseCode = null,
+        string? grabFailureCode = null,
+        CancellationToken cancellationToken = default);
 
     Task RecordSearchCycleRunAsync(
         RecordSearchCycleRunRequest request,
@@ -71,5 +78,10 @@ public interface IJobQueueRepository
         DateTimeOffset nextEligibleUtc,
         DateTimeOffset lastAttemptUtc,
         string? lastResult,
+        CancellationToken cancellationToken);
+
+    Task<string?> FindRecentDispatchIdAsync(
+        string downloadClientId,
+        string releaseName,
         CancellationToken cancellationToken);
 }

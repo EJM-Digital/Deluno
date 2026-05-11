@@ -1,5 +1,5 @@
 import { useLoaderData, useNavigation, useRevalidator } from "react-router-dom";
-import { LibraryView } from "../components/app/library-view";
+import { LibraryViewWithBulkOps } from "../components/app/library-view-with-bulk-ops";
 import {
   fetchJson,
   type MetadataProviderStatus,
@@ -54,7 +54,7 @@ export function MoviesPage() {
   const revalidator = useRevalidator();
   if (!loaderData) return <LibraryLoadingShell title="Movies" />;
   return (
-    <LibraryView
+    <LibraryViewWithBulkOps
       variant="movies"
       items={loaderData.items}
       metadataStatus={loaderData.metadataStatus}
@@ -70,7 +70,7 @@ export function ShowsPage() {
   const revalidator = useRevalidator();
   if (!loaderData) return <LibraryLoadingShell title="TV Shows" />;
   return (
-    <LibraryView
+    <LibraryViewWithBulkOps
       variant="shows"
       items={loaderData.items}
       metadataStatus={loaderData.metadataStatus}

@@ -443,7 +443,8 @@ public sealed record ImportExecuteRequest(
     string? TransferMode,
     bool Overwrite,
     bool AllowCopyFallback,
-    bool ForceReplacement = false);
+    bool ForceReplacement = false,
+    string? DispatchId = null);
 
 public sealed record ImportExecuteResponse(
     ImportPreviewResponse Preview,

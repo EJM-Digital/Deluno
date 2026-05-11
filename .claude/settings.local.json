@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path . -Directory)",
+      "Bash(Select-Object Name)",
+      "Bash(grep -o '[^/]*\\\\.cs$')",
+      "Bash(gh label *)",
+      "WebSearch",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(dotnet build *)",
+      "Bash(dotnet test *)",
+      "Bash(git commit -m 'fix: Phase 1 compilation - complete download tracking API and data layer *)",
+      "Bash(cd .. && dotnet test tests/Deluno.Persistence.Tests/Deluno.Persistence.Tests.csproj --filter \"DownloadDispatchRepositoryTests\" -v minimal 2>&1 | tail -150)",
+      "Bash(git commit -m 'feat: REST API integration tests for download dispatches *)",
+      "Bash(xargs grep -l \"GrabService\\\\|grab\")",
+      "Bash(xargs grep -l \"Grab\")",
+      "Bash(git reset *)",
+      "Bash(git commit -m 'test: update migration count assertion for V0003 download outcome tracking *)",
+      "Bash(git commit *)",
+      "Bash(dotnet clean *)",
+      "Bash(xargs head -5)"
+    ]
+  }
+}

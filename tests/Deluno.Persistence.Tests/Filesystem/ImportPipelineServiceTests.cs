@@ -255,6 +255,86 @@ public sealed class ImportPipelineServiceTests
         Assert.False(File.Exists(artifactPath));
     }
 
+    [Fact]
+    public async Task Import_with_dispatchId_records_resolution()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Interstellar.2014.WEB.1080p.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(platform, movieRootPath, downloadsPath);
+
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var dispatchId = await jobStore.RecordDownloadDispatchAsync(
+            libraryId: "movies-main",
+            mediaType: "movies",
+            entityType: "movie",
+            entityId: "movie-123",
+            releaseName: "Interstellar.2014.WEB.1080p",
+            indexerName: "TestIndexer",
+            downloadClientId: "client-1",
+            downloadClientName: "TestClient",
+            status: "sent",
+            notesJson: null,
+            cancellationToken: CancellationToken.None);
+
+        Assert.NotNull(dispatchId);
+        Assert.NotEmpty(dispatchId);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var importResolutions = new SqliteImportResolutionsRepository(storage.Factory, timeProvider);
+        var service = new ImportPipelineService(
+            platform,
+            movies,
+            new SqliteSeriesCatalogRepository(storage.Factory, timeProvider),
+            jobStore,
+            new SuccessfulProbeService(),
+            new MediaDecisionService(new VersionedMediaPolicyEngine()),
+            importResolutions,
+            null,
+            NullLogger<ImportPipelineService>.Instance);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath,
+                    FileName: null,
+                    MediaType: "movies",
+                    Title: "Interstellar",
+                    Year: 2014,
+                    Genres: ["Science Fiction"],
+                    Tags: [],
+                    Studio: "Paramount",
+                    OriginalLanguage: "en"),
+                TransferMode: "copy",
+                Overwrite: false,
+                AllowCopyFallback: true,
+                DispatchId: dispatchId),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.NotNull(result.Response);
+        Assert.True(result.Response.CatalogUpdated);
+
+        var resolutions = await importResolutions.GetDispatchResolutionsAsync(dispatchId, CancellationToken.None);
+        Assert.Single(resolutions);
+        var resolution = resolutions[0];
+        Assert.Equal(dispatchId, resolution.DispatchId);
+        Assert.Equal("movies", resolution.MediaType);
+        Assert.NotNull(resolution.CatalogId);
+        Assert.Equal("movie", resolution.CatalogItemType);
+        Assert.True(resolution.IsSuccessful);
+    }
+
     private static async Task InitializeAllAsync(TestStorage storage, TimeProvider timeProvider)
     {
         var migrator = new SqliteDatabaseMigrator(storage.Factory, timeProvider);
@@ -290,9 +370,11 @@ public sealed class ImportPipelineServiceTests
             platform,
             movies,
             new SqliteSeriesCatalogRepository(storage.Factory, timeProvider),
-            new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher()),
+            new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository()),
             new SuccessfulProbeService(),
             new MediaDecisionService(new VersionedMediaPolicyEngine()),
+            new NullImportResolutionsRepository(),
+            null,
             NullLogger<ImportPipelineService>.Instance);
 
     private static FilesystemReconciliationService CreateReconciliationService(
@@ -304,7 +386,7 @@ public sealed class ImportPipelineServiceTests
             platform,
             movies,
             new SqliteSeriesCatalogRepository(storage.Factory, timeProvider),
-            new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher()),
+            new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository()),
             timeProvider);
 
     private static async Task CreateMovieLibraryAsync(

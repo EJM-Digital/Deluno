@@ -192,15 +192,6 @@ public static class UserAuthorization
             }
         }
 
-        if (httpContext.Request.Query.TryGetValue("access_token", out var accessTokenValues))
-        {
-            var queryToken = accessTokenValues.ToString().Trim();
-            if (!string.IsNullOrWhiteSpace(queryToken))
-            {
-                return queryToken;
-            }
-        }
-
         return null;
     }
 

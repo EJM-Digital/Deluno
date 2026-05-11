@@ -114,4 +114,28 @@ public interface ISeriesCatalogRepository
         CancellationToken cancellationToken);
 
     Task<bool> DeleteImportRecoveryCaseAsync(string id, CancellationToken cancellationToken);
+
+    /// <summary>Delete a series and all its related data</summary>
+    Task<bool> DeleteAsync(string seriesId, CancellationToken cancellationToken);
+
+    /// <summary>Update quality profile for a series</summary>
+    Task<bool> UpdateQualityProfileAsync(string seriesId, string qualityProfileId, CancellationToken cancellationToken);
+
+    /// <summary>List episodes eligible for search in a library</summary>
+    Task<IReadOnlyList<EpisodeSearchEligibilityItem>> ListEligibleWantedEpisodesAsync(
+        string libraryId,
+        int take,
+        DateTimeOffset now,
+        CancellationToken cancellationToken);
+
+    /// <summary>Get target quality for a specific episode</summary>
+    Task<string?> GetEpisodeTargetQualityAsync(
+        string episodeId,
+        string libraryId,
+        CancellationToken cancellationToken);
+
+    /// <summary>Get current quality for a specific episode</summary>
+    Task<string?> GetEpisodeCurrentQualityAsync(
+        string episodeId,
+        CancellationToken cancellationToken);
 }

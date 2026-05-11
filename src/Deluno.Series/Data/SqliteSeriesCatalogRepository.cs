@@ -1509,6 +1509,135 @@ public sealed class SqliteSeriesCatalogRepository(
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
+    public async Task<bool> DeleteAsync(string seriesId, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM series WHERE id = @id;";
+        AddParameter(command, "@id", seriesId);
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
+    public async Task<bool> UpdateQualityProfileAsync(string seriesId, string qualityProfileId, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE series SET quality_profile_id = @qualityProfileId, updated_utc = @now WHERE id = @id;";
+        AddParameter(command, "@id", seriesId);
+        AddParameter(command, "@qualityProfileId", qualityProfileId);
+        AddParameter(command, "@now", DateTimeOffset.UtcNow.ToString("O"));
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
+    public async Task<IReadOnlyList<EpisodeSearchEligibilityItem>> ListEligibleWantedEpisodesAsync(
+        string libraryId,
+        int take,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var items = new List<EpisodeSearchEligibilityItem>();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT
+                e.id, e.series_id, e.season_number, e.episode_number, e.title,
+                ews.last_search_utc, ews.next_eligible_search_utc
+            FROM episode_wanted_state ews
+            INNER JOIN episode_entries e ON e.id = ews.episode_id
+            WHERE ews.library_id = @libraryId
+              AND ews.wanted_status IN ('wanted', 'upgrade')
+              AND (ews.next_eligible_search_utc IS NULL OR ews.next_eligible_search_utc <= @now)
+              AND e.monitored = 1
+            ORDER BY
+                CASE ews.wanted_status WHEN 'wanted' THEN 0 ELSE 1 END,
+                COALESCE(ews.last_search_utc, ews.updated_utc) ASC,
+                e.season_number ASC,
+                e.episode_number ASC
+            LIMIT @take;
+            """;
+
+        AddParameter(command, "@libraryId", libraryId);
+        AddParameter(command, "@now", now.ToString("O"));
+        AddParameter(command, "@take", take);
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            items.Add(new EpisodeSearchEligibilityItem(
+                EpisodeId: reader.GetString(0),
+                SeriesId: reader.GetString(1),
+                SeasonNumber: reader.GetInt32(2),
+                EpisodeNumber: reader.GetInt32(3),
+                Title: reader.IsDBNull(4) ? null : reader.GetString(4),
+                LastSearchUtc: reader.IsDBNull(5) ? null : ParseTimestamp(reader.GetString(5)),
+                NextEligibleSearchUtc: reader.IsDBNull(6) ? null : ParseTimestamp(reader.GetString(6))));
+        }
+
+        return items;
+    }
+
+    public async Task<string?> GetEpisodeTargetQualityAsync(
+        string episodeId,
+        string libraryId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT sws.target_quality
+            FROM episode_wanted_state ews
+            INNER JOIN series_wanted_state sws ON sws.series_id = ews.series_id AND sws.library_id = ews.library_id
+            WHERE ews.episode_id = @episodeId
+              AND ews.library_id = @libraryId
+            LIMIT 1;
+            """;
+
+        AddParameter(command, "@episodeId", episodeId);
+        AddParameter(command, "@libraryId", libraryId);
+
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return value is DBNull or null ? null : value.ToString();
+    }
+
+    public async Task<string?> GetEpisodeCurrentQualityAsync(
+        string episodeId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT sws.current_quality
+            FROM episode_wanted_state ews
+            INNER JOIN series_wanted_state sws ON sws.series_id = ews.series_id AND sws.library_id = ews.library_id
+            WHERE ews.episode_id = @episodeId
+            LIMIT 1;
+            """;
+
+        AddParameter(command, "@episodeId", episodeId);
+
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return value is DBNull or null ? null : value.ToString();
+    }
+
     private static SeriesListItem ReadSeries(System.Data.Common.DbDataReader reader)
     {
         return new SeriesListItem(

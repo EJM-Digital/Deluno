@@ -154,10 +154,20 @@ public interface IPlatformSettingsRepository
         CreateIndexerRequest request,
         CancellationToken cancellationToken);
 
+    Task<IndexerItem?> UpdateIndexerAsync(
+        string id,
+        UpdateIndexerRequest request,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<DownloadClientItem>> ListDownloadClientsAsync(CancellationToken cancellationToken);
 
     Task<DownloadClientItem> CreateDownloadClientAsync(
         CreateDownloadClientRequest request,
+        CancellationToken cancellationToken);
+
+    Task<DownloadClientItem?> UpdateDownloadClientAsync(
+        string id,
+        UpdateDownloadClientRequest request,
         CancellationToken cancellationToken);
 
     Task<LibraryRoutingSnapshot?> GetLibraryRoutingAsync(string libraryId, CancellationToken cancellationToken);

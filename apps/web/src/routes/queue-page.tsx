@@ -36,6 +36,8 @@ import {
   type SeriesImportRecoverySummary
 } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
+import { JOB_STATUS, isJobActive } from "../lib/job-status-constants";
+import { downloadQueueStatuses, isImportReadyStatus, isProcessingStatus, queueStatusLabel, telemetryCapabilityChips } from "../lib/download-telemetry";
 import { cn } from "../lib/utils";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -120,12 +122,12 @@ export function QueuePage() {
     [telemetry.clients]
   );
   const importJobs = useMemo(() => jobs.filter((job) => job.jobType === "filesystem.import.execute"), [jobs]);
-  const importReady = allQueue.filter((item) => item.status === "importReady" || item.status === "completed");
-  const processing = allQueue.filter((item) => ["processing", "processed", "processingFailed", "waitingForProcessor", "importQueued"].includes(item.status));
-  const stalled = allQueue.filter((item) => item.status === "stalled" || item.errorMessage);
+  const importReady = allQueue.filter((item) => isImportReadyStatus(item.status));
+  const processing = allQueue.filter((item) => isProcessingStatus(item.status));
+  const stalled = allQueue.filter((item) => item.status === downloadQueueStatuses.stalled || item.errorMessage);
   const openRecovery = movieRecovery.openCount + seriesRecovery.openCount;
-  const activeImportJobs = importJobs.filter((job) => job.status === "queued" || job.status === "running").length;
-  const failedImportJobs = importJobs.filter((job) => job.status === "failed").length;
+  const activeImportJobs = importJobs.filter((job) => isJobActive(job.status as any)).length;
+  const failedImportJobs = importJobs.filter((job) => job.status === JOB_STATUS.FAILED).length;
   const activeClients = telemetry.clients.filter((client) => isHealthyClient(client.healthStatus)).length;
 
   async function handleQueueAction(clientId: string, item: DownloadQueueItem, action: QueueAction) {
@@ -650,17 +652,17 @@ function QueueRow({
   onImport: (item: DownloadQueueItem) => Promise<void>;
   onQueueImport: (item: DownloadQueueItem) => Promise<void>;
 }) {
-  const isReady = item.status === "importReady" || item.status === "completed";
-  const isProcessing = item.status === "processing" || item.status === "processed" || item.status === "waitingForProcessor";
-  const isQueuedImport = item.status === "importQueued";
-  const isImported = item.status === "imported";
-  const isImportFailed = item.status === "importFailed";
+  const isReady = isImportReadyStatus(item.status);
+  const isProcessing = isProcessingStatus(item.status) && item.status !== downloadQueueStatuses.importQueued;
+  const isQueuedImport = item.status === downloadQueueStatuses.importQueued;
+  const isImported = item.status === downloadQueueStatuses.imported;
+  const isImportFailed = item.status === downloadQueueStatuses.importFailed;
   const isBusy = busyKey !== null;
-  const statusTone = item.status === "stalled" || item.errorMessage || isImportFailed
+  const statusTone = item.status === downloadQueueStatuses.stalled || item.errorMessage || isImportFailed
     ? "destructive"
     : isReady || isImported
       ? "success"
-    : item.status === "downloading" || isProcessing || isQueuedImport
+    : item.status === downloadQueueStatuses.downloading || isProcessing || isQueuedImport
         ? "default"
         : "info";
 
@@ -904,11 +906,11 @@ function PreviewFact({
 
 function ImportJobRow({ job }: { job: JobQueueItem }) {
   const payload = parseImportJobPayload(job.payloadJson);
-  const statusVariant = job.status === "completed"
+  const statusVariant = job.status === JOB_STATUS.COMPLETED
     ? "success"
-    : job.status === "failed"
+    : job.status === JOB_STATUS.FAILED
       ? "destructive"
-      : job.status === "running"
+      : job.status === JOB_STATUS.RUNNING
         ? "default"
         : "info";
 
@@ -1018,7 +1020,7 @@ function RecoveryGroup({
 }
 
 function CapabilityCard({ client }: { client: DownloadClientTelemetrySnapshot }) {
-  const capabilities = protocolCapabilities(client.protocol);
+  const capabilities = telemetryCapabilityChips(client);
   return (
     <div className="rounded-xl border border-hairline bg-surface-1 p-3">
       <div className="flex items-center justify-between gap-3">
@@ -1036,7 +1038,7 @@ function CapabilityCard({ client }: { client: DownloadClientTelemetrySnapshot })
             key={capability.label}
             className={cn(
               "rounded-lg border px-2 py-1.5 text-[10.5px] font-semibold",
-              capability.supported
+              capability.enabled
                 ? "border-success/20 bg-success/5 text-success"
                 : "border-hairline bg-muted/20 text-muted-foreground"
             )}
@@ -1286,23 +1288,6 @@ function actionLabel(action: QueueAction) {
   }[action];
 }
 
-function queueStatusLabel(status: string) {
-  return {
-    downloading: "Downloading",
-    queued: "Queued",
-    completed: "Import ready",
-    importReady: "Import ready",
-    waitingForProcessor: "Waiting for processor",
-    processing: "Processing",
-    processed: "Processed",
-    processingFailed: "Processing failed",
-    importQueued: "Import queued",
-    importFailed: "Import failed",
-    imported: "Imported",
-    stalled: "Stalled"
-  }[status] ?? status;
-}
-
 function formatEta(seconds: number) {
   if (!Number.isFinite(seconds) || seconds <= 0) return "ETA unknown";
   const minutes = Math.round(seconds / 60);
@@ -1431,22 +1416,6 @@ function stringArrayValue(value: unknown): string[] | null {
   if (!Array.isArray(value)) return null;
   const items = value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
   return items.length ? items : null;
-}
-
-function protocolCapabilities(protocol: string) {
-  const key = protocol.toLowerCase();
-  const torrent = ["qbittorrent", "transmission", "deluge", "utorrent"].includes(key);
-  const usenet = ["sabnzbd", "nzbget"].includes(key);
-  return [
-    { label: "Queue", supported: true },
-    { label: "History", supported: true },
-    { label: "Pause/resume", supported: true },
-    { label: "Delete", supported: true },
-    { label: "Recheck", supported: torrent },
-    { label: "Import ready", supported: true },
-    { label: "Category routing", supported: true },
-    { label: "Repair/unpack", supported: usenet }
-  ];
 }
 
 function isHealthyClient(status: string) {

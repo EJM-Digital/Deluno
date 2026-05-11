@@ -64,12 +64,44 @@ export interface ActivityEventAddedEvent {
   createdUtc: string;
 }
 
+export interface SearchProgressEvent {
+  id: string;
+  title: string;
+  progress: number; // 0-100
+  totalResults: number;
+  eta: string | null;
+  status: "searching" | "completed" | "failed";
+}
+
+export interface ImportStatusEvent {
+  id: string;
+  releaseName: string;
+  progress: number; // 0-100
+  status: "importing" | "completed" | "failed";
+  importedPath?: string;
+  failureReason?: string;
+}
+
+export interface AutomationStatusEvent {
+  automationId: string;
+  libraryId: string;
+  status: "queued" | "running" | "completed" | "failed";
+  itemsProcessed: number;
+  totalItems: number;
+  lastRunUtc: string;
+  nextRunUtc: string;
+}
+
 type EventMap = {
   DownloadProgress: DownloadProgressEvent;
   QueueItemAdded: QueueItemAddedEvent;
   QueueItemRemoved: QueueItemRemovedEvent;
   HealthChanged: HealthChangedEvent;
   ActivityEventAdded: ActivityEventAddedEvent;
+  SearchProgress: SearchProgressEvent;
+  ImportStatus: ImportStatusEvent;
+  AutomationStatus: AutomationStatusEvent;
+  DownloadTelemetryChanged: Record<string, never>;
 };
 
 export type SignalREventName = keyof EventMap;

@@ -22,6 +22,7 @@ import { restrictToVerticalAxis, restrictToParentElement } from "@dnd-kit/modifi
 import { SettingsShell } from "../components/app/settings-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
+import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { toast } from "../components/shell/toaster";
 import { QualityProfileWizard, type ProfileDraft } from "../components/app/quality-profile-wizard";
 import {
@@ -143,9 +144,9 @@ function SortableProfileRow({
           </span>
         </div>
         <p className="mt-0.5 text-[12px] text-muted-foreground">
-          Cutoff: <strong className="text-foreground">{profile.cutoffQuality}</strong>
-          {allowedCount > 0 && ` · ${allowedCount} allowed`}
-          {cfCount > 0 && ` · ${cfCount} custom formats`}
+          Stop upgrading at <strong className="text-foreground">{profile.cutoffQuality}</strong>
+          {allowedCount > 0 && ` · ${allowedCount} quality tier${allowedCount === 1 ? "" : "s"} allowed`}
+          {cfCount > 0 && ` · ${cfCount} custom format${cfCount === 1 ? "" : "s"}`}
         </p>
       </div>
 
@@ -153,14 +154,15 @@ function SortableProfileRow({
       <Button
         variant="ghost"
         size="icon"
+        aria-label={`Delete ${profile.name}`}
         onClick={onDelete}
         disabled={busyKey === `delete:${id}`}
-        className="opacity-0 group-hover:opacity-100 transition-opacity"
+        className="shrink-0 text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10"
       >
         {busyKey === `delete:${id}` ? (
           <LoaderCircle className="h-4 w-4 animate-spin" />
         ) : (
-          <Trash2 className="h-4 w-4 text-muted-foreground" />
+          <Trash2 className="h-4 w-4" />
         )}
       </Button>
     </div>
@@ -176,6 +178,7 @@ export function SettingsProfilesPage() {
   const [orderedProfiles, setOrderedProfiles] = useState<QualityProfileItem[]>(qualityProfiles);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [showWizard, setShowWizard] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<QualityProfileItem | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -201,7 +204,10 @@ export function SettingsProfilesPage() {
     }
   }
 
-  async function handleDelete(profileId: string) {
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    const profileId = deleteTarget.id;
+    setDeleteTarget(null);
     setBusyKey(`delete:${profileId}`);
     try {
       const res = await authedFetch(`/api/quality-profiles/${profileId}`, { method: "DELETE" });
@@ -346,7 +352,7 @@ export function SettingsProfilesPage() {
                       profile={profile}
                       customFormats={customFormats}
                       busyKey={busyKey}
-                      onDelete={() => void handleDelete(profile.id)}
+                      onDelete={() => setDeleteTarget(profile)}
                     />
                   ))}
                 </div>
@@ -436,6 +442,17 @@ export function SettingsProfilesPage() {
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title={`Delete "${deleteTarget?.name}"?`}
+        description="This profile will be permanently removed. Libraries using it will need to be reassigned."
+        confirmLabel="Delete profile"
+        confirmVariant="destructive"
+        busy={busyKey !== null}
+        onConfirm={() => void confirmDelete()}
+      />
     </SettingsShell>
   );
 }

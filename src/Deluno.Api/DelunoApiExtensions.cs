@@ -1,5 +1,6 @@
 using Deluno.Contracts.Manifest;
 using Deluno.Api.Backup;
+using Deluno.Api.Downloads;
 using Deluno.Api.Health;
 using Deluno.Infrastructure.Storage;
 using Microsoft.AspNetCore.Builder;
@@ -56,6 +57,8 @@ public static class DelunoApiExtensions
             modules = DelunoSystemManifest.Modules,
             databases = DelunoStorageLayout.Databases
         }));
+
+        endpoints.MapDownloadDispatchesEndpoints();
 
         return endpoints;
     }

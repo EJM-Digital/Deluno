@@ -21,6 +21,7 @@ public static class DelunoObservability
     public static readonly Counter<long> IntegrationFailures = Meter.CreateCounter<long>("deluno.integrations.failures");
     public static readonly Counter<long> IntegrationRetries = Meter.CreateCounter<long>("deluno.integrations.retries");
     public static readonly Counter<long> IntegrationCircuitOpened = Meter.CreateCounter<long>("deluno.integrations.circuit_opened");
+    public static readonly Counter<long> MetadataBrokerFallbacks = Meter.CreateCounter<long>("deluno.metadata.broker.fallbacks");
 
     public static string CreateTraceId()
         => Guid.CreateVersion7().ToString("N");

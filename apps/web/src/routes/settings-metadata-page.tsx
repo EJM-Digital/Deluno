@@ -5,6 +5,7 @@ import { SettingsShell } from "../components/app/settings-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { InputDescription } from "../components/ui/input-description";
 import { PresetField } from "../components/ui/preset-field";
 import { SaveStatus, useSaveStatus } from "../components/shell/save-status";
 import { toast } from "../components/shell/toaster";
@@ -168,7 +169,7 @@ export function SettingsMetadataPage() {
               />
             </div>
             <form className="space-y-[calc(var(--field-group-pad)*0.9)]" onSubmit={handleSave}>
-              <Field label="Provider route">
+              <Field label="Provider route" description="Choose how Deluno should look up metadata (via broker, hybrid fallback, or direct API keys).">
                 <div className="grid gap-2 md:grid-cols-3">
                   {[
                     {
@@ -224,6 +225,7 @@ export function SettingsMetadataPage() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <ToggleField
                   label="Write NFO sidecars"
+                  description="Save metadata to .nfo files alongside media folders for external app compatibility."
                   checked={formState.metadataNfoEnabled}
                   onChange={(checked) =>
                     setFormState((current) => ({ ...current, metadataNfoEnabled: checked }))
@@ -231,6 +233,7 @@ export function SettingsMetadataPage() {
                 />
                 <ToggleField
                   label="Export artwork sidecars"
+                  description="Save poster and backdrop artwork alongside media for external app use."
                   checked={formState.metadataArtworkEnabled}
                   onChange={(checked) =>
                     setFormState((current) => ({ ...current, metadataArtworkEnabled: checked }))
@@ -264,7 +267,7 @@ export function SettingsMetadataPage() {
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="Certification country">
+                <Field label="Certification country" description="The country whose content ratings Deluno should display and use for filtering.">
                   <PresetField
                     value={formState.metadataCertificationCountry}
                     onChange={(value) =>
@@ -287,7 +290,7 @@ export function SettingsMetadataPage() {
                     customPlaceholder="ISO country code, e.g. NL"
                   />
                 </Field>
-                <Field label="Metadata language">
+                <Field label="Metadata language" description="The language Deluno should prefer for titles, descriptions, and release information.">
                   <PresetField
                     value={formState.metadataLanguage}
                     onChange={(value) =>
@@ -473,28 +476,42 @@ function SetupStep({
   );
 }
 
-function Field({ children, label }: { children: ReactNode; label: string }) {
+function Field({
+  children,
+  description,
+  label
+}: {
+  children: ReactNode;
+  description?: string;
+  label: string;
+}) {
   return (
     <div className="density-field rounded-xl border border-hairline bg-surface-1">
       <p className="density-label uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
       <div style={{ marginTop: "var(--field-label-gap)" }}>{children}</div>
+      {description && <InputDescription>{description}</InputDescription>}
     </div>
   );
 }
 
 function ToggleField({
   checked,
+  description,
   label,
   onChange
 }: {
   checked: boolean;
+  description?: string;
   label: string;
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="density-field density-control-text flex items-center gap-3 rounded-xl border border-hairline bg-surface-1 text-foreground">
-      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
-      {label}
+    <label className="density-field density-control-text flex items-start gap-3 rounded-xl border border-hairline bg-surface-1 text-foreground">
+      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="mt-1 flex-shrink-0" />
+      <span className="flex-1">
+        <span className="block font-semibold">{label}</span>
+        {description && <InputDescription>{description}</InputDescription>}
+      </span>
     </label>
   );
 }

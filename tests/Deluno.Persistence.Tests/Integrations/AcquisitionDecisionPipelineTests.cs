@@ -156,6 +156,8 @@ public sealed class AcquisitionDecisionPipelineTests
             string? targetQuality,
             IReadOnlyList<LibrarySourceLinkItem> sources,
             IReadOnlyList<CustomFormatItem>? customFormats = null,
+            int? seasonNumber = null,
+            int? episodeNumber = null,
             CancellationToken cancellationToken = default)
             => Task.FromResult(plan);
     }

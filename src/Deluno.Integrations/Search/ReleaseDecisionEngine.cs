@@ -54,8 +54,22 @@ public static partial class ReleaseDecisionEngine
             if (qualityDelta == 0) reasons.Add("Quality rank matches the current file, so custom formats and risk decide whether it is worthwhile.");
             if (qualityDelta < 0)
             {
-                risks.Add($"Quality rank is {Math.Abs(qualityDelta)} step(s) below the current file.");
+                var currentMeetsCutoff = currentRank >= targetRank;
+                if (currentMeetsCutoff)
+                {
+                    hardReject = true;
+                    risks.Add($"Downgrade blocked: current file ({normalizedCurrent}) already meets the quality target ({normalizedTarget}). Grab this manually if you want to downgrade.");
+                }
+                else
+                {
+                    risks.Add($"Quality rank is {Math.Abs(qualityDelta)} step(s) below the current file ({normalizedCurrent} → {normalizedCandidate}).");
+                }
             }
+        }
+
+        if (input.CurrentCustomFormatScore is > 0 && input.CustomFormatScore < input.CurrentCustomFormatScore)
+        {
+            risks.Add($"Custom format score ({input.CustomFormatScore}) is lower than the current file's score ({input.CurrentCustomFormatScore.Value}).");
         }
 
         var seederScore = ScoreSeeders(input.Seeders, risks, reasons);
@@ -92,7 +106,7 @@ public static partial class ReleaseDecisionEngine
             score = Math.Min(score, -10000);
         }
 
-        var summary = BuildSummary(status, normalizedCandidate, normalizedTarget, input.CustomFormatScore, input.Seeders, risks.Count);
+        var summary = BuildSummary(status, normalizedCandidate, normalizedTarget, input.CustomFormatScore, input.Seeders, risks.Count, risks);
         return new ReleaseDecision(
             MediaPolicyCatalog.CurrentVersion,
             status,
@@ -242,23 +256,26 @@ public static partial class ReleaseDecisionEngine
         return match.Success ? match.Groups["group"].Value : null;
     }
 
-    private static string BuildSummary(string status, string quality, string target, int customFormatScore, int? seeders, int riskCount)
+    private static string BuildSummary(string status, string quality, string target, int customFormatScore, int? seeders, int riskCount, IReadOnlyList<string> risks)
     {
+        var downgradeBlock = risks.FirstOrDefault(r => r.StartsWith("Downgrade blocked:", StringComparison.Ordinal));
         var pieces = new List<string>
         {
-            status switch
-            {
-                "rejected" => "Rejected by hard safety rules.",
-                "risky" => "Usable only with caution.",
-                "preferred" => "Preferred candidate.",
-                _ => "Eligible candidate."
-            },
+            downgradeBlock is not null
+                ? "Downgrade blocked."
+                : status switch
+                {
+                    "rejected" => "Rejected by hard safety rules.",
+                    "risky" => "Usable only with caution.",
+                    "preferred" => "Preferred candidate.",
+                    _ => "Eligible candidate."
+                },
             $"{quality} vs cutoff {target}."
         };
 
         if (customFormatScore != 0) pieces.Add($"Custom formats {customFormatScore:+#;-#;0}.");
         if (seeders is not null) pieces.Add($"{seeders.Value} seeders.");
-        if (riskCount > 0) pieces.Add($"{riskCount} risk flag{(riskCount == 1 ? "" : "s")}.");
+        if (riskCount > 0 && downgradeBlock is null) pieces.Add($"{riskCount} risk flag{(riskCount == 1 ? "" : "s")}.");
         return string.Join(" ", pieces);
     }
 
@@ -282,4 +299,5 @@ public sealed record ReleaseDecisionInput(
     string? DownloadUrl,
     int SourcePriorityScore,
     int CustomFormatScore,
-    IReadOnlyList<string>? NeverGrabPatterns = null);
+    IReadOnlyList<string>? NeverGrabPatterns = null,
+    int? CurrentCustomFormatScore = null);

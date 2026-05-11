@@ -14,6 +14,7 @@ import {
   Wifi,
   WifiOff
 } from "lucide-react";
+import { JOB_STATUS, type JobStatus, isJobActive } from "../lib/job-status-constants";
 import { SystemShell } from "../components/app/settings-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { KpiCard } from "../components/app/kpi-card";
@@ -39,6 +40,7 @@ import {
 import { authedFetch } from "../lib/use-auth";
 import { densityDisplayName } from "../lib/use-density";
 import { Button } from "../components/ui/button";
+import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { Input } from "../components/ui/input";
 import { PathInput } from "../components/ui/path-input";
 import { RouteSkeleton } from "../components/shell/skeleton";
@@ -81,7 +83,7 @@ export function SystemPage() {
   const loaderData = useLoaderData() as SystemLoaderData | undefined;
   if (!loaderData) return <RouteSkeleton />;
   const { activity, automation, backupSettings, backups, downloadClients, indexers, jobs, retryWindows, searchCycles, settings, updateStatus } = loaderData;
-  const activeJobs = jobs.filter((job) => job.status === "running" || job.status === "queued").length;
+  const activeJobs = jobs.filter((job) => isJobActive(job.status as JobStatus)).length;
   const healthyIndexers = indexers.filter((item) => item.healthStatus === "healthy").length;
   const healthyClients = downloadClients.filter((item) => item.healthStatus === "healthy").length;
 
@@ -358,7 +360,7 @@ function AutomationCard({
   onRefresh: () => void;
 }) {
   const [busyLibraryId, setBusyLibraryId] = useState<string | null>(null);
-  const running = automation.filter((item) => item.status === "running" || item.status === "queued" || item.searchRequested).length;
+  const running = automation.filter((item) => isJobActive(item.status as JobStatus) || item.searchRequested).length;
   const latest = cycles[0] ?? null;
   const waiting = retryWindows.filter((item) => new Date(item.nextEligibleUtc).getTime() > Date.now()).length;
 
@@ -512,6 +514,7 @@ function BackupCard({
   const [message, setMessage] = useState<string | null>(null);
   const [restorePreview, setRestorePreview] = useState<RestorePreviewResponse | null>(null);
   const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
 
   async function reload() {
     const [nextBackups, nextSettings] = await Promise.all([
@@ -581,9 +584,12 @@ function BackupCard({
 
   async function restoreBackup() {
     if (!restoreFile) return;
-    if (!window.confirm("Restore this backup now? Deluno data files will be replaced and you should restart Deluno immediately after restore.")) {
-      return;
-    }
+    setShowRestoreConfirm(true);
+  }
+
+  async function confirmRestore() {
+    setShowRestoreConfirm(false);
+    if (!restoreFile) return;
     setBusy("restore");
     setMessage(null);
     const formData = new FormData();
@@ -735,6 +741,17 @@ function BackupCard({
           {backups.length === 0 ? <p className="text-sm text-muted-foreground">No backups yet.</p> : null}
         </div>
       </CardContent>
+
+      <ConfirmDialog
+        open={showRestoreConfirm}
+        onOpenChange={setShowRestoreConfirm}
+        title="Restore this backup?"
+        description="Deluno's data files will be replaced with this backup. Restart Deluno immediately after the restore completes."
+        confirmLabel="Restore now"
+        confirmVariant="destructive"
+        busy={busy === "restore"}
+        onConfirm={() => void confirmRestore()}
+      />
     </Card>
   );
 }
@@ -808,8 +825,8 @@ function HealthRow({ label, status }: { label: string; status: string }) {
 }
 
 function JobStatusBadge({ status }: { status: string }) {
-  const isRunning = status === "running";
-  const isQueued = status === "queued";
+  const isRunning = status === JOB_STATUS.RUNNING;
+  const isQueued = status === JOB_STATUS.QUEUED;
   const isDone = status === "completed" || status === "succeeded";
   const isFailed = status === "failed" || status === "error";
 

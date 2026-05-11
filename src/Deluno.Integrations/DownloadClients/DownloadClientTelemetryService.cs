@@ -494,7 +494,11 @@ public sealed class DownloadClientTelemetryService(
                 Title: CleanReleaseTitle(name),
                 ReleaseName: name,
                 Category: category,
-                Status: progress >= 100 ? "importReady" : speed > 0 ? "downloading" : "queued",
+                Status: progress >= 100
+                    ? DownloadQueueStatuses.ImportReady
+                    : speed > 0
+                        ? DownloadQueueStatuses.Downloading
+                        : DownloadQueueStatuses.Queued,
                 Progress: Math.Clamp(progress, 0, 100),
                 SpeedMbps: Math.Round(speed, 1),
                 EtaSeconds: Math.Max(0, eta),
@@ -744,6 +748,7 @@ public sealed class DownloadClientTelemetryService(
             EndpointUrl: client.EndpointUrl,
             HealthStatus: health,
             LastHealthMessage: message,
+            Capabilities: DownloadClientTelemetryProfiles.ResolveCapabilities(client.Protocol),
             Summary: Summarize(queue),
             Queue: queue,
             History: history ?? CreateHistoryFromQueue(client, queue, capturedUtc),
@@ -795,7 +800,7 @@ public sealed class DownloadClientTelemetryService(
 
         var queue = snapshot.Queue.Select(item =>
         {
-            if (item.Status is not ("importReady" or "completed"))
+            if (item.Status is not (DownloadQueueStatuses.ImportReady or DownloadQueueStatuses.Completed))
             {
                 return item;
             }
@@ -805,9 +810,9 @@ public sealed class DownloadClientTelemetryService(
             {
                 var status = job.Status switch
                 {
-                    "queued" or "running" => "importQueued",
-                    "completed" => "imported",
-                    "failed" => "importFailed",
+                    "queued" or "running" => DownloadQueueStatuses.ImportQueued,
+                    "completed" => DownloadQueueStatuses.Imported,
+                    "failed" => DownloadQueueStatuses.ImportFailed,
                     _ => item.Status
                 };
                 return item with { Status = status };
@@ -817,7 +822,7 @@ public sealed class DownloadClientTelemetryService(
             if (library is not null &&
                 string.Equals(library.ImportWorkflow, "refine-before-import", StringComparison.OrdinalIgnoreCase))
             {
-                return item with { Status = "waitingForProcessor" };
+                return item with { Status = DownloadQueueStatuses.WaitingForProcessor };
             }
 
             return item;
@@ -1022,7 +1027,7 @@ public sealed class DownloadClientTelemetryService(
         DateTimeOffset capturedUtc)
     {
         return queue
-            .Where(item => item.Status is "completed" or "importReady" || !string.IsNullOrWhiteSpace(item.ErrorMessage))
+            .Where(item => item.Status is DownloadQueueStatuses.Completed or DownloadQueueStatuses.ImportReady || !string.IsNullOrWhiteSpace(item.ErrorMessage))
             .OrderByDescending(item => item.AddedUtc)
             .Take(30)
             .Select(item => new DownloadClientHistoryItem(
@@ -1036,12 +1041,12 @@ public sealed class DownloadClientTelemetryService(
                 Category: item.Category,
                 Outcome: !string.IsNullOrWhiteSpace(item.ErrorMessage)
                     ? "failed"
-                    : item.Status == "importReady"
-                        ? "importReady"
-                        : "completed",
+                    : item.Status == DownloadQueueStatuses.ImportReady
+                        ? DownloadQueueStatuses.ImportReady
+                        : DownloadQueueStatuses.Completed,
                 IndexerName: item.IndexerName,
                 SizeBytes: item.SizeBytes,
-                CompletedUtc: item.Status is "completed" or "importReady" ? capturedUtc : item.AddedUtc,
+                CompletedUtc: item.Status is DownloadQueueStatuses.Completed or DownloadQueueStatuses.ImportReady ? capturedUtc : item.AddedUtc,
                 ErrorMessage: item.ErrorMessage,
                 SourcePath: item.SourcePath))
             .ToArray();
@@ -1190,12 +1195,12 @@ public sealed class DownloadClientTelemetryService(
     {
         var items = queue.ToArray();
         return new DownloadTelemetrySummary(
-            ActiveCount: items.Count(item => item.Status == "downloading"),
-            QueuedCount: items.Count(item => item.Status == "queued"),
-            CompletedCount: items.Count(item => item.Status == "completed"),
-            StalledCount: items.Count(item => item.Status == "stalled"),
-            ProcessingCount: items.Count(item => item.Status is "processing" or "processed" or "processingFailed" or "waitingForProcessor" or "importQueued"),
-            ImportReadyCount: items.Count(item => item.Status is "importReady" or "completed"),
+            ActiveCount: items.Count(item => item.Status == DownloadQueueStatuses.Downloading),
+            QueuedCount: items.Count(item => item.Status == DownloadQueueStatuses.Queued),
+            CompletedCount: items.Count(item => item.Status == DownloadQueueStatuses.Completed),
+            StalledCount: items.Count(item => item.Status == DownloadQueueStatuses.Stalled),
+            ProcessingCount: items.Count(item => item.Status is DownloadQueueStatuses.Processing or DownloadQueueStatuses.Processed or DownloadQueueStatuses.ProcessingFailed or DownloadQueueStatuses.WaitingForProcessor or DownloadQueueStatuses.ImportQueued),
+            ImportReadyCount: items.Count(item => item.Status is DownloadQueueStatuses.ImportReady or DownloadQueueStatuses.Completed),
             TotalSpeedMbps: Math.Round(items.Sum(item => item.SpeedMbps), 1));
     }
 
@@ -1288,50 +1293,23 @@ public sealed class DownloadClientTelemetryService(
     private static string NormalizeHistoryOutcome(string value)
     {
         var normalized = value.Trim().ToLowerInvariant();
-        if (normalized is "completed" or "succeeded" or "success") return "completed";
+        if (normalized is "completed" or "succeeded" or "success") return DownloadQueueStatuses.Completed;
         if (normalized.Contains("fail") || normalized.Contains("error")) return "failed";
-        if (normalized.Contains("import")) return "importReady";
+        if (normalized.Contains("import")) return DownloadQueueStatuses.ImportReady;
         return normalized.Length == 0 ? "unknown" : normalized;
     }
 
     private static string MapQbitState(string? state, double? progress)
-    {
-        var normalized = state?.ToLowerInvariant() ?? string.Empty;
-        if ((progress ?? 0) >= 1 || normalized.Contains("upload")) return "importReady";
-        if (normalized.Contains("pause") || normalized.Contains("queued")) return "queued";
-        if (normalized.Contains("error") || normalized.Contains("stalled")) return "stalled";
-        return "downloading";
-    }
+        => DownloadClientTelemetryProfiles.NormalizeStatus("qbittorrent", state, progress);
 
     private static string MapSabStatus(string? status, double progress)
-    {
-        var normalized = status?.ToLowerInvariant() ?? string.Empty;
-        if (progress >= 99.9 || normalized.Contains("complete")) return "importReady";
-        if (normalized.Contains("pause") || normalized.Contains("queued")) return "queued";
-        if (normalized.Contains("fail") || normalized.Contains("error")) return "stalled";
-        return "downloading";
-    }
+        => DownloadClientTelemetryProfiles.NormalizeStatus("sabnzbd", status, progress);
 
     private static string MapTransmissionStatus(int? status, double? progress, int? error, string? errorString)
-    {
-        if (error is > 0 || !string.IsNullOrWhiteSpace(errorString)) return "stalled";
-        if ((progress ?? 0) >= 1) return "importReady";
-        return status switch
-        {
-            0 => "queued",
-            4 => "downloading",
-            _ => "queued"
-        };
-    }
+        => DownloadClientTelemetryProfiles.NormalizeStatus("transmission", status?.ToString(CultureInfo.InvariantCulture), progress, error, errorString);
 
     private static string MapTextStatus(string? status, double? progress)
-    {
-        var normalized = status?.ToLowerInvariant() ?? string.Empty;
-        if ((progress ?? 0) >= 99.9 || normalized.Contains("complete") || normalized.Contains("seeding")) return "importReady";
-        if (normalized.Contains("pause") || normalized.Contains("queue")) return "queued";
-        if (normalized.Contains("error") || normalized.Contains("fail") || normalized.Contains("stalled")) return "stalled";
-        return "downloading";
-    }
+        => DownloadClientTelemetryProfiles.NormalizeStatus("generic", status, progress);
 
     private static string? MapQueueError(string? status)
     {

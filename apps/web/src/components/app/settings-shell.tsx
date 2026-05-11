@@ -1,6 +1,8 @@
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { HelpCircle } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { GlossaryModal } from "../ui/glossary-modal";
 
 /**
  * Settings navigation organised around the main configuration decisions:
@@ -201,20 +203,32 @@ export function SettingsShell({
   description: string;
   children: ReactNode;
 }) {
+  const [glossaryOpen, setGlossaryOpen] = useState(false);
+
   if (useContext(SettingsWorkspaceContext)) {
     return <>{children}</>;
   }
 
   return (
     <div className="space-y-[var(--page-gap)]">
+      <GlossaryModal open={glossaryOpen} onOpenChange={setGlossaryOpen} />
       <div className="flex flex-col gap-2 xl:flex-row xl:items-end xl:justify-between xl:gap-[var(--grid-gap)]">
         <div className="min-w-0">
           <p className="text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-muted-foreground">
             {eyebrow}
           </p>
-          <h1 className="mt-2 font-display text-[length:var(--type-title-lg)] font-semibold tracking-tight text-foreground">
-            {title}
-          </h1>
+          <div className="mt-2 flex items-center gap-3">
+            <h1 className="font-display text-[length:var(--type-title-lg)] font-semibold tracking-tight text-foreground">
+              {title}
+            </h1>
+            <button
+              onClick={() => setGlossaryOpen(true)}
+              className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+              title="Open glossary"
+            >
+              <HelpCircle className="h-5 w-5" />
+            </button>
+          </div>
         </div>
         <p className="max-w-[min(58rem,100%)] text-[length:var(--section-subtitle-size)] leading-relaxed text-muted-foreground xl:text-right">
           {description}

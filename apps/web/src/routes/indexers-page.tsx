@@ -8,7 +8,7 @@
  *      as an option for a movies library.
  */
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useLoaderData, useNavigation, useRevalidator } from "react-router-dom";
 import {
   AlertTriangle,
@@ -47,6 +47,7 @@ import {
   type TagItem,
 } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
+import { downloadQueueStatuses, queueStatusLabel, telemetryCapabilityChips } from "../lib/download-telemetry";
 import { cn } from "../lib/utils";
 import { KpiCard } from "../components/app/kpi-card";
 import { OperationPathBanner } from "../components/app/operations-guide";
@@ -58,6 +59,7 @@ import { EmptyState } from "../components/shell/empty-state";
 import { CardSkeleton, RowSkeleton } from "../components/shell/skeleton";
 import { Stagger, StaggerItem } from "../components/shell/motion";
 import { toast } from "../components/shell/toaster";
+import { useSignalREvent } from "../lib/use-signalr";
 
 const PRIORITY_OPTIONS = [
   { label: "Highest priority (1)", value: "1" },
@@ -190,6 +192,10 @@ interface ClientPreset {
   isUsenet: boolean;
   defaultMoviesCategory: string;
   defaultTvCategory: string;
+  authMode: string;
+  supportsRecheck: boolean;
+  supportsImportPath: boolean;
+  setupHint: string;
 }
 
 const CLIENT_PRESETS: ClientPreset[] = [
@@ -202,6 +208,10 @@ const CLIENT_PRESETS: ClientPreset[] = [
     isUsenet: false,
     defaultMoviesCategory: "deluno-movies",
     defaultTvCategory: "deluno-tv",
+    authMode: "Web login",
+    supportsRecheck: true,
+    supportsImportPath: true,
+    setupHint: "Enable the Web UI and use the same username and password you use in qBittorrent.",
   },
   {
     protocol: "transmission",
@@ -212,6 +222,10 @@ const CLIENT_PRESETS: ClientPreset[] = [
     isUsenet: false,
     defaultMoviesCategory: "deluno-movies",
     defaultTvCategory: "deluno-tv",
+    authMode: "Basic auth",
+    supportsRecheck: true,
+    supportsImportPath: true,
+    setupHint: "Use the RPC port. Deluno handles the Transmission session token automatically.",
   },
   {
     protocol: "deluge",
@@ -222,6 +236,10 @@ const CLIENT_PRESETS: ClientPreset[] = [
     isUsenet: false,
     defaultMoviesCategory: "deluno-movies",
     defaultTvCategory: "deluno-tv",
+    authMode: "Password",
+    supportsRecheck: true,
+    supportsImportPath: true,
+    setupHint: "Use the Deluge Web UI password. Labels are used as Deluno categories.",
   },
   {
     protocol: "utorrent",
@@ -232,6 +250,10 @@ const CLIENT_PRESETS: ClientPreset[] = [
     isUsenet: false,
     defaultMoviesCategory: "deluno-movies",
     defaultTvCategory: "deluno-tv",
+    authMode: "Token auth",
+    supportsRecheck: true,
+    supportsImportPath: false,
+    setupHint: "Use the Web UI credentials. uTorrent may not expose a reliable finished path, so imports can need the shared downloads path.",
   },
   {
     protocol: "sabnzbd",
@@ -242,6 +264,10 @@ const CLIENT_PRESETS: ClientPreset[] = [
     isUsenet: true,
     defaultMoviesCategory: "Movies",
     defaultTvCategory: "TV",
+    authMode: "API key",
+    supportsRecheck: false,
+    supportsImportPath: true,
+    setupHint: "Paste the SABnzbd API key into the password field. Categories map directly to SABnzbd folders.",
   },
   {
     protocol: "nzbget",
@@ -252,6 +278,10 @@ const CLIENT_PRESETS: ClientPreset[] = [
     isUsenet: true,
     defaultMoviesCategory: "Movies",
     defaultTvCategory: "TV",
+    authMode: "Basic auth",
+    supportsRecheck: false,
+    supportsImportPath: true,
+    setupHint: "Use NZBGet username and password. Deluno reads queue groups, history, download rate, and destination folders.",
   },
 ];
 
@@ -259,6 +289,7 @@ const CLIENT_PRESETS: ClientPreset[] = [
 function healthVariant(v: string): "success" | "warning" | "destructive" {
   return v === "healthy" ? "success" : v === "degraded" || v === "untested" ? "warning" : "destructive";
 }
+
 function healthLabel(v: string) {
   if (v === "healthy") return "Healthy";
   if (v === "untested") return "Untested";
@@ -531,6 +562,30 @@ function Help({ text }: { text: string }) {
 }
 
 /* ── Indexer add wizard ───────────────────────────────────────────── */
+function PresetCapabilityChip({ label, enabled }: { label: string; enabled: boolean }) {
+  return (
+    <span
+      className={cn(
+        "rounded-full border px-2 py-0.5 text-[10px] font-medium",
+        enabled
+          ? "border-primary/25 bg-primary/8 text-primary"
+          : "border-hairline bg-background/40 text-muted-foreground"
+      )}
+    >
+      {enabled ? label : `No ${label.toLowerCase()}`}
+    </span>
+  );
+}
+
+function HealthFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 rounded-lg border border-hairline bg-background/30 px-2 py-1">
+      <span className="font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">{label}</span>
+      <span className="ml-1 font-mono text-muted-foreground">{value}</span>
+    </div>
+  );
+}
+
 function IndexerAddPanel({ onSave, onCancel }: {
   onSave: (data: Record<string, unknown>) => Promise<void>;
   onCancel: () => void;
@@ -787,7 +842,7 @@ function ClientAddPanel({ onSave, onCancel }: {
               <span className="text-xl leading-none">{p.icon}</span>
               <div className="min-w-0 flex-1">
                 <p className="text-[12.5px] font-semibold text-foreground leading-tight">{p.label}</p>
-                <p className="text-[10px] text-muted-foreground">{p.isUsenet ? "Usenet" : "Torrent"}</p>
+                <p className="text-[10px] text-muted-foreground">{p.isUsenet ? "Usenet" : "Torrent"} / {p.authMode}</p>
               </div>
               {protocol === p.protocol && <Check className="h-3.5 w-3.5 shrink-0 text-primary" />}
             </button>
@@ -797,6 +852,25 @@ function ClientAddPanel({ onSave, onCancel }: {
 
       {protocol && (
         <>
+          {preset ? (
+            <div className="grid gap-3 rounded-2xl border border-hairline bg-surface-2 p-4 lg:grid-cols-[minmax(0,1fr)_auto]">
+              <div className="min-w-0">
+                <p className="text-[12.5px] font-semibold text-foreground">{preset.label}</p>
+                <p className="mt-1 text-[12px] text-muted-foreground">{preset.description}</p>
+                <p className="mt-1 text-[11.5px] text-muted-foreground">{preset.setupHint}</p>
+              </div>
+              <div className="flex flex-wrap content-start gap-1.5 lg:max-w-[360px] lg:justify-end">
+                <PresetCapabilityChip label="Queue telemetry" enabled />
+                <PresetCapabilityChip label="History" enabled />
+                <PresetCapabilityChip label="Pause/resume" enabled />
+                <PresetCapabilityChip label="Remove" enabled />
+                <PresetCapabilityChip label="Recheck" enabled={preset.supportsRecheck} />
+                <PresetCapabilityChip label="Import path" enabled={preset.supportsImportPath} />
+                <PresetCapabilityChip label={preset.authMode} enabled />
+              </div>
+            </div>
+          ) : null}
+
           {/* Connection details */}
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
@@ -1094,6 +1168,7 @@ export function IndexersPage() {
   const loaderData = useLoaderData() as LoaderData | undefined;
   const navigation = useNavigation();
   const revalidator = useRevalidator();
+  const lastTelemetryEventRefresh = useRef(0);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [showIndexerAdd, setShowIndexerAdd] = useState(false);
   const [showClientAdd, setShowClientAdd] = useState(false);
@@ -1105,6 +1180,14 @@ export function IndexersPage() {
 
   const { clients, indexers, libraries, routing, settings, tags, telemetry } = loaderData;
   const isRouteLoading = navigation.state !== "idle";
+
+  useSignalREvent("DownloadTelemetryChanged", () => {
+    const now = Date.now();
+    if (revalidator.state === "idle" && now - lastTelemetryEventRefresh.current > 5000) {
+      lastTelemetryEventRefresh.current = now;
+      revalidator.revalidate();
+    }
+  });
 
   const healthyIndexers = indexers.filter((i) => i.healthStatus === "healthy").length;
   const unhealthyCount = [...indexers, ...clients].filter((i) => i.isEnabled && i.healthStatus !== "healthy").length;
@@ -1289,6 +1372,42 @@ export function IndexersPage() {
     }
   }
 
+  async function handleToggleIndexer(id: string, name: string, enabled: boolean) {
+    setBusyKey(`toggle:${id}`);
+    try {
+      const res = await authedFetch(`/api/indexers/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isEnabled: enabled }),
+      });
+      if (!res.ok) throw new Error("Could not update indexer.");
+      toast.success(enabled ? `"${name}" enabled` : `"${name}" disabled`);
+      revalidator.revalidate();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Update failed.");
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function handleToggleClient(id: string, name: string, enabled: boolean) {
+    setBusyKey(`toggle-client:${id}`);
+    try {
+      const res = await authedFetch(`/api/download-clients/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isEnabled: enabled }),
+      });
+      if (!res.ok) throw new Error("Could not update client.");
+      toast.success(enabled ? `"${name}" enabled` : `"${name}" disabled`);
+      revalidator.revalidate();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Update failed.");
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
   async function handleSaveRouting(libraryId: string, sourceIds: string[], clientIds: string[]) {
     setBusyKey(`routing:${libraryId}`);
     try {
@@ -1361,20 +1480,30 @@ export function IndexersPage() {
         ) : indexers.length > 0 ? (
           <div className="rounded-2xl border border-hairline overflow-hidden divide-y divide-hairline">
             {indexers.map((idx) => (
-              <div key={idx.id} className="group flex items-center gap-3 px-[calc(var(--tile-pad)*0.8)] py-[calc(var(--tile-pad)*0.7)]">
+              <div key={idx.id} className={cn("group flex items-center gap-3 px-[calc(var(--tile-pad)*0.8)] py-[calc(var(--tile-pad)*0.7)] transition-opacity", !idx.isEnabled && "opacity-60")}>
+                {/* Always-visible enable toggle — most important control */}
+                <span title={idx.isEnabled ? "Enabled — click to disable" : "Disabled — click to enable"}>
+                  <Toggle
+                    checked={idx.isEnabled}
+                    onChange={(v) => void handleToggleIndexer(idx.id, idx.name, v)}
+                  />
+                </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-medium text-foreground">{idx.name}</p>
+                    <p className={cn("font-medium", idx.isEnabled ? "text-foreground" : "text-muted-foreground")}>{idx.name}</p>
                     <ScopeBadge scope={idx.mediaScope} />
-                    <Badge variant={healthVariant(idx.healthStatus)} className="text-[9.5px]">
-                      {healthLabel(idx.healthStatus)}
+                    <Badge variant={healthVariant(idx.isEnabled ? idx.healthStatus : "disabled")} className="text-[9.5px]">
+                      {idx.isEnabled ? healthLabel(idx.healthStatus) : "Disabled"}
                     </Badge>
                     <span className="rounded-full border border-hairline px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
                       {idx.protocol}
                     </span>
+                    <span className="rounded-full border border-hairline px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                      P{idx.priority}
+                    </span>
                   </div>
                   <p className="mt-0.5 font-mono text-[11px] text-muted-foreground truncate">{idx.baseUrl}</p>
-                  {idx.lastHealthMessage && (
+                  {idx.lastHealthMessage && idx.isEnabled && (
                     <p className="mt-0.5 text-[11px] text-muted-foreground">{idx.lastHealthMessage}</p>
                   )}
                 </div>
@@ -1383,7 +1512,8 @@ export function IndexersPage() {
                     size="sm"
                     variant="outline"
                     onClick={() => void handleTestIndexer(idx.id)}
-                    disabled={busyKey === `test:${idx.id}`}
+                    disabled={busyKey === `test:${idx.id}` || !idx.isEnabled}
+                    title={idx.isEnabled ? "Test connectivity to this indexer" : "Enable the indexer before testing"}
                     className="gap-1.5"
                   >
                     {busyKey === `test:${idx.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wifi className="h-3 w-3" />}
@@ -1394,6 +1524,7 @@ export function IndexersPage() {
                     variant="ghost"
                     onClick={() => void handleDeleteIndexer(idx.id, idx.name)}
                     disabled={busyKey === `di:${idx.id}`}
+                    title="Remove this indexer"
                   >
                     {busyKey === `di:${idx.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />}
                   </Button>
@@ -1445,13 +1576,19 @@ export function IndexersPage() {
             {clients.map((client) => {
               const clientTelemetry = telemetryByClientId.get(client.id);
               return (
-              <div key={client.id} className="group px-[calc(var(--tile-pad)*0.8)] py-[calc(var(--tile-pad)*0.7)]">
+              <div key={client.id} className={cn("group px-[calc(var(--tile-pad)*0.8)] py-[calc(var(--tile-pad)*0.7)] transition-opacity", !client.isEnabled && "opacity-60")}>
               <div className="flex items-center gap-3">
+                <span title={client.isEnabled ? "Enabled — click to disable" : "Disabled — click to enable"}>
+                  <Toggle
+                    checked={client.isEnabled}
+                    onChange={(v) => void handleToggleClient(client.id, client.name, v)}
+                  />
+                </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-medium text-foreground">{client.name}</p>
-                    <Badge variant={healthVariant(client.healthStatus)} className="text-[9.5px]">
-                      {healthLabel(client.healthStatus)}
+                    <p className={cn("font-medium", client.isEnabled ? "text-foreground" : "text-muted-foreground")}>{client.name}</p>
+                    <Badge variant={healthVariant(client.isEnabled ? client.healthStatus : "disabled")} className="text-[9.5px]">
+                      {client.isEnabled ? healthLabel(client.healthStatus) : "Disabled"}
                     </Badge>
                     <span className="rounded-full border border-hairline px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
                       {client.protocol}
@@ -1486,6 +1623,34 @@ export function IndexersPage() {
                       </span>
                     )}
                   </div>
+                  {clientTelemetry ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      {telemetryCapabilityChips(clientTelemetry).map((chip) => (
+                        <span
+                          key={chip.label}
+                          className={cn(
+                            "rounded-full border px-2 py-0.5 text-[10px] font-medium",
+                            chip.enabled
+                              ? "border-primary/25 bg-primary/8 text-primary"
+                              : "border-hairline bg-surface-1 text-muted-foreground"
+                          )}
+                        >
+                          {chip.label}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                  {clientTelemetry?.lastHealthMessage ? (
+                    <p className="mt-1 text-[11px] text-muted-foreground">{clientTelemetry.lastHealthMessage}</p>
+                  ) : client.lastHealthMessage ? (
+                    <p className="mt-1 text-[11px] text-muted-foreground">{client.lastHealthMessage}</p>
+                  ) : null}
+                  <div className="mt-2 grid gap-1.5 text-[10.5px] text-muted-foreground sm:grid-cols-3">
+                    <HealthFact label="Endpoint" value={client.endpointUrl ?? ([client.host, client.port].filter(Boolean).join(":") || "Not configured")} />
+                    <HealthFact label="Last test" value={client.lastHealthTestUtc ? formatClientHistoryTime(client.lastHealthTestUtc) : "Not tested"} />
+                    <HealthFact label="Latency" value={client.lastHealthLatencyMs != null ? `${client.lastHealthLatencyMs} ms` : "No sample"} />
+                    {client.lastHealthFailureCategory ? <HealthFact label="Failure" value={client.lastHealthFailureCategory} /> : null}
+                  </div>
                 </div>
                 <div className="flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
                   <Button
@@ -1515,8 +1680,8 @@ export function IndexersPage() {
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="truncate text-[12.5px] font-medium text-foreground">{item.title}</p>
-                          <Badge variant={item.status === "stalled" ? "destructive" : item.status === "importReady" ? "success" : "default"} className="text-[9px]">
-                            {item.status}
+                          <Badge variant={item.status === downloadQueueStatuses.stalled ? "destructive" : item.status === downloadQueueStatuses.importReady ? "success" : "default"} className="text-[9px]">
+                            {queueStatusLabel(item.status)}
                           </Badge>
                           <span className="font-mono text-[10.5px] text-muted-foreground">{item.progress.toFixed(1)}%</span>
                           <span className="font-mono text-[10.5px] text-muted-foreground">{item.speedMbps.toFixed(1)} MB/s</span>
@@ -1529,7 +1694,7 @@ export function IndexersPage() {
                         ) : null}
                       </div>
                       <div className="flex flex-wrap gap-1.5 lg:justify-end">
-                        {item.status === "importReady" ? (
+                        {item.status === downloadQueueStatuses.importReady ? (
                           <>
                             <Button
                               type="button"
@@ -1567,7 +1732,7 @@ export function IndexersPage() {
                         ) : null}
                         <QueueActionButton busyKey={busyKey} clientId={client.id} item={item} action="pause" onAction={handleQueueAction} />
                         <QueueActionButton busyKey={busyKey} clientId={client.id} item={item} action="resume" onAction={handleQueueAction} />
-                        {["qbittorrent", "transmission", "deluge", "utorrent"].includes(client.protocol) ? (
+                        {clientTelemetry?.capabilities.supportsRecheck ? (
                           <QueueActionButton busyKey={busyKey} clientId={client.id} item={item} action="recheck" onAction={handleQueueAction} />
                         ) : null}
                         <QueueActionButton busyKey={busyKey} clientId={client.id} item={item} action="delete" onAction={handleQueueAction} />
@@ -1588,7 +1753,7 @@ export function IndexersPage() {
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
                             <p className="truncate text-[12px] font-medium text-foreground">{item.title}</p>
-                            <Badge variant={item.outcome === "failed" ? "destructive" : item.outcome === "importReady" ? "success" : "default"} className="text-[9px]">
+                            <Badge variant={item.outcome === "failed" ? "destructive" : item.outcome === downloadQueueStatuses.importReady ? "success" : "default"} className="text-[9px]">
                               {item.outcome}
                             </Badge>
                           </div>

@@ -8,6 +8,7 @@
     "dev:web": "npm --workspace apps/web run dev",
     "build:web": "npm --workspace apps/web run build",
     "test:web": "npm --workspace apps/web run test:smoke",
-    "preview:web": "npm --workspace apps/web run preview"
+    "preview:web": "npm --workspace apps/web run preview",
+    "validate:agents": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/validate-agent-readiness.ps1"
   }
 }

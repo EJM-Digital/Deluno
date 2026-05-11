@@ -5,6 +5,7 @@ import { SettingsShell } from "../components/app/settings-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { InputDescription } from "../components/ui/input-description";
 import { PresetField } from "../components/ui/preset-field";
 import { EmptyState } from "../components/shell/empty-state";
 import {
@@ -176,13 +177,13 @@ export function SettingsListsPage() {
           </CardHeader>
           <CardContent>
             <form className="space-y-3" onSubmit={handleCreate}>
-              <Field label="Name">
+              <Field label="Name" description="A friendly label to identify this intake source in your configuration.">
                 <Input
                   value={createForm.name}
                   onChange={(event) => setCreateForm((state) => ({ ...state, name: event.target.value }))}
                 />
               </Field>
-              <Field label="Provider">
+              <Field label="Provider" description="The service you're importing from: Trakt, IMDb, TMDb, Letterboxd, RSS feed, or a custom list.">
                 <PresetField
                   value={createForm.provider}
                   onChange={(value) => setCreateForm((state) => ({ ...state, provider: value }))}
@@ -191,14 +192,14 @@ export function SettingsListsPage() {
                   customPlaceholder="Provider key"
                 />
               </Field>
-              <Field label="Feed URL / identifier">
+              <Field label="Feed URL / identifier" description="The URL (for RSS/feeds) or identifier (Trakt username, IMDb list ID, etc.) for this intake source.">
                 <Input
                   value={createForm.feedUrl}
                   onChange={(event) => setCreateForm((state) => ({ ...state, feedUrl: event.target.value }))}
                 />
               </Field>
               <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="Media type">
+                <Field label="Media type" description="What type of content this source provides: Movies only or TV series only.">
                   <Select
                     value={createForm.mediaType}
                     onChange={(value) => setCreateForm((state) => ({ ...state, mediaType: value }))}
@@ -208,7 +209,7 @@ export function SettingsListsPage() {
                     ]}
                   />
                 </Field>
-                <Field label="Library default">
+                <Field label="Library default" description="The library to add titles to when importing from this source without explicit routing.">
                   <Select
                     value={createForm.libraryId ?? ""}
                     onChange={(value) => setCreateForm((state) => ({ ...state, libraryId: value }))}
@@ -220,16 +221,20 @@ export function SettingsListsPage() {
                 </Field>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
-                <ToggleField
-                  label="Search on add"
-                  checked={createForm.searchOnAdd}
-                  onChange={(checked) => setCreateForm((state) => ({ ...state, searchOnAdd: checked }))}
-                />
-                <ToggleField
-                  label="Enabled"
-                  checked={createForm.isEnabled}
-                  onChange={(checked) => setCreateForm((state) => ({ ...state, isEnabled: checked }))}
-                />
+                <div className="rounded-xl border border-hairline bg-surface-1 p-4">
+                  <label className="flex items-center gap-3 text-foreground cursor-pointer">
+                    <input type="checkbox" checked={createForm.searchOnAdd} onChange={(event) => setCreateForm((state) => ({ ...state, searchOnAdd: event.target.checked }))} />
+                    <span className="font-medium">Search on add</span>
+                  </label>
+                  <InputDescription>Automatically search for and add matching titles when new items are discovered in this intake source.</InputDescription>
+                </div>
+                <div className="rounded-xl border border-hairline bg-surface-1 p-4">
+                  <label className="flex items-center gap-3 text-foreground cursor-pointer">
+                    <input type="checkbox" checked={createForm.isEnabled} onChange={(event) => setCreateForm((state) => ({ ...state, isEnabled: event.target.checked }))} />
+                    <span className="font-medium">Enabled</span>
+                  </label>
+                  <InputDescription>Whether this intake source is active and will be checked during scheduled list refreshes.</InputDescription>
+                </div>
               </div>
               <Button type="submit" disabled={busyKey === "create"}>
                 {busyKey === "create" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
@@ -412,11 +417,12 @@ export function SettingsListsPage() {
   );
 }
 
-function Field({ children, label }: { children: ReactNode; label: string }) {
+function Field({ children, description, label }: { children: ReactNode; description?: string; label: string }) {
   return (
     <div className="density-field rounded-xl border border-hairline bg-surface-1">
       <p className="density-label uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
       <div style={{ marginTop: "var(--field-label-gap)" }}>{children}</div>
+      {description && <InputDescription>{description}</InputDescription>}
     </div>
   );
 }

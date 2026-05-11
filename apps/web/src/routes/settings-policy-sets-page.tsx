@@ -6,6 +6,7 @@ import { KpiCard } from "../components/app/kpi-card";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { InputDescription } from "../components/ui/input-description";
 import { PresetField } from "../components/ui/preset-field";
 import { Badge } from "../components/ui/badge";
 import { toast } from "../components/shell/toaster";
@@ -239,10 +240,10 @@ export function SettingsPolicySetsPage() {
           <CardContent>
             <form className="space-y-[calc(var(--field-group-pad)*0.9)]" onSubmit={handleSubmit}>
               <div className="grid gap-[var(--grid-gap)] md:grid-cols-2">
-                <Field label="Policy name">
+                <Field label="Policy name" description="A descriptive name for this acquisition policy (e.g., Standard 1080p, Premium 4K, Anime).">
                   <Input value={formState.name} onChange={(event) => setFormState((current) => ({ ...current, name: event.target.value }))} />
                 </Field>
-                <Field label="Media type">
+                <Field label="Media type" description="Whether this policy applies to Movies or TV series. Changing this resets quality and route selections.">
                   <select
                     value={formState.mediaType}
                     onChange={(event) => setFormState((current) => ({
@@ -258,7 +259,7 @@ export function SettingsPolicySetsPage() {
                     <option value="tv">TV</option>
                   </select>
                 </Field>
-                <Field label="Quality profile">
+                <Field label="Quality profile" description="What quality tiers and upgrade behaviour this policy should use when searching.">
                   <select
                     value={formState.qualityProfileId}
                     onChange={(event) => setFormState((current) => ({ ...current, qualityProfileId: event.target.value }))}
@@ -272,7 +273,7 @@ export function SettingsPolicySetsPage() {
                     ))}
                   </select>
                 </Field>
-                <Field label="Destination rule">
+                <Field label="Destination rule" description="Where imported titles should be routed (which root folder and naming pattern).">
                   <select
                     value={formState.destinationRuleId}
                     onChange={(event) => setFormState((current) => ({ ...current, destinationRuleId: event.target.value }))}
@@ -286,7 +287,7 @@ export function SettingsPolicySetsPage() {
                     ))}
                   </select>
                 </Field>
-                <Field label="Search override (hours)">
+                <Field label="Search override (hours)" description="How often Deluno should search for this policy instead of using the library default interval.">
                   <PresetField
                     inputType="number"
                     value={formState.searchIntervalOverrideHours}
@@ -296,7 +297,7 @@ export function SettingsPolicySetsPage() {
                     customPlaceholder="Hours"
                   />
                 </Field>
-                <Field label="Retry override (hours)">
+                <Field label="Retry override (hours)" description="How long Deluno should wait before retrying a failed search for this policy.">
                   <PresetField
                     inputType="number"
                     value={formState.retryDelayOverrideHours}
@@ -492,11 +493,12 @@ function splitCsv(value: string) {
     .filter(Boolean);
 }
 
-function Field({ children, label }: { children: ReactNode; label: string }) {
+function Field({ children, description, label }: { children: ReactNode; description?: string; label: string }) {
   return (
     <div className="density-field rounded-xl border border-hairline bg-surface-1">
       <p className="density-label uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
       <div style={{ marginTop: "var(--field-label-gap)" }}>{children}</div>
+      {description && <InputDescription>{description}</InputDescription>}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/input";
+import { InputDescription } from "../components/ui/input-description";
 import { fetchJson, type MigrationApplyResponse, type MigrationReport, type MigrationReportOperation } from "../lib/api";
 
 const SOURCE_OPTIONS = [
@@ -111,7 +112,7 @@ export function SettingsMigrationPage() {
           <CardContent>
             <form className="space-y-[var(--field-group-pad)]" onSubmit={(event) => void handlePreview(event)}>
               <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="Source type">
+                <Field label="Source type" description="The application you're exporting configuration from: Radarr, Sonarr, Prowlarr, Recyclarr, or a compatible JSON format.">
                   <select
                     value={sourceKind}
                     onChange={(event) => {
@@ -127,12 +128,12 @@ export function SettingsMigrationPage() {
                     ))}
                   </select>
                 </Field>
-                <Field label="Source name">
+                <Field label="Source name" description="A friendly label for this import (e.g., 'Home Radarr', 'Work Sonarr'). Used to identify this import in your history.">
                   <Input value={sourceName} onChange={(event) => setSourceName(event.target.value)} />
                 </Field>
               </div>
 
-              <Field label="Export JSON">
+              <Field label="Export JSON" description="Paste the exported configuration JSON from your source application. Deluno will preview all changes before importing.">
                 <textarea
                   value={payloadJson}
                   onChange={(event) => setPayloadJson(event.target.value)}
@@ -306,11 +307,12 @@ function MigrationOperations({ operations }: { operations: MigrationReportOperat
   );
 }
 
-function Field({ children, label }: { children: React.ReactNode; label: string }) {
+function Field({ children, description, label }: { children: React.ReactNode; description?: string; label: string }) {
   return (
     <label className="block space-y-2">
       <span className="text-[length:var(--type-caption)] font-bold uppercase tracking-[0.16em] text-muted-foreground">{label}</span>
       {children}
+      {description && <InputDescription>{description}</InputDescription>}
     </label>
   );
 }

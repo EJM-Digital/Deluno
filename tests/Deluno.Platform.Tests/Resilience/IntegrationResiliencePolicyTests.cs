@@ -1,5 +1,7 @@
 using Deluno.Infrastructure.Resilience;
+using Deluno.Infrastructure.Storage;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using System.Net;
 
 namespace Deluno.Platform.Tests.Resilience;
@@ -138,7 +140,13 @@ public sealed class IntegrationResiliencePolicyTests
     }
 
     private static IntegrationResiliencePolicy CreatePolicy(TimeProvider? timeProvider = null)
-        => new(timeProvider ?? TimeProvider.System, NullLogger<IntegrationResiliencePolicy>.Instance);
+    {
+        var mockFactory = new Mock<IDelunoDatabaseConnectionFactory>();
+        return new(
+            timeProvider ?? TimeProvider.System,
+            mockFactory.Object,
+            NullLogger<IntegrationResiliencePolicy>.Instance);
+    }
 
     private sealed class ManualTimeProvider(DateTimeOffset now) : TimeProvider
     {

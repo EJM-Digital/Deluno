@@ -52,6 +52,7 @@ const primaryNav = [
   { to: "/calendar", label: "Calendar", icon: Calendar, end: false, attention: "none" as const },
   { to: "/queue", label: "Queue", icon: Download, end: false, attention: "activity" as const },
   { to: "/indexers", label: "Sources", icon: RadioTower, end: false, attention: "indexers" as const },
+  { to: "/search-cycles", label: "Search", icon: Search, end: false, attention: "none" as const },
   { to: "/activity", label: "Activity", icon: Activity, end: false, attention: "activity" as const }
 ] as const;
 
@@ -69,6 +70,7 @@ const routeMeta = [
   { match: (path: string) => path.startsWith("/calendar"), title: "Calendar", subtitle: "Upcoming releases and retry windows" },
   { match: (path: string) => path.startsWith("/queue"), title: "Queue", subtitle: "Unified download client telemetry" },
   { match: (path: string) => path.startsWith("/indexers"), title: "Sources and clients", subtitle: "Indexers, download clients, and provider health" },
+  { match: (path: string) => path.startsWith("/search-cycles"), title: "Search automation", subtitle: "Library search schedules and history" },
   { match: (path: string) => path.startsWith("/activity"), title: "Activity", subtitle: "Events, history, and automation" },
   { match: (path: string) => path.startsWith("/settings"), title: "Settings", subtitle: "Guided setup and configuration" },
   { match: (path: string) => path.startsWith("/system"), title: "System", subtitle: "Health, backups, updates, and audit" }
@@ -110,7 +112,7 @@ function AppLayoutContent() {
   useEffect(() => {
     let armed = false;
     let timer: number;
-    const go: Record<string, string> = { o: "/", m: "/movies", t: "/tv", q: "/queue", i: "/indexers", a: "/activity", c: "/calendar", s: "/settings", y: "/system" };
+    const go: Record<string, string> = { o: "/", m: "/movies", t: "/tv", q: "/queue", i: "/indexers", x: "/search-cycles", a: "/activity", c: "/calendar", s: "/settings", y: "/system" };
     function onKeyDown(e: KeyboardEvent) {
       if (e.metaKey || e.ctrlKey || e.altKey || isEditableTarget(e.target)) { armed = false; return; }
       if (armed) {

@@ -6,6 +6,7 @@ import { KpiCard } from "../components/app/kpi-card";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { InputDescription } from "../components/ui/input-description";
 import { PresetField } from "../components/ui/preset-field";
 import { PathInput } from "../components/ui/path-input";
 import { Badge } from "../components/ui/badge";
@@ -282,10 +283,10 @@ export function SettingsDestinationRulesPage() {
           <CardContent>
             <form className="space-y-[calc(var(--field-group-pad)*0.9)]" onSubmit={handleSubmit}>
               <div className="grid gap-[var(--grid-gap)] md:grid-cols-2">
-                <Field label="Rule name">
+                <Field label="Rule name" description="A descriptive identifier for this routing rule.">
                   <Input value={formState.name} onChange={(event) => setFormState((current) => ({ ...current, name: event.target.value }))} />
                 </Field>
-                <Field label="Media type">
+                <Field label="Media type" description="Whether this rule applies to movies or TV series.">
                   <select
                     value={formState.mediaType}
                     onChange={(event) => setFormState((current) => ({ ...current, mediaType: event.target.value }))}
@@ -295,7 +296,7 @@ export function SettingsDestinationRulesPage() {
                     <option value="tv">TV</option>
                   </select>
                 </Field>
-                <Field label="Match by">
+                <Field label="Match by" description="The criteria used to identify matching titles (genre, tag, language, etc.).">
                   <select
                     value={formState.matchKind}
                     onChange={(event) => setFormState((current) => ({ ...current, matchKind: event.target.value }))}
@@ -308,7 +309,7 @@ export function SettingsDestinationRulesPage() {
                     ))}
                   </select>
                 </Field>
-                <Field label="Match value">
+                <Field label="Match value" description="The specific value to match for this rule (e.g., a genre name or tag).">
                   <PresetField
                     value={formState.matchValue}
                     onChange={(value) => setFormState((current) => ({ ...current, matchValue: value }))}
@@ -322,14 +323,14 @@ export function SettingsDestinationRulesPage() {
                     customPlaceholder={formState.matchKind === "genre" ? "Genre name" : "Match value"}
                   />
                 </Field>
-                <Field label="Root path">
+                <Field label="Root path" description="The folder where matching titles should be routed.">
                   <PathInput
                     value={formState.rootPath}
                     onChange={(nextValue) => setFormState((current) => ({ ...current, rootPath: nextValue }))}
                     browseTitle="Choose destination root"
                   />
                 </Field>
-                <Field label="Folder template">
+                <Field label="Folder template" description="Optional custom naming pattern for folders created by this rule.">
                   <NamingFormatField
                     kind={formState.mediaType === "tv" ? "destination-series" : "destination-movie"}
                     value={formState.folderTemplate}
@@ -337,7 +338,7 @@ export function SettingsDestinationRulesPage() {
                     placeholder={formState.mediaType === "tv" ? "{Series Title} ({Series Year})" : "{Movie Title} ({Release Year})"}
                   />
                 </Field>
-                <Field label="Priority">
+                <Field label="Priority" description="Determines the order rules are evaluated. Lower numbers are checked first.">
                   <PresetField
                     inputType="number"
                     value={String(formState.priority)}
@@ -393,7 +394,7 @@ export function SettingsDestinationRulesPage() {
             <CardContent>
               <form className="space-y-[calc(var(--field-group-pad)*0.9)]" onSubmit={handlePreview}>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <Field label="Media type">
+                  <Field label="Media type" description="Whether to preview a movie or TV series.">
                     <select
                       value={previewForm.mediaType}
                       onChange={(event) => setPreviewForm((current) => ({ ...current, mediaType: event.target.value }))}
@@ -403,7 +404,7 @@ export function SettingsDestinationRulesPage() {
                       <option value="tv">TV</option>
                     </select>
                   </Field>
-                  <Field label="Release year">
+                  <Field label="Release year" description="Year of release for the test title.">
                     <PresetField
                       inputType="number"
                       value={previewForm.year}
@@ -418,21 +419,21 @@ export function SettingsDestinationRulesPage() {
                     />
                   </Field>
                 </div>
-                <Field label="Title">
+                <Field label="Title" description="The title name to test routing for.">
                   <Input
                     value={previewForm.title}
                     onChange={(event) => setPreviewForm((current) => ({ ...current, title: event.target.value }))}
                     placeholder="Dune Part Two"
                   />
                 </Field>
-                <Field label="Source path">
+                <Field label="Source path" description="Location of the completed download file.">
                   <PathInput
                     value={previewForm.sourcePath}
                     onChange={(value) => setPreviewForm((current) => ({ ...current, sourcePath: value }))}
                     browseTitle="Choose completed download source"
                   />
                 </Field>
-                <Field label="Downloaded filename">
+                <Field label="Downloaded filename" description="The exact filename of the downloaded file.">
                   <Input
                     value={previewForm.fileName}
                     onChange={(event) => setPreviewForm((current) => ({ ...current, fileName: event.target.value }))}
@@ -440,7 +441,7 @@ export function SettingsDestinationRulesPage() {
                   />
                 </Field>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <Field label="Genres">
+                  <Field label="Genres" description="Genres for the test title (comma-separated).">
                     <PresetField
                       value={previewForm.genres}
                       onChange={(value) => setPreviewForm((current) => ({ ...current, genres: value }))}
@@ -450,7 +451,7 @@ export function SettingsDestinationRulesPage() {
                       customPlaceholder="Drama, Sci-Fi"
                     />
                   </Field>
-                  <Field label="Tags">
+                  <Field label="Tags" description="Tags assigned to the test title.">
                     <PresetField
                       value={previewForm.tags}
                       onChange={(value) => setPreviewForm((current) => ({ ...current, tags: value }))}
@@ -460,14 +461,14 @@ export function SettingsDestinationRulesPage() {
                       customPlaceholder="4k, family"
                     />
                   </Field>
-                  <Field label="Studio">
+                  <Field label="Studio" description="Production studio for the test title.">
                     <Input
                       value={previewForm.studio}
                       onChange={(event) => setPreviewForm((current) => ({ ...current, studio: event.target.value }))}
                       placeholder="A24"
                     />
                   </Field>
-                  <Field label="Language">
+                  <Field label="Language" description="Original language of the test title.">
                     <PresetField
                       value={previewForm.originalLanguage}
                       onChange={(value) => setPreviewForm((current) => ({ ...current, originalLanguage: value }))}
@@ -665,11 +666,20 @@ function splitValues(value: string): string[] {
     .filter(Boolean);
 }
 
-function Field({ children, label }: { children: ReactNode; label: string }) {
+function Field({
+  children,
+  description,
+  label
+}: {
+  children: ReactNode;
+  description?: string;
+  label: string;
+}) {
   return (
     <div className="density-field rounded-xl border border-hairline bg-surface-1">
       <p className="density-label uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
       <div style={{ marginTop: "var(--field-label-gap)" }}>{children}</div>
+      {description && <InputDescription>{description}</InputDescription>}
     </div>
   );
 }

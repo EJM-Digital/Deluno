@@ -116,9 +116,15 @@ public sealed class MigrationRunnerTests
         Assert.Equal("integration_health", await ReadScalarAsync<string>(platformConnection, "SELECT name FROM schema_migrations WHERE version = 3;"));
 
         await using var jobsConnection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Jobs);
-        Assert.Equal(2, await ReadScalarAsync<int>(jobsConnection, "SELECT COUNT(*) FROM schema_migrations;"));
+        Assert.Equal(8, await ReadScalarAsync<int>(jobsConnection, "SELECT COUNT(*) FROM schema_migrations;"));
         Assert.Equal("initial_schema", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 1;"));
         Assert.Equal("job_integrity", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 2;"));
+        Assert.Equal("download_outcome_tracking", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 3;"));
+        Assert.Equal("import_resolutions", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 4;"));
+        Assert.Equal("dispatch_alerts", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 5;"));
+        Assert.Equal("download_retry_tracking", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 6;"));
+        Assert.Equal("integration_circuit_state", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 7;"));
+        Assert.Equal("download_retry_window_tracking", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 8;"));
     }
 
     private static async Task<T> ReadScalarAsync<T>(DbConnection connection, string sql)

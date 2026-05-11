@@ -19,7 +19,7 @@ public sealed class JobStoreTests
             new SqliteDatabaseMigrator(storage.Factory, timeProvider),
             NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
 
-        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher());
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
 
         var queued = await store.EnqueueAsync(
             new EnqueueJobRequest(
@@ -78,7 +78,7 @@ public sealed class JobStoreTests
         using var storage = TestStorage.Create();
         var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T04:00:00Z"));
         await InitializeJobsAsync(storage, timeProvider);
-        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher());
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
         var request = new EnqueueJobRequest(
             JobType: "movies.catalog.refresh",
             Source: "movies",
@@ -102,7 +102,7 @@ public sealed class JobStoreTests
         using var storage = TestStorage.Create();
         var timeProvider = new MutableTimeProvider(DateTimeOffset.Parse("2026-04-29T04:00:00Z"));
         await InitializeJobsAsync(storage, timeProvider);
-        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher());
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
 
         var queued = await store.EnqueueAsync(
             new EnqueueJobRequest(
@@ -139,7 +139,7 @@ public sealed class JobStoreTests
         using var storage = TestStorage.Create();
         var timeProvider = new MutableTimeProvider(DateTimeOffset.Parse("2026-04-29T04:00:00Z"));
         await InitializeJobsAsync(storage, timeProvider);
-        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher());
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
 
         var queued = await store.EnqueueAsync(
             new EnqueueJobRequest(

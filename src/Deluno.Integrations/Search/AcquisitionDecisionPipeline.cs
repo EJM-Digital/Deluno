@@ -41,6 +41,8 @@ public sealed class AcquisitionDecisionPipeline(IMediaSearchPlanner mediaSearchP
                 request.TargetQuality,
                 request.Sources,
                 request.CustomFormats,
+                request.SeasonNumber,
+                request.EpisodeNumber,
                 cancellationToken);
 
         var bestCandidate = searchPlan.BestCandidate;
@@ -180,7 +182,9 @@ public sealed record AcquisitionDecisionRequest(
     IReadOnlyList<LibrarySourceLinkItem> Sources,
     IReadOnlyList<LibraryDownloadClientLinkItem> DownloadClients,
     IReadOnlyList<CustomFormatItem>? CustomFormats = null,
-    bool PreviewOnly = false);
+    bool PreviewOnly = false,
+    int? SeasonNumber = null,
+    int? EpisodeNumber = null);
 
 public sealed record AcquisitionDecisionPlan(
     MediaSearchPlan SearchPlan,

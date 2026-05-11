@@ -13,6 +13,11 @@ public sealed class SqlitePlatformSettingsRepository(
     ISecretProtector secretProtector)
     : IPlatformSettingsRepository
 {
+    // Pre-computed hash used to ensure constant-time response when a username is not found,
+    // preventing timing-based username enumeration attacks.
+    private static readonly string DummyPasswordHash =
+        "100000.AAAAAAAAAAAAAAAAAAAAAA==.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+
     public async Task<PlatformSettingsSnapshot> GetAsync(CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -425,6 +430,7 @@ public sealed class SqlitePlatformSettingsRepository(
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken))
         {
+            VerifyPassword(password, DummyPasswordHash);
             return null;
         }
 
@@ -1887,6 +1893,100 @@ public sealed class SqlitePlatformSettingsRepository(
         return item;
     }
 
+    public async Task<IndexerItem?> UpdateIndexerAsync(
+        string id,
+        UpdateIndexerRequest request,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        // Fetch current row so we can merge patch fields
+        var existing = (await ListIndexersAsync(cancellationToken))
+            .FirstOrDefault(x => string.Equals(x.Id, id, StringComparison.OrdinalIgnoreCase));
+        if (existing is null) return null;
+
+        var newName     = NormalizeName(request.Name) ?? existing.Name;
+        var newProtocol = NormalizeIndexerProtocol(request.Protocol) is { } p && p != "unknown" ? p : existing.Protocol;
+        var newPrivacy  = NormalizeIndexerPrivacy(request.Privacy) is { } pr && pr != "unknown" ? pr : existing.Privacy;
+        var newBaseUrl  = NormalizePath(request.BaseUrl) ?? existing.BaseUrl;
+        var newApiKey   = request.ApiKey is not null ? NormalizeName(request.ApiKey) : existing.ApiKey;
+        var newPriority = request.Priority is >= 1 ? request.Priority.Value : existing.Priority;
+        var newCats     = request.Categories is not null ? NormalizeCsv(request.Categories) : existing.Categories;
+        var newTags     = request.Tags is not null ? NormalizeCsv(request.Tags) : existing.Tags;
+        var newScope    = NormalizeMediaScope(request.MediaScope) is { } s && s != "both" || request.MediaScope is not null
+                          ? NormalizeMediaScope(request.MediaScope)
+                          : existing.MediaScope;
+        var newEnabled  = request.IsEnabled ?? existing.IsEnabled;
+
+        // If enabling a previously-disabled indexer, reset health status so the UI prompts a test
+        var newHealth = newEnabled && !existing.IsEnabled ? "untested" : existing.HealthStatus;
+        var newMsg    = newEnabled && !existing.IsEnabled ? "Re-enabled — test connection to confirm." : existing.LastHealthMessage;
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE indexer_sources
+            SET
+                name = @name,
+                protocol = @protocol,
+                privacy = @privacy,
+                base_url = @baseUrl,
+                api_key = @apiKey,
+                priority = @priority,
+                categories = @categories,
+                tags = @tags,
+                media_scope = @mediaScope,
+                is_enabled = @isEnabled,
+                health_status = @healthStatus,
+                last_health_message = @lastHealthMessage,
+                updated_utc = @updatedUtc
+            WHERE id = @id;
+            """;
+
+        AddParameter(command, "@id", id);
+        AddParameter(command, "@name", newName);
+        AddParameter(command, "@protocol", newProtocol);
+        AddParameter(command, "@privacy", newPrivacy);
+        AddParameter(command, "@baseUrl", newBaseUrl);
+        AddParameter(
+            command,
+            "@apiKey",
+            string.IsNullOrWhiteSpace(newApiKey)
+                ? null
+                : secretProtector.Protect("indexer:api-key", newApiKey));
+        AddParameter(command, "@priority", newPriority);
+        AddParameter(command, "@categories", newCats);
+        AddParameter(command, "@tags", newTags);
+        AddParameter(command, "@mediaScope", newScope);
+        AddParameter(command, "@isEnabled", newEnabled ? 1 : 0);
+        AddParameter(command, "@healthStatus", newHealth);
+        AddParameter(command, "@lastHealthMessage", newMsg);
+        AddParameter(command, "@updatedUtc", now.ToString("O"));
+
+        if (await command.ExecuteNonQueryAsync(cancellationToken) == 0) return null;
+
+        return existing with
+        {
+            Name     = newName,
+            Protocol = newProtocol,
+            Privacy  = newPrivacy,
+            BaseUrl  = newBaseUrl,
+            ApiKey   = newApiKey,
+            Priority = newPriority,
+            Categories = newCats,
+            Tags     = newTags,
+            MediaScope = newScope,
+            IsEnabled  = newEnabled,
+            HealthStatus = newHealth,
+            LastHealthMessage = newMsg,
+            UpdatedUtc = now
+        };
+    }
+
     public async Task<DownloadClientItem> CreateDownloadClientAsync(
         CreateDownloadClientRequest request,
         CancellationToken cancellationToken)
@@ -1958,6 +2058,104 @@ public sealed class SqlitePlatformSettingsRepository(
         await command.ExecuteNonQueryAsync(cancellationToken);
 
         return item;
+    }
+
+    public async Task<DownloadClientItem?> UpdateDownloadClientAsync(
+        string id,
+        UpdateDownloadClientRequest request,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        var existing = (await ListDownloadClientsAsync(cancellationToken))
+            .FirstOrDefault(x => string.Equals(x.Id, id, StringComparison.OrdinalIgnoreCase));
+        if (existing is null) return null;
+
+        var newName     = NormalizeName(request.Name) ?? existing.Name;
+        var newProtocol = NormalizeDownloadProtocol(request.Protocol) is { } p && p != "unknown" ? p : existing.Protocol;
+        var newHost     = request.Host is not null ? NormalizeName(request.Host) : existing.Host;
+        var newPort     = request.Port is >= 1 ? request.Port : existing.Port;
+        var newUsername = request.Username is not null ? NormalizeName(request.Username) : existing.Username;
+        var newSecret   = request.Password is not null ? NormalizeName(request.Password) : existing.Secret;
+        var newEndpoint = request.EndpointUrl is not null ? NormalizePath(request.EndpointUrl) : existing.EndpointUrl;
+        var newMovieCat = request.MoviesCategory is not null ? NormalizeName(request.MoviesCategory) : existing.MoviesCategory;
+        var newTvCat    = request.TvCategory is not null ? NormalizeName(request.TvCategory) : existing.TvCategory;
+        var newCatTmpl  = request.CategoryTemplate is not null ? NormalizeName(request.CategoryTemplate) : existing.CategoryTemplate;
+        var newPriority = request.Priority is >= 1 ? request.Priority.Value : existing.Priority;
+        var newEnabled  = request.IsEnabled ?? existing.IsEnabled;
+
+        var newHealth = newEnabled && !existing.IsEnabled ? "untested" : existing.HealthStatus;
+        var newMsg    = newEnabled && !existing.IsEnabled ? "Re-enabled — test connection to confirm." : existing.LastHealthMessage;
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE download_clients
+            SET
+                name = @name,
+                protocol = @protocol,
+                host = @host,
+                port = @port,
+                username = @username,
+                secret = @secret,
+                endpoint_url = @endpointUrl,
+                movies_category = @moviesCategory,
+                tv_category = @tvCategory,
+                category_template = @categoryTemplate,
+                priority = @priority,
+                is_enabled = @isEnabled,
+                health_status = @healthStatus,
+                last_health_message = @lastHealthMessage,
+                updated_utc = @updatedUtc
+            WHERE id = @id;
+            """;
+
+        AddParameter(command, "@id", id);
+        AddParameter(command, "@name", newName);
+        AddParameter(command, "@protocol", newProtocol);
+        AddParameter(command, "@host", newHost);
+        AddParameter(command, "@port", newPort);
+        AddParameter(command, "@username", newUsername);
+        AddParameter(
+            command,
+            "@secret",
+            string.IsNullOrWhiteSpace(newSecret)
+                ? null
+                : secretProtector.Protect("download-client:secret", newSecret));
+        AddParameter(command, "@endpointUrl", newEndpoint);
+        AddParameter(command, "@moviesCategory", newMovieCat);
+        AddParameter(command, "@tvCategory", newTvCat);
+        AddParameter(command, "@categoryTemplate", newCatTmpl);
+        AddParameter(command, "@priority", newPriority);
+        AddParameter(command, "@isEnabled", newEnabled ? 1 : 0);
+        AddParameter(command, "@healthStatus", newHealth);
+        AddParameter(command, "@lastHealthMessage", newMsg);
+        AddParameter(command, "@updatedUtc", now.ToString("O"));
+
+        if (await command.ExecuteNonQueryAsync(cancellationToken) == 0) return null;
+
+        return existing with
+        {
+            Name             = newName,
+            Protocol         = newProtocol,
+            Host             = newHost,
+            Port             = newPort,
+            Username         = newUsername,
+            Secret           = newSecret,
+            EndpointUrl      = newEndpoint,
+            MoviesCategory   = newMovieCat,
+            TvCategory       = newTvCat,
+            CategoryTemplate = newCatTmpl,
+            Priority         = newPriority,
+            IsEnabled        = newEnabled,
+            HealthStatus     = newHealth,
+            LastHealthMessage = newMsg,
+            UpdatedUtc       = now
+        };
     }
 
     public async Task<IndexerTestResult?> UpdateIndexerHealthAsync(

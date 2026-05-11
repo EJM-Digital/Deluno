@@ -5,6 +5,7 @@ import { SettingsShell } from "../components/app/settings-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
+import { InputDescription } from "../components/ui/input-description";
 import { EmptyState } from "../components/shell/empty-state";
 import { emptyPlatformSettingsSnapshot, fetchJson, type LibraryItem, type PlatformSettingsSnapshot, type QualityProfileItem, type TagItem } from "../lib/api";
 import { settingsOverviewLoader } from "./settings-overview-page";
@@ -250,19 +251,19 @@ export function SettingsTagsPage() {
           </CardHeader>
           <CardContent className="space-y-[var(--page-gap)]">
             <form className="space-y-3" onSubmit={handleCreate}>
-              <Field label="Name">
+              <Field label="Name" description="A short name for this tag, used across libraries, routing, and policies.">
                 <Input
                   value={createForm.name}
                   onChange={(event) => setCreateForm((state) => ({ ...state, name: event.target.value }))}
                 />
               </Field>
-              <Field label="Color">
+              <Field label="Color" description="Visual indicator to distinguish tags in lists and dropdowns.">
                 <ColorSelect
                   value={createForm.color}
                   onChange={(value) => setCreateForm((state) => ({ ...state, color: value }))}
                 />
               </Field>
-              <Field label="Description">
+              <Field label="Description" description="Optional explanation of this tag's purpose for team context.">
                 <Input
                   value={createForm.description}
                   onChange={(event) => setCreateForm((state) => ({ ...state, description: event.target.value }))}
@@ -286,11 +287,12 @@ export function SettingsTagsPage() {
   );
 }
 
-function Field({ children, label }: { children: ReactNode; label: string }) {
+function Field({ children, label, description }: { children: ReactNode; label: string; description?: string }) {
   return (
     <div className="density-field rounded-xl border border-hairline bg-surface-1">
       <p className="density-label uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
       <div style={{ marginTop: "var(--field-label-gap)" }}>{children}</div>
+      {description && <InputDescription>{description}</InputDescription>}
     </div>
   );
 }

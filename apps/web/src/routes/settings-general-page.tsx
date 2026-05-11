@@ -5,6 +5,7 @@ import { SettingsShell } from "../components/app/settings-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { InputDescription } from "../components/ui/input-description";
 import { PresetField } from "../components/ui/preset-field";
 import { SaveStatus, useSaveStatus } from "../components/shell/save-status";
 import { toast } from "../components/shell/toaster";
@@ -105,6 +106,7 @@ export function SettingsGeneralPage() {
                       setFormState((current) => ({ ...current, appInstanceName: event.target.value }))
                     }
                   />
+                  <InputDescription>Display name for this Deluno installation (e.g., "Home Server", "Plex Grabber")</InputDescription>
                 </Field>
                 <Field label="Bind address">
                   <PresetField
@@ -120,6 +122,7 @@ export function SettingsGeneralPage() {
                     customLabel="Custom bind address"
                     customPlaceholder="IP address or hostname"
                   />
+                  <InputDescription>Which network interface to listen on. Use 127.0.0.1 if accessing only locally, 0.0.0.0 for remote access.</InputDescription>
                 </Field>
                 <Field label="Port">
                   <PresetField
@@ -137,6 +140,7 @@ export function SettingsGeneralPage() {
                     customLabel="Custom port"
                     customPlaceholder="Port number"
                   />
+                  <InputDescription>HTTP port where Deluno will be accessible. Must not conflict with other services.</InputDescription>
                 </Field>
                 <Field label="URL base">
                   <PresetField
@@ -152,12 +156,14 @@ export function SettingsGeneralPage() {
                     customLabel="Custom URL base"
                     customPlaceholder="/my-deluno"
                   />
+                  <InputDescription>Path prefix when Deluno is behind a reverse proxy. Leave empty if serving at domain root.</InputDescription>
                 </Field>
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <ToggleField
                   label="Auto-start jobs"
+                  description="Automatically run search and import jobs when Deluno starts. Disable to manually trigger jobs only."
                   checked={formState.autoStartJobs}
                   onChange={(checked) =>
                     setFormState((current) => ({ ...current, autoStartJobs: checked }))
@@ -165,6 +171,7 @@ export function SettingsGeneralPage() {
                 />
                 <ToggleField
                   label="Enable notifications"
+                  description="Send notifications for imports, failures, and alerts. Configure specific channels in System settings."
                   checked={formState.enableNotifications}
                   onChange={(checked) =>
                     setFormState((current) => ({ ...current, enableNotifications: checked }))
@@ -261,18 +268,23 @@ function Field({ children, label }: { children: ReactNode; label: string }) {
 
 function ToggleField({
   checked,
+  description,
   label,
   onChange
 }: {
   checked: boolean;
+  description?: string;
   label: string;
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="density-field density-control-text flex items-center gap-3 rounded-xl border border-hairline bg-surface-1 text-foreground">
-      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
-      {label}
-    </label>
+    <div className="rounded-xl border border-hairline bg-surface-1 p-4">
+      <label className="flex items-center gap-3 text-foreground cursor-pointer">
+        <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+        <span className="font-medium">{label}</span>
+      </label>
+      {description && <InputDescription>{description}</InputDescription>}
+    </div>
   );
 }
 

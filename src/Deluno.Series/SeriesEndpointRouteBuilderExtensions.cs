@@ -249,7 +249,9 @@ public static class SeriesEndpointRouteBuilderExtensions
                     downloadClient.DownloadClientName,
                     grabResult.Status,
                     JsonSerializer.Serialize(new { searchPlan, grabResult }),
-                    cancellationToken);
+                    grabResponseCode: grabResult.Succeeded ? 200 : 400,
+                    grabFailureCode: null,
+                    cancellationToken: cancellationToken);
             }
 
             await repository.RecordSearchAttemptAsync(
@@ -635,7 +637,9 @@ public static class SeriesEndpointRouteBuilderExtensions
                         wantedItem.TargetQuality,
                         routing?.Sources ?? [],
                         routing?.DownloadClients ?? [],
-                        customFormats),
+                        customFormats,
+                        SeasonNumber: episode.SeasonNumber,
+                        EpisodeNumber: episode.EpisodeNumber),
                     cancellationToken);
                 var searchPlan = decisionPlan.SearchPlan;
                 var bestCandidate = searchPlan.BestCandidate;
@@ -681,7 +685,9 @@ public static class SeriesEndpointRouteBuilderExtensions
                             searchPlan,
                             grabResult
                         }),
-                        cancellationToken);
+                        grabResponseCode: grabResult.Succeeded ? 200 : 400,
+                        grabFailureCode: null,
+                        cancellationToken: cancellationToken);
                 }
 
                 await repository.RecordSearchAttemptAsync(
@@ -761,6 +767,124 @@ public static class SeriesEndpointRouteBuilderExtensions
                 plannedCount,
                 failedCount
             });
+        });
+
+        series.MapPost("/bulk", async (
+            HttpContext httpContext,
+            BulkSeriesRequest request,
+            ISeriesCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
+            IJobScheduler jobScheduler,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (request.SeriesIds is not { Count: > 0 })
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["seriesIds"] = ["Select at least one series before performing bulk operations."]
+                });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Operation))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["operation"] = ["Specify which operation to perform: remove, quality, monitoring, or search."]
+                });
+            }
+
+            var operation = request.Operation.ToLowerInvariant();
+            var results = new List<BulkSeriesItemResult>();
+            int successCount = 0;
+            int failureCount = 0;
+
+            foreach (var seriesId in request.SeriesIds)
+            {
+                try
+                {
+                    var series = await repository.GetByIdAsync(seriesId, cancellationToken);
+                    if (series is null)
+                    {
+                        failureCount++;
+                        results.Add(new BulkSeriesItemResult(seriesId, "Unknown", false, "Series not found"));
+                        continue;
+                    }
+
+                    switch (operation)
+                    {
+                        case "remove":
+                            await repository.DeleteAsync(series.Id, cancellationToken);
+                            successCount++;
+                            results.Add(new BulkSeriesItemResult(series.Id, series.Title, true));
+                            break;
+
+                        case "monitoring":
+                            if (!request.Monitored.HasValue)
+                            {
+                                failureCount++;
+                                results.Add(new BulkSeriesItemResult(series.Id, series.Title, false,
+                                    "Monitored state must be specified for monitoring operation"));
+                            }
+                            else
+                            {
+                                await repository.UpdateMonitoredAsync([series.Id], request.Monitored.Value, cancellationToken);
+                                successCount++;
+                                results.Add(new BulkSeriesItemResult(series.Id, series.Title, true, null,
+                                    new Dictionary<string, string?> { ["monitored"] = request.Monitored.Value.ToString() }));
+                            }
+                            break;
+
+                        case "quality":
+                            if (string.IsNullOrWhiteSpace(request.QualityProfileId))
+                            {
+                                failureCount++;
+                                results.Add(new BulkSeriesItemResult(series.Id, series.Title, false,
+                                    "Quality profile ID must be specified for quality operation"));
+                            }
+                            else
+                            {
+                                await repository.UpdateQualityProfileAsync(series.Id, request.QualityProfileId, cancellationToken);
+                                successCount++;
+                                results.Add(new BulkSeriesItemResult(series.Id, series.Title, true, null,
+                                    new Dictionary<string, string?> { ["qualityProfileId"] = request.QualityProfileId }));
+                            }
+                            break;
+
+                        case "search":
+                            var job = await jobScheduler.EnqueueAsync(
+                                new EnqueueJobRequest(
+                                    JobType: "series.search.manual",
+                                    Source: "bulk",
+                                    PayloadJson: JsonSerializer.Serialize(new { series.Id, series.Title, series.StartYear }),
+                                    RelatedEntityType: "series",
+                                    RelatedEntityId: series.Id),
+                                cancellationToken);
+                            successCount++;
+                            results.Add(new BulkSeriesItemResult(series.Id, series.Title, true, null,
+                                new Dictionary<string, string?> { ["jobId"] = job.Id }));
+                            break;
+
+                        default:
+                            failureCount++;
+                            results.Add(new BulkSeriesItemResult(series.Id, series.Title, false,
+                                $"Unknown operation: {request.Operation}"));
+                            break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    failureCount++;
+                    results.Add(new BulkSeriesItemResult(seriesId, "Unknown", false, ex.Message));
+                }
+            }
+
+            return Results.Ok(new BulkSeriesResponse(request.SeriesIds.Count, successCount, failureCount, operation, results));
         });
 
         series.MapPost("/{id}/grab", async (
@@ -876,7 +1000,9 @@ public static class SeriesEndpointRouteBuilderExtensions
                 downloadClient.DownloadClientName,
                 grabResult.Status,
                 JsonSerializer.Serialize(auditPayload),
-                cancellationToken);
+                grabResponseCode: grabResult.Succeeded ? 200 : 400,
+                grabFailureCode: null,
+                cancellationToken: cancellationToken);
 
             var now = timeProvider.GetUtcNow();
             await repository.RecordSearchAttemptAsync(
@@ -1050,7 +1176,8 @@ public static class SeriesEndpointRouteBuilderExtensions
                     wantedItem.TargetQuality,
                     routing?.Sources ?? [],
                     routing?.DownloadClients ?? [],
-                    customFormats),
+                    customFormats,
+                    SeasonNumber: seasonNumber),
                 cancellationToken);
             var searchPlan = decisionPlan.SearchPlan;
             var bestCandidate = searchPlan.BestCandidate;
@@ -1079,7 +1206,9 @@ public static class SeriesEndpointRouteBuilderExtensions
                         searchPlan,
                         grabResult
                     }),
-                    cancellationToken);
+                    grabResponseCode: grabResult.Succeeded ? 200 : 400,
+                    grabFailureCode: null,
+                    cancellationToken: cancellationToken);
             }
 
             foreach (var episode in seasonEpisodes)

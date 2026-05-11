@@ -10,7 +10,7 @@
 
 import { useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
-import { BookOpen, CheckCircle2, LoaderCircle, PackagePlus, ShieldCheck, Sparkles, Trash2 } from "lucide-react";
+import { BookOpen, CheckCircle2, FlaskConical, LoaderCircle, PackagePlus, ShieldCheck, Sparkles, Trash2 } from "lucide-react";
 import { SettingsShell } from "../components/app/settings-shell";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/shell/empty-state";
@@ -52,8 +52,38 @@ export async function settingsCustomFormatsLoader(): Promise<LoaderData> {
   return { ...overview, customFormats };
 }
 
+/* ── Condition helpers ───────────────────────────────────────────── */
+type ConditionType = "releaseTitle" | "source" | "resolution" | "hdr" | "codec" | "releaseGroup" | "language";
+interface ConditionObj { type: ConditionType; value: string; negate?: boolean; required?: boolean }
+
+function serializeConditions(conditions: ConditionObj[]): string {
+  return JSON.stringify(conditions);
+}
+
+function conditionSummary(rawConditions: string | null | undefined): string {
+  if (!rawConditions) return "No conditions";
+  const trimmed = rawConditions.trim();
+  if (trimmed.startsWith("[")) {
+    try {
+      const arr = JSON.parse(trimmed) as ConditionObj[];
+      return `${arr.length} condition${arr.length !== 1 ? "s" : ""}`;
+    } catch { /* fall through */ }
+  }
+  return trimmed.split("\n").filter(Boolean).length + " rules (legacy)";
+}
+
+/* ── Dry-run types ───────────────────────────────────────────────── */
+interface DryRunResult {
+  formatId: string;
+  formatName: string;
+  score: number;
+  isMatch: boolean;
+  matchedConditions: string[];
+  missedConditions: string[];
+}
+
 /* ── Tab ─────────────────────────────────────────────────────────── */
-type Tab = "library" | "mine" | "create";
+type Tab = "library" | "mine" | "create" | "test";
 
 const TABS: { id: Tab; label: string; description: string }[] = [
   {
@@ -70,6 +100,11 @@ const TABS: { id: Tab; label: string; description: string }[] = [
     id: "create",
     label: "Create format",
     description: "Build a new custom format — no regex required for basic use.",
+  },
+  {
+    id: "test",
+    label: "Test a release",
+    description: "Paste a release name and see which of your formats would match it and why.",
   },
 ];
 
@@ -122,6 +157,10 @@ export function SettingsCustomFormatsPage() {
   async function handleLibraryAdd(cf: BundledCF, score: number) {
     setLibrarySelections((prev) => new Map(prev).set(cf.trashId, score));
     try {
+      // Serialize patterns as structured JSON conditions (releaseTitle type)
+      const conditions = serializeConditions(
+        cf.patterns.map((p) => ({ type: "releaseTitle" as ConditionType, value: p, negate: false, required: true }))
+      );
       const res = await authedFetch("/api/custom-formats", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -130,7 +169,7 @@ export function SettingsCustomFormatsPage() {
           mediaType: "movies",
           score,
           trashId: cf.trashId,
-          conditions: cf.patterns.map((p) => `regex: ${p}`).join("\n"),
+          conditions,
           upgradeAllowed: true,
         }),
       });
@@ -166,6 +205,9 @@ export function SettingsCustomFormatsPage() {
 
     try {
       for (const { cf, score } of missing) {
+        const conditions = serializeConditions(
+          cf.patterns.map((p) => ({ type: "releaseTitle" as ConditionType, value: p, negate: false, required: true }))
+        );
         const res = await authedFetch("/api/custom-formats", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -174,7 +216,7 @@ export function SettingsCustomFormatsPage() {
             mediaType: bundle.mediaType === "tv" ? "tv" : "movies",
             score,
             trashId: cf.trashId,
-            conditions: cf.patterns.map((p) => `regex: ${p}`).join("\n"),
+            conditions,
             upgradeAllowed: true,
           }),
         });
@@ -224,21 +266,23 @@ export function SettingsCustomFormatsPage() {
   }
 
   async function handleCreatorSave(draft: CFDraft) {
-    const regexConditions = draft.conditions
-      .map((c) => {
-        const r =
+    // Serialize conditions as structured JSON array for the new matcher
+    const conditions = serializeConditions(
+      draft.conditions.map((c) => {
+        const type: ConditionType = (c as { conditionType?: ConditionType }).conditionType ?? "releaseTitle";
+        const value =
           c.mode === "regex"
             ? c.value
             : c.mode === "contains"
-            ? `\\b${c.value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`
+            ? c.value
             : c.mode === "starts-with"
-            ? `^${c.value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`
+            ? `^${c.value}`
             : c.mode === "ends-with"
-            ? `${c.value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`
-            : `^${c.value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`;
-        return `${c.negate ? "NOT " : ""}regex: ${r}`;
+            ? `${c.value}$`
+            : c.value;
+        return { type, value, negate: c.negate ?? false, required: true };
       })
-      .join("\n");
+    );
 
     const res = await authedFetch("/api/custom-formats", {
       method: "POST",
@@ -247,7 +291,7 @@ export function SettingsCustomFormatsPage() {
         name: draft.name,
         mediaType: "movies",
         score: 100,
-        conditions: regexConditions,
+        conditions,
         upgradeAllowed: true,
       }),
     });
@@ -329,7 +373,7 @@ export function SettingsCustomFormatsPage() {
                         <p className="mt-0.5 text-[11.5px] text-muted-foreground">{bundled.description}</p>
                       )}
                       <p className="mt-1 text-[11px] text-muted-foreground/70">
-                        {cf.mediaType === "tv" ? "TV" : "Movies"} · {cf.conditions ? cf.conditions.split("\n").length + " rules" : "No conditions"}
+                        {cf.mediaType === "tv" ? "TV" : "Movies"} · {conditionSummary(cf.conditions)}
                       </p>
                     </div>
                     <Button
@@ -387,7 +431,133 @@ export function SettingsCustomFormatsPage() {
           />
         </div>
       )}
+
+      {/* ── Test tab ── */}
+      {tab === "test" && (
+        <DryRunPanel formats={customFormats} />
+      )}
     </SettingsShell>
+  );
+}
+
+/* ── Dry-run panel ───────────────────────────────────────────────── */
+function DryRunPanel({ formats }: { formats: CustomFormatItem[] }) {
+  const [releaseName, setReleaseName] = useState("");
+  const [results, setResults] = useState<DryRunResult[] | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function handleTest() {
+    if (!releaseName.trim()) return;
+    setLoading(true);
+    try {
+      const data = await fetchJson<DryRunResult[]>("/api/custom-formats/dry-run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ releaseName: releaseName.trim() }),
+      });
+      setResults(data);
+    } catch {
+      toast.error("Dry-run failed.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const matched = results?.filter((r) => r.isMatch) ?? [];
+  const missed = results?.filter((r) => !r.isMatch) ?? [];
+
+  return (
+    <div className="space-y-6">
+      {/* Input */}
+      <div className="rounded-2xl border border-hairline bg-surface-1 p-5">
+        <p className="mb-2 text-[12px] font-semibold uppercase tracking-widest text-muted-foreground">Release name</p>
+        <div className="flex gap-3">
+          <input
+            type="text"
+            value={releaseName}
+            onChange={(e) => setReleaseName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && void handleTest()}
+            placeholder="e.g. Movie.Title.2024.2160p.UHD.BluRay.DV.HDR.x265-GROUP"
+            className="flex-1 rounded-xl border border-hairline bg-background px-3 py-2 font-mono text-[12.5px] text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary/50"
+          />
+          <Button onClick={() => void handleTest()} disabled={loading || !releaseName.trim()} className="gap-2">
+            {loading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}
+            Test
+          </Button>
+        </div>
+        {formats.length === 0 && (
+          <p className="mt-2 text-[11.5px] text-amber-400">You have no formats yet — add some from the Library tab first.</p>
+        )}
+      </div>
+
+      {results && (
+        <div className="space-y-4">
+          {/* Summary row */}
+          <div className="flex items-center gap-4 rounded-2xl border border-hairline bg-surface-1 px-4 py-3">
+            <span className="text-[13px] font-medium text-foreground">{results.length} format{results.length !== 1 ? "s" : ""} evaluated</span>
+            <span className="rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 font-mono text-[11px] font-bold text-primary">
+              {matched.length} matched · {matched.reduce((s, r) => s + r.score, 0) > 0 ? "+" : ""}{matched.reduce((s, r) => s + r.score, 0)} pts
+            </span>
+            {missed.length > 0 && (
+              <span className="rounded-full border border-hairline px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+                {missed.length} missed
+              </span>
+            )}
+          </div>
+
+          {/* Matched formats */}
+          {matched.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-primary">Matched</p>
+              {matched.map((r) => (
+                <div key={r.formatId} className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-primary" />
+                    <span className="font-medium text-foreground">{r.formatName}</span>
+                    <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 font-mono text-[10px] font-bold text-primary">
+                      {r.score > 0 ? "+" : ""}{r.score}
+                    </span>
+                  </div>
+                  {r.matchedConditions.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {r.matchedConditions.map((c) => (
+                        <span key={c} className="rounded-lg border border-primary/15 bg-primary/5 px-2 py-0.5 font-mono text-[10px] text-primary">
+                          ✓ {c}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Missed formats */}
+          {missed.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Did not match</p>
+              {missed.map((r) => (
+                <div key={r.formatId} className="rounded-2xl border border-hairline bg-surface-1 p-3">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-muted-foreground">{r.formatName}</span>
+                    <span className="rounded-full border border-hairline px-2 py-0.5 font-mono text-[10px] text-muted-foreground">{r.score > 0 ? "+" : ""}{r.score}</span>
+                  </div>
+                  {r.missedConditions.length > 0 && (
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {r.missedConditions.map((c) => (
+                        <span key={c} className="rounded-lg border border-hairline px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
+                          ✗ {c}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -54,6 +54,16 @@ public static class DownloadClientEndpointRouteBuilderExtensions
             return result.Succeeded ? Results.Ok(result) : Results.BadRequest(result);
         });
 
+        endpoints.MapPost("/api/download-clients/{clientId}/webhook", async (
+            string clientId,
+            DownloadClientWebhookRequest request,
+            IDownloadClientWebhookService webhookService,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await webhookService.HandleAsync(clientId, request, cancellationToken);
+            return result.Accepted ? Results.Ok(result) : Results.NotFound(result);
+        });
+
         return endpoints;
     }
 }

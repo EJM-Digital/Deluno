@@ -32,6 +32,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../co
 import { KpiCard } from "../components/app/kpi-card";
 import { DecisionExplanationList } from "../components/app/decision-explanation-list";
 import { RatingStrip } from "../components/app/rating-strip";
+import { EpisodeSearchHistory } from "../components/app/episode-search-history";
+import { EpisodeMonitoringWidget } from "../components/app/episode-monitoring-widget";
 import { EmptyState } from "../components/shell/empty-state";
 import { RouteSkeleton } from "../components/shell/skeleton";
 
@@ -771,6 +773,13 @@ export function ShowDetailPage() {
             workflow={library?.importWorkflow ?? "standard"}
           />
 
+          <EpisodeMonitoringWidget
+            episodes={inventory.episodes}
+            selectedCount={selectedEpisodeIds.length}
+            onMonitor={handleEpisodeMonitoring}
+            isBusy={busyAction?.startsWith("episode-monitor") ?? false}
+          />
+
           <Card>
             <CardHeader>
               <CardTitle>Metadata</CardTitle>
@@ -877,6 +886,8 @@ export function ShowDetailPage() {
               ) : null}
             </CardContent>
           </Card>
+
+          <EpisodeSearchHistory searches={seriesSearches} />
 
           <Card>
             <CardHeader>

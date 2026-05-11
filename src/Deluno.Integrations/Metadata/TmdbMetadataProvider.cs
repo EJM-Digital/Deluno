@@ -2,10 +2,12 @@ using System.Globalization;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Deluno.Infrastructure.Observability;
 using Deluno.Infrastructure.Resilience;
 using Deluno.Infrastructure.Storage;
 using Deluno.Platform.Data;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace Deluno.Integrations.Metadata;
 
@@ -15,7 +17,8 @@ public sealed class TmdbMetadataProvider(
     IPlatformSettingsRepository platformRepository,
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
     TimeProvider timeProvider,
-    IIntegrationResiliencePolicy resiliencePolicy)
+    IIntegrationResiliencePolicy resiliencePolicy,
+    ILogger<TmdbMetadataProvider> logger)
     : IMetadataProvider
 {
     private const string ProviderName = "tmdb";
@@ -103,15 +106,26 @@ public sealed class TmdbMetadataProvider(
 
         if (config.ProviderMode is "broker" or "hybrid" && !string.IsNullOrWhiteSpace(config.BrokerUrl))
         {
+            logger.LogDebug("Attempting metadata search via broker for query: {Query}", query);
             var brokerResults = await TryBrokerSearchAsync(config.BrokerUrl, mediaType, request, query, cancellationToken);
             if (brokerResults is { Count: > 0 })
             {
+                logger.LogDebug("Broker search returned {ResultCount} results for query: {Query}", brokerResults.Count, query);
                 await WriteSearchCacheAsync(cacheKey, mediaType, query, brokerResults, cancellationToken);
                 return brokerResults;
             }
+
+            if (config.ProviderMode == "broker")
+            {
+                logger.LogWarning("Broker search returned no results and broker-only mode is active for query: {Query}", query);
+                return [];
+            }
+
+            logger.LogInformation("Broker search returned no results, falling back to direct TMDb search for query: {Query}", query);
+            DelunoObservability.MetadataBrokerFallbacks.Add(1, [new KeyValuePair<string, object?>("query", query)]);
         }
 
-        if (string.IsNullOrWhiteSpace(config.TmdbApiKey) || config.ProviderMode == "broker")
+        if (string.IsNullOrWhiteSpace(config.TmdbApiKey))
         {
             return [];
         }
@@ -383,12 +397,20 @@ public sealed class TmdbMetadataProvider(
             url += $"&providerId={Uri.EscapeDataString(request.ProviderId.Trim())}";
         }
 
+        var brokerKey = BuildHostKey(brokerUrl);
         var brokerResponse = await GetJsonWithResilienceAsync<MetadataBrokerSearchResponse>(
             url,
-            $"metadata:broker:{BuildHostKey(brokerUrl)}",
+            $"metadata:broker:{brokerKey}",
             "metadata.broker.search",
             cancellationToken);
-        return brokerResponse?.Results?.Take(12).ToArray();
+
+        if (brokerResponse is null)
+        {
+            logger.LogWarning("Broker search failed or returned null response from {BrokerHost} for query: {Query}", brokerKey, query);
+            return null;
+        }
+
+        return brokerResponse.Results?.Take(12).ToArray();
     }
 
     private static string BuildBrokerSearchBaseUrl(string brokerUrl)
