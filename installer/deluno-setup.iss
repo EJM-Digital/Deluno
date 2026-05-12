@@ -239,17 +239,20 @@ end;
 
 procedure WriteAppConfig;
 var
-  ConfigPath: String;
-  Json:       String;
-  DataPath:   String;
+  ConfigPath:   String;
+  Json:         String;
+  DataPath:     String;
+  EscapedPath:  String;
 begin
   DataPath   := ExpandConstant('{commonappdata}\Deluno\data');
   ConfigPath := DataPath + '\deluno.json';
 
   ForceDirectories(DataPath);
 
+  EscapedPath := DataPath;
+  StringChange(EscapedPath, '\', '\\');  { StringChange is Inno Setup's in-place replace }
   Json := '{"port":' + TbPort.Text + ',' +
-          '"dataRoot":"' + StringReplace(DataPath, '\', '\\', [rfReplaceAll]) + '"}';
+          '"dataRoot":"' + EscapedPath + '"}';
 
   SaveStringToFile(ConfigPath, Json, False);
 end;
