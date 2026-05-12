@@ -30,6 +30,15 @@ COPY src/Deluno.Realtime/Deluno.Realtime.csproj ./src/Deluno.Realtime/
 COPY src/Deluno.Series/Deluno.Series.csproj ./src/Deluno.Series/
 COPY src/Deluno.Worker/Deluno.Worker.csproj ./src/Deluno.Worker/
 
+# Tray app (Windows-only; restore still runs on Linux with EnableWindowsTargeting=true)
+COPY apps/windows-tray/Deluno.Tray.csproj ./apps/windows-tray/
+
+# Test projects (restore only; tests are not run in the Docker build)
+COPY tests/Deluno.Integrations.Tests/Deluno.Integrations.Tests.csproj ./tests/Deluno.Integrations.Tests/
+COPY tests/Deluno.Movies.Tests/Deluno.Movies.Tests.csproj ./tests/Deluno.Movies.Tests/
+COPY tests/Deluno.Persistence.Tests/Deluno.Persistence.Tests.csproj ./tests/Deluno.Persistence.Tests/
+COPY tests/Deluno.Platform.Tests/Deluno.Platform.Tests.csproj ./tests/Deluno.Platform.Tests/
+
 RUN dotnet restore ./Deluno.slnx
 
 COPY src ./src

@@ -2,6 +2,8 @@ using Deluno.Api;
 using Deluno.Api.Backup;
 using Deluno.Filesystem;
 using Deluno.Infrastructure;
+using Deluno.Infrastructure.Observability;
+using Deluno.Integrations;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.Metadata;
 using Deluno.Integrations.Search;
