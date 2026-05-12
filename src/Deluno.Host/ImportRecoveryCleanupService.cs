@@ -1,4 +1,5 @@
 using Deluno.Movies.Data;
+using Deluno.Platform.Data;
 using Deluno.Series.Data;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -8,11 +9,11 @@ namespace Deluno.Host;
 internal sealed class ImportRecoveryCleanupService(
     IMovieCatalogRepository movieRepository,
     ISeriesCatalogRepository seriesRepository,
+    IPlatformSettingsRepository platformSettingsRepository,
     TimeProvider timeProvider,
     ILogger<ImportRecoveryCleanupService> logger)
     : BackgroundService
 {
-    private static readonly TimeSpan RetentionPeriod = TimeSpan.FromDays(30);
     private static readonly TimeSpan CleanupInterval = TimeSpan.FromHours(24);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -43,7 +44,9 @@ internal sealed class ImportRecoveryCleanupService(
 
     private async Task RunCleanupAsync(CancellationToken cancellationToken)
     {
-        var cutoff = timeProvider.GetUtcNow() - RetentionPeriod;
+        var settings = await platformSettingsRepository.GetAsync(cancellationToken);
+        var retentionDays = settings.ImportRecoveryRetentionDays > 0 ? settings.ImportRecoveryRetentionDays : 30;
+        var cutoff = timeProvider.GetUtcNow() - TimeSpan.FromDays(retentionDays);
 
         var movieCount = await movieRepository.CleanupImportRecoveryCasesAsync(cutoff, cancellationToken);
         var seriesCount = await seriesRepository.CleanupImportRecoveryCasesAsync(cutoff, cancellationToken);

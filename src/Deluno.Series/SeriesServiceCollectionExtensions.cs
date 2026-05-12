@@ -11,6 +11,8 @@ public static class SeriesServiceCollectionExtensions
     {
         services.AddSingleton<ISeriesCatalogRepository, SqliteSeriesCatalogRepository>();
         services.AddSingleton<ISeriesWorkflowService, SeriesWorkflowService>();
+        services.AddSingleton<IEpisodeWorkflowService, EpisodeWorkflowService>();
+        services.AddSingleton<IEpisodeImportRecoveryService, EpisodeImportRecoveryService>();
         services.AddSingleton<IDispatchRecoveryHandler, SeriesDispatchRecoveryHandler>();
         services.AddHostedService<SeriesSchemaInitializer>();
         return services;

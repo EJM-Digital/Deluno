@@ -1012,12 +1012,16 @@ public static class SeriesEndpointRouteBuilderExtensions
                     wantedItem.CurrentQuality,
                     wantedItem.TargetQuality,
                     ForceOverride: forceOverride,
-                    OverrideReason: forceOverride ? overrideReason : null));
+                    OverrideReason: forceOverride ? overrideReason : null,
+                    PreventLowerQualityReplacements: wantedItem.PreventLowerQualityReplacements));
             if (!selectedDecision.CanDispatch)
             {
+                var hint = selectedDecision.RequiresOverride
+                    ? " Use force override if you still want this exact release."
+                    : string.Empty;
                 return Results.ValidationProblem(new Dictionary<string, string[]>
                 {
-                    ["force"] = [$"{selectedDecision.Reason} Use force override if you still want this exact release."]
+                    ["force"] = [$"{selectedDecision.Reason}{hint}"]
                 });
             }
 

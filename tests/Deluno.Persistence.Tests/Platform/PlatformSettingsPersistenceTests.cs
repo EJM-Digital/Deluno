@@ -57,7 +57,8 @@ public sealed class PlatformSettingsPersistenceTests
                 MetadataBrokerUrl: "https://metadata.example.test",
                 MetadataTmdbApiKey: "tmdb-secret",
                 MetadataOmdbApiKey: "omdb-secret",
-                ReleaseNeverGrabPatterns: "cam\nhardcoded subs"),
+                ReleaseNeverGrabPatterns: "cam\nhardcoded subs",
+                ImportRecoveryRetentionDays: 60),
             CancellationToken.None);
 
         var loaded = await repository.GetAsync(CancellationToken.None);
@@ -75,5 +76,28 @@ public sealed class PlatformSettingsPersistenceTests
         Assert.True(loaded.MetadataTmdbApiKeyConfigured);
         Assert.True(loaded.MetadataOmdbApiKeyConfigured);
         Assert.Equal("cam\nhardcoded subs", loaded.ReleaseNeverGrabPatterns);
+        Assert.Equal(60, loaded.ImportRecoveryRetentionDays);
+    }
+
+    [Fact]
+    public async Task ImportRecoveryRetentionDays_defaults_to_30_when_not_configured()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T01:02:03Z"));
+
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var repository = new SqlitePlatformSettingsRepository(
+            storage.Factory,
+            timeProvider,
+            TestSecretProtection.Create(storage));
+
+        // Read without any prior save — should return default 30
+        var loaded = await repository.GetAsync(CancellationToken.None);
+
+        Assert.Equal(30, loaded.ImportRecoveryRetentionDays);
     }
 }

@@ -107,17 +107,30 @@ public sealed class AcquisitionDecisionPipeline(IMediaSearchPlanner mediaSearchP
             PolicyVersion: decision.PolicyVersion);
 
         var safe = IsSafeForAutomaticDispatch(candidate);
-        var canDispatch = safe || request.ForceOverride;
+
+        // Replacement protection is a hard block — cannot be bypassed with force override.
+        // A user who wants to downgrade must explicitly disable protection on the movie/series first.
+        var replacementBlocked =
+            request.PreventLowerQualityReplacements &&
+            !string.IsNullOrWhiteSpace(request.CurrentQuality) &&
+            candidate.QualityDelta < 0;
+
+        var canDispatch = !replacementBlocked && (safe || request.ForceOverride);
+        var reason = replacementBlocked
+            ? $"Replacement protection is enabled. {candidate.Quality} is lower quality than your current file ({request.CurrentQuality}). " +
+              "Disable replacement protection on this item to allow downgrades."
+            : safe
+                ? candidate.Summary
+                : request.ForceOverride
+                    ? $"User override accepted {candidate.ReleaseName}: {request.OverrideReason ?? "No override reason supplied."}"
+                    : $"Release requires force override because Deluno classified it as {candidate.DecisionStatus}.";
+
         return new AcquisitionSelectedReleaseDecision(
             Candidate: candidate,
             PolicyVersion: decision.PolicyVersion,
             CanDispatch: canDispatch,
-            RequiresOverride: !safe,
-            Reason: safe
-                ? candidate.Summary
-                : request.ForceOverride
-                    ? $"User override accepted {candidate.ReleaseName}: {request.OverrideReason ?? "No override reason supplied."}"
-                    : $"Release requires force override because Deluno classified it as {candidate.DecisionStatus}.",
+            RequiresOverride: !safe && !replacementBlocked,
+            Reason: reason,
             Alternatives: BuildDecisionAlternatives(new MediaSearchPlan(candidate, [candidate], candidate.Summary)));
     }
 
@@ -209,7 +222,8 @@ public sealed record AcquisitionSelectedReleaseRequest(
     int? Seeders = null,
     bool ForceOverride = false,
     string? OverrideReason = null,
-    IReadOnlyList<string>? NeverGrabPatterns = null);
+    IReadOnlyList<string>? NeverGrabPatterns = null,
+    bool PreventLowerQualityReplacements = false);
 
 public sealed record AcquisitionSelectedReleaseDecision(
     MediaSearchCandidate Candidate,

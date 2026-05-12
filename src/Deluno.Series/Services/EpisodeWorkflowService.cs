@@ -1,9 +1,12 @@
+using Deluno.Platform.Quality;
 using Deluno.Series.Contracts;
 using Deluno.Series.Data;
 
 namespace Deluno.Series.Services;
 
-public sealed class EpisodeWorkflowService(ISeriesCatalogRepository repository) : IEpisodeWorkflowService
+public sealed class EpisodeWorkflowService(
+    ISeriesCatalogRepository repository,
+    IVersionedMediaPolicyEngine policyEngine) : IEpisodeWorkflowService
 {
     public async Task<EpisodeWorkflowDecision> EvaluateEpisodeAsync(
         string episodeId,
@@ -47,7 +50,7 @@ public sealed class EpisodeWorkflowService(ISeriesCatalogRepository repository) 
                 Reason: "Monitored but missing");
         }
 
-        // If episode has file but quality cutoff not met, it's still wanted
+        // If episode has file but quality cutoff not met, it's still wanted for upgrade
         if (episode.HasFile && !episode.QualityCutoffMet && episode.Monitored)
         {
             return new EpisodeWorkflowDecision(
@@ -62,15 +65,26 @@ public sealed class EpisodeWorkflowService(ISeriesCatalogRepository repository) 
             Reason: "No action needed");
     }
 
-    public async Task<bool> CalculateEpisodeQualityDeltaAsync(
+    public async Task<int?> CalculateEpisodeQualityDeltaAsync(
         string episodeId,
         string libraryId,
         string candidateQuality,
         CancellationToken cancellationToken)
     {
-        // For now, return true if candidate quality matches target quality
-        // This is a simplified implementation; a real one would need quality profile comparison logic
-        var targetQuality = await repository.GetEpisodeTargetQualityAsync(episodeId, libraryId, cancellationToken);
-        return string.Equals(candidateQuality, targetQuality, StringComparison.OrdinalIgnoreCase);
+        var currentQuality = await repository.GetEpisodeCurrentQualityAsync(episodeId, cancellationToken);
+        if (string.IsNullOrWhiteSpace(currentQuality) || string.IsNullOrWhiteSpace(candidateQuality))
+        {
+            return null;
+        }
+
+        var currentRank = policyEngine.QualityRank(currentQuality);
+        var candidateRank = policyEngine.QualityRank(candidateQuality);
+
+        if (currentRank < 0 || candidateRank < 0)
+        {
+            return null;
+        }
+
+        return candidateRank - currentRank;
     }
 }

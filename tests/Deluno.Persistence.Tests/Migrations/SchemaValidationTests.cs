@@ -296,6 +296,55 @@ public sealed class SchemaValidationTests
         Assert.Contains("created_utc", cols);
     }
 
+    // ── Performance indexes ───────────────────────────────────────────────
+
+    [Fact]
+    public async Task Movies_schema_has_composite_index_on_wanted_state_for_library_status_queries()
+    {
+        using var storage = CreateStorage();
+        var migrator = new SqliteDatabaseMigrator(storage.Factory, new FixedTimeProvider(DateTimeOffset.UnixEpoch));
+        await new MoviesSchemaInitializer(storage.Factory, migrator,
+            NullLogger<MoviesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        await using var conn = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Movies);
+        var indexes = await GetIndexesAsync(conn);
+
+        // Composite index for the hot path: "fetch all wanted movies for a library ordered by next search time"
+        Assert.Contains("ix_movie_wanted_state_library_status", indexes);
+        // Replacement-protection filter index
+        Assert.Contains("ix_movie_wanted_state_replacement_protection", indexes);
+    }
+
+    [Fact]
+    public async Task Series_schema_has_composite_index_on_episode_wanted_state()
+    {
+        using var storage = CreateStorage();
+        var migrator = new SqliteDatabaseMigrator(storage.Factory, new FixedTimeProvider(DateTimeOffset.UnixEpoch));
+        await new SeriesSchemaInitializer(storage.Factory, migrator,
+            NullLogger<SeriesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        await using var conn = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Series);
+        var indexes = await GetIndexesAsync(conn);
+
+        // Composite indexes for the hot path: library + wanted_status + next search time
+        Assert.Contains("ix_series_wanted_state_library_status", indexes);
+        Assert.Contains("ix_episode_wanted_state_library_status", indexes);
+    }
+
+    private static async Task<IReadOnlySet<string>> GetIndexesAsync(DbConnection connection)
+    {
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_%';";
+        var indexes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            indexes.Add(reader.GetString(0));
+        }
+
+        return indexes;
+    }
+
     // ── Idempotency guarantee ─────────────────────────────────────────────
 
     [Fact]

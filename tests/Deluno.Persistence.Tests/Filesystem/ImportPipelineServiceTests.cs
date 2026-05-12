@@ -299,6 +299,7 @@ public sealed class ImportPipelineServiceTests
             jobStore,
             new SuccessfulProbeService(),
             new MediaDecisionService(new VersionedMediaPolicyEngine()),
+            null, // IOutboundNotificationService — not needed in tests
             importResolutions,
             null,
             NullLogger<ImportPipelineService>.Instance);
@@ -373,6 +374,7 @@ public sealed class ImportPipelineServiceTests
             new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository()),
             new SuccessfulProbeService(),
             new MediaDecisionService(new VersionedMediaPolicyEngine()),
+            null, // IOutboundNotificationService — not needed in tests
             new NullImportResolutionsRepository(),
             null,
             NullLogger<ImportPipelineService>.Instance);

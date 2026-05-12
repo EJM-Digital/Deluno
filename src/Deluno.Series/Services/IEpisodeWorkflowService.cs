@@ -10,7 +10,11 @@ public interface IEpisodeWorkflowService
         string libraryId,
         CancellationToken cancellationToken);
 
-    Task<bool> CalculateEpisodeQualityDeltaAsync(
+    /// <summary>
+    /// Returns the quality delta (candidateRank - currentRank) for the episode.
+    /// Positive = upgrade, zero = same, negative = downgrade, null = quality unknown.
+    /// </summary>
+    Task<int?> CalculateEpisodeQualityDeltaAsync(
         string episodeId,
         string libraryId,
         string candidateQuality,

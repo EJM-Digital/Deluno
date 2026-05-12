@@ -8,6 +8,7 @@ using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
+using Deluno.Platform.Notifications;
 using Deluno.Platform.Quality;
 using Deluno.Series.Contracts;
 using Deluno.Series.Data;
@@ -23,6 +24,7 @@ public sealed class ImportPipelineService(
     IActivityFeedRepository activityFeedRepository,
     IMediaProbeService mediaProbeService,
     IMediaDecisionService mediaDecisionService,
+    IOutboundNotificationService? outboundNotificationService,
     IImportResolutionsRepository? importResolutionsRepository,
     IDownloadDispatchesRepository? downloadDispatchesRepository,
     ILogger<ImportPipelineService> logger)
@@ -682,6 +684,31 @@ public sealed class ImportPipelineService(
             mediaType == "tv" ? "series" : "movie",
             null,
             cancellationToken);
+
+        // Dispatch outbound webhook notification for critical failures so external
+        // monitoring systems (Discord, Slack, custom webhooks) can react promptly.
+        if (outboundNotificationService is not null)
+        try
+        {
+            await outboundNotificationService.DispatchAsync(
+                "import.failed",
+                $"Import failed: {title}",
+                $"{summary} ({failureKind})",
+                JsonSerializer.Serialize(new
+                {
+                    title,
+                    failureKind,
+                    summary,
+                    recommendedAction,
+                    sourcePath = executeRequest.Preview.SourcePath,
+                    mediaType
+                }),
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Outbound notification dispatch failed for import failure — notifications may be misconfigured.");
+        }
     }
 
     private async Task RecordImportStartedAsync(
