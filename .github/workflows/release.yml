@@ -128,7 +128,7 @@ jobs:
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
           & $iscc installer/deluno-setup.iss `
             /DAppVersion=${{ steps.version.outputs.version }} `
-            /DBinDir=..\..\artifacts\windows\bin
+            /DBinDir=..\artifacts\windows\bin
         working-directory: ${{ github.workspace }}
 
       - name: Compute SHA256

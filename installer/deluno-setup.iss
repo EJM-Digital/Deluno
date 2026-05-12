@@ -1,11 +1,11 @@
 ; Deluno Windows Installer — Inno Setup 6
-; Compiled by CI: ISCC.exe deluno-setup.iss /DAppVersion=x.y.z /DBinDir=..\..\artifacts\windows\bin
+; Compiled by CI: ISCC.exe deluno-setup.iss /DAppVersion=x.y.z /DBinDir=..\artifacts\windows\bin
 
 #ifndef AppVersion
   #define AppVersion "0.1.0"
 #endif
 #ifndef BinDir
-  #define BinDir "..\..\artifacts\windows\bin"
+  #define BinDir "..\artifacts\windows\bin"
 #endif
 
 #define AppName      "Deluno"
