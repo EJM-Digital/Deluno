@@ -63,13 +63,13 @@ Name: "{group}\Uninstall Deluno"; Filename: "{uninstallexe}"
 Filename: "{#BinInstDir}\{#AppExeName}"; \
   Description: "Start Deluno now"; \
   Flags: nowait postinstall skipifsilent; \
-  Check: RbTray.Checked
+  Check: IsTrayMode
 
 ; Tray mode: open browser to the configured port
 Filename: "http://localhost:{code:GetPort}"; \
   Description: "Open Deluno in your browser"; \
   Flags: nowait postinstall skipifsilent shellexec; \
-  Check: RbTray.Checked
+  Check: IsTrayMode
 
 ; ── Custom pages and install logic ────────────────────────────────────────────
 
@@ -88,6 +88,12 @@ var
   PortPage:       TWizardPage;
   TbPort:         TEdit;
   LblPortStatus:  TLabel;
+
+{ Called from [Run] Check: — true when tray mode is selected }
+function IsTrayMode: Boolean;
+begin
+  Result := RbTray.Checked;
+end;
 
 { Called from [Run] — returns the port the user chose }
 function GetPort(Param: String): String;
