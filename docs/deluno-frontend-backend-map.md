@@ -1,6 +1,6 @@
-# Deluno Frontend and Backend Map
+# Deluno Frontend And Backend Map
 
-Updated: 2026-04-21
+Updated: 2026-05-13
 
 ## Frontend Information Architecture
 
@@ -18,34 +18,36 @@ Updated: 2026-04-21
 Primary jobs:
 
 - understand movie library health
-- manage movie rules
-- search for missing movies
+- manage monitoring and metadata state
+- search for missing or wanted movies
 - review upgrades
 - resolve imports and failures
+- run bulk actions
 
-Recommended subviews:
+Current subviews and route direction:
 
-- `Movies / Overview`
+- `Movies / Library`
 - `Movies / Wanted`
-- `Movies / Upgrades`
 - `Movies / Import Review`
+- `Movies / Upgrades` remains conceptually important even where the backend still folds that state into broader wanted/library flows
 
 ### TV Shows Area
 
 Primary jobs:
 
 - understand TV library health
-- manage TV rules
+- manage show, season, and episode monitoring
 - search for missing episodes and shows
 - review upgrades
 - resolve imports and failures
+- run bulk actions
 
-Recommended subviews:
+Current subviews and route direction:
 
-- `TV Shows / Overview`
+- `TV Shows / Library`
 - `TV Shows / Wanted`
-- `TV Shows / Upgrades`
 - `TV Shows / Import Review`
+- `TV Shows / Upgrades` remains conceptually important even where the backend still folds that state into broader wanted/library flows
 
 ### Indexers Area
 
@@ -54,10 +56,11 @@ Primary jobs:
 - add and test indexers
 - manage download clients
 - map services to libraries
-- run federated search
-- inspect source health
+- inspect source and client health
+- run federated search support flows
+- inspect normalized telemetry and queue actions
 
-Recommended subviews:
+Current subviews and route direction:
 
 - `Indexers / Sources`
 - `Indexers / Download Clients`
@@ -71,8 +74,9 @@ Primary jobs:
 - see what Deluno did
 - understand what is pending
 - find attention items quickly
+- observe queue/import/health changes
 
-Recommended subviews:
+Current subviews and route direction:
 
 - `Activity / Timeline`
 - `Activity / Queue`
@@ -84,32 +88,39 @@ Recommended subviews:
 
 Owns:
 
-- library definitions
+- authentication and bootstrap
 - app settings
-- notifications
-- shared storage paths
+- libraries and routing
+- quality profiles, tags, custom formats, intake sources, destination rules, and policy sets
+- migration flows
+- API keys
+- system health/log/job views
+- the expanding operations layer around analytics, cleanup, explanations, observability, presets, resilience, and settings
 
 ### Deluno.Movies
 
 Owns:
 
-- movie items
+- movie catalog
 - movie monitoring
-- movie release rules
-- movie wanted state
-- movie upgrade state
-- movie import recovery state
+- wanted state
+- search and grab flows
+- metadata refresh/linking/job requests
+- movie import recovery
+- movie bulk actions
 
 ### Deluno.Series
 
 Owns:
 
-- show, season, episode state
-- TV monitoring
-- TV release rules
-- TV wanted state
-- TV upgrade state
-- TV import recovery state
+- series catalog
+- show, season, and episode monitoring
+- wanted state
+- inventory views
+- search and grab flows
+- metadata refresh/linking/job requests
+- series import recovery
+- series bulk actions
 
 ### Deluno.Integrations
 
@@ -117,10 +128,14 @@ Owns:
 
 - indexers
 - download clients
-- source routing
+- source routing normalization
 - connection tests
 - health snapshots
-- search adapters
+- download telemetry
+- queue actions and grabs
+- webhook ingestion
+- metadata provider seams
+- search adapter seams
 
 ### Deluno.Jobs
 
@@ -141,42 +156,62 @@ Owns:
 - move/copy/hardlink execution
 - path validation
 
+### Deluno.Realtime
+
+Owns:
+
+- SignalR hub wiring
+- live event delivery for queue, activity, health, search, import, and automation surfaces
+
+## In-Flight Supporting Seams
+
+The working tree contains additional design-forward seams:
+
+- `Deluno.Library`
+- `Deluno.Search`
+
+These currently read more like future extraction points than settled production modules. Keep them documented, but do not assume they replace the stable ownership map yet.
+
 ## Cross-Cutting Engines
 
-### Recurring Search
-
-Lives mostly in:
-
-- `Deluno.Movies`
-- `Deluno.Series`
-- backed by `Deluno.Jobs`
-
-### Failed Import Recovery
-
-Lives mostly in:
-
-- `Deluno.Movies`
-- `Deluno.Series`
-- with shared classification helpers where justified
-
-### Federated Search and Routing
+### Search And Routing
 
 Lives mostly in:
 
 - `Deluno.Integrations`
+- `Deluno.Platform`
+- movie and series route handlers that apply library-aware context
 
-### Activity and Visibility
+### Wanted, Upgrade, And Recovery Workflows
+
+Lives mostly in:
+
+- `Deluno.Movies`
+- `Deluno.Series`
+- `Deluno.Platform` for shared policy and library configuration
+
+### Activity And Visibility
 
 Lives mostly in:
 
 - `Deluno.Jobs`
-- rendered across the frontend
+- `Deluno.Realtime`
+- `Deluno.Platform` operational endpoints
+
+### Refine-Before-Import
+
+Lives mostly in:
+
+- `Deluno.Platform`
+- `Deluno.Filesystem`
+- `Deluno.Integrations` processor and client coordination seams
 
 ## Current Direction
 
-The current Deluno codebase should evolve toward:
+The codebase is moving toward:
 
-- `Libraries` remaining as an advanced configuration surface
-- `Indexers` replacing the current generic connections concept
-- recurring search settings surfacing naturally inside Movies and TV Shows
-- failed-import recovery becoming part of Import Review rather than a hidden background-only concern
+- operational media workspaces rather than thin catalog pages
+- indexers replacing generic connections as the user-facing mental model
+- richer library-aware routing, health, and explanation surfaces
+- more live revalidation via SignalR
+- broader platform orchestration without collapsing movie and TV boundaries

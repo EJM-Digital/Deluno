@@ -15,7 +15,7 @@ fail() { echo "  ✗  $*"; FAIL=$((FAIL+1)); }
 # Detect whether a dotnet build failure is caused by the local dev server locking
 # output files — an environment issue, not a code error. Captures stdout+stderr.
 is_env_lock() {
-  grep -qE "MSB3027|MSB3021|MSB3492|being used by another process|locked by:" "$1"
+  grep -qE "MSB3027|MSB3021|MSB3492|CS2012|being used by another process|locked by:|cannot access the file" "$1"
 }
 
 # ── Backend ──────────────────────────────────────────────────────────────────
@@ -31,7 +31,7 @@ fi
 rm -f "$restore_log"
 
 build_log=$(mktemp)
-if dotnet build Deluno.slnx --configuration Release --no-restore -q >"$build_log" 2>&1; then
+if dotnet build Deluno.slnx --configuration Release --no-restore -m:1 -q >"$build_log" 2>&1; then
   ok "build"
 elif is_env_lock "$build_log"; then
   warn "Release outputs locked by running server — CI will catch real errors"

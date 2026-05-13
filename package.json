@@ -9,6 +9,7 @@
     "build:web": "npm --workspace apps/web run build",
     "test:web": "npm --workspace apps/web run test:smoke",
     "preview:web": "npm --workspace apps/web run preview",
+    "ci:check": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ci-check.ps1",
     "validate:agents": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/validate-agent-readiness.ps1"
   }
 }

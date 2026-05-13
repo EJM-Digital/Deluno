@@ -20,11 +20,18 @@ Require-File "AGENTS.md"
 Require-File "docs\README.md"
 Require-File "docs\ARCHITECTURE.md"
 Require-File "docs\QUALITY_SCORE.md"
+Require-File "docs\repo-change-history.md"
 Require-File "docs\deluno-capability-map.md"
 Require-File "docs\deluno-ui-api-contract.md"
 Require-File "docs\external-integration-api.md"
-Require-File "docs\exec-plans\active\agent-first-realignment.md"
+Require-File "docs\packaging.md"
+Require-File "docs\DEPLOYMENT.md"
+Require-File "docs\TROUBLESHOOTING.md"
+Require-File "docs\exec-plans\completed\agent-first-realignment.md"
 Require-File "docs\exec-plans\tech-debt-tracker.md"
+Require-File "docs\exec-plans\templates\large-feature-work.md"
+Require-File "docs\exec-plans\templates\post-merge-cleanup.md"
+Require-File "scripts\start-local-app.ps1"
 
 $agentsPath = Join-Path $Root "AGENTS.md"
 if (Test-Path -LiteralPath $agentsPath) {
@@ -82,6 +89,51 @@ foreach ($rule in $forbiddenReferences) {
     $content = Get-Content -LiteralPath $projectPath -Raw
     if ($content -match $rule.Pattern) {
         Add-Failure $rule.Message
+    }
+}
+
+$downloadTelemetryStatusPattern = '["''](downloading|queued|completed|stalled|processing|processed|processingFailed|waitingForProcessor|importReady|importQueued|imported|importFailed)["'']'
+$downloadTelemetryFiles = @(
+    "apps\web\src\routes\dashboard-page.tsx",
+    "apps\web\src\routes\indexers-page.tsx",
+    "apps\web\src\routes\queue-page.tsx",
+    "apps\web\src\lib\ui-adapters.ts"
+)
+
+foreach ($relativePath in $downloadTelemetryFiles) {
+    $path = Join-Path $Root $relativePath
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        Add-Failure "Missing frontend telemetry file for status validation: $relativePath"
+        continue
+    }
+
+    $lines = Get-Content -LiteralPath $path
+    for ($index = 0; $index -lt $lines.Count; $index++) {
+        $line = $lines[$index]
+        if ($line -notmatch $downloadTelemetryStatusPattern) {
+            continue
+        }
+
+        $isStatusLogic =
+            $line -match "\.status\s*[!=]==" -or
+            $line -match "\.status\s+is" -or
+            $line -match "case\s+[""']" -or
+            $line -match "status:\s*[""']"
+
+        if (-not $isStatusLogic) {
+            continue
+        }
+
+        $usesSharedHelper = $line -match "downloadQueueStatuses"
+        $isKnownNonTelemetryStatus =
+            $line -match "job\.status" -or
+            $line -match "data\.automation" -or
+            $line -match "automation\.filter" -or
+            $line -match "item\.outcome"
+
+        if (-not $usesSharedHelper -and -not $isKnownNonTelemetryStatus) {
+            Add-Failure "Duplicated download telemetry status literal in ${relativePath}:$($index + 1). Use apps/web/src/lib/download-telemetry.ts helpers."
+        }
     }
 }
 
