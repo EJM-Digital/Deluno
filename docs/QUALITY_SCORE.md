@@ -1,6 +1,6 @@
 # Deluno Quality Score
 
-Updated: 2026-05-13
+Updated: 2026-05-14
 
 This file tracks product and architecture quality in a way agents can update continuously.
 
@@ -8,7 +8,7 @@ This file tracks product and architecture quality in a way agents can update con
 
 Overall: B+
 
-The product surface is materially broader than it was at the end of April: library routing, telemetry, custom-format dry-runs, operational media routes, and external processor coordination are all present. The latest pass also landed explicit quality-tier contracts with editable bounds, bounded ranking-model integration behind configuration, and operational route composition roots split into focused screen modules. The biggest quality risk is now consistency across that breadth: docs drift, partial realtime coverage, and in-flight modules that are not fully integrated yet.
+The product surface is materially broader than it was at the end of April: library routing, telemetry, custom-format dry-runs, operational media routes, and external processor coordination are all present. The latest pass also landed explicit quality-tier contracts with editable bounds, real ML.NET ranking-model training/inference lifecycle (versioned artifacts, retraining job, rollback control), and operational route composition roots split into focused screen modules. The biggest quality risk is now consistency across that breadth: docs drift, partial realtime coverage, and in-flight modules that are not fully integrated yet.
 
 ## Domain Scores
 

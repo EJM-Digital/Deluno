@@ -117,6 +117,26 @@ public static class SearchEndpointRouteBuilderExtensions
             return Results.Ok(rankingModelService.GetStatus());
         });
 
+        rankingModel.MapPost("train", async (
+            IReleaseRankingModelAdminService rankingModelAdminService,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await rankingModelAdminService.TrainAsync("manual", cancellationToken);
+            return result.Success
+                ? Results.Ok(result)
+                : Results.BadRequest(result);
+        });
+
+        rankingModel.MapPost("rollback", (
+            RankingModelRollbackRequest request,
+            IReleaseRankingModelAdminService rankingModelAdminService) =>
+        {
+            var rolledBack = rankingModelAdminService.TryRollback(request.Version, out var message);
+            return rolledBack
+                ? Results.Ok(new { accepted = true, message, version = request.Version })
+                : Results.BadRequest(new { accepted = false, message, version = request.Version });
+        });
+
         return endpoints;
     }
 }

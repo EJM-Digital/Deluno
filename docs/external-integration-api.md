@@ -147,6 +147,9 @@ These endpoints are intentionally generic so processors, automation scripts, das
 - `GET /api/monitoring/diagnostics?query=failed&take=100` searches operational activity diagnostics.
 - `GET /api/monitoring/export/prometheus` returns Prometheus text exposition for Deluno monitoring gauges.
 - `GET /api/monitoring/export/influx` returns Influx line protocol for Deluno monitoring gauges.
+- `GET /api/ranking-model/status` returns ML ranking runtime status (enabled state, active version, evaluation metrics).
+- `POST /api/ranking-model/train` triggers an immediate retraining pass on labeled dispatch telemetry.
+- `POST /api/ranking-model/rollback` rolls back the active model version.
 
 API key scopes:
 

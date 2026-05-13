@@ -9,7 +9,11 @@ public static class IntegrationsServiceCollectionExtensions
 {
     public static IServiceCollection AddDelunoIntegrationsModule(this IServiceCollection services)
     {
-        services.AddSingleton<IReleaseRankingModelService, BoundedReleaseRankingModelService>();
+        services.AddSingleton<IReleaseRankingTrainingDataSource, SqliteReleaseRankingTrainingDataSource>();
+        services.AddSingleton<MlNetReleaseRankingModelService>();
+        services.AddSingleton<IReleaseRankingModelService>(provider => provider.GetRequiredService<MlNetReleaseRankingModelService>());
+        services.AddSingleton<IReleaseRankingModelAdminService>(provider => provider.GetRequiredService<MlNetReleaseRankingModelService>());
+        services.AddHostedService<RankingModelTrainingHostedService>();
         services.AddScoped<IMediaSearchPlanner, FeedMediaSearchPlanner>();
         services.AddScoped<IAcquisitionDecisionPipeline, AcquisitionDecisionPipeline>();
         services.AddHttpClient("indexers", client => client.Timeout = TimeSpan.FromSeconds(10));

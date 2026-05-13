@@ -222,15 +222,18 @@ Implemented endpoints:
 
 - `POST /api/releases/explain`
 - `GET /api/ranking-model/status`
+- `POST /api/ranking-model/train`
+- `POST /api/ranking-model/rollback`
 
 Current UI contract expectations:
 
-- release explain responses include deterministic decision details plus bounded ranking-boost details when enabled
-- ranking model status is configuration-driven and should be surfaced as an informational capability, not as a replacement for hard policy rules
+- release explain responses include deterministic decision details plus ML model probability/boost explanation when enabled
+- ranking model status exposes active model version, last training metadata, sample count, and evaluation metrics
+- training and rollback controls are operational endpoints for guarded model lifecycle actions
 
 Current gaps:
 
-- model training is still an offline/next-step concern; current runtime scoring is a bounded pilot layer over deterministic policy
+- broader intelligent routing beyond bounded score boost remains roadmap work; hard policy safety remains deterministic
 
 ## Libraries And Routing
 
