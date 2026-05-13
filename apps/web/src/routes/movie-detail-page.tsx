@@ -95,6 +95,7 @@ export function MovieDetailPage() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [metadataQuery, setMetadataQuery] = useState(movie.title);
   const [metadataMatches, setMetadataMatches] = useState<MetadataSearchResult[]>([]);
+  const [metadataSearchAttempted, setMetadataSearchAttempted] = useState(false);
   const [metadataOverride, setMetadataOverride] = useState<MetadataOverridePayload>({
     originalTitle: movie.originalTitle ?? "",
     overview: movie.overview ?? "",
@@ -237,6 +238,7 @@ export function MovieDetailPage() {
   async function handleMetadataSearch() {
     setBusyAction("metadata-search");
     setActionMessage(null);
+    setMetadataSearchAttempted(true);
     try {
       const params = new URLSearchParams({
         query: metadataQuery.trim() || movie.title,
@@ -277,6 +279,29 @@ export function MovieDetailPage() {
     setBusyAction("metadata-override");
     setActionMessage(null);
     try {
+      if (metadataOverride.rating.trim()) {
+        const rating = Number(metadataOverride.rating);
+        if (!Number.isFinite(rating) || rating < 0 || rating > 10) {
+          setActionMessage("Rating must be a number between 0 and 10.");
+          return;
+        }
+      }
+
+      if (metadataOverride.posterUrl.trim() && !isValidHttpUrl(metadataOverride.posterUrl.trim())) {
+        setActionMessage("Poster URL must be a valid http/https URL.");
+        return;
+      }
+
+      if (metadataOverride.backdropUrl.trim() && !isValidHttpUrl(metadataOverride.backdropUrl.trim())) {
+        setActionMessage("Backdrop URL must be a valid http/https URL.");
+        return;
+      }
+
+      if (metadataOverride.externalUrl.trim() && !isValidHttpUrl(metadataOverride.externalUrl.trim())) {
+        setActionMessage("External URL must be a valid http/https URL.");
+        return;
+      }
+
       const payload = {
         originalTitle: metadataOverride.originalTitle.trim() || null,
         overview: metadataOverride.overview.trim() || null,
@@ -445,7 +470,7 @@ export function MovieDetailPage() {
       </div>
 
       {actionMessage ? (
-        <div className="rounded-xl border border-hairline bg-surface-1 px-4 py-3 text-sm text-muted-foreground">
+        <div className="rounded-xl border border-hairline bg-surface-1 px-4 py-3 text-sm text-muted-foreground" role="status" aria-live="polite">
           {actionMessage}
         </div>
       ) : null}
@@ -583,6 +608,7 @@ export function MovieDetailPage() {
                 mediaLabel="movie"
                 query={metadataQuery}
                 matches={metadataMatches}
+                searchAttempted={metadataSearchAttempted}
                 onQueryChange={setMetadataQuery}
                 onSearch={handleMetadataSearch}
                 onLink={handleMetadataLink}
@@ -759,6 +785,7 @@ function MetadataCorrectionPanel({
   busyAction,
   matches,
   mediaLabel,
+  searchAttempted,
   onLink,
   onQueryChange,
   onSearch,
@@ -767,6 +794,7 @@ function MetadataCorrectionPanel({
   busyAction: string | null;
   matches: MetadataSearchResult[];
   mediaLabel: string;
+  searchAttempted: boolean;
   onLink: (result: MetadataSearchResult) => Promise<void>;
   onQueryChange: (value: string) => void;
   onSearch: () => Promise<void>;
@@ -812,6 +840,9 @@ function MetadataCorrectionPanel({
             </div>
           ))}
         </div>
+      ) : null}
+      {searchAttempted && matches.length === 0 ? (
+        <p className="mt-3 text-xs text-muted-foreground">No matches found. Try adding year, original title, or IMDb ID keywords.</p>
       ) : null}
     </div>
   );
@@ -1216,4 +1247,13 @@ function formatBytes(value: number) {
   const units = ["B", "KB", "MB", "GB", "TB"];
   const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
   return `${(value / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+}
+
+function isValidHttpUrl(value: string) {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
