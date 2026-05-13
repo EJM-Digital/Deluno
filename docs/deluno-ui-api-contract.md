@@ -203,6 +203,7 @@ Implemented endpoints:
 - `PUT /api/libraries/{id}/quality-profile`
 - `PUT /api/libraries/{id}/workflow`
 - `POST /api/libraries/{id}/search-now`
+- `POST /api/libraries/{id}/skip-cycle`
 - `POST /api/libraries/{id}/import-existing`
 - `GET /api/libraries/{id}/routing`
 - `PUT /api/libraries/{id}/routing`

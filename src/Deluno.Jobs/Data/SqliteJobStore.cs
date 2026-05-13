@@ -898,6 +898,90 @@ public sealed class SqliteJobStore(
         return true;
     }
 
+    public async Task<bool> SkipLibrarySearchCycleAsync(
+        LibraryAutomationPlanItem library,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        var nextSearchUtc = library.AutoSearchEnabled
+            ? now.AddHours(Math.Max(1, library.SearchIntervalHours))
+            : (DateTimeOffset?)null;
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await UpsertLibraryAutomationStateAsync(connection, transaction, library, now, cancellationToken);
+
+        var removedQueuedJobs = 0;
+        using (var deleteQueued = connection.CreateCommand())
+        {
+            deleteQueued.Transaction = transaction;
+            deleteQueued.CommandText =
+                """
+                DELETE FROM job_queue
+                WHERE job_type = 'library.search'
+                  AND status = 'queued'
+                  AND related_entity_type = 'library'
+                  AND related_entity_id = @libraryId;
+                """;
+
+            AddParameter(deleteQueued, "@libraryId", library.LibraryId);
+            removedQueuedJobs = await deleteQueued.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        using (var update = connection.CreateCommand())
+        {
+            update.Transaction = transaction;
+            update.CommandText =
+                """
+                UPDATE library_automation_state
+                SET
+                    search_requested = 0,
+                    status = CASE WHEN status = 'running' THEN status ELSE 'idle' END,
+                    next_search_utc = @nextSearchUtc,
+                    last_error = NULL,
+                    updated_utc = @updatedUtc
+                WHERE library_id = @libraryId;
+                """;
+
+            AddParameter(update, "@libraryId", library.LibraryId);
+            AddParameter(update, "@nextSearchUtc", nextSearchUtc?.ToString("O"));
+            AddParameter(update, "@updatedUtc", now.ToString("O"));
+            await update.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await InsertActivityAsync(
+            connection,
+            transaction,
+            category: "library.search.skipped",
+            message: removedQueuedJobs > 0
+                ? $"Skipped the current cycle for {library.LibraryName}; removed {removedQueuedJobs} queued search job{(removedQueuedJobs == 1 ? string.Empty : "s")}."
+                : $"Skipped the current cycle for {library.LibraryName}.",
+            detailsJson: JsonSerializer.Serialize(new
+            {
+                removedQueuedJobs,
+                nextSearchUtc = nextSearchUtc?.ToString("O")
+            }),
+            relatedJobId: null,
+            relatedEntityType: "library",
+            relatedEntityId: library.LibraryId,
+            createdUtc: now,
+            cancellationToken: cancellationToken);
+
+        await transaction.CommitAsync(cancellationToken);
+
+        await realtimeEventPublisher.PublishActivityEventAddedAsync(
+            Guid.CreateVersion7().ToString("N"),
+            $"Skipped the current cycle for {library.LibraryName}.",
+            "library.search.skipped",
+            SeverityForCategory("library.search.skipped"),
+            now.ToString("O"),
+            cancellationToken);
+        return true;
+    }
+
     public async Task PlanLibrarySearchesAsync(
         IReadOnlyList<LibraryAutomationPlanItem> libraries,
         CancellationToken cancellationToken)
@@ -918,7 +1002,20 @@ public sealed class SqliteJobStore(
         var stateByLibraryId = await ReadLibraryAutomationStatesAsync(connection, transaction, cancellationToken);
         var pendingJobLibraries = await ReadPendingLibraryJobsAsync(connection, transaction, cancellationToken);
 
-        foreach (var library in libraries)
+        var orderedLibraries = libraries
+            .Select(library =>
+            {
+                stateByLibraryId.TryGetValue(library.LibraryId, out var state);
+                return (Library: library, State: state);
+            })
+            .OrderByDescending(item => item.State?.SearchRequested ?? false)
+            .ThenBy(item => item.State?.LastPlannedUtc ?? DateTimeOffset.MinValue)
+            .ThenBy(item => item.State?.NextSearchUtc ?? DateTimeOffset.MinValue)
+            .ThenBy(item => item.Library.LibraryName, StringComparer.OrdinalIgnoreCase)
+            .Select(item => item.Library)
+            .ToArray();
+
+        foreach (var library in orderedLibraries)
         {
             await UpsertLibraryAutomationStateAsync(connection, transaction, library, now, cancellationToken);
 

@@ -255,6 +255,41 @@ public sealed class JobStoreTests
         Assert.Equal("policy-v1", reader.GetString(8));
     }
 
+    [Fact]
+    public async Task SkipLibrarySearchCycleAsync_clears_requested_state_and_removes_queued_search_job()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new MutableTimeProvider(DateTimeOffset.Parse("2026-05-14T01:00:00Z"));
+        await InitializeJobsAsync(storage, timeProvider);
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+
+        var library = new LibraryAutomationPlanItem(
+            LibraryId: "movies-main",
+            LibraryName: "Movies",
+            MediaType: "movies",
+            AutoSearchEnabled: true,
+            MissingSearchEnabled: true,
+            UpgradeSearchEnabled: true,
+            SearchIntervalHours: 6,
+            RetryDelayHours: 24,
+            MaxItemsPerRun: 25,
+            SearchWindowStartHour: null,
+            SearchWindowEndHour: null);
+
+        Assert.True(await store.RequestLibrarySearchAsync(library, CancellationToken.None));
+        await store.PlanLibrarySearchesAsync([library], CancellationToken.None);
+        Assert.Single(await store.ListAsync(20, CancellationToken.None));
+
+        Assert.True(await store.SkipLibrarySearchCycleAsync(library, CancellationToken.None));
+
+        Assert.Empty(await store.ListAsync(20, CancellationToken.None));
+        var state = Assert.Single((await store.ListLibraryAutomationStatesAsync(CancellationToken.None)).Values);
+        Assert.False(state.SearchRequested);
+        Assert.Equal("idle", state.Status);
+        Assert.NotNull(state.NextSearchUtc);
+        Assert.Equal(timeProvider.GetUtcNow().AddHours(6), state.NextSearchUtc!.Value);
+    }
+
     private static async Task InitializeJobsAsync(TestStorage storage, TimeProvider timeProvider)
     {
         await new JobsSchemaInitializer(

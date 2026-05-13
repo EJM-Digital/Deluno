@@ -401,6 +401,8 @@ public sealed class DelunoHeartbeatWorker(
                     var blockedCount = 0;
                     var checkedCount = 0;
                     var heldCount = 0;
+                    var apiCallCount = 0;
+                    long queuedReleaseBytes = 0;
 
                     foreach (var candidate in candidates)
                     {
@@ -415,6 +417,10 @@ public sealed class DelunoHeartbeatWorker(
                                 routing?.DownloadClients ?? [],
                                 customFormats),
                             cancellationToken);
+                        if (decisionPlan.SourceCount > 0 && decisionPlan.DownloadClientCount > 0)
+                        {
+                            apiCallCount += decisionPlan.SourceCount;
+                        }
                         var searchPlan = decisionPlan.SearchPlan;
                         var bestCandidate = searchPlan.BestCandidate;
                         var outcome = decisionPlan.Outcome;
@@ -460,6 +466,10 @@ public sealed class DelunoHeartbeatWorker(
                                 grabResponseCode: grabResult.Succeeded ? 200 : 400,
                                 grabFailureCode: null,
                                 cancellationToken: cancellationToken);
+                            if (bestCandidate?.SizeBytes is > 0)
+                            {
+                                queuedReleaseBytes += bestCandidate.SizeBytes.Value;
+                            }
                         }
 
                         await movieCatalogRepository.RecordSearchAttemptAsync(
@@ -498,7 +508,7 @@ public sealed class DelunoHeartbeatWorker(
                             candidates.Count,
                             matchedCount,
                             retryDelayed,
-                            SerializeCycleNotes(configuredSources, configuredClients, checkedCount, matchedCount, blockedCount, heldCount, retryDelayed, payload.MaxItems),
+                            SerializeCycleNotes(configuredSources, configuredClients, checkedCount, matchedCount, blockedCount, heldCount, retryDelayed, payload.MaxItems, apiCallCount, queuedReleaseBytes),
                             startedUtc,
                             timeProvider.GetUtcNow()),
                         cancellationToken);
@@ -530,6 +540,8 @@ public sealed class DelunoHeartbeatWorker(
                 var seriesBlockedCount = 0;
                 var seriesCheckedCount = 0;
                 var seriesHeldCount = 0;
+                var seriesApiCallCount = 0;
+                long seriesQueuedReleaseBytes = 0;
 
                 foreach (var candidate in seriesCandidates)
                 {
@@ -544,6 +556,10 @@ public sealed class DelunoHeartbeatWorker(
                             routing?.DownloadClients ?? [],
                             customFormats),
                         cancellationToken);
+                    if (decisionPlan.SourceCount > 0 && decisionPlan.DownloadClientCount > 0)
+                    {
+                        seriesApiCallCount += decisionPlan.SourceCount;
+                    }
                     var searchPlan = decisionPlan.SearchPlan;
                     var bestCandidate = searchPlan.BestCandidate;
                     var outcome = decisionPlan.Outcome;
@@ -589,6 +605,10 @@ public sealed class DelunoHeartbeatWorker(
                             grabResponseCode: grabResult.Succeeded ? 200 : 400,
                             grabFailureCode: null,
                             cancellationToken: cancellationToken);
+                        if (bestCandidate?.SizeBytes is > 0)
+                        {
+                            seriesQueuedReleaseBytes += bestCandidate.SizeBytes.Value;
+                        }
                     }
 
                     await seriesCatalogRepository.RecordSearchAttemptAsync(
@@ -628,7 +648,7 @@ public sealed class DelunoHeartbeatWorker(
                         seriesCandidates.Count,
                         seriesMatchedCount,
                         seriesRetryDelayed,
-                        SerializeCycleNotes(configuredSources, configuredClients, seriesCheckedCount, seriesMatchedCount, seriesBlockedCount, seriesHeldCount, seriesRetryDelayed, payload.MaxItems),
+                        SerializeCycleNotes(configuredSources, configuredClients, seriesCheckedCount, seriesMatchedCount, seriesBlockedCount, seriesHeldCount, seriesRetryDelayed, payload.MaxItems, seriesApiCallCount, seriesQueuedReleaseBytes),
                         seriesStartedUtc,
                         timeProvider.GetUtcNow()),
                     cancellationToken);
@@ -1233,7 +1253,9 @@ public sealed class DelunoHeartbeatWorker(
         int blockedCount,
         int heldCount,
         int retryDelayedCount,
-        int maxItems)
+        int maxItems,
+        int apiCallCount,
+        long queuedReleaseBytes)
     {
         return JsonSerializer.Serialize(new
         {
@@ -1244,7 +1266,9 @@ public sealed class DelunoHeartbeatWorker(
             blockedCount,
             heldCount,
             retryDelayedCount,
-            maxItems
+            maxItems,
+            apiCallCount,
+            queuedReleaseBytes
         }, PayloadJsonOptions);
     }
 

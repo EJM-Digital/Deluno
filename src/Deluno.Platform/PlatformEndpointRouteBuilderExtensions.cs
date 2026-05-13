@@ -1154,6 +1154,31 @@ public static class PlatformEndpointRouteBuilderExtensions
             return requested ? Results.Accepted() : Results.NotFound();
         });
 
+        endpoints.MapPost("/api/libraries/{id}/skip-cycle", async (
+            string id,
+            HttpContext httpContext,
+            IPlatformSettingsRepository repository,
+            IJobQueueRepository jobs,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var library = (await repository.ListLibrariesAsync(cancellationToken))
+                .FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
+
+            if (library is null)
+            {
+                return Results.NotFound();
+            }
+
+            var skipped = await jobs.SkipLibrarySearchCycleAsync(ToPlanItem(library), cancellationToken);
+            return skipped ? Results.Accepted() : Results.NotFound();
+        });
+
         endpoints.MapPost("/api/libraries/{id}/import-existing", async (
             string id,
             HttpContext httpContext,

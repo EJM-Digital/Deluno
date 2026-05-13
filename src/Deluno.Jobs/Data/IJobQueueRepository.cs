@@ -41,6 +41,10 @@ public interface IJobQueueRepository
         LibraryAutomationPlanItem library,
         CancellationToken cancellationToken);
 
+    Task<bool> SkipLibrarySearchCycleAsync(
+        LibraryAutomationPlanItem library,
+        CancellationToken cancellationToken);
+
     Task PlanLibrarySearchesAsync(
         IReadOnlyList<LibraryAutomationPlanItem> libraries,
         CancellationToken cancellationToken);
