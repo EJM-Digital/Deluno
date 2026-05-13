@@ -13,10 +13,16 @@ public sealed class AppSettings
         Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
         "Deluno", "data", "deluno.json");
 
-    public int Port { get; set; } = 7879;
-    public string DataRoot { get; set; } = Path.Combine(
+    private static readonly string _defaultDataRoot = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "DelunoData");
+
+    private static readonly string _legacyDefaultDataRoot = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+        "Deluno", "data");
+
+    public int Port { get; set; } = 7879;
+    public string DataRoot { get; set; } = _defaultDataRoot;
     public string UpdateMode { get; set; } = Deluno.Api.Updates.UpdateModes.DownloadBackground;
     public string UpdateChannel { get; set; } = "stable";
     public bool AutoCheckUpdates { get; set; } = true;
@@ -24,7 +30,7 @@ public sealed class AppSettings
 
     public static AppSettings Load()
     {
-        var pathToRead = ResolveConfigPath();
+        var pathToRead = ResolveConfigPath(out var loadedFromLegacyPath);
         if (pathToRead is null)
         {
             return new AppSettings();
@@ -50,6 +56,13 @@ public sealed class AppSettings
                 settings.UpdateSource = "https://github.com/jampat000/Deluno";
             }
 
+            // If settings were loaded from the legacy path, transparently persist a normalized
+            // copy to the current path so subsequent runs use a single canonical location.
+            if (loadedFromLegacyPath)
+            {
+                TryPersistPrimaryConfig(settings);
+            }
+
             return settings;
         }
         catch
@@ -65,8 +78,9 @@ public sealed class AppSettings
         File.WriteAllText(_configPath, JsonSerializer.Serialize(this, JsonOptions));
     }
 
-    private static string? ResolveConfigPath()
+    private static string? ResolveConfigPath(out bool loadedFromLegacyPath)
     {
+        loadedFromLegacyPath = false;
         if (File.Exists(_configPath))
         {
             return _configPath;
@@ -74,6 +88,7 @@ public sealed class AppSettings
 
         if (File.Exists(_legacyConfigPath))
         {
+            loadedFromLegacyPath = true;
             return _legacyConfigPath;
         }
 
@@ -84,12 +99,46 @@ public sealed class AppSettings
     {
         if (!string.IsNullOrWhiteSpace(current))
         {
-            return current;
+            try
+            {
+                var trimmed = current.Trim();
+                if (Path.GetFullPath(trimmed).TrimEnd(Path.DirectorySeparatorChar)
+                    .Equals(Path.GetFullPath(_legacyDefaultDataRoot).TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
+                {
+                    return _legacyDefaultDataRoot;
+                }
+
+                return Path.GetFullPath(trimmed);
+            }
+            catch
+            {
+                return _defaultDataRoot;
+            }
         }
 
-        return Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "DelunoData");
+        return _defaultDataRoot;
+    }
+
+    private static void TryPersistPrimaryConfig(AppSettings settings)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(_configPath)!);
+            var normalized = new AppSettings
+            {
+                Port = settings.Port,
+                DataRoot = NormalizeDataRoot(settings.DataRoot),
+                UpdateMode = settings.UpdateMode,
+                UpdateChannel = settings.UpdateChannel,
+                AutoCheckUpdates = settings.AutoCheckUpdates,
+                UpdateSource = settings.UpdateSource
+            };
+            File.WriteAllText(_configPath, JsonSerializer.Serialize(normalized, JsonOptions));
+        }
+        catch
+        {
+            // Keep legacy-path fallback behavior if primary-path persistence fails.
+        }
     }
 
     private static readonly JsonSerializerOptions JsonOptions = new()

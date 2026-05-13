@@ -144,6 +144,7 @@ Fix:
 
 - use a writable persistent folder such as `%LocalAppData%\DelunoData`
 - do not use `Program Files` as the live data root
+- Deluno settings are now canonicalized to `%LocalAppData%\Deluno\config\deluno.json`; legacy `%ProgramData%\Deluno\data\deluno.json` is read as fallback and migrated forward automatically
 
 ### Issue: In-App Update Is Not Available
 

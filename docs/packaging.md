@@ -45,6 +45,13 @@ This includes:
 
 Do not store mutable runtime data inside the Velopack app directory.
 
+Config path behavior:
+
+- primary settings path: `%LocalAppData%\Deluno\config\deluno.json`
+- legacy settings path (read fallback): `%ProgramData%\Deluno\data\deluno.json`
+- when legacy settings are detected, Deluno writes a normalized copy to the primary path automatically
+- existing explicit data-root values are preserved to avoid breaking upgrades
+
 ### In-app updates
 
 Use **System > Updates** in the app.
