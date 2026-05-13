@@ -823,7 +823,12 @@ function UpgradeCard({ status }: { status: UpdateStatusResponse }) {
   }, [preferences]);
 
   const isDocker = current.installKind === "docker";
-  const canControl = current.canCheck && current.isInstalled && !isDocker;
+  const canControl = current.isInstalled && !isDocker;
+  const controlsDisabledReason = !current.isInstalled
+    ? "In-app update controls require the packaged Windows install."
+    : isDocker
+      ? "Docker updates are applied by pulling a new image and recreating the container."
+      : null;
 
   return (
     <Card>
@@ -832,20 +837,25 @@ function UpgradeCard({ status }: { status: UpdateStatusResponse }) {
           <RotateCcw className="h-4 w-4 text-primary" />
           Updates
         </CardTitle>
-        <CardDescription>Version, channel, update behavior, and restart flow.</CardDescription>
+        <CardDescription>Version status, channel, behavior mode, and restart flow.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         {message ? (
           <p className="rounded-xl border border-hairline bg-surface-1 px-3 py-2 text-sm text-muted-foreground">{message}</p>
         ) : null}
         <HealthRow label="Current version" status={current.currentVersion} />
-        <HealthRow label="Latest version" status={current.latestVersion ?? "No pending release"} />
+        <HealthRow label="Latest version" status={current.latestVersion ?? "No update available"} />
         <HealthRow label="Channel" status={current.channel} />
-        <HealthRow label="Install kind" status={current.installKind} />
-        <HealthRow label="State" status={current.state} />
+        <HealthRow label="Install kind" status={installKindLabel(current.installKind)} />
+        <HealthRow label="State" status={updateStateLabel(current.state)} />
         <p className="text-sm leading-relaxed text-muted-foreground">{current.message}</p>
         {current.progressPercent !== null ? (
           <p className="text-xs text-muted-foreground">Download progress: {current.progressPercent}%</p>
+        ) : null}
+        {controlsDisabledReason ? (
+          <p className="rounded-xl border border-hairline bg-surface-1 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+            {controlsDisabledReason}
+          </p>
         ) : null}
 
         {preferences ? (
@@ -861,6 +871,9 @@ function UpgradeCard({ status }: { status: UpdateStatusResponse }) {
               <option value="download-background">Download in background</option>
               <option value="download-apply-on-restart">Download and apply on next restart</option>
             </select>
+            <p className="text-xs text-muted-foreground">
+              {updateModeDescription(preferences.mode)}
+            </p>
             <label className="flex items-center gap-2 text-sm text-foreground">
               <input
                 type="checkbox"
@@ -885,19 +898,19 @@ function UpgradeCard({ status }: { status: UpdateStatusResponse }) {
 
         {canControl ? (
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" disabled={busyAction !== null} onClick={() => void runAction("check")}>
+            <Button type="button" variant="outline" disabled={busyAction !== null || !current.canCheck} onClick={() => void runAction("check")}>
               {busyAction === "check" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
               Check now
             </Button>
-            <Button type="button" variant="outline" disabled={busyAction !== null} onClick={() => void runAction("download")}>
+            <Button type="button" variant="outline" disabled={busyAction !== null || !current.canDownload} onClick={() => void runAction("download")}>
               {busyAction === "download" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               Download update
             </Button>
-            <Button type="button" variant="outline" disabled={busyAction !== null} onClick={() => void runAction("prepare")}>
+            <Button type="button" variant="outline" disabled={busyAction !== null || !current.canApply} onClick={() => void runAction("prepare")}>
               {busyAction === "prepare" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <TimerReset className="h-4 w-4" />}
               Apply on restart
             </Button>
-            <Button type="button" disabled={busyAction !== null || !current.restartRequired} onClick={() => void runAction("restart")}>
+            <Button type="button" disabled={busyAction !== null || !current.canApply || !current.restartRequired} onClick={() => void runAction("restart")}>
               {busyAction === "restart" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
               Restart and apply
             </Button>
@@ -920,6 +933,53 @@ function savedPreferencePayload(preferences: UpdatePreferencesResponse) {
     channel: preferences.channel,
     autoCheck: preferences.autoCheck
   };
+}
+
+function updateModeDescription(mode: string) {
+  if (mode === "notify-only") {
+    return "Deluno checks for updates and notifies you, but does not download automatically.";
+  }
+
+  if (mode === "download-apply-on-restart") {
+    return "Deluno downloads updates automatically and stages them for the next restart.";
+  }
+
+  return "Deluno checks and downloads updates in the background. You restart when ready.";
+}
+
+function installKindLabel(installKind: string) {
+  if (installKind === "windows-packaged") {
+    return "Windows packaged";
+  }
+
+  if (installKind === "docker") {
+    return "Docker";
+  }
+
+  return "Manual";
+}
+
+function updateStateLabel(state: string) {
+  switch (state) {
+    case "idle":
+      return "Idle";
+    case "checking":
+      return "Checking";
+    case "update-available":
+      return "Update available";
+    case "downloading":
+      return "Downloading";
+    case "ready-to-restart":
+      return "Ready to restart";
+    case "up-to-date":
+      return "Up to date";
+    case "not-supported":
+      return "Not supported";
+    case "error":
+      return "Error";
+    default:
+      return state;
+  }
 }
 
 function HealthRow({ label, status }: { label: string; status: string }) {
