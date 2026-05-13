@@ -46,10 +46,11 @@ public sealed class FeedMediaSearchPlanner(
             .Split(['\r', '\n', ','], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
+        var scoringMode = settings.SearchScoringMode;
         var liveCandidates = new List<MediaSearchCandidate>();
         foreach (var (source, indexer) in sourceIndexers)
         {
-            var candidates = await TrySearchIndexerAsync(indexer, source, title, year, mediaType, currentQuality, targetQuality, customFormats, neverGrabPatterns, seasonNumber, episodeNumber, cancellationToken);
+            var candidates = await TrySearchIndexerAsync(indexer, source, title, year, mediaType, currentQuality, targetQuality, customFormats, neverGrabPatterns, scoringMode, seasonNumber, episodeNumber, cancellationToken);
             liveCandidates.AddRange(candidates);
         }
 
@@ -97,6 +98,7 @@ public sealed class FeedMediaSearchPlanner(
         string? targetQuality,
         IReadOnlyList<CustomFormatItem>? customFormats,
         IReadOnlyList<string> neverGrabPatterns,
+        string scoringMode,
         int? seasonNumber,
         int? episodeNumber,
         CancellationToken cancellationToken)
@@ -134,7 +136,7 @@ public sealed class FeedMediaSearchPlanner(
                     await using var stream = await response.Content.ReadAsStreamAsync(token);
                     var document = await XDocument.LoadAsync(stream, LoadOptions.None, token);
                     var qualityModel = await qualityModelService.GetAsync(token);
-                    return ParseCandidates(document, indexer, source, currentQuality, targetQuality, customFormats, neverGrabPatterns, qualityModel, rankingModelService);
+                    return ParseCandidates(document, indexer, source, currentQuality, targetQuality, customFormats, neverGrabPatterns, qualityModel, scoringMode, rankingModelService);
                 }
                 catch (Exception exception) when (exception is not HttpRequestException and not TaskCanceledException and not IOException)
                 {
@@ -156,6 +158,7 @@ public sealed class FeedMediaSearchPlanner(
         IReadOnlyList<CustomFormatItem>? customFormats,
         IReadOnlyList<string> neverGrabPatterns,
         QualityModelSnapshot qualityModel,
+        string scoringMode,
         IReleaseRankingModelService rankingModelService)
     {
         XNamespace torznab = "http://torznab.com/schemas/2015/feed";
@@ -206,11 +209,12 @@ public sealed class FeedMediaSearchPlanner(
                 EstimatedBitrateMbps: decision.EstimatedBitrateMbps,
                 ReleaseAgeHours: releaseAgeHours), hardBlocked: decision.Status == "rejected");
 
-            var finalScore = decision.Score + boost.BoostPoints;
-            var reasons = boost.Applied
-                ? decision.Reasons.Concat([boost.Explanation]).ToArray()
-                : decision.Reasons.ToArray();
-            var summary = BuildSummary(decision, matchedFormats, boost);
+            var scoreComputation = ReleaseScoringModePolicy.Compute(decision.Score, boost, scoringMode);
+            var finalScore = scoreComputation.FinalScore;
+            var reasons = scoreComputation.UsesModelSignal
+                ? decision.Reasons.Concat([boost.Explanation, scoreComputation.Explanation]).ToArray()
+                : decision.Reasons.Concat([scoreComputation.Explanation]).ToArray();
+            var summary = BuildSummary(decision, matchedFormats, boost, scoreComputation);
 
             results.Add(new MediaSearchCandidate(
                 ReleaseName: releaseName,
@@ -330,7 +334,8 @@ public sealed class FeedMediaSearchPlanner(
     private static string BuildSummary(
         ReleaseDecision decision,
         IReadOnlyList<CustomFormatMatchResult> matchedFormats,
-        ReleaseRankingBoostResult boost)
+        ReleaseRankingBoostResult boost,
+        ReleaseScoreComputation scoreComputation)
     {
         var parts = new List<string> { decision.Summary };
         if (matchedFormats.Count > 0 && decision.CustomFormatScore != 0)
@@ -339,11 +344,12 @@ public sealed class FeedMediaSearchPlanner(
             parts.Add($"Matched {names} ({decision.CustomFormatScore.ToString("+#;-#;0", CultureInfo.InvariantCulture)}).");
         }
 
-        if (boost.Applied)
+        if (scoreComputation.UsesModelSignal && boost.Applied)
         {
             parts.Add(boost.Explanation);
         }
 
+        parts.Add(scoreComputation.Explanation);
         return string.Join(" ", parts);
     }
 

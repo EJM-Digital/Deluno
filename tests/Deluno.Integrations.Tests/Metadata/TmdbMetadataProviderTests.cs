@@ -63,6 +63,7 @@ public sealed class TmdbMetadataProviderTests : IDisposable
                 MetadataTmdbApiKeyConfigured: false,
                 MetadataOmdbApiKeyConfigured: true,
                 ReleaseNeverGrabPatterns: string.Empty,
+                SearchScoringMode: SearchScoringModes.Hybrid,
                 ImportRecoveryRetentionDays: 30,
                 UpdatedUtc: DateTimeOffset.UtcNow));
         settings.Setup(repo => repo.GetMetadataProviderSecretAsync("tmdb", It.IsAny<CancellationToken>()))

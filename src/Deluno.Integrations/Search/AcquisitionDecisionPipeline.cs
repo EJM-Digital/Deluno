@@ -109,11 +109,14 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
             SourcePriorityScore: request.SourcePriorityScore ?? 0,
             EstimatedBitrateMbps: decision.EstimatedBitrateMbps,
             ReleaseAgeHours: null), hardBlocked: decision.Status == "rejected");
-        var boostedScore = decision.Score + boost.BoostPoints;
-        var boostedSummary = boost.Applied ? $"{decision.Summary} {boost.Explanation}" : decision.Summary;
-        var boostedReasons = boost.Applied
-            ? decision.Reasons.Concat([boost.Explanation]).ToArray()
-            : decision.Reasons.ToArray();
+        var scoreComputation = ReleaseScoringModePolicy.Compute(decision.Score, boost, request.ScoringMode);
+        var boostedScore = scoreComputation.FinalScore;
+        var boostedSummary = scoreComputation.UsesModelSignal && boost.Applied
+            ? $"{decision.Summary} {boost.Explanation} {scoreComputation.Explanation}"
+            : $"{decision.Summary} {scoreComputation.Explanation}";
+        var boostedReasons = scoreComputation.UsesModelSignal
+            ? decision.Reasons.Concat([boost.Explanation, scoreComputation.Explanation]).ToArray()
+            : decision.Reasons.Concat([scoreComputation.Explanation]).ToArray();
 
         var candidate = new MediaSearchCandidate(
             ReleaseName: request.ReleaseName,
@@ -307,7 +310,8 @@ public sealed record AcquisitionSelectedReleaseRequest(
     bool ForceOverride = false,
     string? OverrideReason = null,
     IReadOnlyList<string>? NeverGrabPatterns = null,
-    bool PreventLowerQualityReplacements = false);
+    bool PreventLowerQualityReplacements = false,
+    string? ScoringMode = null);
 
 public sealed record AcquisitionSelectedReleaseDecision(
     MediaSearchCandidate Candidate,

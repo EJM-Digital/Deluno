@@ -179,6 +179,25 @@ export function SettingsGeneralPage() {
                 />
               </div>
 
+              <Field label="Search scoring mode">
+                <PresetField
+                  value={formState.searchScoringMode}
+                  onChange={(value) =>
+                    setFormState((current) => ({ ...current, searchScoringMode: value }))
+                  }
+                  options={[
+                    { label: "Hybrid (rules + ML)", value: "hybrid" },
+                    { label: "Rules only", value: "rules-only" },
+                    { label: "ML only", value: "ml-only" }
+                  ]}
+                  customLabel="Custom mode"
+                  customPlaceholder="hybrid"
+                />
+                <InputDescription>
+                  Hybrid is recommended for most users. Rules-only disables ML impact. ML-only prioritizes model ranking and falls back to rules when no model signal is available.
+                </InputDescription>
+              </Field>
+
               <Field label="Never grab rules">
                 <div className="space-y-3">
                   <div className="flex flex-wrap gap-2">
@@ -248,6 +267,7 @@ export function SettingsGeneralPage() {
             <GeneralStat label="Instance" value={settings.appInstanceName} />
             <GeneralStat label="Host" value={`${settings.hostBindAddress}:${settings.hostPort}`} />
             <GeneralStat label="Authentication" value="Required" />
+            <GeneralStat label="Scoring mode" value={scoreModeLabel(settings.searchScoringMode)} />
             <GeneralStat label="Never grab rules" value={`${splitRules(settings.releaseNeverGrabPatterns).length} active`} />
             <GeneralStat label="Updated" value={formatWhen(settings.updatedUtc)} />
           </CardContent>
@@ -325,3 +345,14 @@ const DEFAULT_NEVER_GRAB_RULES = [
   "trailer",
   "extras"
 ];
+
+function scoreModeLabel(value: string) {
+  switch (value) {
+    case "rules-only":
+      return "Rules only";
+    case "ml-only":
+      return "ML only";
+    default:
+      return "Hybrid";
+  }
+}

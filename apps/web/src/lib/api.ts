@@ -285,6 +285,7 @@ export interface PlatformSettingsSnapshot {
   metadataTmdbApiKeyConfigured: boolean;
   metadataOmdbApiKeyConfigured: boolean;
   releaseNeverGrabPatterns: string;
+  searchScoringMode: "hybrid" | "rules-only" | "ml-only" | string;
   updatedUtc: string;
 }
 
@@ -337,6 +338,7 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   metadataTmdbApiKeyConfigured: false,
   metadataOmdbApiKeyConfigured: false,
   releaseNeverGrabPatterns: "cam\ncamrip\ntelesync\ntelecine\nworkprint\nscreener\nsample\ntrailer\nextras",
+  searchScoringMode: "hybrid",
   updatedUtc: new Date(0).toISOString()
 };
 

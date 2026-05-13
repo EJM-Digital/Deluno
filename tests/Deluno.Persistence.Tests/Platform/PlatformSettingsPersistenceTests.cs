@@ -58,6 +58,7 @@ public sealed class PlatformSettingsPersistenceTests
                 MetadataTmdbApiKey: "tmdb-secret",
                 MetadataOmdbApiKey: "omdb-secret",
                 ReleaseNeverGrabPatterns: "cam\nhardcoded subs",
+                SearchScoringMode: SearchScoringModes.MlOnly,
                 ImportRecoveryRetentionDays: 60),
             CancellationToken.None);
 
@@ -76,6 +77,7 @@ public sealed class PlatformSettingsPersistenceTests
         Assert.True(loaded.MetadataTmdbApiKeyConfigured);
         Assert.True(loaded.MetadataOmdbApiKeyConfigured);
         Assert.Equal("cam\nhardcoded subs", loaded.ReleaseNeverGrabPatterns);
+        Assert.Equal(SearchScoringModes.MlOnly, loaded.SearchScoringMode);
         Assert.Equal(60, loaded.ImportRecoveryRetentionDays);
     }
 
@@ -98,6 +100,7 @@ public sealed class PlatformSettingsPersistenceTests
         // Read without any prior save — should return default 30
         var loaded = await repository.GetAsync(CancellationToken.None);
 
+        Assert.Equal(SearchScoringModes.Hybrid, loaded.SearchScoringMode);
         Assert.Equal(30, loaded.ImportRecoveryRetentionDays);
     }
 }

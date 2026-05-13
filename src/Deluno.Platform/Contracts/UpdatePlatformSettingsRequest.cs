@@ -33,4 +33,5 @@ public sealed record UpdatePlatformSettingsRequest(
     string? MetadataTmdbApiKey,
     string? MetadataOmdbApiKey,
     string? ReleaseNeverGrabPatterns,
+    string? SearchScoringMode = null,
     int? ImportRecoveryRetentionDays = null);

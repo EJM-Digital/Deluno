@@ -34,5 +34,6 @@ public sealed record PlatformSettingsSnapshot(
     bool MetadataTmdbApiKeyConfigured,
     bool MetadataOmdbApiKeyConfigured,
     string ReleaseNeverGrabPatterns,
+    string SearchScoringMode,
     int ImportRecoveryRetentionDays,
     DateTimeOffset UpdatedUtc);

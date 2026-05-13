@@ -36,7 +36,8 @@ public sealed record IntelligentReleaseRecommendation(
     string Summary,
     double? IndexerSuccessRate,
     double? DownloadClientSuccessRate,
-    ReleaseRankingBoostResult RankingBoost);
+    ReleaseRankingBoostResult RankingBoost,
+    string ScoringMode);
 
 public interface IIntelligentRoutingService
 {

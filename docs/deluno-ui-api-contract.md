@@ -206,6 +206,7 @@ Implemented CRUD surfaces:
 Current UI contract expectations:
 
 - quality profiles, tags, intake sources, custom formats, destination rules, policy sets, and saved library views are all active configuration concepts
+- platform settings now include `searchScoringMode` (`hybrid`, `rules-only`, `ml-only`) so users can explicitly choose deterministic ranking, model-priority ranking, or both
 - intake sources now carry per-source filter/routing fields (`requiredGenres`, `minimumRating`, `minimumYear`, `maximumAgeDays`, `allowedCertifications`, `audience`) plus sync diagnostics (`lastSyncUtc`, `lastSyncStatus`, `lastSyncSummary`)
 - the quality model endpoint exposes explicit editable tiers with movie/episode size bounds and upgrade-stop policy
 - custom format dry-run is implemented and should be documented as a real workflow, not a future one
@@ -231,6 +232,7 @@ Implemented endpoints:
 Current UI contract expectations:
 
 - release explain responses include deterministic decision details plus ML model probability/boost explanation when enabled
+- release explain responses now include `ruleScore`, resolved `scoringMode`, and `scoringExplanation` so users can see how final score composition was chosen
 - ranking model status exposes active model version, last training metadata, sample count, and evaluation metrics
 - training and rollback controls are operational endpoints for guarded model lifecycle actions
 - intelligent-routing snapshot exposes learned quality/release-group preferences and success-rate maps for indexers and download clients

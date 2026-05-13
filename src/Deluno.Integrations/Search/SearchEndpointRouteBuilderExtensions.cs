@@ -53,6 +53,7 @@ public static class SearchEndpointRouteBuilderExtensions
             ReleaseExplainRequest request,
             IQualityModelService qualityModelService,
             IReleaseRankingModelService rankingModelService,
+            IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
             var releaseName = request.ReleaseName?.Trim() ?? string.Empty;
@@ -68,6 +69,7 @@ public static class SearchEndpointRouteBuilderExtensions
             var customFormatScore = CustomFormatMatcher.Evaluate(releaseName, customFormats, out var matchedFormats);
 
             var qualityModel = await qualityModelService.GetAsync(cancellationToken);
+            var platformSettings = await platformSettingsRepository.GetAsync(cancellationToken);
             var decision = ReleaseDecisionEngine.Decide(new ReleaseDecisionInput(
                 ReleaseName: releaseName,
                 Quality: request.AssumedQuality ?? LibraryQualityDecider.DetectQuality(releaseName) ?? "WEB 1080p",
@@ -91,12 +93,16 @@ public static class SearchEndpointRouteBuilderExtensions
                 SourcePriorityScore: 100,
                 EstimatedBitrateMbps: decision.EstimatedBitrateMbps,
                 ReleaseAgeHours: null), hardBlocked: decision.Status == "rejected");
+            var scoreComputation = ReleaseScoringModePolicy.Compute(decision.Score, boost, platformSettings.SearchScoringMode);
 
             return Results.Ok(new
             {
                 releaseName,
                 decision.Status,
-                Score = decision.Score + boost.BoostPoints,
+                Score = scoreComputation.FinalScore,
+                ruleScore = decision.Score,
+                scoringMode = scoreComputation.Mode,
+                scoringExplanation = scoreComputation.Explanation,
                 decision.MeetsCutoff,
                 decision.Summary,
                 decision.Reasons,
@@ -162,6 +168,7 @@ public static class SearchEndpointRouteBuilderExtensions
             IntelligentReleaseRecommendationRequest request,
             IReleaseRankingModelService rankingModelService,
             IIntelligentRoutingService intelligentRoutingService,
+            IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
             var boost = rankingModelService.Score(new ReleaseRankingFeatures(
@@ -172,6 +179,8 @@ public static class SearchEndpointRouteBuilderExtensions
                 SourcePriorityScore: request.SourcePriorityScore,
                 EstimatedBitrateMbps: request.EstimatedBitrateMbps,
                 ReleaseAgeHours: request.ReleaseAgeHours), hardBlocked: false);
+            var platformSettings = await platformSettingsRepository.GetAsync(cancellationToken);
+            var scoreComputation = ReleaseScoringModePolicy.Compute(0, boost, platformSettings.SearchScoringMode);
 
             var snapshot = await intelligentRoutingService.GetSnapshotAsync(cancellationToken);
             double? indexerRate = string.IsNullOrWhiteSpace(request.IndexerName)
@@ -180,7 +189,7 @@ public static class SearchEndpointRouteBuilderExtensions
             var clientRate = await intelligentRoutingService.GetDownloadClientSuccessRateAsync(request.DownloadClientId, cancellationToken);
 
             var recommendation = 50d;
-            recommendation += Math.Clamp(boost.BoostPoints, -20, 20);
+            recommendation += Math.Clamp(scoreComputation.FinalScore / 40d, -20, 20);
             if (indexerRate is not null)
             {
                 recommendation += (indexerRate.Value - 0.5d) * 24d;
@@ -214,7 +223,8 @@ public static class SearchEndpointRouteBuilderExtensions
                 Summary: $"Recommendation {finalScore}/100 ({label}) for {request.ReleaseName}.",
                 IndexerSuccessRate: indexerRate,
                 DownloadClientSuccessRate: clientRate,
-                RankingBoost: boost));
+                RankingBoost: boost,
+                ScoringMode: scoreComputation.Mode));
         });
 
         return endpoints;

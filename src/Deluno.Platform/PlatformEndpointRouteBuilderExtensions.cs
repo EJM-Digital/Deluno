@@ -2307,6 +2307,12 @@ public static class PlatformEndpointRouteBuilderExtensions
             errors["hostPort"] = ["Choose a valid port number."];
         }
 
+        if (!string.IsNullOrWhiteSpace(request.SearchScoringMode) &&
+            !SearchScoringModes.IsSupported(request.SearchScoringMode))
+        {
+            errors["searchScoringMode"] = ["Choose one of: hybrid, rules-only, or ml-only."];
+        }
+
         return errors;
     }
 

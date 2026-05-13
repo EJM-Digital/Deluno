@@ -517,6 +517,7 @@ public static class MoviesEndpointRouteBuilderExtensions
                 });
             }
 
+            var platformSettings = await platformSettingsRepository.GetAsync(cancellationToken);
             var category = library.MediaType == "tv" ? "tv" : "movies";
             var forceOverride = request.Force == true;
             var overrideReason = string.IsNullOrWhiteSpace(request.OverrideReason)
@@ -542,7 +543,8 @@ public static class MoviesEndpointRouteBuilderExtensions
                     customFormats,
                     ForceOverride: forceOverride,
                     OverrideReason: forceOverride ? overrideReason : null,
-                    PreventLowerQualityReplacements: wantedItem.PreventLowerQualityReplacements));
+                    PreventLowerQualityReplacements: wantedItem.PreventLowerQualityReplacements,
+                    ScoringMode: platformSettings.SearchScoringMode));
             if (!selectedDecision.CanDispatch)
             {
                 var hint = selectedDecision.RequiresOverride
