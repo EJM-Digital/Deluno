@@ -1,5 +1,6 @@
 using Deluno.Api;
 using Deluno.Api.Backup;
+using Deluno.Api.Monitoring;
 using Deluno.Filesystem;
 using Deluno.Infrastructure;
 using Deluno.Infrastructure.Observability;
@@ -15,6 +16,7 @@ using Deluno.Series;
 using Deluno.Worker;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.OpenApi.Models;
+using System.Diagnostics;
 
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 {
@@ -135,6 +137,30 @@ app.Use(async (context, next) =>
     }
 
     await next();
+});
+app.Use(async (context, next) =>
+{
+    var track = context.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase);
+    if (!track)
+    {
+        await next();
+        return;
+    }
+
+    var started = Stopwatch.GetTimestamp();
+    try
+    {
+        await next();
+    }
+    finally
+    {
+        var elapsed = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        var tracker = context.RequestServices.GetRequiredService<IApiLatencyTracker>();
+        tracker.Record(
+            context.Request.Path.HasValue ? context.Request.Path.Value! : "unknown",
+            elapsed,
+            context.Response.StatusCode);
+    }
 });
 
 app.UseSwagger(options =>

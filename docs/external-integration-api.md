@@ -142,6 +142,11 @@ These endpoints are intentionally generic so processors, automation scripts, das
 - `POST /api/integrations/processors/events` reports generic processor status for refine-before-import workflows.
 - `POST /api/intake-sources/{id}/sync` queues an immediate watchlist/intake sync for a configured source.
 - `GET /api/intake-sources/{id}/diagnostics?take=50` returns recent sync diagnostics and skip reasons for that source.
+- `GET /api/monitoring/dashboard` returns current readiness, storage, provider health, performance, and active alert state.
+- `GET /api/monitoring/alerts` returns active monitoring rule violations (services down, low storage, elevated failure rate).
+- `GET /api/monitoring/diagnostics?query=failed&take=100` searches operational activity diagnostics.
+- `GET /api/monitoring/export/prometheus` returns Prometheus text exposition for Deluno monitoring gauges.
+- `GET /api/monitoring/export/influx` returns Influx line protocol for Deluno monitoring gauges.
 
 API key scopes:
 

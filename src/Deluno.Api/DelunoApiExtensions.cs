@@ -2,6 +2,7 @@ using Deluno.Contracts.Manifest;
 using Deluno.Api.Backup;
 using Deluno.Api.Downloads;
 using Deluno.Api.Health;
+using Deluno.Api.Monitoring;
 using Deluno.Api.Updates;
 using Deluno.Infrastructure.Storage;
 using Microsoft.AspNetCore.Builder;
@@ -22,6 +23,8 @@ public static class DelunoApiExtensions
         services.AddSingleton<IDelunoBackupService>(sp => sp.GetRequiredService<DelunoBackupService>());
         services.AddHostedService(sp => sp.GetRequiredService<DelunoBackupService>());
         services.AddSingleton<IDelunoReadinessService, DelunoReadinessService>();
+        services.AddSingleton<IApiLatencyTracker, InMemoryApiLatencyTracker>();
+        services.AddSingleton<IMonitoringService, MonitoringService>();
         services.TryAddSingleton<IUpdateOrchestrator, DefaultUpdateOrchestrator>();
         return services;
     }
@@ -60,6 +63,7 @@ public static class DelunoApiExtensions
             modules = DelunoSystemManifest.Modules,
             databases = DelunoStorageLayout.Databases
         }));
+        api.MapDelunoMonitoringEndpoints();
 
         endpoints.MapDownloadDispatchesEndpoints();
 

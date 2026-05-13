@@ -43,6 +43,11 @@ Implemented REST endpoints:
 - `GET /api/system/health`
 - `GET /api/system/logs`
 - `GET /api/system/jobs`
+- `GET /api/monitoring/dashboard`
+- `GET /api/monitoring/alerts`
+- `GET /api/monitoring/diagnostics?query=&category=&severity=&sinceUtc=&take=`
+- `GET /api/monitoring/export/prometheus`
+- `GET /api/monitoring/export/influx`
 - `GET /api/openapi/v1.json`
 - `GET /api/docs`
 
@@ -66,6 +71,7 @@ Current gap:
 
 - the backend publisher contains broader event ambitions than the shared interface and current frontend subscriptions fully model
 - import/recovery and wanted-state coverage is still incomplete and should not be assumed to be authoritative everywhere
+- monitoring export endpoints are intentionally unauthenticated only inside Deluno's authenticated API boundary (no public scrape endpoint)
 
 ## Movies
 

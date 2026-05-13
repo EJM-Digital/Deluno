@@ -31,6 +31,7 @@ import {
   type IndexerItem,
   type JobQueueItem,
   type LibraryAutomationStateItem,
+  type MonitoringDashboardSnapshot,
   type PlatformSettingsSnapshot,
   type RestorePreviewResponse,
   type SearchCycleRunItem,
@@ -59,10 +60,11 @@ interface SystemLoaderData {
   automation: LibraryAutomationStateItem[];
   searchCycles: SearchCycleRunItem[];
   retryWindows: SearchRetryWindowItem[];
+  monitoring: MonitoringDashboardSnapshot;
 }
 
 export async function systemLoader(): Promise<SystemLoaderData> {
-  const [settings, jobs, activity, indexers, downloadClients, backups, backupSettings, updateStatus, automation, searchCycles, retryWindows] = await Promise.all([
+  const [settings, jobs, activity, indexers, downloadClients, backups, backupSettings, updateStatus, automation, searchCycles, retryWindows, monitoring] = await Promise.all([
     fetchJson<PlatformSettingsSnapshot>("/api/settings"),
     fetchJson<JobQueueItem[]>("/api/jobs"),
     fetchJson<ActivityEventItem[]>("/api/activity?take=200"),
@@ -73,10 +75,11 @@ export async function systemLoader(): Promise<SystemLoaderData> {
     fetchJson<UpdateStatusResponse>("/api/updates/status"),
     fetchJson<LibraryAutomationStateItem[]>("/api/library-automation"),
     fetchJson<SearchCycleRunItem[]>("/api/search-cycles?take=12"),
-    fetchJson<SearchRetryWindowItem[]>("/api/search-retry-windows?take=12")
+    fetchJson<SearchRetryWindowItem[]>("/api/search-retry-windows?take=12"),
+    fetchJson<MonitoringDashboardSnapshot>("/api/monitoring/dashboard")
   ]);
 
-  return { activity, automation, backupSettings, backups, downloadClients, indexers, jobs, retryWindows, searchCycles, settings, updateStatus };
+  return { activity, automation, backupSettings, backups, downloadClients, indexers, jobs, monitoring, retryWindows, searchCycles, settings, updateStatus };
 }
 
 export function SystemPage() {
@@ -84,7 +87,7 @@ export function SystemPage() {
   const revalidator = useRevalidator();
   const loaderData = useLoaderData() as SystemLoaderData | undefined;
   if (!loaderData) return <RouteSkeleton />;
-  const { activity, automation, backupSettings, backups, downloadClients, indexers, jobs, retryWindows, searchCycles, settings, updateStatus } = loaderData;
+  const { activity, automation, backupSettings, backups, downloadClients, indexers, jobs, monitoring, retryWindows, searchCycles, settings, updateStatus } = loaderData;
   const activeJobs = jobs.filter((job) => isJobActive(job.status as JobStatus)).length;
   const healthyIndexers = indexers.filter((item) => item.healthStatus === "healthy").length;
   const healthyClients = downloadClients.filter((item) => item.healthStatus === "healthy").length;
@@ -265,6 +268,13 @@ export function SystemPage() {
           meta="Configured media storage roots."
           sparkline={[1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]}
         />
+        <KpiCard
+          label="Open alerts"
+          value={String(monitoring.alerts.length)}
+          icon={BellRing}
+          meta={monitoring.alerts.length === 0 ? "No active monitoring alerts." : "Monitoring rules detected conditions that need action."}
+          sparkline={[1, 1, 0, 1, 2, 1, 1, 2, 3, 2, 2, 3, 2, 1, monitoring.alerts.length]}
+        />
       </div>
 
       {/* Main grid */}
@@ -291,6 +301,7 @@ export function SystemPage() {
           <BackupCard initialBackups={backups} initialSettings={backupSettings} />
           <UpgradeCard status={updateStatus} />
           {automationCard}
+          <MonitoringCard monitoring={monitoring} />
           {/* Runtime posture */}
           <Card>
             <CardHeader>
@@ -927,6 +938,76 @@ function UpgradeCard({ status }: { status: UpdateStatusResponse }) {
   );
 }
 
+function MonitoringCard({ monitoring }: { monitoring: MonitoringDashboardSnapshot }) {
+  const { alerts, performance, readiness, services, storage } = monitoring;
+  const apiLatency = performance.apiLatency;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Activity className="h-4 w-4 text-primary" />
+          Monitoring dashboard
+        </CardTitle>
+        <CardDescription>
+          Health, alert rules, performance trends, and export endpoints for external dashboards.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-2 gap-2">
+          <AutomationMetric label="Health checks" value={`${readiness.totalChecks - readiness.failedChecks}/${readiness.totalChecks}`} compact />
+          <AutomationMetric label="Open alerts" value={alerts.length} compact />
+          <AutomationMetric label="API p95" value={`${Math.round(apiLatency.p95Ms)}ms`} compact />
+          <AutomationMetric label="Queued jobs" value={services.queuedJobs} compact />
+        </div>
+
+        <div className="space-y-2 rounded-xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.7)] text-xs text-muted-foreground">
+          <p>Storage free: {storage.freePercent === null ? "n/a" : `${storage.freePercent.toFixed(1)}%`}</p>
+          <p>Search cycle avg: {formatDuration(performance.averageSearchCycleSeconds, "s")}</p>
+          <p>Grab to detect avg: {formatDuration(performance.averageGrabToDetectionSeconds, "s")}</p>
+          <p>Detect to import avg: {formatDuration(performance.averageDetectionToImportSeconds, "s")}</p>
+          <p>API error rate (15m): {apiLatency.errorRatePercent.toFixed(2)}%</p>
+        </div>
+
+        {alerts.length ? (
+          <div className="space-y-2">
+            {alerts.slice(0, 3).map((alert) => (
+              <div key={alert.code} className="rounded-xl border border-warning/35 bg-warning/10 p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-warning">{alert.severity}</p>
+                <p className="mt-1 text-sm font-semibold text-foreground">{alert.summary}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{alert.details}</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="rounded-xl border border-hairline bg-surface-1 p-3 text-sm text-muted-foreground">
+            No active monitoring alerts.
+          </p>
+        )}
+
+        <div className="grid gap-2">
+          <a
+            className="rounded-lg border border-hairline bg-background/35 px-3 py-2 text-xs font-medium text-primary hover:bg-background/55"
+            href="/api/monitoring/export/prometheus"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open Prometheus metrics export
+          </a>
+          <a
+            className="rounded-lg border border-hairline bg-background/35 px-3 py-2 text-xs font-medium text-primary hover:bg-background/55"
+            href="/api/monitoring/export/influx"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open Influx line-protocol export
+          </a>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function savedPreferencePayload(preferences: UpdatePreferencesResponse) {
   return {
     mode: preferences.mode,
@@ -1049,4 +1130,16 @@ function formatBytes(value: number) {
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
   if (value < 1024 * 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
   return `${(value / 1024 / 1024 / 1024).toFixed(1)} GB`;
+}
+
+function formatDuration(value: number | null, unit: "s" | "ms") {
+  if (value === null || Number.isNaN(value)) {
+    return "n/a";
+  }
+
+  if (unit === "ms") {
+    return `${value.toFixed(1)}ms`;
+  }
+
+  return `${value.toFixed(1)}s`;
 }

@@ -989,6 +989,67 @@ export interface UpdateActionResponse {
   status: UpdateStatusResponse;
 }
 
+export interface MonitoringAlertItem {
+  code: string;
+  severity: string;
+  summary: string;
+  details: string;
+  detectedUtc: string;
+}
+
+export interface MonitoringApiLatencySnapshot {
+  windowStartUtc: string;
+  windowEndUtc: string;
+  requestCount: number;
+  errorCount: number;
+  errorRatePercent: number;
+  averageMs: number;
+  p95Ms: number;
+}
+
+export interface MonitoringReadinessSummary {
+  status: string;
+  ready: boolean;
+  totalChecks: number;
+  failedChecks: number;
+}
+
+export interface MonitoringStorageSummary {
+  dataRoot: string;
+  totalBytes: number | null;
+  freeBytes: number | null;
+  freePercent: number | null;
+  lowStorage: boolean;
+}
+
+export interface MonitoringServiceSummary {
+  indexersHealthy: number;
+  indexersTotal: number;
+  downloadClientsHealthy: number;
+  downloadClientsTotal: number;
+  activeJobs: number;
+  queuedJobs: number;
+  failedJobs: number;
+  openDispatchAlerts: number;
+}
+
+export interface MonitoringPerformanceSummary {
+  searchCyclesSampled: number;
+  averageSearchCycleSeconds: number | null;
+  averageGrabToDetectionSeconds: number | null;
+  averageDetectionToImportSeconds: number | null;
+  apiLatency: MonitoringApiLatencySnapshot;
+}
+
+export interface MonitoringDashboardSnapshot {
+  generatedUtc: string;
+  readiness: MonitoringReadinessSummary;
+  storage: MonitoringStorageSummary;
+  services: MonitoringServiceSummary;
+  performance: MonitoringPerformanceSummary;
+  alerts: MonitoringAlertItem[];
+}
+
 export interface DownloadDispatchItem {
   id: string;
   libraryId: string;
