@@ -14,6 +14,7 @@ using Deluno.Infrastructure.Resilience;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Deluno.Platform.Migration;
+using Deluno.Platform.Quality;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Realtime;
@@ -63,6 +64,7 @@ public static class PlatformEndpointRouteBuilderExtensions
 
         var libraries = endpoints.MapGroup("/api/libraries");
         var qualityProfiles = endpoints.MapGroup("/api/quality-profiles");
+        var qualityModel = endpoints.MapGroup("/api/quality-model");
         var tags = endpoints.MapGroup("/api/tags");
         var intakeSources = endpoints.MapGroup("/api/intake-sources");
         var customFormats = endpoints.MapGroup("/api/custom-formats");
@@ -405,6 +407,41 @@ public static class PlatformEndpointRouteBuilderExtensions
 
             await repository.ReorderQualityProfilesAsync(request.Ids, cancellationToken);
             return Results.NoContent();
+        });
+
+        qualityModel.MapGet(string.Empty, async (
+            IQualityModelService service,
+            CancellationToken cancellationToken) =>
+        {
+            var model = await service.GetAsync(cancellationToken);
+            return Results.Ok(model);
+        });
+
+        qualityModel.MapPut(string.Empty, async (
+            HttpContext httpContext,
+            [FromBody] UpdateQualityModelRequest request,
+            IPlatformSettingsRepository repository,
+            IQualityModelService service,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            try
+            {
+                var model = await service.SaveAsync(request, cancellationToken);
+                return Results.Ok(model);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["qualityModel"] = [ex.Message]
+                });
+            }
         });
 
         var qualityPresets = endpoints.MapGroup("/api/quality-profile-presets");

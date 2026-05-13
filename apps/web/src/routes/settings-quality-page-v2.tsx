@@ -1,11 +1,14 @@
+import { useEffect, useState } from "react";
 import { useLoaderData } from "react-router-dom";
 import { SettingsShell } from "../components/app/settings-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { KpiCard } from "../components/app/kpi-card";
 import { settingsOverviewLoader } from "./settings-overview-page";
-import { emptyPlatformSettingsSnapshot, type LibraryItem, type PlatformSettingsSnapshot, type QualityProfileItem } from "../lib/api";
+import { fetchJson, type LibraryItem, type PlatformSettingsSnapshot, type QualityModelSnapshot, type QualityProfileItem, type QualityTierDefinition } from "../lib/api";
 import { Clapperboard, Film, ShieldCheck, SlidersHorizontal } from "lucide-react";
 import { RouteSkeleton } from "../components/shell/skeleton";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
 
 interface SettingsOverviewLoaderData {
   libraries: LibraryItem[];
@@ -19,6 +22,16 @@ export function SettingsQualityPage() {
   const loaderData = useLoaderData() as SettingsOverviewLoaderData | undefined;
   if (!loaderData) return <RouteSkeleton />;
   const { libraries, qualityProfiles } = loaderData;
+  const [qualityModel, setQualityModel] = useState<QualityModelSnapshot | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      const model = await fetchJson<QualityModelSnapshot>("/api/quality-model");
+      setQualityModel(model);
+    })();
+  }, []);
 
   const uniqueAllowedQualities = Array.from(
     new Set(
@@ -156,13 +169,93 @@ export function SettingsQualityPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Still missing</CardTitle>
-              <CardDescription>The deeper quality model Deluno still needs to fully match and exceed *arr behavior.</CardDescription>
+              <CardTitle>Quality model</CardTitle>
+              <CardDescription>Editable quality ladder, movie/episode size bounds, and upgrade-stop policy.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm text-muted-foreground">
-              <BacklogRow title="Quality definitions" copy="Editable ladder entries instead of only string-based qualities." />
-              <BacklogRow title="Size bounds" copy="Per-quality min/max size rules with real validation in release evaluation." />
-              <BacklogRow title="Score ceilings" copy="Upgrade-stop conditions based on quality and future custom-format scoring." />
+              {message ? (
+                <p className="rounded-xl border border-hairline bg-surface-1 px-3 py-2 text-xs">{message}</p>
+              ) : null}
+              {qualityModel ? (
+                <>
+                  <div className="space-y-2">
+                    {qualityModel.tiers.map((tier, index) => (
+                      <div key={tier.name} className="rounded-xl border border-hairline bg-surface-1 p-3">
+                        <p className="mb-2 text-xs font-semibold text-foreground">{tier.name} (rank {tier.rank})</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          <label className="text-[11px]">
+                            Movie min (GB)
+                            <Input
+                              type="number"
+                              value={tier.movieMinGb}
+                              onChange={(event) => setQualityModel((current) => updateTierValue(current, index, "movieMinGb", Number(event.target.value || 0)))}
+                            />
+                          </label>
+                          <label className="text-[11px]">
+                            Movie max (GB)
+                            <Input
+                              type="number"
+                              value={tier.movieMaxGb}
+                              onChange={(event) => setQualityModel((current) => updateTierValue(current, index, "movieMaxGb", Number(event.target.value || 0)))}
+                            />
+                          </label>
+                          <label className="text-[11px]">
+                            Episode min (MB)
+                            <Input
+                              type="number"
+                              value={tier.episodeMinMb}
+                              onChange={(event) => setQualityModel((current) => updateTierValue(current, index, "episodeMinMb", Number(event.target.value || 0)))}
+                            />
+                          </label>
+                          <label className="text-[11px]">
+                            Episode max (MB)
+                            <Input
+                              type="number"
+                              value={tier.episodeMaxMb}
+                              onChange={(event) => setQualityModel((current) => updateTierValue(current, index, "episodeMaxMb", Number(event.target.value || 0)))}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <label className="flex items-center gap-2 text-xs text-foreground">
+                    <input
+                      type="checkbox"
+                      checked={qualityModel.upgradeStop.stopWhenCutoffMet}
+                      onChange={(event) =>
+                        setQualityModel((current) =>
+                          current ? { ...current, upgradeStop: { ...current.upgradeStop, stopWhenCutoffMet: event.target.checked } } : current)
+                      }
+                    />
+                    Stop upgrades when current quality already meets cutoff
+                  </label>
+                  <label className="flex items-center gap-2 text-xs text-foreground">
+                    <input
+                      type="checkbox"
+                      checked={qualityModel.upgradeStop.requireCustomFormatGainForSameQuality}
+                      onChange={(event) =>
+                        setQualityModel((current) =>
+                          current
+                            ? { ...current, upgradeStop: { ...current.upgradeStop, requireCustomFormatGainForSameQuality: event.target.checked } }
+                            : current)
+                      }
+                    />
+                    Require custom-format score gain for same-quality replacements
+                  </label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={saving}
+                    onClick={() => void saveModel(qualityModel, setSaving, setMessage, setQualityModel)}
+                  >
+                    {saving ? "Saving..." : "Save quality model"}
+                  </Button>
+                </>
+              ) : (
+                <p>Loading quality model...</p>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -171,11 +264,40 @@ export function SettingsQualityPage() {
   );
 }
 
-function BacklogRow({ title, copy }: { title: string; copy: string }) {
-  return (
-    <div className="rounded-xl border border-hairline bg-surface-1 p-4">
-      <p className="font-medium text-foreground">{title}</p>
-      <p className="mt-1">{copy}</p>
-    </div>
-  );
+function updateTierValue(
+  model: QualityModelSnapshot | null,
+  index: number,
+  key: keyof QualityTierDefinition,
+  value: number
+) {
+  if (!model) return model;
+  const tiers = model.tiers.map((tier, tierIndex) =>
+    tierIndex === index ? { ...tier, [key]: Number.isFinite(value) ? value : 0 } : tier);
+  return { ...model, tiers };
+}
+
+async function saveModel(
+  model: QualityModelSnapshot,
+  setSaving: (value: boolean) => void,
+  setMessage: (value: string | null) => void,
+  setQualityModel: (value: QualityModelSnapshot | null) => void
+) {
+  setSaving(true);
+  setMessage(null);
+  try {
+    const saved = await fetchJson<QualityModelSnapshot>("/api/quality-model", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tiers: model.tiers,
+        upgradeStop: model.upgradeStop
+      })
+    });
+    setQualityModel(saved);
+    setMessage("Quality model saved.");
+  } catch (error) {
+    setMessage(error instanceof Error ? error.message : "Failed to save quality model.");
+  } finally {
+    setSaving(false);
+  }
 }

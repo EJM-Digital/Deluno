@@ -6,9 +6,9 @@ This file tracks product and architecture quality in a way agents can update con
 
 ## Current Grade
 
-Overall: B
+Overall: B+
 
-The product surface is materially broader than it was at the end of April: library routing, telemetry, custom-format dry-runs, operational media routes, and external processor coordination are all present. The biggest quality risk is now consistency across that breadth: docs drift, oversized route files, partial realtime coverage, and in-flight modules that are not fully integrated yet.
+The product surface is materially broader than it was at the end of April: library routing, telemetry, custom-format dry-runs, operational media routes, and external processor coordination are all present. The latest pass also landed explicit quality-tier contracts with editable bounds, bounded ranking-model integration behind configuration, and operational route composition roots split into focused screen modules. The biggest quality risk is now consistency across that breadth: docs drift, partial realtime coverage, and in-flight modules that are not fully integrated yet.
 
 ## Domain Scores
 
@@ -19,13 +19,13 @@ The product surface is materially broader than it was at the end of April: libra
 | Movies | B | Search, grab, metadata actions, wanted, import recovery, and bulk actions exist. Needs richer paging/filter contracts and stronger upgrade/replacement explainability. |
 | TV | B- | Episode-aware search and monitoring have improved, and inventory routes exist. Needs tighter episode detail contracts and stronger end-to-end import/recovery coverage. |
 | Metadata | C+ | TMDb-first direction and metadata fallback seams exist. Broker-ready fallback behavior still needs hardening and clearer ownership. |
-| UI System | B- | Dense operational surfaces, library views, and bulk tooling exist. Contract drift between frontend needs and API shape is now a larger risk than missing UI breadth. |
+| UI System | B | Dense operational surfaces, library views, and bulk tooling exist. Queue/system/indexer routes now have cleaner composition roots; contract drift remains the larger risk. |
 | Realtime | B- | SignalR is wired and event coverage is wider, but import/recovery/wanted coverage is still incomplete and the event contract is not fully unified. |
 | Agent Readiness | B | Repo maps, validation, local boot, completed-plan tracking, and docs breadth are in place. Needs more mechanical validation around architecture concentration and contract drift. |
 
 ## High-Interest Debt
 
-- Split oversized endpoint registration files, especially the platform route surface, by concern.
+- Continue splitting oversized endpoint registration files, especially the platform route surface, by concern.
 - Broaden realtime coverage for import recovery, wanted-state transitions, and richer operational revalidation.
 - Expand per-client history adapters and mark queue-derived history distinctly.
 - Keep core docs aligned with implemented APIs, not just desired future shape.

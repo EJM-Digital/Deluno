@@ -13,6 +13,7 @@ public static class PlatformServiceCollectionExtensions
     {
         services.AddSingleton<IPlatformSettingsRepository, SqlitePlatformSettingsRepository>();
         services.AddSingleton<IVersionedMediaPolicyEngine, VersionedMediaPolicyEngine>();
+        services.AddSingleton<IQualityModelService, QualityModelService>();
         services.AddSingleton<IMediaDecisionService, MediaDecisionService>();
         services.AddSingleton<IMigrationAssistantService, MigrationAssistantService>();
         services.AddSingleton<ISecretProtector, DataProtectionSecretProtector>();

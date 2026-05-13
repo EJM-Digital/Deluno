@@ -9,6 +9,7 @@ public static class IntegrationsServiceCollectionExtensions
 {
     public static IServiceCollection AddDelunoIntegrationsModule(this IServiceCollection services)
     {
+        services.AddSingleton<IReleaseRankingModelService, BoundedReleaseRankingModelService>();
         services.AddScoped<IMediaSearchPlanner, FeedMediaSearchPlanner>();
         services.AddScoped<IAcquisitionDecisionPipeline, AcquisitionDecisionPipeline>();
         services.AddHttpClient("indexers", client => client.Timeout = TimeSpan.FromSeconds(10));

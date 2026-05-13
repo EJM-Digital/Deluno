@@ -6,7 +6,7 @@ namespace Deluno.Integrations.Search;
 
 public static partial class ReleaseDecisionEngine
 {
-    public static ReleaseDecision Decide(ReleaseDecisionInput input)
+    public static ReleaseDecision Decide(ReleaseDecisionInput input, QualityModelSnapshot? qualityModel = null)
     {
         var normalizedCurrent = LibraryQualityDecider.NormalizeQuality(input.CurrentQuality);
         var normalizedTarget = LibraryQualityDecider.NormalizeQuality(input.TargetQuality) ?? "WEB 1080p";
@@ -50,8 +50,16 @@ public static partial class ReleaseDecisionEngine
 
         if (currentRank > 0)
         {
-            if (qualityDelta > 0) reasons.Add($"Quality rank improves current file by {qualityDelta} step(s).");
-            if (qualityDelta == 0) reasons.Add("Quality rank matches the current file, so custom formats and risk decide whether it is worthwhile.");
+            if (qualityDelta > 0)
+            {
+                reasons.Add($"Quality rank improves current file by {qualityDelta} step(s).");
+            }
+
+            if (qualityDelta == 0)
+            {
+                reasons.Add("Quality rank matches the current file, so custom formats and risk decide whether it is worthwhile.");
+            }
+
             if (qualityDelta < 0)
             {
                 var currentMeetsCutoff = currentRank >= targetRank;
@@ -62,8 +70,22 @@ public static partial class ReleaseDecisionEngine
                 }
                 else
                 {
-                    risks.Add($"Quality rank is {Math.Abs(qualityDelta)} step(s) below the current file ({normalizedCurrent} → {normalizedCandidate}).");
+                    risks.Add($"Quality rank is {Math.Abs(qualityDelta)} step(s) below the current file ({normalizedCurrent} -> {normalizedCandidate}).");
                 }
+            }
+        }
+
+        if (!hardReject &&
+            qualityModel?.UpgradeStop.StopWhenCutoffMet == true &&
+            currentRank >= targetRank &&
+            qualityDelta <= 0)
+        {
+            var currentScore = input.CurrentCustomFormatScore ?? 0;
+            var requiresGain = qualityModel.UpgradeStop.RequireCustomFormatGainForSameQuality;
+            if (!requiresGain || input.CustomFormatScore <= currentScore)
+            {
+                hardReject = true;
+                risks.Add("Upgrade stop policy blocked this release because the current file already meets cutoff and the candidate does not improve the custom-format score.");
             }
         }
 
@@ -73,7 +95,7 @@ public static partial class ReleaseDecisionEngine
         }
 
         var seederScore = ScoreSeeders(input.Seeders, risks, reasons);
-        var sizeScore = ScoreSize(input.SizeBytes, normalizedCandidate, risks, reasons, out var estimatedBitrate);
+        var sizeScore = ScoreSize(input.SizeBytes, normalizedCandidate, qualityModel, risks, reasons, out var estimatedBitrate);
         var releaseGroup = InferReleaseGroup(input.ReleaseName);
         if (!string.IsNullOrWhiteSpace(releaseGroup))
         {
@@ -90,8 +112,15 @@ public static partial class ReleaseDecisionEngine
             + sizeScore
             + codecScore;
 
-        if (!meetsCutoff) score -= 250;
-        if (risks.Count > 0) score -= Math.Min(400, risks.Count * 85);
+        if (!meetsCutoff)
+        {
+            score -= 250;
+        }
+
+        if (risks.Count > 0)
+        {
+            score -= Math.Min(400, risks.Count * 85);
+        }
 
         var status = hardReject
             ? "rejected"
@@ -151,7 +180,13 @@ public static partial class ReleaseDecisionEngine
         return score;
     }
 
-    private static int ScoreSize(long? sizeBytes, string quality, ICollection<string> risks, ICollection<string> reasons, out double? estimatedBitrate)
+    private static int ScoreSize(
+        long? sizeBytes,
+        string quality,
+        QualityModelSnapshot? qualityModel,
+        ICollection<string> risks,
+        ICollection<string> reasons,
+        out double? estimatedBitrate)
     {
         estimatedBitrate = null;
         if (sizeBytes is null or <= 0)
@@ -162,7 +197,7 @@ public static partial class ReleaseDecisionEngine
 
         var sizeGb = sizeBytes.Value / 1_073_741_824d;
         estimatedBitrate = Math.Round(sizeBytes.Value * 8d / (2.0 * 60 * 60) / 1_000_000, 1);
-        var (min, max) = ExpectedSizeRangeGb(quality);
+        var (min, max) = ExpectedSizeRangeGb(quality, qualityModel);
         if (sizeGb < min)
         {
             risks.Add($"Size {sizeGb:0.0} GB is unusually small for {quality}.");
@@ -179,8 +214,14 @@ public static partial class ReleaseDecisionEngine
         return 80;
     }
 
-    private static (double Min, double Max) ExpectedSizeRangeGb(string quality)
+    private static (double Min, double Max) ExpectedSizeRangeGb(string quality, QualityModelSnapshot? model)
     {
+        var tier = model?.Tiers.FirstOrDefault(item => string.Equals(item.Name, quality, StringComparison.OrdinalIgnoreCase));
+        if (tier is not null)
+        {
+            return (tier.MovieMinGb, tier.MovieMaxGb);
+        }
+
         var normalized = quality.ToLowerInvariant();
         if (normalized.Contains("2160") && normalized.Contains("remux")) return (35, 130);
         if (normalized.Contains("2160")) return (7, 60);

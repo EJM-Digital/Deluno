@@ -11,7 +11,9 @@ namespace Deluno.Integrations.Search;
 public sealed class FeedMediaSearchPlanner(
     IPlatformSettingsRepository platformRepository,
     IHttpClientFactory httpClientFactory,
-    IIntegrationResiliencePolicy resiliencePolicy)
+    IIntegrationResiliencePolicy resiliencePolicy,
+    IQualityModelService qualityModelService,
+    IReleaseRankingModelService rankingModelService)
     : IMediaSearchPlanner
 {
     public async Task<MediaSearchPlan> BuildPlanAsync(
@@ -131,7 +133,8 @@ public sealed class FeedMediaSearchPlanner(
 
                     await using var stream = await response.Content.ReadAsStreamAsync(token);
                     var document = await XDocument.LoadAsync(stream, LoadOptions.None, token);
-                    return ParseCandidates(document, indexer, source, currentQuality, targetQuality, customFormats, neverGrabPatterns);
+                    var qualityModel = await qualityModelService.GetAsync(token);
+                    return ParseCandidates(document, indexer, source, currentQuality, targetQuality, customFormats, neverGrabPatterns, qualityModel, rankingModelService);
                 }
                 catch (Exception exception) when (exception is not HttpRequestException and not TaskCanceledException and not IOException)
                 {
@@ -151,7 +154,9 @@ public sealed class FeedMediaSearchPlanner(
         string? currentQuality,
         string? targetQuality,
         IReadOnlyList<CustomFormatItem>? customFormats,
-        IReadOnlyList<string> neverGrabPatterns)
+        IReadOnlyList<string> neverGrabPatterns,
+        QualityModelSnapshot qualityModel,
+        IReleaseRankingModelService rankingModelService)
     {
         XNamespace torznab = "http://torznab.com/schemas/2015/feed";
         XNamespace newznab = "http://www.newznab.com/DTD/2010/feeds/attributes/";
@@ -177,6 +182,7 @@ public sealed class FeedMediaSearchPlanner(
             var attrs = item.Elements(torznab + "attr").Concat(item.Elements(newznab + "attr")).ToArray();
             var size = ReadLongAttr(attrs, "size") ?? ReadLong(item.Elements("enclosure").FirstOrDefault()?.Attribute("length")?.Value);
             var seeders = ReadIntAttr(attrs, "seeders");
+            var releaseAgeHours = ReadReleaseAgeHours(item);
             var quality = InferQuality(releaseName);
             var customFormatBonus = CustomFormatMatcher.Evaluate(releaseName, customFormats, out var matchedFormats);
             var decision = ReleaseDecisionEngine.Decide(new ReleaseDecisionInput(
@@ -189,21 +195,36 @@ public sealed class FeedMediaSearchPlanner(
                 downloadUrl,
                 SourcePriorityScore: Math.Max(0, 200 - source.Priority),
                 customFormatBonus,
-                neverGrabPatterns));
+                neverGrabPatterns), qualityModel);
+
+            var boost = rankingModelService.Score(new ReleaseRankingFeatures(
+                Seeders: seeders,
+                SizeBytes: size,
+                QualityDelta: decision.QualityDelta,
+                CustomFormatScore: decision.CustomFormatScore,
+                SourcePriorityScore: Math.Max(0, 200 - source.Priority),
+                EstimatedBitrateMbps: decision.EstimatedBitrateMbps,
+                ReleaseAgeHours: releaseAgeHours), hardBlocked: decision.Status == "rejected");
+
+            var finalScore = decision.Score + boost.BoostPoints;
+            var reasons = boost.Applied
+                ? decision.Reasons.Concat([boost.Explanation]).ToArray()
+                : decision.Reasons.ToArray();
+            var summary = BuildSummary(decision, matchedFormats, boost);
 
             results.Add(new MediaSearchCandidate(
                 ReleaseName: releaseName,
                 IndexerId: indexer.Id,
                 IndexerName: indexer.Name,
                 Quality: quality,
-                Score: decision.Score,
+                Score: finalScore,
                 MeetsCutoff: decision.MeetsCutoff,
-                Summary: BuildSummary(decision, matchedFormats),
+                Summary: summary,
                 DownloadUrl: downloadUrl,
                 SizeBytes: size,
                 Seeders: seeders,
                 DecisionStatus: decision.Status,
-                DecisionReasons: decision.Reasons,
+                DecisionReasons: reasons,
                 RiskFlags: decision.RiskFlags,
                 QualityDelta: decision.QualityDelta,
                 CustomFormatScore: decision.CustomFormatScore,
@@ -306,7 +327,10 @@ public sealed class FeedMediaSearchPlanner(
         return $"{source} {resolution}";
     }
 
-    private static string BuildSummary(ReleaseDecision decision, IReadOnlyList<CustomFormatMatchResult> matchedFormats)
+    private static string BuildSummary(
+        ReleaseDecision decision,
+        IReadOnlyList<CustomFormatMatchResult> matchedFormats,
+        ReleaseRankingBoostResult boost)
     {
         var parts = new List<string> { decision.Summary };
         if (matchedFormats.Count > 0 && decision.CustomFormatScore != 0)
@@ -315,7 +339,29 @@ public sealed class FeedMediaSearchPlanner(
             parts.Add($"Matched {names} ({decision.CustomFormatScore.ToString("+#;-#;0", CultureInfo.InvariantCulture)}).");
         }
 
+        if (boost.Applied)
+        {
+            parts.Add(boost.Explanation);
+        }
+
         return string.Join(" ", parts);
+    }
+
+    private static double? ReadReleaseAgeHours(XElement item)
+    {
+        var raw = item.Element("pubDate")?.Value?.Trim();
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return null;
+        }
+
+        if (!DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var published))
+        {
+            return null;
+        }
+
+        var age = DateTimeOffset.UtcNow - published.ToUniversalTime();
+        return Math.Max(0, age.TotalHours);
     }
 
     private static long? ReadLongAttr(IEnumerable<XElement> attrs, string name)

@@ -46,8 +46,13 @@ public static class SearchEndpointRouteBuilderExtensions
         });
 
         var releases = endpoints.MapGroup("/api/releases");
+        var rankingModel = endpoints.MapGroup("/api/ranking-model");
 
-        releases.MapPost("explain", (ReleaseExplainRequest request) =>
+        releases.MapPost("explain", async (
+            ReleaseExplainRequest request,
+            IQualityModelService qualityModelService,
+            IReleaseRankingModelService rankingModelService,
+            CancellationToken cancellationToken) =>
         {
             var releaseName = request.ReleaseName?.Trim() ?? string.Empty;
             if (string.IsNullOrEmpty(releaseName))
@@ -61,6 +66,7 @@ public static class SearchEndpointRouteBuilderExtensions
             var customFormats = request.CustomFormats ?? [];
             var customFormatScore = CustomFormatMatcher.Evaluate(releaseName, customFormats, out var matchedFormats);
 
+            var qualityModel = await qualityModelService.GetAsync(cancellationToken);
             var decision = ReleaseDecisionEngine.Decide(new ReleaseDecisionInput(
                 ReleaseName: releaseName,
                 Quality: request.AssumedQuality ?? LibraryQualityDecider.DetectQuality(releaseName) ?? "WEB 1080p",
@@ -74,13 +80,22 @@ public static class SearchEndpointRouteBuilderExtensions
                 NeverGrabPatterns: request.NeverGrabPatterns?
                     .Split(['\r', '\n', ','], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
                     .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToArray()));
+                    .ToArray()), qualityModel);
+
+            var boost = rankingModelService.Score(new ReleaseRankingFeatures(
+                Seeders: request.Seeders,
+                SizeBytes: request.SizeBytes,
+                QualityDelta: decision.QualityDelta,
+                CustomFormatScore: decision.CustomFormatScore,
+                SourcePriorityScore: 100,
+                EstimatedBitrateMbps: decision.EstimatedBitrateMbps,
+                ReleaseAgeHours: null), hardBlocked: decision.Status == "rejected");
 
             return Results.Ok(new
             {
                 releaseName,
                 decision.Status,
-                decision.Score,
+                Score = decision.Score + boost.BoostPoints,
                 decision.MeetsCutoff,
                 decision.Summary,
                 decision.Reasons,
@@ -92,8 +107,14 @@ public static class SearchEndpointRouteBuilderExtensions
                 decision.ReleaseGroup,
                 decision.EstimatedBitrateMbps,
                 decision.PolicyVersion,
+                rankingBoost = boost,
                 matchedCustomFormats = matchedFormats
             });
+        });
+
+        rankingModel.MapGet("status", (IReleaseRankingModelService rankingModelService) =>
+        {
+            return Results.Ok(rankingModelService.GetStatus());
         });
 
         return endpoints;

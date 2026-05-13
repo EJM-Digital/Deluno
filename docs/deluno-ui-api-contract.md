@@ -152,6 +152,7 @@ Implemented CRUD surfaces:
 
 - `GET|POST|PUT|DELETE /api/quality-profiles`
 - `PUT /api/quality-profiles/order`
+- `GET|PUT /api/quality-model`
 - `GET|POST|PUT|DELETE /api/tags`
 - `GET|POST|PUT|DELETE /api/intake-sources`
 - `GET|POST|PUT|DELETE /api/custom-formats`
@@ -166,6 +167,7 @@ Implemented CRUD surfaces:
 Current UI contract expectations:
 
 - quality profiles, tags, intake sources, custom formats, destination rules, policy sets, and saved library views are all active configuration concepts
+- the quality model endpoint exposes explicit editable tiers with movie/episode size bounds and upgrade-stop policy
 - custom format dry-run is implemented and should be documented as a real workflow, not a future one
 - migration preview/apply exists and should remain tied to authenticated single-user setup and import workflows
 
@@ -173,6 +175,22 @@ Current gaps:
 
 - the platform route file is carrying too many responsibilities; contract clarity is now stronger than implementation separation
 - several newer docs describe presets and advanced settings, but the route registration is still concentrated in a single large endpoint file
+
+## Search Scoring And Explainability
+
+Implemented endpoints:
+
+- `POST /api/releases/explain`
+- `GET /api/ranking-model/status`
+
+Current UI contract expectations:
+
+- release explain responses include deterministic decision details plus bounded ranking-boost details when enabled
+- ranking model status is configuration-driven and should be surfaced as an informational capability, not as a replacement for hard policy rules
+
+Current gaps:
+
+- model training is still an offline/next-step concern; current runtime scoring is a bounded pilot layer over deterministic policy
 
 ## Libraries And Routing
 

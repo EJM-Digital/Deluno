@@ -13,9 +13,20 @@ public interface IAcquisitionDecisionPipeline
     AcquisitionSelectedReleaseDecision EvaluateSelectedRelease(AcquisitionSelectedReleaseRequest request);
 }
 
-public sealed class AcquisitionDecisionPipeline(IMediaSearchPlanner mediaSearchPlanner)
-    : IAcquisitionDecisionPipeline
+public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
 {
+    private static readonly IReleaseRankingModelService DisabledRankingModelService = new DisabledReleaseRankingService();
+    private readonly IMediaSearchPlanner mediaSearchPlanner;
+    private readonly IReleaseRankingModelService rankingModelService;
+
+    public AcquisitionDecisionPipeline(
+        IMediaSearchPlanner mediaSearchPlanner,
+        IReleaseRankingModelService? rankingModelService = null)
+    {
+        this.mediaSearchPlanner = mediaSearchPlanner;
+        this.rankingModelService = rankingModelService ?? DisabledRankingModelService;
+    }
+
     public async Task<AcquisitionDecisionPlan> PlanAsync(
         AcquisitionDecisionRequest request,
         CancellationToken cancellationToken = default)
@@ -89,20 +100,33 @@ public sealed class AcquisitionDecisionPipeline(IMediaSearchPlanner mediaSearchP
             SourcePriorityScore: request.SourcePriorityScore ?? 0,
             CustomFormatScore: customFormatScore,
             request.NeverGrabPatterns));
+        var boost = rankingModelService.Score(new ReleaseRankingFeatures(
+            Seeders: request.Seeders,
+            SizeBytes: request.SizeBytes,
+            QualityDelta: decision.QualityDelta,
+            CustomFormatScore: decision.CustomFormatScore,
+            SourcePriorityScore: request.SourcePriorityScore ?? 0,
+            EstimatedBitrateMbps: decision.EstimatedBitrateMbps,
+            ReleaseAgeHours: null), hardBlocked: decision.Status == "rejected");
+        var boostedScore = decision.Score + boost.BoostPoints;
+        var boostedSummary = boost.Applied ? $"{decision.Summary} {boost.Explanation}" : decision.Summary;
+        var boostedReasons = boost.Applied
+            ? decision.Reasons.Concat([boost.Explanation]).ToArray()
+            : decision.Reasons.ToArray();
 
         var candidate = new MediaSearchCandidate(
             ReleaseName: request.ReleaseName,
             IndexerId: request.IndexerId ?? "manual",
             IndexerName: string.IsNullOrWhiteSpace(request.IndexerName) ? "Manual selection" : request.IndexerName,
             Quality: quality,
-            Score: decision.Score,
+            Score: boostedScore,
             MeetsCutoff: decision.MeetsCutoff,
-            Summary: decision.Summary,
+            Summary: boostedSummary,
             DownloadUrl: request.DownloadUrl,
             SizeBytes: request.SizeBytes,
             Seeders: request.Seeders,
             DecisionStatus: decision.Status,
-            DecisionReasons: decision.Reasons,
+            DecisionReasons: boostedReasons,
             RiskFlags: decision.RiskFlags,
             QualityDelta: decision.QualityDelta,
             CustomFormatScore: decision.CustomFormatScore,
@@ -191,6 +215,24 @@ public sealed class AcquisitionDecisionPipeline(IMediaSearchPlanner mediaSearchP
                 Reason: candidate.Summary,
                 Score: candidate.Score))
             .ToArray();
+
+    private sealed class DisabledReleaseRankingService : IReleaseRankingModelService
+    {
+        public RankingModelStatus GetStatus() =>
+            new(
+                Enabled: false,
+                AutoDispatchImpactEnabled: false,
+                MaxAbsoluteBoost: 0,
+                Mode: "disabled",
+                Notes: "Ranking model disabled.");
+
+        public ReleaseRankingBoostResult Score(ReleaseRankingFeatures features, bool hardBlocked) =>
+            new(
+                Enabled: false,
+                Applied: false,
+                BoostPoints: 0,
+                Explanation: "Ranking model disabled.");
+    }
 }
 
 public sealed record AcquisitionDecisionRequest(

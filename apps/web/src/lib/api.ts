@@ -945,6 +945,28 @@ export interface UpdateStatusResponse {
   notes: string[];
 }
 
+export interface QualityTierDefinition {
+  name: string;
+  rank: number;
+  movieMinGb: number;
+  movieMaxGb: number;
+  episodeMinMb: number;
+  episodeMaxMb: number;
+  scoreCeiling: number;
+}
+
+export interface QualityUpgradeStopPolicy {
+  stopWhenCutoffMet: boolean;
+  requireCustomFormatGainForSameQuality: boolean;
+}
+
+export interface QualityModelSnapshot {
+  version: string;
+  tiers: QualityTierDefinition[];
+  upgradeStop: QualityUpgradeStopPolicy;
+  updatedUtc: string;
+}
+
 export interface UpdatePreferencesResponse {
   mode: string;
   channel: string;
