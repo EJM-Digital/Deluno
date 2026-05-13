@@ -4,11 +4,12 @@ Updated: 2026-05-13
 
 This guide covers the deployment paths that match the current repository:
 
+- Windows packaged install and in-app updates (Velopack)
 - Docker deployment from source
 - Docker Compose deployment from source
-- Windows self-contained publish and run
+- Windows self-contained publish and run (advanced/manual)
 
-It does not assume a prebuilt public image or a polished installer unless those artifacts are explicitly added and maintained.
+For end users, the packaged Windows installer is the primary path.
 
 ## Quick Start
 
@@ -42,7 +43,19 @@ http://127.0.0.1:5099/api/health/ready
 
 ### Windows
 
-Publish and run from the repo root:
+For end users, install from GitHub Releases:
+
+```text
+https://github.com/jampat000/Deluno/releases
+```
+
+Then:
+
+- run the latest `*Setup*.exe`
+- open `http://127.0.0.1:5099`
+- use `System > Updates` for update checks/download/apply flow
+
+For advanced/manual source runs, publish and run from the repo root:
 
 ```powershell
 .\scripts\publish-windows.ps1
@@ -150,7 +163,22 @@ Persistent state remains in the mounted data directory.
 
 ## Windows Deployment
 
-### Publish
+### Packaged installer (recommended)
+
+Install from the latest release setup executable:
+
+```text
+https://github.com/jampat000/Deluno/releases
+```
+
+Packaged defaults:
+
+- app install path: `%LocalAppData%\Deluno`
+- runtime data path: `%LocalAppData%\DelunoData`
+- config path: `%LocalAppData%\Deluno\config\deluno.json`
+- stable update channel with in-app controls under `System > Updates`
+
+### Publish (advanced/manual)
 
 Build the Windows package:
 
@@ -164,7 +192,7 @@ Output:
 artifacts/publish/win-x64
 ```
 
-### First Run
+### First Run (advanced/manual publish)
 
 Recommended launch:
 

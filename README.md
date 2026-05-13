@@ -22,7 +22,11 @@ Windows uses Velopack for installer and updates:
 
 - Install location: `%LocalAppData%\Deluno`
 - Runtime data location: `%LocalAppData%\DelunoData`
+- Config location: `%LocalAppData%\Deluno\config\deluno.json`
 - In-app updates: `System > Updates`
+- Default update channel: `stable`
+
+If you are coming from a legacy/manual run, Deluno can read legacy settings from `%ProgramData%\Deluno\data\deluno.json` and migrate them to the canonical config path.
 
 ### Docker
 
@@ -37,6 +41,7 @@ Docker update model:
 - no in-place updater inside containers
 - pull a newer image tag and recreate containers
 - keep persistent volumes mounted (for example `/data`)
+- use runtime paths that exist inside the container (`/media/...`, `/downloads`, `/data`)
 
 ### Local development
 
