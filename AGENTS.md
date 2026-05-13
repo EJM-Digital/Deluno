@@ -34,13 +34,13 @@ This file is the small entry point for agent work. It is a map, not the full man
 
 Run the smallest relevant checks while working. Before every push, run the CI gate:
 
-```bash
-bash scripts/ci-check.sh        # backend build + frontend build + agent readiness
+```powershell
+npm run ci:check
 ```
 
 Before merging, also run the full test suite:
 
-```bash
+```powershell
 dotnet test Deluno.slnx --configuration Release
 npm run test:web
 ```
