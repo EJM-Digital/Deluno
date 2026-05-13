@@ -380,6 +380,7 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
         }
 
         var canOperate = manager.IsInstalled;
+        var settingsPathState = AppSettings.InspectPathState();
         var notes = new List<string>
         {
             "Updates are checked against the stable channel by default.",
@@ -391,6 +392,16 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
         {
             _state = UpdateStates.NotSupported;
             notes.Add("Use the latest Windows installer package to move onto the supported updater path.");
+            notes.Add("Manual installs can keep their data root; the packaged installer only replaces app binaries.");
+        }
+
+        if (settingsPathState.LegacyConfigExists && settingsPathState.PrimaryConfigExists)
+        {
+            notes.Add("Legacy settings were detected and migrated to the current config path.");
+        }
+        else if (settingsPathState.LegacyConfigExists)
+        {
+            notes.Add("Legacy settings path detected. Deluno will migrate it to the current config path automatically.");
         }
 
         return new UpdateStatusResponse(

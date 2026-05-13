@@ -28,6 +28,17 @@ public sealed class AppSettings
     public bool AutoCheckUpdates { get; set; } = true;
     public string UpdateSource { get; set; } = "https://github.com/jampat000/Deluno";
 
+    public static AppSettingsPathState InspectPathState()
+    {
+        return new AppSettingsPathState(
+            PrimaryConfigPath: _configPath,
+            LegacyConfigPath: _legacyConfigPath,
+            PrimaryConfigExists: File.Exists(_configPath),
+            LegacyConfigExists: File.Exists(_legacyConfigPath),
+            DefaultDataRoot: _defaultDataRoot,
+            LegacyDefaultDataRoot: _legacyDefaultDataRoot);
+    }
+
     public static AppSettings Load()
     {
         var pathToRead = ResolveConfigPath(out var loadedFromLegacyPath);
@@ -148,3 +159,11 @@ public sealed class AppSettings
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 }
+
+public sealed record AppSettingsPathState(
+    string PrimaryConfigPath,
+    string LegacyConfigPath,
+    bool PrimaryConfigExists,
+    bool LegacyConfigExists,
+    string DefaultDataRoot,
+    string LegacyDefaultDataRoot);

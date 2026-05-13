@@ -83,6 +83,14 @@ Current release channel for production users:
 
 - `stable`
 
+### Manual-to-packaged migration behavior
+
+When moving from a manual Windows run to the packaged Velopack installer:
+
+- Deluno keeps runtime data outside the app binaries, so data root content remains intact.
+- Legacy settings under `%ProgramData%\Deluno\data\deluno.json` are detected and migrated to `%LocalAppData%\Deluno\config\deluno.json`.
+- In-app apply/restart controls only appear after running the packaged installer path.
+
 ## Docker (No In-Place Binary Update)
 
 Docker installs do not perform in-app binary replacement.
