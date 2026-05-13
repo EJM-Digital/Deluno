@@ -118,8 +118,19 @@ jobs:
         shell: pwsh
         run: dotnet tool install -g vpk --version 0.0.1298
 
+      - name: Enforce signing configuration
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace("${{ secrets.WINDOWS_SIGN_CERT_BASE64 }}")) {
+            Write-Error "WINDOWS_SIGN_CERT_BASE64 secret is required for tagged releases."
+            exit 1
+          }
+          if ([string]::IsNullOrWhiteSpace("${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}")) {
+            Write-Error "WINDOWS_SIGN_CERT_PASSWORD secret is required for tagged releases."
+            exit 1
+          }
+
       - name: Prepare code signing certificate
-        if: ${{ secrets.WINDOWS_SIGN_CERT_BASE64 != '' && secrets.WINDOWS_SIGN_CERT_PASSWORD != '' }}
         shell: pwsh
         run: |
           $bytes = [Convert]::FromBase64String("${{ secrets.WINDOWS_SIGN_CERT_BASE64 }}")
@@ -128,7 +139,6 @@ jobs:
           "CERT_PATH=$path" >> $env:GITHUB_ENV
 
       - name: Sign tray executable
-        if: ${{ env.CERT_PATH != '' }}
         shell: pwsh
         run: |
           signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com /f "$env:CERT_PATH" /p "${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}" artifacts/windows/bin/Deluno.exe
@@ -160,11 +170,33 @@ jobs:
             --outputDir artifacts/windows/velopack
 
       - name: Sign installer outputs
-        if: ${{ env.CERT_PATH != '' }}
         shell: pwsh
         run: |
           Get-ChildItem artifacts/windows/velopack -Filter "*Setup*.exe" | ForEach-Object {
             signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com /f "$env:CERT_PATH" /p "${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}" $_.FullName
+          }
+
+      - name: Verify required Velopack outputs
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem artifacts/windows/velopack -Filter "*Setup*.exe" -ErrorAction SilentlyContinue
+          $full = Get-ChildItem artifacts/windows/velopack -Filter "*.full.nupkg" -ErrorAction SilentlyContinue
+          $releaseJson = Get-ChildItem artifacts/windows/velopack -Filter "releases.*.json" -ErrorAction SilentlyContinue
+          if (-not $setup) { Write-Error "Missing setup executable output."; exit 1 }
+          if (-not $full) { Write-Error "Missing full nupkg output."; exit 1 }
+          if (-not $releaseJson) { Write-Error "Missing releases.<channel>.json output."; exit 1 }
+
+      - name: Verify signatures
+        shell: pwsh
+        run: |
+          $files = @("artifacts/windows/bin/Deluno.exe")
+          $files += (Get-ChildItem artifacts/windows/velopack -Filter "*Setup*.exe").FullName
+          foreach ($file in $files) {
+            $sig = Get-AuthenticodeSignature $file
+            if ($sig.Status -ne "Valid") {
+              Write-Error "Invalid or missing signature on $file (status: $($sig.Status))."
+              exit 1
+            }
           }
 
       - name: Upload Velopack artifacts
@@ -204,6 +236,13 @@ jobs:
         with:
           name: windows-velopack
           path: release-assets
+
+      - name: Validate release assets
+        run: |
+          ls -lah release-assets
+          test -n "$(ls -1 release-assets/*Setup*.exe 2>/dev/null)" || { echo "Missing setup executable"; exit 1; }
+          test -n "$(ls -1 release-assets/*.full.nupkg 2>/dev/null)" || { echo "Missing full package"; exit 1; }
+          test -n "$(ls -1 release-assets/releases.*.json 2>/dev/null)" || { echo "Missing release index"; exit 1; }
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

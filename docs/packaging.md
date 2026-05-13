@@ -79,6 +79,12 @@ Release assets include:
 - delta package (`*.delta.nupkg`, when available)
 - channel release index (`releases.<channel>.json`)
 
+Release gate expectations for tagged builds:
+
+- signing certificate secrets must be present
+- `Deluno.exe` and setup executables must have valid Authenticode signatures
+- setup executable, `*.full.nupkg`, and `releases.<channel>.json` are required before publishing the release
+
 Current release channel for production users:
 
 - `stable`
