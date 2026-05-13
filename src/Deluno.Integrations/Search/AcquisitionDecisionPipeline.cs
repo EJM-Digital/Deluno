@@ -71,7 +71,13 @@ public sealed class AcquisitionDecisionPipeline(IMediaSearchPlanner mediaSearchP
 
     public AcquisitionSelectedReleaseDecision EvaluateSelectedRelease(AcquisitionSelectedReleaseRequest request)
     {
-        var quality = Deluno.Platform.Quality.LibraryQualityDecider.DetectQuality(request.ReleaseName) ?? "WEB 1080p";
+        var quality = request.CandidateQuality
+            ?? Deluno.Platform.Quality.LibraryQualityDecider.DetectQuality(request.ReleaseName)
+            ?? "WEB 1080p";
+        var customFormatScore = CustomFormatMatcher.Evaluate(
+            request.ReleaseName,
+            request.CustomFormats,
+            out var matchedCustomFormats);
         var decision = ReleaseDecisionEngine.Decide(new ReleaseDecisionInput(
             request.ReleaseName,
             quality,
@@ -80,8 +86,8 @@ public sealed class AcquisitionDecisionPipeline(IMediaSearchPlanner mediaSearchP
             request.SizeBytes,
             request.Seeders,
             request.DownloadUrl,
-            SourcePriorityScore: 0,
-            CustomFormatScore: 0,
+            SourcePriorityScore: request.SourcePriorityScore ?? 0,
+            CustomFormatScore: customFormatScore,
             request.NeverGrabPatterns));
 
         var candidate = new MediaSearchCandidate(
@@ -104,7 +110,8 @@ public sealed class AcquisitionDecisionPipeline(IMediaSearchPlanner mediaSearchP
             SizeScore: decision.SizeScore,
             ReleaseGroup: decision.ReleaseGroup,
             EstimatedBitrateMbps: decision.EstimatedBitrateMbps,
-            PolicyVersion: decision.PolicyVersion);
+            PolicyVersion: decision.PolicyVersion,
+            MatchedCustomFormats: matchedCustomFormats);
 
         var safe = IsSafeForAutomaticDispatch(candidate);
 
@@ -218,8 +225,11 @@ public sealed record AcquisitionSelectedReleaseRequest(
     string? DownloadUrl,
     string? CurrentQuality,
     string? TargetQuality,
+    string? CandidateQuality = null,
     long? SizeBytes = null,
     int? Seeders = null,
+    int? SourcePriorityScore = null,
+    IReadOnlyList<CustomFormatItem>? CustomFormats = null,
     bool ForceOverride = false,
     string? OverrideReason = null,
     IReadOnlyList<string>? NeverGrabPatterns = null,

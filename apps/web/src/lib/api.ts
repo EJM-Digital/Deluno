@@ -201,6 +201,18 @@ export interface SeriesInventoryDetail {
   episodes: SeriesEpisodeInventoryItem[];
 }
 
+export interface SeriesUpcomingEpisodeItem {
+  seriesId: string;
+  title: string;
+  startYear: number | null;
+  posterUrl: string | null;
+  episodeId: string;
+  seasonNumber: number;
+  episodeNumber: number;
+  episodeTitle: string | null;
+  airDateUtc: string;
+}
+
 export interface SeriesSearchHistoryItem {
   id: string;
   seriesId: string;

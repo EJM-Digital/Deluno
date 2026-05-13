@@ -203,8 +203,12 @@ export function ShowDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           releaseName: candidate.releaseName,
+          indexerId: candidate.indexerId,
           indexerName: candidate.indexerName,
+          candidateQuality: candidate.quality,
           downloadUrl: candidate.downloadUrl,
+          sizeBytes: candidate.sizeBytes,
+          seeders: candidate.seeders,
           force,
           overrideReason: force ? overrideReason || `User forced this release despite scorer result: ${candidate.summary}` : null
         })
@@ -1130,6 +1134,7 @@ function formatWantedStatus(value: string) {
 
 interface SearchPlanCandidate {
   releaseName: string;
+  indexerId?: string | null;
   indexerName: string;
   quality: string;
   score: number;
@@ -1319,6 +1324,7 @@ function normalizeSearchCandidate(value: SearchPlanCandidate | Record<string, un
   const item = value as Record<string, unknown>;
   return {
     releaseName: String(item.releaseName ?? item.ReleaseName ?? ""),
+    indexerId: (item.indexerId ?? item.IndexerId ?? null) as string | null,
     indexerName: String(item.indexerName ?? item.IndexerName ?? ""),
     quality: String(item.quality ?? item.Quality ?? ""),
     score: Number(item.score ?? item.Score ?? 0),

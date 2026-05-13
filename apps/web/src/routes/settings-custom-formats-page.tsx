@@ -76,6 +76,7 @@ function conditionSummary(rawConditions: string | null | undefined): string {
 interface DryRunResult {
   formatId: string;
   formatName: string;
+  mediaType: string;
   score: number;
   isMatch: boolean;
   matchedConditions: string[];
@@ -140,6 +141,7 @@ export function SettingsCustomFormatsPage() {
 
   const [tab, setTab] = useState<Tab>("library");
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [libraryMediaType, setLibraryMediaType] = useState<"movies" | "tv">("movies");
 
   /**
    * Library selections — maps trashId → score. In real implementation,
@@ -148,14 +150,21 @@ export function SettingsCustomFormatsPage() {
   const [librarySelections, setLibrarySelections] = useState<Map<string, number>>(() => {
     const m = new Map<string, number>();
     for (const cf of customFormats) {
-      if (cf.trashId) m.set(cf.trashId, cf.score);
+      if (cf.trashId) m.set(customFormatSelectionKey(cf.mediaType, cf.trashId), cf.score);
     }
     return m;
   });
 
+  const visibleLibrarySelections = new Map(
+    customFormats
+      .filter((cf) => cf.trashId && cf.mediaType === libraryMediaType)
+      .map((cf) => [cf.trashId as string, cf.score])
+  );
+
   /* ── Library selection handlers ── */
   async function handleLibraryAdd(cf: BundledCF, score: number) {
-    setLibrarySelections((prev) => new Map(prev).set(cf.trashId, score));
+    const selectionKey = customFormatSelectionKey(libraryMediaType, cf.trashId);
+    setLibrarySelections((prev) => new Map(prev).set(selectionKey, score));
     try {
       // Serialize patterns as structured JSON conditions (releaseTitle type)
       const conditions = serializeConditions(
@@ -166,7 +175,7 @@ export function SettingsCustomFormatsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: cf.name,
-          mediaType: "movies",
+          mediaType: libraryMediaType,
           score,
           trashId: cf.trashId,
           conditions,
@@ -177,7 +186,7 @@ export function SettingsCustomFormatsPage() {
       toast.success(`Added "${cf.name}" to your formats`);
       revalidator.revalidate();
     } catch (e) {
-      setLibrarySelections((prev) => { const m = new Map(prev); m.delete(cf.trashId); return m; });
+      setLibrarySelections((prev) => { const m = new Map(prev); m.delete(selectionKey); return m; });
       toast.error(e instanceof Error ? e.message : "Could not add format.");
     }
   }
@@ -190,7 +199,8 @@ export function SettingsCustomFormatsPage() {
       })
       .filter((entry): entry is { cf: BundledCF; score: number } => Boolean(entry));
 
-    const missing = formats.filter(({ cf }) => !librarySelections.has(cf.trashId));
+    const targetMediaType = bundle.mediaType === "tv" ? "tv" : "movies";
+    const missing = formats.filter(({ cf }) => !librarySelections.has(customFormatSelectionKey(targetMediaType, cf.trashId)));
     if (missing.length === 0) {
       toast.info(`"${bundle.name}" is already applied.`);
       return;
@@ -199,7 +209,7 @@ export function SettingsCustomFormatsPage() {
     setBusyKey(`bundle:${bundle.id}`);
     setLibrarySelections((prev) => {
       const next = new Map(prev);
-      for (const { cf, score } of missing) next.set(cf.trashId, score);
+      for (const { cf, score } of missing) next.set(customFormatSelectionKey(targetMediaType, cf.trashId), score);
       return next;
     });
 
@@ -213,7 +223,7 @@ export function SettingsCustomFormatsPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name: cf.name,
-            mediaType: bundle.mediaType === "tv" ? "tv" : "movies",
+            mediaType: targetMediaType,
             score,
             trashId: cf.trashId,
             conditions,
@@ -228,7 +238,7 @@ export function SettingsCustomFormatsPage() {
     } catch (error) {
       setLibrarySelections((prev) => {
         const next = new Map(prev);
-        for (const { cf } of missing) next.delete(cf.trashId);
+        for (const { cf } of missing) next.delete(customFormatSelectionKey(targetMediaType, cf.trashId));
         return next;
       });
       toast.error(error instanceof Error ? error.message : "Preset could not be applied.");
@@ -238,13 +248,17 @@ export function SettingsCustomFormatsPage() {
   }
 
   function handleLibraryRemove(trashId: string) {
-    const cf = customFormats.find((c) => c.trashId === trashId);
+    const cf = customFormats.find((c) => c.trashId === trashId && c.mediaType === libraryMediaType);
     if (cf) void handleDelete(cf.id, trashId);
-    else setLibrarySelections((prev) => { const m = new Map(prev); m.delete(trashId); return m; });
+    else setLibrarySelections((prev) => {
+      const m = new Map(prev);
+      m.delete(customFormatSelectionKey(libraryMediaType, trashId));
+      return m;
+    });
   }
 
   function handleLibraryScoreChange(trashId: string, score: number) {
-    setLibrarySelections((prev) => new Map(prev).set(trashId, score));
+    setLibrarySelections((prev) => new Map(prev).set(customFormatSelectionKey(libraryMediaType, trashId), score));
   }
 
   /* ── User CF handlers ── */
@@ -254,7 +268,12 @@ export function SettingsCustomFormatsPage() {
       const res = await authedFetch(`/api/custom-formats/${id}`, { method: "DELETE" });
       if (!res.ok && res.status !== 204) throw new Error("Could not remove format.");
       if (trashId) {
-        setLibrarySelections((prev) => { const m = new Map(prev); m.delete(trashId); return m; });
+        setLibrarySelections((prev) => {
+          const m = new Map(prev);
+          m.delete(customFormatSelectionKey("movies", trashId));
+          m.delete(customFormatSelectionKey("tv", trashId));
+          return m;
+        });
       }
       toast.success("Custom format removed");
       revalidator.revalidate();
@@ -289,8 +308,9 @@ export function SettingsCustomFormatsPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: draft.name,
-        mediaType: "movies",
+        mediaType: draft.mediaType,
         score: 100,
+        trashId: null,
         conditions,
         upgradeAllowed: true,
       }),
@@ -338,12 +358,19 @@ export function SettingsCustomFormatsPage() {
 
       {/* ── Library tab ── */}
       {tab === "library" && (
-        <CFLibraryBrowser
-          selections={librarySelections}
-          onAdd={handleLibraryAdd}
-          onRemove={handleLibraryRemove}
-          onScoreChange={handleLibraryScoreChange}
-        />
+        <div className="space-y-4">
+          <MediaTypePills
+            value={libraryMediaType}
+            onChange={(value) => setLibraryMediaType(value as "movies" | "tv")}
+            description="Choose which library type these built-in formats should be created for."
+          />
+          <CFLibraryBrowser
+            selections={visibleLibrarySelections}
+            onAdd={handleLibraryAdd}
+            onRemove={handleLibraryRemove}
+            onScoreChange={handleLibraryScoreChange}
+          />
+        </div>
       )}
 
       {/* ── My formats tab ── */}
@@ -443,6 +470,7 @@ export function SettingsCustomFormatsPage() {
 /* ── Dry-run panel ───────────────────────────────────────────────── */
 function DryRunPanel({ formats }: { formats: CustomFormatItem[] }) {
   const [releaseName, setReleaseName] = useState("");
+  const [mediaType, setMediaType] = useState<"all" | "movies" | "tv">("all");
   const [results, setResults] = useState<DryRunResult[] | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -453,7 +481,7 @@ function DryRunPanel({ formats }: { formats: CustomFormatItem[] }) {
       const data = await fetchJson<DryRunResult[]>("/api/custom-formats/dry-run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ releaseName: releaseName.trim() }),
+        body: JSON.stringify({ releaseName: releaseName.trim(), mediaType: mediaType === "all" ? null : mediaType }),
       });
       setResults(data);
     } catch {
@@ -471,6 +499,16 @@ function DryRunPanel({ formats }: { formats: CustomFormatItem[] }) {
       {/* Input */}
       <div className="rounded-2xl border border-hairline bg-surface-1 p-5">
         <p className="mb-2 text-[12px] font-semibold uppercase tracking-widest text-muted-foreground">Release name</p>
+        <MediaTypePills
+          value={mediaType}
+          onChange={(value) => setMediaType(value as "all" | "movies" | "tv")}
+          options={[
+            { value: "all", label: "All formats" },
+            { value: "movies", label: "Movies" },
+            { value: "tv", label: "TV" }
+          ]}
+          description="Limit the dry-run to movie formats, TV formats, or both."
+        />
         <div className="flex gap-3">
           <input
             type="text"
@@ -514,6 +552,7 @@ function DryRunPanel({ formats }: { formats: CustomFormatItem[] }) {
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-primary" />
                     <span className="font-medium text-foreground">{r.formatName}</span>
+                    <FormatMediaTypeBadge mediaType={r.mediaType} />
                     <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 font-mono text-[10px] font-bold text-primary">
                       {r.score > 0 ? "+" : ""}{r.score}
                     </span>
@@ -540,6 +579,7 @@ function DryRunPanel({ formats }: { formats: CustomFormatItem[] }) {
                 <div key={r.formatId} className="rounded-2xl border border-hairline bg-surface-1 p-3">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-muted-foreground">{r.formatName}</span>
+                    <FormatMediaTypeBadge mediaType={r.mediaType} />
                     <span className="rounded-full border border-hairline px-2 py-0.5 font-mono text-[10px] text-muted-foreground">{r.score > 0 ? "+" : ""}{r.score}</span>
                   </div>
                   {r.missedConditions.length > 0 && (
@@ -558,6 +598,56 @@ function DryRunPanel({ formats }: { formats: CustomFormatItem[] }) {
         </div>
       )}
     </div>
+  );
+}
+
+function customFormatSelectionKey(mediaType: string, trashId: string): string {
+  return `${mediaType}:${trashId}`;
+}
+
+function MediaTypePills({
+  value,
+  onChange,
+  description,
+  options = [
+    { value: "movies", label: "Movies" },
+    { value: "tv", label: "TV" }
+  ]
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  description?: string;
+  options?: Array<{ value: string; label: string }>;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-2">
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onChange(option.value)}
+            className={cn(
+              "rounded-full border px-3 py-1.5 text-[11.5px] font-medium transition-all",
+              value === option.value
+                ? "border-primary/40 bg-primary/10 text-foreground"
+                : "border-hairline text-muted-foreground hover:border-primary/20"
+            )}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      {description ? <p className="text-[12px] text-muted-foreground">{description}</p> : null}
+    </div>
+  );
+}
+
+function FormatMediaTypeBadge({ mediaType }: { mediaType: string }) {
+  return (
+    <span className="rounded-full border border-hairline px-2 py-0.5 text-[9.5px] font-semibold uppercase tracking-wide text-muted-foreground">
+      {mediaType === "tv" ? "TV" : "Movies"}
+    </span>
   );
 }
 
@@ -595,7 +685,8 @@ function PresetBundles({
           const resolved = bundle.includes
             .map((entry) => findBundledCF(entry.trashId))
             .filter((cf): cf is BundledCF => Boolean(cf));
-          const appliedCount = resolved.filter((cf) => selections.has(cf.trashId)).length;
+          const bundleMediaType = bundle.mediaType === "tv" ? "tv" : "movies";
+          const appliedCount = resolved.filter((cf) => selections.has(customFormatSelectionKey(bundleMediaType, cf.trashId))).length;
           const totalCount = resolved.length;
           const isComplete = totalCount > 0 && appliedCount === totalCount;
           const isBusy = busyKey === `bundle:${bundle.id}`;

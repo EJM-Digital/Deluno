@@ -581,6 +581,61 @@ public sealed class SqliteSeriesCatalogRepository(
             Episodes: episodes);
     }
 
+    public async Task<IReadOnlyList<SeriesUpcomingEpisodeItem>> ListUpcomingEpisodesAsync(
+        DateTimeOffset fromUtc,
+        DateTimeOffset toUtc,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        var items = new List<SeriesUpcomingEpisodeItem>();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT
+                s.id,
+                s.title,
+                s.start_year,
+                s.poster_url,
+                e.id,
+                e.season_number,
+                e.episode_number,
+                e.title,
+                e.air_date_utc
+            FROM episode_entries e
+            INNER JOIN series_entries s ON s.id = e.series_id
+            WHERE e.air_date_utc IS NOT NULL
+              AND e.monitored = 1
+              AND e.air_date_utc >= @fromUtc
+              AND e.air_date_utc <= @toUtc
+            ORDER BY e.air_date_utc ASC, s.title COLLATE NOCASE ASC, e.season_number ASC, e.episode_number ASC
+            LIMIT @take;
+            """;
+        AddParameter(command, "@fromUtc", fromUtc.ToString("O"));
+        AddParameter(command, "@toUtc", toUtc.ToString("O"));
+        AddParameter(command, "@take", take);
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            items.Add(new SeriesUpcomingEpisodeItem(
+                SeriesId: reader.GetString(0),
+                Title: reader.GetString(1),
+                StartYear: reader.IsDBNull(2) ? null : reader.GetInt32(2),
+                PosterUrl: reader.IsDBNull(3) ? null : reader.GetString(3),
+                EpisodeId: reader.GetString(4),
+                SeasonNumber: reader.GetInt32(5),
+                EpisodeNumber: reader.GetInt32(6),
+                EpisodeTitle: reader.IsDBNull(7) ? null : reader.GetString(7),
+                AirDateUtc: ParseTimestamp(reader.GetString(8))));
+        }
+
+        return items;
+    }
+
     public async Task<IReadOnlyList<SeriesSearchHistoryItem>> ListSearchHistoryAsync(CancellationToken cancellationToken)
     {
         var items = new List<SeriesSearchHistoryItem>();
