@@ -119,6 +119,7 @@ jobs:
         run: dotnet tool install -g vpk --version 0.0.1298
 
       - name: Enforce signing configuration
+        if: ${{ !startsWith(steps.version.outputs.version, '0.') }}
         shell: pwsh
         run: |
           if ([string]::IsNullOrWhiteSpace("${{ secrets.WINDOWS_SIGN_CERT_BASE64 }}")) {
@@ -131,6 +132,7 @@ jobs:
           }
 
       - name: Prepare code signing certificate
+        if: ${{ secrets.WINDOWS_SIGN_CERT_BASE64 != '' && secrets.WINDOWS_SIGN_CERT_PASSWORD != '' }}
         shell: pwsh
         run: |
           $bytes = [Convert]::FromBase64String("${{ secrets.WINDOWS_SIGN_CERT_BASE64 }}")
@@ -139,6 +141,7 @@ jobs:
           "CERT_PATH=$path" >> $env:GITHUB_ENV
 
       - name: Sign tray executable
+        if: ${{ env.CERT_PATH != '' }}
         shell: pwsh
         run: |
           signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com /f "$env:CERT_PATH" /p "${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}" artifacts/windows/bin/Deluno.exe
@@ -170,6 +173,7 @@ jobs:
             --outputDir artifacts/windows/velopack
 
       - name: Sign installer outputs
+        if: ${{ env.CERT_PATH != '' }}
         shell: pwsh
         run: |
           Get-ChildItem artifacts/windows/velopack -Filter "*Setup*.exe" | ForEach-Object {
@@ -187,6 +191,7 @@ jobs:
           if (-not $releaseJson) { Write-Error "Missing releases.<channel>.json output."; exit 1 }
 
       - name: Verify signatures
+        if: ${{ env.CERT_PATH != '' }}
         shell: pwsh
         run: |
           $files = @("artifacts/windows/bin/Deluno.exe")
