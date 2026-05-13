@@ -97,6 +97,30 @@ Movies and TV are hard-separated at the module level — they share no business 
 
 ---
 
+## Development and operations docs
+
+### Local dev helpers
+
+- `npm run dev:local` starts or reuses the backend on `http://127.0.0.1:5099` and the Vite frontend on `http://127.0.0.1:5173`
+- it writes status to `.deluno/boot-health.json` and logs under `.deluno/logs/`
+- for frontend-only work, run the backend first and then use `npm run dev --workspace apps/web`
+
+### Repository maps
+
+- [docs/README.md](docs/README.md)
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- [docs/repo-change-history.md](docs/repo-change-history.md)
+- [docs/QUALITY_SCORE.md](docs/QUALITY_SCORE.md)
+- [docs/exec-plans/tech-debt-tracker.md](docs/exec-plans/tech-debt-tracker.md)
+
+### Runtime guides
+
+- [docs/packaging.md](docs/packaging.md)
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
+
+---
+
 ## Repo layout
 
 ```
@@ -128,7 +152,6 @@ For small fixes, just open a PR. For bigger changes, open an issue first so we c
 ## A note on how this was built
 
 Every line of code in this repo was written by an AI (primarily Claude) based on my descriptions, feedback, and direction. I provided the product vision, the UX requirements, the bug reports, and the "this doesn't feel right" moments. Claude provided the implementation.
-
 I have deep respect for software engineers. Building something like this from scratch, from memory, is a skill I don't have and probably never will. But the tooling has reached a point where someone like me — opinionated, persistent, and clear about what I want — can direct the creation of something genuinely useful. That's remarkable, and I don't take it for granted.
 
 To the developers whose open-source media tools inspired this: thank you. The ideas came from watching you do it right.
