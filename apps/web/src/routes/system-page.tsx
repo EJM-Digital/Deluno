@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLoaderData, useLocation, useRevalidator } from "react-router-dom";
 import {
   Activity,
@@ -35,6 +35,8 @@ import {
   type RestorePreviewResponse,
   type SearchCycleRunItem,
   type SearchRetryWindowItem,
+  type UpdateActionResponse,
+  type UpdatePreferencesResponse,
   type UpdateStatusResponse
 } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
@@ -202,7 +204,7 @@ export function SystemPage() {
 
   if (location.pathname.startsWith("/system/updates")) {
     return (
-      <SystemShell title="Updates" description="Signed release checks and upgrade readiness.">
+      <SystemShell title="Updates" description="Version status, update preferences, and restart workflow.">
         <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
           <UpgradeCard status={updateStatus} />
           <div className="space-y-[var(--page-gap)]">
@@ -484,7 +486,7 @@ function OperationsFlowCard() {
         {[
           ["A", "Backup", "Create a fresh app backup before risky changes."],
           ["B", "Restore", "Use restore only when rolling back or migrating."],
-          ["C", "Upgrade", "Check signed release status, then upgrade with a backup first."]
+          ["C", "Upgrade", "Check updates, download in-app, and restart when ready after backup."]
         ].map(([step, title, copy]) => (
           <div key={step} className="flex gap-3 rounded-xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.7)]">
             <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-xs font-bold text-primary">
@@ -758,43 +760,166 @@ function BackupCard({
 
 function UpgradeCard({ status }: { status: UpdateStatusResponse }) {
   const [current, setCurrent] = useState(status);
-  const [busy, setBusy] = useState(false);
+  const [preferences, setPreferences] = useState<UpdatePreferencesResponse | null>(null);
+  const [busyAction, setBusyAction] = useState<"check" | "download" | "prepare" | "restart" | "prefs" | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
 
-  async function checkForUpdates() {
-    setBusy(true);
+  async function refreshStatus() {
+    const next = await fetchJson<UpdateStatusResponse>("/api/updates/status");
+    setCurrent(next);
+  }
+
+  async function loadPreferences() {
+    const next = await fetchJson<UpdatePreferencesResponse>("/api/updates/preferences");
+    setPreferences(next);
+  }
+
+  async function runAction(action: "check" | "download" | "prepare" | "restart") {
+    setBusyAction(action);
+    setMessage(null);
     try {
-      const next = await fetchJson<UpdateStatusResponse>("/api/updates/check", { method: "POST" });
-      setCurrent(next);
+      const path =
+        action === "check"
+          ? "/api/updates/check"
+          : action === "download"
+            ? "/api/updates/download"
+            : action === "prepare"
+              ? "/api/updates/apply-on-restart"
+              : "/api/updates/restart-now";
+      const result = await fetchJson<UpdateActionResponse>(path, { method: "POST" });
+      setCurrent(result.status);
+      setMessage(result.message);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Update action failed.");
+      await refreshStatus();
     } finally {
-      setBusy(false);
+      setBusyAction(null);
     }
   }
+
+  async function savePreferences(next: UpdatePreferencesResponse) {
+    setBusyAction("prefs");
+    setMessage(null);
+    try {
+      const saved = await fetchJson<UpdatePreferencesResponse>("/api/updates/preferences", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(savedPreferencePayload(next))
+      });
+      setPreferences(saved);
+      setMessage("Update preferences saved.");
+      await refreshStatus();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not save preferences.");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  useEffect(() => {
+    if (preferences === null) {
+      void loadPreferences();
+    }
+  }, [preferences]);
+
+  const isDocker = current.installKind === "docker";
+  const canControl = current.canCheck && current.isInstalled && !isDocker;
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <RotateCcw className="h-4 w-4 text-primary" />
-          Upgrade readiness
+          Updates
         </CardTitle>
-        <CardDescription>Deluno will only offer in-app upgrades from a signed release feed.</CardDescription>
+        <CardDescription>Version, channel, update behavior, and restart flow.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
+        {message ? (
+          <p className="rounded-xl border border-hairline bg-surface-1 px-3 py-2 text-sm text-muted-foreground">{message}</p>
+        ) : null}
         <HealthRow label="Current version" status={current.currentVersion} />
-        <HealthRow label="Update channel" status={current.channel} />
+        <HealthRow label="Latest version" status={current.latestVersion ?? "No pending release"} />
+        <HealthRow label="Channel" status={current.channel} />
+        <HealthRow label="Install kind" status={current.installKind} />
+        <HealthRow label="State" status={current.state} />
         <p className="text-sm leading-relaxed text-muted-foreground">{current.message}</p>
+        {current.progressPercent !== null ? (
+          <p className="text-xs text-muted-foreground">Download progress: {current.progressPercent}%</p>
+        ) : null}
+
+        {preferences ? (
+          <div className="rounded-xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.7)] space-y-3">
+            <p className="text-sm font-semibold text-foreground">Update behavior</p>
+            <select
+              value={preferences.mode}
+              onChange={(event) => setPreferences((currentValue) => currentValue ? { ...currentValue, mode: event.target.value } : currentValue)}
+              className="density-control-text h-[var(--control-height-sm)] w-full rounded-[10px] border border-hairline bg-surface-2 px-3 text-foreground outline-none"
+              disabled={busyAction === "prefs"}
+            >
+              <option value="notify-only">Notify only</option>
+              <option value="download-background">Download in background</option>
+              <option value="download-apply-on-restart">Download and apply on next restart</option>
+            </select>
+            <label className="flex items-center gap-2 text-sm text-foreground">
+              <input
+                type="checkbox"
+                checked={preferences.autoCheck}
+                onChange={(event) => setPreferences((currentValue) => currentValue ? { ...currentValue, autoCheck: event.target.checked } : currentValue)}
+                disabled={busyAction === "prefs"}
+              />
+              Check for updates automatically
+            </label>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={busyAction === "prefs"}
+              onClick={() => void savePreferences(preferences)}
+            >
+              {busyAction === "prefs" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+              Save preferences
+            </Button>
+          </div>
+        ) : null}
+
+        {canControl ? (
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" disabled={busyAction !== null} onClick={() => void runAction("check")}>
+              {busyAction === "check" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+              Check now
+            </Button>
+            <Button type="button" variant="outline" disabled={busyAction !== null} onClick={() => void runAction("download")}>
+              {busyAction === "download" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              Download update
+            </Button>
+            <Button type="button" variant="outline" disabled={busyAction !== null} onClick={() => void runAction("prepare")}>
+              {busyAction === "prepare" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <TimerReset className="h-4 w-4" />}
+              Apply on restart
+            </Button>
+            <Button type="button" disabled={busyAction !== null || !current.restartRequired} onClick={() => void runAction("restart")}>
+              {busyAction === "restart" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+              Restart and apply
+            </Button>
+          </div>
+        ) : null}
+
         {current.notes.map((note) => (
           <p key={note} className="rounded-xl border border-hairline bg-surface-1 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
             {note}
           </p>
         ))}
-        <Button type="button" variant="outline" onClick={() => void checkForUpdates()} disabled={busy}>
-          {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
-          Check for updates
-        </Button>
       </CardContent>
     </Card>
   );
+}
+
+function savedPreferencePayload(preferences: UpdatePreferencesResponse) {
+  return {
+    mode: preferences.mode,
+    channel: preferences.channel,
+    autoCheck: preferences.autoCheck
+  };
 }
 
 function HealthRow({ label, status }: { label: string; status: string }) {

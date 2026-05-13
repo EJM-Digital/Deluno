@@ -6,7 +6,7 @@ This guide focuses on issues users are likely to hit with the deployment paths t
 
 - Docker
 - Docker Compose
-- Windows self-contained publish
+- Windows Velopack installer and in-app updates
 - local dev host runs
 
 ## First Checks
@@ -94,6 +94,13 @@ volumes:
 
 Deluno stores databases and protection keys under the configured data root.
 
+### Issue: Docker Update Buttons Are Missing
+
+Expected behavior:
+
+- Docker installs do not offer in-place binary apply controls.
+- Update by pulling a newer image tag and recreating the container.
+
 ### Issue: Download Client Webhooks Never Arrive
 
 Checks:
@@ -104,16 +111,14 @@ Checks:
 
 ## Windows
 
-### Issue: The Published App Starts But Nothing Loads
+### Issue: Deluno Starts But Nothing Loads
 
-Run the published executable from a terminal first so you can see startup errors directly.
+For installed Windows builds, verify Deluno is running from the tray and listening on the expected local port.
 
 Recommended launch:
 
 ```powershell
-$env:Storage__DataRoot = "C:\ProgramData\Deluno"
-$env:ASPNETCORE_URLS = "http://127.0.0.1:5099"
-.\artifacts\publish\win-x64\Deluno.Host.exe
+curl http://127.0.0.1:5099/health
 ```
 
 Then open:
@@ -125,7 +130,7 @@ http://127.0.0.1:5099
 If it still fails:
 
 - check whether another app already uses that port
-- try a different port in `ASPNETCORE_URLS`
+- restart Deluno from the tray menu
 - verify the data root is writable
 
 ### Issue: Deluno Cannot Save Data
@@ -137,8 +142,32 @@ Cause:
 
 Fix:
 
-- use a writable persistent folder such as `C:\ProgramData\Deluno`
+- use a writable persistent folder such as `%LocalAppData%\DelunoData`
 - do not use `Program Files` as the live data root
+
+### Issue: In-App Update Is Not Available
+
+Checks:
+
+- open `System > Updates` and confirm `Install kind` is `windows-packaged`
+- if install kind is `manual`, reinstall Deluno using the latest setup executable from GitHub Releases
+- ensure network access to GitHub release assets
+
+### Issue: Update Downloaded But Not Applied
+
+Checks:
+
+- in `System > Updates`, review `State` and `Restart required`
+- use `Restart and apply` when an update is staged
+- if apply is blocked, resolve backup path/permission errors first, then retry
+
+### Issue: Update Failed And Rolled Back
+
+Checks:
+
+- relaunch Deluno and confirm active version in `System > Updates`
+- verify the latest backup in `System > Backups`
+- retry update after confirming network and disk space health
 
 ### Issue: Libraries Or Downloads Are Not Found On Windows
 

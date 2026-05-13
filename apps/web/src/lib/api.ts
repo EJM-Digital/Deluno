@@ -926,11 +926,35 @@ export interface RestorePreviewResponse {
 
 export interface UpdateStatusResponse {
   currentVersion: string;
+  installKind: string;
+  behaviorMode: string;
+  isInstalled: boolean;
+  canCheck: boolean;
+  canDownload: boolean;
+  canApply: boolean;
   channel: string;
   updateAvailable: boolean;
   latestVersion: string | null;
+  state: string;
+  progressPercent: number | null;
+  restartRequired: boolean;
+  lastCheckedUtc: string | null;
+  lastDownloadedUtc: string | null;
   message: string;
+  lastError: string | null;
   notes: string[];
+}
+
+export interface UpdatePreferencesResponse {
+  mode: string;
+  channel: string;
+  autoCheck: boolean;
+}
+
+export interface UpdateActionResponse {
+  accepted: boolean;
+  message: string;
+  status: UpdateStatusResponse;
 }
 
 export interface DownloadDispatchItem {

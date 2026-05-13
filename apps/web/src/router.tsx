@@ -157,8 +157,8 @@ export const router = createBrowserRouter([
           {
             path: "upgrades",
             lazy: withSkeleton(async () => {
-              const module = await import("./routes/movies-wanted-page");
-              return { loader: module.moviesWantedLoader, Component: module.MoviesWantedPage };
+              const module = await import("./routes/movies-upgrades-page");
+              return { loader: module.moviesUpgradesLoader, Component: module.MoviesUpgradesPage };
             })
           },
           {
@@ -206,8 +206,8 @@ export const router = createBrowserRouter([
           {
             path: "upgrades",
             lazy: withSkeleton(async () => {
-              const module = await import("./routes/tv-wanted-page");
-              return { loader: module.tvWantedLoader, Component: module.TvWantedPage };
+              const module = await import("./routes/tv-upgrades-page");
+              return { loader: module.tvUpgradesLoader, Component: module.TvUpgradesPage };
             })
           },
           {

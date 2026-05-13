@@ -46,19 +46,3 @@ public sealed record RestoreResultResponse(
     string Message,
     string RestoreFolder,
     IReadOnlyList<string> RestoredFiles);
-
-public sealed record UpdateStatusResponse(
-    string CurrentVersion,
-    string Channel,
-    bool UpdateAvailable,
-    string? LatestVersion,
-    string Message,
-    IReadOnlyList<string> Notes);
-
-public sealed record UpdateFeedManifest(
-    string Version,
-    string Channel,
-    string? DownloadUrl,
-    string? Signature,
-    string? Sha256,
-    IReadOnlyList<string>? Notes);

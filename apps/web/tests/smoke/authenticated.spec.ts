@@ -55,7 +55,9 @@ test.describe("authenticated app smoke", () => {
   for (const path of [
     "/",
     "/movies",
+    "/movies/upgrades",
     "/tv",
+    "/tv/upgrades",
     "/calendar",
     "/indexers",
     "/activity",

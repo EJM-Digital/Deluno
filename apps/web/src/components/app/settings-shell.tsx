@@ -62,7 +62,7 @@ const systemNavItems = [
   { to: "/system/api", label: "API", end: false, tip: "Generate and revoke API keys for integrations and automation" },
   { to: "/system/docs", label: "Guide", end: false, tip: "Plain-English workflow guide for setup, routing, scoring, imports, and integrations" },
   { to: "/system/backups", label: "Backups", end: false, tip: "Manual backups, automatic schedule, restore preview, and downloads" },
-  { to: "/system/updates", label: "Updates", end: false, tip: "Version status, signed release checks, and upgrade readiness" }
+  { to: "/system/updates", label: "Updates", end: false, tip: "Version status, update mode, download progress, and restart flow" }
 ] as const;
 
 const settingsPageMeta = [
@@ -168,7 +168,7 @@ const systemPageMeta = [
   {
     match: (path: string) => path.startsWith("/system/updates"),
     title: "Updates",
-    description: "Version status, release channel, signed update checks, and upgrade readiness."
+    description: "Version status, update channel, behavior mode, download progress, and restart guidance."
   }
 ] as const;
 

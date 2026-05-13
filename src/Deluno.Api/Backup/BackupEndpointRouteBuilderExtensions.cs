@@ -1,10 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
-using System.Reflection;
-using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
-using Microsoft.Extensions.Configuration;
+using Deluno.Api.Updates;
 
 namespace Deluno.Api.Backup;
 
@@ -86,118 +84,80 @@ public static class BackupEndpointRouteBuilderExtensions
 
         var update = endpoints.MapGroup("/api/updates");
 
-        update.MapGet("/status", (IConfiguration configuration) =>
+        update.MapGet("/status", async (
+            IUpdateOrchestrator orchestrator,
+            CancellationToken cancellationToken) =>
         {
-            var currentVersion = Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "0.0.0";
-            var feedUrl = configuration["Deluno:Updates:FeedUrl"]
-                ?? Environment.GetEnvironmentVariable("DELUNO_UPDATE_FEED_URL");
-            var channel = configuration["Deluno:Updates:Channel"]
-                ?? Environment.GetEnvironmentVariable("DELUNO_UPDATE_CHANNEL")
-                ?? "stable";
+            var status = await orchestrator.GetStatusAsync(cancellationToken);
+            return Results.Ok(status);
+        });
 
-            return Results.Ok(new UpdateStatusResponse(
-                CurrentVersion: currentVersion,
-                Channel: string.IsNullOrWhiteSpace(feedUrl) ? "manual" : channel,
-                UpdateAvailable: false,
-                LatestVersion: null,
-                Message: string.IsNullOrWhiteSpace(feedUrl)
-                    ? "In-app update checks are ready, but no signed release feed is configured."
-                    : "A signed release feed is configured. Use check for updates to compare against the latest release manifest.",
-                Notes:
-                [
-                    "Updates must be signed before Deluno should offer one-click install.",
-                    "A backup should be created automatically before any future upgrade is applied.",
-                    "Docker installs should surface image/tag guidance instead of replacing binaries in-place."
-                ]));
+        update.MapGet("/preferences", async (
+            IUpdateOrchestrator orchestrator,
+            CancellationToken cancellationToken) =>
+        {
+            var preferences = await orchestrator.GetPreferencesAsync(cancellationToken);
+            return Results.Ok(preferences);
+        });
+
+        update.MapPut("/preferences", async (
+            [FromBody] UpdatePreferencesRequest request,
+            IUpdateOrchestrator orchestrator,
+            CancellationToken cancellationToken) =>
+        {
+            var preferences = await orchestrator.SavePreferencesAsync(request, cancellationToken);
+            return Results.Ok(preferences);
         });
 
         update.MapPost("/check", async (
-            IConfiguration configuration,
-            IHttpClientFactory httpClientFactory,
+            IUpdateOrchestrator orchestrator,
             CancellationToken cancellationToken) =>
         {
-            var currentVersion = Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "0.0.0";
-            var feedUrl = configuration["Deluno:Updates:FeedUrl"]
-                ?? Environment.GetEnvironmentVariable("DELUNO_UPDATE_FEED_URL");
-            var channel = configuration["Deluno:Updates:Channel"]
-                ?? Environment.GetEnvironmentVariable("DELUNO_UPDATE_CHANNEL")
-                ?? "stable";
+            var status = await orchestrator.CheckForUpdatesAsync(cancellationToken);
+            return Results.Ok(new UpdateActionResponse(true, "Checked for updates.", status));
+        });
 
-            if (string.IsNullOrWhiteSpace(feedUrl))
-            {
-                return Results.Ok(new UpdateStatusResponse(
-                    CurrentVersion: currentVersion,
-                    Channel: "manual",
-                    UpdateAvailable: false,
-                    LatestVersion: null,
-                    Message: "No signed update feed is configured yet.",
-                    Notes:
-                    [
-                        "Set Deluno:Updates:FeedUrl or DELUNO_UPDATE_FEED_URL when release infrastructure exists.",
-                        "Deluno will not download or apply updates until the manifest includes signature and checksum data."
-                    ]));
-            }
+        update.MapPost("/download", async (
+            IUpdateOrchestrator orchestrator,
+            CancellationToken cancellationToken) =>
+        {
+            var status = await orchestrator.DownloadUpdatesAsync(cancellationToken);
+            return Results.Ok(new UpdateActionResponse(true, "Download request completed.", status));
+        });
 
+        update.MapPost("/apply-on-restart", async (
+            IUpdateOrchestrator orchestrator,
+            CancellationToken cancellationToken) =>
+        {
+            var status = await orchestrator.PrepareApplyOnNextRestartAsync(cancellationToken);
+            return Results.Ok(new UpdateActionResponse(true, "Update is prepared for restart.", status));
+        });
+
+        update.MapPost("/restart-now", async (
+            IDelunoBackupService backupService,
+            IUpdateOrchestrator orchestrator,
+            CancellationToken cancellationToken) =>
+        {
             try
             {
-                using var client = httpClientFactory.CreateClient();
-                client.Timeout = TimeSpan.FromSeconds(8);
-                await using var stream = await client.GetStreamAsync(feedUrl, cancellationToken);
-                var manifest = await JsonSerializer.DeserializeAsync<UpdateFeedManifest>(
-                    stream,
-                    new JsonSerializerOptions(JsonSerializerDefaults.Web),
-                    cancellationToken);
-
-                if (manifest is null || string.IsNullOrWhiteSpace(manifest.Version))
-                {
-                    return Results.Ok(new UpdateStatusResponse(
-                        CurrentVersion: currentVersion,
-                        Channel: channel,
-                        UpdateAvailable: false,
-                        LatestVersion: null,
-                        Message: "The update feed responded, but the release manifest was invalid.",
-                        Notes: ["Expected version, channel, checksum, and signature fields."]));
-                }
-
-                var isSigned = !string.IsNullOrWhiteSpace(manifest.Signature)
-                    && !string.IsNullOrWhiteSpace(manifest.Sha256)
-                    && !string.IsNullOrWhiteSpace(manifest.DownloadUrl);
-                var updateAvailable = IsVersionNewer(manifest.Version, currentVersion) && isSigned;
-                var notes = new List<string>(manifest.Notes ?? []);
-                if (!isSigned)
-                {
-                    notes.Add("Release manifest is missing download URL, SHA-256 checksum, or signature; update is informational only.");
-                }
-
-                return Results.Ok(new UpdateStatusResponse(
-                    CurrentVersion: currentVersion,
-                    Channel: manifest.Channel,
-                    UpdateAvailable: updateAvailable,
-                    LatestVersion: manifest.Version,
-                    Message: updateAvailable
-                        ? $"Version {manifest.Version} is available. Create a backup before applying it."
-                        : $"Deluno is current for the {manifest.Channel} channel, or the feed is not fully signed.",
-                    Notes: notes));
+                await backupService.CreateBackupAsync("pre-update", cancellationToken);
             }
             catch (Exception ex)
             {
-                return Results.Ok(new UpdateStatusResponse(
-                    CurrentVersion: currentVersion,
-                    Channel: channel,
-                    UpdateAvailable: false,
-                    LatestVersion: null,
-                    Message: "Could not check the update feed.",
-                    Notes: [ex.Message]));
+                var blocked = await orchestrator.GetStatusAsync(cancellationToken);
+                return Results.Ok(new UpdateActionResponse(
+                    Accepted: false,
+                    Message: $"Backup failed and restart was blocked: {ex.Message}",
+                    Status: blocked));
             }
+
+            var status = await orchestrator.ApplyAndRestartNowAsync(cancellationToken);
+            return Results.Ok(new UpdateActionResponse(
+                Accepted: true,
+                Message: "Backup completed. Restarting to apply update.",
+                Status: status));
         });
 
         return endpoints;
-    }
-
-    private static bool IsVersionNewer(string candidate, string current)
-    {
-        return Version.TryParse(candidate, out var candidateVersion)
-            && Version.TryParse(current, out var currentVersion)
-            && candidateVersion > currentVersion;
     }
 }

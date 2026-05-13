@@ -1,5 +1,6 @@
 using Deluno.Api;
 using Deluno.Api.Backup;
+using Deluno.Api.Updates;
 using Deluno.Filesystem;
 using Deluno.Infrastructure;
 using Deluno.Infrastructure.Observability;
@@ -39,6 +40,8 @@ public sealed class DelunoServer : IDisposable
         builder.Configuration["Storage:DataRoot"] = settings.DataRoot;
         builder.Configuration["Kestrel:EndPoints:Http:Url"] = $"http://+:{settings.Port}";
 
+        builder.Services.AddSingleton<IUpdateOrchestrator, VelopackUpdateOrchestrator>();
+        builder.Services.AddHostedService<TrayUpdateBackgroundService>();
         builder.Services.AddDelunoInfrastructure(builder.Configuration);
         builder.Services.AddDelunoApi();
         builder.Services.AddDelunoPlatformModule();

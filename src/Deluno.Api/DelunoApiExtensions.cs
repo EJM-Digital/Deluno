@@ -2,11 +2,13 @@ using Deluno.Contracts.Manifest;
 using Deluno.Api.Backup;
 using Deluno.Api.Downloads;
 using Deluno.Api.Health;
+using Deluno.Api.Updates;
 using Deluno.Infrastructure.Storage;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 
 namespace Deluno.Api;
@@ -20,6 +22,7 @@ public static class DelunoApiExtensions
         services.AddSingleton<IDelunoBackupService>(sp => sp.GetRequiredService<DelunoBackupService>());
         services.AddHostedService(sp => sp.GetRequiredService<DelunoBackupService>());
         services.AddSingleton<IDelunoReadinessService, DelunoReadinessService>();
+        services.TryAddSingleton<IUpdateOrchestrator, DefaultUpdateOrchestrator>();
         return services;
     }
 
