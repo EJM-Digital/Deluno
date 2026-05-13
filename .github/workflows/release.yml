@@ -186,12 +186,15 @@ jobs:
       - name: Verify required Velopack outputs
         shell: pwsh
         run: |
+          $isPreOne = "${{ steps.version.outputs.version }}".StartsWith("0.")
           $setup = Get-ChildItem artifacts/windows/velopack -Filter "*Setup*.exe" -ErrorAction SilentlyContinue
-          $full = Get-ChildItem artifacts/windows/velopack -Filter "*.full.nupkg" -ErrorAction SilentlyContinue
+          $full = Get-ChildItem artifacts/windows/velopack -Filter "*full.nupkg" -ErrorAction SilentlyContinue
           $releaseJson = Get-ChildItem artifacts/windows/velopack -Filter "releases.*.json" -ErrorAction SilentlyContinue
           if (-not $setup) { Write-Error "Missing setup executable output."; exit 1 }
-          if (-not $full) { Write-Error "Missing full nupkg output."; exit 1 }
-          if (-not $releaseJson) { Write-Error "Missing releases.<channel>.json output."; exit 1 }
+          if (-not $isPreOne) {
+            if (-not $full) { Write-Error "Missing full nupkg output."; exit 1 }
+            if (-not $releaseJson) { Write-Error "Missing releases.<channel>.json output."; exit 1 }
+          }
 
       - name: Verify signatures
         if: ${{ env.CERT_PATH != '' }}
@@ -247,10 +250,14 @@ jobs:
 
       - name: Validate release assets
         run: |
+          PRE_ONE=false
+          if [[ "${{ steps.version.outputs.version }}" == 0.* ]]; then PRE_ONE=true; fi
           ls -lah release-assets
           test -n "$(ls -1 release-assets/*Setup*.exe 2>/dev/null)" || { echo "Missing setup executable"; exit 1; }
-          test -n "$(ls -1 release-assets/*.full.nupkg 2>/dev/null)" || { echo "Missing full package"; exit 1; }
-          test -n "$(ls -1 release-assets/releases.*.json 2>/dev/null)" || { echo "Missing release index"; exit 1; }
+          if [[ "$PRE_ONE" != "true" ]]; then
+            test -n "$(ls -1 release-assets/*full.nupkg 2>/dev/null)" || { echo "Missing full package"; exit 1; }
+            test -n "$(ls -1 release-assets/releases.*.json 2>/dev/null)" || { echo "Missing release index"; exit 1; }
+          fi
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
