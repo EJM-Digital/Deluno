@@ -250,7 +250,7 @@ jobs:
           tag_name: ${{ steps.version.outputs.tag }}
           name: Deluno ${{ steps.version.outputs.tag }}
           draft: false
-          prerelease: ${{ contains(steps.version.outputs.tag, '-') }}
+          prerelease: ${{ startsWith(steps.version.outputs.version, '0.') || contains(steps.version.outputs.tag, '-') }}
           body: |
             ## Deluno ${{ steps.version.outputs.tag }}
 

@@ -57,6 +57,11 @@ npm install
 npm run dev
 ```
 
+## Versioning policy
+
+- `0.x.x` tags are treated as pre-1.0 releases.
+- Stable `1.x.x` starts once product confidence is production-ready.
+
 ## Repository maps and docs
 
 - [AGENTS.md](/C:/Users/User/Projects/Deluno/AGENTS.md)
