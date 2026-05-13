@@ -18,6 +18,7 @@ src/Deluno.Host/data/
 .playwright-data/
 .deluno/
 .claire/
+.claude/
 .claude/worktrees/
 apps/web/test-results/
 apps/web/playwright-report/
