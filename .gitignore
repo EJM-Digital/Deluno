@@ -16,5 +16,8 @@ src/Deluno.Host/data/
 .codex-logs/
 .codex-visual-qa/
 .playwright-data/
+.deluno/
+.claire/
+.claude/worktrees/
 apps/web/test-results/
 apps/web/playwright-report/
