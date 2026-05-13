@@ -132,9 +132,12 @@ jobs:
           }
 
       - name: Prepare code signing certificate
-        if: ${{ secrets.WINDOWS_SIGN_CERT_BASE64 != '' && secrets.WINDOWS_SIGN_CERT_PASSWORD != '' }}
         shell: pwsh
         run: |
+          if ([string]::IsNullOrWhiteSpace("${{ secrets.WINDOWS_SIGN_CERT_BASE64 }}") -or [string]::IsNullOrWhiteSpace("${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}")) {
+            Write-Host "Signing secrets not configured; continuing without certificate for this run."
+            exit 0
+          }
           $bytes = [Convert]::FromBase64String("${{ secrets.WINDOWS_SIGN_CERT_BASE64 }}")
           $path = "$env:RUNNER_TEMP\\codesign.pfx"
           [IO.File]::WriteAllBytes($path, $bytes)
