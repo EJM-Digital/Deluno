@@ -5,16 +5,19 @@ import {
   CircleOff,
   Eye,
   Filter,
+  FolderTree,
   LayoutTemplate,
   LayoutGrid,
   List,
   LoaderCircle,
   Play,
   Plus,
+  Redo2,
   Search,
   ShieldCheck,
   SlidersHorizontal,
   Star,
+  Undo2,
   Zap,
 } from "lucide-react";
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -25,9 +28,11 @@ import {
   fetchJson,
   readValidationProblem,
   type CreateLibraryViewRequest,
+  type LibraryItem,
   type LibraryViewItem,
   type MetadataProviderStatus,
-  type MetadataSearchResult
+  type MetadataSearchResult,
+  type QualityProfileItem
 } from "../../lib/api";
 import { useDensity, type Density } from "../../lib/use-density";
 import { authedFetch } from "../../lib/use-auth";
@@ -142,6 +147,30 @@ interface DisplayOptions {
   showStatusPill: boolean;
   showQualityBadge: boolean;
   showRating: boolean;
+}
+
+type BulkWorkflowOperation =
+  | "monitoring"
+  | "quality"
+  | "reassignLibrary"
+  | "tags"
+  | "search"
+  | "renamePreview";
+
+interface BulkRenamePreviewItem {
+  itemId: string;
+  title: string;
+  year: number | null;
+  template: string;
+  proposedName: string;
+}
+
+interface BulkHistoryEntry {
+  label: string;
+  undoLabel: string;
+  redoLabel: string;
+  undo: () => Promise<void>;
+  redo: () => Promise<void>;
 }
 
 const SIZE_STORAGE_KEY = (v: Variant) => `deluno-card-size-${v}`;
@@ -399,6 +428,21 @@ export function LibraryView({
   }
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
+  const [isBulkToolsOpen, setIsBulkToolsOpen] = useState(false);
+  const [bulkOperation, setBulkOperation] = useState<BulkWorkflowOperation>("monitoring");
+  const [bulkMonitored, setBulkMonitored] = useState(true);
+  const [bulkQualityProfileId, setBulkQualityProfileId] = useState("");
+  const [bulkTargetLibraryId, setBulkTargetLibraryId] = useState("");
+  const [bulkTagsInput, setBulkTagsInput] = useState("");
+  const [bulkRenameTemplate, setBulkRenameTemplate] = useState("");
+  const [bulkRenamePreview, setBulkRenamePreview] = useState<BulkRenamePreviewItem[]>([]);
+  const [bulkConfirming, setBulkConfirming] = useState(false);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  const [bulkLibraries, setBulkLibraries] = useState<LibraryItem[]>([]);
+  const [bulkQualityProfiles, setBulkQualityProfiles] = useState<QualityProfileItem[]>([]);
+  const [bulkOptionsLoading, setBulkOptionsLoading] = useState(false);
+  const [undoStack, setUndoStack] = useState<BulkHistoryEntry[]>([]);
+  const [redoStack, setRedoStack] = useState<BulkHistoryEntry[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [createForm, setCreateForm] = useState(() => createInitialForm());
@@ -422,6 +466,55 @@ export function LibraryView({
     setSortDirection("asc");
     setDisplayOptions(resolveInitialDisplayOptions(variant));
   }, [variant]);
+
+  useEffect(() => {
+    if (!isBulkToolsOpen) {
+      return;
+    }
+
+    let cancelled = false;
+    setBulkOptionsLoading(true);
+    setBulkError(null);
+
+    Promise.all([
+      fetchJson<LibraryItem[]>("/api/libraries"),
+      fetchJson<QualityProfileItem[]>("/api/quality-profiles")
+    ])
+      .then(([libraries, profiles]) => {
+        if (cancelled) {
+          return;
+        }
+
+        const mediaType = variant === "movies" ? "movies" : "tv";
+        const filteredLibraries = libraries.filter((item) =>
+          item.mediaType.toLowerCase() === mediaType
+        );
+        const filteredProfiles = profiles.filter((item) =>
+          item.mediaType.toLowerCase() === mediaType
+        );
+
+        setBulkLibraries(filteredLibraries);
+        setBulkQualityProfiles(filteredProfiles);
+        setBulkTargetLibraryId((current) =>
+          current || filteredLibraries[0]?.id || ""
+        );
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          const message = error instanceof Error ? error.message : "Could not load bulk operation options.";
+          setBulkError(message);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setBulkOptionsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isBulkToolsOpen, variant]);
 
   useEffect(() => {
     let cancelled = false;
@@ -553,6 +646,130 @@ export function LibraryView({
   const label = variant === "movies" ? "movies" : "TV shows";
   const singular = variant === "movies" ? "movie" : "TV show";
 
+  async function applyMonitoring(ids: string[], monitored: boolean) {
+    const response = await authedFetch(
+      variant === "movies" ? "/api/movies/monitoring" : "/api/series/monitoring",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          variant === "movies"
+            ? { movieIds: ids, monitored }
+            : { seriesIds: ids, monitored }
+        )
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error("bulk-monitoring-failed");
+    }
+  }
+
+  async function applyQualityProfile(ids: string[], qualityProfileId: string) {
+    const endpoint = variant === "movies"
+      ? "/api/movies/bulk/quality-profile"
+      : "/api/series/bulk/quality-profile";
+
+    const response = await authedFetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        variant === "movies"
+          ? { movieIds: ids, qualityProfileId }
+          : { seriesIds: ids, qualityProfileId }
+      )
+    });
+
+    if (!response.ok) {
+      throw new Error("bulk-quality-failed");
+    }
+  }
+
+  async function applyTags(ids: string[], tags: string[]) {
+    const endpoint = variant === "movies"
+      ? "/api/movies/bulk/tags"
+      : "/api/series/bulk/tags";
+
+    const response = await authedFetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        variant === "movies"
+          ? { movieIds: ids, tags: tags.join(", ") }
+          : { seriesIds: ids, tags: tags.join(", ") }
+      )
+    });
+
+    if (!response.ok) {
+      throw new Error("bulk-tags-failed");
+    }
+  }
+
+  async function applyReassignLibrary(ids: string[], fromLibraryId: string, toLibraryId: string) {
+    const endpoint = variant === "movies"
+      ? "/api/movies/bulk/reassign-library"
+      : "/api/series/bulk/reassign-library";
+
+    const response = await authedFetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        variant === "movies"
+          ? { movieIds: ids, fromLibraryId, toLibraryId }
+          : { seriesIds: ids, fromLibraryId, toLibraryId }
+      )
+    });
+
+    if (!response.ok) {
+      throw new Error("bulk-reassign-failed");
+    }
+  }
+
+  async function applySearchNow(ids: string[]) {
+    const endpoint = variant === "movies" ? "/api/movies/bulk/search" : "/api/series/bulk/search";
+    const response = await authedFetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(variant === "movies" ? { movieIds: ids } : { seriesIds: ids })
+    });
+
+    if (!response.ok) {
+      throw new Error("bulk-search-failed");
+    }
+  }
+
+  async function loadQualityProfileByIdMap(ids: string[]): Promise<Map<string, string | null>> {
+    const endpointRoot = variant === "movies" ? "/api/movies" : "/api/series";
+    const entries = await Promise.all(
+      ids.map(async (id) => {
+        const response = await authedFetch(`${endpointRoot}/${id}`);
+        if (!response.ok) {
+          return [id, null] as const;
+        }
+
+        const detail = await response.json() as { qualityProfileId?: string | null };
+        return [id, detail.qualityProfileId ?? null] as const;
+      })
+    );
+
+    return new Map(entries);
+  }
+
+  function normalizeBulkTags(rawTags: string): string[] {
+    return rawTags
+      .split(/[,\n;]/g)
+      .map((tag) => tag.trim())
+      .filter((tag) => tag.length > 0)
+      .filter((tag, index, arr) =>
+        arr.findIndex((candidate) => candidate.toLowerCase() === tag.toLowerCase()) === index
+      );
+  }
+
+  function pushHistory(entry: BulkHistoryEntry) {
+    setUndoStack((current) => [...current, entry]);
+    setRedoStack([]);
+  }
+
   async function handleBulkMonitoring(monitored: boolean) {
     if (!selectedIds.length) return;
     setIsBulkUpdating(true);
@@ -614,21 +831,299 @@ export function LibraryView({
       `Searching ${selectedItems.length} title${selectedItems.length === 1 ? "" : "s"}…`
     );
     try {
-      await Promise.all(
-        selectedItems.map(async (item) => {
-          const response = await authedFetch(
-            item.type === "movie" ? `/api/movies/${item.id}/search` : `/api/series/${item.id}/search`,
-            { method: "POST" }
-          );
-          if (!response.ok) throw new Error("bulk-search-failed");
-        })
-      );
+      await applySearchNow(selectedIds);
       toast.success(
         `Manual search dispatched for ${selectedItems.length} title${selectedItems.length === 1 ? "" : "s"}`,
         { id: loadingId }
       );
+      setSelectedIds([]);
     } catch {
       toast.error("Bulk search could not be completed.", { id: loadingId });
+    } finally {
+      setIsBulkUpdating(false);
+    }
+  }
+
+  async function runUndo() {
+    const entry = undoStack[undoStack.length - 1];
+    if (!entry || isBulkUpdating) {
+      return;
+    }
+
+    setIsBulkUpdating(true);
+    try {
+      await entry.undo();
+      setUndoStack((current) => current.slice(0, -1));
+      setRedoStack((current) => [...current, entry]);
+      toast.success(entry.undoLabel);
+    } catch {
+      toast.error("Undo failed.");
+    } finally {
+      setIsBulkUpdating(false);
+    }
+  }
+
+  async function runRedo() {
+    const entry = redoStack[redoStack.length - 1];
+    if (!entry || isBulkUpdating) {
+      return;
+    }
+
+    setIsBulkUpdating(true);
+    try {
+      await entry.redo();
+      setRedoStack((current) => current.slice(0, -1));
+      setUndoStack((current) => [...current, entry]);
+      toast.success(entry.redoLabel);
+    } catch {
+      toast.error("Redo failed.");
+    } finally {
+      setIsBulkUpdating(false);
+    }
+  }
+
+  function openBulkTools(operation: BulkWorkflowOperation = "monitoring", monitored = true) {
+    if (selectedIds.length === 0) {
+      toast.info("Select at least one title first.");
+      return;
+    }
+
+    setBulkOperation(operation);
+    setBulkMonitored(monitored);
+    setBulkConfirming(false);
+    setBulkError(null);
+    setBulkRenamePreview([]);
+    setIsBulkToolsOpen(true);
+  }
+
+  async function executeBulkToolsOperation() {
+    if (selectedIds.length === 0) {
+      setBulkError("Select at least one title.");
+      return;
+    }
+
+    if (!bulkConfirming && bulkOperation !== "renamePreview") {
+      setBulkConfirming(true);
+      return;
+    }
+
+    setBulkError(null);
+    const selectedItems = libraryItems.filter((item) => selectedIds.includes(item.id));
+
+    try {
+      setIsBulkUpdating(true);
+      if (bulkOperation === "monitoring") {
+        const previousTrue = selectedItems.filter((item) => item.monitored).map((item) => item.id);
+        const previousFalse = selectedItems.filter((item) => !item.monitored).map((item) => item.id);
+        const label = bulkMonitored ? "Monitor selected titles" : "Unmonitor selected titles";
+
+        await applyMonitoring(selectedIds, bulkMonitored);
+        setLibraryItems((current) =>
+          current.map((item) => selectedIds.includes(item.id) ? { ...item, monitored: bulkMonitored } : item)
+        );
+        pushHistory({
+          label,
+          undoLabel: "Monitoring change reverted",
+          redoLabel: "Monitoring change re-applied",
+          undo: async () => {
+            if (previousTrue.length > 0) {
+              await applyMonitoring(previousTrue, true);
+            }
+            if (previousFalse.length > 0) {
+              await applyMonitoring(previousFalse, false);
+            }
+            setLibraryItems((current) =>
+              current.map((item) =>
+                previousTrue.includes(item.id) ? { ...item, monitored: true }
+                : previousFalse.includes(item.id) ? { ...item, monitored: false }
+                : item
+              )
+            );
+          },
+          redo: async () => {
+            await applyMonitoring(selectedIds, bulkMonitored);
+            setLibraryItems((current) =>
+              current.map((item) => selectedIds.includes(item.id) ? { ...item, monitored: bulkMonitored } : item)
+            );
+          }
+        });
+        toast.success(label);
+      }
+      else if (bulkOperation === "quality") {
+        if (!bulkQualityProfileId.trim()) {
+          setBulkError("Choose a quality profile first.");
+          return;
+        }
+
+        const previousProfiles = await loadQualityProfileByIdMap(selectedIds);
+        await applyQualityProfile(selectedIds, bulkQualityProfileId.trim());
+        const profileName = bulkQualityProfiles.find((item) => item.id === bulkQualityProfileId)?.name ?? bulkQualityProfileId;
+        setLibraryItems((current) =>
+          current.map((item) =>
+            selectedIds.includes(item.id) ? { ...item, qualityProfile: profileName } : item
+          )
+        );
+
+        pushHistory({
+          label: "Apply quality profile",
+          undoLabel: "Quality profile change reverted",
+          redoLabel: "Quality profile change re-applied",
+          undo: async () => {
+            const groups = new Map<string, string[]>();
+            previousProfiles.forEach((value, id) => {
+              if (!value) return;
+              const current = groups.get(value) ?? [];
+              current.push(id);
+              groups.set(value, current);
+            });
+            for (const [profileId, ids] of groups) {
+              await applyQualityProfile(ids, profileId);
+            }
+          },
+          redo: async () => {
+            await applyQualityProfile(selectedIds, bulkQualityProfileId.trim());
+          }
+        });
+        toast.success("Quality profile updated.");
+      }
+      else if (bulkOperation === "reassignLibrary") {
+        if (!bulkTargetLibraryId.trim()) {
+          setBulkError("Choose a destination library first.");
+          return;
+        }
+
+        const previousByLibrary = new Map<string, string[]>();
+        selectedItems.forEach((item) => {
+          if (!item.libraryId) return;
+          const current = previousByLibrary.get(item.libraryId) ?? [];
+          current.push(item.id);
+          previousByLibrary.set(item.libraryId, current);
+        });
+
+        for (const [fromLibraryId, ids] of previousByLibrary) {
+          if (fromLibraryId === bulkTargetLibraryId) {
+            continue;
+          }
+          await applyReassignLibrary(ids, fromLibraryId, bulkTargetLibraryId);
+        }
+
+        setLibraryItems((current) =>
+          current.map((item) =>
+            selectedIds.includes(item.id) ? { ...item, libraryId: bulkTargetLibraryId } : item
+          )
+        );
+
+        pushHistory({
+          label: "Reassign library",
+          undoLabel: "Library reassignment reverted",
+          redoLabel: "Library reassignment re-applied",
+          undo: async () => {
+            for (const [oldLibraryId, ids] of previousByLibrary) {
+              await applyReassignLibrary(ids, bulkTargetLibraryId, oldLibraryId);
+            }
+            setLibraryItems((current) =>
+              current.map((item) => {
+                for (const [oldLibraryId, ids] of previousByLibrary) {
+                  if (ids.includes(item.id)) {
+                    return { ...item, libraryId: oldLibraryId };
+                  }
+                }
+                return item;
+              })
+            );
+          },
+          redo: async () => {
+            for (const [fromLibraryId, ids] of previousByLibrary) {
+              await applyReassignLibrary(ids, fromLibraryId, bulkTargetLibraryId);
+            }
+            setLibraryItems((current) =>
+              current.map((item) => selectedIds.includes(item.id) ? { ...item, libraryId: bulkTargetLibraryId } : item)
+            );
+          }
+        });
+        toast.success("Library assignment updated.");
+      }
+      else if (bulkOperation === "tags") {
+        const normalizedTags = normalizeBulkTags(bulkTagsInput);
+        const previousTags = new Map(selectedItems.map((item) => [item.id, item.tags ?? []] as const));
+        await applyTags(selectedIds, normalizedTags);
+        setLibraryItems((current) =>
+          current.map((item) =>
+            selectedIds.includes(item.id) ? { ...item, tags: normalizedTags } : item
+          )
+        );
+        pushHistory({
+          label: "Apply tags",
+          undoLabel: "Tags reverted",
+          redoLabel: "Tags re-applied",
+          undo: async () => {
+            const groups = new Map<string, string[]>();
+            previousTags.forEach((tags, id) => {
+              const key = tags.join("||");
+              const current = groups.get(key) ?? [];
+              current.push(id);
+              groups.set(key, current);
+            });
+            for (const [key, ids] of groups) {
+              const tags = key ? key.split("||").filter(Boolean) : [];
+              await applyTags(ids, tags);
+            }
+            setLibraryItems((current) =>
+              current.map((item) =>
+                selectedIds.includes(item.id) ? { ...item, tags: previousTags.get(item.id) ?? [] } : item
+              )
+            );
+          },
+          redo: async () => {
+            await applyTags(selectedIds, normalizedTags);
+            setLibraryItems((current) =>
+              current.map((item) => selectedIds.includes(item.id) ? { ...item, tags: normalizedTags } : item)
+            );
+          }
+        });
+        toast.success("Tags updated.");
+      }
+      else if (bulkOperation === "search") {
+        await applySearchNow(selectedIds);
+        toast.success("Manual search dispatched.");
+      }
+      else if (bulkOperation === "renamePreview") {
+        const endpoint = variant === "movies" ? "/api/movies/bulk/rename-preview" : "/api/series/bulk/rename-preview";
+        const response = await authedFetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            variant === "movies"
+              ? { movieIds: selectedIds, template: bulkRenameTemplate.trim() || undefined }
+              : { seriesIds: selectedIds, template: bulkRenameTemplate.trim() || undefined }
+          )
+        });
+
+        if (!response.ok) {
+          throw new Error("rename-preview-failed");
+        }
+
+        const payload = await response.json() as { previews?: Array<Record<string, unknown>> };
+        const preview = (payload.previews ?? []).map((item) => ({
+          itemId: String(item.movieId ?? item.seriesId ?? ""),
+          title: String(item.title ?? ""),
+          year: item.releaseYear === null || item.startYear === null
+            ? null
+            : Number(item.releaseYear ?? item.startYear ?? 0),
+          template: String(item.template ?? ""),
+          proposedName: String(item.proposedName ?? "")
+        }));
+        setBulkRenamePreview(preview);
+        return;
+      }
+
+      setBulkConfirming(false);
+      setIsBulkToolsOpen(false);
+      setSelectedIds([]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Bulk operation failed.";
+      setBulkError(message);
+      toast.error("Bulk operation failed", { description: message });
     } finally {
       setIsBulkUpdating(false);
     }
@@ -1189,9 +1684,21 @@ export function LibraryView({
               {/* Actions */}
               <div className="flex items-center gap-0.5 px-1.5 py-1.5">
                 <BulkAction
+                  label="Undo"
+                  icon={<Undo2 className="h-3.5 w-3.5" />}
+                  onClick={() => void runUndo()}
+                  disabled={isBulkUpdating || undoStack.length === 0}
+                />
+                <BulkAction
+                  label="Redo"
+                  icon={<Redo2 className="h-3.5 w-3.5" />}
+                  onClick={() => void runRedo()}
+                  disabled={isBulkUpdating || redoStack.length === 0}
+                />
+                <BulkAction
                   label="Monitor"
                   icon={<Eye className="h-3.5 w-3.5" />}
-                  onClick={() => void handleBulkMonitoring(true)}
+                  onClick={() => openBulkTools("monitoring", true)}
                   disabled={isBulkUpdating}
                   loading={isBulkUpdating}
                   variant="primary"
@@ -1199,13 +1706,19 @@ export function LibraryView({
                 <BulkAction
                   label="Search now"
                   icon={<Zap className="h-3.5 w-3.5" />}
-                  onClick={() => void handleBulkSearchNow()}
+                  onClick={() => openBulkTools("search")}
                   disabled={isBulkUpdating}
                 />
                 <BulkAction
                   label="Unmonitor"
                   icon={<CircleOff className="h-3.5 w-3.5" />}
-                  onClick={() => void handleBulkMonitoring(false)}
+                  onClick={() => openBulkTools("monitoring", false)}
+                  disabled={isBulkUpdating}
+                />
+                <BulkAction
+                  label="Bulk tools"
+                  icon={<FolderTree className="h-3.5 w-3.5" />}
+                  onClick={() => openBulkTools("quality")}
                   disabled={isBulkUpdating}
                 />
               </div>
@@ -1289,6 +1802,188 @@ export function LibraryView({
           </GlassTile>
         )}
       </section>
+
+      {isBulkToolsOpen ? (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 px-4 py-6 backdrop-blur-sm">
+          <div className="w-full max-w-2xl space-y-4 rounded-2xl border border-hairline bg-card p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[length:var(--type-caption)] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  Bulk workflow
+                </p>
+                <h3 className="font-display text-xl font-semibold text-foreground">
+                  {selectedIds.length} title{selectedIds.length === 1 ? "" : "s"} selected
+                </h3>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setIsBulkToolsOpen(false);
+                  setBulkConfirming(false);
+                  setBulkError(null);
+                  setBulkRenamePreview([]);
+                }}
+                disabled={isBulkUpdating}
+              >
+                Close
+              </Button>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <BulkField label="Operation" description="Choose the bulk action to run.">
+                <select
+                  value={bulkOperation}
+                  onChange={(event) => {
+                    setBulkOperation(event.target.value as BulkWorkflowOperation);
+                    setBulkConfirming(false);
+                    setBulkError(null);
+                    setBulkRenamePreview([]);
+                  }}
+                  className="density-control-text h-[var(--control-height)] w-full rounded-[10px] border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none"
+                >
+                  <option value="monitoring">Monitor or unmonitor</option>
+                  <option value="quality">Set quality profile</option>
+                  <option value="reassignLibrary">Assign library/root</option>
+                  <option value="tags">Apply tags</option>
+                  <option value="search">Search now</option>
+                  <option value="renamePreview">Rename preview</option>
+                </select>
+              </BulkField>
+
+              {bulkOperation === "monitoring" ? (
+                <BulkField label="Monitoring state" description="Apply monitored or unmonitored to the selection.">
+                  <select
+                    value={bulkMonitored ? "true" : "false"}
+                    onChange={(event) => setBulkMonitored(event.target.value === "true")}
+                    className="density-control-text h-[var(--control-height)] w-full rounded-[10px] border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none"
+                  >
+                    <option value="true">Monitored</option>
+                    <option value="false">Unmonitored</option>
+                  </select>
+                </BulkField>
+              ) : null}
+
+              {bulkOperation === "quality" ? (
+                <BulkField label="Quality profile" description="Set one quality profile for all selected titles.">
+                  <select
+                    value={bulkQualityProfileId}
+                    onChange={(event) => setBulkQualityProfileId(event.target.value)}
+                    className="density-control-text h-[var(--control-height)] w-full rounded-[10px] border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none"
+                  >
+                    <option value="">Choose profile</option>
+                    {bulkQualityProfiles.map((item) => (
+                      <option key={item.id} value={item.id}>{item.name}</option>
+                    ))}
+                  </select>
+                </BulkField>
+              ) : null}
+
+              {bulkOperation === "reassignLibrary" ? (
+                <BulkField label="Destination library" description="Reassign selected titles to a different library/root.">
+                  <select
+                    value={bulkTargetLibraryId}
+                    onChange={(event) => setBulkTargetLibraryId(event.target.value)}
+                    className="density-control-text h-[var(--control-height)] w-full rounded-[10px] border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none"
+                  >
+                    <option value="">Choose library</option>
+                    {bulkLibraries.map((item) => (
+                      <option key={item.id} value={item.id}>{item.name}</option>
+                    ))}
+                  </select>
+                </BulkField>
+              ) : null}
+
+              {bulkOperation === "tags" ? (
+                <BulkField label="Tags" description="Comma-separated tags to apply to all selected titles.">
+                  <Input
+                    value={bulkTagsInput}
+                    onChange={(event) => setBulkTagsInput(event.target.value)}
+                    placeholder="e.g. favorites, weekend, 4k"
+                  />
+                </BulkField>
+              ) : null}
+
+              {bulkOperation === "renamePreview" ? (
+                <BulkField label="Template (optional)" description="Preview generated folder names before rename workflows.">
+                  <Input
+                    value={bulkRenameTemplate}
+                    onChange={(event) => setBulkRenameTemplate(event.target.value)}
+                    placeholder={variant === "movies" ? "{Movie Title} ({Release Year})" : "{Series Title} ({Series Year})"}
+                  />
+                </BulkField>
+              ) : null}
+            </div>
+
+            {bulkConfirming && bulkOperation !== "renamePreview" ? (
+              <div className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                Confirming will run this operation across {selectedIds.length} selected title{selectedIds.length === 1 ? "" : "s"}.
+              </div>
+            ) : null}
+
+            {bulkError ? (
+              <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                {bulkError}
+              </div>
+            ) : null}
+
+            {bulkOperation === "renamePreview" && bulkRenamePreview.length > 0 ? (
+              <div className="max-h-72 overflow-auto rounded-xl border border-hairline bg-surface-1">
+                <table className="min-w-full text-sm">
+                  <thead className="sticky top-0 bg-surface-2 text-left">
+                    <tr>
+                      <th className="px-3 py-2">Title</th>
+                      <th className="px-3 py-2">Proposed name</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bulkRenamePreview.map((item) => (
+                      <tr key={item.itemId} className="border-t border-hairline/70">
+                        <td className="px-3 py-2 text-foreground">{item.title}</td>
+                        <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{item.proposedName}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-xs text-muted-foreground">
+                {bulkOptionsLoading ? "Loading options..." : `Undo stack: ${undoStack.length} · Redo stack: ${redoStack.length}`}
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setIsBulkToolsOpen(false);
+                    setBulkConfirming(false);
+                    setBulkError(null);
+                    setBulkRenamePreview([]);
+                  }}
+                  disabled={isBulkUpdating}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => void executeBulkToolsOperation()}
+                  disabled={isBulkUpdating || bulkOptionsLoading}
+                >
+                  {isBulkUpdating
+                    ? "Running..."
+                    : bulkOperation === "renamePreview"
+                      ? "Run preview"
+                      : bulkConfirming
+                        ? "Confirm and run"
+                        : "Review and continue"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
     </>
   );
@@ -2402,6 +3097,24 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
     <p className="text-[length:var(--type-caption)] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
       {children}
     </p>
+  );
+}
+
+function BulkField({
+  label,
+  description,
+  children
+}: {
+  label: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-medium text-foreground">{label}</p>
+      <p className="text-xs text-muted-foreground">{description}</p>
+      {children}
+    </div>
   );
 }
 

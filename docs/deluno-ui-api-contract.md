@@ -1,6 +1,6 @@
 # Deluno UI API Contract
 
-Updated: 2026-05-13
+Updated: 2026-05-14
 
 ## Purpose
 
@@ -85,9 +85,14 @@ Implemented endpoints:
 - `POST /api/movies/{id}/metadata/jobs`
 - `POST /api/movies/metadata/jobs`
 - `POST /api/movies`
+- `POST /api/movies/bulk`
+- `DELETE /api/movies/bulk`
 - `POST /api/movies/bulk/quality-profile`
 - `POST /api/movies/bulk/tags`
 - `POST /api/movies/bulk/search`
+- `POST /api/movies/bulk/reassign-library`
+- `POST /api/movies/bulk/rename-preview`
+- `GET /api/movies/duplicates`
 
 Current UI contract expectations:
 
@@ -98,7 +103,6 @@ Current UI contract expectations:
 Current gaps:
 
 - no paging, filtering, or sorting query contract is exposed at the route layer yet
-- bulk monitor, bulk root-folder, and bulk rename operations are still not present as dedicated endpoints
 - the library view UI is outgrowing the current list payload shape and will need richer filtering/summary contracts
 
 ## Series
@@ -126,9 +130,13 @@ Implemented endpoints:
 - `POST /api/series/{id}/grab`
 - `POST /api/series/{id}/seasons/{seasonNumber}/search`
 - `POST /api/series`
+- `POST /api/series/bulk`
+- `DELETE /api/series/bulk`
 - `POST /api/series/bulk/quality-profile`
 - `POST /api/series/bulk/tags`
 - `POST /api/series/bulk/search`
+- `POST /api/series/bulk/reassign-library`
+- `POST /api/series/bulk/rename-preview`
 
 Current UI contract expectations:
 
@@ -140,7 +148,7 @@ Current gaps:
 
 - there is still no dedicated `GET /api/series/{id}/episodes` route; episode inventory currently carries that load
 - richer pagination, season filtering, and dedicated upgrade-specific views remain roadmap work
-- bulk season monitoring and bulk rename are not yet exposed as dedicated endpoints
+- bulk rename preview is implemented, but rename-apply remains part of import/organizer workflows instead of an immediate endpoint
 
 ## Metadata Integrations
 

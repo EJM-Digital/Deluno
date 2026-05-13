@@ -1070,6 +1070,47 @@ public static class MoviesEndpointRouteBuilderExtensions
             return Results.Ok(duplicates);
         });
 
+        movies.MapPost("/bulk/quality-profile", async (
+            HttpContext httpContext,
+            [FromBody] BulkQualityProfileRequest request,
+            IMovieCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (request.MovieIds is not { Count: > 0 })
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["movieIds"] = ["Choose at least one movie before updating quality."]
+                });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.QualityProfileId))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["qualityProfileId"] = ["Choose a quality profile before applying changes."]
+                });
+            }
+
+            var updated = 0;
+            foreach (var id in request.MovieIds)
+            {
+                if (await repository.UpdateQualityProfileAsync(id, request.QualityProfileId.Trim(), cancellationToken))
+                {
+                    updated++;
+                }
+            }
+
+            return Results.Ok(new { updated, qualityProfileId = request.QualityProfileId.Trim() });
+        });
+
         movies.MapPost("/bulk/search", async (
             HttpContext httpContext,
             [FromBody] BulkSearchRequest request,
@@ -1187,6 +1228,107 @@ public static class MoviesEndpointRouteBuilderExtensions
             return Results.Ok(new { reassigned = count });
         });
 
+        movies.MapPost("/bulk/tags", async (
+            HttpContext httpContext,
+            [FromBody] BulkTagsRequest request,
+            IMovieCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (request.MovieIds is not { Count: > 0 })
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["movieIds"] = ["Choose at least one movie before applying tags."]
+                });
+            }
+
+            var normalizedTags = NormalizeTags(request.Tags);
+            var updated = 0;
+            foreach (var id in request.MovieIds)
+            {
+                var movie = await repository.GetByIdAsync(id, cancellationToken);
+                if (movie is null)
+                {
+                    continue;
+                }
+
+                var metadata = ParseMetadataDictionary(movie.MetadataJson);
+                metadata["tags"] = normalizedTags;
+                await repository.UpdateMetadataAsync(
+                    movie.Id,
+                    movie.MetadataProvider,
+                    movie.MetadataProviderId,
+                    movie.OriginalTitle,
+                    movie.Overview,
+                    movie.PosterUrl,
+                    movie.BackdropUrl,
+                    movie.Rating,
+                    movie.Genres,
+                    movie.ExternalUrl,
+                    movie.ImdbId,
+                    JsonSerializer.Serialize(metadata),
+                    cancellationToken);
+                updated++;
+            }
+
+            return Results.Ok(new { updated, tags = normalizedTags });
+        });
+
+        movies.MapPost("/bulk/rename-preview", async (
+            HttpContext httpContext,
+            [FromBody] BulkRenamePreviewRequest request,
+            IMovieCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (request.MovieIds is not { Count: > 0 })
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["movieIds"] = ["Choose at least one movie to preview rename output."]
+                });
+            }
+
+            var settings = await platformSettingsRepository.GetAsync(cancellationToken);
+            var template = string.IsNullOrWhiteSpace(request.Template)
+                ? settings.MovieFolderFormat
+                : request.Template.Trim();
+
+            var previews = new List<object>();
+            foreach (var id in request.MovieIds)
+            {
+                var movie = await repository.GetByIdAsync(id, cancellationToken);
+                if (movie is null)
+                {
+                    continue;
+                }
+
+                previews.Add(new
+                {
+                    movieId = movie.Id,
+                    movie.Title,
+                    movie.ReleaseYear,
+                    template,
+                    proposedName = ApplyMovieRenameTemplate(template, movie.Title, movie.ReleaseYear)
+                });
+            }
+
+            return Results.Ok(new { count = previews.Count, previews });
+        });
+
         return endpoints;
     }
 
@@ -1205,6 +1347,68 @@ public static class MoviesEndpointRouteBuilderExtensions
         }
 
         return errors;
+    }
+
+    private static string[] NormalizeTags(string? tags)
+    {
+        if (string.IsNullOrWhiteSpace(tags))
+        {
+            return [];
+        }
+
+        return tags
+            .Split([',', ';', '\n', '\r'], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Where(tag => tag.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static Dictionary<string, object?> ParseMetadataDictionary(string? metadataJson)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson))
+        {
+            return new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<Dictionary<string, object?>>(metadataJson)
+                   ?? new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    private static string ApplyMovieRenameTemplate(string template, string title, int? releaseYear)
+    {
+        var resolved = (template ?? "{Movie Title} ({Release Year})")
+            .Replace("{Movie Title}", title ?? string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("{Title}", title ?? string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("{Release Year}", releaseYear?.ToString() ?? string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("{Year}", releaseYear?.ToString() ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+
+        var cleaned = SanitizePathSegment(resolved).Trim();
+        return string.IsNullOrWhiteSpace(cleaned)
+            ? SanitizePathSegment(title ?? "Untitled")
+            : cleaned;
+    }
+
+    private static string SanitizePathSegment(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "Untitled";
+        }
+
+        var invalid = Path.GetInvalidFileNameChars();
+        var chars = value
+            .Select(ch => invalid.Contains(ch) ? ' ' : ch)
+            .ToArray();
+
+        return string.Join(' ', new string(chars)
+            .Split(' ', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries));
     }
 
     private static Dictionary<string, string[]> ValidateImportRecovery(string? title, string? summary)
@@ -1336,6 +1540,18 @@ public static class MoviesEndpointRouteBuilderExtensions
         IReadOnlyList<string>? MovieIds,
         string? FromLibraryId,
         string? ToLibraryId);
+
+    private sealed record BulkQualityProfileRequest(
+        IReadOnlyList<string>? MovieIds,
+        string? QualityProfileId);
+
+    private sealed record BulkTagsRequest(
+        IReadOnlyList<string>? MovieIds,
+        string? Tags);
+
+    private sealed record BulkRenamePreviewRequest(
+        IReadOnlyList<string>? MovieIds,
+        string? Template);
 
     private sealed record BulkSearchRequest(IReadOnlyList<string>? MovieIds);
 

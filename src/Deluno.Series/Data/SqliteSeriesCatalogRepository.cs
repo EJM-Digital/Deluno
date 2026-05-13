@@ -1711,6 +1711,41 @@ public sealed class SqliteSeriesCatalogRepository(
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
+    public async Task<int> ReassignLibraryAsync(
+        IReadOnlyList<string> seriesIds,
+        string fromLibraryId,
+        string toLibraryId,
+        CancellationToken cancellationToken)
+    {
+        if (seriesIds.Count == 0)
+        {
+            return 0;
+        }
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        var ids = string.Join(",", seriesIds.Select((_, i) => $"@id{i}"));
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            $"""
+            UPDATE series_wanted_state
+            SET library_id = @toLibraryId
+            WHERE library_id = @fromLibraryId
+              AND series_id IN ({ids});
+            """;
+
+        AddParameter(command, "@fromLibraryId", fromLibraryId);
+        AddParameter(command, "@toLibraryId", toLibraryId);
+        for (var i = 0; i < seriesIds.Count; i++)
+        {
+            AddParameter(command, $"@id{i}", seriesIds[i]);
+        }
+
+        return await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<EpisodeSearchEligibilityItem>> ListEligibleWantedEpisodesAsync(
         string libraryId,
         int take,

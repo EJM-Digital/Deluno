@@ -95,4 +95,75 @@ public sealed class SeriesWantedStatePersistenceTests
         Assert.True(item.QualityCutoffMet);
         Assert.Equal("WEB 1080p", item.CurrentQuality);
     }
+
+    [Fact]
+    public async Task ReassignLibraryAsync_moves_selected_series_wanted_rows_between_libraries()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-05-14T00:00:00Z"));
+
+        await new SeriesSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<SeriesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var first = await repository.AddAsync(
+            new CreateSeriesRequest("Andor", 2022, "tt9253284"),
+            CancellationToken.None);
+        var second = await repository.AddAsync(
+            new CreateSeriesRequest("Silo", 2023, "tt14688458"),
+            CancellationToken.None);
+        var untouched = await repository.AddAsync(
+            new CreateSeriesRequest("Shogun", 2024, "tt2788316"),
+            CancellationToken.None);
+
+        await repository.EnsureWantedStateAsync(
+            first.Id,
+            "tv-source",
+            "missing",
+            "Needs first acceptable file.",
+            false,
+            null,
+            "WEB 1080p",
+            false,
+            CancellationToken.None);
+        await repository.EnsureWantedStateAsync(
+            second.Id,
+            "tv-source",
+            "missing",
+            "Needs first acceptable file.",
+            false,
+            null,
+            "WEB 1080p",
+            false,
+            CancellationToken.None);
+        await repository.EnsureWantedStateAsync(
+            untouched.Id,
+            "tv-source",
+            "missing",
+            "Needs first acceptable file.",
+            false,
+            null,
+            "WEB 1080p",
+            false,
+            CancellationToken.None);
+
+        var moved = await repository.ReassignLibraryAsync(
+            [first.Id, second.Id],
+            "tv-source",
+            "tv-target",
+            CancellationToken.None);
+
+        Assert.Equal(2, moved);
+
+        var wanted = await repository.GetWantedSummaryAsync(CancellationToken.None);
+        var firstWanted = wanted.RecentItems.Single(item => item.SeriesId == first.Id);
+        var secondWanted = wanted.RecentItems.Single(item => item.SeriesId == second.Id);
+        var untouchedWanted = wanted.RecentItems.Single(item => item.SeriesId == untouched.Id);
+
+        Assert.Equal("tv-target", firstWanted.LibraryId);
+        Assert.Equal("tv-target", secondWanted.LibraryId);
+        Assert.Equal("tv-source", untouchedWanted.LibraryId);
+    }
 }

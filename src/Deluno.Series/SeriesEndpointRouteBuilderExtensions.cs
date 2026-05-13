@@ -1008,6 +1008,265 @@ public static class SeriesEndpointRouteBuilderExtensions
             return Results.Ok(new BulkSeriesResponse(request.SeriesIds.Count, successCount, failureCount, operation, results));
         });
 
+        series.MapPost("/bulk/quality-profile", async (
+            HttpContext httpContext,
+            [FromBody] BulkQualityProfileRequest request,
+            ISeriesCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (request.SeriesIds is not { Count: > 0 })
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["seriesIds"] = ["Choose at least one series before updating quality."]
+                });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.QualityProfileId))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["qualityProfileId"] = ["Choose a quality profile before applying changes."]
+                });
+            }
+
+            var updated = 0;
+            foreach (var id in request.SeriesIds)
+            {
+                if (await repository.UpdateQualityProfileAsync(id, request.QualityProfileId.Trim(), cancellationToken))
+                {
+                    updated++;
+                }
+            }
+
+            return Results.Ok(new { updated, qualityProfileId = request.QualityProfileId.Trim() });
+        });
+
+        series.MapPost("/bulk/search", async (
+            HttpContext httpContext,
+            [FromBody] BulkSearchRequest request,
+            ISeriesCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
+            IJobQueueRepository jobQueueRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (request.SeriesIds is not { Count: > 0 })
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["seriesIds"] = ["Choose at least one series to search for."]
+                });
+            }
+
+            var wanted = await repository.GetWantedSummaryAsync(cancellationToken);
+            var libraryIds = wanted.RecentItems
+                .Where(item => request.SeriesIds.Contains(item.SeriesId, StringComparer.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(item.LibraryId))
+                .Select(item => item.LibraryId!)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            var libraries = await platformSettingsRepository.ListLibrariesAsync(cancellationToken);
+            var triggered = 0;
+            foreach (var libraryId in libraryIds)
+            {
+                var library = libraries.FirstOrDefault(l => string.Equals(l.Id, libraryId, StringComparison.OrdinalIgnoreCase));
+                if (library is null)
+                {
+                    continue;
+                }
+
+                await jobQueueRepository.RequestLibrarySearchAsync(new LibraryAutomationPlanItem(
+                    LibraryId: library.Id,
+                    LibraryName: library.Name,
+                    MediaType: library.MediaType,
+                    AutoSearchEnabled: library.AutoSearchEnabled,
+                    MissingSearchEnabled: library.MissingSearchEnabled,
+                    UpgradeSearchEnabled: library.UpgradeSearchEnabled,
+                    SearchIntervalHours: library.SearchIntervalHours,
+                    RetryDelayHours: library.RetryDelayHours,
+                    MaxItemsPerRun: library.MaxItemsPerRun,
+                    SearchWindowStartHour: library.SearchWindowStartHour,
+                    SearchWindowEndHour: library.SearchWindowEndHour), cancellationToken);
+                triggered++;
+            }
+
+            return Results.Ok(new { searchesTriggered = triggered, libraryCount = libraryIds.Length });
+        });
+
+        series.MapDelete("/bulk", async (
+            HttpContext httpContext,
+            [FromBody] BulkDeleteSeriesRequest request,
+            ISeriesCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (request.SeriesIds is not { Count: > 0 })
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["seriesIds"] = ["Choose at least one series to remove."]
+                });
+            }
+
+            var removed = await repository.UpdateMonitoredAsync(request.SeriesIds, false, cancellationToken);
+            return Results.Ok(new { unmonitored = removed });
+        });
+
+        series.MapPost("/bulk/reassign-library", async (
+            HttpContext httpContext,
+            [FromBody] BulkReassignLibraryRequest request,
+            ISeriesCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (request.SeriesIds is null || request.SeriesIds.Count == 0)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["seriesIds"] = ["At least one series ID is required."]
+                });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.FromLibraryId) || string.IsNullOrWhiteSpace(request.ToLibraryId))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["libraryId"] = ["Both fromLibraryId and toLibraryId are required."]
+                });
+            }
+
+            var count = await repository.ReassignLibraryAsync(
+                request.SeriesIds, request.FromLibraryId, request.ToLibraryId, cancellationToken);
+
+            return Results.Ok(new { reassigned = count });
+        });
+
+        series.MapPost("/bulk/tags", async (
+            HttpContext httpContext,
+            [FromBody] BulkTagsRequest request,
+            ISeriesCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (request.SeriesIds is not { Count: > 0 })
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["seriesIds"] = ["Choose at least one series before applying tags."]
+                });
+            }
+
+            var normalizedTags = NormalizeTags(request.Tags);
+            var updated = 0;
+            foreach (var id in request.SeriesIds)
+            {
+                var seriesItem = await repository.GetByIdAsync(id, cancellationToken);
+                if (seriesItem is null)
+                {
+                    continue;
+                }
+
+                var metadata = ParseMetadataDictionary(seriesItem.MetadataJson);
+                metadata["tags"] = normalizedTags;
+                await repository.UpdateMetadataAsync(
+                    seriesItem.Id,
+                    seriesItem.MetadataProvider,
+                    seriesItem.MetadataProviderId,
+                    seriesItem.OriginalTitle,
+                    seriesItem.Overview,
+                    seriesItem.PosterUrl,
+                    seriesItem.BackdropUrl,
+                    seriesItem.Rating,
+                    seriesItem.Genres,
+                    seriesItem.ExternalUrl,
+                    seriesItem.ImdbId,
+                    JsonSerializer.Serialize(metadata),
+                    cancellationToken);
+                updated++;
+            }
+
+            return Results.Ok(new { updated, tags = normalizedTags });
+        });
+
+        series.MapPost("/bulk/rename-preview", async (
+            HttpContext httpContext,
+            [FromBody] BulkRenamePreviewRequest request,
+            ISeriesCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (request.SeriesIds is not { Count: > 0 })
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["seriesIds"] = ["Choose at least one series to preview rename output."]
+                });
+            }
+
+            var settings = await platformSettingsRepository.GetAsync(cancellationToken);
+            var template = string.IsNullOrWhiteSpace(request.Template)
+                ? settings.SeriesFolderFormat
+                : request.Template.Trim();
+
+            var previews = new List<object>();
+            foreach (var id in request.SeriesIds)
+            {
+                var seriesItem = await repository.GetByIdAsync(id, cancellationToken);
+                if (seriesItem is null)
+                {
+                    continue;
+                }
+
+                previews.Add(new
+                {
+                    seriesId = seriesItem.Id,
+                    seriesItem.Title,
+                    seriesItem.StartYear,
+                    template,
+                    proposedName = ApplySeriesRenameTemplate(template, seriesItem.Title, seriesItem.StartYear)
+                });
+            }
+
+            return Results.Ok(new { count = previews.Count, previews });
+        });
+
         series.MapPost("/{id}/grab", async (
             string id,
             [FromBody] ReleaseGrabRequest request,
@@ -1663,6 +1922,68 @@ public static class SeriesEndpointRouteBuilderExtensions
         return errors;
     }
 
+    private static string[] NormalizeTags(string? tags)
+    {
+        if (string.IsNullOrWhiteSpace(tags))
+        {
+            return [];
+        }
+
+        return tags
+            .Split([',', ';', '\n', '\r'], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Where(tag => tag.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static Dictionary<string, object?> ParseMetadataDictionary(string? metadataJson)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson))
+        {
+            return new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<Dictionary<string, object?>>(metadataJson)
+                   ?? new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    private static string ApplySeriesRenameTemplate(string template, string title, int? startYear)
+    {
+        var resolved = (template ?? "{Series Title} ({Series Year})")
+            .Replace("{Series Title}", title ?? string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("{Title}", title ?? string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("{Series Year}", startYear?.ToString() ?? string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("{Year}", startYear?.ToString() ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+
+        var cleaned = SanitizePathSegment(resolved).Trim();
+        return string.IsNullOrWhiteSpace(cleaned)
+            ? SanitizePathSegment(title ?? "Untitled")
+            : cleaned;
+    }
+
+    private static string SanitizePathSegment(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "Untitled";
+        }
+
+        var invalid = Path.GetInvalidFileNameChars();
+        var chars = value
+            .Select(ch => invalid.Contains(ch) ? ' ' : ch)
+            .ToArray();
+
+        return string.Join(' ', new string(chars)
+            .Split(' ', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries));
+    }
+
     private static Dictionary<string, string[]> ValidateImportRecovery(string? title, string? summary)
     {
         var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
@@ -1794,4 +2115,25 @@ public static class SeriesEndpointRouteBuilderExtensions
 
     private sealed record UpdateSeriesReplacementProtectionRequest(
         bool PreventLowerQualityReplacements);
+
+    private sealed record BulkQualityProfileRequest(
+        IReadOnlyList<string>? SeriesIds,
+        string? QualityProfileId);
+
+    private sealed record BulkReassignLibraryRequest(
+        IReadOnlyList<string>? SeriesIds,
+        string? FromLibraryId,
+        string? ToLibraryId);
+
+    private sealed record BulkTagsRequest(
+        IReadOnlyList<string>? SeriesIds,
+        string? Tags);
+
+    private sealed record BulkRenamePreviewRequest(
+        IReadOnlyList<string>? SeriesIds,
+        string? Template);
+
+    private sealed record BulkSearchRequest(IReadOnlyList<string>? SeriesIds);
+
+    private sealed record BulkDeleteSeriesRequest(IReadOnlyList<string>? SeriesIds);
 }

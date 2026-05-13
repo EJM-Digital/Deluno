@@ -149,6 +149,13 @@ public interface ISeriesCatalogRepository
     /// <summary>Update quality profile for a series</summary>
     Task<bool> UpdateQualityProfileAsync(string seriesId, string qualityProfileId, CancellationToken cancellationToken);
 
+    /// <summary>Reassign wanted-state library mapping for a batch of series.</summary>
+    Task<int> ReassignLibraryAsync(
+        IReadOnlyList<string> seriesIds,
+        string fromLibraryId,
+        string toLibraryId,
+        CancellationToken cancellationToken);
+
     /// <summary>List episodes eligible for search in a library</summary>
     Task<IReadOnlyList<EpisodeSearchEligibilityItem>> ListEligibleWantedEpisodesAsync(
         string libraryId,
