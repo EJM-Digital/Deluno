@@ -20,6 +20,74 @@ Authorization: Bearer deluno_generated_key_here
 
 Deluno stores only a hash of generated API keys. The raw key is shown once at creation time. Revoking a key takes effect immediately.
 
+## OpenAPI And Interactive Docs
+
+Deluno publishes machine-readable API docs and an interactive Swagger UI:
+
+- `GET /api/openapi/v1.json`
+- `GET /api/docs`
+
+Use `/api/openapi/v1.json` as the contract source for generated clients and integration validation.
+
+## Webhooks
+
+### Download-client inbound webhook
+
+Endpoint:
+
+- `POST /api/download-clients/{clientId}/webhook`
+
+Payload:
+
+```json
+{
+  "event": "completed",
+  "dispatchId": "optional-dispatch-id",
+  "hash": "optional-client-hash",
+  "name": "optional-release-name",
+  "savePath": "optional-final-path",
+  "sizeBytes": 1234567890,
+  "failureReason": "optional-failure-text"
+}
+```
+
+Resolution order for dispatch matching:
+
+1. `dispatchId`
+2. `hash`
+3. `name`
+
+Event normalization:
+
+- completion aliases map to `completed` (`download.completed`, `torrent_completed`, `finished`, etc.)
+- failure aliases map to `failed` (`download.failed`, `torrent_failed`, `error`, etc.)
+
+Idempotency and duplicate handling:
+
+- duplicate completion webhook for an already-detected dispatch is accepted but ignored
+- duplicate failure webhook for a dispatch with final import outcome is accepted but ignored
+- unmatched webhook payloads return a not-found result with a safe message
+
+### Notification outbound webhook
+
+Configured via:
+
+- `GET|POST|PUT|DELETE /api/notification-webhooks`
+- `POST /api/notification-webhooks/{id}/test`
+
+Delivery behavior:
+
+- event filters are prefix-based (`movies`, `series`, `health`) and support `*` for all
+- Discord webhook URLs receive Discord embed payloads
+- other URLs receive a generic JSON payload with event metadata
+- delivery retries are attempted up to three times for transient failures:
+  - attempt 1: immediate
+  - attempt 2: after 2 seconds
+  - attempt 3: after 5 seconds
+- final outcome is recorded on the webhook row:
+  - success updates `last_fired_utc`
+  - failure stores `last_error`
+
 ## Manifest
 
 `GET /api/integrations/external/manifest`

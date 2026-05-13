@@ -43,6 +43,8 @@ Implemented REST endpoints:
 - `GET /api/system/health`
 - `GET /api/system/logs`
 - `GET /api/system/jobs`
+- `GET /api/openapi/v1.json`
+- `GET /api/docs`
 
 Implemented SignalR hub:
 
@@ -273,16 +275,17 @@ Implemented download-client endpoints:
 
 Implemented webhook endpoints:
 
-- `POST /api/download-clients/{clientId}/webhooks/qbittorrent`
-- `POST /api/download-clients/{clientId}/webhooks/sabnzbd`
-- `POST /api/download-clients/{clientId}/webhooks/completion`
-- `POST /api/download-clients/{clientId}/webhooks/failure`
+- `POST /api/download-clients/{clientId}/webhook`
+- `GET|POST|PUT|DELETE /api/notification-webhooks`
+- `POST /api/notification-webhooks/{id}/test`
 
 Current UI contract expectations:
 
 - enable/disable and update flows are already implemented and should not be described as future-only
 - telemetry has both live polling and persisted last-known behavior
 - queue actions and manual direct grab are now part of the integration surface
+- inbound download-client webhook payloads are normalized and idempotent across duplicate completed/failed callbacks
+- outbound notification webhooks support event-filter matching, Discord embed formatting, and bounded retry delivery before recording final error state
 
 Current gaps:
 

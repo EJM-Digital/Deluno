@@ -183,13 +183,17 @@ export function SystemApiPage() {
                 </p>
                 <div className="mt-3 grid gap-2">
                   {[
+                    ["read", "GET", "/api/openapi/v1.json"],
+                    ["read", "GET", "/api/docs"],
                     ["read", "GET", "/api/integrations/external/manifest"],
                     ["read", "GET", "/api/integrations/external/health"],
                     ["read", "GET", "/api/integrations/external/queue"],
                     ["read", "GET", "/api/integrations/external/activity"],
                     ["imports", "POST", "/api/integrations/external/import-preview"],
                     ["imports", "POST", "/api/integrations/processors/events"],
-                    ["queue", "POST", "/api/integrations/external/trigger-refresh"]
+                    ["queue", "POST", "/api/integrations/external/trigger-refresh"],
+                    ["queue", "POST", "/api/download-clients/{clientId}/webhook"],
+                    ["write", "GET|POST|PUT|DELETE", "/api/notification-webhooks"]
                   ].map(([scope, method, path]) => (
                     <div key={`${method}:${path}`} className="grid gap-2 rounded-lg border border-hairline bg-background/35 p-3 sm:grid-cols-[6rem_1fr_6rem] sm:items-center">
                       <span className="font-mono text-[length:var(--type-caption)] font-bold text-primary">{method}</span>

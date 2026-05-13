@@ -17,6 +17,10 @@
     <ProjectReference Include="..\Deluno.Worker\Deluno.Worker.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="9.0.6" />
+  </ItemGroup>
+
   <ItemGroup Condition="Exists('..\..\apps\web\dist')">
     <Content Include="..\..\apps\web\dist\**\*">
       <Link>wwwroot\%(RecursiveDir)%(Filename)%(Extension)</Link>

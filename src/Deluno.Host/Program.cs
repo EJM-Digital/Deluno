@@ -14,6 +14,7 @@ using Deluno.Realtime;
 using Deluno.Series;
 using Deluno.Worker;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 {
@@ -38,6 +39,16 @@ builder.Services.AddDelunoFilesystemModule();
 builder.Services.AddDelunoRealtimeModule();
 builder.Services.AddDelunoWorkerModule();
 builder.Services.AddHostedService<Deluno.Host.ImportRecoveryCleanupService>();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "Deluno API",
+        Version = "v1",
+        Description = "Deluno operational API for local automation, integrations, and UI orchestration."
+    });
+});
 
 var configuredDataRoot = builder.Configuration["Storage:DataRoot"];
 var dataRoot = Path.GetFullPath(
@@ -97,6 +108,8 @@ app.Use(async (context, next) =>
          !path.Equals("/api/auth/login", StringComparison.OrdinalIgnoreCase) &&
          !path.Equals("/api/auth/bootstrap-status", StringComparison.OrdinalIgnoreCase) &&
          !path.Equals("/api/auth/bootstrap", StringComparison.OrdinalIgnoreCase) &&
+         !path.StartsWithSegments("/api/openapi", StringComparison.OrdinalIgnoreCase) &&
+         !path.StartsWithSegments("/api/docs", StringComparison.OrdinalIgnoreCase) &&
          !path.StartsWithSegments("/api/health", StringComparison.OrdinalIgnoreCase)) ||
         path.StartsWithSegments("/hubs", StringComparison.OrdinalIgnoreCase);
 
@@ -122,6 +135,17 @@ app.Use(async (context, next) =>
     }
 
     await next();
+});
+
+app.UseSwagger(options =>
+{
+    options.RouteTemplate = "api/openapi/{documentName}.json";
+});
+app.UseSwaggerUI(options =>
+{
+    options.RoutePrefix = "api/docs";
+    options.SwaggerEndpoint("/api/openapi/v1.json", "Deluno API v1");
+    options.DocumentTitle = "Deluno API docs";
 });
 
 app.MapDelunoApi();

@@ -10,6 +10,8 @@ public sealed class OutboundNotificationService(
     IHttpClientFactory httpClientFactory,
     ILogger<OutboundNotificationService> logger) : IOutboundNotificationService
 {
+    private static readonly TimeSpan[] RetryDelays = [TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5)];
+
     public async Task DispatchAsync(
         string eventCategory,
         string title,
@@ -43,7 +45,7 @@ public sealed class OutboundNotificationService(
             string? error = null;
             try
             {
-                await SendAsync(webhook.Url, eventCategory, title, message, detailsJson, cancellationToken);
+                await SendWithRetryAsync(webhook.Url, eventCategory, title, message, detailsJson, cancellationToken);
             }
             catch (Exception ex)
             {
@@ -104,6 +106,49 @@ public sealed class OutboundNotificationService(
 
         using var response = await client.PostAsJsonAsync(url, payload, cancellationToken);
         response.EnsureSuccessStatusCode();
+    }
+
+    private async Task SendWithRetryAsync(
+        string url,
+        string eventCategory,
+        string title,
+        string message,
+        string? detailsJson,
+        CancellationToken cancellationToken)
+    {
+        Exception? lastError = null;
+
+        for (var attempt = 0; attempt < RetryDelays.Length; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (RetryDelays[attempt] > TimeSpan.Zero)
+            {
+                await Task.Delay(RetryDelays[attempt], cancellationToken);
+            }
+
+            try
+            {
+                await SendAsync(url, eventCategory, title, message, detailsJson, cancellationToken);
+                return;
+            }
+            catch (Exception ex)
+            {
+                lastError = ex;
+
+                if (attempt + 1 < RetryDelays.Length)
+                {
+                    logger.LogWarning(
+                        ex,
+                        "Webhook delivery attempt {Attempt}/{TotalAttempts} failed for {Url}. Retrying.",
+                        attempt + 1,
+                        RetryDelays.Length,
+                        url);
+                }
+            }
+        }
+
+        throw lastError ?? new InvalidOperationException("Webhook delivery failed for unknown reasons.");
     }
 
     private static bool IsMatchingEvent(string eventFilters, string eventCategory)
