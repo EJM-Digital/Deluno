@@ -31,6 +31,7 @@ public sealed class DelunoHeartbeatWorker(
     private readonly string _workerId = $"worker-{Environment.MachineName.ToLowerInvariant()}";
     private DateTimeOffset _lastImportAutomationUtc = DateTimeOffset.MinValue;
     private DateTimeOffset _lastDispatchCleanupUtc = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastMetadataAutomationUtc = DateTimeOffset.MinValue;
     private readonly JobLane[] _lanes =
     [
         new("search", TimeSpan.FromSeconds(5), ["library.search"], PlanAutomation: true),
@@ -125,6 +126,14 @@ public sealed class DelunoHeartbeatWorker(
             {
                 var cleanupService = scope.ServiceProvider.GetRequiredService<IDispatchCleanupService>();
                 await RunDispatchCleanupAsync(cleanupService, timeProvider, stoppingToken);
+                var jobList = await jobQueueRepository.ListAsync(600, stoppingToken);
+                await PlanMetadataRefreshAutomationAsync(
+                    jobScheduler,
+                    movieCatalogRepository,
+                    seriesCatalogRepository,
+                    jobList,
+                    timeProvider,
+                    stoppingToken);
             }
 
             var job = await jobQueueRepository.LeaseNextAsync(
@@ -189,6 +198,75 @@ public sealed class DelunoHeartbeatWorker(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogWarning(ex, "Dispatch cleanup pass failed.");
+        }
+    }
+
+    private async Task PlanMetadataRefreshAutomationAsync(
+        IJobScheduler jobScheduler,
+        IMovieCatalogRepository movieCatalogRepository,
+        ISeriesCatalogRepository seriesCatalogRepository,
+        IReadOnlyList<Deluno.Jobs.Contracts.JobQueueItem> existingJobs,
+        TimeProvider timeProvider,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        if (now - _lastMetadataAutomationUtc < TimeSpan.FromHours(6))
+        {
+            return;
+        }
+
+        _lastMetadataAutomationUtc = now;
+        var staleBefore = now.AddDays(-14);
+
+        var queuedMovieIds = existingJobs
+            .Where(job => job.JobType == "movies.metadata.refresh")
+            .Select(job => job.RelatedEntityId)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var queuedSeriesIds = existingJobs
+            .Where(job => job.JobType == "series.metadata.refresh")
+            .Select(job => job.RelatedEntityId)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var moviesToRefresh = (await movieCatalogRepository.ListAsync(cancellationToken))
+            .Where(item => string.IsNullOrWhiteSpace(item.MetadataProviderId) || item.MetadataUpdatedUtc is null || item.MetadataUpdatedUtc < staleBefore)
+            .Where(item => !queuedMovieIds.Contains(item.Id))
+            .OrderBy(item => item.MetadataUpdatedUtc ?? DateTimeOffset.MinValue)
+            .ThenBy(item => item.Title, StringComparer.OrdinalIgnoreCase)
+            .Take(30)
+            .ToArray();
+
+        foreach (var movie in moviesToRefresh)
+        {
+            await jobScheduler.EnqueueAsync(
+                new EnqueueJobRequest(
+                    JobType: "movies.metadata.refresh",
+                    Source: "metadata",
+                    PayloadJson: JsonSerializer.Serialize(new { movie.Id, movie.Title, movie.ReleaseYear, scheduled = true }),
+                    RelatedEntityType: "movie",
+                    RelatedEntityId: movie.Id),
+                cancellationToken);
+        }
+
+        var seriesToRefresh = (await seriesCatalogRepository.ListAsync(cancellationToken))
+            .Where(item => string.IsNullOrWhiteSpace(item.MetadataProviderId) || item.MetadataUpdatedUtc is null || item.MetadataUpdatedUtc < staleBefore)
+            .Where(item => !queuedSeriesIds.Contains(item.Id))
+            .OrderBy(item => item.MetadataUpdatedUtc ?? DateTimeOffset.MinValue)
+            .ThenBy(item => item.Title, StringComparer.OrdinalIgnoreCase)
+            .Take(30)
+            .ToArray();
+
+        foreach (var series in seriesToRefresh)
+        {
+            await jobScheduler.EnqueueAsync(
+                new EnqueueJobRequest(
+                    JobType: "series.metadata.refresh",
+                    Source: "metadata",
+                    PayloadJson: JsonSerializer.Serialize(new { series.Id, series.Title, series.StartYear, scheduled = true }),
+                    RelatedEntityType: "series",
+                    RelatedEntityId: series.Id),
+                cancellationToken);
         }
     }
 

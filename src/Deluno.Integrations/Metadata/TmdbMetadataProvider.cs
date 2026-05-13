@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Deluno.Infrastructure.Observability;
@@ -8,6 +9,7 @@ using Deluno.Infrastructure.Storage;
 using Deluno.Platform.Data;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Deluno.Integrations.Metadata;
 
@@ -16,6 +18,7 @@ public sealed class TmdbMetadataProvider(
     IConfiguration configuration,
     IPlatformSettingsRepository platformRepository,
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
+    IOptions<StoragePathOptions> storageOptions,
     TimeProvider timeProvider,
     IIntegrationResiliencePolicy resiliencePolicy,
     ILogger<TmdbMetadataProvider> logger)
@@ -24,6 +27,9 @@ public sealed class TmdbMetadataProvider(
     private const string ProviderName = "tmdb";
     private const string BrokerProviderName = "deluno";
     private static readonly JsonSerializerOptions CacheJsonOptions = new(JsonSerializerDefaults.Web);
+    private readonly string _artworkRootPath = Path.Combine(
+        Path.GetFullPath(storageOptions.Value.DataRoot),
+        "artwork-cache");
 
     public async Task<MetadataProviderStatus> GetStatusAsync(CancellationToken cancellationToken)
     {
@@ -101,7 +107,7 @@ public sealed class TmdbMetadataProvider(
         var cached = await TryReadSearchCacheAsync(cacheKey, cancellationToken);
         if (cached is not null)
         {
-            return cached;
+            return await LocalizeArtworkAsync(cached, cancellationToken);
         }
 
         if (config.ProviderMode is "broker" or "hybrid" && !string.IsNullOrWhiteSpace(config.BrokerUrl))
@@ -110,9 +116,10 @@ public sealed class TmdbMetadataProvider(
             var brokerResults = await TryBrokerSearchAsync(config.BrokerUrl, mediaType, request, query, cancellationToken);
             if (brokerResults is { Count: > 0 })
             {
+                var localizedBrokerResults = await LocalizeArtworkAsync(brokerResults, cancellationToken);
                 logger.LogDebug("Broker search returned {ResultCount} results for query: {Query}", brokerResults.Count, query);
-                await WriteSearchCacheAsync(cacheKey, mediaType, query, brokerResults, cancellationToken);
-                return brokerResults;
+                await WriteSearchCacheAsync(cacheKey, mediaType, query, localizedBrokerResults, cancellationToken);
+                return localizedBrokerResults;
             }
 
             if (config.ProviderMode == "broker")
@@ -127,16 +134,32 @@ public sealed class TmdbMetadataProvider(
 
         if (string.IsNullOrWhiteSpace(config.TmdbApiKey))
         {
-            return await TryReadStaleCacheAsync(cacheKey, cancellationToken) ?? [];
+            var omdbFallback = await SearchOmdbFallbackAsync(request, mediaType, query, config.OmdbApiKey, cancellationToken);
+            if (omdbFallback.Count > 0)
+            {
+                await WriteSearchCacheAsync(cacheKey, mediaType, query, omdbFallback, cancellationToken);
+                return omdbFallback;
+            }
+
+            var stale = await TryReadStaleCacheAsync(cacheKey, cancellationToken);
+            return stale is null ? [] : await LocalizeArtworkAsync(stale, cancellationToken);
         }
 
         var live = await SearchDirectAsync(request, config.TmdbApiKey, cacheKey, mediaType, query, cancellationToken);
         if (live.Count > 0)
         {
-            return live;
+            return await LocalizeArtworkAsync(live, cancellationToken);
         }
 
-        return await TryReadStaleCacheAsync(cacheKey, cancellationToken) ?? [];
+        var omdbFallbackAfterTmdb = await SearchOmdbFallbackAsync(request, mediaType, query, config.OmdbApiKey, cancellationToken);
+        if (omdbFallbackAfterTmdb.Count > 0)
+        {
+            await WriteSearchCacheAsync(cacheKey, mediaType, query, omdbFallbackAfterTmdb, cancellationToken);
+            return omdbFallbackAfterTmdb;
+        }
+
+        var staleFallback = await TryReadStaleCacheAsync(cacheKey, cancellationToken);
+        return staleFallback is null ? [] : await LocalizeArtworkAsync(staleFallback, cancellationToken);
     }
 
     public async Task<IReadOnlyList<MetadataSearchResult>> SearchDirectAsync(
@@ -160,7 +183,7 @@ public sealed class TmdbMetadataProvider(
         var cached = await TryReadSearchCacheAsync(cacheKey, cancellationToken);
         if (cached is not null)
         {
-            return cached;
+            return await LocalizeArtworkAsync(cached, cancellationToken);
         }
 
         return await SearchDirectAsync(request, apiKey, cacheKey, mediaType, query, cancellationToken);
@@ -181,7 +204,7 @@ public sealed class TmdbMetadataProvider(
             var exact = await GetDetailsByIdAsync(providerId, mediaType, apiKey, cancellationToken);
             if (exact is not null)
             {
-                var result = new[] { exact };
+                var result = await LocalizeArtworkAsync(new[] { exact }, cancellationToken);
                 await WriteSearchCacheAsync(cacheKey, mediaType, query, result, cancellationToken);
                 return result;
             }
@@ -213,8 +236,277 @@ public sealed class TmdbMetadataProvider(
             results.Add(await ToResultAsync(item, mediaType, apiKey, cancellationToken));
         }
 
-        await WriteSearchCacheAsync(cacheKey, mediaType, query, results, cancellationToken);
-        return results;
+        var localizedResults = await LocalizeArtworkAsync(results, cancellationToken);
+        await WriteSearchCacheAsync(cacheKey, mediaType, query, localizedResults, cancellationToken);
+        return localizedResults;
+    }
+
+    private async Task<IReadOnlyList<MetadataSearchResult>> SearchOmdbFallbackAsync(
+        MetadataLookupRequest request,
+        string mediaType,
+        string query,
+        string? omdbApiKey,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(omdbApiKey))
+        {
+            return [];
+        }
+
+        var type = mediaType == "tv" ? "series" : "movie";
+        var url =
+            $"https://www.omdbapi.com/?apikey={Uri.EscapeDataString(omdbApiKey)}&s={Uri.EscapeDataString(query)}&type={Uri.EscapeDataString(type)}";
+        if (request.Year is > 0)
+        {
+            url += $"&y={request.Year.Value.ToString(CultureInfo.InvariantCulture)}";
+        }
+
+        var response = await GetJsonWithResilienceAsync<OmdbSearchResponse>(
+            url,
+            $"metadata:omdb:search:{mediaType}",
+            "metadata.omdb.search",
+            cancellationToken);
+        if (response is null || string.Equals(response.Response, "False", StringComparison.OrdinalIgnoreCase))
+        {
+            return [];
+        }
+
+        var items = response.Search?
+            .Where(item => !string.IsNullOrWhiteSpace(item.ImdbId) && !string.IsNullOrWhiteSpace(item.Title))
+            .Take(10)
+            .ToArray() ?? [];
+        if (items.Length == 0)
+        {
+            return [];
+        }
+
+        var results = new List<MetadataSearchResult>(items.Length);
+        foreach (var item in items)
+        {
+            var detailUrl =
+                $"https://www.omdbapi.com/?apikey={Uri.EscapeDataString(omdbApiKey)}&i={Uri.EscapeDataString(item.ImdbId!)}&plot=short&r=json";
+            var detail = await GetJsonWithResilienceAsync<OmdbDetailResponse>(
+                detailUrl,
+                "metadata:omdb:detail",
+                "metadata.omdb.detail",
+                cancellationToken);
+
+            var ratings = new List<MetadataRatingItem>();
+            AddRatingIfPresent(
+                ratings,
+                "imdb",
+                "IMDb",
+                ParseFraction(detail?.ImdbRating, 10),
+                10,
+                ParseVotes(detail?.ImdbVotes),
+                BuildImdbUrl(item.ImdbId!),
+                "community");
+
+            foreach (var rating in detail?.Ratings ?? [])
+            {
+                var normalized = NormalizeOmdbSource(rating.Source);
+                if (normalized is null)
+                {
+                    continue;
+                }
+
+                var parsed = ParseOmdbRating(rating.Value);
+                AddRatingIfPresent(
+                    ratings,
+                    normalized.Value.Source,
+                    normalized.Value.Label,
+                    parsed.Score,
+                    parsed.MaxScore,
+                    null,
+                    null,
+                    normalized.Value.Kind);
+            }
+
+            if (int.TryParse(detail?.Metascore, NumberStyles.Integer, CultureInfo.InvariantCulture, out var metascore))
+            {
+                AddRatingIfPresent(ratings, "metacritic", "Metacritic", metascore, 100, null, null, "critic");
+            }
+
+            var fallback = new MetadataSearchResult(
+                Provider: "omdb",
+                ProviderId: item.ImdbId!,
+                MediaType: mediaType,
+                Title: item.Title!,
+                OriginalTitle: item.Title,
+                Year: TryParseYear(item.Year),
+                Overview: detail?.Plot,
+                PosterUrl: NormalizeOmdbPoster(item.Poster),
+                BackdropUrl: null,
+                Rating: ParseFraction(detail?.ImdbRating, 10),
+                Ratings: ratings
+                    .GroupBy(rating => rating.Source, StringComparer.OrdinalIgnoreCase)
+                    .Select(group => group.First())
+                    .ToArray(),
+                Genres: SplitGenres(detail?.Genre),
+                ImdbId: item.ImdbId,
+                ExternalUrl: BuildImdbUrl(item.ImdbId!));
+            results.Add(fallback);
+        }
+
+        return await LocalizeArtworkAsync(results, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<MetadataSearchResult>> LocalizeArtworkAsync(
+        IReadOnlyList<MetadataSearchResult> results,
+        CancellationToken cancellationToken)
+    {
+        if (results.Count == 0)
+        {
+            return results;
+        }
+
+        var localized = new List<MetadataSearchResult>(results.Count);
+        foreach (var result in results)
+        {
+            var poster = await CacheArtworkUrlAsync(result.MediaType, result.PosterUrl, cancellationToken);
+            var backdrop = await CacheArtworkUrlAsync(result.MediaType, result.BackdropUrl, cancellationToken);
+            localized.Add(result with
+            {
+                PosterUrl = poster ?? result.PosterUrl,
+                BackdropUrl = backdrop ?? result.BackdropUrl
+            });
+        }
+
+        return localized;
+    }
+
+    public async Task<string?> CacheArtworkUrlAsync(
+        string mediaType,
+        string? remoteUrl,
+        CancellationToken cancellationToken)
+    {
+        if (!Uri.TryCreate(remoteUrl, UriKind.Absolute, out var remoteUri) ||
+            (remoteUri.Scheme != Uri.UriSchemeHttps && remoteUri.Scheme != Uri.UriSchemeHttp))
+        {
+            return remoteUrl;
+        }
+
+        var cacheKey = ComputeSha256(remoteUri.ToString());
+        var cachedPath = await ReadArtworkLocalPathAsync(cacheKey, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(cachedPath) && File.Exists(cachedPath))
+        {
+            return $"/api/metadata/artwork/{cacheKey}";
+        }
+
+        var extension = ResolveArtworkExtension(remoteUri);
+        Directory.CreateDirectory(_artworkRootPath);
+        var destinationPath = Path.Combine(_artworkRootPath, $"{cacheKey}{extension}");
+
+        try
+        {
+            using var response = await httpClient.GetAsync(remoteUri, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                await UpsertArtworkCacheAsync(cacheKey, mediaType, remoteUri.ToString(), null, cancellationToken);
+                return remoteUrl;
+            }
+
+            await using (var stream = await response.Content.ReadAsStreamAsync(cancellationToken))
+            await using (var output = File.Open(destinationPath, FileMode.Create, FileAccess.Write, FileShare.Read))
+            {
+                await stream.CopyToAsync(output, cancellationToken);
+            }
+
+            await UpsertArtworkCacheAsync(cacheKey, mediaType, remoteUri.ToString(), destinationPath, cancellationToken);
+            return $"/api/metadata/artwork/{cacheKey}";
+        }
+        catch
+        {
+            await UpsertArtworkCacheAsync(cacheKey, mediaType, remoteUri.ToString(), null, cancellationToken);
+            return remoteUrl;
+        }
+    }
+
+    public async Task<MetadataArtworkAsset?> GetCachedArtworkAsync(string cacheKey, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(cacheKey))
+        {
+            return null;
+        }
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Cache,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT local_path
+            FROM artwork_cache
+            WHERE cache_key = @cacheKey
+            LIMIT 1;
+            """;
+        AddParameter(command, "@cacheKey", cacheKey.Trim());
+
+        var localPath = await command.ExecuteScalarAsync(cancellationToken) as string;
+        if (string.IsNullOrWhiteSpace(localPath) || !File.Exists(localPath))
+        {
+            return null;
+        }
+
+        return new MetadataArtworkAsset(
+            localPath,
+            ResolveContentType(localPath));
+    }
+
+    private async Task<string?> ReadArtworkLocalPathAsync(string cacheKey, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Cache,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT local_path
+            FROM artwork_cache
+            WHERE cache_key = @cacheKey
+            LIMIT 1;
+            """;
+        AddParameter(command, "@cacheKey", cacheKey);
+        return await command.ExecuteScalarAsync(cancellationToken) as string;
+    }
+
+    private async Task UpsertArtworkCacheAsync(
+        string cacheKey,
+        string mediaType,
+        string remoteUrl,
+        string? localPath,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Cache,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            INSERT INTO artwork_cache (
+                cache_key, media_type, remote_url, local_path, fetched_utc, expires_utc
+            )
+            VALUES (
+                @cacheKey, @mediaType, @remoteUrl, @localPath, @fetchedUtc, @expiresUtc
+            )
+            ON CONFLICT(cache_key) DO UPDATE SET
+                media_type = excluded.media_type,
+                remote_url = excluded.remote_url,
+                local_path = excluded.local_path,
+                fetched_utc = excluded.fetched_utc,
+                expires_utc = excluded.expires_utc;
+            """;
+        AddParameter(command, "@cacheKey", cacheKey);
+        AddParameter(command, "@mediaType", mediaType);
+        AddParameter(command, "@remoteUrl", remoteUrl);
+        AddParameter(command, "@localPath", localPath);
+        AddParameter(command, "@fetchedUtc", now.ToString("O"));
+        AddParameter(command, "@expiresUtc", now.AddDays(30).ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private async Task<IReadOnlyList<MetadataSearchResult>?> TryReadSearchCacheAsync(
@@ -852,6 +1144,54 @@ public sealed class TmdbMetadataProvider(
             ? parsed.Year
             : null;
 
+    private static IReadOnlyList<string> SplitGenres(string? value)
+        => string.IsNullOrWhiteSpace(value)
+            ? []
+            : value
+                .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+    private static string? NormalizeOmdbPoster(string? poster)
+    {
+        if (string.IsNullOrWhiteSpace(poster) ||
+            string.Equals(poster.Trim(), "N/A", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return poster.Trim();
+    }
+
+    private static string ResolveArtworkExtension(Uri uri)
+    {
+        var extension = Path.GetExtension(uri.AbsolutePath);
+        if (string.IsNullOrWhiteSpace(extension) || extension.Length > 6)
+        {
+            return ".jpg";
+        }
+
+        return extension.ToLowerInvariant();
+    }
+
+    private static string ResolveContentType(string path)
+    {
+        return Path.GetExtension(path).ToLowerInvariant() switch
+        {
+            ".png" => "image/png",
+            ".webp" => "image/webp",
+            ".gif" => "image/gif",
+            ".bmp" => "image/bmp",
+            _ => "image/jpeg"
+        };
+    }
+
+    private static string ComputeSha256(string value)
+    {
+        var bytes = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(value));
+        return Convert.ToHexString(bytes).ToLowerInvariant();
+    }
+
     private sealed record MetadataProviderConfiguration(
         string ProviderMode,
         string? BrokerUrl,
@@ -912,9 +1252,31 @@ public sealed class TmdbMetadataProvider(
         [property: JsonPropertyName("Ratings")] IReadOnlyList<OmdbRating>? Ratings,
         [property: JsonPropertyName("Response")] string? Response);
 
+    private sealed record OmdbSearchResponse(
+        [property: JsonPropertyName("Search")] IReadOnlyList<OmdbSearchItem>? Search,
+        [property: JsonPropertyName("Response")] string? Response);
+
+    private sealed record OmdbSearchItem(
+        [property: JsonPropertyName("Title")] string? Title,
+        [property: JsonPropertyName("Year")] string? Year,
+        [property: JsonPropertyName("imdbID")] string? ImdbId,
+        [property: JsonPropertyName("Poster")] string? Poster);
+
+    private sealed record OmdbDetailResponse(
+        [property: JsonPropertyName("Plot")] string? Plot,
+        [property: JsonPropertyName("Genre")] string? Genre,
+        [property: JsonPropertyName("imdbRating")] string? ImdbRating,
+        [property: JsonPropertyName("imdbVotes")] string? ImdbVotes,
+        [property: JsonPropertyName("Metascore")] string? Metascore,
+        [property: JsonPropertyName("Ratings")] IReadOnlyList<OmdbRating>? Ratings);
+
     private sealed record OmdbRating(
         [property: JsonPropertyName("Source")] string? Source,
         [property: JsonPropertyName("Value")] string? Value);
+
+    public sealed record MetadataArtworkAsset(
+        string FilePath,
+        string ContentType);
 
     private static readonly IReadOnlyDictionary<int, string> MovieGenres = new Dictionary<int, string>
     {

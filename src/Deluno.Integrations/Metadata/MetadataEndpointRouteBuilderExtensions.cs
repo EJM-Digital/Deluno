@@ -98,6 +98,28 @@ public static class MetadataEndpointRouteBuilderExtensions
             return Results.Ok(new { cleared = true, mediaType = mediaType ?? "all" });
         });
 
+        metadata.MapGet("/artwork/{cacheKey}", async (
+            HttpContext httpContext,
+            string cacheKey,
+            TmdbMetadataProvider provider,
+            IPlatformSettingsRepository platformRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformRepository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var item = await provider.GetCachedArtworkAsync(cacheKey, cancellationToken);
+            if (item is null)
+            {
+                return Results.NotFound();
+            }
+
+            return Results.File(item.FilePath, item.ContentType);
+        });
+
         var broker = metadata.MapGroup("/broker");
 
         broker.MapGet("/status", async (

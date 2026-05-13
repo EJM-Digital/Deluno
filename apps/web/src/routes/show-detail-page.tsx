@@ -51,6 +51,17 @@ interface ShowDetailLoaderData {
 
 type EpisodeFilter = "all" | "missing" | "upgrade" | "monitored" | "imported";
 
+interface MetadataOverridePayload {
+  originalTitle: string;
+  overview: string;
+  posterUrl: string;
+  backdropUrl: string;
+  rating: string;
+  genres: string;
+  externalUrl: string;
+  imdbId: string;
+}
+
 export async function showDetailLoader({
   params
 }: {
@@ -85,6 +96,16 @@ export function ShowDetailPage() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [metadataQuery, setMetadataQuery] = useState(series.title);
   const [metadataMatches, setMetadataMatches] = useState<MetadataSearchResult[]>([]);
+  const [metadataOverride, setMetadataOverride] = useState<MetadataOverridePayload>({
+    originalTitle: series.originalTitle ?? "",
+    overview: series.overview ?? "",
+    posterUrl: series.posterUrl ?? "",
+    backdropUrl: series.backdropUrl ?? "",
+    rating: series.rating !== null && series.rating !== undefined ? String(series.rating) : "",
+    genres: series.genres ?? "",
+    externalUrl: series.externalUrl ?? "",
+    imdbId: series.imdbId ?? ""
+  });
   const [releaseCandidates, setReleaseCandidates] = useState<SearchPlanCandidate[]>([]);
   const [episodeFilter, setEpisodeFilter] = useState<EpisodeFilter>("all");
   const [query, setQuery] = useState("");
@@ -291,6 +312,39 @@ export function ShowDetailPage() {
       revalidator.revalidate();
     } catch {
       setActionMessage("Metadata match could not be linked.");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleMetadataOverrideSave() {
+    setBusyAction("metadata-override");
+    setActionMessage(null);
+    try {
+      const payload = {
+        originalTitle: metadataOverride.originalTitle.trim() || null,
+        overview: metadataOverride.overview.trim() || null,
+        posterUrl: metadataOverride.posterUrl.trim() || null,
+        backdropUrl: metadataOverride.backdropUrl.trim() || null,
+        rating: metadataOverride.rating.trim() ? Number(metadataOverride.rating) : null,
+        genres: metadataOverride.genres.trim() || null,
+        externalUrl: metadataOverride.externalUrl.trim() || null,
+        imdbId: metadataOverride.imdbId.trim() || null
+      };
+
+      const response = await authedFetch(`/api/series/${series.id}/metadata/override`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) {
+        throw new Error("metadata-override-failed");
+      }
+
+      setActionMessage("Manual metadata overrides saved.");
+      revalidator.revalidate();
+    } catch {
+      setActionMessage("Manual metadata override failed.");
     } finally {
       setBusyAction(null);
     }
@@ -814,6 +868,12 @@ export function ShowDetailPage() {
                 onSearch={handleMetadataSearch}
                 onLink={handleMetadataLink}
               />
+              <ManualMetadataOverridePanel
+                busyAction={busyAction}
+                value={metadataOverride}
+                onChange={setMetadataOverride}
+                onSave={handleMetadataOverrideSave}
+              />
               {series.externalUrl ? (
                 <Button asChild variant="outline" size="sm">
                   <a href={series.externalUrl} target="_blank" rel="noreferrer">
@@ -1051,6 +1111,85 @@ function MetadataCorrectionPanel({
           ))}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function ManualMetadataOverridePanel({
+  busyAction,
+  value,
+  onChange,
+  onSave
+}: {
+  busyAction: string | null;
+  value: MetadataOverridePayload;
+  onChange: (value: MetadataOverridePayload) => void;
+  onSave: () => Promise<void>;
+}) {
+  return (
+    <div className="rounded-xl border border-hairline bg-surface-1 p-4">
+      <p className="font-display text-sm font-semibold tracking-tight text-foreground">Manual override</p>
+      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+        Use this when provider metadata is incomplete. Saved values are persisted as local overrides.
+      </p>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        <input
+          value={value.originalTitle}
+          onChange={(event) => onChange({ ...value, originalTitle: event.target.value })}
+          className="h-10 rounded-lg border border-hairline bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
+          placeholder="Original title"
+        />
+        <input
+          value={value.imdbId}
+          onChange={(event) => onChange({ ...value, imdbId: event.target.value })}
+          className="h-10 rounded-lg border border-hairline bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
+          placeholder="IMDb ID"
+        />
+        <input
+          value={value.posterUrl}
+          onChange={(event) => onChange({ ...value, posterUrl: event.target.value })}
+          className="h-10 rounded-lg border border-hairline bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
+          placeholder="Poster URL"
+        />
+        <input
+          value={value.backdropUrl}
+          onChange={(event) => onChange({ ...value, backdropUrl: event.target.value })}
+          className="h-10 rounded-lg border border-hairline bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
+          placeholder="Backdrop URL"
+        />
+        <input
+          value={value.rating}
+          onChange={(event) => onChange({ ...value, rating: event.target.value })}
+          className="h-10 rounded-lg border border-hairline bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
+          placeholder="Rating (0-10)"
+        />
+        <input
+          value={value.genres}
+          onChange={(event) => onChange({ ...value, genres: event.target.value })}
+          className="h-10 rounded-lg border border-hairline bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
+          placeholder="Genres (comma separated)"
+        />
+        <input
+          value={value.externalUrl}
+          onChange={(event) => onChange({ ...value, externalUrl: event.target.value })}
+          className="h-10 rounded-lg border border-hairline bg-background px-3 text-sm text-foreground outline-none focus:border-primary sm:col-span-2"
+          placeholder="External URL"
+        />
+      </div>
+      <div className="mt-3">
+        <textarea
+          value={value.overview}
+          onChange={(event) => onChange({ ...value, overview: event.target.value })}
+          className="min-h-24 w-full rounded-lg border border-hairline bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+          placeholder="Overview"
+        />
+      </div>
+      <div className="mt-3">
+        <Button type="button" variant="outline" size="sm" onClick={() => void onSave()} disabled={busyAction === "metadata-override"}>
+          {busyAction === "metadata-override" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+          Save manual metadata
+        </Button>
+      </div>
     </div>
   );
 }

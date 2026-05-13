@@ -526,6 +526,59 @@ public static class SeriesEndpointRouteBuilderExtensions
             return Results.Ok(job);
         });
 
+        series.MapPut("/{id}/metadata/override", async (
+            string id,
+            [FromBody] MetadataOverrideRequest request,
+            HttpContext httpContext,
+            ISeriesCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
+            IActivityFeedRepository activityFeedRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var item = await repository.GetByIdAsync(id, cancellationToken);
+            if (item is null)
+            {
+                return Results.NotFound();
+            }
+
+            var updated = await repository.UpdateMetadataAsync(
+                item.Id,
+                item.MetadataProvider ?? "manual",
+                item.MetadataProviderId ?? item.ImdbId ?? item.Id,
+                string.IsNullOrWhiteSpace(request.OriginalTitle) ? item.OriginalTitle : request.OriginalTitle.Trim(),
+                string.IsNullOrWhiteSpace(request.Overview) ? item.Overview : request.Overview.Trim(),
+                string.IsNullOrWhiteSpace(request.PosterUrl) ? item.PosterUrl : request.PosterUrl.Trim(),
+                string.IsNullOrWhiteSpace(request.BackdropUrl) ? item.BackdropUrl : request.BackdropUrl.Trim(),
+                request.Rating ?? item.Rating,
+                string.IsNullOrWhiteSpace(request.Genres) ? item.Genres : request.Genres.Trim(),
+                string.IsNullOrWhiteSpace(request.ExternalUrl) ? item.ExternalUrl : request.ExternalUrl.Trim(),
+                string.IsNullOrWhiteSpace(request.ImdbId) ? item.ImdbId : request.ImdbId.Trim(),
+                JsonSerializer.Serialize(new
+                {
+                    kind = "manual-metadata-override",
+                    request,
+                    updatedUtc = DateTimeOffset.UtcNow
+                }),
+                cancellationToken);
+
+            await activityFeedRepository.RecordActivityAsync(
+                "metadata.series.overridden",
+                $"{item.Title} metadata values were manually overridden.",
+                JsonSerializer.Serialize(request),
+                null,
+                "series",
+                item.Id,
+                cancellationToken);
+
+            return updated is null ? Results.NotFound() : Results.Ok(updated);
+        });
+
         series.MapPost("/metadata/jobs", async (
             HttpContext httpContext,
             [FromBody] MetadataRefreshJobsRequest request,
@@ -1724,6 +1777,16 @@ public static class SeriesEndpointRouteBuilderExtensions
         int? Take);
 
     private sealed record MetadataLinkRequest(string? ProviderId);
+
+    private sealed record MetadataOverrideRequest(
+        string? OriginalTitle,
+        string? Overview,
+        string? PosterUrl,
+        string? BackdropUrl,
+        double? Rating,
+        string? Genres,
+        string? ExternalUrl,
+        string? ImdbId);
 
     private sealed record MetadataRefreshJobsResponse(
         int EnqueuedCount,

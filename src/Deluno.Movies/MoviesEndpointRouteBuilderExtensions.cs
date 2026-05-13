@@ -909,6 +909,59 @@ public static class MoviesEndpointRouteBuilderExtensions
             return Results.Ok(job);
         });
 
+        movies.MapPut("/{id}/metadata/override", async (
+            string id,
+            [FromBody] MetadataOverrideRequest request,
+            HttpContext httpContext,
+            IMovieCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
+            IActivityFeedRepository activityFeedRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var movie = await repository.GetByIdAsync(id, cancellationToken);
+            if (movie is null)
+            {
+                return Results.NotFound();
+            }
+
+            var updated = await repository.UpdateMetadataAsync(
+                movie.Id,
+                movie.MetadataProvider ?? "manual",
+                movie.MetadataProviderId ?? movie.ImdbId ?? movie.Id,
+                string.IsNullOrWhiteSpace(request.OriginalTitle) ? movie.OriginalTitle : request.OriginalTitle.Trim(),
+                string.IsNullOrWhiteSpace(request.Overview) ? movie.Overview : request.Overview.Trim(),
+                string.IsNullOrWhiteSpace(request.PosterUrl) ? movie.PosterUrl : request.PosterUrl.Trim(),
+                string.IsNullOrWhiteSpace(request.BackdropUrl) ? movie.BackdropUrl : request.BackdropUrl.Trim(),
+                request.Rating ?? movie.Rating,
+                string.IsNullOrWhiteSpace(request.Genres) ? movie.Genres : request.Genres.Trim(),
+                string.IsNullOrWhiteSpace(request.ExternalUrl) ? movie.ExternalUrl : request.ExternalUrl.Trim(),
+                string.IsNullOrWhiteSpace(request.ImdbId) ? movie.ImdbId : request.ImdbId.Trim(),
+                JsonSerializer.Serialize(new
+                {
+                    kind = "manual-metadata-override",
+                    request,
+                    updatedUtc = DateTimeOffset.UtcNow
+                }),
+                cancellationToken);
+
+            await activityFeedRepository.RecordActivityAsync(
+                "metadata.movie.overridden",
+                $"{movie.Title} metadata values were manually overridden.",
+                JsonSerializer.Serialize(request),
+                null,
+                "movie",
+                movie.Id,
+                cancellationToken);
+
+            return updated is null ? Results.NotFound() : Results.Ok(updated);
+        });
+
         movies.MapPost("/metadata/jobs", async (
             HttpContext httpContext,
             [FromBody] MetadataRefreshJobsRequest request,
@@ -1258,6 +1311,16 @@ public static class MoviesEndpointRouteBuilderExtensions
         int? Take);
 
     private sealed record MetadataLinkRequest(string? ProviderId);
+
+    private sealed record MetadataOverrideRequest(
+        string? OriginalTitle,
+        string? Overview,
+        string? PosterUrl,
+        string? BackdropUrl,
+        double? Rating,
+        string? Genres,
+        string? ExternalUrl,
+        string? ImdbId);
 
     private sealed record MetadataRefreshJobsResponse(
         int EnqueuedCount,

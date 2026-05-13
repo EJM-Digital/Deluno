@@ -81,6 +81,7 @@ Implemented endpoints:
 - `POST /api/movies/{id}/grab`
 - `POST /api/movies/{id}/metadata/refresh`
 - `POST /api/movies/{id}/metadata/link`
+- `PUT /api/movies/{id}/metadata/override`
 - `POST /api/movies/{id}/metadata/jobs`
 - `POST /api/movies/metadata/jobs`
 - `POST /api/movies`
@@ -118,6 +119,7 @@ Implemented endpoints:
 - `POST /api/series/{id}/search`
 - `POST /api/series/{id}/metadata/refresh`
 - `POST /api/series/{id}/metadata/link`
+- `PUT /api/series/{id}/metadata/override`
 - `POST /api/series/{id}/metadata/jobs`
 - `POST /api/series/metadata/jobs`
 - `POST /api/series/{id}/episodes/search`
@@ -139,6 +141,25 @@ Current gaps:
 - there is still no dedicated `GET /api/series/{id}/episodes` route; episode inventory currently carries that load
 - richer pagination, season filtering, and dedicated upgrade-specific views remain roadmap work
 - bulk season monitoring and bulk rename are not yet exposed as dedicated endpoints
+
+## Metadata Integrations
+
+Implemented endpoints:
+
+- `GET /api/metadata/status`
+- `GET /api/metadata/search`
+- `POST /api/metadata/test`
+- `DELETE /api/metadata/cache`
+- `GET /api/metadata/artwork/{cacheKey}`
+- `GET /api/metadata/broker/status`
+- `GET /api/metadata/broker/search`
+
+Current behavior:
+
+- provider fallback chain is broker -> TMDb direct -> OMDb fallback -> stale cache
+- artwork URLs from provider responses are localized into Deluno's cached artwork route when downloadable
+- metadata refresh jobs can be queued manually from movie/series routes, and maintenance automation schedules stale or missing metadata refreshes
+- manual override routes allow users to patch metadata fields when provider payloads are incomplete
 
 ## Platform Settings And Configuration
 
