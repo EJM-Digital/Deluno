@@ -6,7 +6,7 @@
     <LangVersion>preview</LangVersion>
   </PropertyGroup>
 
-  <ItemGroup Condition="'$(MSBuildProjectName)' != 'Deluno.Contracts' and '$(MSBuildProjectName)' != 'Deluno.Host'">
+  <ItemGroup Condition="'$(MSBuildProjectName)' != 'Deluno.Contracts' and '$(MSBuildProjectName)' != 'Deluno.Host' and '$(MSBuildProjectName)' != 'Deluno.Tray'">
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 </Project>

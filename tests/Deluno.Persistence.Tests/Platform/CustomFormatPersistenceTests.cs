@@ -46,8 +46,8 @@ public sealed class CustomFormatPersistenceTests
 
         var formats = await repository.ListCustomFormatsAsync(CancellationToken.None);
 
-        var storedMovie = Assert.Single(formats.Where(item => item.Id == movieFormat.Id));
-        var storedTv = Assert.Single(formats.Where(item => item.Id == tvFormat.Id));
+        var storedMovie = Assert.Single(formats, item => item.Id == movieFormat.Id);
+        var storedTv = Assert.Single(formats, item => item.Id == tvFormat.Id);
 
         Assert.Equal("movies", storedMovie.MediaType);
         Assert.Equal("trash-hdr", storedMovie.TrashId);
