@@ -1,5 +1,6 @@
 using Deluno.Integrations.Search;
 using Moq;
+using Deluno.Platform.Contracts;
 
 namespace Deluno.Integrations.Tests.Search;
 
@@ -222,5 +223,37 @@ public class AcquisitionDecisionPipelineTests
 
         Assert.Equal("idx-42", result.Candidate.IndexerId);
         Assert.Equal("My Indexer", result.Candidate.IndexerName);
+    }
+
+    [Fact]
+    public void EvaluateSelectedRelease_uses_source_priority_and_custom_formats_from_manual_context()
+    {
+        var customFormats = new[]
+        {
+            new CustomFormatItem(
+                Id: "cf-1",
+                Name: "Preferred Group",
+                MediaType: "movies",
+                Score: 125,
+                TrashId: "trash-group",
+                Conditions: """[{"type":"releaseGroup","value":"GROUP","required":true}]""",
+                UpgradeAllowed: true,
+                CreatedUtc: DateTimeOffset.UtcNow,
+                UpdatedUtc: DateTimeOffset.UtcNow)
+        };
+
+        var baseline = _pipeline.EvaluateSelectedRelease(BuildRequest());
+        var enriched = _pipeline.EvaluateSelectedRelease(BuildRequest() with
+        {
+            IndexerId = "idx-1",
+            IndexerName = "Primary",
+            CandidateQuality = "WEB 1080p",
+            SourcePriorityScore = 175,
+            CustomFormats = customFormats
+        });
+
+        Assert.True(enriched.Candidate.Score > baseline.Candidate.Score);
+        Assert.Equal(125, enriched.Candidate.CustomFormatScore);
+        Assert.NotEmpty(enriched.Candidate.MatchedCustomFormats ?? []);
     }
 }

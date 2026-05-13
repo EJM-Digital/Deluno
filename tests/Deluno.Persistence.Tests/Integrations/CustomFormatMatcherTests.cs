@@ -6,7 +6,7 @@ namespace Deluno.Persistence.Tests.Integrations;
 public sealed class CustomFormatMatcherTests
 {
     private static CustomFormatItem Format(string id, string name, int score, string? conditions)
-        => new(id, name, "movies", score, conditions ?? string.Empty, false,
+        => new(id, name, "movies", score, null, conditions ?? string.Empty, false,
             DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
 
     // ── No formats / empty ────────────────────────────────────────────────

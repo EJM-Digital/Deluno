@@ -23,7 +23,7 @@ import {
   type MovieWantedSummary,
   type SearchCycleRunItem,
   type SearchRetryWindowItem,
-  type SeriesInventoryDetail,
+  type SeriesUpcomingEpisodeItem,
   type SeriesListItem,
   type SeriesWantedSummary
 } from "../lib/api";
@@ -73,7 +73,7 @@ interface DashboardUpcomingItem {
 }
 
 export async function dashboardLoader(): Promise<DashboardLoaderData> {
-  const [movieItems, movieWanted, showItems, showWanted, telemetry, indexers, clients, automation, searchCycles, retryWindows] = await Promise.all([
+  const [movieItems, movieWanted, showItems, showWanted, telemetry, indexers, clients, automation, searchCycles, retryWindows, upcomingEpisodes] = await Promise.all([
     fetchJson<MovieListItem[]>("/api/movies"),
     fetchJson<MovieWantedSummary>("/api/movies/wanted"),
     fetchJson<SeriesListItem[]>("/api/series"),
@@ -83,20 +83,18 @@ export async function dashboardLoader(): Promise<DashboardLoaderData> {
     fetchJson<DownloadClientItem[]>("/api/download-clients"),
     fetchJson<LibraryAutomationStateItem[]>("/api/library-automation"),
     fetchJson<SearchCycleRunItem[]>("/api/search-cycles?take=8"),
-    fetchJson<SearchRetryWindowItem[]>("/api/search-retry-windows?take=8")
+    fetchJson<SearchRetryWindowItem[]>("/api/search-retry-windows?take=8"),
+    fetchJson<SeriesUpcomingEpisodeItem[]>("/api/series/upcoming?take=12&hours=72")
   ]);
 
-    const adaptedMovies = adaptMovieItems(movieItems, movieWanted);
-    const adaptedShows = adaptSeriesItems(showItems, showWanted);
-    const allItems = [...adaptedMovies, ...adaptedShows];
-    const seriesInventory = await Promise.all(
-      showItems.map((item) => fetchJson<SeriesInventoryDetail>(`/api/series/${item.id}/inventory`).catch(() => null))
-    );
-    const activeDownloads = adaptTelemetryDownloads(telemetry);
-    const indexerHealth = adaptIndexerHealth(indexers, clients);
-    const librarySizeGb = allItems.reduce((sum, item) => sum + (item.sizeGb ?? 0), 0);
-    const monitoredCount = allItems.filter((item) => item.monitored).length;
-    const healthyCount = indexerHealth.filter((item) => item.status === "healthy").length;
+  const adaptedMovies = adaptMovieItems(movieItems, movieWanted);
+  const adaptedShows = adaptSeriesItems(showItems, showWanted);
+  const allItems = [...adaptedMovies, ...adaptedShows];
+  const activeDownloads = adaptTelemetryDownloads(telemetry);
+  const indexerHealth = adaptIndexerHealth(indexers, clients);
+  const librarySizeGb = allItems.reduce((sum, item) => sum + (item.sizeGb ?? 0), 0);
+  const monitoredCount = allItems.filter((item) => item.monitored).length;
+  const healthyCount = indexerHealth.filter((item) => item.status === "healthy").length;
 
   return {
     activeDownloads,
@@ -111,7 +109,7 @@ export async function dashboardLoader(): Promise<DashboardLoaderData> {
       .sort((left, right) => right.added.localeCompare(left.added))
       .slice(0, 14),
     totalCount: allItems.length,
-    upcoming: buildDashboardUpcoming(seriesInventory, showItems, showWanted, movieWanted),
+    upcoming: buildDashboardUpcoming(upcomingEpisodes, showWanted, movieWanted),
     upgradeCount: movieWanted.upgradeCount + showWanted.upgradeCount,
     waitingCount: movieWanted.waitingCount + showWanted.waitingCount,
     automation,
@@ -630,36 +628,27 @@ function shortQuality(value: string | null) {
 }
 
 function buildDashboardUpcoming(
-  inventories: Array<SeriesInventoryDetail | null>,
-  series: SeriesListItem[],
+  episodes: SeriesUpcomingEpisodeItem[],
   seriesWanted: SeriesWantedSummary,
   movieWanted: MovieWantedSummary
 ): DashboardUpcomingItem[] {
   const now = Date.now();
   const horizon = now + 1000 * 60 * 60 * 72;
-  const seriesById = new Map(series.map((item) => [item.id, item]));
 
-  const episodeItems = inventories
-    .filter((item): item is SeriesInventoryDetail => item !== null)
-    .flatMap((inventory) => {
-      const seriesItem = seriesById.get(inventory.seriesId);
-
-      return inventory.episodes
-        .filter((episode) => episode.airDateUtc)
-        .map((episode) => ({ episode, time: new Date(episode.airDateUtc!).getTime() }))
-        .filter(({ time }) => time >= now && time <= horizon)
-        .map(({ episode, time }) => ({
-          id: episode.episodeId,
-          day: formatDashboardDay(new Date(time)),
-          title: inventory.title,
-          episode: `S${String(episode.seasonNumber).padStart(2, "0")}E${String(episode.episodeNumber).padStart(2, "0")}`,
-          dateLabel: formatDashboardTime(new Date(time)),
-          network: episode.title ?? "Upcoming episode",
-          poster: seriesItem?.posterUrl ?? null,
-          href: `/tv/${inventory.seriesId}`,
-          startsAt: episode.airDateUtc!
-        }));
-    });
+  const episodeItems = episodes
+    .map((episode) => ({ episode, time: new Date(episode.airDateUtc).getTime() }))
+    .filter(({ time }) => time >= now && time <= horizon)
+    .map(({ episode, time }) => ({
+      id: episode.episodeId,
+      day: formatDashboardDay(new Date(time)),
+      title: episode.title,
+      episode: `S${String(episode.seasonNumber).padStart(2, "0")}E${String(episode.episodeNumber).padStart(2, "0")}`,
+      dateLabel: formatDashboardTime(new Date(time)),
+      network: episode.episodeTitle ?? "Upcoming episode",
+      poster: episode.posterUrl ?? null,
+      href: `/tv/${episode.seriesId}`,
+      startsAt: episode.airDateUtc
+    }));
 
   const retryItems = [
     ...seriesWanted.recentItems
@@ -670,7 +659,7 @@ function buildDashboardUpcoming(
         title: item.title,
         episode: "Retry",
         network: item.wantedReason,
-        poster: seriesById.get(item.seriesId)?.posterUrl ?? null,
+        poster: null,
         href: `/tv/${item.seriesId}`,
         startsAt: item.nextEligibleSearchUtc!
       })),

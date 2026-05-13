@@ -37,6 +37,7 @@ export interface CFCondition {
 
 export interface CFDraft {
   name: string;
+  mediaType: "movies" | "tv";
   category: CFCategory;
   conditions: CFCondition[];
 }
@@ -93,6 +94,7 @@ function RegexPreview({ condition }: { condition: CFCondition }) {
 export function CFCreator({ onSave, onCancel, initial }: Props) {
   const [draft, setDraft] = useState<CFDraft>({
     name: initial?.name ?? "",
+    mediaType: initial?.mediaType ?? "movies",
     category: initial?.category ?? "misc",
     conditions: initial?.conditions ?? [emptyCondition()],
   });
@@ -146,6 +148,33 @@ export function CFCreator({ onSave, onCancel, initial }: Props) {
           placeholder="e.g. My Preferred Groups"
           className="h-10"
         />
+      </div>
+
+      {/* Category */}
+      <div className="space-y-1.5">
+        <label className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+          Media type
+        </label>
+        <div className="flex gap-2">
+          {[
+            { id: "movies", label: "Movies" },
+            { id: "tv", label: "TV" }
+          ].map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              onClick={() => setDraft((d) => ({ ...d, mediaType: option.id as "movies" | "tv" }))}
+              className={cn(
+                "rounded-full border px-3 py-1.5 text-[11.5px] font-medium transition-all",
+                draft.mediaType === option.id
+                  ? "border-primary/40 bg-primary/10 text-foreground"
+                  : "border-hairline text-muted-foreground hover:border-primary/20"
+              )}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Category */}

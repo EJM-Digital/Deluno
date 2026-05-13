@@ -58,6 +58,23 @@ public static class SeriesEndpointRouteBuilderExtensions
             return detail is null ? Results.NotFound() : Results.Ok(detail);
         });
 
+        series.MapGet("/upcoming", async (
+            int? take,
+            int? hours,
+            ISeriesCatalogRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var now = DateTimeOffset.UtcNow;
+            var requestedTake = take is > 0 and <= 100 ? take.Value : 12;
+            var requestedHours = hours is > 0 and <= 336 ? hours.Value : 72;
+            var items = await repository.ListUpcomingEpisodesAsync(
+                now,
+                now.AddHours(requestedHours),
+                requestedTake,
+                cancellationToken);
+            return Results.Ok(items);
+        });
+
         series.MapGet("/search-history", async (ISeriesCatalogRepository repository, CancellationToken cancellationToken) =>
         {
             var items = await repository.ListSearchHistoryAsync(cancellationToken);
@@ -1003,14 +1020,24 @@ public static class SeriesEndpointRouteBuilderExtensions
             var overrideReason = string.IsNullOrWhiteSpace(request.OverrideReason)
                 ? "User manually forced this release from search results."
                 : request.OverrideReason.Trim();
+            var customFormats = await ResolveCustomFormatsAsync(platformSettingsRepository, library.QualityProfileId, cancellationToken);
+            var sourcePriorityScore = routing?.Sources
+                .FirstOrDefault(item => string.Equals(item.IndexerId, request.IndexerId, StringComparison.OrdinalIgnoreCase)) is { } source
+                    ? Math.Max(0, 200 - source.Priority)
+                    : 0;
             var selectedDecision = acquisitionPipeline.EvaluateSelectedRelease(
                 new AcquisitionSelectedReleaseRequest(
                     request.ReleaseName.Trim(),
-                    null,
+                    request.IndexerId?.Trim(),
                     request.IndexerName?.Trim(),
                     request.DownloadUrl!.Trim(),
                     wantedItem.CurrentQuality,
                     wantedItem.TargetQuality,
+                    request.CandidateQuality?.Trim(),
+                    request.SizeBytes,
+                    request.Seeders,
+                    sourcePriorityScore,
+                    customFormats,
                     ForceOverride: forceOverride,
                     OverrideReason: forceOverride ? overrideReason : null,
                     PreventLowerQualityReplacements: wantedItem.PreventLowerQualityReplacements));
@@ -1683,8 +1710,12 @@ public static class SeriesEndpointRouteBuilderExtensions
 
     private sealed record ReleaseGrabRequest(
         string ReleaseName,
+        string? IndexerId,
         string? IndexerName,
         string? DownloadUrl,
+        string? CandidateQuality,
+        long? SizeBytes,
+        int? Seeders,
         bool? Force,
         string? OverrideReason);
 

@@ -34,6 +34,13 @@ public static class SearchEndpointRouteBuilderExtensions
             }
 
             var formats = await repository.ListCustomFormatsAsync(cancellationToken);
+            if (!string.IsNullOrWhiteSpace(request.MediaType))
+            {
+                formats = formats
+                    .Where(format => string.Equals(format.MediaType, request.MediaType, StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+            }
+
             var results = CustomFormatMatcher.DryRun(request.ReleaseName, formats);
             return Results.Ok(results);
         });

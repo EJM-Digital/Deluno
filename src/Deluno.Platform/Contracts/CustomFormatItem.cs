@@ -5,6 +5,7 @@ public sealed record CustomFormatItem(
     string Name,
     string MediaType,
     int Score,
+    string? TrashId,
     string Conditions,
     bool UpgradeAllowed,
     DateTimeOffset CreatedUtc,

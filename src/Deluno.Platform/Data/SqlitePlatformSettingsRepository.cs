@@ -286,7 +286,7 @@ public sealed class SqlitePlatformSettingsRepository(
         command.CommandText =
             """
             SELECT
-                id, name, media_type, score, conditions, upgrade_allowed, created_utc, updated_utc
+                id, name, media_type, score, trash_id, conditions, upgrade_allowed, created_utc, updated_utc
             FROM custom_formats
             ORDER BY media_type ASC, score DESC, name COLLATE NOCASE ASC;
             """;
@@ -939,6 +939,7 @@ public sealed class SqlitePlatformSettingsRepository(
             Name: NormalizeName(request.Name) ?? "New custom format",
             MediaType: NormalizeMediaType(request.MediaType),
             Score: request.Score,
+            TrashId: NormalizeName(request.TrashId),
             Conditions: NormalizeName(request.Conditions) ?? string.Empty,
             UpgradeAllowed: request.UpgradeAllowed,
             CreatedUtc: now,
@@ -952,10 +953,10 @@ public sealed class SqlitePlatformSettingsRepository(
         command.CommandText =
             """
             INSERT INTO custom_formats (
-                id, name, media_type, score, conditions, upgrade_allowed, created_utc, updated_utc
+                id, name, media_type, score, trash_id, conditions, upgrade_allowed, created_utc, updated_utc
             )
             VALUES (
-                @id, @name, @mediaType, @score, @conditions, @upgradeAllowed, @createdUtc, @updatedUtc
+                @id, @name, @mediaType, @score, @trashId, @conditions, @upgradeAllowed, @createdUtc, @updatedUtc
             );
             """;
 
@@ -963,6 +964,7 @@ public sealed class SqlitePlatformSettingsRepository(
         AddParameter(command, "@name", item.Name);
         AddParameter(command, "@mediaType", item.MediaType);
         AddParameter(command, "@score", item.Score);
+        AddParameter(command, "@trashId", item.TrashId);
         AddParameter(command, "@conditions", item.Conditions);
         AddParameter(command, "@upgradeAllowed", item.UpgradeAllowed ? 1 : 0);
         AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
@@ -1305,6 +1307,7 @@ public sealed class SqlitePlatformSettingsRepository(
                 name = @name,
                 media_type = @mediaType,
                 score = @score,
+                trash_id = @trashId,
                 conditions = @conditions,
                 upgrade_allowed = @upgradeAllowed,
                 updated_utc = @updatedUtc
@@ -1315,6 +1318,7 @@ public sealed class SqlitePlatformSettingsRepository(
         AddParameter(command, "@name", NormalizeName(request.Name) ?? current.Name);
         AddParameter(command, "@mediaType", NormalizeMediaType(request.MediaType ?? current.MediaType));
         AddParameter(command, "@score", request.Score);
+        AddParameter(command, "@trashId", NormalizeName(request.TrashId) ?? current.TrashId);
         AddParameter(command, "@conditions", NormalizeName(request.Conditions) ?? string.Empty);
         AddParameter(command, "@upgradeAllowed", request.UpgradeAllowed ? 1 : 0);
         AddParameter(command, "@updatedUtc", now.ToString("O"));
@@ -3198,7 +3202,7 @@ public sealed class SqlitePlatformSettingsRepository(
         command.CommandText =
             """
             SELECT
-                id, name, media_type, score, conditions, upgrade_allowed, created_utc, updated_utc
+                id, name, media_type, score, trash_id, conditions, upgrade_allowed, created_utc, updated_utc
             FROM custom_formats
             WHERE id = @id
             LIMIT 1;
@@ -3793,10 +3797,11 @@ public sealed class SqlitePlatformSettingsRepository(
             Name: reader.GetString(1),
             MediaType: reader.GetString(2),
             Score: reader.GetInt32(3),
-            Conditions: reader.GetString(4),
-            UpgradeAllowed: reader.GetInt64(5) == 1,
-            CreatedUtc: ParseTimestamp(reader.GetString(6)),
-            UpdatedUtc: ParseTimestamp(reader.GetString(7)));
+            TrashId: reader.IsDBNull(4) ? null : reader.GetString(4),
+            Conditions: reader.GetString(5),
+            UpgradeAllowed: reader.GetInt64(6) == 1,
+            CreatedUtc: ParseTimestamp(reader.GetString(7)),
+            UpdatedUtc: ParseTimestamp(reader.GetString(8)));
     }
 
     private static DestinationRuleItem ReadDestinationRule(System.Data.Common.DbDataReader reader)

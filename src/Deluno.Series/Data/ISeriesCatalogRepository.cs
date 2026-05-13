@@ -35,6 +35,12 @@ public interface ISeriesCatalogRepository
 
     Task<SeriesInventoryDetail?> GetInventoryDetailAsync(string seriesId, CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<SeriesUpcomingEpisodeItem>> ListUpcomingEpisodesAsync(
+        DateTimeOffset fromUtc,
+        DateTimeOffset toUtc,
+        int take,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<SeriesSearchHistoryItem>> ListSearchHistoryAsync(CancellationToken cancellationToken);
 
     Task<IReadOnlyList<SeriesWantedItem>> ListEligibleWantedAsync(

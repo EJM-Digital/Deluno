@@ -13,7 +13,8 @@ public static class JobsDatabaseMigrations
         new V0005DispatchAlerts(),
         new V0006DownloadRetryTracking(),
         new V0007IntegrationCircuitState(),
-        new V0008DownloadRetryWindowTracking()
+        new V0008DownloadRetryWindowTracking(),
+        new V0009DecisionTelemetryTracking()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

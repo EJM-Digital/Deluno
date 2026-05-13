@@ -1,5 +1,6 @@
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
+using Deluno.Infrastructure.Storage;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Infrastructure.Storage.Migrations;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -167,6 +168,91 @@ public sealed class JobStoreTests
         Assert.NotNull(retryLease);
         Assert.Equal(queued.Id, retryLease.Id);
         Assert.Equal(2, retryLease.Attempts);
+    }
+
+    [Fact]
+    public async Task RecordDownloadDispatchAsync_extracts_structured_decision_telemetry_from_notes_json()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-05-13T05:00:00Z"));
+        await InitializeJobsAsync(storage, timeProvider);
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+
+        var dispatchId = await store.RecordDownloadDispatchAsync(
+            libraryId: "movies-main",
+            mediaType: "movies",
+            entityType: "movie",
+            entityId: "movie-1",
+            releaseName: "Movie.2026.1080p.WEB-DL-GROUP",
+            indexerName: "Indexer One",
+            downloadClientId: "qb-1",
+            downloadClientName: "qBittorrent",
+            status: "sent",
+            notesJson:
+                """
+                {
+                  "searchPlan": {
+                    "bestCandidate": {
+                      "releaseName": "Movie.2026.1080p.WEB-DL-GROUP",
+                      "quality": "WEB 1080p",
+                      "score": 410,
+                      "meetsCutoff": true,
+                      "decisionStatus": "preferred",
+                      "qualityDelta": 1,
+                      "customFormatScore": 125,
+                      "seederScore": 120,
+                      "sizeScore": 80,
+                      "releaseGroup": "GROUP",
+                      "estimatedBitrateMbps": 8.4,
+                      "sizeBytes": 8000000000,
+                      "seeders": 20,
+                      "policyVersion": "policy-v1",
+                      "matchedCustomFormats": [{ "formatId": "cf-1", "formatName": "Preferred Group", "score": 125 }],
+                      "decisionReasons": ["Matched preferred group"],
+                      "riskFlags": []
+                    }
+                  }
+                }
+                """,
+            cancellationToken: CancellationToken.None);
+
+        await using var connection = await storage.Factory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            CancellationToken.None);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT
+                decision_quality,
+                decision_score,
+                decision_meets_cutoff,
+                decision_status,
+                decision_custom_format_score,
+                decision_release_group,
+                decision_size_bytes,
+                decision_seeders,
+                decision_policy_version
+            FROM download_dispatches
+            WHERE id = @id
+            LIMIT 1;
+            """;
+        var idParameter = command.CreateParameter();
+        idParameter.ParameterName = "@id";
+        idParameter.Value = dispatchId;
+        command.Parameters.Add(idParameter);
+
+        using var reader = await command.ExecuteReaderAsync(CancellationToken.None);
+        Assert.True(await reader.ReadAsync(CancellationToken.None));
+        Assert.Equal("WEB 1080p", reader.GetString(0));
+        Assert.Equal(410, reader.GetInt32(1));
+        Assert.Equal(1L, reader.GetInt64(2));
+        Assert.Equal("preferred", reader.GetString(3));
+        Assert.Equal(125, reader.GetInt32(4));
+        Assert.Equal("GROUP", reader.GetString(5));
+        Assert.Equal(8000000000L, reader.GetInt64(6));
+        Assert.Equal(20, reader.GetInt32(7));
+        Assert.Equal("policy-v1", reader.GetString(8));
     }
 
     private static async Task InitializeJobsAsync(TestStorage storage, TimeProvider timeProvider)

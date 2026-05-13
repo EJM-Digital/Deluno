@@ -1243,6 +1243,7 @@ public sealed class SqliteJobStore(
     {
         var now = timeProvider.GetUtcNow();
         var dispatchId = Guid.CreateVersion7().ToString("N");
+        var decisionTelemetry = TryParseDispatchDecisionTelemetry(notesJson);
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Jobs,
@@ -1257,11 +1258,21 @@ public sealed class SqliteJobStore(
                 """
                 INSERT INTO download_dispatches (
                     id, library_id, media_type, entity_type, entity_id, release_name,
-                    indexer_name, download_client_id, download_client_name, status, notes_json, created_utc
+                    indexer_name, download_client_id, download_client_name, status, notes_json,
+                    decision_quality, decision_score, decision_meets_cutoff, decision_status, decision_quality_delta,
+                    decision_custom_format_score, decision_seeder_score, decision_size_score, decision_release_group,
+                    decision_estimated_bitrate_mbps, decision_size_bytes, decision_seeders, decision_policy_version,
+                    decision_matched_custom_formats_json, decision_reasons_json, decision_risk_flags_json,
+                    decision_override_used, decision_override_reason, created_utc
                 )
                 VALUES (
                     @id, @libraryId, @mediaType, @entityType, @entityId, @releaseName,
-                    @indexerName, @downloadClientId, @downloadClientName, @status, @notesJson, @createdUtc
+                    @indexerName, @downloadClientId, @downloadClientName, @status, @notesJson,
+                    @decisionQuality, @decisionScore, @decisionMeetsCutoff, @decisionStatus, @decisionQualityDelta,
+                    @decisionCustomFormatScore, @decisionSeederScore, @decisionSizeScore, @decisionReleaseGroup,
+                    @decisionEstimatedBitrateMbps, @decisionSizeBytes, @decisionSeeders, @decisionPolicyVersion,
+                    @decisionMatchedCustomFormatsJson, @decisionReasonsJson, @decisionRiskFlagsJson,
+                    @decisionOverrideUsed, @decisionOverrideReason, @createdUtc
                 );
                 """;
 
@@ -1276,6 +1287,27 @@ public sealed class SqliteJobStore(
             AddParameter(command, "@downloadClientName", downloadClientName);
             AddParameter(command, "@status", status);
             AddParameter(command, "@notesJson", notesJson);
+            AddParameter(command, "@decisionQuality", decisionTelemetry?.Quality);
+            AddParameter(command, "@decisionScore", decisionTelemetry?.Score);
+            AddParameter(
+                command,
+                "@decisionMeetsCutoff",
+                decisionTelemetry?.MeetsCutoff is true ? 1 : decisionTelemetry?.MeetsCutoff is false ? 0 : null);
+            AddParameter(command, "@decisionStatus", decisionTelemetry?.DecisionStatus);
+            AddParameter(command, "@decisionQualityDelta", decisionTelemetry?.QualityDelta);
+            AddParameter(command, "@decisionCustomFormatScore", decisionTelemetry?.CustomFormatScore);
+            AddParameter(command, "@decisionSeederScore", decisionTelemetry?.SeederScore);
+            AddParameter(command, "@decisionSizeScore", decisionTelemetry?.SizeScore);
+            AddParameter(command, "@decisionReleaseGroup", decisionTelemetry?.ReleaseGroup);
+            AddParameter(command, "@decisionEstimatedBitrateMbps", decisionTelemetry?.EstimatedBitrateMbps);
+            AddParameter(command, "@decisionSizeBytes", decisionTelemetry?.SizeBytes);
+            AddParameter(command, "@decisionSeeders", decisionTelemetry?.Seeders);
+            AddParameter(command, "@decisionPolicyVersion", decisionTelemetry?.PolicyVersion);
+            AddParameter(command, "@decisionMatchedCustomFormatsJson", decisionTelemetry?.MatchedCustomFormatsJson);
+            AddParameter(command, "@decisionReasonsJson", decisionTelemetry?.ReasonsJson);
+            AddParameter(command, "@decisionRiskFlagsJson", decisionTelemetry?.RiskFlagsJson);
+            AddParameter(command, "@decisionOverrideUsed", decisionTelemetry is null ? 0 : decisionTelemetry.OverrideUsed ? 1 : 0);
+            AddParameter(command, "@decisionOverrideReason", decisionTelemetry?.OverrideReason);
             AddParameter(command, "@createdUtc", now.ToString("O"));
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
@@ -2247,4 +2279,135 @@ public sealed class SqliteJobStore(
             "paused" => "paused",
             _ => status
         };
+
+    private static DispatchDecisionTelemetry? TryParseDispatchDecisionTelemetry(string? notesJson)
+    {
+        if (string.IsNullOrWhiteSpace(notesJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(notesJson);
+            var root = document.RootElement;
+            var candidate = ResolveDecisionCandidate(root);
+            if (candidate is null)
+            {
+                return null;
+            }
+
+            return new DispatchDecisionTelemetry(
+                Quality: GetString(candidate.Value, "Quality"),
+                Score: GetInt32(candidate.Value, "Score"),
+                MeetsCutoff: GetBoolean(candidate.Value, "MeetsCutoff"),
+                DecisionStatus: GetString(candidate.Value, "DecisionStatus"),
+                QualityDelta: GetInt32(candidate.Value, "QualityDelta"),
+                CustomFormatScore: GetInt32(candidate.Value, "CustomFormatScore"),
+                SeederScore: GetInt32(candidate.Value, "SeederScore"),
+                SizeScore: GetInt32(candidate.Value, "SizeScore"),
+                ReleaseGroup: GetString(candidate.Value, "ReleaseGroup"),
+                EstimatedBitrateMbps: GetDouble(candidate.Value, "EstimatedBitrateMbps"),
+                SizeBytes: GetInt64(candidate.Value, "SizeBytes"),
+                Seeders: GetInt32(candidate.Value, "Seeders"),
+                PolicyVersion: GetString(candidate.Value, "PolicyVersion"),
+                MatchedCustomFormatsJson: GetRawJson(candidate.Value, "MatchedCustomFormats"),
+                ReasonsJson: GetRawJson(candidate.Value, "DecisionReasons"),
+                RiskFlagsJson: GetRawJson(candidate.Value, "RiskFlags"),
+                OverrideUsed: GetBoolean(root, "ForceOverride") ?? false,
+                OverrideReason: GetString(root, "OverrideReason"));
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static JsonElement? ResolveDecisionCandidate(JsonElement root)
+    {
+        if (TryGetPropertyIgnoreCase(root, "decision", out var decision) &&
+            TryGetPropertyIgnoreCase(decision, "candidate", out var decisionCandidate))
+        {
+            return decisionCandidate;
+        }
+
+        if (TryGetPropertyIgnoreCase(root, "searchPlan", out var searchPlan) &&
+            TryGetPropertyIgnoreCase(searchPlan, "bestCandidate", out var bestCandidate))
+        {
+            return bestCandidate;
+        }
+
+        if (TryGetPropertyIgnoreCase(root, "bestCandidate", out var rootBestCandidate))
+        {
+            return rootBestCandidate;
+        }
+
+        return null;
+    }
+
+    private static bool TryGetPropertyIgnoreCase(JsonElement element, string name, out JsonElement value)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    value = property.Value;
+                    return true;
+                }
+            }
+        }
+
+        value = default;
+        return false;
+    }
+
+    private static string? GetString(JsonElement element, string name)
+        => TryGetPropertyIgnoreCase(element, name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    private static int? GetInt32(JsonElement element, string name)
+        => TryGetPropertyIgnoreCase(element, name, out var value) && value.TryGetInt32(out var result)
+            ? result
+            : null;
+
+    private static long? GetInt64(JsonElement element, string name)
+        => TryGetPropertyIgnoreCase(element, name, out var value) && value.TryGetInt64(out var result)
+            ? result
+            : null;
+
+    private static double? GetDouble(JsonElement element, string name)
+        => TryGetPropertyIgnoreCase(element, name, out var value) && value.TryGetDouble(out var result)
+            ? result
+            : null;
+
+    private static bool? GetBoolean(JsonElement element, string name)
+        => TryGetPropertyIgnoreCase(element, name, out var value) && (value.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            ? value.GetBoolean()
+            : null;
+
+    private static string? GetRawJson(JsonElement element, string name)
+        => TryGetPropertyIgnoreCase(element, name, out var value) ? value.GetRawText() : null;
+
+    private sealed record DispatchDecisionTelemetry(
+        string? Quality,
+        int? Score,
+        bool? MeetsCutoff,
+        string? DecisionStatus,
+        int? QualityDelta,
+        int? CustomFormatScore,
+        int? SeederScore,
+        int? SizeScore,
+        string? ReleaseGroup,
+        double? EstimatedBitrateMbps,
+        long? SizeBytes,
+        int? Seeders,
+        string? PolicyVersion,
+        string? MatchedCustomFormatsJson,
+        string? ReasonsJson,
+        string? RiskFlagsJson,
+        bool OverrideUsed,
+        string? OverrideReason);
 }

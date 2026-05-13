@@ -1,10 +1,11 @@
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../..");
-const smokeDataRoot = path.join(repoRoot, ".playwright-data");
+const smokeDataRoot = path.join(os.tmpdir(), "deluno-playwright", `${process.pid}-${Date.now()}`);
 
 export default defineConfig({
   testDir: "./tests",

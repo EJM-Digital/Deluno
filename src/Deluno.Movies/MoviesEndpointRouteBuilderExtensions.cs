@@ -522,14 +522,24 @@ public static class MoviesEndpointRouteBuilderExtensions
             var overrideReason = string.IsNullOrWhiteSpace(request.OverrideReason)
                 ? "User manually forced this release from search results."
                 : request.OverrideReason.Trim();
+            var customFormats = await ResolveCustomFormatsAsync(platformSettingsRepository, library.QualityProfileId, cancellationToken);
+            var sourcePriorityScore = routing?.Sources
+                .FirstOrDefault(item => string.Equals(item.IndexerId, request.IndexerId, StringComparison.OrdinalIgnoreCase)) is { } source
+                    ? Math.Max(0, 200 - source.Priority)
+                    : 0;
             var selectedDecision = acquisitionPipeline.EvaluateSelectedRelease(
                 new AcquisitionSelectedReleaseRequest(
                     request.ReleaseName.Trim(),
-                    null,
+                    request.IndexerId?.Trim(),
                     request.IndexerName?.Trim(),
                     request.DownloadUrl!.Trim(),
                     wantedItem.CurrentQuality,
                     wantedItem.TargetQuality,
+                    request.CandidateQuality?.Trim(),
+                    request.SizeBytes,
+                    request.Seeders,
+                    sourcePriorityScore,
+                    customFormats,
                     ForceOverride: forceOverride,
                     OverrideReason: forceOverride ? overrideReason : null,
                     PreventLowerQualityReplacements: wantedItem.PreventLowerQualityReplacements));
@@ -1234,8 +1244,12 @@ public static class MoviesEndpointRouteBuilderExtensions
 
     private sealed record ReleaseGrabRequest(
         string ReleaseName,
+        string? IndexerId,
         string? IndexerName,
         string? DownloadUrl,
+        string? CandidateQuality,
+        long? SizeBytes,
+        int? Seeders,
         bool? Force,
         string? OverrideReason);
 

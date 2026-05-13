@@ -99,6 +99,7 @@ public static partial class CustomFormatMatcher
             results.Add(new CustomFormatDryRunResult(
                 FormatId: format.Id,
                 FormatName: format.Name,
+                MediaType: format.MediaType,
                 Score: format.Score,
                 IsMatch: isMatch,
                 MatchedConditions: matchedConditions,
@@ -312,6 +313,7 @@ public sealed record CustomFormatMatchResult(
 public sealed record CustomFormatDryRunResult(
     string FormatId,
     string FormatName,
+    string MediaType,
     int Score,
     bool IsMatch,
     IReadOnlyList<string> MatchedConditions,
