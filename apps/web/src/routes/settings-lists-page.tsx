@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
-import { LoaderCircle, PencilLine, Trash2 } from "lucide-react";
+import { LoaderCircle, PencilLine, RefreshCcw, Trash2 } from "lucide-react";
 import { SettingsShell } from "../components/app/settings-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
@@ -64,6 +64,13 @@ export function SettingsListsPage() {
     mediaType: "movies",
     libraryId: libraries[0]?.id ?? "",
     qualityProfileId: qualityProfiles[0]?.id ?? "",
+    requiredGenres: "",
+    minimumRating: "",
+    minimumYear: "",
+    maximumAgeDays: "",
+    allowedCertifications: "",
+    audience: "any",
+    syncIntervalHours: "24",
     searchOnAdd: true,
     isEnabled: true
   });
@@ -76,10 +83,18 @@ export function SettingsListsPage() {
     setMessage(null);
 
     try {
+      const payload = {
+        ...createForm,
+        minimumRating: createForm.minimumRating.trim() ? Number(createForm.minimumRating) : null,
+        minimumYear: createForm.minimumYear.trim() ? Number(createForm.minimumYear) : null,
+        maximumAgeDays: createForm.maximumAgeDays.trim() ? Number(createForm.maximumAgeDays) : null,
+        syncIntervalHours: createForm.syncIntervalHours.trim() ? Number(createForm.syncIntervalHours) : 24
+      };
+
       const response = await authedFetch("/api/intake-sources", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(createForm)
+        body: JSON.stringify(payload)
       });
 
       if (!response.ok) {
@@ -120,6 +135,13 @@ export function SettingsListsPage() {
           mediaType: item.mediaType,
           libraryId: item.libraryId,
           qualityProfileId: item.qualityProfileId,
+          requiredGenres: item.requiredGenres,
+          minimumRating: item.minimumRating,
+          minimumYear: item.minimumYear,
+          maximumAgeDays: item.maximumAgeDays,
+          allowedCertifications: item.allowedCertifications,
+          audience: item.audience,
+          syncIntervalHours: item.syncIntervalHours,
           searchOnAdd: item.searchOnAdd,
           isEnabled: item.isEnabled
         })
@@ -153,6 +175,25 @@ export function SettingsListsPage() {
       revalidator.revalidate();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Intake source could not be removed.");
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function handleSync(id: string) {
+    setBusyKey(`sync:${id}`);
+    setMessage(null);
+
+    try {
+      const response = await authedFetch(`/api/intake-sources/${id}/sync`, { method: "POST" });
+      if (!response.ok) {
+        throw new Error("Sync could not be queued.");
+      }
+
+      setMessage("Sync queued.");
+      revalidator.revalidate();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Sync could not be queued.");
     } finally {
       setBusyKey(null);
     }
@@ -221,6 +262,61 @@ export function SettingsListsPage() {
                 </Field>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Required genres" description="Only import entries that match at least one of these genres (comma-separated).">
+                  <Input
+                    value={createForm.requiredGenres}
+                    onChange={(event) => setCreateForm((state) => ({ ...state, requiredGenres: event.target.value }))}
+                  />
+                </Field>
+                <Field label="Allowed certifications" description="Optional certification allow-list, for example PG-13, TV-14, TV-MA.">
+                  <Input
+                    value={createForm.allowedCertifications}
+                    onChange={(event) => setCreateForm((state) => ({ ...state, allowedCertifications: event.target.value }))}
+                  />
+                </Field>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <Field label="Minimum rating">
+                  <Input
+                    value={createForm.minimumRating}
+                    onChange={(event) => setCreateForm((state) => ({ ...state, minimumRating: event.target.value }))}
+                    placeholder="0-10"
+                  />
+                </Field>
+                <Field label="Minimum year">
+                  <Input
+                    value={createForm.minimumYear}
+                    onChange={(event) => setCreateForm((state) => ({ ...state, minimumYear: event.target.value }))}
+                    placeholder="e.g. 2020"
+                  />
+                </Field>
+                <Field label="Max age days">
+                  <Input
+                    value={createForm.maximumAgeDays}
+                    onChange={(event) => setCreateForm((state) => ({ ...state, maximumAgeDays: event.target.value }))}
+                    placeholder="e.g. 365"
+                  />
+                </Field>
+                <Field label="Sync hours">
+                  <Input
+                    value={createForm.syncIntervalHours}
+                    onChange={(event) => setCreateForm((state) => ({ ...state, syncIntervalHours: event.target.value }))}
+                    placeholder="24"
+                  />
+                </Field>
+              </div>
+              <Field label="Audience" description="Restrict to general, kids, or adult-oriented entries when provider metadata supports it.">
+                <Select
+                  value={createForm.audience}
+                  onChange={(value) => setCreateForm((state) => ({ ...state, audience: value }))}
+                  options={[
+                    { label: "Any", value: "any" },
+                    { label: "Kids", value: "kids" },
+                    { label: "Adult", value: "adult" }
+                  ]}
+                />
+              </Field>
+              <div className="grid gap-3 sm:grid-cols-2">
                 <div className="rounded-xl border border-hairline bg-surface-1 p-4">
                   <label className="flex items-center gap-3 text-foreground cursor-pointer">
                     <input type="checkbox" checked={createForm.searchOnAdd} onChange={(event) => setCreateForm((state) => ({ ...state, searchOnAdd: event.target.checked }))} />
@@ -274,6 +370,15 @@ export function SettingsListsPage() {
                         )}
                       </div>
                       <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => void handleSync(item.id)}
+                          disabled={busyKey === `sync:${item.id}`}
+                          title="Sync now"
+                        >
+                          {busyKey === `sync:${item.id}` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+                        </Button>
                         <Button variant="ghost" size="icon" onClick={() => setEditingId(editing ? null : item.id)}>
                           <PencilLine className="h-4 w-4" />
                         </Button>
@@ -362,6 +467,143 @@ export function SettingsListsPage() {
                           />
                         ) : (
                           <p className="text-sm text-muted-foreground">{current.libraryName ?? "No default library"}</p>
+                        )}
+                      </Field>
+                      <Field label="Sync status">
+                        <p className="text-sm text-muted-foreground">
+                          {(current.lastSyncStatus ?? "never").toUpperCase()}
+                          {current.lastSyncUtc ? ` • ${new Date(current.lastSyncUtc).toLocaleString()}` : ""}
+                        </p>
+                        {current.lastSyncSummary ? (
+                          <p className="mt-1 text-xs text-muted-foreground">{current.lastSyncSummary}</p>
+                        ) : null}
+                      </Field>
+                    </div>
+
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      <Field label="Required genres">
+                        {editing ? (
+                          <Input
+                            value={current.requiredGenres ?? ""}
+                            onChange={(event) =>
+                              setFormState((state) => ({
+                                ...state,
+                                [item.id]: { ...current, requiredGenres: event.target.value }
+                              }))
+                            }
+                          />
+                        ) : (
+                          <p className="text-sm text-muted-foreground">{current.requiredGenres || "Any"}</p>
+                        )}
+                      </Field>
+                      <Field label="Min rating">
+                        {editing ? (
+                          <Input
+                            value={current.minimumRating?.toString() ?? ""}
+                            onChange={(event) =>
+                              setFormState((state) => ({
+                                ...state,
+                                [item.id]: {
+                                  ...current,
+                                  minimumRating: event.target.value.trim() ? Number(event.target.value) : null
+                                }
+                              }))
+                            }
+                          />
+                        ) : (
+                          <p className="text-sm text-muted-foreground">{current.minimumRating ?? "Any"}</p>
+                        )}
+                      </Field>
+                      <Field label="Min year">
+                        {editing ? (
+                          <Input
+                            value={current.minimumYear?.toString() ?? ""}
+                            onChange={(event) =>
+                              setFormState((state) => ({
+                                ...state,
+                                [item.id]: {
+                                  ...current,
+                                  minimumYear: event.target.value.trim() ? Number(event.target.value) : null
+                                }
+                              }))
+                            }
+                          />
+                        ) : (
+                          <p className="text-sm text-muted-foreground">{current.minimumYear ?? "Any"}</p>
+                        )}
+                      </Field>
+                      <Field label="Max age days">
+                        {editing ? (
+                          <Input
+                            value={current.maximumAgeDays?.toString() ?? ""}
+                            onChange={(event) =>
+                              setFormState((state) => ({
+                                ...state,
+                                [item.id]: {
+                                  ...current,
+                                  maximumAgeDays: event.target.value.trim() ? Number(event.target.value) : null
+                                }
+                              }))
+                            }
+                          />
+                        ) : (
+                          <p className="text-sm text-muted-foreground">{current.maximumAgeDays ?? "Any"}</p>
+                        )}
+                      </Field>
+                    </div>
+
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      <Field label="Allowed certifications">
+                        {editing ? (
+                          <Input
+                            value={current.allowedCertifications ?? ""}
+                            onChange={(event) =>
+                              setFormState((state) => ({
+                                ...state,
+                                [item.id]: { ...current, allowedCertifications: event.target.value }
+                              }))
+                            }
+                          />
+                        ) : (
+                          <p className="text-sm text-muted-foreground">{current.allowedCertifications || "Any"}</p>
+                        )}
+                      </Field>
+                      <Field label="Audience">
+                        {editing ? (
+                          <Select
+                            value={current.audience ?? "any"}
+                            onChange={(value) =>
+                              setFormState((state) => ({
+                                ...state,
+                                [item.id]: { ...current, audience: value }
+                              }))
+                            }
+                            options={[
+                              { label: "Any", value: "any" },
+                              { label: "Kids", value: "kids" },
+                              { label: "Adult", value: "adult" }
+                            ]}
+                          />
+                        ) : (
+                          <p className="text-sm text-muted-foreground">{current.audience ?? "any"}</p>
+                        )}
+                      </Field>
+                      <Field label="Sync hours">
+                        {editing ? (
+                          <Input
+                            value={current.syncIntervalHours?.toString() ?? "24"}
+                            onChange={(event) =>
+                              setFormState((state) => ({
+                                ...state,
+                                [item.id]: {
+                                  ...current,
+                                  syncIntervalHours: event.target.value.trim() ? Number(event.target.value) : 24
+                                }
+                              }))
+                            }
+                          />
+                        ) : (
+                          <p className="text-sm text-muted-foreground">{current.syncIntervalHours ?? 24}</p>
                         )}
                       </Field>
                     </div>

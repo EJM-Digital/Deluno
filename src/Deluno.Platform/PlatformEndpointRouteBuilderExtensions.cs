@@ -649,7 +649,14 @@ public static class PlatformEndpointRouteBuilderExtensions
                 return denied;
             }
 
-            var errors = ValidateIntakeSource(request.Name, request.Provider, request.FeedUrl);
+            var errors = ValidateIntakeSource(
+                request.Name,
+                request.Provider,
+                request.FeedUrl,
+                request.MinimumRating,
+                request.MinimumYear,
+                request.MaximumAgeDays,
+                request.SyncIntervalHours);
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
@@ -672,7 +679,14 @@ public static class PlatformEndpointRouteBuilderExtensions
                 return denied;
             }
 
-            var errors = ValidateIntakeSource(request.Name, request.Provider, request.FeedUrl);
+            var errors = ValidateIntakeSource(
+                request.Name,
+                request.Provider,
+                request.FeedUrl,
+                request.MinimumRating,
+                request.MinimumYear,
+                request.MaximumAgeDays,
+                request.SyncIntervalHours);
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
@@ -696,6 +710,68 @@ public static class PlatformEndpointRouteBuilderExtensions
 
             var removed = await repository.DeleteIntakeSourceAsync(id, cancellationToken);
             return removed ? Results.NoContent() : Results.NotFound();
+        });
+
+        intakeSources.MapPost("{id}/sync", async (
+            string id,
+            HttpContext httpContext,
+            IPlatformSettingsRepository repository,
+            IJobScheduler jobScheduler,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var source = await repository.GetIntakeSourceAsync(id, cancellationToken);
+            if (source is null)
+            {
+                return Results.NotFound();
+            }
+
+            var job = await jobScheduler.EnqueueAsync(
+                new EnqueueJobRequest(
+                    JobType: "intake.sync",
+                    Source: "intake",
+                    PayloadJson: JsonSerializer.Serialize(new { sourceId = source.Id, source.Name, manual = true }),
+                    RelatedEntityType: "intake-source",
+                    RelatedEntityId: source.Id,
+                    IdempotencyKey: $"intake.sync.manual:{source.Id}:{DateTimeOffset.UtcNow:yyyyMMddHHmmss}",
+                    DedupeKey: $"intake.sync:{source.Id}"),
+                cancellationToken);
+
+            return Results.Accepted($"/api/jobs/{job.Id}", job);
+        });
+
+        intakeSources.MapGet("{id}/diagnostics", async (
+            string id,
+            int? take,
+            HttpContext httpContext,
+            IPlatformSettingsRepository repository,
+            IActivityFeedRepository activityFeedRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var source = await repository.GetIntakeSourceAsync(id, cancellationToken);
+            if (source is null)
+            {
+                return Results.NotFound();
+            }
+
+            var cappedTake = Math.Clamp(take ?? 50, 1, 200);
+            var activity = await activityFeedRepository.ListActivityAsync(cappedTake, "intake-source", source.Id, cancellationToken);
+            return Results.Ok(new
+            {
+                source,
+                diagnostics = activity
+            });
         });
 
         customFormats.MapGet(string.Empty, async (IPlatformSettingsRepository repository, CancellationToken cancellationToken) =>
@@ -2346,7 +2422,14 @@ public static class PlatformEndpointRouteBuilderExtensions
         return errors;
     }
 
-    private static Dictionary<string, string[]> ValidateIntakeSource(string? name, string? provider, string? feedUrl)
+    private static Dictionary<string, string[]> ValidateIntakeSource(
+        string? name,
+        string? provider,
+        string? feedUrl,
+        double? minimumRating,
+        int? minimumYear,
+        int? maximumAgeDays,
+        int? syncIntervalHours)
     {
         var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
 
@@ -2363,6 +2446,26 @@ public static class PlatformEndpointRouteBuilderExtensions
         if (string.IsNullOrWhiteSpace(feedUrl))
         {
             errors["feedUrl"] = ["Add the source URL or identifier Deluno should poll."];
+        }
+
+        if (minimumRating is < 0 or > 10)
+        {
+            errors["minimumRating"] = ["Minimum rating must be between 0 and 10."];
+        }
+
+        if (minimumYear is < 1888 or > 2100)
+        {
+            errors["minimumYear"] = ["Minimum year must be between 1888 and 2100."];
+        }
+
+        if (maximumAgeDays is <= 0)
+        {
+            errors["maximumAgeDays"] = ["Maximum age in days must be greater than zero when provided."];
+        }
+
+        if (syncIntervalHours is <= 0 or > 168)
+        {
+            errors["syncIntervalHours"] = ["Sync interval must be between 1 and 168 hours."];
         }
 
         return errors;

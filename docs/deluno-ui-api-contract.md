@@ -186,6 +186,8 @@ Implemented CRUD surfaces:
 - `GET|PUT /api/quality-model`
 - `GET|POST|PUT|DELETE /api/tags`
 - `GET|POST|PUT|DELETE /api/intake-sources`
+- `POST /api/intake-sources/{id}/sync`
+- `GET /api/intake-sources/{id}/diagnostics`
 - `GET|POST|PUT|DELETE /api/custom-formats`
 - `POST /api/custom-formats/dry-run`
 - `GET|POST|PUT|DELETE /api/destination-rules`
@@ -198,6 +200,7 @@ Implemented CRUD surfaces:
 Current UI contract expectations:
 
 - quality profiles, tags, intake sources, custom formats, destination rules, policy sets, and saved library views are all active configuration concepts
+- intake sources now carry per-source filter/routing fields (`requiredGenres`, `minimumRating`, `minimumYear`, `maximumAgeDays`, `allowedCertifications`, `audience`) plus sync diagnostics (`lastSyncUtc`, `lastSyncStatus`, `lastSyncSummary`)
 - the quality model endpoint exposes explicit editable tiers with movie/episode size bounds and upgrade-stop policy
 - custom format dry-run is implemented and should be documented as a real workflow, not a future one
 - migration preview/apply exists and should remain tied to authenticated single-user setup and import workflows

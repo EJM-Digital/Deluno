@@ -434,6 +434,16 @@ export interface IntakeSourceItem {
   libraryName: string | null;
   qualityProfileId: string | null;
   qualityProfileName: string | null;
+  requiredGenres: string;
+  minimumRating: number | null;
+  minimumYear: number | null;
+  maximumAgeDays: number | null;
+  allowedCertifications: string;
+  audience: "any" | "kids" | "adult" | string;
+  syncIntervalHours: number;
+  lastSyncUtc: string | null;
+  lastSyncStatus: "never" | "success" | "partial" | "error" | string;
+  lastSyncSummary: string | null;
   searchOnAdd: boolean;
   isEnabled: boolean;
   createdUtc: string;

@@ -14,7 +14,8 @@ public static class PlatformDatabaseMigrations
         new V0006IndexerRateLimitTracking(),
         new V0007LibrarySearchWindows(),
         new V0008NotificationWebhooks(),
-        new V0009CustomFormatTrashIds()
+        new V0009CustomFormatTrashIds(),
+        new V0010IntakeSourceSyncConfig()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

@@ -7,5 +7,12 @@ public sealed record CreateIntakeSourceRequest(
     string? MediaType,
     string? LibraryId,
     string? QualityProfileId,
+    string? RequiredGenres,
+    double? MinimumRating,
+    int? MinimumYear,
+    int? MaximumAgeDays,
+    string? AllowedCertifications,
+    string? Audience,
+    int? SyncIntervalHours,
     bool SearchOnAdd,
     bool IsEnabled);

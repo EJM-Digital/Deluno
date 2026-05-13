@@ -23,6 +23,7 @@ public interface IPlatformSettingsRepository
     Task<IReadOnlyList<TagItem>> ListTagsAsync(CancellationToken cancellationToken);
 
     Task<IReadOnlyList<IntakeSourceItem>> ListIntakeSourcesAsync(CancellationToken cancellationToken);
+    Task<IntakeSourceItem?> GetIntakeSourceAsync(string id, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<CustomFormatItem>> ListCustomFormatsAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<DestinationRuleItem>> ListDestinationRulesAsync(CancellationToken cancellationToken);
@@ -108,6 +109,13 @@ public interface IPlatformSettingsRepository
     Task<IntakeSourceItem?> UpdateIntakeSourceAsync(
         string id,
         UpdateIntakeSourceRequest request,
+        CancellationToken cancellationToken);
+
+    Task<IntakeSourceItem?> RecordIntakeSourceSyncResultAsync(
+        string id,
+        DateTimeOffset syncedUtc,
+        string status,
+        string? summary,
         CancellationToken cancellationToken);
 
     Task<CustomFormatItem?> UpdateCustomFormatAsync(

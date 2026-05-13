@@ -187,6 +187,13 @@ public sealed class MigrationAssistantService(IPlatformSettingsRepository reposi
                             GetData(operation, "mediaType"),
                             LibraryId: null,
                             QualityProfileId: null,
+                            RequiredGenres: null,
+                            MinimumRating: null,
+                            MinimumYear: null,
+                            MaximumAgeDays: null,
+                            AllowedCertifications: null,
+                            Audience: null,
+                            SyncIntervalHours: null,
                             SearchOnAdd: ParseBool(GetData(operation, "searchOnAdd"), defaultValue: true),
                             IsEnabled: ParseBool(GetData(operation, "isEnabled"), defaultValue: true)),
                         cancellationToken);

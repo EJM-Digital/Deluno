@@ -10,6 +10,7 @@ using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Deluno.Series.Data;
 using Deluno.Series.Contracts;
+using Deluno.Worker.Intake;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -32,9 +33,10 @@ public sealed class DelunoHeartbeatWorker(
     private DateTimeOffset _lastImportAutomationUtc = DateTimeOffset.MinValue;
     private DateTimeOffset _lastDispatchCleanupUtc = DateTimeOffset.MinValue;
     private DateTimeOffset _lastMetadataAutomationUtc = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastIntakeAutomationUtc = DateTimeOffset.MinValue;
     private readonly JobLane[] _lanes =
     [
-        new("search", TimeSpan.FromSeconds(5), ["library.search"], PlanAutomation: true),
+        new("search", TimeSpan.FromSeconds(5), ["library.search", "intake.sync"], PlanAutomation: true),
         new("import", TimeSpan.FromSeconds(2), ["filesystem.import.execute"], PlanAutomation: false),
         new("maintenance", TimeSpan.FromSeconds(8),
         [
@@ -77,6 +79,7 @@ public sealed class DelunoHeartbeatWorker(
             var movieCatalogRepository = scope.ServiceProvider.GetRequiredService<IMovieCatalogRepository>();
             var seriesCatalogRepository = scope.ServiceProvider.GetRequiredService<ISeriesCatalogRepository>();
             var activityFeedRepository = scope.ServiceProvider.GetRequiredService<IActivityFeedRepository>();
+            var intakeSyncService = scope.ServiceProvider.GetRequiredService<IIntakeSyncService>();
 
             await jobQueueRepository.HeartbeatAsync(_workerId, stoppingToken);
 
@@ -106,6 +109,7 @@ public sealed class DelunoHeartbeatWorker(
                     .ToArray();
 
                 await jobQueueRepository.PlanLibrarySearchesAsync(automationPlans, stoppingToken);
+                await PlanIntakeAutomationAsync(intakeSyncService, timeProvider, stoppingToken);
             }
 
             if (lane.Name == "import")
@@ -162,6 +166,7 @@ public sealed class DelunoHeartbeatWorker(
                     movieCatalogRepository,
                     seriesCatalogRepository,
                     activityFeedRepository,
+                    intakeSyncService,
                     timeProvider,
                     stoppingToken);
 
@@ -268,6 +273,21 @@ public sealed class DelunoHeartbeatWorker(
                     RelatedEntityId: series.Id),
                 cancellationToken);
         }
+    }
+
+    private async Task PlanIntakeAutomationAsync(
+        IIntakeSyncService intakeSyncService,
+        TimeProvider timeProvider,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        if (now - _lastIntakeAutomationUtc < TimeSpan.FromMinutes(5))
+        {
+            return;
+        }
+
+        _lastIntakeAutomationUtc = now;
+        await intakeSyncService.PlanDueSyncJobsAsync(cancellationToken);
     }
 
     private async Task PlanImportAutomationAsync(
@@ -443,6 +463,7 @@ public sealed class DelunoHeartbeatWorker(
         IMovieCatalogRepository movieCatalogRepository,
         ISeriesCatalogRepository seriesCatalogRepository,
         IActivityFeedRepository activityFeedRepository,
+        IIntakeSyncService intakeSyncService,
         TimeProvider timeProvider,
         CancellationToken cancellationToken)
     {
@@ -842,6 +863,7 @@ public sealed class DelunoHeartbeatWorker(
 
         return job.JobType switch
         {
+            "intake.sync" => await RunIntakeSyncAsync(job, intakeSyncService, cancellationToken),
             "movies.metadata.refresh" => await RefreshMovieMetadataAsync(job, metadataProvider, movieCatalogRepository, activityFeedRepository, cancellationToken),
             "series.metadata.refresh" => await RefreshSeriesMetadataAsync(job, metadataProvider, seriesCatalogRepository, activityFeedRepository, cancellationToken),
             "filesystem.import.execute" => await ExecuteImportJobAsync(job, importPipelineService, cancellationToken),
@@ -851,6 +873,22 @@ public sealed class DelunoHeartbeatWorker(
             "series.catalog.refresh" => "Finished checking your TV show library.",
             _ => "Finished a background task."
         };
+    }
+
+    private static async Task<string> RunIntakeSyncAsync(
+        Deluno.Jobs.Contracts.JobQueueItem job,
+        IIntakeSyncService intakeSyncService,
+        CancellationToken cancellationToken)
+    {
+        var payload = ParseIntakeSyncPayload(job.PayloadJson);
+        var sourceId = payload?.SourceId ?? job.RelatedEntityId;
+        if (string.IsNullOrWhiteSpace(sourceId))
+        {
+            return "Skipped intake sync because no source id was provided.";
+        }
+
+        var result = await intakeSyncService.RunAsync(sourceId, job.Id, payload?.Manual == true, cancellationToken);
+        return $"Intake sync completed for {result.SourceName}: {result.Summary}";
     }
 
     private static async Task PlanProcessorOutputImportsAsync(
@@ -1431,6 +1469,18 @@ public sealed class DelunoHeartbeatWorker(
         }
     }
 
+    private static IntakeSyncPayload? ParseIntakeSyncPayload(string? payloadJson)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<IntakeSyncPayload>(payloadJson ?? "{}", PayloadJsonOptions);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private static LibraryItem? ResolveLibraryForQueueItem(DownloadQueueItem item, IReadOnlyList<LibraryItem> libraries)
     {
         var normalizedMediaType = item.MediaType.Equals("tv", StringComparison.OrdinalIgnoreCase) ||
@@ -1572,6 +1622,10 @@ public sealed class DelunoHeartbeatWorker(
         string? LibraryId,
         string? ReleaseName,
         string? SourcePath);
+
+    private sealed record IntakeSyncPayload(
+        string? SourceId,
+        bool Manual);
 
     private sealed record JobLane(
         string Name,

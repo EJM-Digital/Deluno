@@ -140,6 +140,8 @@ These endpoints are intentionally generic so processors, automation scripts, das
 - `POST /api/integrations/external/import-preview` runs the same destination-rule/import preview engine used by Deluno's queue UI.
 - `POST /api/integrations/external/trigger-refresh` requests library search refreshes by media type.
 - `POST /api/integrations/processors/events` reports generic processor status for refine-before-import workflows.
+- `POST /api/intake-sources/{id}/sync` queues an immediate watchlist/intake sync for a configured source.
+- `GET /api/intake-sources/{id}/diagnostics?take=50` returns recent sync diagnostics and skip reasons for that source.
 
 API key scopes:
 

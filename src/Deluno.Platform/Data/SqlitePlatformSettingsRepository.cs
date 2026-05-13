@@ -258,6 +258,9 @@ public sealed class SqlitePlatformSettingsRepository(
             SELECT
                 s.id, s.name, s.provider, s.feed_url, s.media_type,
                 s.library_id, l.name, s.quality_profile_id, q.name,
+                s.required_genres, s.minimum_rating, s.minimum_year, s.maximum_age_days,
+                s.allowed_certifications, s.audience, s.sync_interval_hours,
+                s.last_sync_utc, s.last_sync_status, s.last_sync_summary,
                 s.search_on_add, s.is_enabled, s.created_utc, s.updated_utc
             FROM intake_sources s
             LEFT JOIN libraries l ON l.id = s.library_id
@@ -272,6 +275,15 @@ public sealed class SqlitePlatformSettingsRepository(
         }
 
         return items;
+    }
+
+    public async Task<IntakeSourceItem?> GetIntakeSourceAsync(string id, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        return await GetIntakeSourceAsync(connection, id, cancellationToken);
     }
 
     public async Task<IReadOnlyList<CustomFormatItem>> ListCustomFormatsAsync(CancellationToken cancellationToken)
@@ -895,6 +907,16 @@ public sealed class SqlitePlatformSettingsRepository(
             LibraryName: null,
             QualityProfileId: NormalizeName(request.QualityProfileId),
             QualityProfileName: null,
+            RequiredGenres: NormalizeCsv(request.RequiredGenres),
+            MinimumRating: NormalizeNullableRating(request.MinimumRating),
+            MinimumYear: NormalizeNullableYear(request.MinimumYear),
+            MaximumAgeDays: NormalizeNullablePositiveValue(request.MaximumAgeDays),
+            AllowedCertifications: NormalizeCsv(request.AllowedCertifications),
+            Audience: NormalizeAudience(request.Audience),
+            SyncIntervalHours: NormalizeSyncIntervalHours(request.SyncIntervalHours),
+            LastSyncUtc: null,
+            LastSyncStatus: "never",
+            LastSyncSummary: null,
             SearchOnAdd: request.SearchOnAdd,
             IsEnabled: request.IsEnabled,
             CreatedUtc: now,
@@ -905,10 +927,14 @@ public sealed class SqlitePlatformSettingsRepository(
             """
             INSERT INTO intake_sources (
                 id, name, provider, feed_url, media_type, library_id, quality_profile_id,
+                required_genres, minimum_rating, minimum_year, maximum_age_days,
+                allowed_certifications, audience, sync_interval_hours, last_sync_utc, last_sync_status, last_sync_summary,
                 search_on_add, is_enabled, created_utc, updated_utc
             )
             VALUES (
                 @id, @name, @provider, @feedUrl, @mediaType, @libraryId, @qualityProfileId,
+                @requiredGenres, @minimumRating, @minimumYear, @maximumAgeDays,
+                @allowedCertifications, @audience, @syncIntervalHours, @lastSyncUtc, @lastSyncStatus, @lastSyncSummary,
                 @searchOnAdd, @isEnabled, @createdUtc, @updatedUtc
             );
             """;
@@ -920,6 +946,16 @@ public sealed class SqlitePlatformSettingsRepository(
         AddParameter(command, "@mediaType", item.MediaType);
         AddParameter(command, "@libraryId", item.LibraryId);
         AddParameter(command, "@qualityProfileId", item.QualityProfileId);
+        AddParameter(command, "@requiredGenres", item.RequiredGenres);
+        AddParameter(command, "@minimumRating", item.MinimumRating);
+        AddParameter(command, "@minimumYear", item.MinimumYear);
+        AddParameter(command, "@maximumAgeDays", item.MaximumAgeDays);
+        AddParameter(command, "@allowedCertifications", item.AllowedCertifications);
+        AddParameter(command, "@audience", item.Audience);
+        AddParameter(command, "@syncIntervalHours", item.SyncIntervalHours);
+        AddParameter(command, "@lastSyncUtc", item.LastSyncUtc?.ToString("O"));
+        AddParameter(command, "@lastSyncStatus", item.LastSyncStatus);
+        AddParameter(command, "@lastSyncSummary", item.LastSyncSummary);
         AddParameter(command, "@searchOnAdd", item.SearchOnAdd ? 1 : 0);
         AddParameter(command, "@isEnabled", item.IsEnabled ? 1 : 0);
         AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
@@ -1261,6 +1297,13 @@ public sealed class SqlitePlatformSettingsRepository(
                 media_type = @mediaType,
                 library_id = @libraryId,
                 quality_profile_id = @qualityProfileId,
+                required_genres = @requiredGenres,
+                minimum_rating = @minimumRating,
+                minimum_year = @minimumYear,
+                maximum_age_days = @maximumAgeDays,
+                allowed_certifications = @allowedCertifications,
+                audience = @audience,
+                sync_interval_hours = @syncIntervalHours,
                 search_on_add = @searchOnAdd,
                 is_enabled = @isEnabled,
                 updated_utc = @updatedUtc
@@ -1274,10 +1317,56 @@ public sealed class SqlitePlatformSettingsRepository(
         AddParameter(command, "@mediaType", NormalizeMediaType(request.MediaType));
         AddParameter(command, "@libraryId", NormalizeName(request.LibraryId));
         AddParameter(command, "@qualityProfileId", NormalizeName(request.QualityProfileId));
+        AddParameter(command, "@requiredGenres", NormalizeCsv(request.RequiredGenres));
+        AddParameter(command, "@minimumRating", NormalizeNullableRating(request.MinimumRating));
+        AddParameter(command, "@minimumYear", NormalizeNullableYear(request.MinimumYear));
+        AddParameter(command, "@maximumAgeDays", NormalizeNullablePositiveValue(request.MaximumAgeDays));
+        AddParameter(command, "@allowedCertifications", NormalizeCsv(request.AllowedCertifications));
+        AddParameter(command, "@audience", NormalizeAudience(request.Audience));
+        AddParameter(command, "@syncIntervalHours", NormalizeSyncIntervalHours(request.SyncIntervalHours));
         AddParameter(command, "@searchOnAdd", request.SearchOnAdd ? 1 : 0);
         AddParameter(command, "@isEnabled", request.IsEnabled ? 1 : 0);
         AddParameter(command, "@updatedUtc", now.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
+
+        return await GetIntakeSourceAsync(connection, id, cancellationToken);
+    }
+
+    public async Task<IntakeSourceItem?> RecordIntakeSourceSyncResultAsync(
+        string id,
+        DateTimeOffset syncedUtc,
+        string status,
+        string? summary,
+        CancellationToken cancellationToken)
+    {
+        var updatedUtc = timeProvider.GetUtcNow();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE intake_sources
+            SET
+                last_sync_utc = @lastSyncUtc,
+                last_sync_status = @lastSyncStatus,
+                last_sync_summary = @lastSyncSummary,
+                updated_utc = @updatedUtc
+            WHERE id = @id;
+            """;
+
+        AddParameter(command, "@id", id);
+        AddParameter(command, "@lastSyncUtc", syncedUtc.ToString("O"));
+        AddParameter(command, "@lastSyncStatus", NormalizeIntakeSyncStatus(status));
+        AddParameter(command, "@lastSyncSummary", NormalizeName(summary));
+        AddParameter(command, "@updatedUtc", updatedUtc.ToString("O"));
+
+        if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
+        {
+            return null;
+        }
 
         return await GetIntakeSourceAsync(connection, id, cancellationToken);
     }
@@ -3180,6 +3269,9 @@ public sealed class SqlitePlatformSettingsRepository(
             SELECT
                 s.id, s.name, s.provider, s.feed_url, s.media_type,
                 s.library_id, l.name, s.quality_profile_id, q.name,
+                s.required_genres, s.minimum_rating, s.minimum_year, s.maximum_age_days,
+                s.allowed_certifications, s.audience, s.sync_interval_hours,
+                s.last_sync_utc, s.last_sync_status, s.last_sync_summary,
                 s.search_on_add, s.is_enabled, s.created_utc, s.updated_utc
             FROM intake_sources s
             LEFT JOIN libraries l ON l.id = s.library_id
@@ -3428,6 +3520,48 @@ public sealed class SqlitePlatformSettingsRepository(
             (value ?? string.Empty)
                 .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
                 .Distinct(StringComparer.OrdinalIgnoreCase));
+    }
+
+    private static double? NormalizeNullableRating(double? value)
+    {
+        if (value is null || double.IsNaN(value.Value) || double.IsInfinity(value.Value))
+        {
+            return null;
+        }
+
+        return Math.Clamp(value.Value, 0, 10);
+    }
+
+    private static int? NormalizeNullableYear(int? value)
+        => value is >= 1888 and <= 2100 ? value : null;
+
+    private static int NormalizeSyncIntervalHours(int? value)
+        => NormalizeSyncIntervalHours(value ?? 24);
+
+    private static int NormalizeSyncIntervalHours(int value)
+        => Math.Clamp(value <= 0 ? 24 : value, 1, 168);
+
+    private static string NormalizeAudience(string? value)
+    {
+        var normalized = value?.Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "kids" => "kids",
+            "adult" => "adult",
+            _ => "any"
+        };
+    }
+
+    private static string NormalizeIntakeSyncStatus(string? value)
+    {
+        var normalized = value?.Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "success" => "success",
+            "partial" => "partial",
+            "error" => "error",
+            _ => "never"
+        };
     }
 
     private static string NormalizeNeverGrabPatterns(string? value)
@@ -3784,10 +3918,20 @@ public sealed class SqlitePlatformSettingsRepository(
             LibraryName: reader.IsDBNull(6) ? null : reader.GetString(6),
             QualityProfileId: reader.IsDBNull(7) ? null : reader.GetString(7),
             QualityProfileName: reader.IsDBNull(8) ? null : reader.GetString(8),
-            SearchOnAdd: reader.GetInt64(9) == 1,
-            IsEnabled: reader.GetInt64(10) == 1,
-            CreatedUtc: ParseTimestamp(reader.GetString(11)),
-            UpdatedUtc: ParseTimestamp(reader.GetString(12)));
+            RequiredGenres: reader.IsDBNull(9) ? string.Empty : reader.GetString(9),
+            MinimumRating: reader.IsDBNull(10) ? null : reader.GetDouble(10),
+            MinimumYear: reader.IsDBNull(11) ? null : reader.GetInt32(11),
+            MaximumAgeDays: reader.IsDBNull(12) ? null : reader.GetInt32(12),
+            AllowedCertifications: reader.IsDBNull(13) ? string.Empty : reader.GetString(13),
+            Audience: reader.IsDBNull(14) ? "any" : NormalizeAudience(reader.GetString(14)),
+            SyncIntervalHours: reader.IsDBNull(15) ? 24 : NormalizeSyncIntervalHours(reader.GetInt32(15)),
+            LastSyncUtc: reader.IsDBNull(16) ? null : ParseTimestamp(reader.GetString(16)),
+            LastSyncStatus: reader.IsDBNull(17) ? "never" : NormalizeIntakeSyncStatus(reader.GetString(17)),
+            LastSyncSummary: reader.IsDBNull(18) ? null : reader.GetString(18),
+            SearchOnAdd: reader.GetInt64(19) == 1,
+            IsEnabled: reader.GetInt64(20) == 1,
+            CreatedUtc: ParseTimestamp(reader.GetString(21)),
+            UpdatedUtc: ParseTimestamp(reader.GetString(22)));
     }
 
     private static CustomFormatItem ReadCustomFormat(System.Data.Common.DbDataReader reader)

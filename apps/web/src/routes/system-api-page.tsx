@@ -193,6 +193,8 @@ export function SystemApiPage() {
                     ["imports", "POST", "/api/integrations/processors/events"],
                     ["queue", "POST", "/api/integrations/external/trigger-refresh"],
                     ["queue", "POST", "/api/download-clients/{clientId}/webhook"],
+                    ["write", "POST", "/api/intake-sources/{id}/sync"],
+                    ["read", "GET", "/api/intake-sources/{id}/diagnostics?take=50"],
                     ["write", "GET|POST|PUT|DELETE", "/api/notification-webhooks"]
                   ].map(([scope, method, path]) => (
                     <div key={`${method}:${path}`} className="grid gap-2 rounded-lg border border-hairline bg-background/35 p-3 sm:grid-cols-[6rem_1fr_6rem] sm:items-center">
