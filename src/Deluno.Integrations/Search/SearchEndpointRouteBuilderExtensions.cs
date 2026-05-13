@@ -47,6 +47,7 @@ public static class SearchEndpointRouteBuilderExtensions
 
         var releases = endpoints.MapGroup("/api/releases");
         var rankingModel = endpoints.MapGroup("/api/ranking-model");
+        var intelligentRouting = endpoints.MapGroup("/api/intelligent-routing");
 
         releases.MapPost("explain", async (
             ReleaseExplainRequest request,
@@ -135,6 +136,85 @@ public static class SearchEndpointRouteBuilderExtensions
             return rolledBack
                 ? Results.Ok(new { accepted = true, message, version = request.Version })
                 : Results.BadRequest(new { accepted = false, message, version = request.Version });
+        });
+
+        intelligentRouting.MapGet("snapshot", async (
+            IIntelligentRoutingService intelligentRoutingService,
+            CancellationToken cancellationToken) =>
+        {
+            var snapshot = await intelligentRoutingService.GetSnapshotAsync(cancellationToken);
+            return Results.Ok(snapshot);
+        });
+
+        intelligentRouting.MapGet("anomalies", async (
+            IIntelligentRoutingService intelligentRoutingService,
+            CancellationToken cancellationToken) =>
+        {
+            var anomalies = await intelligentRoutingService.DetectAnomaliesAsync(cancellationToken);
+            return Results.Ok(new
+            {
+                count = anomalies.Count,
+                anomalies
+            });
+        });
+
+        intelligentRouting.MapPost("recommend-release", async (
+            IntelligentReleaseRecommendationRequest request,
+            IReleaseRankingModelService rankingModelService,
+            IIntelligentRoutingService intelligentRoutingService,
+            CancellationToken cancellationToken) =>
+        {
+            var boost = rankingModelService.Score(new ReleaseRankingFeatures(
+                Seeders: request.Seeders,
+                SizeBytes: request.SizeBytes,
+                QualityDelta: request.QualityDelta,
+                CustomFormatScore: request.CustomFormatScore,
+                SourcePriorityScore: request.SourcePriorityScore,
+                EstimatedBitrateMbps: request.EstimatedBitrateMbps,
+                ReleaseAgeHours: request.ReleaseAgeHours), hardBlocked: false);
+
+            var snapshot = await intelligentRoutingService.GetSnapshotAsync(cancellationToken);
+            double? indexerRate = string.IsNullOrWhiteSpace(request.IndexerName)
+                ? null
+                : snapshot.IndexerSuccessRates.TryGetValue(request.IndexerName, out var rate) ? rate : null;
+            var clientRate = await intelligentRoutingService.GetDownloadClientSuccessRateAsync(request.DownloadClientId, cancellationToken);
+
+            var recommendation = 50d;
+            recommendation += Math.Clamp(boost.BoostPoints, -20, 20);
+            if (indexerRate is not null)
+            {
+                recommendation += (indexerRate.Value - 0.5d) * 24d;
+            }
+
+            if (clientRate is not null)
+            {
+                recommendation += (clientRate.Value - 0.5d) * 24d;
+            }
+
+            if (request.CustomFormatScore >= snapshot.Preferences.AverageCustomFormatScore)
+            {
+                recommendation += 4;
+            }
+
+            if (request.QualityDelta > 0)
+            {
+                recommendation += 6;
+            }
+
+            var finalScore = (int)Math.Round(Math.Clamp(recommendation, 0, 100), MidpointRounding.AwayFromZero);
+            var label = finalScore >= 75
+                ? "strong"
+                : finalScore >= 55
+                    ? "review"
+                    : "avoid";
+
+            return Results.Ok(new IntelligentReleaseRecommendation(
+                RecommendationScore: finalScore,
+                RecommendationLabel: label,
+                Summary: $"Recommendation {finalScore}/100 ({label}) for {request.ReleaseName}.",
+                IndexerSuccessRate: indexerRate,
+                DownloadClientSuccessRate: clientRate,
+                RankingBoost: boost));
         });
 
         return endpoints;

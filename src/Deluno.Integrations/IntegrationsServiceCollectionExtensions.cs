@@ -14,6 +14,7 @@ public static class IntegrationsServiceCollectionExtensions
         services.AddSingleton<IReleaseRankingModelService>(provider => provider.GetRequiredService<MlNetReleaseRankingModelService>());
         services.AddSingleton<IReleaseRankingModelAdminService>(provider => provider.GetRequiredService<MlNetReleaseRankingModelService>());
         services.AddHostedService<RankingModelTrainingHostedService>();
+        services.AddSingleton<IIntelligentRoutingService, IntelligentRoutingService>();
         services.AddScoped<IMediaSearchPlanner, FeedMediaSearchPlanner>();
         services.AddScoped<IAcquisitionDecisionPipeline, AcquisitionDecisionPipeline>();
         services.AddHttpClient("indexers", client => client.Timeout = TimeSpan.FromSeconds(10));

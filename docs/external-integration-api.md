@@ -150,6 +150,9 @@ These endpoints are intentionally generic so processors, automation scripts, das
 - `GET /api/ranking-model/status` returns ML ranking runtime status (enabled state, active version, evaluation metrics).
 - `POST /api/ranking-model/train` triggers an immediate retraining pass on labeled dispatch telemetry.
 - `POST /api/ranking-model/rollback` rolls back the active model version.
+- `GET /api/intelligent-routing/snapshot` returns learned preference profile plus indexer/client success-rate maps.
+- `GET /api/intelligent-routing/anomalies` returns detected unusual grab/failure/downgrade patterns.
+- `POST /api/intelligent-routing/recommend-release` returns a recommendation score for a proposed release using rules + ML + historical routing success.
 
 API key scopes:
 

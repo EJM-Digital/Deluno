@@ -18,13 +18,16 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
     private static readonly IReleaseRankingModelService DisabledRankingModelService = new DisabledReleaseRankingService();
     private readonly IMediaSearchPlanner mediaSearchPlanner;
     private readonly IReleaseRankingModelService rankingModelService;
+    private readonly IIntelligentRoutingService? intelligentRoutingService;
 
     public AcquisitionDecisionPipeline(
         IMediaSearchPlanner mediaSearchPlanner,
-        IReleaseRankingModelService? rankingModelService = null)
+        IReleaseRankingModelService? rankingModelService = null,
+        IIntelligentRoutingService? intelligentRoutingService = null)
     {
         this.mediaSearchPlanner = mediaSearchPlanner;
         this.rankingModelService = rankingModelService ?? DisabledRankingModelService;
+        this.intelligentRoutingService = intelligentRoutingService;
     }
 
     public async Task<AcquisitionDecisionPlan> PlanAsync(
@@ -33,9 +36,7 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
     {
         var sourceCount = request.Sources.Count;
         var clientCount = request.DownloadClients.Count;
-        var selectedClient = request.DownloadClients
-            .OrderBy(client => client.Priority)
-            .FirstOrDefault();
+        var selectedClient = await SelectDownloadClientAsync(request.DownloadClients, cancellationToken);
 
         var searchPlan = sourceCount == 0 || clientCount == 0
             ? new MediaSearchPlan(
@@ -215,6 +216,37 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
                 Reason: candidate.Summary,
                 Score: candidate.Score))
             .ToArray();
+
+    private async Task<LibraryDownloadClientLinkItem?> SelectDownloadClientAsync(
+        IReadOnlyList<LibraryDownloadClientLinkItem> clients,
+        CancellationToken cancellationToken)
+    {
+        if (clients.Count == 0)
+        {
+            return null;
+        }
+
+        if (intelligentRoutingService is null)
+        {
+            return clients.OrderBy(client => client.Priority).FirstOrDefault();
+        }
+
+        LibraryDownloadClientLinkItem? selected = null;
+        var bestScore = double.MinValue;
+        foreach (var client in clients)
+        {
+            var successRate = await intelligentRoutingService.GetDownloadClientSuccessRateAsync(client.DownloadClientId, cancellationToken) ?? 0.5;
+            var priorityScore = Math.Max(0, 120 - client.Priority);
+            var composite = successRate * 100d * 0.65 + priorityScore * 0.35;
+            if (composite > bestScore)
+            {
+                bestScore = composite;
+                selected = client;
+            }
+        }
+
+        return selected ?? clients.OrderBy(client => client.Priority).First();
+    }
 
     private sealed class DisabledReleaseRankingService : IReleaseRankingModelService
     {

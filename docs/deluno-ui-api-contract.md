@@ -224,16 +224,21 @@ Implemented endpoints:
 - `GET /api/ranking-model/status`
 - `POST /api/ranking-model/train`
 - `POST /api/ranking-model/rollback`
+- `GET /api/intelligent-routing/snapshot`
+- `GET /api/intelligent-routing/anomalies`
+- `POST /api/intelligent-routing/recommend-release`
 
 Current UI contract expectations:
 
 - release explain responses include deterministic decision details plus ML model probability/boost explanation when enabled
 - ranking model status exposes active model version, last training metadata, sample count, and evaluation metrics
 - training and rollback controls are operational endpoints for guarded model lifecycle actions
+- intelligent-routing snapshot exposes learned quality/release-group preferences and success-rate maps for indexers and download clients
+- runtime download-client selection can now consider historical success rates in addition to static priority
 
 Current gaps:
 
-- broader intelligent routing beyond bounded score boost remains roadmap work; hard policy safety remains deterministic
+- deeper routing experimentation (bandits, longer-horizon feedback loops) remains future work; hard policy safety remains deterministic
 
 ## Libraries And Routing
 

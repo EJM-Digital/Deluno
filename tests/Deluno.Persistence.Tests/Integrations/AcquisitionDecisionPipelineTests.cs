@@ -107,6 +107,38 @@ public sealed class AcquisitionDecisionPipelineTests
         Assert.True(forced.RequiresOverride);
     }
 
+    [Fact]
+    public async Task PlanAsync_prefers_client_with_higher_historical_success()
+    {
+        var candidate = Candidate(status: "preferred", meetsCutoff: true, qualityDelta: 1);
+        var intelligentRouting = new StubIntelligentRoutingService(new Dictionary<string, double>
+        {
+            ["client-a"] = 0.35,
+            ["client-b"] = 0.91
+        });
+
+        var pipeline = new AcquisitionDecisionPipeline(
+            new StubPlanner(new MediaSearchPlan(candidate, [candidate], "best candidate")),
+            rankingModelService: null,
+            intelligentRoutingService: intelligentRouting);
+
+        var plan = await pipeline.PlanAsync(new AcquisitionDecisionRequest(
+            "Dune Part Two",
+            2024,
+            "movies",
+            "WEB 720p",
+            "WEB 1080p",
+            Sources: [Source()],
+            DownloadClients:
+            [
+                DownloadClient("client-a", 5),
+                DownloadClient("client-b", 50)
+            ]));
+
+        Assert.NotNull(plan.SelectedDownloadClient);
+        Assert.Equal("client-b", plan.SelectedDownloadClient!.DownloadClientId);
+    }
+
     private static MediaSearchCandidate Candidate(string status, bool meetsCutoff, int qualityDelta)
         => new(
             ReleaseName: "Dune.Part.Two.2024.1080p.WEB-DL-GRP",
@@ -136,13 +168,13 @@ public sealed class AcquisitionDecisionPipelineTests
             DateTimeOffset.UnixEpoch,
             DateTimeOffset.UnixEpoch);
 
-    private static LibraryDownloadClientLinkItem DownloadClient()
+    private static LibraryDownloadClientLinkItem DownloadClient(string id = "client", int priority = 10)
         => new(
             "client-link",
             "library",
-            "client",
+            id,
             "qBittorrent",
-            10,
+            priority,
             DateTimeOffset.UnixEpoch,
             DateTimeOffset.UnixEpoch);
 
@@ -160,5 +192,28 @@ public sealed class AcquisitionDecisionPipelineTests
             int? episodeNumber = null,
             CancellationToken cancellationToken = default)
             => Task.FromResult(plan);
+    }
+
+    private sealed class StubIntelligentRoutingService(IReadOnlyDictionary<string, double> clientRates) : IIntelligentRoutingService
+    {
+        public Task<IntelligentRoutingSnapshot> GetSnapshotAsync(CancellationToken cancellationToken)
+            => Task.FromResult(new IntelligentRoutingSnapshot(
+                DateTimeOffset.UtcNow,
+                new IntelligentRoutingPreferences(null, 0, []),
+                new Dictionary<string, double>(),
+                clientRates));
+
+        public Task<IReadOnlyList<IntelligentRoutingAnomaly>> DetectAnomaliesAsync(CancellationToken cancellationToken)
+            => Task.FromResult((IReadOnlyList<IntelligentRoutingAnomaly>)[]);
+
+        public Task<double?> GetDownloadClientSuccessRateAsync(string? downloadClientId, CancellationToken cancellationToken)
+        {
+            if (downloadClientId is null)
+            {
+                return Task.FromResult<double?>(null);
+            }
+
+            return Task.FromResult<double?>(clientRates.TryGetValue(downloadClientId, out var rate) ? rate : null);
+        }
     }
 }
