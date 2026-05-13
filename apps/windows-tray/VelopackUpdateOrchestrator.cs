@@ -9,17 +9,10 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly string _currentVersion = Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "0.0.0";
+    private readonly UpdateStateMachine _runtime = new();
     private UpdateManager? _manager;
     private string _managerKey = string.Empty;
     private UpdateInfo? _availableUpdate;
-    private string _state = UpdateStates.Idle;
-    private string? _latestVersion;
-    private string? _lastError;
-    private int? _progressPercent;
-    private DateTimeOffset? _lastCheckedUtc;
-    private DateTimeOffset? _lastDownloadedUtc;
-    private bool _restartRequired;
-    private bool _updateAvailable;
 
     public async Task<UpdateStatusResponse> GetStatusAsync(CancellationToken cancellationToken)
     {
@@ -45,36 +38,30 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
             var manager = GetOrCreateManager(settings);
             if (!manager.IsInstalled)
             {
-                _state = UpdateStates.NotSupported;
+                _runtime.MarkNotSupported();
                 return BuildStatus(settings, manager, "Updates are available only for a Velopack-installed app.");
             }
 
-            _lastError = null;
-            _state = UpdateStates.Checking;
-            _progressPercent = null;
+            _runtime.MarkChecking();
 
             var update = await manager.CheckForUpdatesAsync();
-            _lastCheckedUtc = DateTimeOffset.UtcNow;
+            var checkedUtc = DateTimeOffset.UtcNow;
 
             if (update is null)
             {
                 _availableUpdate = null;
-                _latestVersion = null;
-                _updateAvailable = false;
-                _restartRequired = manager.UpdatePendingRestart is not null;
-                _state = _restartRequired ? UpdateStates.ReadyToRestart : UpdateStates.UpToDate;
+                var restartRequired = manager.UpdatePendingRestart is not null;
+                _runtime.MarkUpToDate(checkedUtc, restartRequired);
                 return BuildStatus(
                     settings,
                     manager,
-                    _restartRequired
+                    restartRequired
                         ? "An already-downloaded update is waiting for restart."
                         : "You are on the latest version.");
             }
 
             _availableUpdate = update;
-            _latestVersion = update.TargetFullRelease.Version.ToString();
-            _updateAvailable = true;
-            _state = UpdateStates.UpdateAvailable;
+            _runtime.MarkUpdateAvailable(checkedUtc, update.TargetFullRelease.Version.ToString());
 
             if (settings.AutoCheckUpdates && settings.UpdateMode != UpdateModes.NotifyOnly)
             {
@@ -82,13 +69,12 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
                 return BuildStatus(settings, manager, "Update was found and downloaded in the background.");
             }
 
-            return BuildStatus(settings, manager, $"Version {_latestVersion} is available.");
+            return BuildStatus(settings, manager, $"Version {_runtime.LatestVersion} is available.");
         }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Update check failed.");
-            _lastError = ex.Message;
-            _state = UpdateStates.Error;
+            _runtime.MarkError(ex.Message);
             return await GetStatusUnlockedAsync(cancellationToken, "Update check failed.");
         }
         finally
@@ -112,14 +98,19 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
             if (_availableUpdate is null)
             {
                 var update = await manager.CheckForUpdatesAsync();
-                _lastCheckedUtc = DateTimeOffset.UtcNow;
+                if (update is null)
+                {
+                    _runtime.MarkUpToDate(DateTimeOffset.UtcNow, manager.UpdatePendingRestart is not null);
+                }
+                else
+                {
+                    _runtime.MarkUpdateAvailable(DateTimeOffset.UtcNow, update.TargetFullRelease.Version.ToString());
+                }
                 _availableUpdate = update;
             }
 
             if (_availableUpdate is null)
             {
-                _updateAvailable = false;
-                _state = UpdateStates.UpToDate;
                 return BuildStatus(settings, manager, "No update is available.");
             }
 
@@ -129,8 +120,7 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Update download failed.");
-            _lastError = ex.Message;
-            _state = UpdateStates.Error;
+            _runtime.MarkError(ex.Message);
             return await GetStatusUnlockedAsync(cancellationToken, "Download failed.");
         }
         finally
@@ -156,7 +146,14 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
                 if (_availableUpdate is null)
                 {
                     _availableUpdate = await manager.CheckForUpdatesAsync();
-                    _lastCheckedUtc = DateTimeOffset.UtcNow;
+                    if (_availableUpdate is null)
+                    {
+                        _runtime.MarkUpToDate(DateTimeOffset.UtcNow, manager.UpdatePendingRestart is not null);
+                    }
+                    else
+                    {
+                        _runtime.MarkUpdateAvailable(DateTimeOffset.UtcNow, _availableUpdate.TargetFullRelease.Version.ToString());
+                    }
                 }
 
                 if (_availableUpdate is not null)
@@ -165,20 +162,26 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
                 }
             }
 
-            _restartRequired = manager.UpdatePendingRestart is not null || _availableUpdate is not null;
-            _state = _restartRequired ? UpdateStates.ReadyToRestart : UpdateStates.UpToDate;
+            var restartRequired = manager.UpdatePendingRestart is not null || _availableUpdate is not null;
+            if (restartRequired)
+            {
+                _runtime.MarkReadyToRestart();
+            }
+            else
+            {
+                _runtime.MarkUpToDate(_runtime.LastCheckedUtc ?? DateTimeOffset.UtcNow, restartRequired: false);
+            }
             return BuildStatus(
                 settings,
                 manager,
-                _restartRequired
+                restartRequired
                     ? "Update is staged and will apply on restart."
                     : "No update is ready to apply.");
         }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Apply-on-restart preparation failed.");
-            _lastError = ex.Message;
-            _state = UpdateStates.Error;
+            _runtime.MarkError(ex.Message);
             return await GetStatusUnlockedAsync(cancellationToken, "Could not prepare the update.");
         }
         finally
@@ -204,7 +207,14 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
                 if (_availableUpdate is null)
                 {
                     _availableUpdate = await manager.CheckForUpdatesAsync();
-                    _lastCheckedUtc = DateTimeOffset.UtcNow;
+                    if (_availableUpdate is null)
+                    {
+                        _runtime.MarkUpToDate(DateTimeOffset.UtcNow, manager.UpdatePendingRestart is not null);
+                    }
+                    else
+                    {
+                        _runtime.MarkUpdateAvailable(DateTimeOffset.UtcNow, _availableUpdate.TargetFullRelease.Version.ToString());
+                    }
                 }
 
                 if (_availableUpdate is not null)
@@ -221,12 +231,11 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
 
             if (toApply is null)
             {
-                _state = UpdateStates.UpToDate;
+                _runtime.MarkUpToDate(_runtime.LastCheckedUtc ?? DateTimeOffset.UtcNow, manager.UpdatePendingRestart is not null);
                 return BuildStatus(settings, manager, "No update is ready to apply.");
             }
 
-            _state = UpdateStates.ReadyToRestart;
-            _restartRequired = true;
+            _runtime.MarkReadyToRestart();
 
             _ = Task.Run(async () =>
             {
@@ -238,8 +247,7 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
                 catch (Exception ex)
                 {
                     logger.LogError(ex, "Failed to apply updates and restart.");
-                    _lastError = ex.Message;
-                    _state = UpdateStates.Error;
+                    _runtime.MarkError(ex.Message);
                 }
             });
 
@@ -248,8 +256,7 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Restart apply failed.");
-            _lastError = ex.Message;
-            _state = UpdateStates.Error;
+            _runtime.MarkError(ex.Message);
             return await GetStatusUnlockedAsync(cancellationToken, "Could not restart for update.");
         }
         finally
@@ -321,20 +328,15 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
             return;
         }
 
-        _state = UpdateStates.Downloading;
-        _progressPercent = 0;
-        _lastError = null;
+        _runtime.MarkDownloading();
 
         await manager.DownloadUpdatesAsync(_availableUpdate, progress =>
         {
-            _progressPercent = progress;
+            _runtime.ReportProgress(progress);
         }, cancellationToken);
 
-        _progressPercent = 100;
-        _lastDownloadedUtc = DateTimeOffset.UtcNow;
-        _restartRequired = manager.UpdatePendingRestart is not null || _availableUpdate is not null;
-        _state = _restartRequired ? UpdateStates.ReadyToRestart : UpdateStates.UpToDate;
-        _updateAvailable = _restartRequired;
+        var restartRequired = manager.UpdatePendingRestart is not null || _availableUpdate is not null;
+        _runtime.MarkDownloaded(DateTimeOffset.UtcNow, restartRequired);
     }
 
     private UpdateManager GetOrCreateManager(AppSettings settings)
@@ -390,7 +392,7 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
 
         if (!canOperate)
         {
-            _state = UpdateStates.NotSupported;
+            _runtime.MarkNotSupported();
             notes.Add("Use the latest Windows installer package to move onto the supported updater path.");
             notes.Add("Manual installs can keep their data root; the packaged installer only replaces app binaries.");
         }
@@ -413,15 +415,15 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
             CanCheck: canOperate,
             CanDownload: canOperate,
             CanApply: canOperate,
-            UpdateAvailable: _updateAvailable,
-            LatestVersion: _latestVersion,
-            State: _state,
-            ProgressPercent: _progressPercent,
-            RestartRequired: _restartRequired,
-            LastCheckedUtc: _lastCheckedUtc,
-            LastDownloadedUtc: _lastDownloadedUtc,
+            UpdateAvailable: _runtime.UpdateAvailable,
+            LatestVersion: _runtime.LatestVersion,
+            State: _runtime.State,
+            ProgressPercent: _runtime.ProgressPercent,
+            RestartRequired: _runtime.RestartRequired,
+            LastCheckedUtc: _runtime.LastCheckedUtc,
+            LastDownloadedUtc: _runtime.LastDownloadedUtc,
             Message: message,
-            LastError: _lastError,
+            LastError: _runtime.LastError,
             Notes: notes);
     }
 }

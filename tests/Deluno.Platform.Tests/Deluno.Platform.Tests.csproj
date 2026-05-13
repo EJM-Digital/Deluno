@@ -16,6 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Deluno.Api\Deluno.Api.csproj" />
     <ProjectReference Include="..\..\src\Deluno.Platform\Deluno.Platform.csproj" />
   </ItemGroup>
 
