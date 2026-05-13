@@ -71,24 +71,23 @@ public sealed class DownloadRetryService(
                 var jobPayload = JsonSerializer.Serialize(new
                 {
                     libraryId = dispatch.LibraryId,
-                    mediaType = dispatch.MediaType,
-                    entityType = dispatch.EntityType,
-                    entityId = dispatch.EntityId,
-                    releaseName = dispatch.ReleaseName,
-                    indexerId = dispatch.IndexerName,
-                    retryOfDispatchId = dispatch.Id,
-                    attemptNumber = nextRetryNumber
+                    libraryName = dispatch.LibraryId,
+                    mediaType = string.IsNullOrWhiteSpace(dispatch.MediaType) ? "movies" : dispatch.MediaType,
+                    maxItems = 1,
+                    retryDelayHours = 24,
+                    triggeredBy = "manual",
+                    retryOfDispatchId = dispatch.Id
                 });
 
                 try
                 {
                     await jobScheduler.EnqueueAsync(
                         new EnqueueJobRequest(
-                            JobType: "DownloadGrab",
+                            JobType: "library.search",
                             Source: "DownloadRetryService",
                             PayloadJson: jobPayload,
-                            RelatedEntityType: dispatch.EntityType,
-                            RelatedEntityId: dispatch.EntityId,
+                            RelatedEntityType: "download_dispatch",
+                            RelatedEntityId: dispatch.Id,
                             ScheduledUtc: nextRetryEligible,
                             IdempotencyKey: $"retry-{dispatch.Id}-{nextRetryNumber}"),
                         cancellationToken);

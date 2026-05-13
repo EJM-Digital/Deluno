@@ -41,6 +41,7 @@ public sealed class DownloadDispatchesApiTests : IAsyncDisposable
                         services.AddSingleton<TimeProvider>(timeProvider);
                         services.AddSingleton(_storage.Factory);
                         services.AddDelunoApi();
+                        services.AddSingleton<IJobScheduler, TestJobScheduler>();
                         services.AddSingleton<IDownloadDispatchesRepository>(
                             new SqliteDownloadDispatchesRepository(_storage.Factory, timeProvider));
                     })
@@ -209,6 +210,7 @@ public sealed class DownloadDispatchesApiTests : IAsyncDisposable
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         var json = JsonDocument.Parse(await response.Content.ReadAsStreamAsync());
         Assert.Equal(dispatchId, json.RootElement.GetProperty("dispatchId").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(json.RootElement.GetProperty("jobId").GetString()));
     }
 
     [Fact]
@@ -267,5 +269,35 @@ public sealed class DownloadDispatchesApiTests : IAsyncDisposable
             _host.Dispose();
         }
         _storage?.Dispose();
+    }
+
+    private sealed class TestJobScheduler : IJobScheduler
+    {
+        public Task<JobQueueItem> EnqueueAsync(EnqueueJobRequest request, CancellationToken cancellationToken)
+        {
+            var now = DateTimeOffset.UtcNow;
+            var item = new JobQueueItem(
+                Id: $"job-{Guid.CreateVersion7():N}",
+                JobType: request.JobType,
+                Source: request.Source,
+                Status: "queued",
+                PayloadJson: request.PayloadJson,
+                Attempts: 0,
+                CreatedUtc: now,
+                ScheduledUtc: request.ScheduledUtc ?? now,
+                StartedUtc: null,
+                CompletedUtc: null,
+                LeasedUntilUtc: null,
+                WorkerId: null,
+                LastError: null,
+                RelatedEntityType: request.RelatedEntityType,
+                RelatedEntityId: request.RelatedEntityId,
+                IdempotencyKey: request.IdempotencyKey,
+                DedupeKey: request.DedupeKey,
+                MaxAttempts: request.MaxAttempts ?? 6,
+                LastAttemptUtc: null,
+                NextAttemptUtc: null);
+            return Task.FromResult(item);
+        }
     }
 }

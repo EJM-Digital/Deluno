@@ -1,5 +1,6 @@
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -162,6 +163,8 @@ public static class DownloadDispatchesEndpointRouteBuilderExtensions
     private static async Task<IResult> RetryDispatch(
         string dispatchId,
         IDownloadDispatchesRepository repository,
+        IJobScheduler jobScheduler,
+        TimeProvider timeProvider,
         CancellationToken cancellationToken)
     {
         var dispatch = await repository.GetDispatchAsync(dispatchId, cancellationToken);
@@ -179,15 +182,50 @@ public static class DownloadDispatchesEndpointRouteBuilderExtensions
             });
         }
 
-        // TODO: Queue retry job in search retry window
-        var nextRetryTime = DateTimeOffset.UtcNow.AddMinutes(30);
+        var scheduledUtc = timeProvider.GetUtcNow();
+        var payload = JsonSerializer.Serialize(new
+        {
+            libraryId = dispatch.LibraryId,
+            libraryName = dispatch.LibraryId,
+            mediaType = string.IsNullOrWhiteSpace(dispatch.MediaType) ? "movies" : dispatch.MediaType,
+            maxItems = 1,
+            retryDelayHours = 24,
+            triggeredBy = "manual"
+        });
+
+        var job = await jobScheduler.EnqueueAsync(
+            new EnqueueJobRequest(
+                JobType: "library.search",
+                Source: "download_dispatch.retry",
+                PayloadJson: payload,
+                RelatedEntityType: "download_dispatch",
+                RelatedEntityId: dispatch.Id,
+                ScheduledUtc: scheduledUtc,
+                IdempotencyKey: $"dispatch-retry:{dispatch.Id}:{scheduledUtc:yyyyMMddHHmmss}"),
+            cancellationToken);
+
+        await repository.UpdateFailureRetryWindowAsync(
+            dispatch.Id,
+            scheduledUtc,
+            dispatch.AttemptCount ?? 0,
+            cancellationToken);
+        await repository.RecordTimelineEventAsync(
+            dispatch.Id,
+            "manual_retry_requested",
+            JsonSerializer.Serialize(new
+            {
+                jobId = job.Id,
+                scheduledUtc,
+                libraryId = dispatch.LibraryId
+            }),
+            cancellationToken);
 
         var response = new
         {
             dispatchId,
-            newJobId = $"job-{Guid.CreateVersion7().ToString("N")[..8]}",
-            nextRetryEligibleUtc = nextRetryTime,
-            message = $"Retry queued. Next eligibility window: {nextRetryTime:O}"
+            jobId = job.Id,
+            nextRetryEligibleUtc = scheduledUtc,
+            message = $"Retry queued as library.search job {job.Id}. It will run on the next worker cycle."
         };
 
         return Results.Json(response, statusCode: StatusCodes.Status202Accepted);

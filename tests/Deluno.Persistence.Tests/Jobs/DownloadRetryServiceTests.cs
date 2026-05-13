@@ -113,10 +113,10 @@ public sealed class DownloadRetryServiceTests
         var result = await retryService.RunRetryPassAsync(CancellationToken.None);
 
         Assert.Equal(1, result.RetriedCount);
-        Assert.Equal(1, jobScheduler.EnqueuedJobs.Count);
+        Assert.Single(jobScheduler.EnqueuedJobs);
 
         var enqueuedJob = jobScheduler.EnqueuedJobs[0];
-        Assert.Equal("DownloadGrab", enqueuedJob.JobType);
+        Assert.Equal("library.search", enqueuedJob.JobType);
         Assert.Equal("DownloadRetryService", enqueuedJob.Source);
         Assert.NotNull(enqueuedJob.ScheduledUtc);
 

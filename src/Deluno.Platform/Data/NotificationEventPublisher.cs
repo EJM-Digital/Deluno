@@ -23,8 +23,8 @@ public class NotificationEventPublisher : IHostedService
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        // Hook into realtime events and create notifications
-        // This is a placeholder - actual implementation will integrate with event system
+        // Notification creation is explicitly invoked by integration/workflow services.
+        // Startup is currently a no-op because no event-bus subscription is required here.
         return Task.CompletedTask;
     }
 

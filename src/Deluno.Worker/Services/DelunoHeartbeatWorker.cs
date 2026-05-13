@@ -32,6 +32,7 @@ public sealed class DelunoHeartbeatWorker(
     private readonly string _workerId = $"worker-{Environment.MachineName.ToLowerInvariant()}";
     private DateTimeOffset _lastImportAutomationUtc = DateTimeOffset.MinValue;
     private DateTimeOffset _lastDispatchCleanupUtc = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastDispatchRetryPassUtc = DateTimeOffset.MinValue;
     private DateTimeOffset _lastMetadataAutomationUtc = DateTimeOffset.MinValue;
     private DateTimeOffset _lastIntakeAutomationUtc = DateTimeOffset.MinValue;
     private readonly JobLane[] _lanes =
@@ -129,7 +130,9 @@ public sealed class DelunoHeartbeatWorker(
             if (lane.Name == "maintenance")
             {
                 var cleanupService = scope.ServiceProvider.GetRequiredService<IDispatchCleanupService>();
+                var downloadRetryService = scope.ServiceProvider.GetRequiredService<IDownloadRetryService>();
                 await RunDispatchCleanupAsync(cleanupService, timeProvider, stoppingToken);
+                await RunDispatchRetryPassAsync(downloadRetryService, timeProvider, stoppingToken);
                 var jobList = await jobQueueRepository.ListAsync(600, stoppingToken);
                 await PlanMetadataRefreshAutomationAsync(
                     jobScheduler,
@@ -203,6 +206,28 @@ public sealed class DelunoHeartbeatWorker(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogWarning(ex, "Dispatch cleanup pass failed.");
+        }
+    }
+
+    private async Task RunDispatchRetryPassAsync(
+        IDownloadRetryService downloadRetryService,
+        TimeProvider timeProvider,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        if (now - _lastDispatchRetryPassUtc < TimeSpan.FromMinutes(2))
+        {
+            return;
+        }
+
+        _lastDispatchRetryPassUtc = now;
+        try
+        {
+            await downloadRetryService.RunRetryPassAsync(cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Dispatch retry pass failed.");
         }
     }
 
