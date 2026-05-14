@@ -23,6 +23,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="..\..\installer\deluno.ico">
+      <LogicalName>Deluno.Tray.Assets.deluno.ico</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Deluno.Api\Deluno.Api.csproj" />
     <ProjectReference Include="..\..\src\Deluno.Filesystem\Deluno.Filesystem.csproj" />
     <ProjectReference Include="..\..\src\Deluno.Infrastructure\Deluno.Infrastructure.csproj" />

@@ -1,5 +1,6 @@
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
+using System.Reflection;
 using System.Runtime.Versioning;
 
 namespace Deluno.Tray;
@@ -11,8 +12,15 @@ namespace Deluno.Tray;
 [SupportedOSPlatform("windows")]
 public static class TrayIconRenderer
 {
+    private static readonly Icon? BrandIcon = LoadBrandIcon();
+
     public static Icon Render(TrayState state)
     {
+        if (BrandIcon is not null)
+        {
+            return (Icon)BrandIcon.Clone();
+        }
+
         const int size = 16;
         using var bmp = new Bitmap(size, size, PixelFormat.Format32bppArgb);
         using var g   = Graphics.FromImage(bmp);
@@ -20,7 +28,7 @@ public static class TrayIconRenderer
         g.Clear(Color.Transparent);
 
         using var bgBrush = new SolidBrush(StateColor(state));
-        g.FillEllipse(bgBrush, 0, 0, size - 1, size - 1);
+        g.FillRectangle(bgBrush, 0, 0, size - 1, size - 1);
 
         using var pen   = new Pen(Color.White, 1.1f);
         using var brush = new SolidBrush(Color.White);
@@ -45,6 +53,26 @@ public static class TrayIconRenderer
         });
 
         return Icon.FromHandle(bmp.GetHicon());
+    }
+
+    private static Icon? LoadBrandIcon()
+    {
+        const string resourceSuffix = "Assets.deluno.ico";
+        var assembly = Assembly.GetExecutingAssembly();
+        var name = assembly.GetManifestResourceNames()
+            .FirstOrDefault(n => n.EndsWith(resourceSuffix, StringComparison.OrdinalIgnoreCase));
+        if (name is null)
+        {
+            return null;
+        }
+
+        using var stream = assembly.GetManifestResourceStream(name);
+        if (stream is null)
+        {
+            return null;
+        }
+
+        return new Icon(stream);
     }
 
     private static void DrawRoundedRect(Graphics g, Pen pen, float x, float y, float w, float h, float r)
