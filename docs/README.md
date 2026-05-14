@@ -15,6 +15,7 @@ Deluno keeps product, architecture, and repo-state context in the repository so 
 - `packaging.md`: source-backed Docker and Windows packaging guide.
 - `DEPLOYMENT.md`: current deployment instructions for Docker, Compose, and Windows publish runs.
 - `TROUBLESHOOTING.md`: runtime, path-mapping, and startup troubleshooting.
+- `backup-restore-runbook.md`: packaged Windows backup, restore, rollback, and migration recovery procedures.
 - `ga-release-checklist.md`: RC1/RC2/GA checklist, gates, and sign-off workflow for `1.x` promotion.
 
 ## Execution Plans

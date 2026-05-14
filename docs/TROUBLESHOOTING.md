@@ -111,6 +111,10 @@ Checks:
 
 ## Windows
 
+Primary backup/restore procedure:
+
+- [backup-restore-runbook.md](/C:/Users/User/Projects/Deluno/docs/backup-restore-runbook.md)
+
 ### Issue: Deluno Starts But Nothing Loads
 
 For installed Windows builds, verify Deluno is running from the tray and listening on the expected local port.
