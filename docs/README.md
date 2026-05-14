@@ -19,6 +19,8 @@ Deluno keeps product, architecture, and repo-state context in the repository so 
 - `ga-release-checklist.md`: RC1/RC2/GA checklist, gates, and sign-off workflow for `1.x` promotion.
 - `windows-rc-validation-matrix.md`: clean-machine install/upgrade/rollback execution matrix for RC validation.
 - `release-evidence-template.md`: standard issue comment template for RC/GA evidence and go/no-go decisions.
+- `release-notes-1.0.0-draft.md`: draft 1.0.0 release notes structure for final GA publication.
+- `upgrade-guide-0x-to-1x.md`: user upgrade procedure from prerelease line to GA line.
 
 ## Execution Plans
 
