@@ -20,6 +20,7 @@ This file is the small entry point for agent work. It is a map, not the full man
 - External integrations: `docs/external-integration-api.md`
 - Metadata broker: `docs/metadata-broker-contract.md`
 - Quality score and gaps: `docs/QUALITY_SCORE.md`
+- GA release checklist and sign-off flow: `docs/ga-release-checklist.md`
 - Active execution plans: `docs/exec-plans/active/`
 
 ## Current Product Direction
