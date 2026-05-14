@@ -19,6 +19,8 @@ This guide is for users upgrading from packaged `0.1.x` builds to `1.x` GA.
 4. If update is staged, use restart/apply flow.
 5. After restart, confirm reported version is `1.x`.
 
+If the Windows artifact is unsigned for this release cycle, Windows may show additional trust prompts. Verify the release URL and artifact hash/source before continuing.
+
 ## Post-Upgrade Validation
 
 Check these in order:

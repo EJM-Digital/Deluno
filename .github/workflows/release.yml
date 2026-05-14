@@ -118,19 +118,6 @@ jobs:
         shell: pwsh
         run: dotnet tool install -g vpk --version 0.0.1298
 
-      - name: Enforce signing configuration
-        if: ${{ !startsWith(steps.version.outputs.version, '0.') }}
-        shell: pwsh
-        run: |
-          if ([string]::IsNullOrWhiteSpace("${{ secrets.WINDOWS_SIGN_CERT_BASE64 }}")) {
-            Write-Error "WINDOWS_SIGN_CERT_BASE64 secret is required for tagged releases."
-            exit 1
-          }
-          if ([string]::IsNullOrWhiteSpace("${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}")) {
-            Write-Error "WINDOWS_SIGN_CERT_PASSWORD secret is required for tagged releases."
-            exit 1
-          }
-
       - name: Prepare code signing certificate
         shell: pwsh
         run: |
@@ -142,19 +129,6 @@ jobs:
           $path = "$env:RUNNER_TEMP\\codesign.pfx"
           [IO.File]::WriteAllBytes($path, $bytes)
           "CERT_PATH=$path" >> $env:GITHUB_ENV
-
-      - name: Enforce certificate material for 1.x
-        if: ${{ !startsWith(steps.version.outputs.version, '0.') }}
-        shell: pwsh
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:CERT_PATH)) {
-            Write-Error "CERT_PATH was not prepared for 1.x release."
-            exit 1
-          }
-          if (-not (Test-Path $env:CERT_PATH)) {
-            Write-Error "Prepared code signing certificate path does not exist: $env:CERT_PATH"
-            exit 1
-          }
 
       - name: Sign tray executable
         if: ${{ env.CERT_PATH != '' }}
@@ -212,7 +186,7 @@ jobs:
           }
 
       - name: Verify signatures
-        if: ${{ !startsWith(steps.version.outputs.version, '0.') || env.CERT_PATH != '' }}
+        if: ${{ env.CERT_PATH != '' }}
         shell: pwsh
         run: |
           $files = @("artifacts/windows/bin/Deluno.exe")

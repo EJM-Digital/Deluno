@@ -10,7 +10,7 @@ Deluno 1.0.0 is the first GA release for the current Windows packaged update mod
 
 Highlights:
 
-- signed Windows packaged release path for `1.x`
+- stable Windows packaged release path for `1.x`
 - validated installer, upgrade, and rollback matrix
 - production-focused backup/restore runbook and recovery drill coverage
 - hardened release governance with RC and GA gate criteria
@@ -40,6 +40,11 @@ Detailed guide:
 - `Deluno-1.0.0-stable-full.nupkg`
 - `releases.stable.json`
 - `RELEASES-stable`
+
+### Windows signing note
+
+For this GA cycle, Authenticode signing may be absent by policy.
+If unsigned artifacts are shipped, include an explicit user note in the final published release.
 
 ## Notable Changes Since 0.1.0
 

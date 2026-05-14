@@ -14,15 +14,13 @@ Execution artifacts:
 
 ## Promotion Stages
 
-1. `RC1`: first signed candidate on real release pipeline
+1. `RC1`: first candidate on real release pipeline
 2. `RC2`: hardening candidate after RC1 feedback
 3. `GA`: final `1.0.0` promotion
 
 ## Hard Gates (Must Pass)
 
-- Windows signing certificate is configured and valid in CI.
-- `1.x` release workflow fails when signing secrets are missing.
-- Windows setup and app binaries are signed and signature-valid.
+- Windows release artifacts are complete and installable.
 - Install/upgrade/rollback matrix passes on clean Windows environments.
 - No open `P0` or `P1` release-blocking issues.
 - Full regression gates pass on candidate commit:
@@ -30,11 +28,14 @@ Execution artifacts:
   - `dotnet test Deluno.slnx --configuration Release`
   - `npm run test:web`
 
+Recommended (not blocking for current GA):
+
+- Windows code-signing certificate configured in CI.
+- Signed app and setup binaries.
+
 ## RC1 Checklist
 
-- [ ] Signing cert provisioning issue is complete (#79).
-- [ ] 1.x signed release gate enforcement is complete (#80).
-- [ ] RC1 tag is cut with signed artifacts and published.
+- [ ] RC1 tag is cut and published with required artifacts.
 - [ ] Clean-machine fresh install test passes.
 - [ ] Upgrade test from latest `0.1.x` to RC1 passes.
 - [ ] Rollback simulation result is documented.
@@ -92,6 +93,7 @@ Decision: <GO | NO-GO>
 
 Gate summary:
 - Signing:
+  Note whether binaries were signed for this candidate.
 - Install/upgrade/rollback matrix:
 - Soak:
 - Regression suite:
