@@ -38,31 +38,59 @@ function Invoke-LoggedCommand {
         [string[]]$Arguments
     )
 
-    $tmp = [System.IO.Path]::GetTempFileName()
+    $stdoutPath = [System.IO.Path]::GetTempFileName()
+    $stderrPath = [System.IO.Path]::GetTempFileName()
+    $exitCode = 1
 
     try {
-        $output = & $FilePath @Arguments 2>&1
-        $exitCode = $LASTEXITCODE
+        $process = Start-Process `
+            -FilePath $FilePath `
+            -ArgumentList $Arguments `
+            -WorkingDirectory $Root `
+            -NoNewWindow `
+            -Wait `
+            -PassThru `
+            -RedirectStandardOutput $stdoutPath `
+            -RedirectStandardError $stderrPath
 
-        if ($null -ne $output) {
-            $output | Out-File -FilePath $tmp -Encoding utf8
-        }
-
-        $text = if (Test-Path $tmp) { Get-Content $tmp -Raw } else { "" }
-
-        return @{
-            ExitCode = $exitCode
-            Output = $text
+        if ($null -ne $process) {
+            $exitCode = $process.ExitCode
         }
     } finally {
-        Remove-Item $tmp -ErrorAction SilentlyContinue
+        $stdout = if (Test-Path $stdoutPath) { Get-Content $stdoutPath -Raw } else { "" }
+        $stderr = if (Test-Path $stderrPath) { Get-Content $stderrPath -Raw } else { "" }
+        $text = @($stdout, $stderr) -join ""
+
+        Remove-Item $stdoutPath -ErrorAction SilentlyContinue
+        Remove-Item $stderrPath -ErrorAction SilentlyContinue
+    }
+
+    return @{
+        ExitCode = $exitCode
+        Output = $text
     }
 }
+
+function Resolve-DotnetPath {
+    $dotnetCommand = Get-Command dotnet -ErrorAction SilentlyContinue
+    if ($null -ne $dotnetCommand) {
+        return $dotnetCommand.Source
+    }
+
+    $repoLocalDotnet = Join-Path $Root ".dotnet\dotnet.exe"
+    if (Test-Path $repoLocalDotnet) {
+        return $repoLocalDotnet
+    }
+
+    throw "dotnet was not found on PATH and repo-local SDK was not found at $repoLocalDotnet"
+}
+
+$dotnetPath = Resolve-DotnetPath
 
 Write-Host ""
 Write-Host "Backend"
 
-$restore = Invoke-LoggedCommand -FilePath "dotnet" -Arguments @("restore", "Deluno.slnx", "-q")
+$restore = Invoke-LoggedCommand -FilePath $dotnetPath -Arguments @("restore", "Deluno.slnx")
 if ($restore.ExitCode -eq 0) {
     Write-Ok "restore"
 } else {
@@ -70,7 +98,7 @@ if ($restore.ExitCode -eq 0) {
     Write-Fail "restore failed"
 }
 
-$build = Invoke-LoggedCommand -FilePath "dotnet" -Arguments @("build", "Deluno.slnx", "--configuration", "Release", "--no-restore", "-m:1", "-q")
+$build = Invoke-LoggedCommand -FilePath $dotnetPath -Arguments @("build", "Deluno.slnx", "--configuration", "Release", "--no-restore", "-m:1")
 if ($build.ExitCode -eq 0) {
     Write-Ok "build"
 } elseif (Test-EnvLock $build.Output) {
@@ -83,14 +111,13 @@ if ($build.ExitCode -eq 0) {
 Write-Host ""
 Write-Host "Tray (Linux CI simulation)"
 
-$tray = Invoke-LoggedCommand -FilePath "dotnet" -Arguments @(
+$tray = Invoke-LoggedCommand -FilePath $dotnetPath -Arguments @(
     "build",
     "apps/windows-tray/Deluno.Tray.csproj",
     "-p:SimulateLinuxCI=true",
     "--configuration",
     "Release",
-    "--no-restore",
-    "-q"
+    "--no-restore"
 )
 
 if ($tray.ExitCode -eq 0) {

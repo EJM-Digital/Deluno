@@ -21,5 +21,6 @@
     <Project Path="tests/Deluno.Movies.Tests/Deluno.Movies.Tests.csproj" />
     <Project Path="tests/Deluno.Persistence.Tests/Deluno.Persistence.Tests.csproj" />
     <Project Path="tests/Deluno.Platform.Tests/Deluno.Platform.Tests.csproj" />
+    <Project Path="tests/Deluno.Tray.Tests/Deluno.Tray.Tests.csproj" />
   </Folder>
 </Solution>

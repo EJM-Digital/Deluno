@@ -45,6 +45,7 @@
        empty library. WinExe requires an entry point even with no source files. -->
   <PropertyGroup Condition="!$([MSBuild]::IsOSPlatform('Windows')) or '$(SimulateLinuxCI)' == 'true'">
     <OutputType>Library</OutputType>
+    <IntermediateOutputPath>obj\SimulateLinuxCI\</IntermediateOutputPath>
   </PropertyGroup>
   <ItemGroup Condition="!$([MSBuild]::IsOSPlatform('Windows')) or '$(SimulateLinuxCI)' == 'true'">
     <Compile Remove="**/*.cs" />

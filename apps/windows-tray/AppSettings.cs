@@ -5,24 +5,8 @@ namespace Deluno.Tray;
 
 public sealed class AppSettings
 {
-    private static readonly string _configPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "Deluno", "config", "deluno.json");
-
-    private static readonly string _legacyConfigPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-        "Deluno", "data", "deluno.json");
-
-    private static readonly string _defaultDataRoot = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "DelunoData");
-
-    private static readonly string _legacyDefaultDataRoot = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-        "Deluno", "data");
-
     public int Port { get; set; } = 7879;
-    public string DataRoot { get; set; } = _defaultDataRoot;
+    public string DataRoot { get; set; } = GetDefaultDataRoot();
     public string UpdateMode { get; set; } = Deluno.Api.Updates.UpdateModes.DownloadBackground;
     public string UpdateChannel { get; set; } = "stable";
     public bool AutoCheckUpdates { get; set; } = true;
@@ -31,12 +15,12 @@ public sealed class AppSettings
     public static AppSettingsPathState InspectPathState()
     {
         return new AppSettingsPathState(
-            PrimaryConfigPath: _configPath,
-            LegacyConfigPath: _legacyConfigPath,
-            PrimaryConfigExists: File.Exists(_configPath),
-            LegacyConfigExists: File.Exists(_legacyConfigPath),
-            DefaultDataRoot: _defaultDataRoot,
-            LegacyDefaultDataRoot: _legacyDefaultDataRoot);
+            PrimaryConfigPath: GetConfigPath(),
+            LegacyConfigPath: GetLegacyConfigPath(),
+            PrimaryConfigExists: File.Exists(GetConfigPath()),
+            LegacyConfigExists: File.Exists(GetLegacyConfigPath()),
+            DefaultDataRoot: GetDefaultDataRoot(),
+            LegacyDefaultDataRoot: GetLegacyDefaultDataRoot());
     }
 
     public static AppSettings Load()
@@ -44,7 +28,17 @@ public sealed class AppSettings
         var pathToRead = ResolveConfigPath(out var loadedFromLegacyPath);
         if (pathToRead is null)
         {
-            return new AppSettings();
+            var settings = new AppSettings
+            {
+                DataRoot = ResolveFallbackDataRoot()
+            };
+
+            if (ShouldPersistPrimaryConfig(settings.DataRoot))
+            {
+                TryPersistPrimaryConfig(settings);
+            }
+
+            return settings;
         }
 
         try
@@ -84,23 +78,26 @@ public sealed class AppSettings
 
     public void Save()
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(_configPath)!);
+        var configPath = GetConfigPath();
+        Directory.CreateDirectory(Path.GetDirectoryName(configPath)!);
         DataRoot = NormalizeDataRoot(DataRoot);
-        File.WriteAllText(_configPath, JsonSerializer.Serialize(this, JsonOptions));
+        File.WriteAllText(configPath, JsonSerializer.Serialize(this, JsonOptions));
     }
 
     private static string? ResolveConfigPath(out bool loadedFromLegacyPath)
     {
         loadedFromLegacyPath = false;
-        if (File.Exists(_configPath))
+        var configPath = GetConfigPath();
+        if (File.Exists(configPath))
         {
-            return _configPath;
+            return configPath;
         }
 
-        if (File.Exists(_legacyConfigPath))
+        var legacyConfigPath = GetLegacyConfigPath();
+        if (File.Exists(legacyConfigPath))
         {
             loadedFromLegacyPath = true;
-            return _legacyConfigPath;
+            return legacyConfigPath;
         }
 
         return null;
@@ -114,27 +111,28 @@ public sealed class AppSettings
             {
                 var trimmed = current.Trim();
                 if (Path.GetFullPath(trimmed).TrimEnd(Path.DirectorySeparatorChar)
-                    .Equals(Path.GetFullPath(_legacyDefaultDataRoot).TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
+                    .Equals(Path.GetFullPath(GetLegacyDefaultDataRoot()).TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
                 {
-                    return _legacyDefaultDataRoot;
+                    return GetLegacyDefaultDataRoot();
                 }
 
                 return Path.GetFullPath(trimmed);
             }
             catch
             {
-                return _defaultDataRoot;
+                return GetDefaultDataRoot();
             }
         }
 
-        return _defaultDataRoot;
+        return GetDefaultDataRoot();
     }
 
     private static void TryPersistPrimaryConfig(AppSettings settings)
     {
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(_configPath)!);
+            var configPath = GetConfigPath();
+            Directory.CreateDirectory(Path.GetDirectoryName(configPath)!);
             var normalized = new AppSettings
             {
                 Port = settings.Port,
@@ -144,12 +142,84 @@ public sealed class AppSettings
                 AutoCheckUpdates = settings.AutoCheckUpdates,
                 UpdateSource = settings.UpdateSource
             };
-            File.WriteAllText(_configPath, JsonSerializer.Serialize(normalized, JsonOptions));
+            File.WriteAllText(configPath, JsonSerializer.Serialize(normalized, JsonOptions));
         }
         catch
         {
             // Keep legacy-path fallback behavior if primary-path persistence fails.
         }
+    }
+
+    private static string ResolveFallbackDataRoot()
+    {
+        var legacyDataRoot = GetLegacyDefaultDataRoot();
+        if (LegacyDataRootShouldBeAdopted(legacyDataRoot))
+        {
+            return legacyDataRoot;
+        }
+
+        return GetDefaultDataRoot();
+    }
+
+    private static bool ShouldPersistPrimaryConfig(string dataRoot)
+    {
+        return Path.GetFullPath(dataRoot).TrimEnd(Path.DirectorySeparatorChar)
+            .Equals(Path.GetFullPath(GetLegacyDefaultDataRoot()).TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool LegacyDataRootShouldBeAdopted(string legacyDataRoot)
+    {
+        try
+        {
+            if (!Directory.Exists(legacyDataRoot))
+            {
+                return false;
+            }
+
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static string GetConfigPath()
+    {
+        return Path.Combine(GetLocalApplicationDataPath(), "Deluno", "config", "deluno.json");
+    }
+
+    private static string GetLegacyConfigPath()
+    {
+        return Path.Combine(GetCommonApplicationDataPath(), "Deluno", "data", "deluno.json");
+    }
+
+    private static string GetDefaultDataRoot()
+    {
+        return Path.Combine(GetLocalApplicationDataPath(), "DelunoData");
+    }
+
+    private static string GetLegacyDefaultDataRoot()
+    {
+        return Path.Combine(GetCommonApplicationDataPath(), "Deluno", "data");
+    }
+
+    private static string GetLocalApplicationDataPath()
+    {
+        return GetPathOverride("DELUNO_TEST_LOCALAPPDATA")
+            ?? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+    }
+
+    private static string GetCommonApplicationDataPath()
+    {
+        return GetPathOverride("DELUNO_TEST_COMMONAPPDATA")
+            ?? Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+    }
+
+    private static string? GetPathOverride(string environmentVariableName)
+    {
+        var value = Environment.GetEnvironmentVariable(environmentVariableName);
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 
     private static readonly JsonSerializerOptions JsonOptions = new()

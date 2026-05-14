@@ -71,9 +71,25 @@ function Invoke-LoggedStep {
     }
 }
 
+function Resolve-DotnetPath {
+    $dotnetCommand = Get-Command dotnet -ErrorAction SilentlyContinue
+    if ($null -ne $dotnetCommand) {
+        return $dotnetCommand.Source
+    }
+
+    $repoLocalDotnet = Join-Path $Root ".dotnet\dotnet.exe"
+    if (Test-Path $repoLocalDotnet) {
+        return $repoLocalDotnet
+    }
+
+    throw "dotnet was not found on PATH and repo-local SDK was not found at $repoLocalDotnet"
+}
+
+$dotnetPath = Resolve-DotnetPath
+
 $results = @()
 $results += Invoke-LoggedStep -Name "CI Check" -FilePath "npm.cmd" -Arguments @("run", "ci:check") -LogFile "01-ci-check.log"
-$results += Invoke-LoggedStep -Name "Dotnet Tests (Release)" -FilePath "dotnet" -Arguments @("test", "Deluno.slnx", "--configuration", "Release") -LogFile "02-dotnet-test-release.log"
+$results += Invoke-LoggedStep -Name "Dotnet Tests (Release)" -FilePath $dotnetPath -Arguments @("test", "Deluno.slnx", "--configuration", "Release") -LogFile "02-dotnet-test-release.log"
 $results += Invoke-LoggedStep -Name "Web Smoke Tests" -FilePath "npm.cmd" -Arguments @("run", "test:web") -LogFile "03-web-smoke.log"
 
 # Playwright can emit websocket proxy ECONNABORTED noise from Vite after successful test completion.

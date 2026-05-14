@@ -6,6 +6,17 @@ $Root = Split-Path $PSScriptRoot -Parent
 $BackendDir = Join-Path $Root "src\Deluno.Host"
 $FrontendDir = Join-Path $Root "apps\web"
 
+$dotnetCommand = Get-Command dotnet -ErrorAction SilentlyContinue
+$dotnetPath = if ($null -ne $dotnetCommand) {
+    $dotnetCommand.Source
+} else {
+    Join-Path $Root ".dotnet\dotnet.exe"
+}
+
+if (-not (Test-Path $dotnetPath)) {
+    throw "dotnet was not found on PATH and repo-local SDK was not found at $dotnetPath"
+}
+
 # Kill anything already on the ports
 foreach ($port in 5099, 5173) {
     $pid = (Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue).OwningProcess | Select-Object -First 1
@@ -13,7 +24,7 @@ foreach ($port in 5099, 5173) {
 }
 
 Write-Host "Starting backend  (http://127.0.0.1:5099) ..." -ForegroundColor Cyan
-$backend = Start-Process powershell -ArgumentList "-NoProfile -Command `"cd '$BackendDir'; dotnet watch run`"" -PassThru -WindowStyle Minimized
+$backend = Start-Process powershell -ArgumentList "-NoProfile -Command `"cd '$BackendDir'; & '$dotnetPath' watch run`"" -PassThru -WindowStyle Minimized
 
 Write-Host "Starting frontend (http://127.0.0.1:5173) ..." -ForegroundColor Cyan
 $frontend = Start-Process powershell -ArgumentList "-NoProfile -Command `"cd '$FrontendDir'; npm run dev`"" -PassThru -WindowStyle Minimized

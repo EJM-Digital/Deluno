@@ -50,6 +50,7 @@ Config path behavior:
 - primary settings path: `%LocalAppData%\Deluno\config\deluno.json`
 - legacy settings path (read fallback): `%ProgramData%\Deluno\data\deluno.json`
 - when legacy settings are detected, Deluno writes a normalized copy to the primary path automatically
+- if the legacy `%ProgramData%\Deluno\data` root still contains real runtime data but no surviving config file, Deluno keeps using that legacy data root and writes a primary config file for future launches
 - existing explicit data-root values are preserved to avoid breaking upgrades
 
 ### In-app updates
@@ -95,6 +96,7 @@ When moving from a manual Windows run to the packaged Velopack installer:
 
 - Deluno keeps runtime data outside the app binaries, so data root content remains intact.
 - Legacy settings under `%ProgramData%\Deluno\data\deluno.json` are detected and migrated to `%LocalAppData%\Deluno\config\deluno.json`.
+- If legacy runtime data still exists under `%ProgramData%\Deluno\data` without a config file, Deluno treats that directory as the upgrade source of truth and writes the new primary config automatically.
 - In-app apply/restart controls only appear after running the packaged installer path.
 
 ## Docker (No In-Place Binary Update)

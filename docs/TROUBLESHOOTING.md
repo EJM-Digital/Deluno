@@ -149,6 +149,7 @@ Fix:
 - use a writable persistent folder such as `%LocalAppData%\DelunoData`
 - do not use `Program Files` as the live data root
 - Deluno settings are now canonicalized to `%LocalAppData%\Deluno\config\deluno.json`; legacy `%ProgramData%\Deluno\data\deluno.json` is read as fallback and migrated forward automatically
+- If you upgraded from an older Windows install and Deluno appears empty, verify whether your prior data still lives under `%ProgramData%\Deluno\data`; current builds will keep using that legacy data root when it contains real data and will rewrite the primary config automatically
 
 ### Issue: In-App Update Is Not Available
 
