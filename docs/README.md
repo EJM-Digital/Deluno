@@ -17,6 +17,8 @@ Deluno keeps product, architecture, and repo-state context in the repository so 
 - `TROUBLESHOOTING.md`: runtime, path-mapping, and startup troubleshooting.
 - `backup-restore-runbook.md`: packaged Windows backup, restore, rollback, and migration recovery procedures.
 - `ga-release-checklist.md`: RC1/RC2/GA checklist, gates, and sign-off workflow for `1.x` promotion.
+- `windows-rc-validation-matrix.md`: clean-machine install/upgrade/rollback execution matrix for RC validation.
+- `release-evidence-template.md`: standard issue comment template for RC/GA evidence and go/no-go decisions.
 
 ## Execution Plans
 
@@ -45,3 +47,11 @@ npm.cmd run validate:agents
 ```
 
 The validation script checks that the agent entry point exists, required docs exist, stale workspace paths are not reintroduced, and high-signal architecture guardrails remain visible.
+
+For GA-candidate evidence collection, run:
+
+```powershell
+npm run ga:regression
+```
+
+This writes step logs and a summary into `artifacts/ga-validation/<timestamp>-<candidate>/`.

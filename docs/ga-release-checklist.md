@@ -6,6 +6,12 @@ This checklist is the source of truth for promoting Deluno from `0.x` prerelease
 
 Parent tracking issue: #78
 
+Execution artifacts:
+
+- `docs/windows-rc-validation-matrix.md`
+- `docs/release-evidence-template.md`
+- `scripts/run-ga-regression.ps1` (invokable via `npm run ga:regression`)
+
 ## Promotion Stages
 
 1. `RC1`: first signed candidate on real release pipeline
