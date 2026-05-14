@@ -1,333 +1,133 @@
 # Deluno Repo Change History
 
-Updated: 2026-05-13
+Updated: 2026-05-14
 
 ## Purpose
 
-This document answers the practical repo-forensics question:
+This is the repo-forensics summary for the current `main` branch.
+It answers: what changed recently, what shipped, and what users now see.
 
-"What has changed in this checkout since the last clearly shared baseline?"
+## Current Snapshot
 
-Because agent memory is not persistent across sessions, this file uses Git as the source of truth.
+- branch: `main`
+- remote tracking: `origin/main`
+- divergence: none
+- open GitHub issues: none
+- latest tag/release: `v0.1.5` (pre-release)
 
-## Baseline Used For This Pass
+Release URL:
 
-Shared merge-base between local `main` and `origin/main`:
+- <https://github.com/jampat000/Deluno/releases/tag/v0.1.5>
 
-- `0d9938a` `Introduce versioned media policy engine`
-- author date: 2026-04-29
+## Change Window Covered
 
-At the time of this pass, local `main` was:
+This pass summarizes the production path from `v0.1.0` through `v0.1.5`.
 
-- ahead of `origin/main` by 6 commits
-- behind `origin/main` by 7 commits
-- carrying a large uncommitted working-tree delta on top
+Tags in order:
 
-That means the repo state has three distinct layers:
+- `v0.1.0`
+- `v0.1.1`
+- `v0.1.2`
+- `v0.1.3`
+- `v0.1.4`
+- `v0.1.5`
 
-1. local committed work not on remote `main`
-2. remote committed work not in this local branch
-3. uncommitted in-flight work in the checkout itself
+## What Changed Since v0.1.0
 
-## Commit-By-Commit: Local `main` Since The Baseline
+### 1) Windows Installer and Updater Overhaul
 
-### `7914c5e` Surface download client telemetry capabilities
+Core outcome:
 
-What changed:
+- moved to Velopack-based Windows packaging and in-app update flow
+- established setup + package + release-index asset model
+- hardened update status/state handling and user controls
 
-- added backend models and services for normalized download-client telemetry
-- exposed telemetry to the web app
-- started treating client capabilities as part of the integration contract
+User-visible impact:
 
-Primary impact:
+- reliable `System > Updates` controls
+- restart-to-apply model with staged package handling
+- clearer install-kind detection and migration visibility
 
-- queue, dashboard, and indexer UI flows gained awareness of client state instead of using thinner static configuration alone
+### 2) Migration and Runtime Policy Hardening
 
-### `2588466` Normalize download telemetry status handling
+Core outcome:
 
-What changed:
+- canonical settings under `%LocalAppData%\Deluno\config\deluno.json`
+- legacy `%ProgramData%\Deluno\data\deluno.json` fallback + migration support
+- consistent runtime data-root behavior for packaged installs
 
-- introduced shared frontend telemetry helpers
-- normalized status translation logic
-- reduced duplicated status interpretation across routes
-- added telemetry profile tests
+User-visible impact:
 
-Primary impact:
+- smoother transition from older/manual installs
+- fewer broken-path failures after update
 
-- download-client queue state became more consistent across Dashboard, Queue, and Indexer surfaces
+### 3) Reliability and Queue/Dispatch Corrections
 
-### `04967d5` Add agent-first repository scaffolding
+Core outcome:
 
-What changed:
+- retry scheduling and worker retry path now wired to real behavior
+- updater state-machine reliability tests added
+- warning noise cleanup in shared build/test layers
 
-- added `AGENTS.md`
-- added `docs/README.md`, `docs/ARCHITECTURE.md`, and `docs/QUALITY_SCORE.md`
-- added agent-readiness validation and execution-plan structure
+User-visible impact:
 
-Primary impact:
+- fewer stuck/ambiguous operational states
+- cleaner diagnostics when failures happen
 
-- repository context moved into versioned docs and validation instead of relying on thread memory
+### 4) Scoring and Decisioning Expansion
 
-### `48a83ce` Movies/TV workspace sub-routes
+Core outcome:
 
-What changed:
+- shipped ML.NET ranking lifecycle (training + inference + model lifecycle)
+- added user-selectable scoring modes:
+  - deterministic rules only
+  - ML-assisted
+  - combined behavior
 
-- added workspace sub-routes and shells for Movies/TV
-- added dedicated wanted/import-oriented route surfaces
+User-visible impact:
 
-Primary impact:
+- scoring behavior can match user preference and trust level
+- model-assisted ranking is available without removing deterministic fallback
 
-- product navigation shifted from a flatter shell toward operational media workspaces
+### 5) Routing Intelligence and Operational Insights
 
-### `f6e87c0` Indexer/client enable-disable toggle and update endpoints
+Core outcome:
 
-What changed:
+- intelligent client routing preferences and anomaly surfaces
+- monitoring dashboard improvements, alerting/export support, diagnostics API growth
 
-- added `PUT` update endpoints for indexers and download clients
-- enabled explicit enable/disable behavior in platform settings flows
+User-visible impact:
 
-Primary impact:
+- clearer "why this route/decision happened"
+- improved operational visibility for queue and health troubleshooting
 
-- integrations moved from create/delete/test-only management toward true editable lifecycle support
+### 6) Docs, Repo Hygiene, and Naming Cleanup
 
-### `29aea01` Custom format matching engine with dry-run panel
+Core outcome:
 
-What changed:
+- removed obsolete updater/installer leftovers and stale public-root artifacts
+- removed tool-specific naming/config references from tracked repository files
+- refreshed Windows/Docker docs and troubleshooting guidance
 
-- added `CustomFormatMatcher`
-- added custom-format dry-run endpoint
-- expanded the settings UI for multi-condition custom-format authoring
+User-visible impact:
 
-Primary impact:
+- cleaner public repo footprint
+- lower onboarding friction for Windows and Docker users
 
-- custom formats became an inspectable decision surface instead of a mostly static configuration artifact
+## Key Commits in This Window
 
-## Commit-By-Commit: `origin/main` Since The Same Baseline
+- `3213c3f` velopack updater flow + dedicated upgrades screens
+- `d59c3be` quality model pilot + route split hardening
+- `fd4b007` tray settings migration + data-root defaults
+- `2363ea6` legacy install migration assistant
+- `be0817c` Windows/Docker docs refresh
+- `c2863d4` updates UX clarity pass
+- `c5c487f` updater state-machine tests
+- `84e9cee` ML.NET ranking lifecycle
+- `2a702d5` user-selectable scoring modes
+- `4d37cc3` real retry scheduling/worker retry pass
+- `b4aeedc` warning-noise cleanup in shared build/test props
 
-These commits exist on remote `main` but are not present in the local branch inspected during this pass:
-
-- `f98ea8d` episode-level TV workflows
-- `845b88e` movie replacement protection, quality scoring, and UI language improvements
-- `c072239` CI cleanup removing broken AI-generated e2e tests
-- `b3d8137` Windows tray app, installer, and CI hardening
-- `c940703` installer packaging, icon, ffprobe bundling, and CI hardening
-- `07ca062` release-blocker fixes for `v0.1.0`
-- `98272a4` tray build and Docker restore fixes
-
-Primary implication:
-
-- this checkout is not a simple "latest main plus local edits" state
-- it is a divergent branch snapshot with both missing upstream work and unique local work
-
-## Subsystem-By-Subsystem: Current Working Tree Expansion
-
-The uncommitted delta is much larger than the six local commits and changes the effective product shape of the checkout.
-
-### Platform
-
-New or expanded platform areas include:
-
-- analytics
-- cleanup policy
-- decisions
-- explanations
-- idempotency
-- import recovery
-- import lists
-- multi-library coordination
-- monitoring
-- observability
-- operations
-- presets
-- realtime coordination
-- resilience
-- settings
-- quality protection
-- system endpoints
-
-Representative paths:
-
-- `src/Deluno.Platform/Analytics`
-- `src/Deluno.Platform/Cleanup`
-- `src/Deluno.Platform/Decisions`
-- `src/Deluno.Platform/Explanations`
-- `src/Deluno.Platform/Idempotency`
-- `src/Deluno.Platform/Import`
-- `src/Deluno.Platform/ImportLists`
-- `src/Deluno.Platform/Libraries`
-- `src/Deluno.Platform/Monitoring`
-- `src/Deluno.Platform/Observability`
-- `src/Deluno.Platform/Operations`
-- `src/Deluno.Platform/Presets`
-- `src/Deluno.Platform/Quality`
-- `src/Deluno.Platform/RealTime`
-- `src/Deluno.Platform/Resilience`
-- `src/Deluno.Platform/Settings`
-- `src/Deluno.Platform/SystemEndpointRouteBuilderExtensions.cs`
-
-Meaning:
-
-- Deluno is moving from a thinner settings-and-routing platform module toward a broader app-services layer for orchestration, observability, and guided operations
+## Notes For Future Audits
 
-### Integrations
-
-New or expanded integration work includes:
-
-- queue actions against download clients
-- direct release grabs
-- public webhook ingestion for qBittorrent and SABnzbd
-- generic completion/failure webhook handling
-- telemetry persistence store
-- download grab history concepts
-- metadata fallback services
-- explicit indexer integration service abstractions
-- richer scoring breakdowns
-
-Representative paths:
-
-- `src/Deluno.Integrations/DownloadClients/DownloadClientEndpointRouteBuilderExtensions.cs`
-- `src/Deluno.Integrations/DownloadClients/SqliteDownloadClientTelemetryStore.cs`
-- `src/Deluno.Integrations/DownloadClients/DownloadClientWebhookService.cs`
-- `src/Deluno.Integrations/DownloadClients/IntelligentClientRouter.cs`
-- `src/Deluno.Integrations/Metadata/MetadataFallbackService.cs`
-- `src/Deluno.Integrations/Search/DefaultIndexerIntegrationService.cs`
-- `src/Deluno.Integrations/Search/SearchResultScoringBreakdown.cs`
-
-Meaning:
-
-- Deluno is increasingly behaving as an orchestrator of external indexers and clients rather than a static configuration layer
-
-### Movies And Series
-
-The movie and series endpoint surfaces have grown into broader operational APIs.
-
-Movies now include:
-
-- import recovery management
-- wanted views
-- search history
-- monitoring updates
-- metadata refresh and linking
-- metadata job scheduling
-- bulk quality-profile, tags, and search actions
-
-Series now include:
-
-- import recovery management
-- wanted views
-- series and per-series inventory
-- search history
-- series monitoring updates
-- episode monitoring updates
-- episode and season search flows
-- metadata refresh and linking
-- metadata job scheduling
-- bulk quality-profile, tags, and search actions
-
-Meaning:
-
-- the separate movie and TV engines are still preserved, but both are evolving from catalog endpoints into fuller workflow owners
-
-### Realtime
-
-Realtime contracts now cover more than the original basic health/download cases.
-
-Implemented or modeled event areas include:
-
-- health changes
-- download progress
-- normalized telemetry changes
-- activity additions
-- queue item add/remove
-- search progress
-- import status
-- automation status
-
-Relevant paths:
-
-- `src/Deluno.Realtime/IRealtimeEventPublisher.cs`
-- `src/Deluno.Realtime/SignalRRealtimeEventPublisher.cs`
-- `apps/web/src/lib/use-signalr.tsx`
-
-Meaning:
-
-- the product is moving toward live operational surfaces, but the event contract still has drift between ambition, interface shape, and frontend usage
-
-### Frontend
-
-The web app now has a substantially richer operational shell.
-
-Notable in-flight UI changes include:
-
-- more advanced library view controls and saved filters
-- activity filtering
-- media bulk action toolbar
-- expanded route refresh behavior tied to SignalR
-- additional shared UI primitives such as `select`
-- new e2e coverage under `apps/web/tests/e2e`
-
-Representative paths:
-
-- `apps/web/src/components/app/library-view.tsx`
-- `apps/web/src/components/app/activity-filters.tsx`
-- `apps/web/src/components/app/media-bulk-action-toolbar.tsx`
-- `apps/web/src/lib/use-signalr.tsx`
-
-Meaning:
-
-- the frontend is no longer just catching up to backend surfaces; it is now defining richer interaction requirements that the API contract should explicitly support
-
-### Documentation
-
-Documentation growth is broad:
-
-- analytics
-- API
-- deployment
-- monitoring
-- observability
-- intelligent routing
-- quality scoring
-- realtime events
-- troubleshooting
-- user guide
-- many other subsystem docs
-
-Important structural change:
-
-- `docs/exec-plans/active/agent-first-realignment.md` was moved out of `active`
-- the completed version now lives at `docs/exec-plans/completed/agent-first-realignment.md`
-- `docs/exec-plans/active/` currently contains only `.gitkeep`
-
-Meaning:
-
-- documentation coverage is wider, but the highest-trust docs were lagging the code until this repair pass
-
-## Current Reading Of Product Direction
-
-As of this pass, the repo is converging on:
-
-- a single-user Deluno application
-- strict internal separation between movie and TV engines
-- Deluno as the orchestrator of indexers, download clients, import processors, and metadata providers
-- library-aware routing, policy, and quality controls as first-class product features
-- a more operational UI centered on wanted, queue, import recovery, health, and bulk workflows
-
-## Documentation Implications
-
-The highest-value docs should always answer three questions clearly:
-
-1. what is implemented now
-2. what is in-flight in this checkout
-3. what is still only intent or roadmap
-
-During this pass, the main repair targets were:
-
-- `docs/README.md`
-- `docs/ARCHITECTURE.md`
-- `docs/QUALITY_SCORE.md`
-- `docs/deluno-capability-map.md`
-- `docs/deluno-frontend-backend-map.md`
-- `docs/deluno-ui-api-contract.md`
-
-If future work materially changes the branch-divergence story or introduces another large in-flight subsystem, update this document in the same change.
+When updating this file, keep it tied to explicit Git refs (tags/commits) and state whether the branch is converged with origin.
