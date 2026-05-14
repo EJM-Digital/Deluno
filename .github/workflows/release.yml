@@ -143,6 +143,19 @@ jobs:
           [IO.File]::WriteAllBytes($path, $bytes)
           "CERT_PATH=$path" >> $env:GITHUB_ENV
 
+      - name: Enforce certificate material for 1.x
+        if: ${{ !startsWith(steps.version.outputs.version, '0.') }}
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:CERT_PATH)) {
+            Write-Error "CERT_PATH was not prepared for 1.x release."
+            exit 1
+          }
+          if (-not (Test-Path $env:CERT_PATH)) {
+            Write-Error "Prepared code signing certificate path does not exist: $env:CERT_PATH"
+            exit 1
+          }
+
       - name: Sign tray executable
         if: ${{ env.CERT_PATH != '' }}
         shell: pwsh
@@ -190,14 +203,16 @@ jobs:
           $setup = Get-ChildItem artifacts/windows/velopack -Filter "*Setup*.exe" -ErrorAction SilentlyContinue
           $full = Get-ChildItem artifacts/windows/velopack -Filter "*full.nupkg" -ErrorAction SilentlyContinue
           $releaseJson = Get-ChildItem artifacts/windows/velopack -Filter "releases.*.json" -ErrorAction SilentlyContinue
+          $releaseIndex = Get-ChildItem artifacts/windows/velopack -Filter "RELEASES*" -ErrorAction SilentlyContinue
           if (-not $setup) { Write-Error "Missing setup executable output."; exit 1 }
           if (-not $isPreOne) {
             if (-not $full) { Write-Error "Missing full nupkg output."; exit 1 }
             if (-not $releaseJson) { Write-Error "Missing releases.<channel>.json output."; exit 1 }
+            if (-not $releaseIndex) { Write-Error "Missing RELEASES channel index output."; exit 1 }
           }
 
       - name: Verify signatures
-        if: ${{ env.CERT_PATH != '' }}
+        if: ${{ !startsWith(steps.version.outputs.version, '0.') || env.CERT_PATH != '' }}
         shell: pwsh
         run: |
           $files = @("artifacts/windows/bin/Deluno.exe")
