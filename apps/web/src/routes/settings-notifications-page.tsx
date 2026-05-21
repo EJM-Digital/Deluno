@@ -358,7 +358,7 @@ export function SettingsNotificationsPage() {
   "title": "The Matrix",
   "quality": "Bluray 1080p",
   "releaseName": "The.Matrix.1999...",
-  "indexer": "Prowlarr",
+  "indexer": "NZBGeek",
   "timestamp": "2026-01-01T00:00:00Z"
 }`}</pre>
             </div>

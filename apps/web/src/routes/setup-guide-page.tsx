@@ -168,18 +168,11 @@ const FORMAT_GOALS = {
 
 const INDEXER_SETUP_PRESETS = [
   {
-    id: "prowlarr",
-    label: "Prowlarr",
+    id: "torznab",
+    label: "Torznab",
     protocol: "torznab" as const,
-    url: "http://localhost:9696/api/v1/indexer/all/results/torznab",
-    copy: "Best companion if you already manage indexers centrally."
-  },
-  {
-    id: "jackett",
-    label: "Jackett",
-    protocol: "torznab" as const,
-    url: "http://localhost:9117/api/v2.0/indexers/all/results/torznab",
-    copy: "Common Torznab bridge for torrent trackers."
+    url: "https://your-tracker.com/api",
+    copy: "For torrent trackers and private sites that expose a Torznab API."
   },
   {
     id: "newznab",
@@ -824,7 +817,7 @@ function ServicesStep({
           </div>
           <Input value={form.indexerName} onChange={(event) => patch({ indexerName: event.target.value })} placeholder="Primary indexer" />
           <select value={form.indexerProtocol} onChange={(event) => patch({ indexerProtocol: event.target.value as GuideForm["indexerProtocol"] })} className="density-control-text h-[var(--control-height)] rounded-xl border border-hairline bg-surface-2 px-3 text-foreground outline-none">
-            <option value="torznab">Torznab (Jackett / Prowlarr)</option>
+            <option value="torznab">Torznab</option>
             <option value="newznab">Newznab (Usenet indexer)</option>
             <option value="rss">RSS feed</option>
           </select>

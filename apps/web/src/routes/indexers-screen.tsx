@@ -140,7 +140,7 @@ const INDEXER_PRESETS: IndexerPreset[] = [
   {
     protocol: "torznab",
     label: "Torznab",
-    description: "Jackett, Prowlarr, or any Torznab-compatible tracker. Works with qBittorrent, Deluge, and Transmission.",
+    description: "Any Torznab-compatible tracker or private site. Works with qBittorrent, Deluge, and Transmission.",
     icon: "⚡",
     requiresApiKey: true,
     defaultCategories: (scope) =>
@@ -1572,7 +1572,7 @@ export function IndexersPage() {
             size="sm"
             variant="custom"
             title="No indexers yet"
-            description="Add a Torznab (Jackett/Prowlarr) or Newznab (Usenet) provider to start searching."
+            description="Add a Torznab or Newznab indexer to start searching."
             action={
               <Button onClick={() => setShowIndexerAdd(true)} className="gap-2" size="sm">
                 <Plus className="h-4 w-4" />

@@ -135,7 +135,7 @@ export function SettingsGeneralPage() {
                       { label: "Deluno default (5099)", value: "5099" },
                       { label: "Radarr-style port (7878)", value: "7878" },
                       { label: "Sonarr-style port (8989)", value: "8989" },
-                      { label: "Prowlarr-style port (9696)", value: "9696" }
+                      { label: "9696", value: "9696" }
                     ]}
                     customLabel="Custom port"
                     customPlaceholder="Port number"
