@@ -38,6 +38,7 @@ COPY tests/Deluno.Integrations.Tests/Deluno.Integrations.Tests.csproj ./tests/De
 COPY tests/Deluno.Movies.Tests/Deluno.Movies.Tests.csproj ./tests/Deluno.Movies.Tests/
 COPY tests/Deluno.Persistence.Tests/Deluno.Persistence.Tests.csproj ./tests/Deluno.Persistence.Tests/
 COPY tests/Deluno.Platform.Tests/Deluno.Platform.Tests.csproj ./tests/Deluno.Platform.Tests/
+COPY tests/Deluno.Tray.Tests/Deluno.Tray.Tests.csproj ./tests/Deluno.Tray.Tests/
 
 RUN dotnet restore ./Deluno.slnx
 
