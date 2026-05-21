@@ -1,6 +1,8 @@
 # Deluno
 
-Personal self-hosted media manager for movies and TV. Built because I wanted something that works the way I think about my library.
+Vibe coded personal media manager for movies and TV. Built it for myself because I wanted something that works the way I think about my library — separate engines for movies and shows, real quality logic, and full visibility into what's actually happening.
+
+Not trying to be Radarr/Sonarr. Just a thing that works for me, shipped because someone else might want it too.
 
 ---
 
@@ -30,7 +32,7 @@ Personal self-hosted media manager for movies and TV. Built because I wanted som
 - Automated missing and upgrade search cycles
 - Live download telemetry on the dashboard
 - Full operational audit trail in Activity
-- Guided first-run setup to go from zero to downloading in minutes
+- Guided first-run setup to get from zero to downloading in minutes
 
 ## Quick start
 
