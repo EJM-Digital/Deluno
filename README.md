@@ -26,6 +26,7 @@ Not trying to be Radarr/Sonarr. Just a thing that works for me, shipped because 
 
 ## What it does
 
+- **Manages indexers directly** — no Jackett or Prowlarr needed. Add Torznab, Newznab, or RSS sources straight in and Deluno queries them itself
 - Separate movie and TV engines — they never fight over the same downloads
 - Quality profiles with cutoff logic and custom format scoring
 - Library-routed indexers and download clients — each library can point at different providers
