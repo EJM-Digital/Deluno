@@ -83,14 +83,14 @@ npm run dev:web        # Vite frontend → :5173
 In a second terminal:
 
 ```bash
-.dotnet/dotnet.exe run --project src/Deluno.Host   # API → :5099
+dotnet run --project src/Deluno.Host   # API → :5099
 ```
 
 ## Notes
 
-- Data is stored in SQLite — separate databases per domain (movies, series, jobs, cache)
+- Data is stored in SQLite — separate databases per domain (platform, movies, series, jobs, cache)
 - No agent needed; the backend serves the frontend and runs all background work
-- ffmpeg is required for stream probing — bundled in the Docker image, must be on PATH for Windows
+- ffmpeg is required for stream probing — bundled in the Docker image and in the Windows installer; only needed on PATH if running from source
 - SignalR live updates use `?access_token=` for WebSocket auth (standard browser behaviour)
 
 ## Docs
