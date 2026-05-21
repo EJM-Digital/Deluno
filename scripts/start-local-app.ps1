@@ -8,6 +8,8 @@ param(
 $ErrorActionPreference = "Stop"
 
 $dotnetPath = Join-Path $Root ".dotnet\dotnet.exe"
+$npmFallbackPath = "C:\Program Files\nodejs\npm.cmd"
+$powershellFallbackPath = "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
 $hostProject = Join-Path $Root "src\Deluno.Host\Deluno.Host.csproj"
 $appStateRoot = Join-Path $Root ".deluno"
 $logRoot = Join-Path $appStateRoot "logs"
@@ -101,6 +103,32 @@ function Start-LoggedProcess(
         -PassThru
 }
 
+function Resolve-NpmPath {
+    $npmCommand = Get-Command npm.cmd -ErrorAction SilentlyContinue
+    if ($null -ne $npmCommand) {
+        return $npmCommand.Source
+    }
+
+    if (Test-Path -LiteralPath $npmFallbackPath -PathType Leaf) {
+        return $npmFallbackPath
+    }
+
+    throw "npm.cmd was not found on PATH and no fallback path was found."
+}
+
+function Resolve-PowerShellPath {
+    $psCommand = Get-Command powershell.exe -ErrorAction SilentlyContinue
+    if ($null -ne $psCommand) {
+        return $psCommand.Source
+    }
+
+    if (Test-Path -LiteralPath $powershellFallbackPath -PathType Leaf) {
+        return $powershellFallbackPath
+    }
+
+    throw "powershell.exe was not found on PATH and no fallback path was found."
+}
+
 function Start-OrReuseBackend {
     $healthUrl = "$BackendUrl/health"
     $existing = Test-Url $healthUrl
@@ -122,8 +150,9 @@ function Start-OrReuseBackend {
     $backendUrlLiteral = ConvertTo-SingleQuotedPowerShellString $BackendUrl
     $backendCommand = "`$env:Storage__DataRoot = $dataRootLiteral; & $dotnetLiteral run --project $hostProjectLiteral --urls $backendUrlLiteral"
 
+    $powerShellPath = Resolve-PowerShellPath
     $process = Start-LoggedProcess `
-        -FileName "powershell" `
+        -FileName $powerShellPath `
         -Arguments @("-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $backendCommand) `
         -WorkingDirectory $Root `
         -StdoutPath (Get-LogPath "backend.log") `
@@ -146,8 +175,9 @@ function Start-OrReuseFrontend {
         }
     }
 
+    $npmPath = Resolve-NpmPath
     $process = Start-LoggedProcess `
-        -FileName "npm.cmd" `
+        -FileName $npmPath `
         -Arguments @("--workspace", "apps/web", "run", "dev", "--", "--host", "127.0.0.1") `
         -WorkingDirectory $Root `
         -StdoutPath (Get-LogPath "frontend.log") `

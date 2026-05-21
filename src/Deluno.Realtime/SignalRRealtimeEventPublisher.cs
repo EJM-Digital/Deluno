@@ -9,7 +9,8 @@ namespace Deluno.Realtime;
 
 public sealed class SignalRRealtimeEventPublisher(
     IHubContext<ActivityHub> hubContext,
-    ILogger<SignalRRealtimeEventPublisher> logger)
+    ILogger<SignalRRealtimeEventPublisher> logger,
+    TimeProvider timeProvider)
     : BackgroundService, IRealtimeEventPublisher
 {
     private readonly Channel<RealtimeEnvelope> _events = Channel.CreateBounded<RealtimeEnvelope>(
@@ -193,7 +194,7 @@ public sealed class SignalRRealtimeEventPublisher(
                 releaseName,
                 clientId,
                 clientName,
-                timestamp = DateTimeOffset.UtcNow.ToString("O")
+                timestamp = timeProvider.GetUtcNow().ToString("O")
             });
         return Task.CompletedTask;
     }
@@ -215,7 +216,7 @@ public sealed class SignalRRealtimeEventPublisher(
                 clientId,
                 succeeded,
                 message,
-                timestamp = DateTimeOffset.UtcNow.ToString("O")
+                timestamp = timeProvider.GetUtcNow().ToString("O")
             });
         return Task.CompletedTask;
     }
@@ -235,7 +236,7 @@ public sealed class SignalRRealtimeEventPublisher(
                 releaseName,
                 torrentHash,
                 downloadedBytes,
-                timestamp = DateTimeOffset.UtcNow.ToString("O")
+                timestamp = timeProvider.GetUtcNow().ToString("O")
             });
         return Task.CompletedTask;
     }
@@ -253,7 +254,7 @@ public sealed class SignalRRealtimeEventPublisher(
                 dispatchId,
                 releaseName,
                 mediaType,
-                timestamp = DateTimeOffset.UtcNow.ToString("O")
+                timestamp = timeProvider.GetUtcNow().ToString("O")
             });
         return Task.CompletedTask;
     }
@@ -275,7 +276,7 @@ public sealed class SignalRRealtimeEventPublisher(
                 succeeded,
                 importedPath,
                 failureReason,
-                timestamp = DateTimeOffset.UtcNow.ToString("O")
+                timestamp = timeProvider.GetUtcNow().ToString("O")
             });
         return Task.CompletedTask;
     }

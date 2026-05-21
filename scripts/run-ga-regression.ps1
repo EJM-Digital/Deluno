@@ -85,12 +85,27 @@ function Resolve-DotnetPath {
     throw "dotnet was not found on PATH and repo-local SDK was not found at $repoLocalDotnet"
 }
 
+function Resolve-NpmPath {
+    $npmCommand = Get-Command npm.cmd -ErrorAction SilentlyContinue
+    if ($null -ne $npmCommand) {
+        return $npmCommand.Source
+    }
+
+    $commonNpmPath = "C:\Program Files\nodejs\npm.cmd"
+    if (Test-Path $commonNpmPath) {
+        return $commonNpmPath
+    }
+
+    throw "npm.cmd was not found on PATH and no fallback path was found."
+}
+
 $dotnetPath = Resolve-DotnetPath
+$npmPath = Resolve-NpmPath
 
 $results = @()
-$results += Invoke-LoggedStep -Name "CI Check" -FilePath "npm.cmd" -Arguments @("run", "ci:check") -LogFile "01-ci-check.log"
+$results += Invoke-LoggedStep -Name "CI Check" -FilePath $npmPath -Arguments @("run", "ci:check") -LogFile "01-ci-check.log"
 $results += Invoke-LoggedStep -Name "Dotnet Tests (Release)" -FilePath $dotnetPath -Arguments @("test", "Deluno.slnx", "--configuration", "Release") -LogFile "02-dotnet-test-release.log"
-$results += Invoke-LoggedStep -Name "Web Smoke Tests" -FilePath "npm.cmd" -Arguments @("run", "test:web") -LogFile "03-web-smoke.log"
+$results += Invoke-LoggedStep -Name "Web Smoke Tests" -FilePath $npmPath -Arguments @("--workspace", "apps/web", "run", "test:smoke") -LogFile "03-web-smoke.log"
 
 # Playwright can emit websocket proxy ECONNABORTED noise from Vite after successful test completion.
 # When the output clearly reports full pass and no failed count, normalize the step to PASS.

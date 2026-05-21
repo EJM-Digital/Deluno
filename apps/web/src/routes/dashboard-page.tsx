@@ -73,18 +73,26 @@ interface DashboardUpcomingItem {
 }
 
 export async function dashboardLoader(): Promise<DashboardLoaderData> {
+  const emptyMovieWanted: MovieWantedSummary = { totalWanted: 0, missingCount: 0, upgradeCount: 0, waitingCount: 0, recentItems: [] };
+  const emptySeriesWanted: SeriesWantedSummary = { totalWanted: 0, missingCount: 0, upgradeCount: 0, waitingCount: 0, recentItems: [] };
+  const emptyTelemetry: DownloadTelemetryOverview = {
+    summary: { activeCount: 0, queuedCount: 0, completedCount: 0, stalledCount: 0, processingCount: 0, importReadyCount: 0, totalSpeedMbps: 0 },
+    clients: [],
+    capturedUtc: new Date().toISOString()
+  };
+
   const [movieItems, movieWanted, showItems, showWanted, telemetry, indexers, clients, automation, searchCycles, retryWindows, upcomingEpisodes] = await Promise.all([
-    fetchJson<MovieListItem[]>("/api/movies"),
-    fetchJson<MovieWantedSummary>("/api/movies/wanted"),
-    fetchJson<SeriesListItem[]>("/api/series"),
-    fetchJson<SeriesWantedSummary>("/api/series/wanted"),
-    fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry"),
-    fetchJson<IndexerItem[]>("/api/indexers"),
-    fetchJson<DownloadClientItem[]>("/api/download-clients"),
-    fetchJson<LibraryAutomationStateItem[]>("/api/library-automation"),
-    fetchJson<SearchCycleRunItem[]>("/api/search-cycles?take=8"),
-    fetchJson<SearchRetryWindowItem[]>("/api/search-retry-windows?take=8"),
-    fetchJson<SeriesUpcomingEpisodeItem[]>("/api/series/upcoming?take=12&hours=72")
+    fetchJson<MovieListItem[]>("/api/movies").catch((): MovieListItem[] => []),
+    fetchJson<MovieWantedSummary>("/api/movies/wanted").catch(() => emptyMovieWanted),
+    fetchJson<SeriesListItem[]>("/api/series").catch((): SeriesListItem[] => []),
+    fetchJson<SeriesWantedSummary>("/api/series/wanted").catch(() => emptySeriesWanted),
+    fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry").catch(() => emptyTelemetry),
+    fetchJson<IndexerItem[]>("/api/indexers").catch((): IndexerItem[] => []),
+    fetchJson<DownloadClientItem[]>("/api/download-clients").catch((): DownloadClientItem[] => []),
+    fetchJson<LibraryAutomationStateItem[]>("/api/library-automation").catch((): LibraryAutomationStateItem[] => []),
+    fetchJson<SearchCycleRunItem[]>("/api/search-cycles?take=8").catch((): SearchCycleRunItem[] => []),
+    fetchJson<SearchRetryWindowItem[]>("/api/search-retry-windows?take=8").catch((): SearchRetryWindowItem[] => []),
+    fetchJson<SeriesUpcomingEpisodeItem[]>("/api/series/upcoming?take=12&hours=72").catch((): SeriesUpcomingEpisodeItem[] => [])
   ]);
 
   const adaptedMovies = adaptMovieItems(movieItems, movieWanted);
@@ -195,9 +203,14 @@ export function DashboardPage() {
             }
           />
           <LiveWaveform
-            seed={[22, 24, 23, 26, 25, 27, 31, 34, 30, 28, 26, 24, 22, 19, 16, 22, 28, 32, 30, 28]}
+            seed={data.activeDownloadCount > 0
+              ? [22, 24, 23, 26, 25, 27, 31, 34, 30, 28, 26, 24, 22, 19, 16, 22, 28, 32, 30, 28]
+              : Array(20).fill(0)}
+            idle={data.activeDownloadCount === 0}
             label="Download speed"
-            subLabel="Combined speed across all your download clients"
+            subLabel={data.activeDownloadCount > 0
+              ? "Combined speed across all your download clients"
+              : "No active downloads"}
           />
         </RenderPanel>
 

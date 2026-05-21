@@ -6,6 +6,7 @@ public sealed record SeriesListItem(
     int? StartYear,
     string? ImdbId,
     bool Monitored,
+    bool HasFile,
     string? MetadataProvider,
     string? MetadataProviderId,
     string? OriginalTitle,

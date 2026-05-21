@@ -8,6 +8,14 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
+  <!-- On non-Windows CI the dotnet test runner cannot execute a net10.0-windows
+       assembly even when it is empty. Switch to the cross-platform TFM so the
+       runner can load the (0-test) assembly and exit cleanly. -->
+  <PropertyGroup Condition="!$([MSBuild]::IsOSPlatform('Windows')) or '$(SimulateLinuxCI)' == 'true'">
+    <TargetFramework>net10.0</TargetFramework>
+    <EnableWindowsTargeting>false</EnableWindowsTargeting>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
@@ -15,12 +23,19 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
   </ItemGroup>
 
-  <ItemGroup>
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows')) and '$(SimulateLinuxCI)' != 'true'">
     <ProjectReference Include="..\..\apps\windows-tray\Deluno.Tray.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <Using Include="Xunit" />
+  </ItemGroup>
+
+  <!-- Mirror the tray project: on non-Windows the tray assembly is an empty library
+       (all its .cs files are excluded), so test code that references its types won't
+       compile. Exclude test sources on non-Windows for the same reason. -->
+  <ItemGroup Condition="!$([MSBuild]::IsOSPlatform('Windows')) or '$(SimulateLinuxCI)' == 'true'">
+    <Compile Remove="**/*.cs" />
   </ItemGroup>
 
 </Project>

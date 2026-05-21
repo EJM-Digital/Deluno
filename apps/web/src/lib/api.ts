@@ -24,6 +24,7 @@ export interface MovieListItem {
   releaseYear: number | null;
   imdbId: string | null;
   monitored: boolean;
+  hasFile: boolean;
   metadataProvider: string | null;
   metadataProviderId: string | null;
   originalTitle: string | null;
@@ -105,6 +106,7 @@ export interface SeriesListItem {
   startYear: number | null;
   imdbId: string | null;
   monitored: boolean;
+  hasFile: boolean;
   metadataProvider: string | null;
   metadataProviderId: string | null;
   originalTitle: string | null;

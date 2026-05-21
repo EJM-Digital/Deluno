@@ -8,7 +8,7 @@ export interface Notification {
   severity: "info" | "success" | "warning" | "error";
   createdUtc: string;
   readUtc?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface NotificationPreferences {
@@ -28,8 +28,6 @@ export interface NotificationPreferences {
   webhookUrl?: string;
 }
 
-const API_BASE = "http://127.0.0.1:5099/api";
-
 export function useNotifications() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -44,11 +42,7 @@ export function useNotifications() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${API_BASE}/notifications`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-      });
+      const response = await fetch("/api/notifications");
       if (!response.ok) throw new Error("Failed to fetch notifications");
       const data = await response.json();
       setNotifications(data);
@@ -62,11 +56,7 @@ export function useNotifications() {
   // Get unread count
   const fetchUnreadCount = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE}/notifications/unread-count`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-      });
+      const response = await fetch("/api/notifications/unread-count");
       if (!response.ok) throw new Error("Failed to fetch unread count");
       const data = await response.json();
       setUnreadCount(data.unreadCount);
@@ -78,11 +68,7 @@ export function useNotifications() {
   // Fetch preferences
   const fetchPreferences = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE}/notification-preferences`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-      });
+      const response = await fetch("/api/notification-preferences");
       if (!response.ok) throw new Error("Failed to fetch preferences");
       const data = await response.json();
       setPreferences(data);
@@ -96,13 +82,8 @@ export function useNotifications() {
     async (notificationId: string) => {
       try {
         const response = await fetch(
-          `${API_BASE}/notifications/${notificationId}/read`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${localStorage.getItem("token")}`,
-            },
-          }
+          `/api/notifications/${notificationId}/read`,
+          { method: "POST" }
         );
         if (!response.ok) throw new Error("Failed to mark as read");
         await fetchNotifications();
@@ -117,11 +98,8 @@ export function useNotifications() {
   // Mark all notifications as read
   const markAllAsRead = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE}/notifications/read-all`, {
+      const response = await fetch("/api/notifications/read-all", {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
       });
       if (!response.ok) throw new Error("Failed to mark all as read");
       await fetchNotifications();
@@ -136,13 +114,8 @@ export function useNotifications() {
     async (notificationId: string) => {
       try {
         const response = await fetch(
-          `${API_BASE}/notifications/${notificationId}`,
-          {
-            method: "DELETE",
-            headers: {
-              Authorization: `Bearer ${localStorage.getItem("token")}`,
-            },
-          }
+          `/api/notifications/${notificationId}`,
+          { method: "DELETE" }
         );
         if (!response.ok) throw new Error("Failed to delete notification");
         await fetchNotifications();
@@ -157,12 +130,7 @@ export function useNotifications() {
   // Clear all notifications
   const clearAll = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE}/notifications`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-      });
+      const response = await fetch("/api/notifications", { method: "DELETE" });
       if (!response.ok) throw new Error("Failed to clear notifications");
       await fetchNotifications();
       await fetchUnreadCount();
@@ -175,12 +143,9 @@ export function useNotifications() {
   const updatePreferences = useCallback(
     async (newPreferences: NotificationPreferences) => {
       try {
-        const response = await fetch(`${API_BASE}/notification-preferences`, {
+        const response = await fetch("/api/notification-preferences", {
           method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(newPreferences),
         });
         if (!response.ok) throw new Error("Failed to update preferences");

@@ -21,6 +21,7 @@ public sealed class SqliteMovieCatalogRepository(
             ReleaseYear: request.ReleaseYear,
             ImdbId: NormalizeExternalId(request.ImdbId),
             Monitored: request.Monitored,
+            HasFile: false,
             MetadataProvider: NormalizeExternalId(request.MetadataProvider),
             MetadataProviderId: NormalizeExternalId(request.MetadataProviderId),
             OriginalTitle: NormalizeText(request.OriginalTitle),
@@ -138,26 +139,29 @@ public sealed class SqliteMovieCatalogRepository(
         command.CommandText =
             """
             SELECT
-                id,
-                title,
-                release_year,
-                imdb_id,
-                monitored,
-                metadata_provider,
-                metadata_provider_id,
-                original_title,
-                overview,
-                poster_url,
-                backdrop_url,
-                rating,
-                genres,
-                external_url,
-                metadata_json,
-                metadata_updated_utc,
-                created_utc,
-                updated_utc
-            FROM movie_entries
-            WHERE id = @id
+                m.id,
+                m.title,
+                m.release_year,
+                m.imdb_id,
+                m.monitored,
+                COALESCE(MAX(w.has_file), 0) AS has_file,
+                m.metadata_provider,
+                m.metadata_provider_id,
+                m.original_title,
+                m.overview,
+                m.poster_url,
+                m.backdrop_url,
+                m.rating,
+                m.genres,
+                m.external_url,
+                m.metadata_json,
+                m.metadata_updated_utc,
+                m.created_utc,
+                m.updated_utc
+            FROM movie_entries m
+            LEFT JOIN movie_wanted_state w ON w.movie_id = m.id
+            WHERE m.id = @id
+            GROUP BY m.id
             LIMIT 1;
             """;
 
@@ -178,38 +182,41 @@ public sealed class SqliteMovieCatalogRepository(
         command.CommandText =
             """
             SELECT
-                id,
-                title,
-                release_year,
-                imdb_id,
-                monitored,
-                metadata_provider,
-                metadata_provider_id,
-                original_title,
-                overview,
-                poster_url,
-                backdrop_url,
-                rating,
-                genres,
-                external_url,
-                metadata_json,
-                metadata_updated_utc,
-                created_utc,
-                updated_utc
-            FROM movie_entries
+                m.id,
+                m.title,
+                m.release_year,
+                m.imdb_id,
+                m.monitored,
+                COALESCE(MAX(w.has_file), 0) AS has_file,
+                m.metadata_provider,
+                m.metadata_provider_id,
+                m.original_title,
+                m.overview,
+                m.poster_url,
+                m.backdrop_url,
+                m.rating,
+                m.genres,
+                m.external_url,
+                m.metadata_json,
+                m.metadata_updated_utc,
+                m.created_utc,
+                m.updated_utc
+            FROM movie_entries m
+            LEFT JOIN movie_wanted_state w ON w.movie_id = m.id
             WHERE
-                (@imdbId IS NOT NULL AND imdb_id = @imdbId)
+                (@imdbId IS NOT NULL AND m.imdb_id = @imdbId)
                 OR (
                     @metadataProvider IS NOT NULL
                     AND @metadataProviderId IS NOT NULL
-                    AND metadata_provider = @metadataProvider
-                    AND metadata_provider_id = @metadataProviderId
+                    AND m.metadata_provider = @metadataProvider
+                    AND m.metadata_provider_id = @metadataProviderId
                 )
                 OR (
-                    lower(title) = lower(@title)
-                    AND COALESCE(release_year, -1) = COALESCE(@releaseYear, -1)
+                    lower(m.title) = lower(@title)
+                    AND COALESCE(m.release_year, -1) = COALESCE(@releaseYear, -1)
                 )
-            ORDER BY created_utc ASC
+            GROUP BY m.id
+            ORDER BY m.created_utc ASC
             LIMIT 1;
             """;
         AddParameter(command, "@imdbId", movie.ImdbId);
@@ -234,26 +241,29 @@ public sealed class SqliteMovieCatalogRepository(
         command.CommandText =
             """
             SELECT
-                id,
-                title,
-                release_year,
-                imdb_id,
-                monitored,
-                metadata_provider,
-                metadata_provider_id,
-                original_title,
-                overview,
-                poster_url,
-                backdrop_url,
-                rating,
-                genres,
-                external_url,
-                metadata_json,
-                metadata_updated_utc,
-                created_utc,
-                updated_utc
-            FROM movie_entries
-            ORDER BY created_utc DESC, title ASC;
+                m.id,
+                m.title,
+                m.release_year,
+                m.imdb_id,
+                m.monitored,
+                COALESCE(MAX(w.has_file), 0) AS has_file,
+                m.metadata_provider,
+                m.metadata_provider_id,
+                m.original_title,
+                m.overview,
+                m.poster_url,
+                m.backdrop_url,
+                m.rating,
+                m.genres,
+                m.external_url,
+                m.metadata_json,
+                m.metadata_updated_utc,
+                m.created_utc,
+                m.updated_utc
+            FROM movie_entries m
+            LEFT JOIN movie_wanted_state w ON w.movie_id = m.id
+            GROUP BY m.id
+            ORDER BY m.created_utc DESC, m.title ASC;
             """;
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -1303,20 +1313,21 @@ public sealed class SqliteMovieCatalogRepository(
             ReleaseYear: reader.IsDBNull(2) ? null : reader.GetInt32(2),
             ImdbId: reader.IsDBNull(3) ? null : reader.GetString(3),
             Monitored: reader.GetInt32(4) == 1,
-            MetadataProvider: reader.IsDBNull(5) ? null : reader.GetString(5),
-            MetadataProviderId: reader.IsDBNull(6) ? null : reader.GetString(6),
-            OriginalTitle: reader.IsDBNull(7) ? null : reader.GetString(7),
-            Overview: reader.IsDBNull(8) ? null : reader.GetString(8),
-            PosterUrl: reader.IsDBNull(9) ? null : reader.GetString(9),
-            BackdropUrl: reader.IsDBNull(10) ? null : reader.GetString(10),
-            Rating: reader.IsDBNull(11) ? null : reader.GetDouble(11),
-            Ratings: BuildRatings(reader.IsDBNull(11) ? null : reader.GetDouble(11), reader.IsDBNull(14) ? null : reader.GetString(14)),
-            Genres: reader.IsDBNull(12) ? null : reader.GetString(12),
-            ExternalUrl: reader.IsDBNull(13) ? null : reader.GetString(13),
-            MetadataJson: reader.IsDBNull(14) ? null : reader.GetString(14),
-            MetadataUpdatedUtc: reader.IsDBNull(15) ? null : ParseTimestamp(reader.GetString(15)),
-            CreatedUtc: ParseTimestamp(reader.GetString(16)),
-            UpdatedUtc: ParseTimestamp(reader.GetString(17)));
+            HasFile: reader.GetInt32(5) == 1,
+            MetadataProvider: reader.IsDBNull(6) ? null : reader.GetString(6),
+            MetadataProviderId: reader.IsDBNull(7) ? null : reader.GetString(7),
+            OriginalTitle: reader.IsDBNull(8) ? null : reader.GetString(8),
+            Overview: reader.IsDBNull(9) ? null : reader.GetString(9),
+            PosterUrl: reader.IsDBNull(10) ? null : reader.GetString(10),
+            BackdropUrl: reader.IsDBNull(11) ? null : reader.GetString(11),
+            Rating: reader.IsDBNull(12) ? null : reader.GetDouble(12),
+            Ratings: BuildRatings(reader.IsDBNull(12) ? null : reader.GetDouble(12), reader.IsDBNull(15) ? null : reader.GetString(15)),
+            Genres: reader.IsDBNull(13) ? null : reader.GetString(13),
+            ExternalUrl: reader.IsDBNull(14) ? null : reader.GetString(14),
+            MetadataJson: reader.IsDBNull(15) ? null : reader.GetString(15),
+            MetadataUpdatedUtc: reader.IsDBNull(16) ? null : ParseTimestamp(reader.GetString(16)),
+            CreatedUtc: ParseTimestamp(reader.GetString(17)),
+            UpdatedUtc: ParseTimestamp(reader.GetString(18)));
     }
 
     private static MovieWantedItem ReadWantedMovie(System.Data.Common.DbDataReader reader)

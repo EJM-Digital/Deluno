@@ -192,6 +192,14 @@ public static class UserAuthorization
             }
         }
 
+        // WebSocket connections (SignalR) cannot send arbitrary headers, so the
+        // client sends the token as ?access_token=... in the upgrade URL instead.
+        var queryToken = httpContext.Request.Query["access_token"].ToString().Trim();
+        if (!string.IsNullOrWhiteSpace(queryToken))
+        {
+            return queryToken;
+        }
+
         return null;
     }
 

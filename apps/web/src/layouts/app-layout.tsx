@@ -272,9 +272,8 @@ function DesktopSidebar({
           <span className="density-nowrap text-[length:var(--type-body-sm)] font-semibold text-foreground">All systems normal</span>
         </div>
         <p className="mt-2 text-[length:var(--shell-subtle-size)] text-muted-foreground">
-          4 active downloads
+          {attention.failedJobs > 0 ? `${attention.failedJobs} failed job${attention.failedJobs !== 1 ? "s" : ""}` : "No active issues"}
         </p>
-        <p className="density-nowrap mt-1 font-mono text-[length:var(--type-body-lg)] font-semibold text-primary">82.3 MB/s</p>
       </div>
 
       <div className="group relative z-50 mt-3">

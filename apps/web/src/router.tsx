@@ -87,7 +87,7 @@ async function setupLoader({ request }: { request: Request }) {
   if (!(await requiresSetup())) {
     const url = new URL(request.url);
     const returnTo = url.searchParams.get("return");
-    throw redirect(returnTo || "/login");
+    throw redirect((returnTo?.startsWith("/") ? returnTo : null) || "/login");
   }
 
   const { token, user } = readStored();

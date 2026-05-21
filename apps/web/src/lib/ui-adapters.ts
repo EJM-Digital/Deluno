@@ -93,7 +93,7 @@ export function adaptMovieItems(items: MovieListItem[], wanted: MovieWantedSumma
     return {
       id: item.id,
       title: item.title,
-      year: item.releaseYear ?? new Date(item.createdUtc).getFullYear(),
+      year: item.releaseYear ?? null,
       type: "movie",
       poster: item.posterUrl,
       backdrop: item.backdropUrl,
@@ -103,7 +103,7 @@ export function adaptMovieItems(items: MovieListItem[], wanted: MovieWantedSumma
           ? "missing"
           : wantedItem?.wantedStatus === "waiting"
             ? "downloading"
-            : item.monitored
+            : item.hasFile
               ? "downloaded"
               : "monitored",
       monitored: item.monitored,
@@ -168,7 +168,7 @@ export function adaptSeriesItems(items: SeriesListItem[], wanted: SeriesWantedSu
     return {
       id: item.id,
       title: item.title,
-      year: item.startYear ?? new Date(item.createdUtc).getFullYear(),
+      year: item.startYear ?? null,
       type: "show",
       poster: item.posterUrl,
       backdrop: item.backdropUrl,
@@ -178,7 +178,7 @@ export function adaptSeriesItems(items: SeriesListItem[], wanted: SeriesWantedSu
           ? "missing"
           : wantedItem?.wantedStatus === "waiting"
             ? "downloading"
-            : item.monitored
+            : item.hasFile
               ? "downloaded"
               : "monitored",
       monitored: item.monitored,

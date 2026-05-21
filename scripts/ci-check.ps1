@@ -85,7 +85,37 @@ function Resolve-DotnetPath {
     throw "dotnet was not found on PATH and repo-local SDK was not found at $repoLocalDotnet"
 }
 
+function Resolve-NpmPath {
+    $npmCommand = Get-Command npm.cmd -ErrorAction SilentlyContinue
+    if ($null -ne $npmCommand) {
+        return $npmCommand.Source
+    }
+
+    $commonNpmPath = "C:\Program Files\nodejs\npm.cmd"
+    if (Test-Path $commonNpmPath) {
+        return $commonNpmPath
+    }
+
+    throw "npm.cmd was not found on PATH and no fallback path was found."
+}
+
+function Resolve-PowerShellPath {
+    $psCommand = Get-Command powershell.exe -ErrorAction SilentlyContinue
+    if ($null -ne $psCommand) {
+        return $psCommand.Source
+    }
+
+    $commonPowerShellPath = "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+    if (Test-Path $commonPowerShellPath) {
+        return $commonPowerShellPath
+    }
+
+    throw "powershell.exe was not found on PATH and no fallback path was found."
+}
+
 $dotnetPath = Resolve-DotnetPath
+$npmPath = Resolve-NpmPath
+$powerShellPath = Resolve-PowerShellPath
 
 Write-Host ""
 Write-Host "Backend"
@@ -139,7 +169,7 @@ $needsNpmCi = -not (Test-Path $nodeModules) -or ((Test-Path $packageLock) -and (
 
 if ($needsNpmCi) {
     Write-Host "   npm ci (node_modules out of date)..."
-    $npmCi = Invoke-LoggedCommand -FilePath "npm.cmd" -Arguments @("ci", "--silent")
+    $npmCi = Invoke-LoggedCommand -FilePath $npmPath -Arguments @("ci", "--silent")
     if ($npmCi.ExitCode -eq 0) {
         Write-Ok "npm ci"
     } else {
@@ -150,7 +180,7 @@ if ($needsNpmCi) {
     Write-Ok "npm ci (node_modules current, skipped)"
 }
 
-$web = Invoke-LoggedCommand -FilePath "npm.cmd" -Arguments @("run", "build:web", "--silent")
+$web = Invoke-LoggedCommand -FilePath $npmPath -Arguments @("--workspace", "apps/web", "run", "build", "--silent")
 if ($web.ExitCode -eq 0) {
     Write-Ok "build:web"
 } else {
@@ -161,7 +191,7 @@ if ($web.ExitCode -eq 0) {
 Write-Host ""
 Write-Host "Agent readiness"
 
-$agents = Invoke-LoggedCommand -FilePath "powershell" -Arguments @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/validate-agent-readiness.ps1")
+$agents = Invoke-LoggedCommand -FilePath $powerShellPath -Arguments @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/validate-agent-readiness.ps1")
 if ($agents.ExitCode -eq 0) {
     Write-Ok "agent readiness"
 } else {

@@ -7,17 +7,23 @@ interface LiveWaveformProps {
   maxMbps?: number;
   label?: string;
   subLabel?: string;
+  /** When true, freezes animation and shows 0 MB/s (idle state) */
+  idle?: boolean;
 }
 
 /**
  * Live streaming-bar waveform: each frame pushes a new value and rolls off the oldest.
  * Renders gradient bars with a glow baseline — like a terminal network monitor.
  */
-export function LiveWaveform({ seed, maxMbps = 60, label, subLabel }: LiveWaveformProps) {
+export function LiveWaveform({ seed, maxMbps = 60, label, subLabel, idle = false }: LiveWaveformProps) {
   const [series, setSeries] = useState<number[]>(() => normalize(seed, 60));
   const tickRef = useRef(0);
 
   useEffect(() => {
+    if (idle) {
+      setSeries(Array(60).fill(0));
+      return;
+    }
     const id = window.setInterval(() => {
       setSeries((prev) => {
         tickRef.current += 1;
@@ -30,11 +36,11 @@ export function LiveWaveform({ seed, maxMbps = 60, label, subLabel }: LiveWavefo
       });
     }, 600);
     return () => window.clearInterval(id);
-  }, [maxMbps]);
+  }, [maxMbps, idle]);
 
-  const current = series[series.length - 1] ?? 0;
-  const avg = series.reduce((a, b) => a + b, 0) / series.length;
-  const peak = Math.max(...series);
+  const current = idle ? 0 : (series[series.length - 1] ?? 0);
+  const avg = idle ? 0 : series.reduce((a, b) => a + b, 0) / series.length;
+  const peak = idle ? 0 : Math.max(...series);
 
   return (
     <div className="flex h-full flex-col">

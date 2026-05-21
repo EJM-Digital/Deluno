@@ -190,6 +190,7 @@ export function SignalRProvider({
 
     connectionRef.current = builder;
 
+    setStatus("connecting");
     builder.start()
       .then(() => setStatus("connected"))
       .catch(() => {
