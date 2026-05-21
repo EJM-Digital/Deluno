@@ -1,80 +1,103 @@
 # Deluno
 
-Deluno is a personal media manager for movies and TV with separate engines, quality-aware acquisition, library routing, and full operational visibility.
+Personal self-hosted media manager for movies and TV. Built because I wanted something that works the way I think about my library.
 
-## Core capabilities
+---
 
-- Separate movie and TV workflows
-- Quality profiles with cutoff behavior
-- Upgrade and replacement protection
-- Custom format scoring
-- Library-specific indexer and download-client routing
+<img src="screenshots/dashboard.png" width="49%"> <img src="screenshots/movies.png" width="49%">
+
+*Overview dashboard · Movies library*
+
+<img src="screenshots/shows.png" width="49%"> <img src="screenshots/queue.png" width="49%">
+
+*TV shows · Download queue*
+
+<img src="screenshots/quality.png" width="49%"> <img src="screenshots/indexers.png" width="49%">
+
+*Quality profiles · Sources and clients*
+
+<img src="screenshots/activity.png">
+
+*Activity log — every import, rename, and job recorded*
+
+---
+
+## What it does
+
+- Separate movie and TV engines — they never fight over the same downloads
+- Quality profiles with cutoff logic and custom format scoring
+- Library-routed indexers and download clients — each library can point at different providers
 - Automated missing and upgrade search cycles
-- Import recovery workflows and operational audit history
+- Live download telemetry on the dashboard
+- Full operational audit trail in Activity
+- Guided first-run setup to go from zero to downloading in minutes
 
-## Install and run
+## Quick start
 
-### Windows (recommended)
+### Windows
 
-Download the latest setup executable from [GitHub Releases](https://github.com/jampat000/Deluno/releases).
+Download the installer from [Releases](https://github.com/jampat000/Deluno/releases). Velopack handles installation and in-app updates.
 
-Windows uses Velopack for installer and updates:
+| | |
+|--|--|
+| Install | `%LocalAppData%\Deluno` |
+| Data | `%LocalAppData%\DelunoData` |
+| Config | `%LocalAppData%\Deluno\config\deluno.json` |
 
-- Install location: `%LocalAppData%\Deluno`
-- Runtime data location: `%LocalAppData%\DelunoData`
-- Config location: `%LocalAppData%\Deluno\config\deluno.json`
-- In-app updates: `System > Updates`
-- Default update channel: `stable`
-
-If you are coming from a legacy/manual run, Deluno can read legacy settings from `%ProgramData%\Deluno\data\deluno.json` and migrate them to the canonical config path.
+Updates appear in **System → Updates** and install in the background.
 
 ### Docker
 
-Start with compose:
-
-```bash
-docker compose up
+```yaml
+services:
+  deluno:
+    image: ghcr.io/jampat000/deluno:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+      - /your/media:/media
+      - /your/downloads:/downloads
+    restart: unless-stopped
 ```
 
-Docker update model:
+```bash
+docker compose up -d
+```
 
-- no in-place updater inside containers
-- pull a newer image tag and recreate containers
-- keep persistent volumes mounted (for example `/data`)
-- use runtime paths that exist inside the container (`/media/...`, `/downloads`, `/data`)
+Open [http://localhost:8080](http://localhost:8080).
 
-### Local development
+To update: pull the new image and recreate the container. No in-place updater runs inside containers.
 
-Requirements:
+### Local dev
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/download)
-- [Node.js 20+](https://nodejs.org)
-
-Run:
+Requires [.NET 10 SDK](https://dotnet.microsoft.com/download) and [Node.js 20+](https://nodejs.org).
 
 ```bash
 npm install
-npm run dev
+npm run dev:web        # Vite frontend → :5173
 ```
 
-## Versioning policy
+In a second terminal:
 
-- `0.x.x` tags are treated as pre-1.0 releases.
-- Stable `1.x.x` starts once product confidence is production-ready.
+```bash
+.dotnet/dotnet.exe run --project src/Deluno.Host   # API → :5099
+```
 
-## Repository maps and docs
+## Notes
 
-- [AGENTS.md](/C:/Users/User/Projects/Deluno/AGENTS.md)
-- [docs/README.md](/C:/Users/User/Projects/Deluno/docs/README.md)
-- [docs/ARCHITECTURE.md](/C:/Users/User/Projects/Deluno/docs/ARCHITECTURE.md)
-- [docs/packaging.md](/C:/Users/User/Projects/Deluno/docs/packaging.md)
-- [docs/DEPLOYMENT.md](/C:/Users/User/Projects/Deluno/docs/DEPLOYMENT.md)
-- [docs/TROUBLESHOOTING.md](/C:/Users/User/Projects/Deluno/docs/TROUBLESHOOTING.md)
+- Data is stored in SQLite — separate databases per domain (movies, series, jobs, cache)
+- No agent needed; the backend serves the frontend and runs all background work
+- ffmpeg is required for stream probing — bundled in the Docker image, must be on PATH for Windows
+- SignalR live updates use `?access_token=` for WebSocket auth (standard browser behaviour)
 
-## Tech stack
+## Docs
 
-- Frontend: React 19, React Router v7, TypeScript, Vite
-- Backend: ASP.NET Core 10, C#
-- Data: SQLite (domain-separated databases)
-- Realtime: SignalR
-- Tests: xUnit and Playwright
+- [Architecture](./docs/ARCHITECTURE.md)
+- [Deployment](./docs/DEPLOYMENT.md)
+- [Packaging and releases](./docs/packaging.md)
+- [Troubleshooting](./docs/TROUBLESHOOTING.md)
+
+## License
+
+MIT
