@@ -175,6 +175,18 @@ Checks:
 - verify the latest backup in `System > Backups`
 - retry update after confirming network and disk space health
 
+### Issue: Windows Defender Blocks Setup As Malware
+
+Checks:
+
+- confirm installer source is the official GitHub Release
+- verify the SHA256 hash using `SHA256SUMS.txt` from the same release
+- if setup is blocked, use the `*portable.zip` artifact from that release
+- submit the blocked file URL/hash to Microsoft false-positive review:
+  - [https://www.microsoft.com/en-us/wdsi/AppRepSubmission](https://www.microsoft.com/en-us/wdsi/AppRepSubmission)
+  - [https://www.microsoft.com/security/portal/submit.aspx/](https://www.microsoft.com/security/portal/submit.aspx/)
+- on Windows 11, check Smart App Control state (`Windows Security > App & browser control`): unsigned apps can be fully blocked when enforcement is on
+
 ### Issue: Libraries Or Downloads Are Not Found On Windows
 
 Checks:

@@ -43,8 +43,8 @@ Detailed guide:
 
 ### Windows signing note
 
-For this GA cycle, Authenticode signing may be absent by policy.
-If unsigned artifacts are shipped, include an explicit user note in the final published release.
+When a signing certificate is configured, Windows artifacts are Authenticode signed.
+Unsigned artifacts may be blocked in stricter Windows security configurations; use the portable zip fallback and verify `SHA256SUMS.txt`.
 
 ## Notable Changes Since 0.1.0
 

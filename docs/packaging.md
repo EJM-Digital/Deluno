@@ -79,12 +79,14 @@ Release assets include:
 - full package (`*.full.nupkg`)
 - delta package (`*.delta.nupkg`, when available)
 - channel release index (`releases.<channel>.json`)
+- portable runtime zip (`*portable.zip`)
+- release hashes (`SHA256SUMS.txt`)
 
 Release gate expectations for tagged builds:
 
-- signing certificate secrets must be present for `1.x.x+` releases
-- `Deluno.exe` and setup executables must have valid Authenticode signatures for `1.x.x+` releases
-- setup executable, `*.full.nupkg`, and `releases.<channel>.json` are required before publishing the release
+- setup executable, portable zip, `SHA256SUMS.txt`, `*.full.nupkg`, and `releases.<channel>.json` are required before publishing the release
+- if a signing certificate is configured in CI, sign all distributed Windows executables (`artifacts/windows/bin/*.exe` and setup executables)
+- if artifacts are unsigned, some Windows environments (for example Smart App Control enforcement) may block execution entirely
 
 Current release channel for production users:
 

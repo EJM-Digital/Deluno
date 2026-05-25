@@ -122,7 +122,7 @@ jobs:
         shell: pwsh
         run: |
           if ([string]::IsNullOrWhiteSpace("${{ secrets.WINDOWS_SIGN_CERT_BASE64 }}") -or [string]::IsNullOrWhiteSpace("${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}")) {
-            Write-Host "Signing secrets not configured; continuing without certificate for this run."
+            Write-Host "Signing secrets not configured; continuing unsigned for this run."
             exit 0
           }
           $bytes = [Convert]::FromBase64String("${{ secrets.WINDOWS_SIGN_CERT_BASE64 }}")
@@ -130,11 +130,18 @@ jobs:
           [IO.File]::WriteAllBytes($path, $bytes)
           "CERT_PATH=$path" >> $env:GITHUB_ENV
 
-      - name: Sign tray executable
+      - name: Sign payload executables
         if: ${{ env.CERT_PATH != '' }}
         shell: pwsh
         run: |
-          signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com /f "$env:CERT_PATH" /p "${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}" artifacts/windows/bin/Deluno.exe
+          $executables = Get-ChildItem artifacts/windows/bin -Filter "*.exe" -File -ErrorAction SilentlyContinue
+          if (-not $executables) {
+            Write-Error "No payload executables found to sign in artifacts/windows/bin."
+            exit 1
+          }
+          foreach ($exe in $executables) {
+            signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com /f "$env:CERT_PATH" /p "${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}" $exe.FullName
+          }
 
       - name: Download latest release assets for delta generation
         shell: pwsh
@@ -149,18 +156,27 @@ jobs:
 
       - name: Create Velopack packages
         shell: pwsh
+        env:
+          SIGN_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}
         run: |
           $env:PATH += ";$env:USERPROFILE\\.dotnet\\tools"
-          vpk pack `
-            --packId Deluno `
-            --packVersion ${{ steps.version.outputs.version }} `
-            --packDir artifacts/windows/bin `
-            --mainExe Deluno.exe `
-            --packTitle Deluno `
-            --icon installer/deluno.ico `
-            --channel stable `
-            --runtime win-x64 `
-            --outputDir artifacts/windows/velopack
+          $args = @(
+            "pack",
+            "--packId", "Deluno",
+            "--packVersion", "${{ steps.version.outputs.version }}",
+            "--packDir", "artifacts/windows/bin",
+            "--mainExe", "Deluno.exe",
+            "--packTitle", "Deluno",
+            "--icon", "installer/deluno.ico",
+            "--channel", "stable",
+            "--runtime", "win-x64",
+            "--outputDir", "artifacts/windows/velopack"
+          )
+          if (-not [string]::IsNullOrWhiteSpace($env:CERT_PATH)) {
+            $signParams = "/fd SHA256 /td SHA256 /tr http://timestamp.digicert.com /f `"$env:CERT_PATH`" /p `"$env:SIGN_CERT_PASSWORD`""
+            $args += @("--signParams", $signParams)
+          }
+          & vpk @args
 
       - name: Sign installer outputs
         if: ${{ env.CERT_PATH != '' }}
@@ -168,6 +184,37 @@ jobs:
         run: |
           Get-ChildItem artifacts/windows/velopack -Filter "*Setup*.exe" | ForEach-Object {
             signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com /f "$env:CERT_PATH" /p "${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}" $_.FullName
+          }
+
+      - name: Create portable zip and hashes
+        shell: pwsh
+        run: |
+          $zipName = "Deluno-${{ steps.version.outputs.version }}-win-x64-portable.zip"
+          $zipPath = Join-Path "artifacts/windows/velopack" $zipName
+          if (Test-Path $zipPath) {
+            Remove-Item $zipPath -Force
+          }
+          Compress-Archive -Path "artifacts/windows/bin/*" -DestinationPath $zipPath -CompressionLevel Optimal
+
+          $hashTargets = @()
+          $hashTargets += (Get-ChildItem artifacts/windows/velopack -Filter "*Setup*.exe" -File -ErrorAction SilentlyContinue).FullName
+          $hashTargets += (Get-ChildItem artifacts/windows/velopack -Filter "*.nupkg" -File -ErrorAction SilentlyContinue).FullName
+          $hashTargets += (Get-ChildItem artifacts/windows/velopack -Filter "releases.*.json" -File -ErrorAction SilentlyContinue).FullName
+          $hashTargets += (Get-ChildItem artifacts/windows/velopack -Filter "RELEASES*" -File -ErrorAction SilentlyContinue).FullName
+          $hashTargets += $zipPath
+          $hashTargets = $hashTargets | Select-Object -Unique
+
+          $hashFile = "artifacts/windows/velopack/SHA256SUMS.txt"
+          if (Test-Path $hashFile) {
+            Remove-Item $hashFile -Force
+          }
+          New-Item -Path $hashFile -ItemType File -Force | Out-Null
+          foreach ($target in $hashTargets) {
+            if (Test-Path $target) {
+              $hash = (Get-FileHash $target -Algorithm SHA256).Hash.ToLowerInvariant()
+              $name = Split-Path $target -Leaf
+              Add-Content -Path $hashFile -Value "$hash  $name"
+            }
           }
 
       - name: Verify required Velopack outputs
@@ -189,8 +236,14 @@ jobs:
         if: ${{ env.CERT_PATH != '' }}
         shell: pwsh
         run: |
-          $files = @("artifacts/windows/bin/Deluno.exe")
-          $files += (Get-ChildItem artifacts/windows/velopack -Filter "*Setup*.exe").FullName
+          $files = @()
+          $files += (Get-ChildItem artifacts/windows/bin -Filter "*.exe" -File).FullName
+          $files += (Get-ChildItem artifacts/windows/velopack -Filter "*Setup*.exe" -File).FullName
+          $files = $files | Select-Object -Unique
+          if (-not $files) {
+            Write-Error "No executable files found for signature verification."
+            exit 1
+          }
           foreach ($file in $files) {
             $sig = Get-AuthenticodeSignature $file
             if ($sig.Status -ne "Valid") {
@@ -206,8 +259,10 @@ jobs:
           path: |
             artifacts/windows/velopack/*.exe
             artifacts/windows/velopack/*.nupkg
+            artifacts/windows/velopack/*.zip
             artifacts/windows/velopack/releases.*.json
             artifacts/windows/velopack/RELEASES*
+            artifacts/windows/velopack/SHA256SUMS.txt
           retention-days: 7
 
   release:
@@ -243,6 +298,8 @@ jobs:
           if [[ "${{ steps.version.outputs.version }}" == 0.* ]]; then PRE_ONE=true; fi
           ls -lah release-assets
           test -n "$(ls -1 release-assets/*Setup*.exe 2>/dev/null)" || { echo "Missing setup executable"; exit 1; }
+          test -n "$(ls -1 release-assets/*portable.zip 2>/dev/null)" || { echo "Missing portable zip"; exit 1; }
+          test -f "release-assets/SHA256SUMS.txt" || { echo "Missing SHA256SUMS.txt"; exit 1; }
           if [[ "$PRE_ONE" != "true" ]]; then
             test -n "$(ls -1 release-assets/*full.nupkg 2>/dev/null)" || { echo "Missing full package"; exit 1; }
             test -n "$(ls -1 release-assets/releases.*.json 2>/dev/null)" || { echo "Missing release index"; exit 1; }
@@ -261,6 +318,8 @@ jobs:
             ### Windows
 
             Download and run the Velopack setup executable. Existing installs update in-place with delta packages.
+            If Setup is blocked in your environment, use the portable zip build and verify SHA256SUMS.txt.
+            If Microsoft Defender reports a false positive, submit the file URL for review: https://www.microsoft.com/en-us/wdsi/AppRepSubmission
 
             ### Docker
 
@@ -276,5 +335,7 @@ jobs:
           files: |
             release-assets/*.exe
             release-assets/*.nupkg
+            release-assets/*.zip
             release-assets/releases.*.json
             release-assets/RELEASES*
+            release-assets/SHA256SUMS.txt
