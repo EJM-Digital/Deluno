@@ -27,6 +27,7 @@ Not trying to be Radarr/Sonarr. Just a thing that works for me, shipped because 
 ## What it does
 
 - **Manages indexers directly** — no Jackett or Prowlarr needed. Add Torznab, Newznab, or RSS sources straight in and Deluno queries them itself
+- **Optional built-in NZB + BitTorrent engine** — pick "Deluno NZB (built-in)" or "Deluno Torrent (built-in)" alongside SAB / qBittorrent in the download clients list, and Deluno does the work in-process. Architecture + status: [docs/builtin-downloader.md](./docs/builtin-downloader.md)
 - Separate movie and TV engines — they never fight over the same downloads
 - Quality profiles with cutoff logic and custom format scoring
 - Library-routed indexers and download clients — each library can point at different providers
