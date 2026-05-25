@@ -59,6 +59,12 @@ public static class DownloaderServiceCollectionExtensions
         services.AddHttpClient<TorrentJobExecutor>();
         services.AddSingleton<IDownloaderJobExecutor>(sp => sp.GetRequiredService<NzbJobExecutor>());
         services.AddSingleton<IDownloaderJobExecutor>(sp => sp.GetRequiredService<TorrentJobExecutor>());
+        // Crash recovery: at startup, re-queue any jobs that were
+        // mid-flight when the process died last time. Registered as a
+        // hosted service BEFORE the execution worker so the
+        // ASP.NET host runs them in order — recovery sweep completes
+        // before the worker starts pulling Queued items.
+        services.AddHostedService<DownloaderCrashRecoveryService>();
         services.AddHostedService<DownloaderJobExecutionService>();
 
         // Post-processing — default ordering: sample filter → flatten → sanitize.

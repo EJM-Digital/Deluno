@@ -72,6 +72,26 @@ public static class DownloaderDatabaseMigrations
                 UNIQUE (job_id, file_index)
             );
 
+            -- history: archived jobs (Done / Failed / Cancelled). One
+            -- row per completed download. Stays small because we only
+            -- keep summary data; live progress / per-segment state are
+            -- discarded when a job is archived.
+            --
+            -- dedupe_key semantics: stable identifier for "this release"
+            -- that callers compute at archive time via
+            -- JobHistoryDedupeKey.Compute(jobRecord). Used by the
+            -- request-pipeline ("Sonarr asked us to grab X — did we
+            -- already complete X?"). Canonical formula per protocol:
+            --
+            --   torrent:<infohashV1 hex>           (V1 always preferred)
+            --   torrent:btmh:<multihash hex>       (V2-only torrents)
+            --   nzb:<sha256(display_name + ":" + total_bytes)>
+            --
+            -- NULL is allowed for legacy / migration cases; the index
+            -- on dedupe_key is non-unique because two genuinely
+            -- different jobs can legitimately resolve to the same key
+            -- (a re-grab after Cancelled) and we want callers to be
+            -- able to inspect the history of duplicate completions.
             CREATE TABLE IF NOT EXISTS history (
                 id               TEXT PRIMARY KEY,
                 job_id           TEXT NOT NULL,

@@ -58,8 +58,18 @@ public static class JobLifecycleTransitions
             && to is not (JobLifecycleState.Paused or JobLifecycleState.Done))
             return true;
 
-        // From Failed: only Retry (back to Queued) is legal.
-        if (from is JobLifecycleState.Failed && to is JobLifecycleState.Queued)
+        // Restart: any non-terminal state (or Failed) can go back to
+        // Queued. Covers three legitimate cases that all share the same
+        // semantics ("the previous state was bad, begin again from the
+        // queue"):
+        //   - Failed → Queued: user-initiated Retry.
+        //   - Mid-flight → Queued: crash recovery sweep at startup
+        //     re-queues jobs the previous process died mid-execution on.
+        //   - Paused → Queued: covered by the Paused rule above already.
+        // Done → Queued is intentionally NOT allowed; re-downloading a
+        // finished job is a new-job operation, not a restart.
+        if (from is not (JobLifecycleState.Done or JobLifecycleState.Queued)
+            && to is JobLifecycleState.Queued)
             return true;
 
         return (from, to) switch

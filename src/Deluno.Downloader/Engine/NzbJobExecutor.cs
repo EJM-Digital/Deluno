@@ -66,37 +66,51 @@ public sealed class NzbJobExecutor(
                 $"Downloaded {result.BytesDownloaded:N0} bytes ({result.FailedSegments.Count} failed segments).",
                 time.GetUtcNow(), ct);
 
-            // par2 verify (if par2 files in the NZB).
+            // par2 verify (if par2 files in the NZB). See
+            // Par2SetGrouper for how multi-set releases are handled —
+            // main movie + sample is a common multi-set pattern.
             var par2Files = result.WrittenFiles.Where(f =>
                 f.EndsWith(".par2", StringComparison.OrdinalIgnoreCase)).ToList();
             if (par2Files.Count > 0)
             {
                 await jobs.TransitionAsync(job.Id, JobLifecycleState.Verify, "par2 verify", time.GetUtcNow(), ct);
-                var par2Main = SelectMainPar2File(par2Files);
-                var verify = await par2.VerifyAsync(par2Main, progress: null, ct);
 
-                if (verify.Outcome == Par2Outcome.NeedsRepair)
+                var par2Sets = Par2SetGrouper.Group(par2Files);
+                logger.LogInformation(
+                    "NZB job {JobId}: found {SetCount} par2 set(s) covering {FileCount} par2 file(s).",
+                    job.Id, par2Sets.Count, par2Files.Count);
+
+                bool anyRepair = false;
+                foreach (var set in par2Sets)
                 {
-                    await jobs.TransitionAsync(job.Id, JobLifecycleState.Repair, "par2 repair", time.GetUtcNow(), ct);
-                    var repair = await par2.RepairAsync(par2Main, progress: null, ct);
-                    if (!repair.Repaired)
+                    var verify = await par2.VerifyAsync(set.IndexFile, progress: null, ct);
+
+                    if (verify.Outcome == Par2Outcome.NeedsRepair)
+                    {
+                        anyRepair = true;
+                        await jobs.TransitionAsync(job.Id, JobLifecycleState.Repair,
+                            $"par2 repair: set '{set.SetName}'", time.GetUtcNow(), ct);
+                        var repair = await par2.RepairAsync(set.IndexFile, progress: null, ct);
+                        if (!repair.Repaired)
+                        {
+                            await jobs.TransitionAsync(job.Id, JobLifecycleState.Failed,
+                                $"par2 repair failed for set '{set.SetName}': {repair.Message}",
+                                time.GetUtcNow(), ct);
+                            return;
+                        }
+                    }
+                    else if (verify.Outcome != Par2Outcome.Ok)
                     {
                         await jobs.TransitionAsync(job.Id, JobLifecycleState.Failed,
-                            $"par2 repair failed: {repair.Message}", time.GetUtcNow(), ct);
+                            $"par2 verify failed for set '{set.SetName}': {verify.Outcome}. {verify.Message}",
+                            time.GetUtcNow(), ct);
                         return;
                     }
-                    await jobs.TransitionAsync(job.Id, JobLifecycleState.Verified, "par2 repaired", time.GetUtcNow(), ct);
                 }
-                else if (verify.Outcome == Par2Outcome.Ok)
-                {
-                    await jobs.TransitionAsync(job.Id, JobLifecycleState.Verified, "par2 ok", time.GetUtcNow(), ct);
-                }
-                else
-                {
-                    await jobs.TransitionAsync(job.Id, JobLifecycleState.Failed,
-                        $"par2 verify failed: {verify.Outcome}. {verify.Message}", time.GetUtcNow(), ct);
-                    return;
-                }
+
+                await jobs.TransitionAsync(job.Id, JobLifecycleState.Verified,
+                    anyRepair ? "par2 repaired" : "par2 ok",
+                    time.GetUtcNow(), ct);
             }
 
             // Extract any archives present in the result set.
@@ -157,19 +171,6 @@ public sealed class NzbJobExecutor(
         {
             foreach (var pool in pools) await pool.DisposeAsync().ConfigureAwait(false);
         }
-    }
-
-    /// <summary>
-    /// Picks the par2 file to invoke par2cmdline against — preferring
-    /// the index volume (smallest .par2 in the set, conventionally
-    /// named <c>basename.par2</c>) over the recovery volumes
-    /// (<c>basename.vol000+01.par2</c> etc.). par2cmdline walks the
-    /// rest of the set itself from the index.
-    /// </summary>
-    private static string SelectMainPar2File(IReadOnlyList<string> par2Files)
-    {
-        // Smallest = the index volume (no recovery blocks).
-        return par2Files.OrderBy(f => new FileInfo(f).Length).First();
     }
 
     private async Task UpdateOutputDirAsync(JobRecord job, string outputDir, CancellationToken ct)

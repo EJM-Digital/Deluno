@@ -66,6 +66,39 @@ public class JobLifecycleTransitionsTests
         Assert.True(JobLifecycleTransitions.IsLegal(JobLifecycleState.Failed, JobLifecycleState.Queued, DownloadProtocol.Nzb));
     }
 
+    [Theory]
+    [InlineData(JobLifecycleState.Fetching)]
+    [InlineData(JobLifecycleState.Reassembled)]
+    [InlineData(JobLifecycleState.Verify)]
+    [InlineData(JobLifecycleState.Verified)]
+    [InlineData(JobLifecycleState.Repair)]
+    [InlineData(JobLifecycleState.Extracting)]
+    [InlineData(JobLifecycleState.Extracted)]
+    [InlineData(JobLifecycleState.PostProcessed)]
+    [InlineData(JobLifecycleState.ImportPending)]
+    public void Crash_recovery_can_re_queue_any_mid_flight_state(JobLifecycleState from)
+    {
+        // The crash-recovery sweep at startup re-queues jobs the previous
+        // process died mid-execution on. Every mid-flight state must
+        // accept a transition back to Queued.
+        Assert.True(JobLifecycleTransitions.IsLegal(from, JobLifecycleState.Queued, DownloadProtocol.Nzb));
+    }
+
+    [Fact]
+    public void Crash_recovery_can_re_queue_Seeding_torrent()
+    {
+        Assert.True(JobLifecycleTransitions.IsLegal(JobLifecycleState.Seeding, JobLifecycleState.Queued, DownloadProtocol.Torrent));
+    }
+
+    [Fact]
+    public void Done_cannot_be_re_queued()
+    {
+        // Done is terminal-by-design: re-downloading a finished job is a
+        // new-job operation, not a restart.
+        Assert.False(JobLifecycleTransitions.IsLegal(JobLifecycleState.Done, JobLifecycleState.Queued, DownloadProtocol.Nzb));
+        Assert.False(JobLifecycleTransitions.IsLegal(JobLifecycleState.Done, JobLifecycleState.Queued, DownloadProtocol.Torrent));
+    }
+
     [Fact]
     public void Resume_from_Paused_can_reach_active_states()
     {
