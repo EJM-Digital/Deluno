@@ -92,6 +92,42 @@ foreach ($rule in $forbiddenReferences) {
     }
 }
 
+# Invariant text-pin. AGENTS.md and docs/ARCHITECTURE.md historically said
+# "Deluno orchestrates external indexers and download clients; it does not
+# embed a downloader." That invariant was rewritten when the in-process
+# Deluno.Downloader engine was scoped (see
+# docs/exec-plans/active/builtin-downloader-architecture.md).
+#
+# Pin the new text by substring so accidental reverts or paraphrases get
+# caught here, not at code-review time. We check three distinctive phrases
+# from the canonical invariant — all three must be present in each file.
+$invariantPhrases = @(
+    "optional in-process download engine",
+    "covering NZB (Usenet) and BitTorrent",
+    "Domain modules and Integrations must remain agnostic"
+)
+$invariantFiles = @(
+    @{ Path = "AGENTS.md"; Label = "AGENTS.md" },
+    @{ Path = "docs\ARCHITECTURE.md"; Label = "docs/ARCHITECTURE.md" }
+)
+$forbiddenOldInvariant = "it does not embed a downloader"
+
+foreach ($entry in $invariantFiles) {
+    $path = Join-Path $Root $entry.Path
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
+    $content = Get-Content -LiteralPath $path -Raw
+
+    if ($content.Contains($forbiddenOldInvariant)) {
+        Add-Failure "Old downloader invariant text 'it does not embed a downloader' is back in $($entry.Label). The in-process Deluno.Downloader engine has been scoped; do not revert the invariant. See docs/exec-plans/active/builtin-downloader-architecture.md."
+    }
+
+    foreach ($phrase in $invariantPhrases) {
+        if (-not $content.Contains($phrase)) {
+            Add-Failure "Invariant phrase missing from $($entry.Label): '$phrase'. The downloader invariant must be present verbatim in both AGENTS.md and docs/ARCHITECTURE.md."
+        }
+    }
+}
+
 $downloadTelemetryStatusPattern = '["''](downloading|queued|completed|stalled|processing|processed|processingFailed|waitingForProcessor|importReady|importQueued|imported|importFailed)["'']'
 $downloadTelemetryFiles = @(
     "apps\web\src\routes\dashboard-page.tsx",

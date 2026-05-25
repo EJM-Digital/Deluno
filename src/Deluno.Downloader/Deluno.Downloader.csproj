@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Deluno.Downloader</RootNamespace>
+  </PropertyGroup>
+  <!--
+    Module boundary (enforced by intent + validate:agents check).
+    Per docs/exec-plans/active/builtin-downloader-architecture.md:
+
+    - Deluno.Downloader is domain-agnostic. It owns its own SQLite
+      database (downloader.db), its own lifecycle state machine, and
+      its own settings surface.
+    - Allowed references: Contracts, Infrastructure (SQLite), Jobs
+      (lifecycle integration only — engine raises events, doesn't
+      depend on job execution).
+    - Forbidden references: Deluno.Movies, Deluno.Series,
+      Deluno.Filesystem, Deluno.Integrations, Deluno.Platform.
+      Domain code never sneaks into the engine.
+    - Integration with the rest of Deluno happens at exactly one seam:
+      Deluno.Integrations.DownloadClients dispatches protocol values
+      "deluno-nzb" and "deluno-torrent" through an adapter that calls
+      into this project.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\Deluno.Contracts\Deluno.Contracts.csproj" />
+    <ProjectReference Include="..\Deluno.Infrastructure\Deluno.Infrastructure.csproj" />
+    <ProjectReference Include="..\Deluno.Jobs\Deluno.Jobs.csproj" />
+  </ItemGroup>
+</Project>

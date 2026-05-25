@@ -25,7 +25,7 @@ This file is the small entry point for agent work. It is a map, not the full man
 
 ## Current Product Direction
 
-- Deluno orchestrates external indexers and download clients; it does not embed a downloader.
+- Deluno orchestrates external indexers and download clients. It also ships an optional in-process download engine (`Deluno.Downloader`) covering NZB (Usenet) and BitTorrent, which users can select per library instead of a remote SAB/NZBGet/qBittorrent/etc. The torrent protocol is implemented via MonoTorrent; the NZB protocol is implemented in-tree. Domain modules and Integrations must remain agnostic to which client is in use.
 - The app is single-user. Avoid operator/admin/team-language unless referring to platform APIs or accessibility attributes.
 - Movie and TV engines stay separated internally, even when UI workflows are unified.
 - Services/Broker, Queue, Activity, Health, and Imports should consume normalized client/indexer data.
