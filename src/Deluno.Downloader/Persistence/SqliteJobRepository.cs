@@ -160,6 +160,92 @@ public sealed class SqliteJobRepository(IDelunoDatabaseConnectionFactory connect
         }
     }
 
+    public async Task ArchiveAsync(
+        string jobId,
+        string? torrentInfohashV1Hex,
+        string? torrentInfohashV2Hex,
+        CancellationToken ct)
+    {
+        await using var conn = await connectionFactory.OpenConnectionAsync(DbName, ct);
+        await using var tx = (SqliteTransaction)await conn.BeginTransactionAsync(ct);
+        try
+        {
+            // Read the live job, validate terminal state, compute history
+            // fields, all within the same tx so a concurrent transition
+            // can't move it out from under us.
+            JobRecord? job = null;
+            await using (var read = (SqliteCommand)conn.CreateCommand())
+            {
+                read.Transaction = tx;
+                read.CommandText = "SELECT " + AllColumns + " FROM jobs WHERE id = $id;";
+                read.Parameters.AddWithValue("$id", jobId);
+                await using var reader = await read.ExecuteReaderAsync(ct);
+                if (await reader.ReadAsync(ct))
+                    job = MapJob(reader);
+            }
+            if (job is null)
+                throw new InvalidOperationException($"Job '{jobId}' not found.");
+            if (!JobLifecycleTransitions.IsTerminal(job.State))
+                throw new InvalidOperationException(
+                    $"Cannot archive job '{jobId}' from state {job.State} — only Done/Failed are archivable.");
+
+            var completedAt = job.CompletedAt ?? job.UpdatedAt;
+            var durationMs = (long)Math.Max(0, (completedAt - job.CreatedAt).TotalMilliseconds);
+            var dedupeKey = JobHistoryDedupeKey.Compute(
+                job, torrentInfohashV1Hex, torrentInfohashV2Hex);
+
+            await using (var ins = (SqliteCommand)conn.CreateCommand())
+            {
+                ins.Transaction = tx;
+                ins.CommandText =
+                    """
+                    INSERT INTO history (
+                        id, job_id, protocol, display_name, category, final_state,
+                        total_bytes, downloaded_bytes, uploaded_bytes, duration_ms,
+                        output_path, failure_reason, completed_at, dedupe_key
+                    ) VALUES (
+                        $id, $job_id, $protocol, $display_name, $category, $final_state,
+                        $total_bytes, $downloaded_bytes, $uploaded_bytes, $duration_ms,
+                        $output_path, $failure_reason, $completed_at, $dedupe_key
+                    );
+                    """;
+                ins.Parameters.AddWithValue("$id", Guid.NewGuid().ToString("N"));
+                ins.Parameters.AddWithValue("$job_id", job.Id);
+                ins.Parameters.AddWithValue("$protocol", job.Protocol.ToDbValue());
+                ins.Parameters.AddWithValue("$display_name", job.DisplayName);
+                ins.Parameters.AddWithValue("$category", (object?)job.Category ?? DBNull.Value);
+                ins.Parameters.AddWithValue("$final_state", job.State.ToString());
+                ins.Parameters.AddWithValue("$total_bytes", job.TotalBytes);
+                ins.Parameters.AddWithValue("$downloaded_bytes", job.DownloadedBytes);
+                ins.Parameters.AddWithValue("$uploaded_bytes", job.UploadedBytes);
+                ins.Parameters.AddWithValue("$duration_ms", durationMs);
+                ins.Parameters.AddWithValue("$output_path", (object?)job.OutputDir ?? DBNull.Value);
+                ins.Parameters.AddWithValue("$failure_reason",
+                    job.State == JobLifecycleState.Failed ? (object?)job.StateReason ?? DBNull.Value : DBNull.Value);
+                ins.Parameters.AddWithValue("$completed_at", completedAt.ToString("O", CultureInfo.InvariantCulture));
+                ins.Parameters.AddWithValue("$dedupe_key", (object?)dedupeKey ?? DBNull.Value);
+                await ins.ExecuteNonQueryAsync(ct);
+            }
+
+            // Delete the live row; FK ON DELETE CASCADE handles files,
+            // state_transitions, nzb_segments, torrent_metadata children.
+            await using (var del = (SqliteCommand)conn.CreateCommand())
+            {
+                del.Transaction = tx;
+                del.CommandText = "DELETE FROM jobs WHERE id = $id;";
+                del.Parameters.AddWithValue("$id", job.Id);
+                await del.ExecuteNonQueryAsync(ct);
+            }
+
+            await tx.CommitAsync(ct);
+        }
+        catch
+        {
+            await tx.RollbackAsync(ct);
+            throw;
+        }
+    }
+
     public async Task<IReadOnlyList<StateTransitionRecord>> GetTransitionsAsync(
         string jobId, CancellationToken ct)
     {

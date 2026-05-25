@@ -18,9 +18,10 @@ namespace Deluno.Downloader.Tests.Torrent;
 ///   <item><description>V1+V2 hybrid (BEP-52) round-trip: both V1 (sha1)
 ///     and V2 (sha256) infohashes populate. This is the exact code path
 ///     the dedupe-key helper relies on for hybrid torrents.</description></item>
-///   <item><description>Magnet sources raise a friendly
-///     NotSupportedException pointing at the orchestrator's
-///     MagnetIngestor (the leak-window guard).</description></item>
+///   <item><description>Magnet ingestion with no peers/trackers
+///     times out cleanly within MagnetMetadataTimeout rather than
+///     wedging the worker. (The leak-window guard for private-suspect
+///     magnets is tested separately in MagnetIngestorTests.)</description></item>
 /// </list>
 /// </summary>
 public class MonoTorrentEngineTests
@@ -158,24 +159,34 @@ public class MonoTorrentEngineTests
     }
 
     [Fact]
-    public async Task Magnet_source_throws_pending_orchestrator_ingestor_wiring()
+    public async Task Magnet_with_no_peers_times_out_within_configured_window()
     {
-        // Phase 3b explicitly defers magnet ingestion to the orchestrator
-        // (which owns the leak-window guard for private-suspect categories).
-        // The engine itself rejects magnet sources with a clear message.
+        // Magnet ingestion is now wired. With no trackers and no real
+        // swarm, BEP-9 metadata fetch will never complete — we verify
+        // the engine raises TimeoutException after MagnetMetadataTimeout
+        // instead of hanging forever. The orchestrator's leak-window
+        // guard (MagnetIngestor.GuardOrThrow) is tested separately —
+        // here we only confirm that "magnet that resolves nothing"
+        // doesn't wedge the worker.
         var cacheDir = Path.Combine(Path.GetTempPath(), $"deluno-mt-{Guid.NewGuid():N}");
         try
         {
             await using var engine = new MonoTorrentEngine(new MonoTorrentEngineOptions(
-                CacheDir: cacheDir, ListenPort: 0, AllowUpnp: false, AllowLsd: false));
+                CacheDir: cacheDir, ListenPort: 0, AllowUpnp: false, AllowLsd: false)
+                {
+                    // 2-second timeout keeps the test fast.
+                    MagnetMetadataTimeout = TimeSpan.FromSeconds(2),
+                });
             await engine.StartAsync(CancellationToken.None);
 
-            var ex = await Assert.ThrowsAsync<NotSupportedException>(() =>
+            var ex = await Assert.ThrowsAsync<TimeoutException>(() =>
                 engine.AddAsync(
+                    // Random infohash + no trackers — there's literally
+                    // nothing to fetch metadata from.
                     new TorrentSource.Magnet("magnet:?xt=urn:btih:c12fe1c06bba254a9dc9f519b335aa7c1367a88a"),
                     new TorrentAddOptions(),
                     CancellationToken.None));
-            Assert.Contains("MagnetIngestor", ex.Message);
+            Assert.Contains("Magnet metadata fetch timed out", ex.Message);
         }
         finally
         {

@@ -64,10 +64,20 @@ public sealed class TorrentJobExecutor(
             var downloadDir = Path.Combine(job.DownloadDir, job.Id);
             Directory.CreateDirectory(downloadDir);
 
+            // Forward the orchestrator's private-suspect determination
+            // to the engine so it picks the right metadata-fetch
+            // strategy for magnets (TrackerOnly disables DHT/PEX during
+            // the BEP-9 fetch). Same category-based heuristic as the
+            // upstream GuardOrThrow call: any non-empty category is
+            // treated as private-suspect until the Settings UI lets
+            // users mark categories public/private explicitly.
+            bool? isPrivateSuspect = !string.IsNullOrEmpty(job.Category) ? true : null;
+
             var addOptions = new TorrentAddOptions(
                 Category: job.Category,
                 DownloadDir: downloadDir,
-                Priority: job.Priority);
+                Priority: job.Priority,
+                IsPrivateOverride: isPrivateSuspect);
 
             var handle = await torrents.AddAsync(source, addOptions, ct);
             logger.LogInformation(

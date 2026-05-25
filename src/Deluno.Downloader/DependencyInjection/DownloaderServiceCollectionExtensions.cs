@@ -66,6 +66,10 @@ public static class DownloaderServiceCollectionExtensions
         // before the worker starts pulling Queued items.
         services.AddHostedService<DownloaderCrashRecoveryService>();
         services.AddHostedService<DownloaderJobExecutionService>();
+        // History archive: periodic sweep that moves terminal (Done /
+        // Failed) jobs from the live `jobs` table to `history`, with
+        // a canonical dedupe_key for "did I already grab this?" checks.
+        services.AddHostedService<JobHistoryArchiveService>();
 
         // Post-processing — default ordering: sample filter → flatten → sanitize.
         // Per-category overrides (e.g. skip flatten for torrents) live in

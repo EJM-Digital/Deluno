@@ -138,4 +138,13 @@ internal sealed class FakeJobRepo : IJobRepository
 
     public Task<IReadOnlyList<StateTransitionRecord>> GetTransitionsAsync(string jobId, CancellationToken ct)
         => Task.FromResult<IReadOnlyList<StateTransitionRecord>>(Array.Empty<StateTransitionRecord>());
+
+    public Task ArchiveAsync(
+        string jobId, string? torrentInfohashV1Hex, string? torrentInfohashV2Hex, CancellationToken ct)
+    {
+        // Crash-recovery tests don't exercise archive; just remove the
+        // row so the in-memory store stays consistent.
+        _store.Remove(jobId);
+        return Task.CompletedTask;
+    }
 }

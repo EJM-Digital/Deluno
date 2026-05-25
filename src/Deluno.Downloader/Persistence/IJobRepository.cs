@@ -48,4 +48,25 @@ public interface IJobRepository
     /// <summary>Returns the transition history for a job, oldest first.</summary>
     Task<IReadOnlyList<StateTransitionRecord>> GetTransitionsAsync(
         string jobId, CancellationToken ct);
+
+    /// <summary>
+    /// Archive a finished job: insert a summary row into <c>history</c>
+    /// with a canonical <c>dedupe_key</c> (computed via
+    /// <see cref="JobHistoryDedupeKey"/>) and delete the live <c>jobs</c>
+    /// row + cascade children. One SQLite transaction so the live row
+    /// can't disappear without the history row materialising.
+    ///
+    /// Callers pass torrent infohashes when available (extracted from
+    /// <see cref="Torrent.Engine.TorrentJobHandle"/>); pass null for NZB
+    /// jobs — the dedupe_key will be computed from (display_name +
+    /// total_bytes) instead.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">Thrown if the job
+    /// doesn't exist or isn't in a terminal state (Done/Failed). Use
+    /// <see cref="TransitionAsync"/> to reach terminal first.</exception>
+    Task ArchiveAsync(
+        string jobId,
+        string? torrentInfohashV1Hex,
+        string? torrentInfohashV2Hex,
+        CancellationToken ct);
 }
