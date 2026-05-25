@@ -128,6 +128,37 @@ foreach ($entry in $invariantFiles) {
     }
 }
 
+# Host-wiring parity. Deluno has two ASP.NET host entry points:
+#   - src/Deluno.Host/Program.cs (Docker / Linux container)
+#   - apps/windows-tray/DelunoServer.cs + ServiceHost.cs (Windows tray)
+# Both MUST register the same set of services and map the same set of
+# endpoints; if they diverge, the binary that ships in the Velopack
+# installer (built from the tray) silently lacks features the Docker
+# image has — see v1.1.0 → v1.1.1 hotfix where downloader endpoints
+# 500'd because the tray wiring forgot AddDelunoBuiltInDownloaders +
+# AddDelunoPlatformSecrets.
+$hostWiringRequiredCalls = @(
+    "AddDelunoBuiltInDownloaders",
+    "AddDelunoPlatformSecrets",
+    "MapDelunoDownloaderEndpoints",
+    "MapDelunoSecretsDiagnostics"
+)
+$hostWiringFiles = @(
+    @{ Path = "src\Deluno.Host\Program.cs"; Label = "src/Deluno.Host/Program.cs" },
+    @{ Path = "apps\windows-tray\DelunoServer.cs"; Label = "apps/windows-tray/DelunoServer.cs" },
+    @{ Path = "apps\windows-tray\ServiceHost.cs"; Label = "apps/windows-tray/ServiceHost.cs" }
+)
+foreach ($entry in $hostWiringFiles) {
+    $path = Join-Path $Root $entry.Path
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
+    $content = Get-Content -LiteralPath $path -Raw
+    foreach ($call in $hostWiringRequiredCalls) {
+        if (-not $content.Contains($call)) {
+            Add-Failure "Host-wiring parity: $($entry.Label) is missing required call '$call'. Both Deluno.Host/Program.cs and the windows-tray hosts must register and map the same Deluno modules — if one ships without these the runtime will resolve-fail at first /api/downloader request. See v1.1.1 hotfix."
+        }
+    }
+}
+
 $downloadTelemetryStatusPattern = '["''](downloading|queued|completed|stalled|processing|processed|processingFailed|waitingForProcessor|importReady|importQueued|imported|importFailed)["'']'
 $downloadTelemetryFiles = @(
     "apps\web\src\routes\dashboard-page.tsx",
