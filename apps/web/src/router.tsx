@@ -380,6 +380,16 @@ export const router = createBrowserRouter([
             })
           },
           {
+            path: "builtin-downloader",
+            lazy: withSkeleton(async () => {
+              const module = await import("./routes/settings-builtin-downloader-page");
+              return {
+                loader: module.settingsBuiltinDownloaderLoader,
+                Component: module.SettingsBuiltinDownloaderPage,
+              };
+            })
+          },
+          {
             path: "ui",
             lazy: withSkeleton(async () => {
               const module = await import("./routes/settings-ui-page");
