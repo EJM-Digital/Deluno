@@ -50,7 +50,13 @@ public sealed class JobHistoryArchiveService(
         catch (OperationCanceledException) { /* shutdown — expected */ }
     }
 
-    internal async Task SweepOnceAsync(CancellationToken ct)
+    /// <summary>
+    /// Run a single archive sweep. Exposed as a public testability seam
+    /// so unit tests can drive the sweep without spinning up the
+    /// PeriodicTimer-driven background loop. Not part of the
+    /// IHostedService contract.
+    /// </summary>
+    public async Task SweepOnceAsync(CancellationToken ct)
     {
         try
         {
