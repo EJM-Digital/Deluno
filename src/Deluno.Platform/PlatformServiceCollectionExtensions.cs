@@ -3,6 +3,7 @@ using Deluno.Platform.Migration;
 using Deluno.Platform.Notifications;
 using Deluno.Platform.Quality;
 using Deluno.Platform.Security;
+using Deluno.Platform.Security.Hardening;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Deluno.Platform;
@@ -16,7 +17,6 @@ public static class PlatformServiceCollectionExtensions
         services.AddSingleton<IQualityModelService, QualityModelService>();
         services.AddSingleton<IMediaDecisionService, MediaDecisionService>();
         services.AddSingleton<IMigrationAssistantService, MigrationAssistantService>();
-        services.AddSingleton<ISecretProtector, DataProtectionSecretProtector>();
         services.AddSingleton<IOutboundNotificationService, OutboundNotificationService>();
         services.AddSingleton<INotificationService, InMemoryNotificationService>();
         services.AddHttpClient("notifications");
@@ -24,4 +24,21 @@ public static class PlatformServiceCollectionExtensions
         services.AddHostedService<NotificationEventPublisher>();
         return services;
     }
+
+    /// <summary>
+    /// Registers the hardened ISecretProtector pipeline. Call this from
+    /// the host (which knows the data root). If neither this nor a manual
+    /// <c>AddSingleton&lt;ISecretProtector&gt;</c> registration is in place,
+    /// other Platform services that depend on <see cref="ISecretProtector"/>
+    /// will fail to resolve.
+    /// </summary>
+    /// <param name="services">DI container.</param>
+    /// <param name="masterKeyFilePath">
+    /// Filesystem path where the AES master key lives when the FileBacked
+    /// backend is selected. Typically <c>&lt;dataRoot&gt;/secrets/master.key</c>.
+    /// </param>
+    public static IServiceCollection AddDelunoPlatformSecrets(
+        this IServiceCollection services,
+        string masterKeyFilePath)
+        => services.AddDelunoSecretsHardening(masterKeyFilePath);
 }

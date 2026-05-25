@@ -11,6 +11,7 @@ using Deluno.Integrations.Search;
 using Deluno.Jobs;
 using Deluno.Movies;
 using Deluno.Platform;
+using Deluno.Platform.Security.Hardening;
 using Deluno.Realtime;
 using Deluno.Series;
 using Deluno.Worker;
@@ -60,6 +61,13 @@ builder.Services
     .AddDataProtection()
     .SetApplicationName("Deluno")
     .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(dataRoot, "protection-keys")));
+
+// ISecretProtector pipeline. Backend is selected at first resolution
+// (Windows → DPAPI, Linux/macOS → AES-GCM with master key from
+// DELUNO_MASTER_KEY env var or <dataRoot>/secrets/master.key file).
+// Legacy DataProtection reads continue to work via the composite reader.
+builder.Services.AddDelunoPlatformSecrets(
+    Path.Combine(dataRoot, "secrets", "master.key"));
 
 var app = builder.Build();
 
@@ -177,6 +185,7 @@ app.UseSwaggerUI(options =>
 app.MapDelunoApi();
 app.MapDelunoBackupEndpoints();
 app.MapDelunoPlatformEndpoints();
+app.MapDelunoSecretsDiagnostics();
 app.MapDelunoMoviesEndpoints();
 app.MapDelunoSeriesEndpoints();
 app.MapDelunoJobsEndpoints();
