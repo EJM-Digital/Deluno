@@ -109,6 +109,83 @@ public static class DownloaderEndpointRouteBuilderExtensions
             });
         }).WithName("GetDownloaderDiagnostics");
 
+        // ---------------- direct job submission (debugging / live test) ----------------
+        //
+        // Bypasses the indexer → grab → download-client dispatch chain
+        // and drops an NZB or torrent source straight into the Queued
+        // bucket. The execution worker picks it up on its next tick.
+        // Mainly for end-to-end testing without needing a configured
+        // indexer; production grabs still flow through the normal
+        // request pipeline.
+        group.MapPost("/jobs", async (
+            SubmitJobRequest body,
+            IJobRepository jobs,
+            TimeProvider time,
+            CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(body.SourcePath))
+                return Results.BadRequest("sourcePath is required.");
+            if (string.IsNullOrWhiteSpace(body.DownloadDir))
+                return Results.BadRequest("downloadDir is required.");
+
+            var protocol = string.Equals(body.Protocol, "torrent", StringComparison.OrdinalIgnoreCase)
+                ? DownloadProtocol.Torrent
+                : DownloadProtocol.Nzb;
+
+            var now = time.GetUtcNow();
+            var id = Guid.NewGuid().ToString("N");
+            var displayName = string.IsNullOrWhiteSpace(body.DisplayName)
+                ? Path.GetFileNameWithoutExtension(body.SourcePath)
+                : body.DisplayName!;
+            var sourceKind = body.SourceKind ?? (protocol == DownloadProtocol.Nzb ? "nzb" : "torrent_file");
+
+            var job = new JobRecord(
+                Id: id,
+                Protocol: protocol,
+                DisplayName: displayName,
+                SourcePath: body.SourcePath,
+                SourceKind: sourceKind,
+                Category: body.Category,
+                Priority: body.Priority ?? 0,
+                State: JobLifecycleState.Queued,
+                StateReason: "Submitted via /api/downloader/jobs",
+                Paused: false,
+                PasswordProtected: null,
+                DownloadDir: body.DownloadDir,
+                OutputDir: null,
+                TotalBytes: 0,
+                DownloadedBytes: 0,
+                UploadedBytes: 0,
+                DispatchId: null,
+                LibraryId: null,
+                CreatedAt: now,
+                UpdatedAt: now,
+                CompletedAt: null);
+            await jobs.UpsertAsync(job, ct);
+            return Results.Created($"/api/downloader/jobs/{id}", new { id, state = job.State.ToString() });
+        }).WithName("SubmitDownloaderJob");
+
+        group.MapGet("/jobs/{id}", async (string id, IJobRepository jobs, CancellationToken ct) =>
+        {
+            var j = await jobs.GetAsync(id, ct);
+            if (j is null) return Results.NotFound();
+            return Results.Ok(new
+            {
+                id = j.Id,
+                protocol = j.Protocol.ToDbValue(),
+                state = j.State.ToString(),
+                stateReason = j.StateReason,
+                displayName = j.DisplayName,
+                category = j.Category,
+                totalBytes = j.TotalBytes,
+                downloadedBytes = j.DownloadedBytes,
+                outputDir = j.OutputDir,
+                createdAt = j.CreatedAt,
+                updatedAt = j.UpdatedAt,
+                completedAt = j.CompletedAt,
+            });
+        }).WithName("GetDownloaderJob");
+
         // ---------------- jobs snapshot (debugging) ----------------
 
         group.MapGet("/jobs", async (IJobRepository jobs, CancellationToken ct) =>
@@ -138,6 +215,20 @@ public static class DownloaderEndpointRouteBuilderExtensions
 
         return endpoints;
     }
+
+    /// <summary>
+    /// Request body for POST /api/downloader/jobs.
+    /// Required: <c>SourcePath</c> + <c>DownloadDir</c>. Everything else
+    /// has sensible defaults that match Deluno's NZB-first conventions.
+    /// </summary>
+    public sealed record SubmitJobRequest(
+        string SourcePath,            // NZB URL, .torrent URL, or magnet:?xt=...
+        string DownloadDir,           // absolute path under which job.Id subdir is created
+        string? Protocol = null,      // "nzb" (default) | "torrent"
+        string? SourceKind = null,    // "nzb" | "torrent_file" | "magnet" — inferred from protocol if null
+        string? DisplayName = null,   // defaults to basename(SourcePath)
+        string? Category = null,
+        int? Priority = null);
 
     public sealed record NzbServerDto(
         string Id,
