@@ -109,7 +109,7 @@ public sealed class StreamingNzbDownloader
                         // Article bytes are now on disk — let the GC reclaim
                         // the byte[] as soon as the local scope exits.
                     }
-                    catch (ArticleMissingOnAllServersException missing)
+                    catch (ArticleMissingOnAllServersException)
                     {
                         Interlocked.Increment(ref fileFailedCount);
                         lock (failedSegments)

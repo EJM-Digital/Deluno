@@ -1,4 +1,5 @@
 using Deluno.Downloader.Extraction;
+using Deluno.Downloader.Nzb.Par2;
 using Deluno.Downloader.Persistence;
 using Deluno.Downloader.Postprocessing;
 using Microsoft.Extensions.DependencyInjection;
@@ -31,6 +32,11 @@ public static class DownloaderServiceCollectionExtensions
             // under tools/unrar/ and pass an absolute path here.
             binaryPath: OperatingSystem.IsWindows() ? "UnRAR.exe" : "unrar"));
         services.AddSingleton<ArchiveExtractionPipeline>();
+
+        // par2 wrapper. Binary path defaults to PATH lookup (`par2`).
+        // Phase 4 release work bundles par2cmdline-turbo per-platform
+        // under tools/par2/<rid>/ and passes an absolute path here.
+        services.AddSingleton<IPar2Service>(_ => new Par2BinaryService("par2"));
 
         // Post-processing — default ordering: sample filter → flatten → sanitize.
         // Per-category overrides (e.g. skip flatten for torrents) live in
