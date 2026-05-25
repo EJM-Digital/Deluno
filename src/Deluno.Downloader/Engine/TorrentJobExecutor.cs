@@ -1,5 +1,6 @@
 using Deluno.Downloader.Persistence;
 using Deluno.Downloader.Torrent.Engine;
+using Deluno.Downloader.Torrent.Magnet;
 using Microsoft.Extensions.Logging;
 
 namespace Deluno.Downloader.Engine;
@@ -29,14 +30,36 @@ public sealed class TorrentJobExecutor(
 
         try
         {
-            TorrentSource source = job.SourceKind switch
+            TorrentSource source;
+            switch (job.SourceKind)
             {
-                "magnet" => throw new NotSupportedException(
-                    "Magnet sources require the leak-window-aware MagnetIngestor — not yet wired."),
-                "torrent_file" => new TorrentSource.TorrentBytes(
-                    await httpClient.GetByteArrayAsync(job.SourcePath, ct)),
-                _ => throw new InvalidOperationException($"Unknown torrent source kind '{job.SourceKind}'."),
-            };
+                case "magnet":
+                    // Leak-window guard: before MonoTorrent touches the
+                    // magnet, decide whether tracker-only metadata fetch
+                    // is needed (private-suspect destination) or normal
+                    // BEP-9 via DHT/PEX is OK. If the magnet has no
+                    // trackers AND looks private, throw — the caller
+                    // must re-add with UserAcceptedLeakRisk=true after
+                    // showing the user the risk.
+                    var parsed = MagnetUriParser.Parse(job.SourcePath);
+                    // "private-suspect" hint: any job whose Category is
+                    // not null and not obviously public. The Settings UI
+                    // (Phase 6) will let users mark categories as
+                    // private/public explicitly; for now, we treat any
+                    // category as private-suspect to be safe.
+                    var hint = new MagnetIngestionHint(
+                        IsPrivateSuspect: !string.IsNullOrEmpty(job.Category),
+                        UserAcceptedLeakRisk: false);
+                    MagnetIngestor.GuardOrThrow(parsed, hint);
+                    source = new TorrentSource.Magnet(job.SourcePath);
+                    break;
+                case "torrent_file":
+                    source = new TorrentSource.TorrentBytes(
+                        await httpClient.GetByteArrayAsync(job.SourcePath, ct));
+                    break;
+                default:
+                    throw new InvalidOperationException($"Unknown torrent source kind '{job.SourceKind}'.");
+            }
 
             var downloadDir = Path.Combine(job.DownloadDir, job.Id);
             Directory.CreateDirectory(downloadDir);
