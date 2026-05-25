@@ -7,4 +7,5 @@ public static class DelunoDatabaseNames
     public const string Series = "series";
     public const string Jobs = "jobs";
     public const string Cache = "cache";
+    public const string Downloader = "downloader";
 }

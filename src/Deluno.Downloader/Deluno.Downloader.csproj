@@ -26,4 +26,15 @@
     <ProjectReference Include="..\Deluno.Infrastructure\Deluno.Infrastructure.csproj" />
     <ProjectReference Include="..\Deluno.Jobs\Deluno.Jobs.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- SharpCompress handles zip / 7z / tar extraction in pure managed
+         code. RAR3/RAR5 is delegated to the bundled UnRAR binary by
+         UnRarBinaryExtractor.cs (binary bundling is Phase 4 / installer
+         work; the wrapper interface is defined here so the orchestrator
+         can use it once the binary lands). -->
+    <PackageReference Include="SharpCompress" Version="1.0.0" />
+    <!-- Microsoft.Data.Sqlite already comes transitively from Infrastructure;
+         we use it explicitly in SqliteJobRepository.cs but the transitive
+         reference is sufficient. -->
+  </ItemGroup>
 </Project>

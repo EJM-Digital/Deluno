@@ -10,7 +10,8 @@ public static class DelunoSystemManifest
         new("Jobs", "Durable job scheduling, leasing, attempts, and worker heartbeats."),
         new("Integrations", "Metadata, indexer, and download client abstractions."),
         new("Realtime", "SignalR hubs and live activity updates."),
-        new("Filesystem", "Root policies, import targets, and path safety rules.")
+        new("Filesystem", "Root policies, import targets, and path safety rules."),
+        new("Downloader", "Built-in in-process NZB and BitTorrent engine, behind the same DownloadClients seam as remote SAB/qBit.")
     ];
 
     public static IReadOnlyList<DatabaseDescriptor> Databases { get; } =
@@ -19,6 +20,7 @@ public static class DelunoSystemManifest
         new("movies", "movies.db", "Movie catalog, monitoring state, and import records."),
         new("series", "series.db", "Shows, seasons, episodes, monitoring state, and import records."),
         new("jobs", "jobs.db", "Durable job schedules, leases, runs, attempts, and heartbeats."),
-        new("cache", "cache.db", "Provider payload cache and transient normalization artifacts.")
+        new("cache", "cache.db", "Provider payload cache and transient normalization artifacts."),
+        new("downloader", "downloader.db", "Built-in downloader jobs, files, history, NZB servers/segments, and torrent metadata/pieces/trackers.")
     ];
 }

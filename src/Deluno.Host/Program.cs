@@ -12,6 +12,7 @@ using Deluno.Jobs;
 using Deluno.Movies;
 using Deluno.Platform;
 using Deluno.Platform.Security.Hardening;
+using Deluno.Downloader.DependencyInjection;
 using Deluno.Realtime;
 using Deluno.Series;
 using Deluno.Worker;
@@ -41,6 +42,7 @@ builder.Services.AddDelunoIntegrationsModule();
 builder.Services.AddDelunoFilesystemModule();
 builder.Services.AddDelunoRealtimeModule();
 builder.Services.AddDelunoWorkerModule();
+builder.Services.AddDelunoBuiltInDownloaders();
 builder.Services.AddHostedService<Deluno.Host.ImportRecoveryCleanupService>();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
