@@ -11,9 +11,9 @@
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
     <!-- Allows dotnet restore/build on Linux CI for the windows-targeted project -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
-    <!-- Version injected at publish time via /p:Version. Bumped 1.0.2 → 1.0.3
-         for the LAN-access fix (double-bind, firewall hook, URL log). -->
-    <Version>1.0.3</Version>
+    <!-- Version injected at publish time via /p:Version. Bumped 1.0.3 → 1.1.0
+         for the built-in downloader engine (NZB + Torrent) release. -->
+    <Version>1.1.0</Version>
     <!-- Brand icon embedded in the exe and shown in taskbar/alt-tab -->
     <ApplicationIcon>..\..\installer\deluno.ico</ApplicationIcon>
   </PropertyGroup>
