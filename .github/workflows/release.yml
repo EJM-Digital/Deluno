@@ -114,6 +114,70 @@ jobs:
           if (-not $probe) { Write-Error "ffprobe.exe not found in archive"; exit 1 }
           Copy-Item $probe.FullName "artifacts/windows/bin/ffprobe.exe"
 
+      - name: Bundle par2cmdline-turbo (GPLv2)
+        shell: pwsh
+        run: |
+          # par2cmdline-turbo provides the SIMD-accelerated par2 verify/repair
+          # used by the built-in NZB engine. GPLv2 binary — see tools/par2/SOURCE.md
+          # in the installer payload for source-availability paperwork.
+          $api = "https://api.github.com/repos/animetosho/par2cmdline-turbo/releases/latest"
+          $rel = Invoke-RestMethod -Uri $api -Headers @{ "User-Agent" = "deluno-release" }
+          $asset = $rel.assets | Where-Object { $_.name -match "win64.zip$" } | Select-Object -First 1
+          if (-not $asset) { Write-Error "par2cmdline-turbo win64.zip asset not found"; exit 1 }
+          $zip = "$env:RUNNER_TEMP\\par2-turbo.zip"
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zip -UseBasicParsing
+          Expand-Archive $zip -DestinationPath "$env:RUNNER_TEMP\\par2-extract"
+          $par2 = Get-ChildItem "$env:RUNNER_TEMP\\par2-extract" -Recurse -Filter "par2.exe" | Select-Object -First 1
+          if (-not $par2) { Write-Error "par2.exe not found in archive"; exit 1 }
+          New-Item -ItemType Directory -Force -Path "artifacts/windows/bin/tools/par2" | Out-Null
+          Copy-Item $par2.FullName "artifacts/windows/bin/tools/par2/par2.exe"
+
+          # GPLv2 distribution paperwork. Required for shipping the binary.
+          $tag = $rel.tag_name
+          @"
+          par2cmdline-turbo is bundled with Deluno under the GNU General Public License v2.
+          The bundled binary is built from upstream tag $tag.
+
+          Source code: https://github.com/animetosho/par2cmdline-turbo/tree/$tag
+
+          To request a written copy of the source as built into this release,
+          please open an issue at https://github.com/jampat000/Deluno/issues
+          or contact the maintainer per the README.
+
+          The COPYING file in this directory is the upstream GPLv2 license text.
+          "@ | Out-File -FilePath "artifacts/windows/bin/tools/par2/SOURCE.md" -Encoding utf8
+
+          # Pull the upstream COPYING for license-text fidelity.
+          $copying = "https://raw.githubusercontent.com/animetosho/par2cmdline-turbo/$tag/COPYING"
+          Invoke-WebRequest -Uri $copying -OutFile "artifacts/windows/bin/tools/par2/COPYING" -UseBasicParsing
+
+      - name: Bundle UnRAR.exe (rarlab; extraction-only is license-clean)
+        shell: pwsh
+        run: |
+          # UnRAR's source license forbids using the source to build a competing
+          # archiver, but extraction-only use of the official binary is permitted.
+          # See tools/unrar/license.txt for the upstream license text.
+          $url = "https://www.rarlab.com/rar/unrarw64.exe"
+          $self = "$env:RUNNER_TEMP\\unrarw64.exe"
+          Invoke-WebRequest -Uri $url -OutFile $self -UseBasicParsing
+          # The downloaded file is a self-extracting archive. Extract via the
+          # built-in /e silent option then locate UnRAR.exe.
+          $extractDir = "$env:RUNNER_TEMP\\unrar-extract"
+          New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
+          & $self -y -d"$extractDir"
+          $unrar = Get-ChildItem $extractDir -Recurse -Filter "UnRAR.exe" | Select-Object -First 1
+          if (-not $unrar) {
+            # Fallback: some builds need a different extraction approach; skip
+            # bundling and let the user install separately. Surface a warning.
+            Write-Warning "UnRAR.exe extraction failed; users will need to install unrar themselves."
+            exit 0
+          }
+          New-Item -ItemType Directory -Force -Path "artifacts/windows/bin/tools/unrar" | Out-Null
+          Copy-Item $unrar.FullName "artifacts/windows/bin/tools/unrar/UnRAR.exe"
+          # Upstream license shipped alongside.
+          $license = Get-ChildItem $extractDir -Recurse -Filter "license.txt" | Select-Object -First 1
+          if ($license) { Copy-Item $license.FullName "artifacts/windows/bin/tools/unrar/license.txt" }
+
       - name: Install Velopack CLI
         shell: pwsh
         run: dotnet tool install -g vpk --version 0.0.1298

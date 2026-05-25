@@ -52,8 +52,18 @@ RUN dotnet publish ./src/Deluno.Host/Deluno.Host.csproj -c Release -o /app/publi
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
-# ffmpeg/ffprobe for media stream probing and validation
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
+# Runtime tools used by the app:
+#   ffmpeg/ffprobe — media stream probing and validation
+#   par2          — built-in NZB downloader's verify/repair (par2cmdline)
+#   unrar         — built-in downloader's archive extraction. Proprietary
+#                   binary from Debian non-free; extraction-only use is
+#                   permitted by the rarlab license. We ship the binary,
+#                   not the source.
+RUN echo 'deb http://deb.debian.org/debian bookworm non-free non-free-firmware' \
+        > /etc/apt/sources.list.d/non-free.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg par2 unrar \
+    && rm -rf /var/lib/apt/lists/*
 
 ENV ASPNETCORE_URLS=http://+:8080
 ENV Storage__DataRoot=/data

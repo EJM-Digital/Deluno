@@ -31,15 +31,19 @@ public static class DownloaderServiceCollectionExtensions
         // dispatches by detected format.
         services.AddSingleton<IArchiveExtractor, SharpCompressArchiveExtractor>();
         services.AddSingleton<IArchiveExtractor>(_ => new UnRarBinaryExtractor(
-            // Resolves via PATH; Phase 4 will bundle UnRAR.exe / unrar
-            // under tools/unrar/ and pass an absolute path here.
-            binaryPath: OperatingSystem.IsWindows() ? "UnRAR.exe" : "unrar"));
+            // Resolves bundled tools/unrar/UnRAR.exe on Windows installs
+            // (Velopack release pipeline drops it there per task #36).
+            // Falls back to PATH on Linux/macOS where apt provides `unrar`.
+            binaryPath: BundledBinaryResolver.Resolve(
+                "unrar", OperatingSystem.IsWindows() ? "UnRAR.exe" : "unrar")));
         services.AddSingleton<ArchiveExtractionPipeline>();
 
-        // par2 wrapper. Binary path defaults to PATH lookup (`par2`).
-        // Phase 4 release work bundles par2cmdline-turbo per-platform
-        // under tools/par2/<rid>/ and passes an absolute path here.
-        services.AddSingleton<IPar2Service>(_ => new Par2BinaryService("par2"));
+        // par2 wrapper. Resolves bundled tools/par2/par2.exe on Windows
+        // installs (Velopack release pipeline drops it there per task #36),
+        // falls back to PATH on Linux/macOS where apt provides `par2`.
+        services.AddSingleton<IPar2Service>(_ => new Par2BinaryService(
+            BundledBinaryResolver.Resolve(
+                "par2", OperatingSystem.IsWindows() ? "par2.exe" : "par2")));
 
         // Torrent engine. MonoTorrent wrapper; singleton because the
         // ClientEngine holds the listen socket + DHT node + active
