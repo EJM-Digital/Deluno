@@ -1,6 +1,8 @@
 using Deluno.Api;
 using Deluno.Api.Backup;
 using Deluno.Api.Updates;
+using Deluno.Downloader.DependencyInjection;
+using Deluno.Downloader.Engine;
 using Deluno.Filesystem;
 using Deluno.Infrastructure;
 using Deluno.Infrastructure.Observability;
@@ -11,6 +13,7 @@ using Deluno.Integrations.Search;
 using Deluno.Jobs;
 using Deluno.Movies;
 using Deluno.Platform;
+using Deluno.Platform.Security.Hardening;
 using Deluno.Realtime;
 using Deluno.Series;
 using Deluno.Worker;
@@ -62,12 +65,21 @@ public sealed class DelunoServer : IDisposable
         builder.Services.AddDelunoFilesystemModule();
         builder.Services.AddDelunoRealtimeModule();
         builder.Services.AddDelunoWorkerModule();
+        builder.Services.AddDelunoBuiltInDownloaders();
         builder.Services.AddHostedService<ImportRecoveryCleanupService>();
 
         builder.Services
             .AddDataProtection()
             .SetApplicationName("Deluno")
             .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(settings.DataRoot, "protection-keys")));
+
+        // ISecretProtector pipeline. Required by SqliteNzbServerRepository
+        // (via DownloaderSecretProtectorAdapter) and by the secrets
+        // diagnostics endpoint. Without this registration the downloader
+        // endpoints all return 500 — that bug shipped accidentally in
+        // v1.1.0 because the tray's startup wiring forgot it.
+        builder.Services.AddDelunoPlatformSecrets(
+            Path.Combine(settings.DataRoot, "secrets", "master.key"));
 
         _app = builder.Build();
 
@@ -138,6 +150,8 @@ public sealed class DelunoServer : IDisposable
         _app.MapDelunoSearchEndpoints();
         _app.MapDelunoMetadataEndpoints();
         _app.MapDelunoFilesystemEndpoints();
+        _app.MapDelunoSecretsDiagnostics();
+        _app.MapDelunoDownloaderEndpoints();
         _app.MapDelunoRealtime();
         _app.MapFallbackToFile("index.html");
 
