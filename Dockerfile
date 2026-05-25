@@ -19,6 +19,7 @@ COPY Directory.Build.props ./
 COPY global.json ./
 COPY src/Deluno.Api/Deluno.Api.csproj ./src/Deluno.Api/
 COPY src/Deluno.Contracts/Deluno.Contracts.csproj ./src/Deluno.Contracts/
+COPY src/Deluno.Downloader/Deluno.Downloader.csproj ./src/Deluno.Downloader/
 COPY src/Deluno.Filesystem/Deluno.Filesystem.csproj ./src/Deluno.Filesystem/
 COPY src/Deluno.Host/Deluno.Host.csproj ./src/Deluno.Host/
 COPY src/Deluno.Infrastructure/Deluno.Infrastructure.csproj ./src/Deluno.Infrastructure/
@@ -34,6 +35,7 @@ COPY src/Deluno.Worker/Deluno.Worker.csproj ./src/Deluno.Worker/
 COPY apps/windows-tray/Deluno.Tray.csproj ./apps/windows-tray/
 
 # Test projects (restore only; tests are not run in the Docker build)
+COPY tests/Deluno.Downloader.Tests/Deluno.Downloader.Tests.csproj ./tests/Deluno.Downloader.Tests/
 COPY tests/Deluno.Integrations.Tests/Deluno.Integrations.Tests.csproj ./tests/Deluno.Integrations.Tests/
 COPY tests/Deluno.Movies.Tests/Deluno.Movies.Tests.csproj ./tests/Deluno.Movies.Tests/
 COPY tests/Deluno.Persistence.Tests/Deluno.Persistence.Tests.csproj ./tests/Deluno.Persistence.Tests/
