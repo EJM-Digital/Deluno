@@ -23,22 +23,32 @@ public sealed class DelunoServer : IDisposable
 {
     private WebApplication? _app;
     private CancellationTokenSource? _cts;
+    public int? ListeningPort { get; private set; }
+    public IReadOnlyList<string> ReachableUrls { get; private set; } = Array.Empty<string>();
+    public FirewallRuleStatus? FirewallStatus { get; private set; }
+
+    /// <summary>Optional port override (from --port CLI arg). Takes precedence over AppSettings.Port.</summary>
+    public static int? PortOverride { get; set; }
 
     public async Task StartAsync()
     {
         _cts = new CancellationTokenSource();
         var settings = AppSettings.Load();
+        var port = PortOverride ?? settings.Port;
 
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions
         {
             WebRootPath = Path.Combine(AppContext.BaseDirectory, "wwwroot")
         });
 
-        builder.WebHost.ConfigureKestrel(opts => opts.ListenAnyIP(settings.Port));
+        builder.WebHost.ConfigureKestrel(opts => opts.ListenAnyIP(port));
 
         // Override config values with resolved Windows paths
         builder.Configuration["Storage:DataRoot"] = settings.DataRoot;
-        builder.Configuration["Kestrel:EndPoints:Http:Url"] = $"http://+:{settings.Port}";
+        // NOTE: do NOT also set Kestrel:EndPoints:Http:Url — that adds a SECOND
+        // listener on the same port, which on Windows fails with WSAEADDRINUSE
+        // because [::]:port and http://+:port overlap. The explicit
+        // ListenAnyIP() above is sufficient.
 
         builder.Services.AddSingleton<IUpdateOrchestrator, VelopackUpdateOrchestrator>();
         builder.Services.AddHostedService<TrayUpdateBackgroundService>();
@@ -132,6 +142,60 @@ public sealed class DelunoServer : IDisposable
         _app.MapFallbackToFile("index.html");
 
         await _app.StartAsync(_cts.Token);
+
+        ListeningPort = port;
+        ReachableUrls = NetworkAccess.GetReachableUrls(port);
+        await EnsureFirewallRuleAndLogAsync(port, settings.DataRoot, _cts.Token).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Best-effort: add a Windows Firewall inbound allow rule for the listen
+    /// port, then write a startup-log entry with all reachable URLs so the
+    /// user can see at a glance what address to type into a remote browser.
+    /// Failures here never fail the start — server is already running.
+    /// </summary>
+    private async Task EnsureFirewallRuleAndLogAsync(int port, string dataRoot, CancellationToken ct)
+    {
+        try
+        {
+            FirewallStatus = await WindowsFirewallService.EnsureInboundAllowAsync(port, ct).ConfigureAwait(false);
+        }
+        catch
+        {
+            FirewallStatus = new FirewallRuleStatus(FirewallRuleState.Failed, $"Deluno (port {port})", "exception during netsh");
+        }
+
+        try
+        {
+            var logDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Deluno", "logs");
+            Directory.CreateDirectory(logDir);
+            var logPath = Path.Combine(logDir, "tray-startup.log");
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"{DateTimeOffset.Now:O} Deluno started on port {port}");
+            sb.AppendLine($"  Data root: {dataRoot}");
+            sb.AppendLine("  Reachable at:");
+            foreach (var url in ReachableUrls) sb.AppendLine($"    {url}");
+            sb.Append("  Firewall: ");
+            sb.AppendLine(FirewallStatus?.State switch
+            {
+                FirewallRuleState.AlreadyExists => $"{FirewallStatus.RuleName} already exists",
+                FirewallRuleState.Created => $"{FirewallStatus.RuleName} created (LAN access allowed)",
+                FirewallRuleState.RequiresElevation =>
+                    $"{FirewallStatus.RuleName} could not be created — needs admin. " +
+                    "Right-click the tray icon and choose 'Run as administrator' once, or add the rule manually: " +
+                    $"netsh advfirewall firewall add rule name=\"{FirewallStatus.RuleName}\" dir=in action=allow protocol=TCP localport={port}",
+                FirewallRuleState.Failed => $"{FirewallStatus.RuleName} failed: {FirewallStatus.Message}",
+                _ => "(no status)"
+            });
+            sb.AppendLine();
+            File.AppendAllText(logPath, sb.ToString());
+        }
+        catch
+        {
+            // Best-effort logging.
+        }
     }
 
     public async Task StopAsync()

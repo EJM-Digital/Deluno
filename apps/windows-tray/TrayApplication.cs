@@ -71,9 +71,9 @@ public sealed class TrayApplication : ApplicationContext
         _notify.Text = state switch
         {
             TrayState.Starting => "Deluno - Starting",
-            TrayState.Running => $"Deluno - Running on port {AppSettings.Load().Port}",
+            TrayState.Running => BuildRunningTooltip(),
             TrayState.Degraded => "Deluno - Running with warnings",
-            TrayState.Error => "Deluno - Failed to start",
+            TrayState.Error => "Deluno - Failed to start (see %LocalAppData%\\Deluno\\logs)",
             TrayState.Updating => "Deluno - Updating",
             TrayState.Stopped => "Deluno - Stopped",
             _ => "Deluno"
@@ -86,21 +86,81 @@ public sealed class TrayApplication : ApplicationContext
         _startStopItem.Text = state is TrayState.Stopped ? "Start" : "Stop";
     }
 
+    /// <summary>
+    /// NotifyIcon tooltip text is capped at 63 chars by Win32. Show the
+    /// most useful single line: prefer the LAN URL (what other devices use)
+    /// and fall back to localhost. Full URL list lives in the startup log.
+    /// </summary>
+    private string BuildRunningTooltip()
+    {
+        var port = _server.ListeningPort ?? AppSettings.Load().Port;
+        var urls = _server.ReachableUrls;
+        var lan = urls.FirstOrDefault(u => !u.Contains("localhost", StringComparison.OrdinalIgnoreCase));
+        var primary = lan ?? $"http://localhost:{port}/";
+        var text = $"Deluno - {primary.TrimEnd('/')}";
+        // Truncate hard so the tooltip doesn't get silently chopped by Win32.
+        return text.Length > 63 ? text.Substring(0, 60) + "..." : text;
+    }
+
     private async Task StartServerAsync()
     {
         try
         {
             SetState(TrayState.Starting);
             await _server.StartAsync();
-            InvokeOnUiThread(() => SetState(TrayState.Running));
+            InvokeOnUiThread(() =>
+            {
+                SetState(TrayState.Running);
+                ShowReachableUrlsBalloon();
+            });
         }
         catch (Exception ex)
         {
             InvokeOnUiThread(() =>
             {
                 SetState(TrayState.Error);
-                _notify.ShowBalloonTip(5000, "Deluno failed to start", ex.Message, ToolTipIcon.Error);
+                // Persistent (~30s) so the user has time to read it. Also write the
+                // full stack trace to the startup log for diagnosis later.
+                _notify.ShowBalloonTip(30000, "Deluno failed to start", ex.Message + "  (see %LocalAppData%\\Deluno\\logs\\tray-startup.log)", ToolTipIcon.Error);
+                TryWriteStartupLog(ex);
             });
+        }
+    }
+
+    private void ShowReachableUrlsBalloon()
+    {
+        var urls = _server.ReachableUrls;
+        if (urls.Count == 0) return;
+
+        var lanUrls = urls.Where(u => !u.Contains("localhost", StringComparison.OrdinalIgnoreCase)).ToList();
+        var title = "Deluno is running";
+        var body = lanUrls.Count == 0
+            ? $"Local only: {urls[0]}"
+            : $"LAN: {lanUrls[0]}{(lanUrls.Count > 1 ? $" (+{lanUrls.Count - 1} more)" : string.Empty)}";
+
+        // If the firewall rule wasn't created (no admin), include a clear hint.
+        if (_server.FirewallStatus?.State == FirewallRuleState.RequiresElevation)
+        {
+            body += "  - Firewall rule not added (no admin). Other PCs may not reach this URL.";
+        }
+        _notify.ShowBalloonTip(10000, title, body, ToolTipIcon.Info);
+    }
+
+    private static void TryWriteStartupLog(Exception ex)
+    {
+        try
+        {
+            var logDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Deluno", "logs");
+            Directory.CreateDirectory(logDir);
+            var logPath = Path.Combine(logDir, "tray-startup.log");
+            File.AppendAllText(logPath,
+                $"{DateTimeOffset.Now:O} server start failure{Environment.NewLine}{ex}{Environment.NewLine}{Environment.NewLine}");
+        }
+        catch
+        {
+            // Best-effort.
         }
     }
 

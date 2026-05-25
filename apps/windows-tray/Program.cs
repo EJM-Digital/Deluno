@@ -8,7 +8,21 @@ internal static class Program
     {
         try
         {
-            VelopackApp.Build().SetAutoApplyOnStartup(false).Run();
+            // Hooks below run from elevated Setup.exe / Update.exe contexts;
+            // they're the right place to make machine-wide changes (firewall
+            // rule, etc.) the unprivileged tray cannot. The hooks exit the
+            // process when fired, so the rest of Main is skipped on install.
+            VelopackApp.Build()
+                .SetAutoApplyOnStartup(false)
+                .OnAfterInstallFastCallback(_ => InstallHooks.OnAfterInstall())
+                .OnAfterUpdateFastCallback(_ => InstallHooks.OnAfterInstall())
+                .OnBeforeUninstallFastCallback(_ => InstallHooks.OnBeforeUninstall())
+                .Run();
+
+            // --port N override (diagnostic). Takes precedence over AppSettings.Port
+            // for THIS run only — does not persist to deluno.json. Useful when the
+            // configured port is blocked by another listener.
+            DelunoServer.PortOverride = TryParsePortOverride(args);
 
             // Service mode
             if (args.Contains("--service", StringComparer.OrdinalIgnoreCase))
@@ -50,6 +64,20 @@ internal static class Program
             TryLogStartupFailure(ex);
             throw;
         }
+    }
+
+    private static int? TryParsePortOverride(string[] args)
+    {
+        for (var i = 0; i < args.Length - 1; i++)
+        {
+            if (string.Equals(args[i], "--port", StringComparison.OrdinalIgnoreCase)
+                && int.TryParse(args[i + 1], out var p)
+                && p > 0 && p < 65536)
+            {
+                return p;
+            }
+        }
+        return null;
     }
 
     private static void TryLogStartupFailure(Exception ex)
