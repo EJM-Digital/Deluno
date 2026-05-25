@@ -11,14 +11,11 @@
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
     <!-- Allows dotnet restore/build on Linux CI for the windows-targeted project -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
-    <!-- Version injected at publish time via /p:Version. Bumped 1.1.0 → 1.1.1
-         for the tray-side downloader DI hotfix: v1.1.0 shipped the
-         downloader assemblies but the tray's DelunoServer/ServiceHost
-         wiring forgot to register AddDelunoBuiltInDownloaders() and
-         AddDelunoPlatformSecrets(), so every /api/downloader endpoint
-         500'd with "Unable to resolve service for type
-         'Deluno.Platform.Security.ISecretProtector'". -->
-    <Version>1.1.1</Version>
+    <!-- Version injected at publish time via /p:Version. Bumped 1.1.1 → 1.1.2
+         for: direct POST /api/downloader/jobs endpoint (live-test affordance)
+         + torrent engine Settings UI page (/settings/builtin-torrent) with
+         JSON-file backed config store. -->
+    <Version>1.1.2</Version>
     <!-- Brand icon embedded in the exe and shown in taskbar/alt-tab -->
     <ApplicationIcon>..\..\installer\deluno.ico</ApplicationIcon>
   </PropertyGroup>
