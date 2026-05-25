@@ -122,8 +122,15 @@ jobs:
           # in the installer payload for source-availability paperwork.
           $api = "https://api.github.com/repos/animetosho/par2cmdline-turbo/releases/latest"
           $rel = Invoke-RestMethod -Uri $api -Headers @{ "User-Agent" = "deluno-release" }
-          $asset = $rel.assets | Where-Object { $_.name -match "win64.zip$" } | Select-Object -First 1
-          if (-not $asset) { Write-Error "par2cmdline-turbo win64.zip asset not found"; exit 1 }
+          # Match both the legacy ("...-win64.zip") and current
+          # ("...-win-x64.zip") asset naming — upstream renamed it
+          # somewhere between 1.2 and 1.4. Anchoring on the win + x64
+          # tokens with optional separator is robust to either form.
+          $asset = $rel.assets | Where-Object { $_.name -match "win[-_]?x?64\.zip$" } | Select-Object -First 1
+          if (-not $asset) {
+            Write-Error ("par2cmdline-turbo Windows x64 asset not found. Available assets: " + ($rel.assets.name -join ", "))
+            exit 1
+          }
           $zip = "$env:RUNNER_TEMP\\par2-turbo.zip"
           Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zip -UseBasicParsing
           Expand-Archive $zip -DestinationPath "$env:RUNNER_TEMP\\par2-extract"
