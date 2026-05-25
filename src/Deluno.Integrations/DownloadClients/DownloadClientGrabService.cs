@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Deluno.Infrastructure.Resilience;
+using Deluno.Integrations.DownloadClients.Builtin;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Platform.Contracts;
@@ -19,7 +20,8 @@ public sealed class DownloadClientGrabService(
     IDownloadDispatchRepository dispatchRepository,
     IDownloadDispatchesRepository dispatchesRepository,
     Deluno.Realtime.IRealtimeEventPublisher realtimeEventPublisher,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    BuiltinAdapterDispatcher builtinAdapters)
     : IDownloadClientGrabService
 {
     public async Task<DownloadClientGrabResult> GrabAsync(
@@ -168,6 +170,15 @@ public sealed class DownloadClientGrabService(
                 "deluge" => await GrabDelugeAsync(client, request, cancellationToken),
                 "nzbget" => await GrabNzbGetAsync(client, request, cancellationToken),
                 "utorrent" => await GrabUTorrentAsync(client, request, cancellationToken),
+                // Built-in in-process engines (Phase 5 wiring). Both
+                // protocols dispatch through BuiltinAdapterDispatcher,
+                // which hands the request to the appropriate adapter
+                // (BuiltinNzbAdapter / BuiltinTorrentAdapter). The
+                // adapter lands the grab as a Queued row in downloader.db
+                // and returns immediately; the orchestrator worker
+                // (Phase 5 polish) drives queued jobs to completion.
+                "deluno-nzb" or "deluno-torrent" =>
+                    await builtinAdapters.Get(client.Protocol).GrabAsync(client, request, cancellationToken),
                 _ => Failed(client.Id, request, "planned", $"{client.Protocol} release grabs are not supported by Deluno.")
             };
         }

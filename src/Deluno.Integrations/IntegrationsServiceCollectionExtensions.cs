@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Deluno.Integrations.DownloadClients;
+using Deluno.Integrations.DownloadClients.Builtin;
 using Deluno.Integrations.Metadata;
 using Deluno.Integrations.Search;
 
@@ -22,6 +23,15 @@ public static class IntegrationsServiceCollectionExtensions
         services.AddScoped<IDownloadClientTelemetryService, DownloadClientTelemetryService>();
         services.AddScoped<IDownloadClientGrabService, DownloadClientGrabService>();
         services.AddScoped<IDownloadClientWebhookService, DownloadClientWebhookService>();
+
+        // Built-in downloader adapters for protocol values "deluno-nzb"
+        // and "deluno-torrent". Registered as scoped so they share
+        // DbContext lifetime with the services that dispatch into them.
+        // BuiltinAdapterDispatcher resolves the right adapter at request
+        // time from the registered IEnumerable<IBuiltinDownloaderAdapter>.
+        services.AddScoped<IBuiltinDownloaderAdapter, BuiltinNzbAdapter>();
+        services.AddScoped<IBuiltinDownloaderAdapter, BuiltinTorrentAdapter>();
+        services.AddScoped<BuiltinAdapterDispatcher>();
         services.AddHttpClient<TmdbMetadataProvider>();
         services.AddScoped<IMetadataProvider>(sp => sp.GetRequiredService<TmdbMetadataProvider>());
         services.AddHostedService<CacheSchemaInitializer>();

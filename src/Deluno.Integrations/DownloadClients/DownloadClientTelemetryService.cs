@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Deluno.Infrastructure.Resilience;
+using Deluno.Integrations.DownloadClients.Builtin;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Platform.Contracts;
@@ -17,7 +18,8 @@ public sealed class DownloadClientTelemetryService(
     IJobQueueRepository jobQueueRepository,
     IHttpClientFactory httpClientFactory,
     TimeProvider timeProvider,
-    IIntegrationResiliencePolicy resiliencePolicy)
+    IIntegrationResiliencePolicy resiliencePolicy,
+    BuiltinAdapterDispatcher builtinAdapters)
     : IDownloadClientTelemetryService
 {
     public async Task<DownloadTelemetryOverview> GetOverviewAsync(CancellationToken cancellationToken)
@@ -167,6 +169,8 @@ public sealed class DownloadClientTelemetryService(
                 "deluge" => await ExecuteDelugeActionAsync(client, action, queueItemId, cancellationToken),
                 "nzbget" => await ExecuteNzbGetActionAsync(client, action, queueItemId, cancellationToken),
                 "utorrent" => await ExecuteUTorrentActionAsync(client, action, queueItemId, cancellationToken),
+                "deluno-nzb" or "deluno-torrent" =>
+                    await builtinAdapters.Get(client.Protocol).ExecuteActionAsync(client, action, queueItemId, cancellationToken),
                 _ => new DownloadClientActionResult(client.Id, queueItemId, action, false, $"{client.Protocol} queue actions are not supported by Deluno.")
             };
         }
@@ -191,6 +195,8 @@ public sealed class DownloadClientTelemetryService(
                 "deluge" => await GetDelugeSnapshotAsync(client, capturedUtc, cancellationToken),
                 "nzbget" => await GetNzbGetSnapshotAsync(client, capturedUtc, cancellationToken),
                 "utorrent" => await GetUTorrentSnapshotAsync(client, capturedUtc, cancellationToken),
+                "deluno-nzb" or "deluno-torrent" =>
+                    await builtinAdapters.Get(client.Protocol).GetSnapshotAsync(client, capturedUtc, cancellationToken),
                 _ => null
             };
         }
