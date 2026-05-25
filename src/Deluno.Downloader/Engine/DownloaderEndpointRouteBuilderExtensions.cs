@@ -3,6 +3,7 @@ using Deluno.Downloader.Extraction;
 using Deluno.Downloader.Nzb.Nntp;
 using Deluno.Downloader.Nzb.Par2;
 using Deluno.Downloader.Persistence;
+using Deluno.Downloader.Torrent.Engine;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -65,6 +66,44 @@ public static class DownloaderEndpointRouteBuilderExtensions
             await repo.RemoveAsync(id, ct);
             return Results.NoContent();
         }).WithName("DeleteNzbServer");
+
+        // ---------------- torrent engine config ----------------
+        //
+        // GET returns the current saved config; PUT overwrites it and
+        // requires a restart for changes to apply (the engine reads
+        // options at MonoTorrent construction time — singleton).
+        // The UI surfaces a "restart Deluno to apply" notice.
+
+        group.MapGet("/torrent-config", async (ITorrentEngineConfigStore store, CancellationToken ct) =>
+        {
+            var config = await store.LoadAsync(ct);
+            return Results.Ok(config);
+        }).WithName("GetTorrentEngineConfig");
+
+        group.MapPut("/torrent-config", async (
+            TorrentEngineConfig body,
+            ITorrentEngineConfigStore store,
+            CancellationToken ct) =>
+        {
+            // Lightweight validation. Hard caps protect against
+            // accidentally typing a port outside the valid range or a
+            // negative throttle that would crash MonoTorrent.
+            if (body.ListenPort < 0 || body.ListenPort > 65535)
+                return Results.BadRequest("listenPort must be in [0, 65535].");
+            if (body.MaxGlobalConnections < 1)
+                return Results.BadRequest("maxGlobalConnections must be >= 1.");
+            if (body.MaxUploadBytesPerSecond < 0 || body.MaxDownloadBytesPerSecond < 0)
+                return Results.BadRequest("rate limits must be >= 0 (0 = unlimited).");
+            if (body.MagnetMetadataTimeoutSeconds < 5)
+                return Results.BadRequest("magnetMetadataTimeoutSeconds must be >= 5.");
+            if (body.DefaultRatioTarget is < 0)
+                return Results.BadRequest("defaultRatioTarget must be >= 0 or null.");
+            if (body.DefaultSeedTimeTargetMinutes is < 0)
+                return Results.BadRequest("defaultSeedTimeTargetMinutes must be >= 0 or null.");
+
+            await store.SaveAsync(body, ct);
+            return Results.Ok(body);
+        }).WithName("UpdateTorrentEngineConfig");
 
         // ---------------- diagnostics ----------------
 

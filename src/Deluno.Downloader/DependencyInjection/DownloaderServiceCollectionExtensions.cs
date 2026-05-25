@@ -4,7 +4,10 @@ using Deluno.Downloader.Nzb.Par2;
 using Deluno.Downloader.Persistence;
 using Deluno.Downloader.Postprocessing;
 using Deluno.Downloader.Torrent.Engine;
+using Deluno.Infrastructure.Storage;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Deluno.Downloader.DependencyInjection;
 
@@ -45,12 +48,35 @@ public static class DownloaderServiceCollectionExtensions
             BundledBinaryResolver.Resolve(
                 "par2", OperatingSystem.IsWindows() ? "par2.exe" : "par2")));
 
+        // Torrent engine config store. JSON-file backed, lives in
+        // <dataRoot>/downloader/torrent-config.json. Loaded once at
+        // engine start; saved by the Settings UI's PUT endpoint.
+        services.AddSingleton<ITorrentEngineConfigStore>(sp =>
+        {
+            var dataRoot = sp.GetRequiredService<IOptions<StoragePathOptions>>().Value.DataRoot;
+            return new FileBackedTorrentEngineConfigStore(
+                Path.Combine(dataRoot, "downloader", "torrent-config.json"),
+                sp.GetRequiredService<ILogger<FileBackedTorrentEngineConfigStore>>());
+        });
+
         // Torrent engine. MonoTorrent wrapper; singleton because the
         // ClientEngine holds the listen socket + DHT node + active
-        // TorrentManager set. Defaults bind v4+v6 on port 51413
-        // (qBittorrent default — common firewall rules already know
-        // about it).
-        services.AddSingleton<ITorrentEngine>(_ => new MonoTorrentEngine());
+        // TorrentManager set. Options are loaded synchronously from
+        // the config store at construction time so the engine
+        // respects user-configured listen port / UPnP / LSD / rate
+        // limits from the very first AddAsync call.
+        services.AddSingleton<ITorrentEngine>(sp =>
+        {
+            var store = sp.GetRequiredService<ITorrentEngineConfigStore>();
+            var dataRoot = sp.GetRequiredService<IOptions<StoragePathOptions>>().Value.DataRoot;
+            // Synchronous wait at startup is acceptable — happens once,
+            // file IO on local disk, no contention.
+            var config = store.LoadAsync(CancellationToken.None).GetAwaiter().GetResult();
+            var options = config.ToEngineOptions(
+                cacheDir: Path.Combine(dataRoot, "downloader", "torrent-cache"),
+                defaultDownloadDir: Path.Combine(dataRoot, "downloader", "downloads"));
+            return new MonoTorrentEngine(options);
+        });
 
         // Execution worker: polls the jobs table, dispatches queued jobs
         // to the right per-protocol executor, drives the lifecycle state

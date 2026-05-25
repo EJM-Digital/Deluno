@@ -390,6 +390,16 @@ export const router = createBrowserRouter([
             })
           },
           {
+            path: "builtin-torrent",
+            lazy: withSkeleton(async () => {
+              const module = await import("./routes/settings-builtin-torrent-page");
+              return {
+                loader: module.settingsBuiltinTorrentLoader,
+                Component: module.SettingsBuiltinTorrentPage,
+              };
+            })
+          },
+          {
             path: "ui",
             lazy: withSkeleton(async () => {
               const module = await import("./routes/settings-ui-page");
