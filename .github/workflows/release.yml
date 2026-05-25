@@ -225,7 +225,27 @@ jobs:
             --outputDir artifacts/windows/velopack `
             --token ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Skip if this version is already published
+        id: skipcheck
+        shell: pwsh
+        run: |
+          # Re-running this workflow against an existing tag (e.g. after
+          # a force-push to refs/tags/vX.Y.Z) would otherwise fail with
+          # "There is a release in channel stable which is equal or
+          # greater to the current version" because vpk download just
+          # pulled the existing full.nupkg. Detect and skip cleanly.
+          $existing = Get-ChildItem artifacts/windows/velopack `
+            -Filter "*-${{ steps.version.outputs.version }}-stable-full.nupkg" `
+            -ErrorAction SilentlyContinue
+          if ($existing) {
+            Write-Host "::notice::Version ${{ steps.version.outputs.version }} is already published; skipping pack/sign/upload."
+            "skip=true" >> $env:GITHUB_OUTPUT
+          } else {
+            "skip=false" >> $env:GITHUB_OUTPUT
+          }
+
       - name: Create Velopack packages
+        if: ${{ steps.skipcheck.outputs.skip != 'true' }}
         shell: pwsh
         env:
           SIGN_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}
@@ -250,7 +270,7 @@ jobs:
           & vpk @args
 
       - name: Sign installer outputs
-        if: ${{ env.CERT_PATH != '' }}
+        if: ${{ env.CERT_PATH != '' && steps.skipcheck.outputs.skip != 'true' }}
         shell: pwsh
         run: |
           Get-ChildItem artifacts/windows/velopack -Filter "*Setup*.exe" | ForEach-Object {
@@ -258,6 +278,7 @@ jobs:
           }
 
       - name: Create portable zip and hashes
+        if: ${{ steps.skipcheck.outputs.skip != 'true' }}
         shell: pwsh
         run: |
           $zipName = "Deluno-${{ steps.version.outputs.version }}-win-x64-portable.zip"
@@ -289,6 +310,7 @@ jobs:
           }
 
       - name: Verify required Velopack outputs
+        if: ${{ steps.skipcheck.outputs.skip != 'true' }}
         shell: pwsh
         run: |
           $isPreOne = "${{ steps.version.outputs.version }}".StartsWith("0.")
@@ -304,7 +326,7 @@ jobs:
           }
 
       - name: Verify signatures
-        if: ${{ env.CERT_PATH != '' }}
+        if: ${{ env.CERT_PATH != '' && steps.skipcheck.outputs.skip != 'true' }}
         shell: pwsh
         run: |
           $files = @()
@@ -324,6 +346,7 @@ jobs:
           }
 
       - name: Upload Velopack artifacts
+        if: ${{ steps.skipcheck.outputs.skip != 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: windows-velopack
