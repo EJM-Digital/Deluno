@@ -53,14 +53,22 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
 # Runtime tools used by the app:
-#   ffmpeg/ffprobe — media stream probing and validation
-#   par2          — built-in NZB downloader's verify/repair (par2cmdline)
-#   unrar         — built-in downloader's archive extraction. Proprietary
-#                   binary from Debian non-free; extraction-only use is
-#                   permitted by the rarlab license. We ship the binary,
-#                   not the source.
-RUN echo 'deb http://deb.debian.org/debian bookworm non-free non-free-firmware' \
-        > /etc/apt/sources.list.d/non-free.list \
+#   ffmpeg/ffprobe — media stream probing/validation (Ubuntu: universe)
+#   par2          — built-in NZB downloader's verify/repair  (universe)
+#   unrar         — proprietary RAR extractor                (multiverse)
+#                   The rarlab license permits extraction-only use; we
+#                   ship the binary, not the source.
+#
+# The .NET 10 aspnet base image is Ubuntu (noble/resolute), NOT Debian
+# — an earlier version of this Dockerfile assumed Debian and added a
+# non-free.list pointing at deb.debian.org, which caused exit-100 on
+# Ubuntu because that repo doesn't apply. We instead enable Ubuntu's
+# universe + multiverse components on whichever sources file the base
+# image uses (24.04+ deb822 ubuntu.sources, or legacy sources.list).
+# The sed preserves the existing URI so multi-arch builds (linux/arm64
+# uses ports.ubuntu.com) keep working without arch-specific branching.
+RUN ( sed -i 's/Components: main restricted/Components: main restricted universe multiverse/g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true ) \
+    && ( sed -i 's/main restricted$/main restricted universe multiverse/g' /etc/apt/sources.list 2>/dev/null || true ) \
     && apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg par2 unrar \
     && rm -rf /var/lib/apt/lists/*
