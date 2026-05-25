@@ -33,6 +33,10 @@
          work; the wrapper interface is defined here so the orchestrator
          can use it once the binary lands). -->
     <PackageReference Include="SharpCompress" Version="1.0.0" />
+    <!-- System.IO.Hashing.Crc32 (IEEE polynomial) is used by the yEnc
+         decoder to validate each article's pcrc32/crc32 against the
+         decoded bytes. Microsoft-maintained, first-party. -->
+    <PackageReference Include="System.IO.Hashing" Version="9.0.0" />
     <!-- Microsoft.Data.Sqlite already comes transitively from Infrastructure;
          we use it explicitly in SqliteJobRepository.cs but the transitive
          reference is sufficient. -->
