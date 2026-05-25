@@ -32,6 +32,14 @@ public static class IntegrationsServiceCollectionExtensions
         services.AddScoped<IBuiltinDownloaderAdapter, BuiltinNzbAdapter>();
         services.AddScoped<IBuiltinDownloaderAdapter, BuiltinTorrentAdapter>();
         services.AddScoped<BuiltinAdapterDispatcher>();
+
+        // Bridge: Downloader-local IDownloaderSecretProtector → Platform's
+        // ISecretProtector. Downloader can't reference Platform directly
+        // (boundary rule); this adapter lives in Integrations which
+        // legitimately references both.
+        services.AddSingleton<Deluno.Downloader.Persistence.IDownloaderSecretProtector,
+            DownloaderSecretProtectorAdapter>();
+
         services.AddHttpClient<TmdbMetadataProvider>();
         services.AddScoped<IMetadataProvider>(sp => sp.GetRequiredService<TmdbMetadataProvider>());
         services.AddHostedService<CacheSchemaInitializer>();

@@ -1,3 +1,4 @@
+using Deluno.Downloader.Engine;
 using Deluno.Downloader.Extraction;
 using Deluno.Downloader.Nzb.Par2;
 using Deluno.Downloader.Persistence;
@@ -24,6 +25,7 @@ public static class DownloaderServiceCollectionExtensions
         // Persistence — schema migration + WAL tuning runs at startup.
         services.AddHostedService<DownloaderSchemaInitializer>();
         services.AddSingleton<IJobRepository, SqliteJobRepository>();
+        services.AddSingleton<INzbServerRepository, SqliteNzbServerRepository>();
 
         // Extraction — register concrete extractors and the pipeline that
         // dispatches by detected format.
@@ -45,6 +47,15 @@ public static class DownloaderServiceCollectionExtensions
         // (qBittorrent default — common firewall rules already know
         // about it).
         services.AddSingleton<ITorrentEngine>(_ => new MonoTorrentEngine());
+
+        // Execution worker: polls the jobs table, dispatches queued jobs
+        // to the right per-protocol executor, drives the lifecycle state
+        // machine to PostProcessed (or Failed).
+        services.AddHttpClient<NzbJobExecutor>();
+        services.AddHttpClient<TorrentJobExecutor>();
+        services.AddSingleton<IDownloaderJobExecutor>(sp => sp.GetRequiredService<NzbJobExecutor>());
+        services.AddSingleton<IDownloaderJobExecutor>(sp => sp.GetRequiredService<TorrentJobExecutor>());
+        services.AddHostedService<DownloaderJobExecutionService>();
 
         // Post-processing — default ordering: sample filter → flatten → sanitize.
         // Per-category overrides (e.g. skip flatten for torrents) live in
