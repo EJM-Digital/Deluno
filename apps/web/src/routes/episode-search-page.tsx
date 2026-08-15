@@ -196,11 +196,9 @@ export function EpisodeSearchPage() {
                   <div className="flex items-center gap-2">
                     <Badge
                       variant={
-                        episode.wantedStatus === "missing"
-                          ? "destructive"
-                          : episode.wantedStatus === "upgrade"
-                            ? "warning"
-                            : "info"
+                        episode.wantedStatus === "missing" || episode.wantedStatus === "upgrade"
+                          ? "warning"
+                          : "info"
                       }
                       className="text-xs"
                     >

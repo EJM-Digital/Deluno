@@ -481,7 +481,7 @@ export function MovieDetailPage() {
               {movie.originalTitle && movie.originalTitle !== movie.title ? <p className="mt-1 text-sm text-muted-foreground">Also known as {movie.originalTitle}</p> : null}
               <div className="mt-4 flex flex-wrap gap-2">
                 <Badge variant={movie.monitored ? "success" : "default"}>{movie.monitored ? "Monitored" : "Passive"}</Badge>
-                {wantedItem ? <Badge variant={wantedItem.wantedStatus === "missing" ? "destructive" : wantedItem.wantedStatus === "upgrade" ? "warning" : "info"}>{formatWantedStatus(wantedItem.wantedStatus)}</Badge> : null}
+                {wantedItem ? <Badge variant={wantedItem.wantedStatus === "missing" || wantedItem.wantedStatus === "upgrade" ? "warning" : "info"}>{formatWantedStatus(wantedItem.wantedStatus)}</Badge> : null}
                 {movie.genres?.split(",").map((genre) => <span key={genre} className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">{genre.trim()}</span>)}
               </div>
               <p className="mt-4 max-w-4xl text-sm leading-relaxed text-muted-foreground">

@@ -25,8 +25,8 @@ export function EpisodeMonitoringWidget({
   ).length;
 
   const stats = [
-    { label: "Monitored", value: monitoredCount, total: episodes.length },
-    { label: "Unmonitored", value: unmonitoredCount, total: episodes.length }
+    { label: "Monitored", value: monitoredCount, total: episodes.length, fill: "bg-success" },
+    { label: "Unmonitored", value: unmonitoredCount, total: episodes.length, fill: "bg-muted-foreground/35" }
   ];
 
   return (
@@ -50,7 +50,7 @@ export function EpisodeMonitoringWidget({
               </p>
               <div className="mt-2 h-1.5 rounded-full bg-surface-2 overflow-hidden">
                 <div
-                  className="h-full bg-primary rounded-full transition-all"
+                  className={`h-full rounded-full transition-all ${stat.fill}`}
                   style={{ width: `${(stat.value / stat.total) * 100}%` }}
                 />
               </div>

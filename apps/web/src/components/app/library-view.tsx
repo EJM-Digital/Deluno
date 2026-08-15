@@ -26,7 +26,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "re
 import * as Dialog from "@radix-ui/react-dialog";
 import { Link, useNavigate, useNavigation, useSearchParams } from "react-router-dom";
 import type { MediaItem, MediaStatus } from "../../lib/media-types";
-import { MEDIA_STATUS_PRESENTATION, MONITORING_PRESENTATION, mediaStatusIsActive } from "../../lib/media-status-presentation";
+import { MEDIA_STATUS_PRESENTATION, MONITORING_PRESENTATION, librarySummaryTone, mediaStatusIsActive } from "../../lib/media-status-presentation";
 import {
   ApiRequestError,
   fetchJson,
@@ -338,7 +338,8 @@ const enumOptions: Partial<Record<FilterField, Array<{ value: string; label: str
     { value: "downloaded", label: "Downloaded" },
     { value: "downloading", label: "Downloading" },
     { value: "missing", label: "Missing" },
-    { value: "monitored", label: "Monitored only" }
+    { value: "monitored", label: "Monitored" },
+    { value: "unmonitored", label: "Not monitored" }
   ],
   monitored: [
     { value: "true", label: "Yes" },
@@ -385,8 +386,10 @@ const enumOptions: Partial<Record<FilterField, Array<{ value: string; label: str
   releaseStatus: [
     { value: "Available", label: "Available" },
     { value: "Downloading", label: "Downloading" },
-    { value: "Wanted", label: "Wanted" },
-    { value: "Monitored", label: "Monitored" }
+    { value: "missing", label: "Missing" },
+    { value: "upgrade", label: "Upgrade" },
+    { value: "Monitored", label: "Monitored" },
+    { value: "Not monitored", label: "Not monitored" }
   ],
   certification: [
     { value: "G", label: "G" },
@@ -1521,9 +1524,9 @@ export function LibraryView({
               <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[length:var(--type-body-sm)] text-muted-foreground">
                 <span><span className="tabular font-semibold text-foreground">{libraryItems.length.toLocaleString()}</span> total</span>
                 <span className="text-muted-foreground/45">·</span>
-                <span><span className="tabular font-semibold text-success">{downloadedCount}</span> downloaded</span>
+                <span><span className={cn("tabular font-semibold", librarySummaryTone("availability", downloadedCount))}>{downloadedCount}</span> downloaded</span>
                 <span className="text-muted-foreground/45">·</span>
-                <span><span className="tabular font-semibold text-success">{monitoredCount}</span> monitored</span>
+                <span><span className={cn("tabular font-semibold", librarySummaryTone("monitoring", monitoredCount))}>{monitoredCount}</span> monitored</span>
                 {missingCount > 0 ? (
                   <>
                     <span className="text-muted-foreground/45">·</span>
@@ -1573,7 +1576,7 @@ export function LibraryView({
             <>
               <span className="font-semibold text-foreground">{libraryItems.length.toLocaleString()} total titles</span>
               {" · "}
-              <span className="font-semibold text-success">{downloadedCount} downloaded</span>
+              <span className={cn("font-semibold", librarySummaryTone("availability", downloadedCount))}>{downloadedCount} downloaded</span>
               {missingCount > 0 ? (
                 <>
                   {" · "}
@@ -2361,7 +2364,12 @@ function PosterCard({
               role="img"
               aria-label={item.monitored ? MONITORING_PRESENTATION.active.label : MONITORING_PRESENTATION.passive.label}
               title={item.monitored ? MONITORING_PRESENTATION.active.label : MONITORING_PRESENTATION.passive.label}
-              className="absolute right-1.5 top-1.5 z-10 rounded-full bg-black/40 p-0.5 ring-[1.5px] ring-black/40"
+              className={cn(
+                "absolute right-1.5 top-1.5 z-10 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full ring-[1.5px]",
+                item.monitored
+                  ? "bg-success ring-background/90 shadow-[0_0_0_1px_hsl(var(--success)/0.45)]"
+                  : "bg-black/55 ring-black/50"
+              )}
             >
               <MonitorDot monitored={item.monitored} />
             </span>

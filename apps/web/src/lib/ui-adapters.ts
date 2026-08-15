@@ -105,7 +105,9 @@ export function adaptMovieItems(items: MovieListItem[], wanted: MovieWantedSumma
             ? "downloading"
             : item.hasFile
               ? "downloaded"
-              : "monitored",
+              : item.monitored
+                ? "monitored"
+                : "unmonitored",
       monitored: item.monitored,
       sizeGb: readNumber(meta, "sizeGb", "sizeGB", "sizeOnDiskGb"),
       rating: item.rating,
@@ -128,7 +130,9 @@ export function adaptMovieItems(items: MovieListItem[], wanted: MovieWantedSumma
       audioChannels: readString(meta, "audioChannels"),
       language: readString(meta, "language"),
       hdrFormat: readString(meta, "hdrFormat"),
-      releaseStatus: wantedItem?.wantedStatus ?? (item.monitored ? "Available" : "Monitored"),
+      releaseStatus: wantedItem?.wantedStatus === "waiting"
+        ? "Downloading"
+        : wantedItem?.wantedStatus ?? (item.hasFile ? "Available" : item.monitored ? "Monitored" : "Not monitored"),
       certification: readString(meta, "certification"),
       collection: readString(meta, "collection"),
       minimumAvailability: readString(meta, "minimumAvailability"),
@@ -180,7 +184,9 @@ export function adaptSeriesItems(items: SeriesListItem[], wanted: SeriesWantedSu
             ? "downloading"
             : item.hasFile
               ? "downloaded"
-              : "monitored",
+              : item.monitored
+                ? "monitored"
+                : "unmonitored",
       monitored: item.monitored,
       sizeGb: readNumber(meta, "sizeGb", "sizeGB", "sizeOnDiskGb"),
       rating: item.rating,
@@ -204,7 +210,9 @@ export function adaptSeriesItems(items: SeriesListItem[], wanted: SeriesWantedSu
       audioChannels: readString(meta, "audioChannels"),
       language: readString(meta, "language"),
       hdrFormat: readString(meta, "hdrFormat"),
-      releaseStatus: wantedItem?.wantedStatus ?? (item.monitored ? "Available" : "Monitored"),
+      releaseStatus: wantedItem?.wantedStatus === "waiting"
+        ? "Downloading"
+        : wantedItem?.wantedStatus ?? (item.hasFile ? "Available" : item.monitored ? "Monitored" : "Not monitored"),
       certification: readString(meta, "certification"),
       collection: readString(meta, "collection"),
       minimumAvailability: readString(meta, "minimumAvailability"),

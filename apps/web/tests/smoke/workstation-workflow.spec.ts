@@ -48,7 +48,7 @@ test.describe("dashboard workflow", () => {
     await expect(page.getByText("Saved library views", { exact: true })).toBeVisible();
   });
 
-  test("keeps monitored state consistent across movie and TV poster sizes", async ({ page }) => {
+  test("uses the same visible monitored marker across movie and TV poster sizes", async ({ page }) => {
     await authenticateAndNavigate(page, "/movies");
     const token = await page.evaluate(() => sessionStorage.getItem("deluno-auth-token"));
     const headers = token ? { Authorization: `Bearer ${token}` } : {};
@@ -62,7 +62,7 @@ test.describe("dashboard workflow", () => {
         placeholder: "Search movies…",
         createPath: "/api/movies/",
         removePath: "/api/movies/bulk",
-        createData: (title: string) => ({ title, releaseYear: 2024, monitored: true }),
+        createData: (title: string, monitored: boolean) => ({ title, releaseYear: 2024, monitored }),
         removeData: (id: string) => ({ movieIds: [id], operation: "remove" })
       },
       {
@@ -70,36 +70,45 @@ test.describe("dashboard workflow", () => {
         placeholder: "Search TV shows…",
         createPath: "/api/series/",
         removePath: "/api/series/bulk",
-        createData: (title: string) => ({ title, startYear: 2024, monitored: true }),
+        createData: (title: string, monitored: boolean) => ({ title, startYear: 2024, monitored }),
         removeData: (id: string) => ({ seriesIds: [id], operation: "remove" })
       }
     ];
 
     for (const scenario of scenarios) {
-      const title = `Monitored presentation ${scenario.route} ${Date.now()}`;
-      let created: { id: string } | null = null;
-      try {
-        const create = await api.post(scenario.createPath, {
-          data: scenario.createData(title)
-        });
-        expect(create.ok()).toBe(true);
-        created = await create.json() as { id: string };
-
-        await page.goto(scenario.route);
-        await page.getByPlaceholder(scenario.placeholder).fill(title);
-        await expect(page.getByRole("button", { name: new RegExp(title) })).toBeVisible();
-
-        await page.getByRole("button", { name: /^Display/ }).click();
-        await page.getByRole("button", { name: /Medium Balanced/ }).click();
-        await expect(page.getByRole("img", { name: "Monitored" })).toBeVisible();
-
-        await page.getByRole("button", { name: /Small More titles/ }).click();
-        await expect(page.getByRole("img", { name: "Monitored" })).toBeVisible();
-      } finally {
-        if (created) {
-          await api.post(scenario.removePath, {
-            data: scenario.removeData(created.id)
+      for (const monitored of [true, false]) {
+        const title = `${monitored ? "Monitored" : "Passive"} presentation ${scenario.route} ${Date.now()}`;
+        const label = monitored ? "Monitored" : "Not monitored";
+        const markerClass = monitored ? /bg-success/ : /bg-muted-foreground/;
+        let created: { id: string } | null = null;
+        try {
+          const create = await api.post(scenario.createPath, {
+            data: scenario.createData(title, monitored)
           });
+          expect(create.ok()).toBe(true);
+          created = await create.json() as { id: string };
+
+          await page.goto(scenario.route);
+          await page.getByPlaceholder(scenario.placeholder).fill(title);
+          await expect(page.getByRole("button", { name: new RegExp(title) })).toBeVisible();
+
+          await page.getByRole("button", { name: /^Display/ }).click();
+          await page.getByRole("button", { name: /Medium Balanced/ }).click();
+          const mediumMarker = page.getByRole("img", { name: label });
+          await expect(mediumMarker).toBeVisible();
+          await expect(mediumMarker.locator("span").first()).toHaveClass(markerClass);
+
+          await page.getByRole("button", { name: /Small More titles/ }).click();
+          const smallMarker = page.getByRole("img", { name: label });
+          await expect(smallMarker).toBeVisible();
+          await expect(smallMarker).toHaveClass(monitored ? /bg-success/ : /bg-black/);
+          await expect(smallMarker.locator("span").first()).toHaveClass(markerClass);
+        } finally {
+          if (created) {
+            await api.post(scenario.removePath, {
+              data: scenario.removeData(created.id)
+            });
+          }
         }
       }
     }
