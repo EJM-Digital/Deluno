@@ -237,7 +237,7 @@ export function CFLibraryBrowser({ selections, onAdd, onRemove, onScoreChange }:
   }, [selections]);
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-[var(--grid-gap)]">
       {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

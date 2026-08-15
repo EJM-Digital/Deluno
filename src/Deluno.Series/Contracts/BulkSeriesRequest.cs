@@ -18,7 +18,13 @@ public sealed record BulkSeriesRequest(
     string? DownloadClientId = null,
 
     /// <summary>Force override reason when operation is 'grab'</summary>
-    string? ForceOverrideReason = null);
+    string? ForceOverrideReason = null,
+
+    /// <summary>Delete imported library files and the title folder where it is safe to do so.</summary>
+    bool DeleteFiles = false,
+
+    /// <summary>Prevent re-addition from import lists that originally added the title.</summary>
+    bool AddImportListExclusion = false);
 
 /// <summary>Response from bulk series operation</summary>
 public sealed record BulkSeriesResponse(

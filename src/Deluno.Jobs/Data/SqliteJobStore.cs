@@ -289,6 +289,78 @@ public sealed class SqliteJobStore(
         return failedJobs.Count;
     }
 
+    public async Task<int> CancelPendingForRelatedEntityAsync(
+        string relatedEntityType,
+        string relatedEntityId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(relatedEntityType) || string.IsNullOrWhiteSpace(relatedEntityId)) return 0;
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        var cancelled = new List<string>();
+        using (var select = connection.CreateCommand())
+        {
+            select.Transaction = transaction;
+            select.CommandText =
+                """
+                SELECT id
+                FROM job_queue
+                WHERE related_entity_type = @relatedEntityType
+                  AND related_entity_id = @relatedEntityId
+                  AND status IN ('queued', 'failed', 'dead-letter');
+                """;
+            AddParameter(select, "@relatedEntityType", relatedEntityType);
+            AddParameter(select, "@relatedEntityId", relatedEntityId);
+            using var reader = await select.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken)) cancelled.Add(reader.GetString(0));
+        }
+
+        if (cancelled.Count == 0)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return 0;
+        }
+
+        using (var delete = connection.CreateCommand())
+        {
+            delete.Transaction = transaction;
+            delete.CommandText =
+                """
+                DELETE FROM job_queue
+                WHERE related_entity_type = @relatedEntityType
+                  AND related_entity_id = @relatedEntityId
+                  AND status IN ('queued', 'failed', 'dead-letter');
+                """;
+            AddParameter(delete, "@relatedEntityType", relatedEntityType);
+            AddParameter(delete, "@relatedEntityId", relatedEntityId);
+            await delete.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await InsertActivityAsync(
+            connection,
+            transaction,
+            category: "job.cancelled",
+            message: $"{cancelled.Count} pending job{(cancelled.Count == 1 ? string.Empty : "s")} were cancelled because the related title was removed.",
+            detailsJson: null,
+            relatedJobId: null,
+            relatedEntityType: relatedEntityType,
+            relatedEntityId: relatedEntityId,
+            createdUtc: timeProvider.GetUtcNow(),
+            cancellationToken: cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        foreach (var jobId in cancelled)
+        {
+            await realtimeEventPublisher.PublishQueueItemRemovedAsync(jobId, cancellationToken);
+        }
+
+        return cancelled.Count;
+    }
+
     public async Task<JobQueueItem?> LeaseNextAsync(
         string workerId,
         TimeSpan leaseDuration,

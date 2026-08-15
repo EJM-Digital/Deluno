@@ -289,7 +289,7 @@ export function SettingsProfilesPage() {
 
   return (
     <SettingsShell
-      title="Quality Profiles"
+      title="Quality profiles"
       description="Define which quality sources and custom formats Deluno targets. Assign profiles to individual libraries."
     >
       <div className="settings-split settings-split-config-heavy">
@@ -310,7 +310,7 @@ export function SettingsProfilesPage() {
 
           {/* Wizard panel */}
           {showWizard && (
-            <div className="rounded-2xl border border-primary/25 bg-surface-1 p-6 shadow-[0_0_40px_hsl(var(--primary)/0.08)]">
+            <div className="rounded-2xl border border-primary/25 bg-surface-1 p-[var(--tile-pad)] shadow-[0_0_40px_hsl(var(--primary)/0.08)]">
               <div className="mb-5 flex items-center justify-between">
                 <div>
                   <p className="font-semibold text-foreground">Create a quality profile</p>
@@ -360,7 +360,7 @@ export function SettingsProfilesPage() {
             </DndContext>
           ) : (
             !showWizard && (
-              <div className="flex flex-col items-center gap-4 rounded-2xl border-2 border-dashed border-hairline py-12 text-center">
+              <div className="flex flex-col items-center gap-[var(--grid-gap)] rounded-2xl border-2 border-dashed border-hairline py-12 text-center">
                 <Sparkles className="h-8 w-8 text-muted-foreground/30" />
                 <div>
                   <p className="font-medium text-foreground">No profiles yet</p>

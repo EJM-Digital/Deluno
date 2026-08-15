@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Reflection;
 
 namespace Deluno.Tray;
 
@@ -8,7 +9,10 @@ public sealed class AppSettings
     public int Port { get; set; } = 7879;
     public string DataRoot { get; set; } = GetDefaultDataRoot();
     public string UpdateMode { get; set; } = Deluno.Api.Updates.UpdateModes.DownloadBackground;
-    public string UpdateChannel { get; set; } = "stable";
+    // The release workflow stamps this into the tray assembly. A fresh RC install
+    // must never silently subscribe to the stable feed just because it has not
+    // written a config file yet.
+    public string UpdateChannel { get; set; } = GetDefaultUpdateChannel();
     public bool AutoCheckUpdates { get; set; } = true;
     public string UpdateSource { get; set; } = "https://github.com/jampat000/Deluno";
 
@@ -53,7 +57,7 @@ public sealed class AppSettings
 
             if (string.IsNullOrWhiteSpace(settings.UpdateChannel))
             {
-                settings.UpdateChannel = "stable";
+                settings.UpdateChannel = GetDefaultUpdateChannel();
             }
 
             if (string.IsNullOrWhiteSpace(settings.UpdateSource))
@@ -220,6 +224,20 @@ public sealed class AppSettings
     {
         var value = Environment.GetEnvironmentVariable(environmentVariableName);
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    internal static string GetDefaultUpdateChannel()
+    {
+        const string metadataKey = "DelunoUpdateChannel";
+        var assembly = Assembly.GetEntryAssembly();
+        var configuredChannel = assembly?
+            .GetCustomAttributes<AssemblyMetadataAttribute>()
+            .FirstOrDefault(attribute => string.Equals(attribute.Key, metadataKey, StringComparison.OrdinalIgnoreCase))
+            ?.Value;
+
+        return string.IsNullOrWhiteSpace(configuredChannel)
+            ? "stable"
+            : configuredChannel.Trim().ToLowerInvariant();
     }
 
     private static readonly JsonSerializerOptions JsonOptions = new()

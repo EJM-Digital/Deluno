@@ -133,30 +133,29 @@ export function ActivityPage() {
     <div className="space-y-[var(--page-gap)]">
       {/* ═══════ HERO ═══════ */}
       <PageHero
-        eyebrow="Operations pulse"
+        eyebrow="Activity"
         eyebrowIcon={<ActivityIcon className="h-3 w-3 text-primary" />}
-        title={<>Everything moving through Deluno · {statusCopy.text}</>}
+        title={<>The record of what Deluno has done · {statusCopy.text}</>}
         subtitle={
           <>
-            <span className="font-semibold text-foreground">{activeJobs}</span> in queue ·{" "}
-            <span className="font-semibold text-foreground">{dispatches.length}</span> recent
-            dispatches ·{" "}
+            Use this to understand what happened and why; make day-to-day changes in Automation or Transfers. {" "}
+            <span className="font-semibold text-foreground">{activeJobs}</span> tasks in progress ·{" "}
+            <span className="font-semibold text-foreground">{dispatches.length}</span> releases sent to downloads ·{" "}
             <span
               className={cn(
                 "font-semibold",
                 openRecovery > 0 ? "text-warning" : "text-success"
               )}
             >
-              {openRecovery > 0 ? `${openRecovery} open` : "no"} recovery case
-              {openRecovery === 1 ? "" : "s"}
+              {openRecovery > 0 ? `${openRecovery} import issue${openRecovery === 1 ? "" : "s"}` : "all imports clear"}
             </span>
           </>
         }
         stats={[
-          { label: "Active", value: activeJobs.toString(), tone: "primary" },
+          { label: "Working now", value: activeJobs.toString(), tone: "primary" },
           { label: "Running", value: runningJobs.toString(), tone: "neutral" },
           { label: "Completed", value: completedJobs.toString(), tone: "success" },
-          { label: "Failed", value: failedJobs.toString(), tone: failedJobs > 0 ? "danger" : "neutral" }
+          { label: "Needs attention", value: failedJobs.toString(), tone: failedJobs > 0 ? "danger" : "neutral" }
         ]}
         actions={
           <>
@@ -184,7 +183,7 @@ export function ActivityPage() {
         <StaggerItem className="h-full">
           <PulseMetric
             icon={Workflow}
-            label="Queue"
+            label="Working now"
             value={activeJobs}
             sub={`${runningJobs} running`}
             tone="primary"
@@ -193,7 +192,7 @@ export function ActivityPage() {
         <StaggerItem className="h-full">
           <PulseMetric
             icon={ArrowDownToLine}
-            label="Dispatches"
+            label="Sent to downloads"
             value={dispatches.length}
             sub="released to clients"
             tone="neutral"
@@ -202,7 +201,7 @@ export function ActivityPage() {
         <StaggerItem className="h-full">
           <PulseMetric
             icon={AlertTriangle}
-            label="Recovery"
+            label="Import issues"
             value={openRecovery}
             sub={openRecovery > 0 ? "needs attention" : "all clear"}
             tone={openRecovery > 0 ? "warn" : "success"}
@@ -220,17 +219,17 @@ export function ActivityPage() {
       </Stagger>
 
       {/* ═══════ TIMELINE + QUEUE ═══════ */}
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(360px,0.95fr)]">
+      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.45fr)_minmax(360px,0.95fr)]">
         {/* Queue + Dispatches */}
         <div className="space-y-[var(--page-gap)]">
           <GlassTile>
             <div className="flex items-center justify-between border-b border-hairline px-[var(--tile-pad)] py-[calc(var(--tile-pad)*0.7)]">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">
-                  Background queue
+                  Background work
                 </p>
                 <p className="text-[15px] font-semibold text-foreground">
-                  {activeJobs} active · {jobs.length} total
+                  {activeJobs} working now · {jobs.length} recent
                 </p>
               </div>
               {runningJobs > 0 ? (
@@ -291,10 +290,10 @@ export function ActivityPage() {
             <div className="flex items-center justify-between border-b border-hairline px-[var(--tile-pad)] py-[calc(var(--tile-pad)*0.7)]">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">
-                  Dispatch stream
+                  Sent to downloads
                 </p>
                 <p className="text-[15px] font-semibold text-foreground">
-                  {dispatches.length} recent releases
+                  {dispatches.length} recent release{dispatches.length === 1 ? "" : "s"}
                 </p>
               </div>
               <Badge variant="success">live</Badge>
@@ -360,9 +359,9 @@ export function ActivityPage() {
           <GlassTile>
             <div className="border-b border-hairline px-[var(--tile-pad)] py-[calc(var(--tile-pad)*0.7)]">
               <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">
-                Live event stream
+                Recent activity
               </p>
-              <p className="text-[15px] font-semibold text-foreground">Operational timeline</p>
+              <p className="text-[15px] font-semibold text-foreground">What Deluno has been doing</p>
             </div>
               <div className="relative px-[var(--tile-pad)] py-[calc(var(--tile-pad)*0.8)]">
               {/* Vertical connector line */}
@@ -414,8 +413,8 @@ export function ActivityPage() {
                   <EmptyState
                     size="sm"
                     variant="custom"
-                    title="Nothing happening"
-                    description="The event stream will light up as jobs start rolling."
+                  title="Nothing to show yet"
+                    description="Searches, downloads, imports, and automatic checks will appear here."
                   />
                 )}
               </div>
@@ -426,9 +425,9 @@ export function ActivityPage() {
             <div className="mb-3 flex items-center justify-between">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">
-                  Recovery pressure
+                  Import issues
                 </p>
-                <p className="text-[15px] font-semibold text-foreground">Import failures</p>
+                <p className="text-[15px] font-semibold text-foreground">Files needing your help</p>
               </div>
               {openRecovery > 0 ? (
                 <Badge variant="warning">{openRecovery} open</Badge>

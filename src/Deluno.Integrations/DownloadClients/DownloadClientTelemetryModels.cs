@@ -159,7 +159,26 @@ public sealed record DownloadQueueItem(
     string IndexerName,
     string? ErrorMessage,
     DateTimeOffset AddedUtc,
-    string? SourcePath = null);
+    string? SourcePath = null,
+    string? LibraryId = null,
+    IReadOnlyList<DownloadHealthFinding>? HealthFindings = null);
+
+/// <summary>
+/// An observational queue-health signal. These findings never cause Deluno to remove
+/// download data; they explain why an item needs attention and which reversible action
+/// a person can consider first.
+/// </summary>
+public sealed record DownloadHealthFinding(
+    string Severity,
+    string Kind,
+    string Summary,
+    string Evidence,
+    string RecommendedAction,
+    bool CanSafelyRetry,
+    bool CanSafelyRemove,
+    int StrikeCount = 0,
+    bool CandidateBlocked = false,
+    DateTimeOffset? IgnoredUntilUtc = null);
 
 public sealed record DownloadClientHistoryItem(
     string Id,
@@ -214,3 +233,11 @@ public sealed record DownloadClientActionResult(
     string Action,
     bool Succeeded,
     string Message);
+
+public sealed record DownloadHealthRemediationReport(
+    int Evaluated,
+    int ReplacementSearchesQueued,
+    int ClientEntriesRemoved,
+    int PayloadsPurged,
+    int Skipped,
+    IReadOnlyList<string> Notes);

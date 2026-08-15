@@ -5,7 +5,6 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Deluno.Infrastructure.Resilience;
-using Deluno.Integrations.DownloadClients.Builtin;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Platform.Contracts;
@@ -19,13 +18,17 @@ public sealed class DownloadClientTelemetryService(
     IHttpClientFactory httpClientFactory,
     TimeProvider timeProvider,
     IIntegrationResiliencePolicy resiliencePolicy,
-    BuiltinAdapterDispatcher builtinAdapters)
+    IJobScheduler jobScheduler,
+    IDownloadDispatchesRepository dispatchesRepository,
+    IActivityFeedRepository activityFeedRepository)
     : IDownloadClientTelemetryService
 {
     public async Task<DownloadTelemetryOverview> GetOverviewAsync(CancellationToken cancellationToken)
     {
         var capturedUtc = timeProvider.GetUtcNow();
+        var platformSettings = await platformRepository.GetAsync(cancellationToken);
         var clients = await platformRepository.ListDownloadClientsAsync(cancellationToken);
+        var pathMappings = await platformRepository.ListDownloadClientPathMappingsAsync(null, cancellationToken);
         var libraries = await platformRepository.ListLibrariesAsync(cancellationToken);
         var dispatches = await jobQueueRepository.ListDownloadDispatchesAsync(100, null, cancellationToken);
         var importJobs = await jobQueueRepository.ListAsync(200, cancellationToken);
@@ -70,9 +73,14 @@ public sealed class DownloadClientTelemetryService(
                 dispatchHistory));
         }
 
+        var mappedSnapshots = snapshots
+            .Select(snapshot => ApplyPathMappings(snapshot, pathMappings))
+            .ToArray();
+        var healthAnnotatedSnapshots = await Task.WhenAll(mappedSnapshots.Select(snapshot => AttachHealthFindingsAsync(snapshot, platformSettings.DownloadHealthStrikeThreshold, platformSettings.CleanupBlockReleaseAfterThreshold, cancellationToken)));
+
         return new DownloadTelemetryOverview(
-            Summary: Summarize(snapshots.SelectMany(snapshot => snapshot.Queue)),
-            Clients: snapshots,
+            Summary: Summarize(healthAnnotatedSnapshots.SelectMany(snapshot => snapshot.Queue)),
+            Clients: healthAnnotatedSnapshots,
             CapturedUtc: capturedUtc);
     }
 
@@ -92,6 +100,21 @@ public sealed class DownloadClientTelemetryService(
         if (action is null)
         {
             return new DownloadClientActionResult(client.Id, request.QueueItemId, request.Action, false, "Unsupported action.");
+        }
+
+        // An item owned by another downloader can be shared or cross-seeded. Queue
+        // removal is therefore an opt-in, confirmed operation. Deluno does not use
+        // this setting for automatic cleanup, and adapters that support deletion are
+        // still asked to retain payload files wherever their client API permits it.
+        if (action == "delete" &&
+            !(await platformRepository.GetAsync(cancellationToken)).RemoveCompletedDownloads)
+        {
+            return new DownloadClientActionResult(
+                client.Id,
+                request.QueueItemId,
+                action,
+                false,
+                "External-client queue removal is disabled. Enable it in Library setup > Connections > Download clients before removing an item from Deluno.");
         }
 
         var result = await resiliencePolicy.ExecuteAsync(
@@ -169,8 +192,6 @@ public sealed class DownloadClientTelemetryService(
                 "deluge" => await ExecuteDelugeActionAsync(client, action, queueItemId, cancellationToken),
                 "nzbget" => await ExecuteNzbGetActionAsync(client, action, queueItemId, cancellationToken),
                 "utorrent" => await ExecuteUTorrentActionAsync(client, action, queueItemId, cancellationToken),
-                "deluno-nzb" or "deluno-torrent" =>
-                    await builtinAdapters.Get(client.Protocol).ExecuteActionAsync(client, action, queueItemId, cancellationToken),
                 _ => new DownloadClientActionResult(client.Id, queueItemId, action, false, $"{client.Protocol} queue actions are not supported by Deluno.")
             };
         }
@@ -195,8 +216,6 @@ public sealed class DownloadClientTelemetryService(
                 "deluge" => await GetDelugeSnapshotAsync(client, capturedUtc, cancellationToken),
                 "nzbget" => await GetNzbGetSnapshotAsync(client, capturedUtc, cancellationToken),
                 "utorrent" => await GetUTorrentSnapshotAsync(client, capturedUtc, cancellationToken),
-                "deluno-nzb" or "deluno-torrent" =>
-                    await builtinAdapters.Get(client.Protocol).GetSnapshotAsync(client, capturedUtc, cancellationToken),
                 _ => null
             };
         }
@@ -760,6 +779,264 @@ public sealed class DownloadClientTelemetryService(
             History: history ?? CreateHistoryFromQueue(client, queue, capturedUtc),
             CapturedUtc: capturedUtc);
 
+    private async Task<DownloadClientTelemetrySnapshot> AttachHealthFindingsAsync(
+        DownloadClientTelemetrySnapshot snapshot,
+        int strikeThreshold,
+        bool blockReleaseAfterThreshold,
+        CancellationToken cancellationToken)
+    {
+        var annotated = snapshot.Queue
+            .Select(item => (Item: item, Findings: DownloadHealthEvaluator.Evaluate(item, snapshot.CapturedUtc)))
+            .ToArray();
+        var observations = annotated
+            .SelectMany(entry => entry.Findings.Select(finding => new DownloadHealthObservation(
+                entry.Item.ClientId, entry.Item.Id, entry.Item.ReleaseName, finding.Kind, finding.Severity, finding.Evidence)))
+            .ToArray();
+        var records = await platformRepository.RecordDownloadHealthObservationsAsync(observations, cancellationToken);
+        var recordsByFinding = records.ToDictionary(
+            record => $"{record.ClientId}\u001f{record.QueueItemId}\u001f{record.Kind}",
+            StringComparer.OrdinalIgnoreCase);
+
+        return snapshot with
+        {
+            Queue = annotated.Select(entry => entry.Item with
+            {
+                HealthFindings = entry.Findings.Select(finding =>
+                {
+                    recordsByFinding.TryGetValue($"{entry.Item.ClientId}\u001f{entry.Item.Id}\u001f{finding.Kind}", out var record);
+                    return finding with
+                    {
+                        StrikeCount = record?.StrikeCount ?? 0,
+                        CandidateBlocked = blockReleaseAfterThreshold && (record?.BlocksCandidate(snapshot.CapturedUtc, strikeThreshold) ?? false),
+                        IgnoredUntilUtc = record?.IgnoredUntilUtc
+                    };
+                }).ToArray()
+            }).ToArray()
+        };
+    }
+
+    public async Task<DownloadCleanupPreview?> PreviewCleanupAsync(
+        string clientId,
+        string queueItemId,
+        CancellationToken cancellationToken)
+    {
+        var overview = await GetOverviewAsync(cancellationToken);
+        var item = overview.Clients
+            .Where(client => string.Equals(client.ClientId, clientId, StringComparison.OrdinalIgnoreCase))
+            .SelectMany(client => client.Queue)
+            .FirstOrDefault(candidate => string.Equals(candidate.Id, queueItemId, StringComparison.OrdinalIgnoreCase));
+        if (item is null) return null;
+        var settings = await platformRepository.GetAsync(cancellationToken);
+        return DownloadCleanupPreviewBuilder.Create(item, settings);
+    }
+
+    public async Task<DownloadHealthRemediationReport> RunConfiguredHealthRemediationAsync(
+        DownloadTelemetryOverview overview,
+        CancellationToken cancellationToken)
+    {
+        var settings = await platformRepository.GetAsync(cancellationToken);
+        if (!settings.CleanupQueueReplacementAfterThreshold &&
+            !settings.CleanupRemoveClientEntryAfterThreshold &&
+            !settings.CleanupPurgePayloadAfterThreshold)
+        {
+            return new DownloadHealthRemediationReport(0, 0, 0, 0, 0, []);
+        }
+
+        var libraries = await platformRepository.ListLibrariesAsync(cancellationToken);
+        var notes = new List<string>();
+        var evaluated = 0;
+        var replacements = 0;
+        var removed = 0;
+        var purged = 0;
+        var skipped = 0;
+
+        foreach (var snapshot in overview.Clients)
+        {
+            var client = (await platformRepository.ListDownloadClientsAsync(cancellationToken))
+                .FirstOrDefault(item => string.Equals(item.Id, snapshot.ClientId, StringComparison.OrdinalIgnoreCase));
+            if (client is null) continue;
+
+            foreach (var item in snapshot.Queue)
+            {
+                if (!(item.HealthFindings ?? []).Any(finding =>
+                        finding.StrikeCount >= settings.DownloadHealthStrikeThreshold &&
+                        (finding.IgnoredUntilUtc is null || finding.IgnoredUntilUtc <= overview.CapturedUtc)))
+                {
+                    continue;
+                }
+
+                evaluated++;
+                var dispatch = await dispatchesRepository.FindDispatchByHashAsync(client.Id, item.Id, cancellationToken);
+                if (dispatch is null || string.Equals(dispatch.ImportFailureCode, "health-remediation-applied", StringComparison.OrdinalIgnoreCase))
+                {
+                    skipped++;
+                    continue;
+                }
+
+                var library = libraries.FirstOrDefault(candidate => string.Equals(candidate.Id, dispatch.LibraryId, StringComparison.OrdinalIgnoreCase));
+                var categoryOwned = IsDelunoCategory(client, item.Category, dispatch.MediaType);
+                var payloadOwned = library is not null && IsPathWithinApprovedDownloadRoot(item.SourcePath, library.DownloadsPath);
+                var applied = new List<string>();
+
+                if (settings.CleanupQueueReplacementAfterThreshold &&
+                    dispatch.EntityType is "movie" or "series")
+                {
+                    await QueueReplacementSearchAsync(dispatch, library, cancellationToken);
+                    replacements++;
+                    applied.Add("replacement search queued");
+                }
+                else if (settings.CleanupQueueReplacementAfterThreshold)
+                {
+                    notes.Add($"{item.ReleaseName}: replacement was not queued because this dispatch is not a movie or series library search.");
+                }
+
+                if (settings.CleanupRemoveClientEntryAfterThreshold)
+                {
+                    if (categoryOwned)
+                    {
+                        // This bypasses the interactive external-client toggle only after
+                        // the durable dispatch, Deluno category, and selected health policy
+                        // have all matched. The public queue-action endpoint retains its
+                        // stricter manual guard.
+                        var result = await ExecuteOwnedRemediationRemovalAsync(client, item.Id, cancellationToken);
+                        if (result.Succeeded)
+                        {
+                            removed++;
+                            applied.Add("client entry removed (payload retained by client)");
+                        }
+                        else
+                        {
+                            notes.Add($"{item.ReleaseName}: client entry was not removed: {result.Message}");
+                        }
+                    }
+                    else
+                    {
+                        notes.Add($"{item.ReleaseName}: client entry was retained because its Deluno category could not be proven.");
+                    }
+                }
+
+                if (settings.CleanupPurgePayloadAfterThreshold)
+                {
+                    if (payloadOwned && TryPurgePayload(item.SourcePath!))
+                    {
+                        purged++;
+                        applied.Add("approved residual payload purged");
+                    }
+                    else
+                    {
+                        notes.Add($"{item.ReleaseName}: payload was retained because it is absent, inaccessible, or outside the configured download root.");
+                    }
+                }
+
+                if (applied.Count == 0)
+                {
+                    skipped++;
+                    continue;
+                }
+
+                var details = JsonSerializer.Serialize(new
+                {
+                    clientId = client.Id,
+                    queueItemId = item.Id,
+                    releaseName = item.ReleaseName,
+                    actions = applied,
+                    categoryOwned,
+                    payloadOwned
+                });
+                await dispatchesRepository.RecordTimelineEventAsync(dispatch.Id, "health-remediation-applied", details, cancellationToken);
+                await dispatchesRepository.RecordImportOutcomeAsync(
+                    dispatch.Id,
+                    "failed",
+                    null,
+                    "health-remediation-applied",
+                    string.Join("; ", applied),
+                    cancellationToken);
+                await activityFeedRepository.RecordActivityAsync(
+                    "download.health.remediated",
+                    $"Applied failed-download handling to {item.ReleaseName}: {string.Join(", ", applied)}.",
+                    details,
+                    null,
+                    "download_dispatch",
+                    dispatch.Id,
+                    cancellationToken);
+            }
+        }
+
+        return new DownloadHealthRemediationReport(evaluated, replacements, removed, purged, skipped, notes);
+    }
+
+    private async Task QueueReplacementSearchAsync(
+        DownloadDispatchItem dispatch,
+        LibraryItem? library,
+        CancellationToken cancellationToken)
+    {
+        var libraryName = library?.Name ?? dispatch.LibraryId;
+        await jobScheduler.EnqueueAsync(new EnqueueJobRequest(
+            "library.search",
+            "download-health",
+            JsonSerializer.Serialize(new
+            {
+                libraryId = dispatch.LibraryId,
+                libraryName,
+                mediaType = dispatch.MediaType,
+                checkMissing = true,
+                checkUpgrades = true,
+                maxItems = 1,
+                retryDelayHours = 24,
+                triggeredBy = "health-replacement",
+                targetEntityId = dispatch.EntityId
+            }),
+            "download_dispatch",
+            dispatch.Id,
+            IdempotencyKey: $"download-health-replacement:{dispatch.Id}",
+            DedupeKey: $"download-health-replacement:{dispatch.Id}"), cancellationToken);
+    }
+
+    private Task<DownloadClientActionResult> ExecuteOwnedRemediationRemovalAsync(
+        DownloadClientItem client,
+        string queueItemId,
+        CancellationToken cancellationToken)
+        => ExecuteActionCoreAsync(client, "delete", queueItemId, cancellationToken);
+
+    private static bool IsDelunoCategory(DownloadClientItem client, string category, string mediaType)
+    {
+        var expected = mediaType.Equals("tv", StringComparison.OrdinalIgnoreCase)
+            ? client.TvCategory
+            : client.MoviesCategory;
+        return !string.IsNullOrWhiteSpace(expected) && string.Equals(expected, category, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsPathWithinApprovedDownloadRoot(string? path, string? root)
+    {
+        if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(root)) return false;
+        try
+        {
+            var fullPath = Path.GetFullPath(path);
+            var fullRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
+            return fullPath.StartsWith(fullRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+                fullPath.StartsWith(fullRoot + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    private static bool TryPurgePayload(string sourcePath)
+    {
+        try
+        {
+            if (File.Exists(sourcePath)) File.Delete(sourcePath);
+            else if (Directory.Exists(sourcePath)) Directory.Delete(sourcePath, recursive: true);
+            else return false;
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
     private static DownloadClientTelemetrySnapshot EnrichWithDispatchHistory(
         DownloadClientTelemetrySnapshot snapshot,
         IEnumerable<DownloadDispatchItem> dispatches,
@@ -927,6 +1204,57 @@ public sealed class DownloadClientTelemetryService(
 
     private static string NormalizeSourceKey(string value)
         => value.Trim().TrimEnd('\\', '/').Replace('\\', '/');
+
+    /// <summary>
+    /// A download client reports paths from its own filesystem namespace. Before
+    /// Deluno queues a processor handoff or an import, translate that namespace
+    /// to the one visible to this host. The longest matching remote root wins so
+    /// a specific mapping may safely sit beside a broader one.
+    /// </summary>
+    internal static string? TranslateRemotePath(
+        string? reportedPath,
+        IEnumerable<DownloadClientPathMappingItem> mappings)
+    {
+        if (string.IsNullOrWhiteSpace(reportedPath)) return reportedPath;
+
+        var normalizedReported = NormalizeSourceKey(reportedPath);
+        var match = mappings
+            .Where(item => item.IsEnabled)
+            .Select(item => new { Mapping = item, Remote = NormalizeSourceKey(item.RemotePath) })
+            .Where(item => normalizedReported.Equals(item.Remote, StringComparison.OrdinalIgnoreCase) ||
+                           normalizedReported.StartsWith(item.Remote + "/", StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(item => item.Remote.Length)
+            .ThenBy(item => item.Mapping.Priority)
+            .FirstOrDefault();
+
+        if (match is null) return reportedPath;
+
+        var relative = normalizedReported[match.Remote.Length..].TrimStart('/');
+        if (relative.Length == 0) return match.Mapping.LocalPath;
+
+        var segments = relative.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        return segments.Aggregate(match.Mapping.LocalPath, Path.Combine);
+    }
+
+    private static DownloadClientTelemetrySnapshot ApplyPathMappings(
+        DownloadClientTelemetrySnapshot snapshot,
+        IReadOnlyList<DownloadClientPathMappingItem> mappings)
+    {
+        var clientMappings = mappings
+            .Where(item => string.Equals(item.DownloadClientId, snapshot.ClientId, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        if (clientMappings.Length == 0) return snapshot;
+
+        return snapshot with
+        {
+            Queue = snapshot.Queue
+                .Select(item => item with { SourcePath = TranslateRemotePath(item.SourcePath, clientMappings) })
+                .ToArray(),
+            History = snapshot.History
+                .Select(item => item with { SourcePath = TranslateRemotePath(item.SourcePath, clientMappings) })
+                .ToArray()
+        };
+    }
 
     private async Task<IReadOnlyList<DownloadClientHistoryItem>> TryGetSabnzbdHistoryAsync(
         HttpClient http,

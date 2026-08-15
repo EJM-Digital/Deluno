@@ -89,10 +89,10 @@ export function PageHero({
           stats && stats.length > 0
             ? "hero-layout-with-stats"
             : "",
-          size === "sm" ? "p-[var(--tile-pad)] md:p-[calc(var(--tile-pad)*1.15)]" : "p-[calc(var(--tile-pad)*1.1)] md:p-[calc(var(--tile-pad)*1.35)] lg:p-[calc(var(--tile-pad)*1.5)]"
+          size === "sm" ? "p-[var(--tile-pad)] md:p-[calc(var(--tile-pad)*1.1)]" : "p-[calc(var(--tile-pad)*1.05)] md:p-[calc(var(--tile-pad)*1.2)] lg:p-[calc(var(--tile-pad)*1.3)]"
         )}
       >
-        <div className="flex flex-col justify-between gap-5">
+        <div className="flex flex-col justify-between gap-[var(--grid-gap)]">
           <div>
             {eyebrow ? (
               <div className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 backdrop-blur-sm dark:border-primary/20">

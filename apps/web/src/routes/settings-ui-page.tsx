@@ -51,7 +51,7 @@ const densityOptions: Array<{
   {
     value: "expanded",
     label: "Expanded",
-    description: "The most screen-filling workspace for 1440p, ultrawide, and long management sessions.",
+    description: "The most screen-filling layout for 1440p, ultrawide, and long management sessions.",
     icon: Monitor
   }
 ];
@@ -130,7 +130,7 @@ export function SettingsUiPage() {
                 />
               </Field>
 
-              <Field label="Density" description="Adjust workspace spacing and typography scale to match your hardware and preferences.">
+              <Field label="Density" description="Adjust layout spacing and typography scale to match your hardware and preferences.">
                 <div className="grid gap-[calc(var(--grid-gap)*0.75)] md:grid-cols-2">
                   {densityOptions.map((option) => {
                     const Icon = option.icon;
@@ -221,7 +221,7 @@ export function SettingsUiPage() {
                 Default spacing for general use across mixed monitor sizes.
               </PreviewRow>
               <PreviewRow title="Spacious">
-                More breathing room, larger controls, and a wider workspace for bigger monitors where the interface can feel cramped.
+                More breathing room, larger controls, and a wider layout for bigger monitors where the interface can feel cramped.
               </PreviewRow>
               <PreviewRow title="Expanded">
                 The most screen-filling preset. Best when you want Deluno to feel larger and more operational on 1440p or ultrawide displays.

@@ -12,8 +12,6 @@ using Deluno.Jobs;
 using Deluno.Movies;
 using Deluno.Platform;
 using Deluno.Platform.Security.Hardening;
-using Deluno.Downloader.DependencyInjection;
-using Deluno.Downloader.Engine;
 using Deluno.Realtime;
 using Deluno.Series;
 using Deluno.Worker;
@@ -27,10 +25,12 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
     WebRootPath = Path.Combine(AppContext.BaseDirectory, "wwwroot")
 });
 
-// Explicitly configure Kestrel to listen on port 5099 (matches start-local-app.ps1)
+// Keep the normal local port while allowing isolated browser tests and packaged
+// side-by-side diagnostics to select a different loopback endpoint.
+var listenPort = builder.Configuration.GetValue<int?>("Server:Port") ?? 5099;
 builder.WebHost.ConfigureKestrel(options =>
 {
-    options.ListenAnyIP(5099);
+    options.ListenAnyIP(listenPort);
 });
 
 builder.Services.AddDelunoInfrastructure(builder.Configuration);
@@ -43,11 +43,15 @@ builder.Services.AddDelunoIntegrationsModule();
 builder.Services.AddDelunoFilesystemModule();
 builder.Services.AddDelunoRealtimeModule();
 builder.Services.AddDelunoWorkerModule();
-builder.Services.AddDelunoBuiltInDownloaders();
 builder.Services.AddHostedService<Deluno.Host.ImportRecoveryCleanupService>();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
+    // Minimal-API request records may share the same nested type name across
+    // modules (for example Movies.MetadataLinkRequest and Series.MetadataLinkRequest).
+    // Use a stable fully-qualified schema id so the generated API document stays
+    // available instead of failing on those valid independent contracts.
+    options.CustomSchemaIds(type => (type.FullName ?? type.Name).Replace('+', '.'));
     options.SwaggerDoc("v1", new OpenApiInfo
     {
         Title = "Deluno API",
@@ -104,7 +108,8 @@ app.Use(async (context, next) =>
 {
     var path = context.Request.Path;
 
-    if (path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase) ||
+    if ((path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase) &&
+         !path.StartsWithSegments("/api/metadata/artwork", StringComparison.OrdinalIgnoreCase)) ||
         path.StartsWithSegments("/hubs", StringComparison.OrdinalIgnoreCase))
     {
         context.Response.Headers.CacheControl = "no-store";
@@ -123,7 +128,8 @@ app.Use(async (context, next) =>
          !path.Equals("/api/auth/bootstrap", StringComparison.OrdinalIgnoreCase) &&
          !path.StartsWithSegments("/api/openapi", StringComparison.OrdinalIgnoreCase) &&
          !path.StartsWithSegments("/api/docs", StringComparison.OrdinalIgnoreCase) &&
-         !path.StartsWithSegments("/api/health", StringComparison.OrdinalIgnoreCase)) ||
+         !path.StartsWithSegments("/api/health", StringComparison.OrdinalIgnoreCase) &&
+         !path.StartsWithSegments("/api/metadata/artwork", StringComparison.OrdinalIgnoreCase)) ||
         path.StartsWithSegments("/hubs", StringComparison.OrdinalIgnoreCase);
 
     if (!requiresAuthentication)
@@ -189,7 +195,6 @@ app.MapDelunoApi();
 app.MapDelunoBackupEndpoints();
 app.MapDelunoPlatformEndpoints();
 app.MapDelunoSecretsDiagnostics();
-app.MapDelunoDownloaderEndpoints();
 app.MapDelunoMoviesEndpoints();
 app.MapDelunoSeriesEndpoints();
 app.MapDelunoJobsEndpoints();

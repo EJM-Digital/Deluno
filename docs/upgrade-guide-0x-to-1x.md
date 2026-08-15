@@ -1,6 +1,6 @@
 # Upgrade Guide: Deluno 0.x to 1.x
 
-Updated: 2026-05-14
+Updated: 2026-08-13
 
 This guide is for users upgrading from packaged `0.1.x` builds to `1.x` GA.
 
@@ -51,7 +51,7 @@ Check these in order:
 
 ## References
 
-- [packaging.md](/C:/Users/User/Projects/Deluno/docs/packaging.md)
-- [DEPLOYMENT.md](/C:/Users/User/Projects/Deluno/docs/DEPLOYMENT.md)
-- [TROUBLESHOOTING.md](/C:/Users/User/Projects/Deluno/docs/TROUBLESHOOTING.md)
-- [backup-restore-runbook.md](/C:/Users/User/Projects/Deluno/docs/backup-restore-runbook.md)
+- [Packaging](./packaging.md)
+- [Deployment](./DEPLOYMENT.md)
+- [Troubleshooting](./TROUBLESHOOTING.md)
+- [Backup and restore runbook](./backup-restore-runbook.md)

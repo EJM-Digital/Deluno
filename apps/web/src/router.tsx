@@ -2,7 +2,7 @@ import type { LoaderFunction } from "react-router-dom";
 import { createBrowserRouter, Navigate, redirect, useParams } from "react-router-dom";
 import type { ComponentType } from "react";
 import { RouteErrorBoundary } from "./components/shell/route-error-boundary";
-import { SettingsWorkspaceLayout, SystemWorkspaceLayout } from "./components/app/settings-shell";
+import { ConfigurationWorkspaceLayout, SettingsWorkspaceLayout, SystemWorkspaceLayout } from "./components/app/settings-shell";
 import { MoviesWorkspaceLayout, TvWorkspaceLayout } from "./components/app/media-workspace-shell";
 import { AppLayout } from "./layouts/app-layout";
 import { LoginPage } from "./routes/login-page";
@@ -149,24 +149,15 @@ export const router = createBrowserRouter([
           },
           {
             path: "wanted",
-            lazy: withSkeleton(async () => {
-              const module = await import("./routes/movies-wanted-page");
-              return { loader: module.moviesWantedLoader, Component: module.MoviesWantedPage };
-            })
+            element: <Navigate to="/movies?filter=missing" replace />
           },
           {
             path: "upgrades",
-            lazy: withSkeleton(async () => {
-              const module = await import("./routes/movies-upgrades-page");
-              return { loader: module.moviesUpgradesLoader, Component: module.MoviesUpgradesPage };
-            })
+            element: <Navigate to="/movies?filter=upgrades" replace />
           },
           {
             path: "import",
-            lazy: withSkeleton(async () => {
-              const module = await import("./routes/media-import-page");
-              return { loader: module.moviesImportLoader, Component: module.MoviesImportPage };
-            })
+            element: <Navigate to="/movies?filter=needsAttention" replace />
           },
           { path: "library", element: <Navigate to="/movies" replace /> }
         ]
@@ -191,10 +182,7 @@ export const router = createBrowserRouter([
           },
           {
             path: "wanted",
-            lazy: withSkeleton(async () => {
-              const module = await import("./routes/tv-wanted-page");
-              return { loader: module.tvWantedLoader, Component: module.TvWantedPage };
-            })
+            element: <Navigate to="/tv?filter=missing" replace />
           },
           {
             path: "episodes",
@@ -205,17 +193,11 @@ export const router = createBrowserRouter([
           },
           {
             path: "upgrades",
-            lazy: withSkeleton(async () => {
-              const module = await import("./routes/tv-upgrades-page");
-              return { loader: module.tvUpgradesLoader, Component: module.TvUpgradesPage };
-            })
+            element: <Navigate to="/tv?filter=upgrades" replace />
           },
           {
             path: "import",
-            lazy: withSkeleton(async () => {
-              const module = await import("./routes/media-import-page");
-              return { loader: module.tvImportLoader, Component: module.TvImportPage };
-            })
+            element: <Navigate to="/tv?filter=needsAttention" replace />
           },
           { path: "library", element: <Navigate to="/tv" replace /> }
         ]
@@ -252,7 +234,31 @@ export const router = createBrowserRouter([
         })
       },
       {
+        element: <ConfigurationWorkspaceLayout />,
+        children: [
+      {
         path: "indexers",
+        lazy: withSkeleton(async () => {
+          const module = await import("./routes/indexers-page");
+          return { loader: module.indexersLoader, Component: module.IndexersPage };
+        })
+      },
+      {
+        path: "indexers/indexers",
+        lazy: withSkeleton(async () => {
+          const module = await import("./routes/indexers-page");
+          return { loader: module.indexersLoader, Component: module.IndexersPage };
+        })
+      },
+      {
+        path: "indexers/download-clients",
+        lazy: withSkeleton(async () => {
+          const module = await import("./routes/indexers-page");
+          return { loader: module.indexersLoader, Component: module.IndexersPage };
+        })
+      },
+      {
+        path: "indexers/library-routing",
         lazy: withSkeleton(async () => {
           const module = await import("./routes/indexers-page");
           return { loader: module.indexersLoader, Component: module.IndexersPage };
@@ -278,6 +284,16 @@ export const router = createBrowserRouter([
           },
           {
             path: "media-management",
+            lazy: withSkeleton(async () => {
+              const module = await import("./routes/settings-media-management-page-v2");
+              return {
+                loader: module.settingsMediaManagementLoader,
+                Component: module.SettingsMediaManagementPage
+              };
+            })
+          },
+          {
+            path: "processing",
             lazy: withSkeleton(async () => {
               const module = await import("./routes/settings-media-management-page-v2");
               return {
@@ -333,15 +349,22 @@ export const router = createBrowserRouter([
               };
             })
           },
-          { path: "indexers", element: <Navigate to="/indexers" replace /> },
-          { path: "download-clients", element: <Navigate to="/indexers" replace /> },
+          { path: "indexers", element: <Navigate to="/indexers/indexers" replace /> },
+          { path: "download-clients", element: <Navigate to="/indexers/download-clients" replace /> },
           { path: "import-lists", element: <Navigate to="/settings/lists" replace /> },
-          { path: "connect", element: <Navigate to="/settings/general" replace /> },
+          { path: "connect", element: <Navigate to="/indexers" replace /> },
           {
             path: "lists",
             lazy: withSkeleton(async () => {
               const module = await import("./routes/settings-lists-page");
               return { loader: module.settingsListsLoader, Component: module.SettingsListsPage };
+            })
+          },
+          {
+            path: "automation",
+            lazy: withSkeleton(async () => {
+              const module = await import("./routes/search-cycles-page");
+              return { loader: module.searchCyclesLoader, Component: module.SearchCyclesPage };
             })
           },
           {
@@ -377,26 +400,6 @@ export const router = createBrowserRouter([
             lazy: withSkeleton(async () => {
               const module = await import("./routes/settings-notifications-page");
               return { loader: module.settingsNotificationsLoader, Component: module.SettingsNotificationsPage };
-            })
-          },
-          {
-            path: "builtin-downloader",
-            lazy: withSkeleton(async () => {
-              const module = await import("./routes/settings-builtin-downloader-page");
-              return {
-                loader: module.settingsBuiltinDownloaderLoader,
-                Component: module.SettingsBuiltinDownloaderPage,
-              };
-            })
-          },
-          {
-            path: "builtin-torrent",
-            lazy: withSkeleton(async () => {
-              const module = await import("./routes/settings-builtin-torrent-page");
-              return {
-                loader: module.settingsBuiltinTorrentLoader,
-                Component: module.SettingsBuiltinTorrentPage,
-              };
             })
           },
           {
@@ -455,6 +458,8 @@ export const router = createBrowserRouter([
               return { loader: module.systemLoader, Component: module.SystemPage };
             })
           }
+        ]
+      }
         ]
       }
     ]

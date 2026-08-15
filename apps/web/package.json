@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "test:smoke": "playwright test",
     "validate:job-status": "ts-node scripts/validate-job-status.ts",
-    "prebuilt": "npm run validate:job-status"
+    "validate:ui-spacing": "ts-node scripts/validate-ui-spacing.ts",
+    "prebuilt": "npm run validate:job-status",
+    "prebuild": "npm run validate:ui-spacing"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

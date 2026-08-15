@@ -83,8 +83,13 @@ jobs:
         run: |
           $tag = "${{ github.ref_name }}"
           $version = $tag.TrimStart('v')
+          # 0.x and explicitly prerelease-tagged builds are validation/preview
+          # candidates. They must be packed onto their own feed, rather than
+          # allowing a fresh install to jump to the stable release channel.
+          $channel = if ($version.StartsWith("0.") -or $version -match "-(rc|beta|preview)([.-]|$)") { "rc" } else { "stable" }
           echo "version=$version" >> $env:GITHUB_OUTPUT
           echo "tag=$tag" >> $env:GITHUB_OUTPUT
+          echo "channel=$channel" >> $env:GITHUB_OUTPUT
 
       - name: Install npm dependencies
         run: npm ci
@@ -95,12 +100,16 @@ jobs:
       - name: Publish Deluno.Tray (win-x64)
         shell: pwsh
         run: |
+          # A release runner is normally clean, but packaging must never pick
+          # up a removed component from a reused workspace or cached output.
+          Remove-Item -LiteralPath "artifacts/windows/bin" -Recurse -Force -ErrorAction SilentlyContinue
           dotnet publish apps/windows-tray/Deluno.Tray.csproj `
             -c Release `
             -r win-x64 `
             --self-contained true `
             -p:PublishSingleFile=false `
             -p:Version=${{ steps.version.outputs.version }} `
+            -p:DelunoUpdateChannel=${{ steps.version.outputs.channel }} `
             -o artifacts/windows/bin
 
       - name: Bundle ffprobe.exe
@@ -113,50 +122,6 @@ jobs:
           $probe = Get-ChildItem "$env:RUNNER_TEMP\\ffmpeg-extract" -Recurse -Filter "ffprobe.exe" | Select-Object -First 1
           if (-not $probe) { Write-Error "ffprobe.exe not found in archive"; exit 1 }
           Copy-Item $probe.FullName "artifacts/windows/bin/ffprobe.exe"
-
-      - name: Bundle par2cmdline-turbo (GPLv2)
-        shell: pwsh
-        run: |
-          # par2cmdline-turbo provides the SIMD-accelerated par2 verify/repair
-          # used by the built-in NZB engine. GPLv2 binary — see tools/par2/SOURCE.md
-          # in the installer payload for source-availability paperwork.
-          $api = "https://api.github.com/repos/animetosho/par2cmdline-turbo/releases/latest"
-          $rel = Invoke-RestMethod -Uri $api -Headers @{ "User-Agent" = "deluno-release" }
-          # Match both the legacy ("...-win64.zip") and current
-          # ("...-win-x64.zip") asset naming — upstream renamed it
-          # somewhere between 1.2 and 1.4. Anchoring on the win + x64
-          # tokens with optional separator is robust to either form.
-          $asset = $rel.assets | Where-Object { $_.name -match "win[-_]?x?64\.zip$" } | Select-Object -First 1
-          if (-not $asset) {
-            Write-Error ("par2cmdline-turbo Windows x64 asset not found. Available assets: " + ($rel.assets.name -join ", "))
-            exit 1
-          }
-          $zip = "$env:RUNNER_TEMP\\par2-turbo.zip"
-          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zip -UseBasicParsing
-          Expand-Archive $zip -DestinationPath "$env:RUNNER_TEMP\\par2-extract"
-          $par2 = Get-ChildItem "$env:RUNNER_TEMP\\par2-extract" -Recurse -Filter "par2.exe" | Select-Object -First 1
-          if (-not $par2) { Write-Error "par2.exe not found in archive"; exit 1 }
-          New-Item -ItemType Directory -Force -Path "artifacts/windows/bin/tools/par2" | Out-Null
-          Copy-Item $par2.FullName "artifacts/windows/bin/tools/par2/par2.exe"
-
-          # GPLv2 distribution paperwork. Required for shipping the binary.
-          $tag = $rel.tag_name
-          @"
-          par2cmdline-turbo is bundled with Deluno under the GNU General Public License v2.
-          The bundled binary is built from upstream tag $tag.
-
-          Source code: https://github.com/animetosho/par2cmdline-turbo/tree/$tag
-
-          To request a written copy of the source as built into this release,
-          please open an issue at https://github.com/jampat000/Deluno/issues
-          or contact the maintainer per the README.
-
-          The COPYING file in this directory is the upstream GPLv2 license text.
-          "@ | Out-File -FilePath "artifacts/windows/bin/tools/par2/SOURCE.md" -Encoding utf8
-
-          # Pull the upstream COPYING for license-text fidelity.
-          $copying = "https://raw.githubusercontent.com/animetosho/par2cmdline-turbo/$tag/COPYING"
-          Invoke-WebRequest -Uri $copying -OutFile "artifacts/windows/bin/tools/par2/COPYING" -UseBasicParsing
 
       - name: Bundle UnRAR.exe (rarlab; extraction-only is license-clean)
         shell: pwsh
@@ -201,6 +166,21 @@ jobs:
           [IO.File]::WriteAllBytes($path, $bytes)
           "CERT_PATH=$path" >> $env:GITHUB_ENV
 
+      # Early 0.x prereleases may be unsigned. 1.x is GA-quality only: do
+      # not build, upload, or publish an unsigned stable artifact by mistake.
+      - name: Enforce certificate material for 1.x
+        if: ${{ !startsWith(steps.version.outputs.version, '0.') }}
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:CERT_PATH)) {
+            Write-Error "CERT_PATH was not prepared for a 1.x release."
+            exit 1
+          }
+          if (-not (Test-Path -LiteralPath $env:CERT_PATH -PathType Leaf)) {
+            Write-Error "Prepared code-signing certificate does not exist: $env:CERT_PATH"
+            exit 1
+          }
+
       - name: Sign payload executables
         if: ${{ env.CERT_PATH != '' }}
         shell: pwsh
@@ -221,7 +201,7 @@ jobs:
           $env:PATH += ";$env:USERPROFILE\\.dotnet\\tools"
           vpk download github `
             --repoUrl https://github.com/${{ github.repository }} `
-            --channel stable `
+            --channel ${{ steps.version.outputs.channel }} `
             --outputDir artifacts/windows/velopack `
             --token ${{ secrets.GITHUB_TOKEN }}
 
@@ -231,11 +211,11 @@ jobs:
         run: |
           # Re-running this workflow against an existing tag (e.g. after
           # a force-push to refs/tags/vX.Y.Z) would otherwise fail with
-          # "There is a release in channel stable which is equal or
+          # "There is a release in the selected channel which is equal or
           # greater to the current version" because vpk download just
           # pulled the existing full.nupkg. Detect and skip cleanly.
           $existing = Get-ChildItem artifacts/windows/velopack `
-            -Filter "*-${{ steps.version.outputs.version }}-stable-full.nupkg" `
+            -Filter "*-${{ steps.version.outputs.version }}-${{ steps.version.outputs.channel }}-full.nupkg" `
             -ErrorAction SilentlyContinue
           if ($existing) {
             Write-Host "::notice::Version ${{ steps.version.outputs.version }} is already published; skipping pack/sign/upload."
@@ -259,7 +239,7 @@ jobs:
             "--mainExe", "Deluno.exe",
             "--packTitle", "Deluno",
             "--icon", "installer/deluno.ico",
-            "--channel", "stable",
+            "--channel", "${{ steps.version.outputs.channel }}",
             "--runtime", "win-x64",
             "--outputDir", "artifacts/windows/velopack"
           )
@@ -326,7 +306,7 @@ jobs:
           }
 
       - name: Verify signatures
-        if: ${{ env.CERT_PATH != '' && steps.skipcheck.outputs.skip != 'true' }}
+        if: ${{ (!startsWith(steps.version.outputs.version, '0.') || env.CERT_PATH != '') && steps.skipcheck.outputs.skip != 'true' }}
         shell: pwsh
         run: |
           $files = @()

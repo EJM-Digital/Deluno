@@ -20,7 +20,7 @@ export function SectionTabs({ items, className }: SectionTabsProps) {
     <nav
       aria-label="Section navigation"
       className={cn(
-        "relative -mx-4 border-b border-hairline px-4 md:-mx-6 md:px-6",
+        "relative mx-[calc(-1*var(--content-pad-inline))] border-b border-hairline px-[var(--content-pad-inline)]",
         className
       )}
     >

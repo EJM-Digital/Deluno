@@ -1,25 +1,17 @@
 import {
-  Activity,
   Bell,
-  Calendar,
   ChevronDown,
-  Download,
-  Film,
+  ChevronRight,
   HelpCircle,
-  LayoutGrid,
   LoaderCircle,
   LogOut,
   LockKeyhole,
   Moon,
-  RadioTower,
   Search,
-  ServerCog,
-  Settings,
   SunMedium,
-  Tv
 } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useEffect, useMemo, useRef, useState, type ComponentType, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { NavLink, useLocation, useNavigate, useNavigation } from "react-router-dom";
 import { CommandPalette } from "../components/shell/command-palette";
@@ -37,6 +29,8 @@ import { useAuth, type UserProfile } from "../lib/use-auth";
 import { DENSITY_LABELS, DensityProvider, useDensity, type Density } from "../lib/use-density";
 import { SignalRProvider } from "../lib/use-signalr";
 import { cn } from "../lib/utils";
+import { configurationNavAreas, maintenanceNavItems } from "../components/app/settings-shell";
+import { DelunoNavGlyph, type DelunoNavGlyphKind } from "../components/shell/deluno-nav-glyph";
 
 function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
@@ -45,34 +39,31 @@ function isEditableTarget(target: EventTarget | null) {
   return target.isContentEditable;
 }
 
-const primaryNav = [
-  { to: "/", label: "Overview", icon: LayoutGrid, end: true, attention: "none" as const },
-  { to: "/movies", label: "Movies", icon: Film, end: false, attention: "movies" as const },
-  { to: "/tv", label: "TV Shows", icon: Tv, end: false, attention: "tv" as const },
-  { to: "/calendar", label: "Calendar", icon: Calendar, end: false, attention: "none" as const },
-  { to: "/queue", label: "Queue", icon: Download, end: false, attention: "activity" as const },
-  { to: "/indexers", label: "Sources", icon: RadioTower, end: false, attention: "indexers" as const },
-  { to: "/search-cycles", label: "Search", icon: Search, end: false, attention: "none" as const },
-  { to: "/activity", label: "Activity", icon: Activity, end: false, attention: "activity" as const }
+const libraryNav = [
+  { to: "/", label: "Dashboard", icon: "dashboard", end: true, attention: "none" as const },
+  { to: "/movies", label: "Movies", icon: "movies", end: false, attention: "movies" as const },
+  { to: "/tv", label: "TV Shows", icon: "shows", end: false, attention: "tv" as const },
+  { to: "/calendar", label: "Schedule", icon: "schedule", end: false, attention: "none" as const }
 ] as const;
 
-const utilityNav = [
-  { to: "/settings", label: "Settings", icon: Settings, end: false },
-  { to: "/system", label: "System", icon: ServerCog, end: false }
+const operationsNav = [
+  { to: "/queue", label: "Transfers", icon: "transfers", end: false, attention: "activity" as const },
+  { to: "/search-cycles", label: "Automation", icon: "automation", end: false, attention: "none" as const },
+  { to: "/activity", label: "Activity", icon: "activity", end: false, attention: "activity" as const }
 ] as const;
 
 const densityChoices: Density[] = ["compact", "comfortable", "spacious", "expanded"];
 
 const routeMeta = [
-  { match: (path: string) => path === "/", title: "Overview", subtitle: "Unified media operations" },
-  { match: (path: string) => path.startsWith("/movies"), title: "Movies", subtitle: "Browse, filter, and route media" },
-  { match: (path: string) => path.startsWith("/tv"), title: "TV Shows", subtitle: "Series, episodes, and monitoring" },
-  { match: (path: string) => path.startsWith("/calendar"), title: "Calendar", subtitle: "Upcoming releases and retry windows" },
-  { match: (path: string) => path.startsWith("/queue"), title: "Queue", subtitle: "Unified download client telemetry" },
-  { match: (path: string) => path.startsWith("/indexers"), title: "Sources and clients", subtitle: "Indexers, download clients, and provider health" },
-  { match: (path: string) => path.startsWith("/search-cycles"), title: "Search automation", subtitle: "Library search schedules and history" },
-  { match: (path: string) => path.startsWith("/activity"), title: "Activity", subtitle: "Events, history, and automation" },
-  { match: (path: string) => path.startsWith("/settings"), title: "Settings", subtitle: "Guided setup and configuration" },
+  { match: (path: string) => path === "/", title: "Dashboard", subtitle: "Your movies and shows, in one place" },
+  { match: (path: string) => path.startsWith("/movies"), title: "Movies", subtitle: "Manage and grow your movie library" },
+  { match: (path: string) => path.startsWith("/tv"), title: "TV Shows", subtitle: "Manage your shows, episodes, and upgrades" },
+  { match: (path: string) => path.startsWith("/calendar"), title: "Schedule", subtitle: "Upcoming releases and retry windows" },
+  { match: (path: string) => path.startsWith("/queue"), title: "Transfers", subtitle: "Follow downloads through processing and safe import" },
+  { match: (path: string) => path.startsWith("/indexers"), title: "Connections", subtitle: "Search sources and download apps Deluno uses" },
+  { match: (path: string) => path.startsWith("/search-cycles"), title: "Automation", subtitle: "Choose what Deluno should search for, retry, and upgrade next" },
+  { match: (path: string) => path.startsWith("/activity"), title: "Activity", subtitle: "The permanent record of what happened and why" },
+  { match: (path: string) => path.startsWith("/settings"), title: "Library setup", subtitle: "How Deluno manages your media" },
   { match: (path: string) => path.startsWith("/system"), title: "System", subtitle: "Health, backups, updates, and audit" }
 ];
 
@@ -200,6 +191,7 @@ function DesktopSidebar({
   onLogout: () => void;
 }) {
   const { changePassword } = useAuth();
+  const { pathname } = useLocation();
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -244,29 +236,55 @@ function DesktopSidebar({
         </span>
       </NavLink>
 
-      <div className="my-5 h-px bg-hairline/80" />
+      <div className="mt-5 min-h-0 flex-1 overflow-x-hidden overflow-y-auto pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="mb-2 px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-subtle-size)] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">
+          Your media
+        </div>
+        <nav aria-label="Media dashboard" className="space-y-[calc(var(--shell-nav-gap)*0.7)]">
+          {libraryNav.map((item) => (
+            <SidebarItem
+              key={item.to}
+              item={item}
+              count={attentionCount(attention, item.attention)}
+            />
+          ))}
+        </nav>
 
-      <nav aria-label="Primary navigation" className="space-y-[calc(var(--shell-nav-gap)*0.7)]">
-        {primaryNav.map((item) => (
-          <SidebarItem
-            key={item.to}
-            item={item}
-            count={attentionCount(attention, item.attention)}
-          />
-        ))}
-      </nav>
+        <div className="my-5 h-px bg-hairline/80" />
 
-      <div className="my-5 h-px bg-hairline/80" />
+        <div className="mb-2 px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-subtle-size)] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">
+          What Deluno is doing
+        </div>
+        <nav aria-label="Automation and transfer status" className="space-y-[calc(var(--shell-nav-gap)*0.7)]">
+          {operationsNav.map((item) => (
+            <SidebarItem
+              key={item.to}
+              item={item}
+              count={attentionCount(attention, item.attention)}
+            />
+          ))}
+        </nav>
 
-      <nav aria-label="Controls" className="space-y-[calc(var(--shell-nav-gap)*0.7)]">
-        {utilityNav.map((item) => (
-          <SidebarItem key={`${item.label}-${item.to}`} item={item} count={0} />
-        ))}
-      </nav>
+        <div className="my-5 h-px bg-hairline/80" />
 
-      <div className="min-h-6 flex-1" />
+        <div className="mb-2 px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-subtle-size)] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">
+          Set up your library
+        </div>
+        <nav aria-label="Library setup" className="space-y-[calc(var(--shell-nav-gap)*0.7)]">
+          <ConfigurationSidebarTree pathname={pathname} />
+        </nav>
 
-      <div className="rounded-2xl border border-hairline/80 bg-card/75 p-[calc(var(--tile-pad)*0.8)] shadow-card dark:border-white/[0.07] dark:bg-white/[0.035]">
+        <div className="my-5 h-px bg-hairline/80" />
+
+        <div className="mb-2 px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-subtle-size)] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">
+          Maintain Deluno
+        </div>
+        <nav aria-label="System controls" className="space-y-[calc(var(--shell-nav-gap)*0.7)]">
+          <MaintenanceSidebarTree pathname={pathname} />
+        </nav>
+      </div>
+
+      <div className="mt-3 rounded-2xl border border-hairline/80 bg-card/75 p-[calc(var(--tile-pad)*0.8)] shadow-card dark:border-white/[0.07] dark:bg-white/[0.035]">
         <div className="flex items-center gap-2">
           <span className="h-2 w-2 rounded-full bg-success shadow-[0_0_12px_hsl(var(--success)/0.8)]" />
           <span className="density-nowrap text-[length:var(--type-body-sm)] font-semibold text-foreground">All systems normal</span>
@@ -315,7 +333,7 @@ function DesktopSidebar({
             onSubmit={(event) => void handleChangePassword(event)}
             className="w-full max-w-md rounded-2xl border border-hairline bg-card p-5 shadow-lg dark:border-white/[0.07]"
           >
-            <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start justify-between gap-[var(--grid-gap)]">
               <div>
                 <p className="text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-muted-foreground">
                   Account
@@ -391,21 +409,181 @@ function DesktopSidebar({
   );
 }
 
+function ConfigurationSidebarTree({ pathname }: { pathname: string }) {
+  const activeArea = configurationNavAreas.find((area) => area.match(pathname));
+  const isConfigurationRoute = pathname.startsWith("/settings") || pathname.startsWith("/indexers");
+  const [setupOpen, setSetupOpen] = useState(isConfigurationRoute);
+  const [openAreas, setOpenAreas] = useState<Set<string>>(() => new Set(activeArea ? [activeArea.label] : []));
+
+  useEffect(() => {
+    if (!isConfigurationRoute) return;
+    setSetupOpen(true);
+    if (activeArea) {
+      setOpenAreas((current) => new Set([...current, activeArea.label]));
+    }
+  }, [activeArea?.label, isConfigurationRoute]);
+
+  const toggleArea = (label: string) => {
+    setOpenAreas((current) => {
+      const next = new Set(current);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
+      return next;
+    });
+  };
+
+  return (
+    <div>
+      <div className="group relative flex min-h-[var(--shell-pill-height)] items-center rounded-2xl px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-nav-size)] font-semibold transition-all duration-200">
+        <NavLink
+          to="/settings"
+          className={({ isActive }) => cn(
+            "absolute inset-y-0 left-0 right-10 flex min-w-0 items-center gap-3 rounded-l-2xl pl-[calc(var(--shell-nav-pad-x)*0.55)] transition",
+            isActive || isConfigurationRoute ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <span className="flex h-[calc(var(--shell-pill-height)*0.68)] w-[calc(var(--shell-pill-height)*0.68)] shrink-0 items-center justify-center rounded-xl bg-muted/30 text-muted-foreground">
+            <DelunoNavGlyph kind="setup" className="h-[var(--shell-icon-size)] w-[var(--shell-icon-size)]" />
+          </span>
+          <span className="min-w-0 flex-1 whitespace-nowrap">Library setup</span>
+        </NavLink>
+        <button
+          type="button"
+          aria-label={`${setupOpen ? "Collapse" : "Expand"} Library setup`}
+          aria-expanded={setupOpen}
+          onClick={() => setSetupOpen((open) => !open)}
+          className="absolute inset-y-0 right-0 flex w-10 items-center justify-center rounded-r-2xl text-muted-foreground transition hover:bg-muted/50 hover:text-foreground"
+        >
+          <ChevronRight className={cn("h-4 w-4 transition-transform duration-200", setupOpen && "rotate-90 text-primary")} />
+        </button>
+      </div>
+
+      {setupOpen ? (
+        <div className="ml-[calc((var(--shell-nav-pad-x)*0.55)_+_1rem)] mt-1 space-y-1 pl-4">
+          {configurationNavAreas.map((area) => {
+            const hasChildren = area.items.some((item) => item.to !== area.to);
+            const isOpen = openAreas.has(area.label);
+            const isActive = activeArea?.label === area.label;
+            return (
+              <div key={area.label}>
+                <div className="relative flex min-h-8 items-center rounded-lg pr-8">
+                  <NavLink
+                    to={area.to}
+                    className={({ isActive: routeIsActive }) => cn(
+                      "flex min-w-0 flex-1 items-center rounded-xl px-2.5 py-2 text-[length:var(--shell-nav-size)] font-semibold transition",
+                      routeIsActive || isActive ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                    )}
+                  >
+                    {area.label}
+                  </NavLink>
+                  {hasChildren ? (
+                    <button
+                      type="button"
+                      aria-label={`${isOpen ? "Collapse" : "Expand"} ${area.label}`}
+                      aria-expanded={isOpen}
+                      onClick={() => toggleArea(area.label)}
+                      className="absolute inset-y-0 right-0 flex w-8 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-muted/50 hover:text-foreground"
+                    >
+                      <ChevronRight className={cn("h-3.5 w-3.5 transition-transform duration-200", isOpen && "rotate-90 text-primary")} />
+                    </button>
+                  ) : null}
+                </div>
+                {isOpen && hasChildren ? (
+                  <div className="ml-4 mt-1 space-y-1 pl-3">
+                    {area.items.filter((item) => item.to !== area.to).map((item) => (
+                      <NavLink
+                        key={item.to}
+                        to={item.to}
+                        end={item.end}
+                        className={({ isActive: routeIsActive }) => cn(
+                          "relative block rounded-lg px-3 py-2 text-[length:var(--shell-nav-size)] font-medium transition before:absolute before:left-0 before:top-1/2 before:h-1 before:w-1 before:-translate-y-1/2 before:rounded-full",
+                          routeIsActive ? "bg-primary/10 text-primary before:bg-primary" : "text-muted-foreground before:bg-muted-foreground/35 hover:bg-muted/40 hover:text-foreground"
+                        )}
+                      >
+                        {item.label}
+                      </NavLink>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function MaintenanceSidebarTree({ pathname }: { pathname: string }) {
+  const activeArea = maintenanceNavItems.find((area) => area.match(pathname));
+  const isMaintenanceRoute = Boolean(activeArea);
+  const [open, setOpen] = useState(isMaintenanceRoute);
+
+  useEffect(() => {
+    if (isMaintenanceRoute) setOpen(true);
+  }, [isMaintenanceRoute]);
+
+  const area = maintenanceNavItems[0];
+  return (
+    <div>
+      <div className="group relative flex min-h-[var(--shell-pill-height)] items-center rounded-2xl px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-nav-size)] font-semibold transition-all duration-200">
+        <NavLink
+          to={area.to}
+          className={({ isActive }) => cn(
+            "absolute inset-y-0 left-0 right-10 flex min-w-0 items-center gap-3 rounded-l-2xl pl-[calc(var(--shell-nav-pad-x)*0.55)] transition",
+            isActive || isMaintenanceRoute ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <span className={cn("flex h-[calc(var(--shell-pill-height)*0.68)] w-[calc(var(--shell-pill-height)*0.68)] shrink-0 items-center justify-center rounded-xl", isMaintenanceRoute ? "bg-primary/18 text-primary" : "bg-muted/30 text-muted-foreground")}>
+            <DelunoNavGlyph kind="system" className="h-[var(--shell-icon-size)] w-[var(--shell-icon-size)]" />
+          </span>
+          <span className="min-w-0 flex-1 whitespace-nowrap">System &amp; settings</span>
+        </NavLink>
+        <button
+          type="button"
+          aria-label={`${open ? "Collapse" : "Expand"} System & settings`}
+          aria-expanded={open}
+          onClick={() => setOpen((current) => !current)}
+          className="absolute inset-y-0 right-0 flex w-10 items-center justify-center rounded-r-2xl text-muted-foreground transition hover:bg-muted/50 hover:text-foreground"
+        >
+          <ChevronRight className={cn("h-4 w-4 transition-transform duration-200", open && "rotate-90 text-primary")} />
+        </button>
+      </div>
+      {open ? (
+        <div className="ml-[calc((var(--shell-nav-pad-x)*0.55)_+_1rem)] mt-1 space-y-1 pl-4">
+          {area.items.filter((item) => item.to !== area.to).map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              className={({ isActive }) => cn(
+                "relative block rounded-lg px-3 py-2 text-[length:var(--shell-nav-size)] font-medium transition before:absolute before:left-0 before:top-1/2 before:h-1 before:w-1 before:-translate-y-1/2 before:rounded-full",
+                isActive ? "bg-primary/10 text-primary before:bg-primary" : "text-muted-foreground before:bg-muted-foreground/35 hover:bg-muted/40 hover:text-foreground"
+              )}
+            >
+              {item.label}
+            </NavLink>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function SidebarItem({
   item,
   count
 }: {
-  item: { to: string; label: string; icon: ComponentType<{ className?: string; strokeWidth?: number }>; end: boolean };
+  item: { to: string; label: string; icon: DelunoNavGlyphKind; end: boolean };
   count: number;
 }) {
-  const Icon = item.icon;
   return (
     <NavLink
       to={item.to}
       end={item.end}
       className={({ isActive }) =>
         cn(
-          "group relative flex min-h-[var(--shell-pill-height)] items-center gap-3 rounded-2xl px-[var(--shell-nav-pad-x)] text-[length:var(--shell-nav-size)] font-semibold transition-all duration-200",
+          "group relative flex min-h-[var(--shell-pill-height)] items-center gap-3 rounded-2xl px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-nav-size)] font-semibold transition-all duration-200",
           isActive
             ? "bg-primary/14 text-foreground shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.18)]"
             : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
@@ -416,7 +594,7 @@ function SidebarItem({
         <>
           <span className={cn("absolute left-0 h-[calc(var(--shell-pill-height)*0.58)] w-[3px] rounded-full", isActive ? "bg-primary" : "bg-transparent")} />
           <span className={cn("flex h-[calc(var(--shell-pill-height)*0.68)] w-[calc(var(--shell-pill-height)*0.68)] shrink-0 items-center justify-center rounded-xl transition", isActive ? "bg-primary/18 text-primary" : "bg-muted/30 text-muted-foreground group-hover:text-foreground")}>
-            <Icon className="h-[var(--shell-icon-size)] w-[var(--shell-icon-size)]" strokeWidth={isActive ? 2.15 : 1.8} />
+            <DelunoNavGlyph kind={item.icon} className="h-[var(--shell-icon-size)] w-[var(--shell-icon-size)]" />
           </span>
           <span className="min-w-0 flex-1 whitespace-nowrap">{item.label}</span>
           {count > 0 ? (
@@ -477,14 +655,14 @@ function ContentTopbar({
   }, [densityOpen]);
 
   return (
-    <header className="sticky top-0 z-40 border-b border-hairline/70 bg-background/88 px-[var(--content-pad-inline)] py-4 backdrop-blur-2xl supports-[backdrop-filter]:bg-background/78 lg:py-5 dark:border-white/[0.05]">
-      <div className="flex w-full min-w-0 items-center gap-4">
+    <header className="sticky top-0 z-40 border-b border-hairline/70 bg-background/88 px-[var(--content-pad-inline)] py-3 backdrop-blur-2xl supports-[backdrop-filter]:bg-background/78 lg:py-3.5 dark:border-white/[0.05]">
+      <div className="flex w-full min-w-0 items-center gap-[var(--grid-gap)]">
         <NavLink to="/" aria-label="Deluno home" className="flex shrink-0 items-center no-underline lg:hidden">
           <AppMark />
         </NavLink>
 
         <div className="min-w-0 flex-1">
-          <p className="hidden text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-muted-foreground min-[520px]:block">{subtitle}</p>
+          <p className="text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.14em] text-muted-foreground">{subtitle}</p>
           <h1 className="mt-0.5 font-display text-[length:var(--type-title-sm)] font-semibold leading-tight tracking-tight text-foreground sm:mt-1 sm:text-[length:var(--type-title-md)]">
             {title}
           </h1>

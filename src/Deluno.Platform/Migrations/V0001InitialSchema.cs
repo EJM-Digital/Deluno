@@ -15,7 +15,14 @@ public static class PlatformDatabaseMigrations
         new V0007LibrarySearchWindows(),
         new V0008NotificationWebhooks(),
         new V0009CustomFormatTrashIds(),
-        new V0010IntakeSourceSyncConfig()
+        new V0010IntakeSourceSyncConfig(),
+        new V0011MigrationAuditReports(),
+        new V0012ProcessorHandoffs(),
+        new V0013RemoveLegacyDemoProfiles(),
+        new V0014IntakeListExclusions(),
+        new V0015ProcessorConnections(),
+        new V0016IntakeTitleOrigins(),
+        new V0017DownloadClientPathMappings()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

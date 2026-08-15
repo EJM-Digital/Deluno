@@ -10,9 +10,10 @@
 
 import { useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
-import { BookOpen, CheckCircle2, FlaskConical, LoaderCircle, PackagePlus, ShieldCheck, Sparkles, Trash2 } from "lucide-react";
+import { BookOpen, CheckCircle2, FlaskConical, LoaderCircle, PackagePlus, Plus, RotateCcw, ShieldCheck, Sparkles, Trash2, X } from "lucide-react";
 import { SettingsShell } from "../components/app/settings-shell";
 import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
 import { EmptyState } from "../components/shell/empty-state";
 import { CFLibraryBrowser } from "../components/app/cf-library-browser";
 import { CFCreator, type CFDraft } from "../components/app/cf-creator";
@@ -69,7 +70,7 @@ function conditionSummary(rawConditions: string | null | undefined): string {
       return `${arr.length} condition${arr.length !== 1 ? "s" : ""}`;
     } catch { /* fall through */ }
   }
-  return trimmed.split("\n").filter(Boolean).length + " rules (legacy)";
+  return trimmed.split("\n").filter(Boolean).length + " rules";
 }
 
 /* ── Dry-run types ───────────────────────────────────────────────── */
@@ -136,7 +137,7 @@ function ScoreBadge({ score }: { score: number }) {
 export function SettingsCustomFormatsPage() {
   const loaderData = useLoaderData() as LoaderData | undefined;
   if (!loaderData) return <RouteSkeleton />;
-  const { customFormats } = loaderData;
+  const { customFormats, settings } = loaderData;
   const revalidator = useRevalidator();
 
   const [tab, setTab] = useState<Tab>("library");
@@ -325,8 +326,8 @@ export function SettingsCustomFormatsPage() {
 
   return (
     <SettingsShell
-      title="Custom Formats"
-      description="Score releases by their traits. Add pre-built formats from the library or create your own — no regex or JSON required."
+      title="Release scoring"
+      description="Prefer or avoid releases by their traits. Deluno calls these rules Custom Formats for Radarr and Sonarr users; presets and custom rules are both available."
     >
       <PresetBundles
         selections={librarySelections}
@@ -358,11 +359,11 @@ export function SettingsCustomFormatsPage() {
 
       {/* ── Library tab ── */}
       {tab === "library" && (
-        <div className="space-y-4">
+        <div className="space-y-[var(--page-gap)]">
           <MediaTypePills
             value={libraryMediaType}
             onChange={(value) => setLibraryMediaType(value as "movies" | "tv")}
-            description="Choose which library type these built-in formats should be created for."
+            description="Choose which library type these included guide formats should be created for."
           />
           <CFLibraryBrowser
             selections={visibleLibrarySelections}
@@ -392,7 +393,7 @@ export function SettingsCustomFormatsPage() {
                         {bundled && (
                           <span className="flex items-center gap-1 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-wide text-emerald-400">
                             <BookOpen className="h-2.5 w-2.5" />
-                            TRaSH built-in
+                            TRaSH Guide
                           </span>
                         )}
                       </div>
@@ -451,7 +452,7 @@ export function SettingsCustomFormatsPage() {
 
       {/* ── Create tab ── */}
       {tab === "create" && (
-        <div className="rounded-2xl border border-hairline bg-surface-1 p-6">
+        <div className="rounded-2xl border border-hairline bg-surface-1 p-[var(--tile-pad)]">
           <CFCreator
             onSave={handleCreatorSave}
             onCancel={() => setTab("mine")}
@@ -463,9 +464,83 @@ export function SettingsCustomFormatsPage() {
       {tab === "test" && (
         <DryRunPanel formats={customFormats} />
       )}
+
+      <ReleaseSafeguards settings={settings} />
     </SettingsShell>
   );
 }
+
+function ReleaseSafeguards({ settings }: { settings: PlatformSettingsSnapshot }) {
+  const [scoringMode, setScoringMode] = useState(settings.searchScoringMode);
+  const [rules, setRules] = useState(() => splitRules(settings.releaseNeverGrabPatterns));
+  const [newRule, setNewRule] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const addRule = () => {
+    const value = newRule.trim();
+    if (!value || rules.some((rule) => rule.toLowerCase() === value.toLowerCase())) return;
+    setRules((current) => [...current, value]);
+    setNewRule("");
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const response = await authedFetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...settings,
+          searchScoringMode: scoringMode,
+          releaseNeverGrabPatterns: rules.join("\n")
+        })
+      });
+      if (!response.ok) throw new Error("Could not save release safeguards.");
+      toast.success("Release safeguards saved.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save release safeguards.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <details className="rounded-2xl border border-hairline bg-surface-1 p-[var(--tile-pad)]">
+      <summary className="cursor-pointer font-semibold text-foreground">Advanced: release safeguards</summary>
+      <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">Set the final guardrails applied to every release after its quality and format score are evaluated.</p>
+      <div className="mt-4 grid gap-[var(--grid-gap)] lg:grid-cols-2">
+        <label className="block text-sm font-semibold text-foreground">
+          Search selection style
+          <select value={scoringMode} onChange={(event) => setScoringMode(event.target.value)} className="mt-2 h-[var(--control-height)] w-full rounded-xl border border-hairline bg-background px-3 text-sm text-foreground">
+            <option value="hybrid">Hybrid (rules + ranking)</option>
+            <option value="rules-only">Rules only</option>
+            <option value="ml-only">Ranking only</option>
+          </select>
+          <span className="mt-2 block text-sm font-normal leading-relaxed text-muted-foreground">Hybrid is the normal choice. Use Rules only when you want your configured policy to be the sole decision-maker.</span>
+        </label>
+        <div>
+          <p className="text-sm font-semibold text-foreground">Never grab</p>
+          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">Reject releases containing these words or release groups. This is plain text matching; no regex is required.</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {rules.map((rule) => <span key={rule} className="inline-flex items-center gap-2 rounded-full border border-hairline bg-background px-3 py-1 text-sm text-foreground">{rule}<button type="button" aria-label={`Remove ${rule}`} className="text-muted-foreground hover:text-destructive" onClick={() => setRules((current) => current.filter((item) => item !== rule))}><X className="h-3.5 w-3.5" /></button></span>)}
+          </div>
+          <div className="mt-3 flex gap-2">
+            <Input value={newRule} onChange={(event) => setNewRule(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addRule(); } }} placeholder="Word, phrase, or release group" />
+            <Button type="button" variant="outline" onClick={addRule}><Plus className="h-4 w-4" />Add</Button>
+            <Button type="button" variant="ghost" onClick={() => setRules(DEFAULT_NEVER_GRAB_RULES)} title="Restore common unsafe-release rules"><RotateCcw className="h-4 w-4" />Defaults</Button>
+          </div>
+        </div>
+      </div>
+      <Button type="button" className="mt-4" disabled={saving} onClick={() => void save()}>{saving ? "Saving…" : "Save release safeguards"}</Button>
+    </details>
+  );
+}
+
+function splitRules(value: string) {
+  return value.split(/\r?\n|,/).map((item) => item.trim()).filter(Boolean);
+}
+
+const DEFAULT_NEVER_GRAB_RULES = ["cam", "camrip", "telesync", "telecine", "workprint", "screener", "sample", "trailer", "extras"];
 
 /* ── Dry-run panel ───────────────────────────────────────────────── */
 function DryRunPanel({ formats }: { formats: CustomFormatItem[] }) {
@@ -495,9 +570,9 @@ function DryRunPanel({ formats }: { formats: CustomFormatItem[] }) {
   const missed = results?.filter((r) => !r.isMatch) ?? [];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-[var(--page-gap)]">
       {/* Input */}
-      <div className="rounded-2xl border border-hairline bg-surface-1 p-5">
+      <div className="rounded-2xl border border-hairline bg-surface-1 p-[var(--tile-pad)]">
         <p className="mb-2 text-[12px] font-semibold uppercase tracking-widest text-muted-foreground">Release name</p>
         <MediaTypePills
           value={mediaType}
@@ -529,9 +604,9 @@ function DryRunPanel({ formats }: { formats: CustomFormatItem[] }) {
       </div>
 
       {results && (
-        <div className="space-y-4">
+        <div className="space-y-[var(--page-gap)]">
           {/* Summary row */}
-          <div className="flex items-center gap-4 rounded-2xl border border-hairline bg-surface-1 px-4 py-3">
+          <div className="flex items-center gap-[var(--grid-gap)] rounded-2xl border border-hairline bg-surface-1 px-4 py-3">
             <span className="text-[13px] font-medium text-foreground">{results.length} format{results.length !== 1 ? "s" : ""} evaluated</span>
             <span className="rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 font-mono text-[11px] font-bold text-primary">
               {matched.length} matched · {matched.reduce((s, r) => s + r.score, 0) > 0 ? "+" : ""}{matched.reduce((s, r) => s + r.score, 0)} pts

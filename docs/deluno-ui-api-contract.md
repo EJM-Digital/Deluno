@@ -172,7 +172,9 @@ Implemented endpoints:
 
 Current behavior:
 
-- provider fallback chain is broker -> TMDb direct -> OMDb fallback -> stale cache
+- launch provider chain is broker -> TMDb direct fallback -> stale cache; legacy
+  OMDb support is retained only for migration compatibility and is not part of
+  the managed launch service
 - artwork URLs from provider responses are localized into Deluno's cached artwork route when downloadable
 - metadata refresh jobs can be queued manually from movie/series routes, and maintenance automation schedules stale or missing metadata refreshes
 - manual override routes allow users to patch metadata fields when provider payloads are incomplete

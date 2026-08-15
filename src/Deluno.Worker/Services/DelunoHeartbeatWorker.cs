@@ -75,6 +75,7 @@ public sealed class DelunoHeartbeatWorker(
             var acquisitionPipeline = scope.ServiceProvider.GetRequiredService<IAcquisitionDecisionPipeline>();
             var downloadClientGrabService = scope.ServiceProvider.GetRequiredService<IDownloadClientGrabService>();
             var downloadClientTelemetryService = scope.ServiceProvider.GetRequiredService<IDownloadClientTelemetryService>();
+            var processorConnectionService = scope.ServiceProvider.GetRequiredService<IProcessorConnectionService>();
             var metadataProvider = scope.ServiceProvider.GetRequiredService<IMetadataProvider>();
             var importPipelineService = scope.ServiceProvider.GetRequiredService<IImportPipelineService>();
             var movieCatalogRepository = scope.ServiceProvider.GetRequiredService<IMovieCatalogRepository>();
@@ -120,6 +121,7 @@ public sealed class DelunoHeartbeatWorker(
                     jobQueueRepository,
                     platformSettingsRepository,
                     downloadClientTelemetryService,
+                    processorConnectionService,
                     activityFeedRepository,
                     movieCatalogRepository,
                     seriesCatalogRepository,
@@ -320,6 +322,7 @@ public sealed class DelunoHeartbeatWorker(
         IJobQueueRepository jobQueueRepository,
         IPlatformSettingsRepository platformSettingsRepository,
         IDownloadClientTelemetryService downloadClientTelemetryService,
+        IProcessorConnectionService processorConnectionService,
         IActivityFeedRepository activityFeedRepository,
         IMovieCatalogRepository movieCatalogRepository,
         ISeriesCatalogRepository seriesCatalogRepository,
@@ -349,13 +352,23 @@ public sealed class DelunoHeartbeatWorker(
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var recentWaiting = await activityFeedRepository.ListActivityAsync(150, null, null, cancellationToken);
-        await PlanProcessorOutputImportsAsync(
+        await ReconcileMatchedProcessorOutputsAsync(
             jobScheduler,
+            platformSettingsRepository,
             activityFeedRepository,
             libraries,
             knownImportSources,
             cancellationToken);
+        await RecordUnmatchedProcessorOutputsAsync(
+            activityFeedRepository,
+            movieCatalogRepository,
+            seriesCatalogRepository,
+            libraries,
+            knownImportSources,
+            recentWaiting,
+            cancellationToken);
         await RecordProcessorTimeoutsAsync(
+            platformSettingsRepository,
             activityFeedRepository,
             movieCatalogRepository,
             seriesCatalogRepository,
@@ -371,6 +384,7 @@ public sealed class DelunoHeartbeatWorker(
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var telemetry = await downloadClientTelemetryService.GetOverviewAsync(cancellationToken);
+        await downloadClientTelemetryService.RunConfiguredHealthRemediationAsync(telemetry, cancellationToken);
         foreach (var item in telemetry.Clients.SelectMany(client => client.Queue))
         {
             if (item.Status is not ("importReady" or "completed"))
@@ -397,18 +411,69 @@ public sealed class DelunoHeartbeatWorker(
 
             if (string.Equals(library.ImportWorkflow, "refine-before-import", StringComparison.OrdinalIgnoreCase))
             {
-                var waitKey = $"{item.ClientId}:{item.Id}:{sourceKey}";
-                if (recentWaitingKeys.Add(waitKey))
+                var handoff = await platformSettingsRepository.EnsureProcessorHandoffAsync(
+                    new CreateProcessorHandoffRequest(
+                        library.Id,
+                        library.MediaType,
+                        item.ClientId,
+                        item.Id,
+                        item.ReleaseName,
+                        item.SourcePath,
+                        library.ProcessorName),
+                    cancellationToken);
+                var currentHandoff = handoff;
+                ProcessorSubmissionResult? submission = null;
+                var connection = await platformSettingsRepository.FindProcessorConnectionByNameAsync(library.ProcessorName, cancellationToken);
+                if (connection is { IsEnabled: true } && handoff.Status == "waiting")
                 {
+                    submission = await processorConnectionService.SubmitAsync(connection, handoff, cancellationToken);
+                    currentHandoff = await platformSettingsRepository.UpdateProcessorHandoffAsync(
+                        handoff.Id,
+                        submission.Status,
+                        null,
+                        null,
+                        submission.IsAccepted ? null : submission.Message,
+                        cancellationToken) ?? handoff;
+                    await platformSettingsRepository.RecordProcessorConnectionHealthAsync(
+                        connection.Id,
+                        submission.IsAccepted ? "healthy" : "degraded",
+                        submission.Message,
+                        cancellationToken);
+                    await activityFeedRepository.RecordActivityAsync(
+                        submission.IsAccepted ? "processing.submitted" : "processing.submission-failed",
+                        submission.IsAccepted
+                            ? $"Deluno submitted {item.Title} to {connection.Name}."
+                            : $"Deluno could not submit {item.Title} to {connection.Name}. {submission.Message}",
+                        JsonSerializer.Serialize(new
+                        {
+                            HandoffId = handoff.Id,
+                            ConnectionId = connection.Id,
+                            connection.Name,
+                            connection.Provider,
+                            submission.Status,
+                            submission.StatusCode
+                        }, PayloadJsonOptions),
+                        null,
+                        "processor-handoff",
+                        handoff.Id,
+                        cancellationToken);
+                }
+                var waitKey = handoff.Id;
+                if (currentHandoff.Status != "failed" && recentWaitingKeys.Add(waitKey))
+                {
+                    var waitingMessage = submission?.IsAccepted == true
+                        ? $"Deluno submitted {item.Title} to {connection!.Name} and is waiting for a cleaned output."
+                        : $"{item.Title} is complete in {item.ClientName}; Deluno is waiting for {library.ProcessorName ?? "the configured processor"} to produce a cleaned output.";
                     await activityFeedRepository.RecordActivityAsync(
                         "processing.waiting",
-                        $"{item.Title} is complete in {item.ClientName}; Deluno is waiting for {library.ProcessorName ?? "the configured processor"} to produce a cleaned output.",
+                        waitingMessage,
                         JsonSerializer.Serialize(new
                         {
                             item.ClientId,
                             item.ClientName,
                             item.ReleaseName,
                             item.SourcePath,
+                            HandoffId = handoff.Id,
                             library.Id,
                             library.Name,
                             library.ProcessorName,
@@ -515,12 +580,14 @@ public sealed class DelunoHeartbeatWorker(
                     var retryDelayed = ignoreRetryWindow
                         ? 0
                         : await movieCatalogRepository.CountRetryDelayedWantedAsync(payload.LibraryId, now, cancellationToken);
-                    var candidates = await movieCatalogRepository.ListEligibleWantedAsync(
+                    var candidates = (await movieCatalogRepository.ListEligibleWantedAsync(
                         payload.LibraryId,
                         payload.MaxItems,
                         now,
                         ignoreRetryWindow,
-                        cancellationToken);
+                        cancellationToken))
+                        .Where(candidate => string.IsNullOrWhiteSpace(payload.TargetEntityId) || string.Equals(candidate.MovieId, payload.TargetEntityId, StringComparison.OrdinalIgnoreCase))
+                        .ToArray();
                     var matchedCount = 0;
                     var blockedCount = 0;
                     var checkedCount = 0;
@@ -530,6 +597,37 @@ public sealed class DelunoHeartbeatWorker(
 
                     foreach (var candidate in candidates)
                     {
+                        if (!ignoreRetryWindow && await movieCatalogRepository.ConsumeSkipNextWantedSearchAsync(
+                                candidate.MovieId,
+                                payload.LibraryId,
+                                cancellationToken))
+                        {
+                            var skippedNextEligibleUtc = now.AddHours(Math.Max(1, payload.RetryDelayHours));
+                            await movieCatalogRepository.RecordSearchAttemptAsync(
+                                candidate.MovieId,
+                                payload.LibraryId,
+                                payload.TriggeredBy,
+                                "skipped",
+                                now,
+                                skippedNextEligibleUtc,
+                                "Skipped one scheduled search by user request.",
+                                null,
+                                null,
+                                null,
+                                cancellationToken);
+                            await jobQueueRepository.RecordSearchRetryWindowAsync(
+                                "movie",
+                                candidate.MovieId,
+                                payload.LibraryId,
+                                "movies",
+                                NormalizeActionKind(candidate.WantedStatus),
+                                skippedNextEligibleUtc,
+                                now,
+                                "skipped",
+                                cancellationToken);
+                            continue;
+                        }
+
                         var decisionPlan = await acquisitionPipeline.PlanAsync(
                             new AcquisitionDecisionRequest(
                                 candidate.Title,
@@ -628,8 +726,8 @@ public sealed class DelunoHeartbeatWorker(
                             payload.LibraryName,
                             "movies",
                             payload.TriggeredBy,
-                            candidates.Count > 0 || retryDelayed > 0 ? "completed" : "empty",
-                            candidates.Count,
+                            candidates.Length > 0 || retryDelayed > 0 ? "completed" : "empty",
+                            candidates.Length,
                             matchedCount,
                             retryDelayed,
                             SerializeCycleNotes(configuredSources, configuredClients, checkedCount, matchedCount, blockedCount, heldCount, retryDelayed, payload.MaxItems, apiCallCount, queuedReleaseBytes),
@@ -639,22 +737,24 @@ public sealed class DelunoHeartbeatWorker(
 
                     await activityFeedRepository.RecordActivityAsync(
                         "library.search.executed",
-                        FormatExecutionMessage(payload.LibraryName, candidates.Count, configuredSources, configuredClients, "movie"),
+                        FormatExecutionMessage(payload.LibraryName, candidates.Length, configuredSources, configuredClients, "movie"),
                         null,
                         job.Id,
                         "library",
                         payload.LibraryId,
                         cancellationToken);
 
-                    return FormatCompletionMessage(payload.LibraryName, candidates.Count, configuredSources, configuredClients, "movie");
+                    return FormatCompletionMessage(payload.LibraryName, candidates.Length, configuredSources, configuredClients, "movie");
                 }
 
-                var seriesCandidates = await seriesCatalogRepository.ListEligibleWantedAsync(
+                var seriesCandidates = (await seriesCatalogRepository.ListEligibleWantedAsync(
                     payload.LibraryId,
                     payload.MaxItems,
                     now,
                     string.Equals(payload.TriggeredBy, "manual", StringComparison.OrdinalIgnoreCase),
-                    cancellationToken);
+                    cancellationToken))
+                    .Where(candidate => string.IsNullOrWhiteSpace(payload.TargetEntityId) || string.Equals(candidate.SeriesId, payload.TargetEntityId, StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
                 var seriesIgnoreRetryWindow = string.Equals(payload.TriggeredBy, "manual", StringComparison.OrdinalIgnoreCase);
                 var seriesStartedUtc = now;
                 var seriesRetryDelayed = seriesIgnoreRetryWindow
@@ -669,6 +769,38 @@ public sealed class DelunoHeartbeatWorker(
 
                 foreach (var candidate in seriesCandidates)
                 {
+                    if (!seriesIgnoreRetryWindow && await seriesCatalogRepository.ConsumeSkipNextWantedSearchAsync(
+                            candidate.SeriesId,
+                            payload.LibraryId,
+                            cancellationToken))
+                    {
+                        var skippedNextEligibleUtc = now.AddHours(Math.Max(1, payload.RetryDelayHours));
+                        await seriesCatalogRepository.RecordSearchAttemptAsync(
+                            candidate.SeriesId,
+                            null,
+                            payload.LibraryId,
+                            payload.TriggeredBy,
+                            "skipped",
+                            now,
+                            skippedNextEligibleUtc,
+                            "Skipped one scheduled search by user request.",
+                            null,
+                            null,
+                            null,
+                            cancellationToken);
+                        await jobQueueRepository.RecordSearchRetryWindowAsync(
+                            "series",
+                            candidate.SeriesId,
+                            payload.LibraryId,
+                            "tv",
+                            NormalizeActionKind(candidate.WantedStatus),
+                            skippedNextEligibleUtc,
+                            now,
+                            "skipped",
+                            cancellationToken);
+                        continue;
+                    }
+
                     var decisionPlan = await acquisitionPipeline.PlanAsync(
                         new AcquisitionDecisionRequest(
                             candidate.Title,
@@ -768,8 +900,8 @@ public sealed class DelunoHeartbeatWorker(
                         payload.LibraryName,
                         "tv",
                         payload.TriggeredBy,
-                        seriesCandidates.Count > 0 || seriesRetryDelayed > 0 ? "completed" : "empty",
-                        seriesCandidates.Count,
+                        seriesCandidates.Length > 0 || seriesRetryDelayed > 0 ? "completed" : "empty",
+                        seriesCandidates.Length,
                         seriesMatchedCount,
                         seriesRetryDelayed,
                         SerializeCycleNotes(configuredSources, configuredClients, seriesCheckedCount, seriesMatchedCount, seriesBlockedCount, seriesHeldCount, seriesRetryDelayed, payload.MaxItems, seriesApiCallCount, seriesQueuedReleaseBytes),
@@ -779,14 +911,14 @@ public sealed class DelunoHeartbeatWorker(
 
                 await activityFeedRepository.RecordActivityAsync(
                     "library.search.executed",
-                    FormatExecutionMessage(payload.LibraryName, seriesCandidates.Count, configuredSources, configuredClients, "TV show"),
+                    FormatExecutionMessage(payload.LibraryName, seriesCandidates.Length, configuredSources, configuredClients, "TV show"),
                     null,
                     job.Id,
                     "library",
                     payload.LibraryId,
                     cancellationToken);
 
-                return FormatCompletionMessage(payload.LibraryName, seriesCandidates.Count, configuredSources, configuredClients, "TV show");
+                return FormatCompletionMessage(payload.LibraryName, seriesCandidates.Length, configuredSources, configuredClients, "TV show");
             }
 
             return "Finished checking a library.";
@@ -916,13 +1048,20 @@ public sealed class DelunoHeartbeatWorker(
         return $"Intake sync completed for {result.SourceName}: {result.Summary}";
     }
 
-    private static async Task PlanProcessorOutputImportsAsync(
-        IJobScheduler jobScheduler,
+    private static async Task RecordUnmatchedProcessorOutputsAsync(
         IActivityFeedRepository activityFeedRepository,
+        IMovieCatalogRepository movieCatalogRepository,
+        ISeriesCatalogRepository seriesCatalogRepository,
         IReadOnlyList<LibraryItem> libraries,
         ISet<string> knownImportSources,
+        IReadOnlyList<ActivityEventItem> recentActivity,
         CancellationToken cancellationToken)
     {
+        var reportedOutputKeys = recentActivity
+            .Where(item => item.Category == "processing.output.unmatched")
+            .Select(item => item.RelatedEntityId)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var refineLibraries = libraries
             .Where(library =>
                 string.Equals(library.ImportWorkflow, "refine-before-import", StringComparison.OrdinalIgnoreCase) &&
@@ -969,53 +1108,199 @@ public sealed class DelunoHeartbeatWorker(
                     continue;
                 }
 
+                var outputKey = $"{library.Id}:{Path.GetFileName(file).ToLowerInvariant()}";
+                if (!reportedOutputKeys.Add(outputKey))
+                {
+                    continue;
+                }
+
                 var title = Path.GetFileNameWithoutExtension(file);
-                var request = new ImportExecuteRequest(
-                    Preview: new ImportPreviewRequest(
-                        SourcePath: file,
-                        FileName: Path.GetFileName(file),
-                        MediaType: library.MediaType,
-                        Title: title,
-                        Year: InferYear(title),
-                        Genres: [],
-                        Tags: ["processed"],
-                        Studio: null,
-                        OriginalLanguage: null),
-                    TransferMode: "auto",
-                    Overwrite: false,
-                    AllowCopyFallback: true,
-                    ForceReplacement: false);
-
-                var job = await jobScheduler.EnqueueAsync(
-                    new EnqueueJobRequest(
-                        JobType: "filesystem.import.execute",
-                        Source: "processor-output-watcher",
-                        PayloadJson: JsonSerializer.Serialize(request, PayloadJsonOptions),
-                        RelatedEntityType: library.MediaType == "tv" ? "series" : "movie",
-                        RelatedEntityId: null),
-                    cancellationToken);
-
-                knownImportSources.Add(sourceKey);
+                var summary = $"Deluno found a cleaned output in {library.Name}, but cannot safely match it to a download hand-off.";
+                var recommendation = "Use the processor callback with Deluno's hand-off ID, or review this file and import it manually. Deluno did not import it automatically.";
+                if (library.MediaType == "tv")
+                {
+                    await seriesCatalogRepository.AddImportRecoveryCaseAsync(
+                        new CreateSeriesImportRecoveryCaseRequest(title, "processor-unmatched-output", summary, recommendation, JsonSerializer.Serialize(new { LibraryId = library.Id, FileName = Path.GetFileName(file) }, PayloadJsonOptions)),
+                        cancellationToken);
+                }
+                else
+                {
+                    await movieCatalogRepository.AddImportRecoveryCaseAsync(
+                        new CreateMovieImportRecoveryCaseRequest(title, "processor-unmatched-output", summary, recommendation, JsonSerializer.Serialize(new { LibraryId = library.Id, FileName = Path.GetFileName(file) }, PayloadJsonOptions)),
+                        cancellationToken);
+                }
                 await activityFeedRepository.RecordActivityAsync(
-                    "processing.output.import-queued",
-                    $"{library.ProcessorName ?? "Processor"} output was detected and queued for import into {library.Name}.",
+                    "processing.output.unmatched",
+                    summary,
                     JsonSerializer.Serialize(new
                     {
                         LibraryId = library.Id,
                         LibraryName = library.Name,
                         library.MediaType,
-                        SourcePath = file,
-                        JobId = job.Id
+                        FileName = Path.GetFileName(file),
+                        Recommendation = recommendation
                     }, PayloadJsonOptions),
-                    job.Id,
-                    "library",
-                    library.Id,
+                    null,
+                    "processor-output",
+                    outputKey,
                     cancellationToken);
             }
         }
     }
 
+    /// <summary>
+    /// Completes the processor-agnostic path. A processor does not need to call
+    /// Deluno or use a vendor adapter: it writes its result below the configured
+    /// processed-output root while retaining the final source-folder name. That
+    /// one stable path component lets Deluno match the output to a durable
+    /// hand-off without guessing from a release title.
+    /// </summary>
+    private static async Task ReconcileMatchedProcessorOutputsAsync(
+        IJobScheduler jobScheduler,
+        IPlatformSettingsRepository platformSettingsRepository,
+        IActivityFeedRepository activityFeedRepository,
+        IReadOnlyList<LibraryItem> libraries,
+        ISet<string> knownImportSources,
+        CancellationToken cancellationToken)
+    {
+        var waitingStatuses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "waiting", "submitted", "accepted", "started"
+        };
+        var handoffs = await platformSettingsRepository.ListProcessorHandoffsAsync(null, 250, cancellationToken);
+
+        foreach (var handoff in handoffs.Where(item => waitingStatuses.Contains(item.Status)))
+        {
+            var library = libraries.FirstOrDefault(item =>
+                string.Equals(item.Id, handoff.LibraryId, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(item.ImportWorkflow, "refine-before-import", StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrWhiteSpace(item.ProcessorOutputPath));
+            if (library is null)
+            {
+                continue;
+            }
+
+            var candidates = FindCorrelatedProcessorOutputs(library.ProcessorOutputPath!, handoff.SourcePath)
+                .Where(path => !knownImportSources.Contains(NormalizeSourceKey(path)))
+                .ToArray();
+            if (candidates.Length != 1)
+            {
+                continue;
+            }
+
+            var outputPath = candidates[0];
+            var importPayload = new
+            {
+                preview = new
+                {
+                    sourcePath = outputPath,
+                    fileName = Path.GetFileName(outputPath),
+                    mediaType = library.MediaType,
+                    title = Path.GetFileNameWithoutExtension(outputPath),
+                    year = (int?)null,
+                    genres = Array.Empty<string>(),
+                    tags = new[] { "processed" },
+                    studio = (string?)null,
+                    originalLanguage = (string?)null
+                },
+                transferMode = "auto",
+                overwrite = false,
+                allowCopyFallback = true,
+                forceReplacement = false
+            };
+
+            var importJob = await jobScheduler.EnqueueAsync(
+                new EnqueueJobRequest(
+                    JobType: "filesystem.import.execute",
+                    Source: "processor-output-watch",
+                    PayloadJson: JsonSerializer.Serialize(importPayload),
+                    RelatedEntityType: library.MediaType == "tv" ? "series" : "movie",
+                    RelatedEntityId: null,
+                    IdempotencyKey: $"processor-output:{library.Id}:{Path.GetFullPath(outputPath).ToLowerInvariant()}"),
+                cancellationToken);
+
+            await platformSettingsRepository.UpdateProcessorHandoffAsync(
+                handoff.Id,
+                "completed",
+                outputPath,
+                importJob.Id,
+                null,
+                cancellationToken);
+            knownImportSources.Add(NormalizeSourceKey(outputPath));
+            await activityFeedRepository.RecordActivityAsync(
+                "processing.output.matched.import-queued",
+                $"Deluno matched processed output for {handoff.ReleaseName} and queued it for import.",
+                JsonSerializer.Serialize(new
+                {
+                    HandoffId = handoff.Id,
+                    library.Id,
+                    library.Name,
+                    SourcePath = handoff.SourcePath,
+                    OutputPath = outputPath,
+                    JobId = importJob.Id,
+                    Match = "stable processed-output subfolder"
+                }, PayloadJsonOptions),
+                importJob.Id,
+                "processor-handoff",
+                handoff.Id,
+                cancellationToken);
+        }
+    }
+
+    private static IReadOnlyList<string> FindCorrelatedProcessorOutputs(string outputRoot, string sourcePath)
+    {
+        if (string.IsNullOrWhiteSpace(outputRoot) || string.IsNullOrWhiteSpace(sourcePath))
+        {
+            return [];
+        }
+
+        try
+        {
+            var root = Path.GetFullPath(outputRoot);
+            if (!Directory.Exists(root))
+            {
+                return [];
+            }
+
+            var sourceLeaf = Path.GetFileName(Path.TrimEndingDirectorySeparator(sourcePath));
+            if (string.IsNullOrWhiteSpace(sourceLeaf) || sourceLeaf is "." or "..")
+            {
+                return [];
+            }
+
+            var directoryNames = new[]
+            {
+                sourceLeaf,
+                Path.GetFileNameWithoutExtension(sourceLeaf)
+            }
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Distinct(StringComparer.OrdinalIgnoreCase);
+            var matches = new List<string>();
+            foreach (var directoryName in directoryNames)
+            {
+                var expectedDirectory = Path.GetFullPath(Path.Combine(root, directoryName));
+                if (!expectedDirectory.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+                    !Directory.Exists(expectedDirectory))
+                {
+                    continue;
+                }
+
+                matches.AddRange(Directory.EnumerateFiles(expectedDirectory, "*.*", SearchOption.AllDirectories)
+                    .Where(IsImportableVideoFile)
+                    .OrderByDescending(File.GetLastWriteTimeUtc)
+                    .Take(2));
+            }
+
+            return matches.Distinct(StringComparer.OrdinalIgnoreCase).Take(2).ToArray();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            return [];
+        }
+    }
+
     private static async Task RecordProcessorTimeoutsAsync(
+        IPlatformSettingsRepository platformSettingsRepository,
         IActivityFeedRepository activityFeedRepository,
         IMovieCatalogRepository movieCatalogRepository,
         ISeriesCatalogRepository seriesCatalogRepository,
@@ -1074,6 +1359,14 @@ public sealed class DelunoHeartbeatWorker(
                     new CreateMovieImportRecoveryCaseRequest(title, "processor-timeout", summary, recommended, waiting.DetailsJson),
                     cancellationToken);
             }
+
+            await platformSettingsRepository.UpdateProcessorHandoffAsync(
+                waiting.RelatedEntityId,
+                "timed-out",
+                null,
+                null,
+                summary,
+                cancellationToken);
 
             await activityFeedRepository.RecordActivityAsync(
                 "processing.timeout",
@@ -1508,6 +1801,16 @@ public sealed class DelunoHeartbeatWorker(
 
     private static LibraryItem? ResolveLibraryForQueueItem(DownloadQueueItem item, IReadOnlyList<LibraryItem> libraries)
     {
+        if (!string.IsNullOrWhiteSpace(item.LibraryId))
+        {
+            var assignedLibrary = libraries.FirstOrDefault(library =>
+                string.Equals(library.Id, item.LibraryId, StringComparison.OrdinalIgnoreCase));
+            if (assignedLibrary is not null)
+            {
+                return assignedLibrary;
+            }
+        }
+
         var normalizedMediaType = item.MediaType.Equals("tv", StringComparison.OrdinalIgnoreCase) ||
             item.MediaType.Equals("series", StringComparison.OrdinalIgnoreCase)
             ? "tv"
@@ -1625,7 +1928,8 @@ public sealed class DelunoHeartbeatWorker(
         bool CheckUpgrades,
         int MaxItems,
         int RetryDelayHours,
-        string TriggeredBy);
+        string TriggeredBy,
+        string? TargetEntityId = null);
 
     private sealed record LibraryQualityPayload(
         string LibraryId,

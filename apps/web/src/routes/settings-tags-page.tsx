@@ -126,7 +126,7 @@ export function SettingsTagsPage() {
   return (
     <SettingsShell
       title="Tags"
-      description="Tags are now a real Deluno platform object. They will become the shared control surface for routing, lists, and future custom-format policy."
+      description="Create a shared set of labels for the libraries, destination rules, and routing rules you organise together."
     >
       {message ? (
         <div className="rounded-xl border border-hairline bg-surface-1 px-4 py-3 text-sm text-muted-foreground">
@@ -138,7 +138,7 @@ export function SettingsTagsPage() {
         <Card className="settings-panel order-2">
           <CardHeader>
             <CardTitle>Configured tags</CardTitle>
-            <CardDescription>Live tags Deluno can now persist and reuse across future policy surfaces.</CardDescription>
+            <CardDescription>Reusable labels saved for consistent use across your media setup.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {tags.length ? (
@@ -247,7 +247,7 @@ export function SettingsTagsPage() {
         <Card className="settings-panel order-1">
           <CardHeader>
             <CardTitle>Add tag</CardTitle>
-            <CardDescription>Start the tag library now; assignment will be layered onto routing, lists, and title operations next.</CardDescription>
+            <CardDescription>Use short, recognisable names so the same label means the same thing everywhere you use it.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-[var(--page-gap)]">
             <form className="space-y-3" onSubmit={handleCreate}>
@@ -276,9 +276,9 @@ export function SettingsTagsPage() {
             </form>
 
             <div className="density-help space-y-3 text-muted-foreground">
-              <BacklogRow title="Libraries ready to tag" copy={`${libraries.length} libraries are already live and are the first obvious assignment targets.`} />
-              <BacklogRow title="Routing next" copy="Tags can now become real required/excluded routing gates instead of free-text-only concepts." />
-              <BacklogRow title="Lists and formats later" copy="This stored tag model gives Deluno a clean shared primitive for future list intake and custom-format targeting." />
+              <BacklogRow title="Start with a purpose" copy="Use tags for a clear distinction such as Kids, 4K, Anime, or a processor workflow." />
+              <BacklogRow title="Keep labels consistent" copy="Use the same spelling wherever a library, destination rule, or routing rule refers to that tag." />
+              <BacklogRow title="Keep the list focused" copy={`${libraries.length} library${libraries.length === 1 ? " is" : "ies are"} configured. Add only the labels that help you manage them differently.`} />
             </div>
           </CardContent>
         </Card>

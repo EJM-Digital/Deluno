@@ -1,19 +1,19 @@
 # Deluno 1.0.0 Release Notes (Draft)
 
-Updated: 2026-05-14
+Updated: 2026-08-13
 
 Status: draft for issue #86. Finalize this file against the approved GA candidate tag before publication.
 
 ## Summary
 
-Deluno 1.0.0 is the first GA release for the current Windows packaged update model and operational workflow baseline.
+Deluno 1.0.0 is planned as the first GA release for the current Windows packaged update model and operational workflow baseline. This draft must be finalized only after the approved GA candidate has passed the release gates.
 
 Highlights:
 
-- stable Windows packaged release path for `1.x`
-- validated installer, upgrade, and rollback matrix
-- production-focused backup/restore runbook and recovery drill coverage
-- hardened release governance with RC and GA gate criteria
+- Windows packaged release path for `1.x`
+- installer, upgrade, and rollback evidence (once the clean-machine matrix is complete)
+- backup/restore runbook and recovery drill coverage
+- RC and GA release governance
 
 ## Upgrade Path
 
@@ -26,7 +26,7 @@ From latest `0.1.x`:
 
 Detailed guide:
 
-- [upgrade-guide-0x-to-1x.md](/C:/Users/User/Projects/Deluno/docs/upgrade-guide-0x-to-1x.md)
+- [Upgrade guide: 0.x to 1.x](./upgrade-guide-0x-to-1x.md)
 
 ## Windows Packaging and Updates
 
@@ -43,16 +43,11 @@ Detailed guide:
 
 ### Windows signing note
 
-When a signing certificate is configured, Windows artifacts are Authenticode signed.
-Unsigned artifacts may be blocked in stricter Windows security configurations; use the portable zip fallback and verify `SHA256SUMS.txt`.
+Windows signing status must be stated from the final candidate evidence. If artifacts are unsigned, stricter Windows security configurations can block them; use the portable zip fallback only when it is supplied for that release and verify `SHA256SUMS.txt`.
 
 ## Notable Changes Since 0.1.0
 
-- release/update architecture stabilization across `v0.1.x`
-- upgrade flow quality and reliability hardening
-- configurable scoring modes including ML-assisted ranking
-- improved routing intelligence and monitoring surfaces
-- refreshed deployment, troubleshooting, and packaging docs
+Populate this section from merged changes on the approved candidate. Do not include a capability merely because it was planned or prototyped.
 
 ## Known Issues
 
@@ -62,8 +57,8 @@ Populate with only validated open items at GA cut time:
 
 ## Support and Troubleshooting
 
-- [TROUBLESHOOTING.md](/C:/Users/User/Projects/Deluno/docs/TROUBLESHOOTING.md)
-- [backup-restore-runbook.md](/C:/Users/User/Projects/Deluno/docs/backup-restore-runbook.md)
+- [Troubleshooting](./TROUBLESHOOTING.md)
+- [Backup and restore runbook](./backup-restore-runbook.md)
 
 ## Verification Before Publishing
 

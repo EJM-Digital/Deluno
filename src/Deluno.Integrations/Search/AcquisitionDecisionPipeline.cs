@@ -1,6 +1,7 @@
 using Deluno.Integrations.DownloadClients;
 using Deluno.Jobs.Decisions;
 using Deluno.Platform.Contracts;
+using Deluno.Platform.Data;
 
 namespace Deluno.Integrations.Search;
 
@@ -19,39 +20,47 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
     private readonly IMediaSearchPlanner mediaSearchPlanner;
     private readonly IReleaseRankingModelService rankingModelService;
     private readonly IIntelligentRoutingService? intelligentRoutingService;
+    private readonly IPlatformSettingsRepository? platformRepository;
 
     public AcquisitionDecisionPipeline(
         IMediaSearchPlanner mediaSearchPlanner,
         IReleaseRankingModelService? rankingModelService = null,
-        IIntelligentRoutingService? intelligentRoutingService = null)
+        IIntelligentRoutingService? intelligentRoutingService = null,
+        IPlatformSettingsRepository? platformRepository = null)
     {
         this.mediaSearchPlanner = mediaSearchPlanner;
         this.rankingModelService = rankingModelService ?? DisabledRankingModelService;
         this.intelligentRoutingService = intelligentRoutingService;
+        this.platformRepository = platformRepository;
     }
 
     public async Task<AcquisitionDecisionPlan> PlanAsync(
         AcquisitionDecisionRequest request,
         CancellationToken cancellationToken = default)
     {
-        var sourceCount = request.Sources.Count;
-        var clientCount = request.DownloadClients.Count;
-        var selectedClient = await SelectDownloadClientAsync(request.DownloadClients, cancellationToken);
+        var readyConnections = await ResolveReadyConnectionsAsync(request, cancellationToken);
+        var sourceCount = readyConnections.Sources.Count;
+        var clientCount = readyConnections.DownloadClients.Count;
+        var selectedClient = await SelectDownloadClientAsync(readyConnections.DownloadClients, cancellationToken);
 
         var searchPlan = sourceCount == 0 || clientCount == 0
             ? new MediaSearchPlan(
                 BestCandidate: null,
                 Candidates: [],
                 Summary: sourceCount == 0
-                    ? "No indexers are linked to this library yet."
-                    : "No download client is linked to this library yet.")
+                    ? request.Sources.Count == 0
+                        ? "No indexers are linked to this library yet."
+                        : "No linked search source is ready. Test a source successfully before Deluno searches or dispatches releases."
+                    : request.DownloadClients.Count == 0
+                        ? "No download client is linked to this library yet."
+                        : "No linked download client is ready. Test a client successfully before Deluno dispatches releases.")
             : await mediaSearchPlanner.BuildPlanAsync(
                 request.Title,
                 request.Year,
                 request.MediaType,
                 request.CurrentQuality,
                 request.TargetQuality,
-                request.Sources,
+                readyConnections.Sources,
                 request.CustomFormats,
                 request.SeasonNumber,
                 request.EpisodeNumber,
@@ -250,6 +259,41 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
 
         return selected ?? clients.OrderBy(client => client.Priority).First();
     }
+
+    private async Task<ReadyConnections> ResolveReadyConnectionsAsync(
+        AcquisitionDecisionRequest request,
+        CancellationToken cancellationToken)
+    {
+        // Tests and pure policy callers may intentionally supply a planner without
+        // a platform store. Runtime DI always supplies it, so real acquisition
+        // never treats a merely linked connection as ready.
+        if (platformRepository is null)
+        {
+            return new ReadyConnections(request.Sources, request.DownloadClients);
+        }
+
+        var indexers = await platformRepository.ListIndexersAsync(cancellationToken);
+        var clients = await platformRepository.ListDownloadClientsAsync(cancellationToken);
+        var readyIndexerIds = indexers
+            .Where(item => item.IsEnabled && string.Equals(item.HealthStatus, "healthy", StringComparison.OrdinalIgnoreCase))
+            .Select(item => item.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var readyClientIds = clients
+            .Where(item => item.IsEnabled && IsReadyDownloadClient(item))
+            .Select(item => item.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return new ReadyConnections(
+            request.Sources.Where(source => readyIndexerIds.Contains(source.IndexerId)).ToArray(),
+            request.DownloadClients.Where(client => readyClientIds.Contains(client.DownloadClientId)).ToArray());
+    }
+
+    private static bool IsReadyDownloadClient(DownloadClientItem client)
+        => string.Equals(client.HealthStatus, "healthy", StringComparison.OrdinalIgnoreCase);
+
+    private sealed record ReadyConnections(
+        IReadOnlyList<LibrarySourceLinkItem> Sources,
+        IReadOnlyList<LibraryDownloadClientLinkItem> DownloadClients);
 
     private sealed class DisabledReleaseRankingService : IReleaseRankingModelService
     {

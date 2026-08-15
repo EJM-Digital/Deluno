@@ -1,8 +1,8 @@
 # Deluno
 
-Vibe coded personal media manager for movies and TV. Built it for myself because I wanted something that works the way I think about my library — separate engines for movies and shows, real quality logic, and full visibility into what's actually happening.
+Deluno is a local media library and automation control plane for movies and TV. It is built around how people think about a library: choose what you want, set the experience you want, and see exactly what Deluno is doing.
 
-Not trying to be Radarr/Sonarr. Just a thing that works for me, shipped because someone else might want it too.
+Deluno is designed to replace the *workflow* currently split across Radarr, Sonarr, Prowlarr, download clients, Huntarr, CleanUpArr, Configarr, and Recyclarr—without copying their complexity into one larger settings screen. Everyday media management lives in the Dashboard; media plans, sources, downloads, cleanup, and automation are configured in Library setup. See the [product north star](./docs/PRODUCT_NORTH_STAR.md).
 
 ---
 
@@ -27,7 +27,7 @@ Not trying to be Radarr/Sonarr. Just a thing that works for me, shipped because 
 ## What it does
 
 - **Manages indexers directly** — no Jackett or Prowlarr needed. Add Torznab, Newznab, or RSS sources straight in and Deluno queries them itself
-- **Optional built-in NZB + BitTorrent engine** — pick "Deluno NZB (built-in)" or "Deluno Torrent (built-in)" alongside SAB / qBittorrent in the download clients list, and Deluno does the work in-process. Architecture + status: [docs/builtin-downloader.md](./docs/builtin-downloader.md)
+- **External download clients** — connect SABnzbd, NZBGet, qBittorrent, Transmission, Deluge, or uTorrent. Deluno orchestrates search, dispatch, monitoring, import, naming, routing, and recovery while the client performs the transfer work.
 - Separate movie and TV engines — they never fight over the same downloads
 - Quality profiles with cutoff logic and custom format scoring
 - Library-routed indexers and download clients — each library can point at different providers
@@ -88,6 +88,18 @@ In a second terminal:
 dotnet run --project src/Deluno.Host   # API → :5099
 ```
 
+### Real-world media-flow fixtures
+
+These isolated fixtures use temporary SQLite databases and temporary media folders; they never touch your configured Deluno library or download folders. They exercise movie and TV flows through quality/custom-format decisions, external-client dispatch/telemetry, post-processing, destination routing, import, naming, catalog updates, and recovery safeguards.
+
+```powershell
+# Fast focused flow suite
+.\scripts\test-real-world-flows.ps1
+
+# The flow suite plus the complete release test suite
+.\scripts\test-real-world-flows.ps1 -FullSuite
+```
+
 ## Notes
 
 - Data is stored in SQLite — separate databases per domain (platform, movies, series, jobs, cache)
@@ -100,7 +112,14 @@ dotnet run --project src/Deluno.Host   # API → :5099
 - [Architecture](./docs/ARCHITECTURE.md)
 - [Deployment](./docs/DEPLOYMENT.md)
 - [Packaging and releases](./docs/packaging.md)
+- [1.0.0 release notes draft](./docs/release-notes-1.0.0-draft.md)
+- [0.x to 1.x upgrade guide](./docs/upgrade-guide-0x-to-1x.md)
+- [Backup and restore runbook](./docs/backup-restore-runbook.md)
+- [Supported reference media flow](./docs/REFERENCE_MEDIA_FLOW.md)
 - [Troubleshooting](./docs/TROUBLESHOOTING.md)
+- [Replacement-vision quality gate](./docs/REPLACEMENT_VISION_QUALITY_GATE.md)
+- [Media Plan decision proposal](./docs/MEDIA_PLAN_DECISION_PROPOSAL.md)
+- [Media automation terminology](./docs/MEDIA_AUTOMATION_TERMINOLOGY.md)
 
 ## License
 

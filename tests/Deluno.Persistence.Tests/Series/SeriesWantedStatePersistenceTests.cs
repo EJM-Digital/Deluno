@@ -97,6 +97,26 @@ public sealed class SeriesWantedStatePersistenceTests
     }
 
     [Fact]
+    public async Task EnsureWantedStateAsync_moves_a_series_from_missing_to_upgrades_without_duplicate_state()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T03:00:00Z"));
+        await new SeriesSchemaInitializer(storage.Factory, new SqliteDatabaseMigrator(storage.Factory, timeProvider), NullLogger<SeriesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await repository.AddAsync(new CreateSeriesRequest("Severance", 2022, "tt11280740"), CancellationToken.None);
+
+        await repository.EnsureWantedStateAsync(series.Id, "series-main", "missing", "No accepted episodes exist.", false, null, "WEB 1080p", false, CancellationToken.None);
+        await repository.EnsureWantedStateAsync(series.Id, "series-main", "upgrade", "Existing episodes are below cutoff.", true, "WEB 720p", "WEB 1080p", false, CancellationToken.None);
+
+        var summary = await repository.GetWantedSummaryAsync(CancellationToken.None);
+        var item = Assert.Single(summary.RecentItems);
+        Assert.Equal(1, summary.TotalWanted);
+        Assert.Equal(0, summary.MissingCount);
+        Assert.Equal(1, summary.UpgradeCount);
+        Assert.Equal("upgrade", item.WantedStatus);
+    }
+
+    [Fact]
     public async Task ReassignLibraryAsync_moves_selected_series_wanted_rows_between_libraries()
     {
         using var storage = TestStorage.Create();
@@ -165,5 +185,58 @@ public sealed class SeriesWantedStatePersistenceTests
         Assert.Equal("tv-target", firstWanted.LibraryId);
         Assert.Equal("tv-target", secondWanted.LibraryId);
         Assert.Equal("tv-source", untouchedWanted.LibraryId);
+    }
+
+    [Fact]
+    public async Task Paused_series_is_skipped_by_background_automation_but_remains_available_to_manual_search()
+    {
+        using var storage = TestStorage.Create();
+        var now = DateTimeOffset.Parse("2026-08-13T00:00:00Z");
+        var timeProvider = new FixedTimeProvider(now);
+        await new SeriesSchemaInitializer(storage.Factory, new SqliteDatabaseMigrator(storage.Factory, timeProvider), NullLogger<SeriesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await repository.AddAsync(new CreateSeriesRequest("Severance", 2022, "tt11280740"), CancellationToken.None);
+        await repository.EnsureWantedStateAsync(series.Id, "series-main", "missing", "Needs episodes.", false, null, "WEB 1080p", false, CancellationToken.None);
+
+        await repository.UpdateMonitoredAsync([series.Id], monitored: false, CancellationToken.None);
+
+        Assert.Empty(await repository.ListEligibleWantedAsync("series-main", 10, now, ignoreRetryWindow: false, CancellationToken.None));
+        Assert.Single(await repository.ListEligibleWantedAsync("series-main", 10, now, ignoreRetryWindow: true, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Deferred_series_is_skipped_until_its_explicit_automation_window_expires()
+    {
+        using var storage = TestStorage.Create();
+        var now = DateTimeOffset.Parse("2026-08-13T00:00:00Z");
+        var timeProvider = new FixedTimeProvider(now);
+        await new SeriesSchemaInitializer(storage.Factory, new SqliteDatabaseMigrator(storage.Factory, timeProvider), NullLogger<SeriesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await repository.AddAsync(new CreateSeriesRequest("Severance", 2022, "tt11280740"), CancellationToken.None);
+        await repository.EnsureWantedStateAsync(series.Id, "series-main", "missing", "Needs episodes.", false, null, "WEB 1080p", false, CancellationToken.None);
+        var deferredUntil = now.AddHours(24);
+
+        Assert.True(await repository.DeferWantedSearchAsync(series.Id, "series-main", deferredUntil, CancellationToken.None));
+        Assert.Empty(await repository.ListEligibleWantedAsync("series-main", 10, now, ignoreRetryWindow: false, CancellationToken.None));
+        Assert.Single(await repository.ListEligibleWantedAsync("series-main", 10, now, ignoreRetryWindow: true, CancellationToken.None));
+        Assert.Equal(deferredUntil, Assert.Single((await repository.GetWantedSummaryAsync(CancellationToken.None)).RecentItems).NextEligibleSearchUtc);
+    }
+
+    [Fact]
+    public async Task Skip_next_series_search_is_durable_and_is_consumed_exactly_once()
+    {
+        using var storage = TestStorage.Create();
+        var now = DateTimeOffset.Parse("2026-08-13T00:00:00Z");
+        var timeProvider = new FixedTimeProvider(now);
+        await new SeriesSchemaInitializer(storage.Factory, new SqliteDatabaseMigrator(storage.Factory, timeProvider), NullLogger<SeriesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await repository.AddAsync(new CreateSeriesRequest("Severance", 2022, "tt11280740"), CancellationToken.None);
+        await repository.EnsureWantedStateAsync(series.Id, "series-main", "missing", "Needs episodes.", false, null, "WEB 1080p", false, CancellationToken.None);
+
+        Assert.True(await repository.SkipNextWantedSearchAsync(series.Id, "series-main", CancellationToken.None));
+        Assert.Equal("Will skip the next scheduled search by user request.", Assert.Single((await repository.GetWantedSummaryAsync(CancellationToken.None)).RecentItems).LastSearchResult);
+        Assert.Single(await repository.ListEligibleWantedAsync("series-main", 10, now, ignoreRetryWindow: true, CancellationToken.None));
+        Assert.True(await repository.ConsumeSkipNextWantedSearchAsync(series.Id, "series-main", CancellationToken.None));
+        Assert.False(await repository.ConsumeSkipNextWantedSearchAsync(series.Id, "series-main", CancellationToken.None));
     }
 }

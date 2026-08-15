@@ -68,3 +68,18 @@ A hosted broker can implement the same `/metadata/search` response shape and add
 - telemetry for source quality and latency
 
 Commercial/licensing terms must be reviewed before any hosted broker is offered beyond internal development.
+
+## Managed gateway deployment
+
+The Deluno-managed Cloudflare Worker is deployed at
+`https://deluno-metadata-gateway.ejmdigital.workers.dev`. Its Deluno-owned
+TMDb credential is stored as a Worker secret, and it serves the public broker
+contract without exposing that credential to Deluno users or installations.
+The address is a deployment endpoint, not a user-configurable setting: fresh
+supported Deluno installs use it by default.
+
+Before a release, verify controlled movie and TV lookups. Operators only need
+`DELUNO_METADATA_PROVIDER_MODE` and `DELUNO_METADATA_BROKER_URL` when they
+deliberately override the managed route. The gateway accepts only title lookup
+terms, media type/year, and optional TMDb IDs; it does not receive library
+paths, inventory, queues, or user provider keys.

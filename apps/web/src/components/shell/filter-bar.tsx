@@ -20,7 +20,7 @@ export function FilterBar({
     <div
       className={cn(
         sticky &&
-          "sticky top-[var(--topbar-height-mobile)] z-20 -mx-4 bg-background/85 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/70 lg:top-[var(--topbar-height)] md:-mx-6 md:px-6",
+          "sticky top-[var(--topbar-height-mobile)] z-20 mx-[calc(-1*var(--content-pad-inline))] bg-background/85 px-[var(--content-pad-inline)] backdrop-blur supports-[backdrop-filter]:bg-background/70 lg:top-[var(--topbar-height)]",
         "flex flex-col gap-2 border-b border-hairline py-2 md:flex-row md:items-center md:gap-3 md:py-2.5",
         className
       )}

@@ -286,6 +286,17 @@ public sealed class DownloadDispatchRepositoryTests
 
         await repository.ArchiveDispatchAsync(dispatchId, "test_cleanup", CancellationToken.None);
 
+        await using (var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Jobs))
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT archived_utc FROM download_dispatches WHERE id = @id;";
+            var parameter = command.CreateParameter();
+            parameter.ParameterName = "@id";
+            parameter.Value = dispatchId;
+            command.Parameters.Add(parameter);
+            Assert.NotNull(await command.ExecuteScalarAsync(CancellationToken.None));
+        }
+
         var (after, _) = await repository.QueryDispatchesAsync(filter, pagination, CancellationToken.None);
 
         Assert.Empty(after);

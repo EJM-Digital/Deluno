@@ -81,6 +81,29 @@ public static class SeriesEndpointRouteBuilderExtensions
             return Results.Ok(items);
         });
 
+        series.MapGet("/{id}/removal-preview", async (
+            string id,
+            HttpContext httpContext,
+            ISeriesCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            if (denied is not null) return denied;
+            if (await repository.GetByIdAsync(id, cancellationToken) is null) return Results.NotFound();
+
+            var libraries = await platformSettingsRepository.ListLibrariesAsync(cancellationToken);
+            var trackedFiles = new List<TrackedLibraryFile>();
+            foreach (var library in libraries)
+            {
+                trackedFiles.AddRange((await repository.ListTrackedFilesAsync(library.Id, cancellationToken))
+                    .Where(file => string.Equals(file.SeriesId, id, StringComparison.OrdinalIgnoreCase))
+                    .Select(file => new TrackedLibraryFile(file.LibraryId, file.FilePath)));
+            }
+
+            return Results.Ok(LibraryMediaDeletion.Preview(trackedFiles, libraries));
+        });
+
         series.MapPost("/import-recovery", async (
             HttpContext httpContext,
             [FromBody] CreateSeriesImportRecoveryCaseRequest request,
@@ -200,6 +223,46 @@ public static class SeriesEndpointRouteBuilderExtensions
                 cancellationToken);
 
             return Results.Ok(new { updated });
+        });
+
+        series.MapPost("/{id}/automation/defer", async (
+            string id,
+            [FromBody] DeferAutomationRequest request,
+            HttpContext httpContext,
+            ISeriesCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
+            TimeProvider timeProvider,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            if (denied is not null) return denied;
+            if (string.IsNullOrWhiteSpace(request.LibraryId))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["libraryId"] = ["This title is not attached to an automated library."] });
+            }
+
+            var deferredUntilUtc = timeProvider.GetUtcNow().AddHours(Math.Clamp(request.Hours ?? 24, 1, 720));
+            var deferred = await repository.DeferWantedSearchAsync(id, request.LibraryId, deferredUntilUtc, cancellationToken);
+            return deferred ? Results.Ok(new { deferredUntilUtc }) : Results.NotFound();
+        });
+
+        series.MapPost("/{id}/automation/skip-once", async (
+            string id,
+            [FromBody] SkipNextAutomationRequest request,
+            HttpContext httpContext,
+            ISeriesCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            if (denied is not null) return denied;
+            if (string.IsNullOrWhiteSpace(request.LibraryId))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["libraryId"] = ["This title is not attached to an automated library."] });
+            }
+
+            var skipped = await repository.SkipNextWantedSearchAsync(id, request.LibraryId, cancellationToken);
+            return skipped ? Results.Ok(new { message = "The next scheduled search will be skipped. Manual search remains available." }) : Results.NotFound();
         });
 
         series.MapPut("/episodes/monitoring", async (
@@ -896,6 +959,8 @@ public static class SeriesEndpointRouteBuilderExtensions
             ISeriesCatalogRepository repository,
             IPlatformSettingsRepository platformSettingsRepository,
             IJobScheduler jobScheduler,
+            IJobQueueRepository jobQueueRepository,
+            IActivityFeedRepository activityFeedRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
@@ -940,9 +1005,16 @@ public static class SeriesEndpointRouteBuilderExtensions
                     switch (operation)
                     {
                         case "remove":
-                            await repository.DeleteAsync(series.Id, cancellationToken);
+                            var removalMetadata = await RemoveSeriesAsync(
+                                series,
+                                request,
+                                repository,
+                                platformSettingsRepository,
+                                jobQueueRepository,
+                                activityFeedRepository,
+                                cancellationToken);
                             successCount++;
-                            results.Add(new BulkSeriesItemResult(series.Id, series.Title, true));
+                            results.Add(new BulkSeriesItemResult(series.Id, series.Title, true, null, removalMetadata));
                             break;
 
                         case "monitoring":
@@ -1104,31 +1176,6 @@ public static class SeriesEndpointRouteBuilderExtensions
             }
 
             return Results.Ok(new { searchesTriggered = triggered, libraryCount = libraryIds.Length });
-        });
-
-        series.MapDelete("/bulk", async (
-            HttpContext httpContext,
-            [FromBody] BulkDeleteSeriesRequest request,
-            ISeriesCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
-            CancellationToken cancellationToken) =>
-        {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
-            if (denied is not null)
-            {
-                return denied;
-            }
-
-            if (request.SeriesIds is not { Count: > 0 })
-            {
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["seriesIds"] = ["Choose at least one series to remove."]
-                });
-            }
-
-            var removed = await repository.UpdateMonitoredAsync(request.SeriesIds, false, cancellationToken);
-            return Results.Ok(new { unmonitored = removed });
         });
 
         series.MapPost("/bulk/reassign-library", async (
@@ -2003,6 +2050,85 @@ public static class SeriesEndpointRouteBuilderExtensions
         return errors;
     }
 
+    private static async Task<Dictionary<string, string?>> RemoveSeriesAsync(
+        SeriesListItem series,
+        BulkSeriesRequest request,
+        ISeriesCatalogRepository repository,
+        IPlatformSettingsRepository platformSettingsRepository,
+        IJobQueueRepository jobQueueRepository,
+        IActivityFeedRepository activityFeedRepository,
+        CancellationToken cancellationToken)
+    {
+        var metadata = new Dictionary<string, string?>();
+        var libraries = await platformSettingsRepository.ListLibrariesAsync(cancellationToken);
+        var cancelledJobs = await jobQueueRepository.CancelPendingForRelatedEntityAsync("series", series.Id, cancellationToken);
+        metadata["cancelledPendingJobCount"] = cancelledJobs.ToString();
+
+        if (request.DeleteFiles)
+        {
+            var trackedFiles = new List<TrackedLibraryFile>();
+            foreach (var library in libraries)
+            {
+                var files = await repository.ListTrackedFilesAsync(library.Id, cancellationToken);
+                trackedFiles.AddRange(files
+                    .Where(file => string.Equals(file.SeriesId, series.Id, StringComparison.OrdinalIgnoreCase))
+                    .Select(file => new TrackedLibraryFile(file.LibraryId, file.FilePath)));
+            }
+
+            var deletion = LibraryMediaDeletion.Delete(trackedFiles, libraries, cancellationToken);
+            metadata["deletedFileCount"] = deletion.DeletedFileCount.ToString();
+            metadata["deletedFolderCount"] = deletion.DeletedFolderCount.ToString();
+            if (deletion.Warnings.Count > 0)
+            {
+                metadata["fileDeletionWarnings"] = string.Join(" ", deletion.Warnings);
+            }
+        }
+
+        if (request.AddImportListExclusion)
+        {
+            var origins = await platformSettingsRepository.ListIntakeTitleOriginsAsync("tv", series.Id, cancellationToken);
+            var exclusionsAdded = 0;
+            var exclusionWarnings = new List<string>();
+            foreach (var origin in origins.GroupBy(item => item.SourceId, StringComparer.OrdinalIgnoreCase).Select(group => group.First()))
+            {
+                try
+                {
+                    var exclusion = await platformSettingsRepository.CreateIntakeListExclusionAsync(
+                        origin.SourceId,
+                        new CreateIntakeListExclusionRequest(series.Title, series.StartYear, series.ImdbId, null),
+                        cancellationToken);
+                    if (exclusion is not null) exclusionsAdded++;
+                }
+                catch
+                {
+                    exclusionWarnings.Add($"Deluno could not add the exclusion for {origin.SourceName}.");
+                }
+            }
+
+            metadata["importListExclusionsAdded"] = exclusionsAdded.ToString();
+            if (exclusionWarnings.Count > 0)
+            {
+                metadata["importListExclusionWarnings"] = string.Join(" ", exclusionWarnings);
+            }
+        }
+
+        if (!await repository.DeleteAsync(series.Id, cancellationToken))
+        {
+            throw new InvalidOperationException("TV show was not removed from Deluno.");
+        }
+
+        await activityFeedRepository.RecordActivityAsync(
+            "series.removed",
+            $"{series.Title} was removed from Deluno.{(request.DeleteFiles ? " Imported library files were also selected for deletion." : string.Empty)}",
+            JsonSerializer.Serialize(new { request.DeleteFiles, request.AddImportListExclusion, metadata }),
+            null,
+            "series",
+            series.Id,
+            cancellationToken);
+
+        return metadata;
+    }
+
     private static Dictionary<string, string[]> ValidateReleaseGrab(ReleaseGrabRequest request)
     {
         var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
@@ -2137,5 +2263,4 @@ public static class SeriesEndpointRouteBuilderExtensions
 
     private sealed record BulkSearchRequest(IReadOnlyList<string>? SeriesIds);
 
-    private sealed record BulkDeleteSeriesRequest(IReadOnlyList<string>? SeriesIds);
 }

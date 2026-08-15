@@ -32,7 +32,8 @@ public sealed record MigrationReportOperation(
 
 public sealed record MigrationApplyResponse(
     MigrationReport Report,
-    IReadOnlyList<MigrationAppliedItem> Applied);
+    IReadOnlyList<MigrationAppliedItem> Applied,
+    string? AuditReportId = null);
 
 public sealed record MigrationAppliedItem(
     string OperationId,

@@ -495,11 +495,13 @@ public sealed class SqliteDownloadDispatchesRepository(
             command.CommandText =
                 """
                 UPDATE download_dispatches
-                SET status = 'archived'
+                SET status = 'archived',
+                    archived_utc = @archivedUtc
                 WHERE id = @dispatchId
                 """;
 
             AddParameter(command, "@dispatchId", dispatchId);
+            AddParameter(command, "@archivedUtc", timeProvider.GetUtcNow().ToString("O"));
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
 

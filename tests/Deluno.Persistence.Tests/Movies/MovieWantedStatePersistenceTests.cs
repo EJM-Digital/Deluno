@@ -95,4 +95,57 @@ public sealed class MovieWantedStatePersistenceTests
         Assert.Equal("WEB 1080p", item.TargetQuality);
         Assert.NotNull(item.MissingSinceUtc);
     }
+
+    [Fact]
+    public async Task Paused_movie_is_skipped_by_background_automation_but_remains_available_to_manual_search()
+    {
+        using var storage = TestStorage.Create();
+        var now = DateTimeOffset.Parse("2026-08-13T00:00:00Z");
+        var timeProvider = new FixedTimeProvider(now);
+        await new MoviesSchemaInitializer(storage.Factory, new SqliteDatabaseMigrator(storage.Factory, timeProvider), NullLogger<MoviesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var movie = await repository.AddAsync(new CreateMovieRequest("Dune Part Two", 2024, "tt15239678"), CancellationToken.None);
+        await repository.EnsureWantedStateAsync(movie.Id, "movies-main", "missing", "Needs a file.", false, null, "WEB 1080p", false, CancellationToken.None);
+
+        await repository.UpdateMonitoredAsync([movie.Id], monitored: false, CancellationToken.None);
+
+        Assert.Empty(await repository.ListEligibleWantedAsync("movies-main", 10, now, ignoreRetryWindow: false, CancellationToken.None));
+        Assert.Single(await repository.ListEligibleWantedAsync("movies-main", 10, now, ignoreRetryWindow: true, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Deferred_movie_is_skipped_until_its_explicit_automation_window_expires()
+    {
+        using var storage = TestStorage.Create();
+        var now = DateTimeOffset.Parse("2026-08-13T00:00:00Z");
+        var timeProvider = new FixedTimeProvider(now);
+        await new MoviesSchemaInitializer(storage.Factory, new SqliteDatabaseMigrator(storage.Factory, timeProvider), NullLogger<MoviesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var movie = await repository.AddAsync(new CreateMovieRequest("Dune Part Two", 2024, "tt15239678"), CancellationToken.None);
+        await repository.EnsureWantedStateAsync(movie.Id, "movies-main", "missing", "Needs a file.", false, null, "WEB 1080p", false, CancellationToken.None);
+        var deferredUntil = now.AddHours(24);
+
+        Assert.True(await repository.DeferWantedSearchAsync(movie.Id, "movies-main", deferredUntil, CancellationToken.None));
+        Assert.Empty(await repository.ListEligibleWantedAsync("movies-main", 10, now, ignoreRetryWindow: false, CancellationToken.None));
+        Assert.Single(await repository.ListEligibleWantedAsync("movies-main", 10, now, ignoreRetryWindow: true, CancellationToken.None));
+        Assert.Equal(deferredUntil, Assert.Single((await repository.GetWantedSummaryAsync(CancellationToken.None)).RecentItems).NextEligibleSearchUtc);
+    }
+
+    [Fact]
+    public async Task Skip_next_movie_search_is_durable_and_is_consumed_exactly_once()
+    {
+        using var storage = TestStorage.Create();
+        var now = DateTimeOffset.Parse("2026-08-13T00:00:00Z");
+        var timeProvider = new FixedTimeProvider(now);
+        await new MoviesSchemaInitializer(storage.Factory, new SqliteDatabaseMigrator(storage.Factory, timeProvider), NullLogger<MoviesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var movie = await repository.AddAsync(new CreateMovieRequest("Dune Part Two", 2024, "tt15239678"), CancellationToken.None);
+        await repository.EnsureWantedStateAsync(movie.Id, "movies-main", "missing", "Needs a file.", false, null, "WEB 1080p", false, CancellationToken.None);
+
+        Assert.True(await repository.SkipNextWantedSearchAsync(movie.Id, "movies-main", CancellationToken.None));
+        Assert.Equal("Will skip the next scheduled search by user request.", Assert.Single((await repository.GetWantedSummaryAsync(CancellationToken.None)).RecentItems).LastSearchResult);
+        Assert.Single(await repository.ListEligibleWantedAsync("movies-main", 10, now, ignoreRetryWindow: true, CancellationToken.None));
+        Assert.True(await repository.ConsumeSkipNextWantedSearchAsync(movie.Id, "movies-main", CancellationToken.None));
+        Assert.False(await repository.ConsumeSkipNextWantedSearchAsync(movie.Id, "movies-main", CancellationToken.None));
+    }
 }

@@ -13,7 +13,9 @@ using Deluno.Infrastructure.Observability;
 using Deluno.Infrastructure.Resilience;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
+using Deluno.Platform.Intake;
 using Deluno.Platform.Migration;
+using Deluno.Platform.Processing;
 using Deluno.Platform.Quality;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
@@ -62,6 +64,16 @@ public static class PlatformEndpointRouteBuilderExtensions
             return Results.Ok(snapshot);
         });
 
+        settings.MapPut("/automation", async (
+            HttpContext httpContext,
+            [FromBody] UpdateGlobalAutomationRequest request,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            return denied ?? Results.Ok(await repository.SetGlobalAutomationEnabledAsync(request.IsEnabled, cancellationToken));
+        });
+
         var libraries = endpoints.MapGroup("/api/libraries");
         var qualityProfiles = endpoints.MapGroup("/api/quality-profiles");
         var qualityModel = endpoints.MapGroup("/api/quality-model");
@@ -106,6 +118,31 @@ public static class PlatformEndpointRouteBuilderExtensions
 
             var result = await migrationAssistant.ApplyAsync(request, cancellationToken);
             return result.Report.Valid ? Results.Ok(result) : Results.BadRequest(result.Report);
+        });
+
+        migration.MapGet("/reports", async (
+            HttpContext httpContext,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            return denied ?? Results.Ok(await repository.ListMigrationAuditReportsAsync(20, cancellationToken));
+        });
+
+        migration.MapGet("/reports/{id}", async (
+            string id,
+            HttpContext httpContext,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var report = await repository.GetMigrationAuditReportAsync(id, cancellationToken);
+            return report is null ? Results.NotFound() : Results.Ok(report);
         });
 
         auth.MapPost("/login", async (
@@ -283,6 +320,59 @@ public static class PlatformEndpointRouteBuilderExtensions
 
         var setup = endpoints.MapGroup("/api/setup");
 
+        setup.MapGet("/progress", async (
+            HttpContext httpContext,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            return denied ?? Results.Ok(await repository.GetSetupProgressAsync(cancellationToken));
+        });
+
+        setup.MapPut("/progress", async (
+            HttpContext httpContext,
+            [FromBody] UpdateSetupProgressRequest request,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            return denied ?? Results.Ok(await repository.SaveSetupProgressAsync(request, cancellationToken));
+        });
+
+        setup.MapGet("/draft", async (
+            HttpContext httpContext,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            return denied ?? Results.Ok(await repository.GetSetupDraftAsync(cancellationToken));
+        });
+
+        setup.MapPut("/draft", async (
+            HttpContext httpContext,
+            [FromBody] UpdateSetupDraftRequest request,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            return denied ?? Results.Ok(await repository.SaveSetupDraftAsync(request, cancellationToken));
+        });
+
+        setup.MapDelete("/draft", async (
+            HttpContext httpContext,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            await repository.ClearSetupDraftAsync(cancellationToken);
+            return Results.NoContent();
+        });
+
         setup.MapPost("/completed", async (
             HttpContext httpContext,
             [FromBody] SetupCompletedRequest request,
@@ -313,6 +403,10 @@ public static class PlatformEndpointRouteBuilderExtensions
                 null,
                 "setup",
                 "guided",
+                cancellationToken);
+
+            await repository.SaveSetupProgressAsync(
+                new UpdateSetupProgressRequest(4, IsCompleted: true),
                 cancellationToken);
 
             return Results.Ok(activity);
@@ -637,6 +731,35 @@ public static class PlatformEndpointRouteBuilderExtensions
             return Results.Ok(items);
         });
 
+        endpoints.MapGet("/api/intake-title-origins", async (
+            HttpContext httpContext,
+            string? mediaType,
+            string? entityId,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (string.IsNullOrWhiteSpace(entityId))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["entityId"] = ["A title ID is required."] });
+            }
+
+            if (!string.Equals(mediaType, "movies", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(mediaType, "tv", StringComparison.OrdinalIgnoreCase))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["mediaType"] = ["Media type must be movies or tv."] });
+            }
+
+            var normalizedMediaType = string.Equals(mediaType, "tv", StringComparison.OrdinalIgnoreCase) ? "tv" : "movies";
+            var items = await repository.ListIntakeTitleOriginsAsync(normalizedMediaType, entityId, cancellationToken);
+            return Results.Ok(items);
+        });
+
         intakeSources.MapPost(string.Empty, async (
             HttpContext httpContext,
             [FromBody] CreateIntakeSourceRequest request,
@@ -743,6 +866,123 @@ public static class PlatformEndpointRouteBuilderExtensions
                 cancellationToken);
 
             return Results.Accepted($"/api/jobs/{job.Id}", job);
+        });
+
+        intakeSources.MapPost("{id}/preview", async (
+            string id,
+            HttpContext httpContext,
+            IPlatformSettingsRepository repository,
+            IIntakeListPreviewService previewService,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            try
+            {
+                return Results.Ok(await previewService.PreviewAsync(id, cancellationToken));
+            }
+            catch (InvalidOperationException exception)
+            {
+                return Results.BadRequest(new { message = exception.Message });
+            }
+        });
+
+        intakeSources.MapPost("{id}/approve-preview", async (
+            string id,
+            HttpContext httpContext,
+            [FromBody] ApproveIntakeListPreviewRequest request,
+            IPlatformSettingsRepository repository,
+            IIntakeListApprovalService approvalService,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            try
+            {
+                return Results.Ok(await approvalService.ApproveAsync(id, request, cancellationToken));
+            }
+            catch (InvalidOperationException exception)
+            {
+                return Results.BadRequest(new { message = exception.Message });
+            }
+        });
+
+        intakeSources.MapGet("{id}/exclusions", async (
+            string id,
+            HttpContext httpContext,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            return Results.Ok(await repository.ListActiveIntakeListExclusionsAsync(id, cancellationToken));
+        });
+
+        intakeSources.MapPost("{id}/exclude-preview", async (
+            string id,
+            HttpContext httpContext,
+            [FromBody] CreateIntakeListExclusionRequest request,
+            IPlatformSettingsRepository repository,
+            IActivityFeedRepository activityFeedRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var source = await repository.GetIntakeSourceAsync(id, cancellationToken);
+            if (source is null)
+            {
+                return Results.NotFound();
+            }
+
+            var exclusion = await repository.CreateIntakeListExclusionAsync(id, request, cancellationToken);
+            if (exclusion is null)
+            {
+                return Results.BadRequest(new { message = "An entry title is required to exclude it." });
+            }
+
+            await activityFeedRepository.RecordActivityAsync(
+                "intake.entry.excluded",
+                $"{source.Name}: excluded {exclusion.Title}{(exclusion.Year is null ? string.Empty : $" ({exclusion.Year})")}.",
+                JsonSerializer.Serialize(new { SourceId = source.Id, ExclusionId = exclusion.Id, exclusion.EntryKey, exclusion.ExpiresUtc }),
+                null,
+                "intake-source",
+                source.Id,
+                cancellationToken);
+            return Results.Ok(exclusion);
+        });
+
+        intakeSources.MapDelete("{id}/exclusions/{exclusionId}", async (
+            string id,
+            string exclusionId,
+            HttpContext httpContext,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            return await repository.DeleteIntakeListExclusionAsync(id, exclusionId, cancellationToken)
+                ? Results.NoContent()
+                : Results.NotFound();
         });
 
         intakeSources.MapGet("{id}/diagnostics", async (
@@ -1555,6 +1795,72 @@ public static class PlatformEndpointRouteBuilderExtensions
             return Results.Ok(item);
         });
 
+        downloadClients.MapGet("{id}/path-mappings", async (
+            string id,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var items = await repository.ListDownloadClientPathMappingsAsync(id, cancellationToken);
+            return Results.Ok(items);
+        });
+
+        downloadClients.MapPost("{id}/path-mappings", async (
+            string id,
+            HttpContext httpContext,
+            [FromBody] CreateDownloadClientPathMappingRequest request,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null) return denied;
+            if (string.IsNullOrWhiteSpace(request.RemotePath) || string.IsNullOrWhiteSpace(request.LocalPath))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["pathMapping"] = ["Both the client path and Deluno path are required."]
+                });
+            }
+
+            var item = await repository.CreateDownloadClientPathMappingAsync(id, request, cancellationToken);
+            return item is null ? Results.NotFound() : Results.Ok(item);
+        });
+
+        downloadClients.MapDelete("{id}/path-mappings/{mappingId}", async (
+            string id,
+            string mappingId,
+            HttpContext httpContext,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null) return denied;
+            var removed = await repository.DeleteDownloadClientPathMappingAsync(id, mappingId, cancellationToken);
+            return removed ? Results.NoContent() : Results.NotFound();
+        });
+
+        downloadClients.MapPost("{id}/path-mappings/{mappingId}/test", async (
+            string id,
+            string mappingId,
+            HttpContext httpContext,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null) return denied;
+            var mapping = (await repository.ListDownloadClientPathMappingsAsync(id, cancellationToken))
+                .FirstOrDefault(item => string.Equals(item.Id, mappingId, StringComparison.OrdinalIgnoreCase));
+            if (mapping is null) return Results.NotFound();
+
+            var reachable = Directory.Exists(mapping.LocalPath) || File.Exists(mapping.LocalPath);
+            return Results.Ok(new
+            {
+                reachable,
+                message = reachable
+                    ? $"Deluno can reach {mapping.LocalPath}."
+                    : $"Deluno cannot reach {mapping.LocalPath}. Check the local mount, share permissions, or the path visible to Deluno."
+            });
+        });
+
         downloadClients.MapPost("test", async (
             HttpContext httpContext,
             [FromBody] CreateDownloadClientRequest request,
@@ -2041,6 +2347,156 @@ public static class PlatformEndpointRouteBuilderExtensions
             return Results.Ok(new { enqueued = selected.Length });
         });
 
+        integrations.MapGet("/processors/handoffs", async (
+            HttpContext httpContext,
+            string? libraryId,
+            int? take,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null) return denied;
+            var scopeDenied = UserAuthorization.RequireApiScope(httpContext, "imports");
+            if (scopeDenied is not null) return scopeDenied;
+            return Results.Ok(await repository.ListProcessorHandoffsAsync(libraryId, take ?? 50, cancellationToken));
+        });
+
+        integrations.MapPost("/processors/handoffs/{id}/retry", async (
+            string id,
+            HttpContext httpContext,
+            IPlatformSettingsRepository repository,
+            IActivityFeedRepository activityFeed,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null) return denied;
+            var scopeDenied = UserAuthorization.RequireApiScope(httpContext, "imports");
+            if (scopeDenied is not null) return scopeDenied;
+
+            var handoff = await repository.GetProcessorHandoffAsync(id, cancellationToken);
+            if (handoff is null) return Results.NotFound();
+            if (handoff.Status is not ("failed" or "timed-out"))
+            {
+                return Results.Conflict(new
+                {
+                    message = "Only a failed or timed-out processor hand-off can be tried again. Deluno will not resubmit an active or already completed hand-off."
+                });
+            }
+
+            var connection = await repository.FindProcessorConnectionByNameAsync(handoff.ProcessorName, cancellationToken);
+            if (connection is not { IsEnabled: true })
+            {
+                return Results.Conflict(new
+                {
+                    message = "The processor connection for this hand-off is unavailable. Restore and test the connection before trying the hand-off again."
+                });
+            }
+
+            var retried = await repository.UpdateProcessorHandoffAsync(
+                handoff.Id,
+                "waiting",
+                null,
+                null,
+                null,
+                cancellationToken);
+            if (retried is null) return Results.NotFound();
+
+            await activityFeed.RecordActivityAsync(
+                "processing.retry-requested",
+                $"Deluno will try {handoff.ReleaseName} with {connection.Name} again using the same hand-off ID.",
+                JsonSerializer.Serialize(new
+                {
+                    HandoffId = handoff.Id,
+                    handoff.LibraryId,
+                    ConnectionId = connection.Id,
+                    connection.Name,
+                    PreviousStatus = handoff.Status,
+                    IdempotencyKey = handoff.Id
+                }),
+                null,
+                "processor-handoff",
+                handoff.Id,
+                cancellationToken);
+
+            return Results.Accepted($"/api/integrations/processors/handoffs?libraryId={Uri.EscapeDataString(handoff.LibraryId)}", retried);
+        });
+
+        integrations.MapGet("/processors/connections", async (
+            HttpContext httpContext,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null) return denied;
+            return Results.Ok(await repository.ListProcessorConnectionsAsync(cancellationToken));
+        });
+
+        integrations.MapPost("/processors/connections", async (
+            HttpContext httpContext,
+            [FromBody] CreateProcessorConnectionRequest request,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null) return denied;
+            var errors = ValidateProcessorConnection(request.Name, request.SubmissionUrl, request.AuthHeaderName);
+            if (errors.Count > 0) return Results.ValidationProblem(errors);
+            return Results.Ok(await repository.CreateProcessorConnectionAsync(request, cancellationToken));
+        });
+
+        integrations.MapPut("/processors/connections/{id}", async (
+            string id,
+            HttpContext httpContext,
+            [FromBody] UpdateProcessorConnectionRequest request,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null) return denied;
+            var errors = ValidateProcessorConnection(request.Name, request.SubmissionUrl, request.AuthHeaderName);
+            if (errors.Count > 0) return Results.ValidationProblem(errors);
+            var updated = await repository.UpdateProcessorConnectionAsync(id, request, cancellationToken);
+            return updated is null ? Results.NotFound() : Results.Ok(updated);
+        });
+
+        integrations.MapDelete("/processors/connections/{id}", async (
+            string id,
+            HttpContext httpContext,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null) return denied;
+            return await repository.DeleteProcessorConnectionAsync(id, cancellationToken)
+                ? Results.NoContent()
+                : Results.NotFound();
+        });
+
+        integrations.MapPost("/processors/connections/{id}/test", async (
+            string id,
+            HttpContext httpContext,
+            IPlatformSettingsRepository repository,
+            IProcessorConnectionService processorConnections,
+            IActivityFeedRepository activityFeed,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null) return denied;
+            var connection = await repository.GetProcessorConnectionAsync(id, cancellationToken);
+            if (connection is null) return Results.NotFound();
+            var result = await processorConnections.TestAsync(connection, cancellationToken);
+            await repository.RecordProcessorConnectionHealthAsync(connection.Id, result.Status, result.Message, cancellationToken);
+            await activityFeed.RecordActivityAsync(
+                "processor.connection.tested",
+                $"{connection.Name}: {result.Message}",
+                JsonSerializer.Serialize(new { connection.Id, connection.Name, connection.Provider, result.Status, result.StatusCode, result.LatencyMs }),
+                null,
+                "processor-connection",
+                connection.Id,
+                cancellationToken);
+            return Results.Ok(result);
+        });
+
         integrations.MapPost("/processors/events", async (
             HttpContext httpContext,
             [FromBody] ProcessorEventRequest request,
@@ -2055,6 +2511,12 @@ public static class PlatformEndpointRouteBuilderExtensions
                 return denied;
             }
 
+            var scopeDenied = UserAuthorization.RequireApiScope(httpContext, "imports");
+            if (scopeDenied is not null)
+            {
+                return scopeDenied;
+            }
+
             var errors = ValidateProcessorEvent(request);
             if (errors.Count > 0)
             {
@@ -2062,13 +2524,71 @@ public static class PlatformEndpointRouteBuilderExtensions
             }
 
             var status = NormalizeProcessorStatus(request.Status);
-            var processorName = string.IsNullOrWhiteSpace(request.ProcessorName)
+            var libraries = await repository.ListLibrariesAsync(cancellationToken);
+            var library = !string.IsNullOrWhiteSpace(request.LibraryId)
+                ? libraries.FirstOrDefault(item => string.Equals(item.Id, request.LibraryId, StringComparison.OrdinalIgnoreCase))
+                : null;
+            if (library is null)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["libraryId"] = ["Processor events must name the Deluno library that owns this hand-off. Deluno will not guess an import destination."]
+                });
+            }
+
+            if (!string.Equals(library.ImportWorkflow, "refine-before-import", StringComparison.OrdinalIgnoreCase))
+            {
+                return Results.Conflict(new
+                {
+                    message = $"{library.Name} is configured for standard import, so Deluno will not accept a processor completion event for it."
+                });
+            }
+
+            var processorName = library.ProcessorName ?? (string.IsNullOrWhiteSpace(request.ProcessorName)
                 ? "External processor"
-                : request.ProcessorName.Trim();
+                : request.ProcessorName.Trim());
             var entityType = string.IsNullOrWhiteSpace(request.EntityType) ? "processor" : request.EntityType.Trim();
             var entityId = string.IsNullOrWhiteSpace(request.EntityId) ? null : request.EntityId.Trim();
             var message = string.IsNullOrWhiteSpace(request.Message) ? null : request.Message.Trim();
-            var mediaType = NormalizeMediaScope(request.MediaType);
+            var mediaType = library.MediaType;
+
+            if (status == "completed" && !ProcessorOutputPathPolicy.IsOutputOwnedByLibrary(request.OutputPath, library.ProcessorOutputPath))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["outputPath"] = ["Completed output must be inside this library's configured clean output folder. Deluno did not queue an import."]
+                });
+            }
+
+            var handoff = await repository.FindProcessorHandoffAsync(
+                library.Id,
+                request.HandoffId,
+                request.SourcePath,
+                cancellationToken);
+            if (handoff is null)
+            {
+                return Results.Conflict(new
+                {
+                    message = "Deluno could not match this processor event to a waiting hand-off. Use the handoff ID from GET /api/integrations/processors/handoffs or the exact source path Deluno recorded. No import was queued."
+                });
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.SourcePath) &&
+                !string.Equals(NormalizeProcessorPath(request.SourcePath), NormalizeProcessorPath(handoff.SourcePath), StringComparison.OrdinalIgnoreCase))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["sourcePath"] = ["The supplied source path does not match the processor hand-off. Deluno did not queue an import."]
+                });
+            }
+
+            await repository.UpdateProcessorHandoffAsync(
+                handoff.Id,
+                status,
+                status == "completed" ? request.OutputPath : null,
+                null,
+                status == "failed" ? message : null,
+                cancellationToken);
 
             var activity = await activityFeed.RecordActivityAsync(
                 "processing",
@@ -2076,6 +2596,7 @@ public static class PlatformEndpointRouteBuilderExtensions
                 JsonSerializer.Serialize(new
                 {
                     request.LibraryId,
+                    HandoffId = handoff.Id,
                     MediaType = mediaType,
                     EntityType = entityType,
                     EntityId = entityId,
@@ -2086,18 +2607,14 @@ public static class PlatformEndpointRouteBuilderExtensions
                     ProcessorName = processorName
                 }),
                 null,
-                entityType,
-                entityId,
+                "processor-handoff",
+                handoff.Id,
                 cancellationToken);
 
             JobQueueItem? importJob = null;
             if (status == "completed" && !string.IsNullOrWhiteSpace(request.OutputPath))
             {
-                var libraries = await repository.ListLibrariesAsync(cancellationToken);
-                var library = !string.IsNullOrWhiteSpace(request.LibraryId)
-                    ? libraries.FirstOrDefault(item => string.Equals(item.Id, request.LibraryId, StringComparison.OrdinalIgnoreCase))
-                    : libraries.FirstOrDefault(item => string.Equals(item.MediaType, mediaType, StringComparison.OrdinalIgnoreCase));
-                var resolvedMediaType = library?.MediaType ?? (mediaType == "tv" ? "tv" : "movies");
+                var resolvedMediaType = library.MediaType;
                 var outputPath = request.OutputPath.Trim();
                 var title = string.IsNullOrWhiteSpace(entityId)
                     ? Path.GetFileNameWithoutExtension(outputPath)
@@ -2128,7 +2645,16 @@ public static class PlatformEndpointRouteBuilderExtensions
                         Source: "processor",
                         PayloadJson: JsonSerializer.Serialize(importPayload),
                         RelatedEntityType: resolvedMediaType == "tv" ? "series" : "movie",
-                        RelatedEntityId: null),
+                        RelatedEntityId: null,
+                        IdempotencyKey: $"processor-output:{library.Id}:{Path.GetFullPath(outputPath).ToLowerInvariant()}"),
+                    cancellationToken);
+
+                await repository.UpdateProcessorHandoffAsync(
+                    handoff.Id,
+                    "completed",
+                    outputPath,
+                    importJob.Id,
+                    null,
                     cancellationToken);
 
                 await activityFeed.RecordActivityAsync(
@@ -2137,6 +2663,7 @@ public static class PlatformEndpointRouteBuilderExtensions
                     JsonSerializer.Serialize(new
                     {
                         request.LibraryId,
+                        HandoffId = handoff.Id,
                         MediaType = resolvedMediaType,
                         EntityType = entityType,
                         EntityId = entityId,
@@ -2145,12 +2672,12 @@ public static class PlatformEndpointRouteBuilderExtensions
                         JobId = importJob.Id
                     }),
                     importJob.Id,
-                    entityType,
-                    entityId,
+                    "processor-handoff",
+                    handoff.Id,
                     cancellationToken);
             }
 
-            return Results.Json(new { status, activityId = activity.Id, importJobId = importJob?.Id }, statusCode: StatusCodes.Status202Accepted);
+            return Results.Json(new { status, handoffId = handoff.Id, activityId = activity.Id, importJobId = importJob?.Id }, statusCode: StatusCodes.Status202Accepted);
         });
 
         // Notification endpoints
@@ -2449,9 +2976,10 @@ public static class PlatformEndpointRouteBuilderExtensions
             errors["provider"] = ["Choose a provider."];
         }
 
-        if (string.IsNullOrWhiteSpace(feedUrl))
+        var addressError = IntakeSourceAddressValidator.Validate(provider, feedUrl);
+        if (!string.IsNullOrWhiteSpace(addressError))
         {
-            errors["feedUrl"] = ["Add the source URL or identifier Deluno should poll."];
+            errors["feedUrl"] = [addressError];
         }
 
         if (minimumRating is < 0 or > 10)
@@ -2653,6 +3181,44 @@ public static class PlatformEndpointRouteBuilderExtensions
 
         return errors;
     }
+
+    private static Dictionary<string, string[]> ValidateProcessorConnection(
+        string? name,
+        string? submissionUrl,
+        string? authHeaderName)
+    {
+        var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            errors["name"] = ["Give this processor connection a name."];
+        }
+
+        if (!Uri.TryCreate(submissionUrl?.Trim(), UriKind.Absolute, out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            errors["submissionUrl"] = ["Use a valid http or https processor webhook URL."];
+        }
+
+        if (!string.IsNullOrWhiteSpace(authHeaderName) && authHeaderName.Any(char.IsWhiteSpace))
+        {
+            errors["authHeaderName"] = ["Authentication header names cannot contain spaces."];
+        }
+
+        return errors;
+    }
+
+    private static string NormalizeProcessorPath(string path)
+    {
+        try
+        {
+            return Path.GetFullPath(path.Trim()).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return path.Trim();
+        }
+    }
+
 
     private static Dictionary<string, string[]> ValidateConnection(CreateConnectionRequest request)
     {

@@ -102,22 +102,20 @@ public static class MetadataEndpointRouteBuilderExtensions
             HttpContext httpContext,
             string cacheKey,
             TmdbMetadataProvider provider,
-            IPlatformSettingsRepository platformRepository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformRepository, cancellationToken);
-            if (denied is not null)
-            {
-                return denied;
-            }
-
             var item = await provider.GetCachedArtworkAsync(cacheKey, cancellationToken);
             if (item is null)
             {
                 return Results.NotFound();
             }
 
-            return Results.File(item.FilePath, item.ContentType);
+            httpContext.Response.Headers.CacheControl = "public, max-age=604800, immutable";
+            return Results.File(
+                item.FilePath,
+                item.ContentType,
+                enableRangeProcessing: true,
+                lastModified: File.GetLastWriteTimeUtc(item.FilePath));
         });
 
         var broker = metadata.MapGroup("/broker");

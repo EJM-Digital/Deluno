@@ -50,7 +50,7 @@ const workflowSections = [
     title: "Metadata",
     badge: "Provider-backed",
     body:
-      "Metadata powers title matching, posters, backdrops, ratings, genres, dates, and naming context. Direct TMDb/OMDb keys work now; a hosted broker can later remove API-key friction for normal users."
+      "Metadata powers title matching, posters, backdrops, ratings, genres, dates, and naming context. Deluno manages title matching during installation; normal users never need to supply personal provider keys."
   },
   {
     icon: KeyRound,

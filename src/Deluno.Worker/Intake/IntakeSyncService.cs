@@ -13,6 +13,7 @@ using Deluno.Platform.Data;
 using Deluno.Platform.Quality;
 using Deluno.Series.Contracts;
 using Deluno.Series.Data;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Deluno.Worker.Intake;
@@ -26,10 +27,14 @@ public sealed class IntakeSyncService(
     IMetadataProvider metadataProvider,
     IMediaDecisionService mediaDecisionService,
     IActivityFeedRepository activityFeedRepository,
+    IConfiguration configuration,
     TimeProvider timeProvider,
+    IHttpClientFactory httpClientFactory,
     ILogger<IntakeSyncService> logger)
-    : IIntakeSyncService
+    : IIntakeSyncService, IIntakeListPreviewService, IIntakeListApprovalService
 {
+    private const int PreviewLimit = 100;
+    private const string IntakeHttpClientName = "deluno-intake";
     private static readonly Regex ImdbListIdRegex = new(@"ls\d{4,}", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex TmdbListIdRegex = new(@"(?:^|/)(\d{3,})(?:$|[/?#])", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex YearRegex = new(@"(?:\(|\b)(19\d{2}|20\d{2}|2100)(?:\)|\b)", RegexOptions.Compiled);
@@ -67,6 +72,91 @@ public sealed class IntakeSyncService(
         return queued;
     }
 
+    public async Task<IntakeListPreviewResult> PreviewAsync(string sourceId, CancellationToken cancellationToken)
+    {
+        var source = await platformSettingsRepository.GetIntakeSourceAsync(sourceId, cancellationToken)
+            ?? throw new InvalidOperationException("Import list not found.");
+        var targetLibrary = ResolveTargetLibrary(source, await platformSettingsRepository.ListLibrariesAsync(cancellationToken));
+        var entries = await FetchEntriesAsync(source, cancellationToken);
+        var mediaType = source.MediaType == "tv" ? "tv" : "movies";
+        var exclusions = await platformSettingsRepository.ListActiveIntakeListExclusionsAsync(source.Id, cancellationToken);
+        var excludedKeys = exclusions.ToDictionary(item => item.EntryKey, item => item, StringComparer.OrdinalIgnoreCase);
+        var known = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        if (mediaType == "tv")
+        {
+            foreach (var item in await seriesCatalogRepository.ListAsync(cancellationToken))
+            {
+                IndexTitle(known, item.Id, item.Title, item.StartYear, item.ImdbId);
+            }
+        }
+        else
+        {
+            foreach (var item in await movieCatalogRepository.ListAsync(cancellationToken))
+            {
+                IndexTitle(known, item.Id, item.Title, item.ReleaseYear, item.ImdbId);
+            }
+        }
+
+        var items = new List<IntakeListPreviewItem>();
+        foreach (var entry in entries.Take(PreviewLimit))
+        {
+            if (!TryResolveTitle(entry, out var title))
+            {
+                items.Add(new IntakeListPreviewItem("Untitled entry", entry.Year, mediaType, entry.ImdbId,
+                    "not eligible", "This list entry has no usable title.", "none"));
+                continue;
+            }
+
+            if (excludedKeys.TryGetValue(BuildKey(title, entry.Year, entry.ImdbId), out var exclusion))
+            {
+                items.Add(new IntakeListPreviewItem(title, entry.Year, mediaType, entry.ImdbId,
+                    "excluded", "You previously chose not to add this entry from this list.", GetMatchConfidence(entry), exclusion.Id));
+                continue;
+            }
+
+            if (!PassEntryFilters(source, entry, timeProvider.GetUtcNow(), out var filterReason))
+            {
+                items.Add(new IntakeListPreviewItem(title, entry.Year, mediaType, entry.ImdbId,
+                    "not eligible", filterReason, GetMatchConfidence(entry)));
+                continue;
+            }
+
+            var existing = Lookup(known, BuildKey(title, entry.Year, entry.ImdbId));
+            items.Add(existing is not null
+                ? new IntakeListPreviewItem(title, entry.Year, mediaType, entry.ImdbId,
+                    "already in library", "A matching title is already in this Deluno library.", GetMatchConfidence(entry))
+                : new IntakeListPreviewItem(title, entry.Year, mediaType, entry.ImdbId,
+                    "would add", "This title passes the list's available filters and would be added on sync.", GetMatchConfidence(entry)));
+        }
+
+        var warnings = new List<string>();
+        if (targetLibrary is null)
+        {
+            warnings.Add("No compatible target library is configured. Sync will not add any titles until you choose one.");
+        }
+        if (!string.IsNullOrWhiteSpace(source.RequiredGenres) || source.MinimumRating is not null || !string.IsNullOrWhiteSpace(source.AllowedCertifications))
+        {
+            warnings.Add("Genre, rating, and certification checks are verified against title metadata during sync when the list does not provide them.");
+        }
+        if (entries.Count > PreviewLimit)
+        {
+            warnings.Add($"Showing the first {PreviewLimit} entries. Sync will evaluate all {entries.Count} entries using the same rules.");
+        }
+
+        return new IntakeListPreviewResult(
+            source.Id,
+            source.Name,
+            source.Provider,
+            mediaType,
+            targetLibrary?.Name,
+            entries.Count,
+            items.Count,
+            entries.Count > PreviewLimit,
+            items,
+            warnings);
+    }
+
     public async Task<IntakeSyncRunResult> RunAsync(string sourceId, string? relatedJobId, bool manual, CancellationToken cancellationToken)
     {
         var source = await platformSettingsRepository.GetIntakeSourceAsync(sourceId, cancellationToken);
@@ -74,6 +164,77 @@ public sealed class IntakeSyncService(
         {
             throw new InvalidOperationException("Intake source not found.");
         }
+
+        return await RunSourceAsync(source, relatedJobId, manual, null, null, cancellationToken);
+    }
+
+    public async Task<IntakeListApprovalResult> ApproveAsync(
+        string sourceId,
+        ApproveIntakeListPreviewRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request.Entries is null || request.Entries.Count == 0)
+        {
+            throw new InvalidOperationException("Choose at least one preview entry to add.");
+        }
+
+        if (request.Entries.Count > PreviewLimit)
+        {
+            throw new InvalidOperationException($"Choose no more than {PreviewLimit} preview entries at a time.");
+        }
+
+        var source = await platformSettingsRepository.GetIntakeSourceAsync(sourceId, cancellationToken)
+            ?? throw new InvalidOperationException("Import list not found.");
+        var selectedKeys = request.Entries
+            .Where(item => !string.IsNullOrWhiteSpace(item.Title))
+            .Select(item => BuildKey(item.Title, item.Year, item.ImdbId))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var entries = await FetchEntriesAsync(source, cancellationToken);
+        var matched = entries.Where(entry =>
+            TryResolveTitle(entry, out var title) &&
+            selectedKeys.Contains(BuildKey(title, entry.Year, entry.ImdbId)))
+            .ToArray();
+
+        var sync = await RunSourceAsync(source, null, true, matched, request.SearchAfterAdd, cancellationToken);
+        await activityFeedRepository.RecordActivityAsync(
+            "intake.preview.approved",
+            $"{source.Name}: approved {matched.Length} of {request.Entries.Count} previewed entries.",
+            JsonSerializer.Serialize(new
+            {
+                source.Id,
+                source.Name,
+                selected = request.Entries.Count,
+                matched = matched.Length,
+                request.SearchAfterAdd,
+                sync.AddedCount,
+                sync.DuplicateCount,
+                sync.SkippedCount,
+                sync.ErrorCount
+            }, JsonOptions),
+            null,
+            "intake-source",
+            source.Id,
+            cancellationToken);
+
+        return new IntakeListApprovalResult(
+            request.Entries.Count,
+            matched.Length,
+            sync.AddedCount,
+            sync.DuplicateCount,
+            sync.SkippedCount,
+            sync.ErrorCount,
+            sync.SearchRequested,
+            sync.Summary);
+    }
+
+    private async Task<IntakeSyncRunResult> RunSourceAsync(
+        IntakeSourceItem source,
+        string? relatedJobId,
+        bool manual,
+        IReadOnlyList<IntakeEntry>? suppliedEntries,
+        bool? searchOnAddOverride,
+        CancellationToken cancellationToken)
+    {
 
         var libraries = await platformSettingsRepository.ListLibrariesAsync(cancellationToken);
         var targetLibrary = ResolveTargetLibrary(source, libraries);
@@ -94,25 +255,32 @@ public sealed class IntakeSyncService(
         }
 
         IReadOnlyList<IntakeEntry> entries;
-        try
+        if (suppliedEntries is not null)
         {
-            entries = await FetchEntriesAsync(source, cancellationToken);
+            entries = suppliedEntries;
         }
-        catch (Exception ex)
+        else
         {
-            logger.LogWarning(ex, "Intake source {SourceId} fetch failed.", source.Id);
-            var failureSummary = $"Provider fetch failed: {ex.Message}";
-            await platformSettingsRepository.RecordIntakeSourceSyncResultAsync(source.Id, timeProvider.GetUtcNow(), "error", failureSummary, cancellationToken);
-            await activityFeedRepository.RecordActivityAsync(
-                "intake.sync.failed",
-                $"{source.Name} sync failed during fetch.",
-                JsonSerializer.Serialize(new { source.Id, source.Name, source.Provider, source.FeedUrl, error = ex.Message }, JsonOptions),
-                relatedJobId,
-                "intake-source",
-                source.Id,
-                cancellationToken);
+            try
+            {
+                entries = await FetchEntriesAsync(source, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Intake source {SourceId} fetch failed.", source.Id);
+                var failureSummary = $"Provider fetch failed: {ex.Message}";
+                await platformSettingsRepository.RecordIntakeSourceSyncResultAsync(source.Id, timeProvider.GetUtcNow(), "error", failureSummary, cancellationToken);
+                await activityFeedRepository.RecordActivityAsync(
+                    "intake.sync.failed",
+                    $"{source.Name} sync failed during fetch.",
+                    JsonSerializer.Serialize(new { source.Id, source.Name, source.Provider, source.FeedUrl, error = ex.Message }, JsonOptions),
+                    relatedJobId,
+                    "intake-source",
+                    source.Id,
+                    cancellationToken);
 
-            return new IntakeSyncRunResult(source.Id, source.Name, "error", 0, 0, 0, 0, 1, false, failureSummary);
+                return new IntakeSyncRunResult(source.Id, source.Name, "error", 0, 0, 0, 0, 1, false, failureSummary);
+            }
         }
 
         var movieIndex = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -136,6 +304,9 @@ public sealed class IntakeSyncService(
         }
 
         var skipReasons = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var excludedKeys = (await platformSettingsRepository.ListActiveIntakeListExclusionsAsync(source.Id, cancellationToken))
+            .Select(item => item.EntryKey)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var skipped = 0;
         var duplicates = 0;
         var added = 0;
@@ -150,6 +321,13 @@ public sealed class IntakeSyncService(
                 {
                     skipped++;
                     Increment(skipReasons, "Entry had no usable title.");
+                    continue;
+                }
+
+                if (excludedKeys.Contains(BuildKey(baseTitle, entry.Year, entry.ImdbId)))
+                {
+                    skipped++;
+                    Increment(skipReasons, "Entry was excluded by the user.");
                     continue;
                 }
 
@@ -244,6 +422,19 @@ public sealed class IntakeSyncService(
                     duplicates++;
                 }
 
+                await platformSettingsRepository.RecordIntakeTitleOriginAsync(
+                    new CreateIntakeTitleOriginRequest(
+                        source.Id,
+                        source.Name,
+                        source.Provider,
+                        mediaType,
+                        existingId!,
+                        BuildKey(resolvedTitle!, resolvedYear, resolvedImdb),
+                        resolvedTitle!,
+                        resolvedYear,
+                        resolvedImdb),
+                    cancellationToken);
+
                 var decision = mediaDecisionService.DecideWantedState(new MediaWantedDecisionInput(
                     MediaType: targetLibrary.MediaType,
                     HasFile: false,
@@ -289,7 +480,7 @@ public sealed class IntakeSyncService(
                     }
                 }
 
-                shouldRequestSearch = shouldRequestSearch || source.SearchOnAdd;
+                shouldRequestSearch = shouldRequestSearch || (searchOnAddOverride ?? source.SearchOnAdd);
             }
             catch (Exception ex)
             {
@@ -380,6 +571,7 @@ public sealed class IntakeSyncService(
         return provider switch
         {
             "tmdb" => await FetchTmdbListAsync(source, mediaType, cancellationToken),
+            "mdblist" => await FetchMdbListAsync(source, mediaType, cancellationToken),
             "imdb" => await FetchImdbListAsync(source, mediaType, cancellationToken),
             "trakt" => await FetchTraktListAsync(source, mediaType, cancellationToken),
             "rss" or "letterboxd" or "url-list" => await FetchGenericListAsync(source, mediaType, cancellationToken),
@@ -389,10 +581,14 @@ public sealed class IntakeSyncService(
 
     private async Task<IReadOnlyList<IntakeEntry>> FetchTmdbListAsync(IntakeSourceItem source, string mediaType, CancellationToken cancellationToken)
     {
-        var apiKey = await platformSettingsRepository.GetMetadataProviderSecretAsync("tmdb", cancellationToken);
+        var apiKey = await GetManagedSecretAsync(
+            "Deluno:Metadata:TMDbApiKey",
+            "TMDB_API_KEY",
+            "tmdb",
+            cancellationToken);
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            throw new InvalidOperationException("TMDB API key is not configured.");
+            throw new InvalidOperationException("The Deluno metadata service is not configured for TMDb import lists.");
         }
 
         var listId = ResolveTmdbListId(source.FeedUrl);
@@ -402,7 +598,7 @@ public sealed class IntakeSyncService(
         }
 
         var url = $"https://api.themoviedb.org/3/list/{Uri.EscapeDataString(listId)}?api_key={Uri.EscapeDataString(apiKey)}";
-        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+        using var client = httpClientFactory.CreateClient(IntakeHttpClientName);
         var json = await client.GetStringAsync(url, cancellationToken);
         using var doc = JsonDocument.Parse(json);
         if (!doc.RootElement.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array)
@@ -434,10 +630,71 @@ public sealed class IntakeSyncService(
         return results;
     }
 
+    private async Task<IReadOnlyList<IntakeEntry>> FetchMdbListAsync(IntakeSourceItem source, string mediaType, CancellationToken cancellationToken)
+    {
+        var apiKey = await GetManagedSecretAsync(
+            "Deluno:Metadata:MDbListApiKey",
+            "MDBLIST_API_KEY",
+            "mdblist",
+            cancellationToken);
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            throw new InvalidOperationException("The Deluno metadata service is not configured for MDbList import lists.");
+        }
+
+        var list = ResolveMdbListReference(source.FeedUrl);
+        if (list is null)
+        {
+            throw new InvalidOperationException("MDbList source requires a public list URL in the form https://mdblist.com/lists/owner/list-name.");
+        }
+
+        using var client = httpClientFactory.CreateClient(IntakeHttpClientName);
+
+        var results = new List<IntakeEntry>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        string? cursor = null;
+        for (var page = 0; page < 10; page++)
+        {
+            var url = BuildMdbListItemsUrl(list.Value.Owner, list.Value.Slug, apiKey, cursor);
+            var json = await client.GetStringAsync(url, cancellationToken);
+            using var document = JsonDocument.Parse(json);
+            foreach (var entry in ParseMdbListEntries(document.RootElement, mediaType))
+            {
+                var key = $"{entry.ImdbId}|{entry.Title}|{entry.Year}|{entry.MediaType}";
+                if (seen.Add(key))
+                {
+                    results.Add(entry);
+                }
+            }
+
+            cursor = ReadMdbNextCursor(document.RootElement);
+            if (string.IsNullOrWhiteSpace(cursor))
+            {
+                break;
+            }
+        }
+
+        return results;
+    }
+
+    private async Task<string?> GetManagedSecretAsync(
+        string configurationKey,
+        string environmentKey,
+        string legacySecretName,
+        CancellationToken cancellationToken)
+    {
+        var configured = configuration[configurationKey]
+                         ?? configuration[environmentKey]
+                         ?? Environment.GetEnvironmentVariable(environmentKey);
+        return string.IsNullOrWhiteSpace(configured)
+            ? await platformSettingsRepository.GetMetadataProviderSecretAsync(legacySecretName, cancellationToken)
+            : configured.Trim();
+    }
+
     private async Task<IReadOnlyList<IntakeEntry>> FetchImdbListAsync(IntakeSourceItem source, string mediaType, CancellationToken cancellationToken)
     {
         var url = ResolveImdbCsvUrl(source.FeedUrl);
-        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+        using var client = httpClientFactory.CreateClient(IntakeHttpClientName);
         var csv = await client.GetStringAsync(url, cancellationToken);
         if (string.IsNullOrWhiteSpace(csv))
         {
@@ -493,7 +750,7 @@ public sealed class IntakeSyncService(
     private async Task<IReadOnlyList<IntakeEntry>> FetchTraktListAsync(IntakeSourceItem source, string mediaType, CancellationToken cancellationToken)
     {
         var rssUrl = ResolveTraktRssUrl(source.FeedUrl);
-        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+        using var client = httpClientFactory.CreateClient(IntakeHttpClientName);
         var xml = await client.GetStringAsync(rssUrl, cancellationToken);
         return ParseRss(xml, mediaType);
     }
@@ -502,7 +759,12 @@ public sealed class IntakeSyncService(
     {
         if (Uri.TryCreate(source.FeedUrl, UriKind.Absolute, out var uri))
         {
-            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+            if (ResolveMdbListReference(source.FeedUrl) is not null)
+            {
+                return await FetchPublicMdbListAsync(uri, mediaType, cancellationToken);
+            }
+
+            using var client = httpClientFactory.CreateClient(IntakeHttpClientName);
             var body = await client.GetStringAsync(uri, cancellationToken);
             if (LooksLikeXml(body))
             {
@@ -514,6 +776,103 @@ public sealed class IntakeSyncService(
 
         return ParsePlainList(source.FeedUrl, mediaType);
     }
+
+    private async Task<IReadOnlyList<IntakeEntry>> FetchPublicMdbListAsync(Uri listUrl, string mediaType, CancellationToken cancellationToken)
+    {
+        using var client = httpClientFactory.CreateClient(IntakeHttpClientName);
+        client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+
+        // MDbList documents public list URLs for direct Radarr/Sonarr use. Its
+        // compatible response is selected by media type and requires no API key.
+        client.DefaultRequestHeaders.UserAgent.ParseAdd(mediaType == "tv" ? "Sonarr/4.0" : "Radarr/6.0");
+        var json = await client.GetStringAsync(listUrl, cancellationToken);
+        using var document = JsonDocument.Parse(json);
+        if (document.RootElement.ValueKind != JsonValueKind.Array)
+        {
+            throw new InvalidOperationException("MDbList did not return a compatible public list response.");
+        }
+
+        return ParseMdbListEntries(document.RootElement, mediaType);
+    }
+
+    private static (string Owner, string Slug)? ResolveMdbListReference(string feedUrl)
+    {
+        if (!Uri.TryCreate(feedUrl?.Trim(), UriKind.Absolute, out var uri) ||
+            !(uri.Host.Equals("mdblist.com", StringComparison.OrdinalIgnoreCase) || uri.Host.Equals("www.mdblist.com", StringComparison.OrdinalIgnoreCase)))
+        {
+            return null;
+        }
+
+        var segments = uri.AbsolutePath.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length < 3 || !string.Equals(segments[0], "lists", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(segments[2], "external", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return (segments[1], segments[2]);
+    }
+
+    private static string BuildMdbListItemsUrl(string owner, string slug, string apiKey, string? cursor)
+    {
+        // MDbList API keys use the apikey query parameter. OAuth access tokens
+        // use Authorization: Bearer and will be handled by a future account-connection flow.
+        // Import needs a title, year, and provider IDs. `extended=ids_only`
+        // deliberately omits title data, so it cannot be used for this flow.
+        var query = $"apikey={Uri.EscapeDataString(apiKey)}&limit=1000{(string.IsNullOrWhiteSpace(cursor) ? string.Empty : $"&cursor={Uri.EscapeDataString(cursor)}")}";
+        return $"https://api.mdblist.com/lists/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(slug)}/items?{query}";
+    }
+
+    private static IReadOnlyList<IntakeEntry> ParseMdbListEntries(JsonElement root, string fallbackMediaType)
+    {
+        var entries = new List<IntakeEntry>();
+        if (root.ValueKind == JsonValueKind.Array)
+        {
+            AddMdbItems(root, fallbackMediaType, entries);
+            return entries;
+        }
+
+        AddMdbItems(root, "items", fallbackMediaType, entries);
+        AddMdbItems(root, "movies", "movies", entries);
+        AddMdbItems(root, "shows", "tv", entries);
+        return entries;
+    }
+
+    private static void AddMdbItems(JsonElement root, string property, string fallbackMediaType, ICollection<IntakeEntry> entries)
+    {
+        if (!root.TryGetProperty(property, out var items) || items.ValueKind != JsonValueKind.Array)
+        {
+            return;
+        }
+
+        AddMdbItems(items, fallbackMediaType, entries);
+    }
+
+    private static void AddMdbItems(JsonElement items, string fallbackMediaType, ICollection<IntakeEntry> entries)
+    {
+        foreach (var item in items.EnumerateArray())
+        {
+            var title = ReadString(item, "title") ?? ReadString(item, "name");
+            var year = ReadInt(item, "release_year") ?? ReadInt(item, "year");
+            var imdbId = ReadString(item, "imdb_id") ?? ReadNestedString(item, "ids", "imdb") ?? ReadNestedString(item, "ids", "imdbid");
+            var rating = ReadNumber(item, "score_average") ?? ReadNumber(item, "imdb_rating") ?? ReadNumber(item, "score");
+            var releaseDate = ParseDate(ReadString(item, "released") ?? ReadString(item, "release_date"));
+            var itemMediaType = NormalizeMediaType(ReadString(item, "mediatype") ?? ReadString(item, "type"), fallbackMediaType);
+            entries.Add(new IntakeEntry(
+                Title: title,
+                Year: year,
+                MediaType: itemMediaType,
+                ImdbId: NormalizeImdbId(imdbId),
+                GenresCsv: ReadString(item, "genres") ?? string.Empty,
+                Rating: rating,
+                ReleaseDateUtc: releaseDate,
+                Certification: ReadString(item, "certification"),
+                Audience: ReadBoolean(item, "adult") ? "adult" : "any"));
+        }
+    }
+
+    private static string? ReadMdbNextCursor(JsonElement root)
+        => ReadNestedString(root, "pagination", "next_cursor") ?? ReadString(root, "next_cursor");
 
     private async Task<MetadataSearchResult?> ResolveMetadataAsync(
         IntakeSourceItem source,
@@ -948,6 +1307,11 @@ public sealed class IntakeSyncService(
         return match.Success ? match.Value.ToLowerInvariant() : string.Empty;
     }
 
+    private static string GetMatchConfidence(IntakeEntry entry)
+        => !string.IsNullOrWhiteSpace(entry.ImdbId) ? "high"
+            : entry.Year is not null ? "medium"
+            : "low";
+
     private static string NormalizeMediaType(string? value, string fallback)
     {
         var normalized = value?.Trim().ToLowerInvariant();
@@ -1028,6 +1392,16 @@ public sealed class IntakeSyncService(
     private static double? ReadNumber(JsonElement element, string property)
         => element.TryGetProperty(property, out var value) && value.ValueKind is JsonValueKind.Number && value.TryGetDouble(out var number)
             ? number
+            : null;
+
+    private static int? ReadInt(JsonElement element, string property)
+        => element.TryGetProperty(property, out var value) && value.ValueKind is JsonValueKind.Number && value.TryGetInt32(out var number)
+            ? number
+            : null;
+
+    private static string? ReadNestedString(JsonElement element, string parent, string property)
+        => element.TryGetProperty(parent, out var nested) && nested.ValueKind == JsonValueKind.Object
+            ? ReadString(nested, property)
             : null;
 
     private static bool ReadBoolean(JsonElement element, string property)

@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { ArrowRight, CheckCircle2, FileJson, LoaderCircle, ShieldCheck, TriangleAlert } from "lucide-react";
 import { SettingsShell } from "../components/app/settings-shell";
 import { Badge } from "../components/ui/badge";
@@ -6,7 +6,7 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { InputDescription } from "../components/ui/input-description";
-import { fetchJson, type MigrationApplyResponse, type MigrationReport, type MigrationReportOperation } from "../lib/api";
+import { fetchJson, type MigrationApplyResponse, type MigrationAuditReport, type MigrationReport, type MigrationReportOperation } from "../lib/api";
 
 const SOURCE_OPTIONS = [
   { label: "Radarr", value: "radarr" },
@@ -38,25 +38,42 @@ const SAMPLE_PAYLOAD = `{
   ]
 }`;
 
+interface ConnectionValidationResult {
+  healthStatus: string;
+  message: string;
+  failureCategory?: string | null;
+  latencyMs?: number | null;
+}
+
 export function SettingsMigrationPage() {
   const [sourceKind, setSourceKind] = useState("radarr");
   const [sourceName, setSourceName] = useState("Radarr");
   const [payloadJson, setPayloadJson] = useState("");
   const [report, setReport] = useState<MigrationReport | null>(null);
+  const [selectedOperationIds, setSelectedOperationIds] = useState<Set<string>>(new Set());
   const [applied, setApplied] = useState<MigrationApplyResponse | null>(null);
-  const [busy, setBusy] = useState<"preview" | "apply" | null>(null);
+  const [auditReports, setAuditReports] = useState<MigrationAuditReport[]>([]);
+  const [busy, setBusy] = useState<"preview" | "apply" | "validate" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [connectionValidation, setConnectionValidation] = useState<Record<string, ConnectionValidationResult>>({});
 
   const canApply = useMemo(
-    () => report?.valid === true && report.operations.some((operation) => operation.canApply),
-    [report]
+    () => report?.valid === true && selectedOperationIds.size > 0,
+    [report, selectedOperationIds]
   );
+
+  useEffect(() => {
+    void fetchJson<MigrationAuditReport[]>("/api/migration/reports")
+      .then(setAuditReports)
+      .catch(() => setAuditReports([]));
+  }, []);
 
   async function handlePreview(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault();
     setBusy("preview");
     setMessage(null);
     setApplied(null);
+    setConnectionValidation({});
 
     try {
       const nextReport = await fetchJson<MigrationReport>("/api/migration/preview", {
@@ -65,6 +82,7 @@ export function SettingsMigrationPage() {
         body: JSON.stringify({ sourceKind, sourceName, payloadJson })
       });
       setReport(nextReport);
+      setSelectedOperationIds(new Set(nextReport.operations.filter(isSelectableOperation).map((operation) => operation.id)));
       setMessage(nextReport.valid ? "Preview ready. Review every create, skip, and warning before applying." : "Preview found issues.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Migration preview failed.");
@@ -81,16 +99,59 @@ export function SettingsMigrationPage() {
       const result = await fetchJson<MigrationApplyResponse>("/api/migration/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sourceKind, sourceName, payloadJson })
+        body: JSON.stringify({ sourceKind, sourceName, payloadJson, selectedOperationIds: [...selectedOperationIds] })
       });
       setApplied(result);
       setReport(result.report);
-      setMessage(`${result.applied.length} item${result.applied.length === 1 ? "" : "s"} imported. Deluno skipped anything already present.`);
+      setConnectionValidation({});
+      const reports = await fetchJson<MigrationAuditReport[]>("/api/migration/reports").catch(() => []);
+      setAuditReports(reports);
+      const createdCount = result.applied.filter((item) => item.result === "created").length;
+      setMessage(result.report.errors.length > 0
+        ? "Migration paused safely. Review the report and audit, then retry when you are ready."
+        : `${createdCount} selected item${createdCount === 1 ? "" : "s"} imported. Deluno skipped anything already present.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Migration apply failed.");
     } finally {
       setBusy(null);
     }
+  }
+
+  const importedConnections = useMemo(
+    () => (applied?.applied ?? []).filter(
+      (item) => item.result === "created" && item.createdId && (item.targetType === "indexer" || item.targetType === "download-client")
+    ),
+    [applied]
+  );
+
+  async function handleValidateImportedConnections() {
+    if (importedConnections.length === 0) return;
+    setBusy("validate");
+    setMessage(null);
+
+    const results: Record<string, ConnectionValidationResult> = {};
+    await Promise.all(importedConnections.map(async (item) => {
+      const collection = item.targetType === "indexer" ? "indexers" : "download-clients";
+      try {
+        results[item.operationId] = await fetchJson<ConnectionValidationResult>(`/api/${collection}/${item.createdId}/test`, {
+          method: "POST"
+        });
+      } catch (error) {
+        results[item.operationId] = {
+          healthStatus: "needs review",
+          message: error instanceof Error ? error.message : "Connection test could not run."
+        };
+      }
+    }));
+
+    setConnectionValidation(results);
+    const healthyCount = Object.values(results).filter((result) => result.healthStatus === "healthy").length;
+    setMessage(
+      healthyCount === importedConnections.length
+        ? "Every imported connection responded successfully."
+        : `${healthyCount} of ${importedConnections.length} imported connection${importedConnections.length === 1 ? "" : "s"} passed. Review anything marked for attention.`
+    );
+    setBusy(null);
   }
 
   return (
@@ -153,7 +214,7 @@ export function SettingsMigrationPage() {
                 </Button>
                 <Button type="button" variant="outline" onClick={() => void handleApply()} disabled={!canApply || busy !== null}>
                   {busy === "apply" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
-                  Apply safe changes
+                  Apply selected changes ({selectedOperationIds.size})
                 </Button>
               </div>
             </form>
@@ -186,7 +247,7 @@ export function SettingsMigrationPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Applied changes</CardTitle>
-                <CardDescription>Created configuration returned by the backend.</CardDescription>
+                <CardDescription>Each saved or failed stage returned by the backend. A failed stage stops the migration safely; retrying skips matching saved items.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-2">
                 {applied.applied.length === 0 ? (
@@ -196,18 +257,68 @@ export function SettingsMigrationPage() {
                     <div key={item.operationId} className="rounded-xl border border-hairline bg-surface-1 p-3">
                       <p className="font-semibold text-foreground">{item.name}</p>
                       <p className="mt-1 font-mono text-[length:var(--type-caption)] text-muted-foreground">
-                        {item.targetType} · {item.createdId}
+                        {item.targetType} · {item.result}{item.createdId ? ` · ${item.createdId}` : ""}
                       </p>
                     </div>
                   ))
                 )}
+                {importedConnections.length > 0 ? (
+                  <div className="mt-4 rounded-xl border border-primary/20 bg-primary/5 p-3">
+                    <p className="font-semibold text-foreground">Validate imported connections</p>
+                    <p className="mt-1 density-help text-muted-foreground">
+                      Deluno tests the saved search sources and download clients using their protected credentials. Secrets never appear in this screen or the migration audit.
+                    </p>
+                    <Button type="button" size="sm" className="mt-3" disabled={busy !== null} onClick={() => void handleValidateImportedConnections()}>
+                      {busy === "validate" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                      Validate imported connections ({importedConnections.length})
+                    </Button>
+                    {importedConnections.map((item) => {
+                      const result = connectionValidation[item.operationId];
+                      if (!result) return null;
+                      return (
+                        <div key={item.operationId} className="mt-3 rounded-lg border border-hairline bg-background/40 p-2.5">
+                          <p className="text-sm font-semibold text-foreground">{item.name} · {result.healthStatus}</p>
+                          <p className="mt-1 density-help text-muted-foreground">{result.message}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {auditReports.length > 0 ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Applied migration history</CardTitle>
+                <CardDescription>Immutable, redacted records. Preview-only runs are never stored.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {auditReports.map((audit) => (
+                  <button
+                    key={audit.id}
+                    type="button"
+                    onClick={() => {
+                      setReport(audit.preflightReport);
+                      setApplied({ report: audit.resultReport, applied: audit.applied, auditReportId: audit.id });
+                      setMessage(`Showing applied migration record from ${new Date(audit.appliedUtc).toLocaleString()}.`);
+                    }}
+                    className="w-full rounded-xl border border-hairline bg-surface-1 p-3 text-left transition hover:border-primary/35"
+                  >
+                    <p className="font-semibold text-foreground">{audit.sourceName}</p>
+                    <p className="mt-1 font-mono text-[length:var(--type-caption)] text-muted-foreground">
+                      {new Date(audit.appliedUtc).toLocaleString()} · {audit.applied.filter((item) => item.result === "created").length} created · {audit.applied.filter((item) => item.result === "failed").length} failed
+                    </p>
+                  </button>
+                ))}
               </CardContent>
             </Card>
           ) : null}
         </div>
       </div>
 
-      {report ? <MigrationOperations operations={report.operations} /> : null}
+      {report ? <MigrationOperations operations={report.operations} selectedOperationIds={selectedOperationIds} onSelectionChange={setSelectedOperationIds} /> : null}
     </SettingsShell>
   );
 }
@@ -226,7 +337,7 @@ function MigrationSummary({ report }: { report: MigrationReport }) {
         <CardTitle>Preview summary</CardTitle>
         <CardDescription>{report.sourceName} · {report.sourceKind}</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-[var(--page-gap)]">
         <div className="grid grid-cols-2 gap-3">
           {stats.map((stat) => (
             <div key={stat.label} className="rounded-xl border border-hairline bg-surface-1 p-3">
@@ -250,18 +361,33 @@ function MigrationSummary({ report }: { report: MigrationReport }) {
   );
 }
 
-function MigrationOperations({ operations }: { operations: MigrationReportOperation[] }) {
+function isSelectableOperation(operation: MigrationReportOperation) {
+  return operation.canApply || (operation.category === "catalog" && operation.targetType === "monitored-state");
+}
+
+function MigrationOperations({
+  operations,
+  selectedOperationIds,
+  onSelectionChange
+}: {
+  operations: MigrationReportOperation[];
+  selectedOperationIds: Set<string>;
+  onSelectionChange: (next: Set<string>) => void;
+}) {
   return (
     <Card>
       <CardHeader>
         <CardTitle>Change report</CardTitle>
-        <CardDescription>Every imported, skipped, unsupported, or reported item is shown before apply.</CardDescription>
+        <CardDescription>Select only the safe changes you want to apply. Skipped, unsupported, and conflicting items remain review-only.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         {operations.length === 0 ? (
           <p className="density-help text-muted-foreground">No supported configuration was found in this payload yet.</p>
         ) : (
-          operations.map((operation) => (
+          operations.map((operation) => {
+            const selectable = isSelectableOperation(operation);
+            const selected = selectedOperationIds.has(operation.id);
+            return (
             <div key={operation.id} className="rounded-2xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.75)]">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -274,8 +400,21 @@ function MigrationOperations({ operations }: { operations: MigrationReportOperat
                   </p>
                   <p className="mt-1 density-help text-muted-foreground">{operation.reason}</p>
                 </div>
-                {operation.canApply ? (
-                  <CheckCircle2 className="h-5 w-5 text-success" />
+                {selectable ? (
+                  <label className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                    <input
+                      type="checkbox"
+                      aria-label={`Apply ${operation.name}`}
+                      checked={selected}
+                      onChange={(event) => {
+                        const next = new Set(selectedOperationIds);
+                        if (event.target.checked) next.add(operation.id);
+                        else next.delete(operation.id);
+                        onSelectionChange(next);
+                      }}
+                    />
+                    Apply
+                  </label>
                 ) : (
                   <TriangleAlert className="h-5 w-5 text-muted-foreground" />
                 )}
@@ -300,7 +439,8 @@ function MigrationOperations({ operations }: { operations: MigrationReportOperat
                 </div>
               ) : null}
             </div>
-          ))
+            );
+          })
         )}
       </CardContent>
     </Card>

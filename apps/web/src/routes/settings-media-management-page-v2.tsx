@@ -1,13 +1,13 @@
-import { useState, type FormEvent, type ReactNode } from "react";
-import { useLoaderData, useRevalidator } from "react-router-dom";
-import { FolderOpen, Link2, LoaderCircle, Sparkles, Trash2, Workflow } from "lucide-react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useLoaderData, useLocation, useRevalidator } from "react-router-dom";
+import { Cable, FolderOpen, Link2, LoaderCircle, Sparkles, Trash2, Workflow } from "lucide-react";
 import { SettingsShell } from "../components/app/settings-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { PathInput } from "../components/ui/path-input";
 import { NamingFormatField } from "../components/app/naming-format-field";
 import { settingsOverviewLoader } from "./settings-overview-page";
-import { emptyPlatformSettingsSnapshot, type LibraryItem, type PlatformSettingsSnapshot, type QualityProfileItem } from "../lib/api";
+import { emptyPlatformSettingsSnapshot, fetchJson, type LibraryItem, type PlatformSettingsSnapshot, type ProcessorConnectionItem, type ProcessorConnectionTestResult, type QualityProfileItem } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
 import { RouteSkeleton } from "../components/shell/skeleton";
 
@@ -17,17 +17,43 @@ interface SettingsOverviewLoaderData {
   settings: PlatformSettingsSnapshot;
 }
 
-export const settingsMediaManagementLoader = settingsOverviewLoader;
+interface SettingsMediaManagementLoaderData extends SettingsOverviewLoaderData {
+  processorConnections: ProcessorConnectionItem[];
+}
+
+export async function settingsMediaManagementLoader(): Promise<SettingsMediaManagementLoaderData> {
+  const [overview, processorConnections] = await Promise.all([
+    settingsOverviewLoader(),
+    fetchJson<ProcessorConnectionItem[]>("/api/integrations/processors/connections")
+  ]);
+  return { ...overview, processorConnections };
+}
 
 export function SettingsMediaManagementPage() {
-  const loaderData = useLoaderData() as SettingsOverviewLoaderData | undefined;
+  const loaderData = useLoaderData() as SettingsMediaManagementLoaderData | undefined;
   if (!loaderData) return <RouteSkeleton />;
-  const { libraries, settings } = loaderData;
+  const location = useLocation();
+  const isProcessingPage = location.pathname.startsWith("/settings/processing");
+  const { libraries, processorConnections: loadedProcessorConnections, settings } = loaderData;
   const revalidator = useRevalidator();
   const [formState, setFormState] = useState(settings);
   const [busy, setBusy] = useState(false);
   const [workflowBusyKey, setWorkflowBusyKey] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [connectionBusyKey, setConnectionBusyKey] = useState<string | null>(null);
+  const [processorConnections, setProcessorConnections] = useState(loadedProcessorConnections);
+  const [connectionForm, setConnectionForm] = useState({
+    name: "",
+    provider: "generic-webhook",
+    submissionUrl: "",
+    authHeaderName: "Authorization",
+    secret: "",
+    isEnabled: true
+  });
+
+  useEffect(() => {
+    setProcessorConnections(loadedProcessorConnections);
+  }, [loadedProcessorConnections]);
 
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -81,10 +107,70 @@ export function SettingsMediaManagementPage() {
     }
   }
 
+  async function handleCreateConnection(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setConnectionBusyKey("create");
+    setMessage(null);
+    try {
+      const response = await authedFetch("/api/integrations/processors/connections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(connectionForm)
+      });
+      if (!response.ok) throw new Error("Processor connection could not be saved.");
+      const savedConnection = await response.json() as ProcessorConnectionItem;
+      setProcessorConnections((current) => [...current.filter((connection) => connection.id !== savedConnection.id), savedConnection]);
+      setConnectionForm({ name: "", provider: "generic-webhook", submissionUrl: "", authHeaderName: "Authorization", secret: "", isEnabled: true });
+      setMessage("Optional completion callback saved. Select it only when your existing automation should notify Deluno as soon as processing ends.");
+      revalidator.revalidate();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Processor connection could not be saved.");
+    } finally {
+      setConnectionBusyKey(null);
+    }
+  }
+
+  async function handleTestConnection(connection: ProcessorConnectionItem) {
+    setConnectionBusyKey(`test:${connection.id}`);
+    setMessage(null);
+    try {
+      const response = await authedFetch(`/api/integrations/processors/connections/${connection.id}/test`, { method: "POST" });
+      if (!response.ok) throw new Error("Processor connection test failed.");
+      const result = await response.json() as ProcessorConnectionTestResult;
+      setProcessorConnections((current) => current.map((item) => item.id === connection.id
+        ? { ...item, healthStatus: result.status, lastHealthMessage: result.message }
+        : item));
+      setMessage(`${connection.name}: ${result.message}`);
+      revalidator.revalidate();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Processor connection test failed.");
+    } finally {
+      setConnectionBusyKey(null);
+    }
+  }
+
+  async function handleDeleteConnection(connection: ProcessorConnectionItem) {
+    setConnectionBusyKey(`delete:${connection.id}`);
+    setMessage(null);
+    try {
+      const response = await authedFetch(`/api/integrations/processors/connections/${connection.id}`, { method: "DELETE" });
+      if (!response.ok && response.status !== 204) throw new Error("Processor connection could not be removed.");
+      setProcessorConnections((current) => current.filter((item) => item.id !== connection.id));
+      setMessage(`${connection.name} was removed. Libraries using its name will wait for a manual callback until another connection is selected.`);
+      revalidator.revalidate();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Processor connection could not be removed.");
+    } finally {
+      setConnectionBusyKey(null);
+    }
+  }
+
   return (
     <SettingsShell
-      title="Media Management"
-      description="Naming, import, and file-handling policy should live here instead of being scattered across libraries and download clients."
+      title={isProcessingPage ? "Processing & import" : "Files, processing & import"}
+      description={isProcessingPage
+        ? "Configure the optional processing hand-off Deluno uses before it imports and renames the finished file."
+        : "Choose how Deluno reaches completed files, names them, and imports them into your media library."}
     >
       {message ? (
         <div className="density-help rounded-xl border border-hairline bg-surface-1 px-4 py-3 text-muted-foreground">
@@ -92,8 +178,9 @@ export function SettingsMediaManagementPage() {
         </div>
       ) : null}
 
-      <div className="settings-split settings-split-config-heavy">
-        <Card className="settings-panel">
+       <div className="space-y-[var(--page-gap)]">
+         {!isProcessingPage ? (
+         <Card className="settings-panel">
           <CardHeader>
             <CardTitle>Import and file handling</CardTitle>
             <CardDescription>
@@ -108,7 +195,7 @@ export function SettingsMediaManagementPage() {
                   title="Folder naming"
                   copy="Pick the naming style Deluno should use when it creates or renames media. The recommended preset is the safest choice for most libraries."
                 />
-                <div className="mt-5 grid gap-5">
+                <div className="mt-5 grid gap-[var(--grid-gap)]">
                   <Field label="Movie folders" description="Used when Deluno creates or renames a movie folder.">
                   <NamingFormatField
                     kind="movie-folder"
@@ -144,8 +231,8 @@ export function SettingsMediaManagementPage() {
 
               <div className="grid gap-[var(--grid-gap)] lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
                 <Field
-                  label="Completed downloads folder"
-                  description="Where your external download client leaves finished files before Deluno imports them."
+                  label="Default completed-file location"
+                  description="Fallback for manual imports or downloads not linked to a client. For a normal client, configure its completed folder in that client and use its File locations only when Deluno sees the same files under a different path."
                 >
                   <PathInput
                     value={formState.downloadsPath ?? ""}
@@ -188,14 +275,6 @@ export function SettingsMediaManagementPage() {
                   }
                 />
                 <ToggleField
-                  label="Remove completed downloads"
-                      description="Ask Deluno to clear completed items from the download client after import."
-                  checked={formState.removeCompletedDownloads}
-                  onChange={(checked) =>
-                    setFormState((current) => ({ ...current, removeCompletedDownloads: checked }))
-                  }
-                />
-                <ToggleField
                   label="Unmonitor at cutoff"
                   description="Stop watching a title after import reaches the selected cutoff quality."
                   checked={formState.unmonitorWhenCutoffMet}
@@ -213,11 +292,12 @@ export function SettingsMediaManagementPage() {
               </Button>
             </form>
           </CardContent>
-        </Card>
+         </Card>
+         ) : null}
 
-        <Card className="settings-panel">
+         {isProcessingPage ? <Card className="settings-panel">
           <CardHeader>
-            <CardTitle>Import workflow by library</CardTitle>
+            <CardTitle>Processing & import by library</CardTitle>
             <CardDescription>
               Choose whether a finished download imports immediately or waits for a cleaner processor output first.
             </CardDescription>
@@ -225,21 +305,64 @@ export function SettingsMediaManagementPage() {
           <CardContent className="space-y-3">
             <div className="rounded-2xl border border-hairline bg-surface-1 p-[var(--tile-pad)]">
               <SectionIntro
+                icon={Cable}
+                title="Optional processor notifications"
+                copy="Most processed libraries only need a processed-files folder that Deluno can access. Add a callback only when your existing automation can tell Deluno exactly when a matching output is ready; Deluno does not configure or control FileFlows, Weir, or another processor."
+              />
+              <form className="mt-4 grid gap-3" onSubmit={handleCreateConnection}>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Callback name" description="Use a name you will recognise in Transfers, such as Processed media notifier.">
+                    <input value={connectionForm.name} onChange={(event) => setConnectionForm((current) => ({ ...current, name: event.target.value }))} placeholder="Processed media notifier" className="density-control-text h-[var(--control-height)] w-full rounded-xl border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none" />
+                  </Field>
+                  <Field label="Callback type" description="Use the generic callback contract if you choose to notify Deluno from existing automation.">
+                    <select value={connectionForm.provider} onChange={(event) => setConnectionForm((current) => ({ ...current, provider: event.target.value }))} className="density-control-text h-[var(--control-height)] w-full rounded-xl border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none">
+                      <option value="generic-webhook">Generic processor webhook</option>
+                      <option value="fileflows-webhook">FileFlows webhook (compatible existing setups)</option>
+                    </select>
+                  </Field>
+                </div>
+                <Field label="Notification webhook URL" description="Optional endpoint that your existing automation receives when Deluno has a completed download. It can later call Deluno’s processor-event endpoint with the same hand-off ID.">
+                  <input value={connectionForm.submissionUrl} onChange={(event) => setConnectionForm((current) => ({ ...current, submissionUrl: event.target.value }))} placeholder="https://processor.example/webhooks/deluno" className="density-control-text h-[var(--control-height)] w-full rounded-xl border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none" />
+                </Field>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Access token (optional)" description="Stored securely and sent only to this processor. Leave blank when the webhook does not require one.">
+                    <input value={connectionForm.secret} onChange={(event) => setConnectionForm((current) => ({ ...current, secret: event.target.value }))} type="password" autoComplete="new-password" className="density-control-text h-[var(--control-height)] w-full rounded-xl border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none" />
+                  </Field>
+                  <Field label="Token header" description="Authorization sends a Bearer token. Use a processor-specific header, such as X-Api-Key, when required.">
+                    <input value={connectionForm.authHeaderName} onChange={(event) => setConnectionForm((current) => ({ ...current, authHeaderName: event.target.value }))} className="density-control-text h-[var(--control-height)] w-full rounded-xl border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none" />
+                  </Field>
+                </div>
+                <div className="flex justify-end"><Button type="submit" size="sm" disabled={connectionBusyKey !== null}>{connectionBusyKey === "create" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null} Save optional callback</Button></div>
+              </form>
+              {processorConnections.length ? (
+                <div className="mt-4 space-y-2">
+                  {processorConnections.map((connection) => (
+                    <div key={connection.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-hairline bg-background/30 p-3 text-sm">
+                      <div><p className="font-semibold text-foreground">{connection.name}</p><p className="mt-1 text-muted-foreground">{connection.provider === "fileflows-webhook" ? "FileFlows webhook" : "Generic callback"} · {connection.healthStatus} · {connection.secretConfigured ? "token saved" : "no token"}</p></div>
+                      <div className="flex gap-2"><Button type="button" size="sm" variant="outline" aria-label={`Test processor connection ${connection.name}`} disabled={connectionBusyKey !== null} onClick={() => void handleTestConnection(connection)}>{connectionBusyKey === `test:${connection.id}` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null} Test</Button><Button type="button" size="sm" variant="outline" aria-label={`Remove processor connection ${connection.name}`} disabled={connectionBusyKey !== null} onClick={() => void handleDeleteConnection(connection)}><Trash2 className="h-4 w-4" /> Remove</Button></div>
+                    </div>
+                  ))}
+                </div>
+              ) : <p className="mt-4 text-sm text-muted-foreground">No callback configured. That is normal: Deluno can watch the processed-files folder directly without calling the processor or requiring it to call back.</p>}
+            </div>
+            <div className="rounded-2xl border border-hairline bg-surface-1 p-[var(--tile-pad)]">
+              <SectionIntro
                 icon={Workflow}
                 title="Standard or refined"
-                copy="Standard is the Radarr/Sonarr-style path. Refine before import is for workflows where another app cleans audio, subtitles, or tracks before Deluno imports and renames the finished file."
+              copy="Standard import sends a completed download straight to its final destination. Process before import is for workflows where another app independently cleans audio, subtitles, or tracks before Deluno imports and renames the finished file."
               />
             </div>
             {libraries.map((library) => (
               <LibraryWorkflowCard
                 key={library.id}
                 library={library}
+                processorConnections={processorConnections}
                 busy={workflowBusyKey === library.id}
                 onSave={handleSaveWorkflow}
               />
             ))}
           </CardContent>
-        </Card>
+        </Card> : null}
       </div>
     </SettingsShell>
   );
@@ -248,10 +371,12 @@ export function SettingsMediaManagementPage() {
 function LibraryWorkflowCard({
   busy,
   library,
+  processorConnections,
   onSave
 }: {
   busy: boolean;
   library: LibraryItem;
+  processorConnections: ProcessorConnectionItem[];
   onSave: (
     library: LibraryItem,
     workflow: Pick<LibraryItem, "importWorkflow" | "processorName" | "processorOutputPath" | "processorTimeoutMinutes" | "processorFailureMode">
@@ -286,25 +411,28 @@ function LibraryWorkflowCard({
             className="density-control-text h-[var(--control-height)] w-full rounded-xl border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none"
           >
             <option value="standard">Standard import</option>
-            <option value="refine-before-import">Refine before import</option>
+            <option value="refine-before-import">Process before import</option>
           </select>
         </Field>
 
         {isRefined ? (
           <>
-            <Field label="Processor" description="A friendly name for the cleaner app, for example External Refiner.">
-              <input
+            <Field label="Optional completion callback" description="Leave this off for the normal watched-folder flow. Select one only when existing automation can notify Deluno with the matching hand-off ID.">
+              <select
                 value={state.processorName}
                 onChange={(event) => setState((current) => ({ ...current, processorName: event.target.value }))}
                 className="density-control-text h-[var(--control-height)] w-full rounded-xl border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none"
-                placeholder="External Refiner"
-              />
+              >
+                <option value="">No callback — watch the processed-output folder</option>
+                {processorConnections.map((connection) => <option key={connection.id} value={connection.name}>{connection.name}{connection.isEnabled ? "" : " (disabled)"}</option>)}
+                {state.processorName && !processorConnections.some((connection) => connection.name === state.processorName) ? <option value={state.processorName}>{state.processorName} (existing optional callback)</option> : null}
+              </select>
             </Field>
-            <Field label="Clean output folder" description="Deluno watches this folder for the processed file and imports that instead of the original download.">
+            <Field label="Processed-files folder Deluno sees" description="Your external processor writes cleaned files here. Deluno watches this accessible path and only imports a file when it can match it to the waiting download. If FileFlows sees this folder under a different path, configure that mount in FileFlows so this is the path Deluno can read.">
               <PathInput
                 value={state.processorOutputPath}
                 onChange={(nextValue) => setState((current) => ({ ...current, processorOutputPath: nextValue }))}
-                browseTitle="Choose processor output folder"
+                browseTitle="Choose processed-output folder"
               />
             </Field>
             <div className="grid gap-3 sm:grid-cols-2">

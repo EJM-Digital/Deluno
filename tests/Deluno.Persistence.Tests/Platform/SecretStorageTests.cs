@@ -10,7 +10,7 @@ namespace Deluno.Persistence.Tests.Platform;
 public sealed class SecretStorageTests
 {
     [Fact]
-    public async Task Metadata_provider_secrets_are_encrypted_at_rest_and_read_back_for_internal_use()
+    public async Task Metadata_and_import_list_provider_secrets_are_encrypted_at_rest_and_read_back_for_internal_use()
     {
         using var storage = TestStorage.Create();
         var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T07:00:00Z"));
@@ -50,14 +50,17 @@ public sealed class SecretStorageTests
                 MetadataBrokerUrl: null,
                 MetadataTmdbApiKey: "tmdb-secret-value",
                 MetadataOmdbApiKey: "omdb-secret-value",
-                ReleaseNeverGrabPatterns: null),
+                ReleaseNeverGrabPatterns: null,
+                MdbListApiKey: "mdblist-secret-value"),
             CancellationToken.None);
 
         Assert.Equal("tmdb-secret-value", await repository.GetMetadataProviderSecretAsync("tmdb", CancellationToken.None));
         Assert.Equal("omdb-secret-value", await repository.GetMetadataProviderSecretAsync("omdb", CancellationToken.None));
+        Assert.Equal("mdblist-secret-value", await repository.GetMetadataProviderSecretAsync("mdblist", CancellationToken.None));
 
         AssertSecretIsEncrypted(await ReadSettingAsync(storage, "metadata.tmdbApiKey"));
         AssertSecretIsEncrypted(await ReadSettingAsync(storage, "metadata.omdbApiKey"));
+        AssertSecretIsEncrypted(await ReadSettingAsync(storage, "intake.mdblistApiKey"));
     }
 
     [Fact]

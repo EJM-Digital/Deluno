@@ -33,7 +33,7 @@ export const operationPaths: OperationPath[] = [
   {
     id: "movies",
     title: "Manage movies",
-    description: "Add titles, review wanted state, search manually, and open the full movie workspace.",
+    description: "Add titles, review wanted state, search manually, and open movie details.",
     to: "/movies",
     area: "library",
     mode: "quick",
@@ -43,7 +43,7 @@ export const operationPaths: OperationPath[] = [
   {
     id: "tv",
     title: "Manage TV shows",
-    description: "Add series, review episodes, search manually, and open the full show workspace.",
+    description: "Add series, review episodes, search manually, and open show details.",
     to: "/tv",
     area: "library",
     mode: "quick",

@@ -135,7 +135,7 @@ export function CFCreator({ onSave, onCancel, initial }: Props) {
   }
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-[var(--grid-gap)]">
       {/* Name */}
       <div className="space-y-1.5">
         <label className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">

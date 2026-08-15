@@ -54,15 +54,15 @@
     --shadow-md: 0 8px 32px hsl(222 18% 8% / 0.07), 0 2px 8px hsl(222 18% 8% / 0.04);
     --shadow-lg: 0 20px 60px hsl(222 18% 8% / 0.1);
     --shadow-glow: 0 1px 3px hsl(222 18% 8% / 0.06);
-    /* Desktop: two header rows; mobile: single row (see app-layout TopBar). */
+    /* One shared app header. Sticky tools use this exact measured rhythm. */
     --shell-top-row-height: 2.75rem;
     --shell-nav-row-height: 2.75rem;
     --shell-mobile-row-height: 2.75rem;
     --shell-icon-button-size: 2rem;
     --shell-icon-size: 0.9375rem;
     --shell-icon-size-sm: 0.875rem;
-    --topbar-height: calc(var(--shell-top-row-height) + var(--shell-nav-row-height));
-    --topbar-height-mobile: var(--shell-mobile-row-height);
+    --topbar-height: calc(74px * var(--density-scale));
+    --topbar-height-mobile: calc(74px * var(--density-scale));
     --sidebar-width: 280px;
     --sidebar-rail: 58px;
     --mobile-tabbar-height: 56px;
@@ -1224,12 +1224,20 @@ html {
   --data-row-py: calc(10px * var(--density-scale));
   --data-cell-px: calc(16px * var(--density-scale));
 
-  --card-pad-x: calc(20px * var(--density-scale));
-  --card-pad-y: calc(16px * var(--density-scale));
-  --tile-pad: calc(20px * var(--density-scale));
-  --page-gap: calc(20px * var(--density-scale));
-  --grid-gap: calc(16px * var(--density-scale));
-  --library-grid-gap: calc(14px * var(--density-scale));
+  /*
+    Spatial rhythm: every view composes these four steps instead of inventing
+    one-off margins.  The values deliberately keep the working surface dense:
+    page sections are separated, related controls stay together, and cards do
+    not create dead space on wide displays.
+  */
+  --card-pad-x: calc(18px * var(--density-scale));
+  --card-pad-y: calc(14px * var(--density-scale));
+  --tile-pad: calc(18px * var(--density-scale));
+  /* Shared visual rhythm: page sections, peer panels, then compact controls. */
+  --page-gap: calc(14px * var(--density-scale));
+  --grid-gap: calc(12px * var(--density-scale));
+  --control-gap: calc(8px * var(--density-scale));
+  --library-grid-gap: calc(12px * var(--density-scale));
 
   --control-height: calc(40px * var(--density-scale));
   --control-height-sm: calc(34px * var(--density-scale));
@@ -1279,7 +1287,7 @@ html {
   --content-max-width: calc(2040px * var(--density-scale));
   --content-outer-gap: clamp(calc(10px * var(--density-scale)), 1.2vw, calc(24px * var(--density-scale)));
   --content-pad-inline: clamp(calc(14px * var(--density-scale)), 1.08vw, calc(26px * var(--density-scale)));
-  --content-pad-block: clamp(calc(16px * var(--density-scale)), 1.35vw, calc(28px * var(--density-scale)));
+  --content-pad-block: clamp(calc(12px * var(--density-scale)), 1vw, calc(20px * var(--density-scale)));
 
   --dashboard-metric-min: calc(210px * var(--density-scale));
   --summary-tile-min: calc(190px * var(--density-scale));
@@ -1293,7 +1301,7 @@ html {
   --shell-subtle-size: calc(12.5px * var(--font-scale));
   --shell-nav-size: calc(14px * var(--font-scale));
   --shell-nav-badge-size: calc(9.5px * var(--font-scale));
-  --shell-nav-text-min: calc(164px * var(--font-scale));
+  --shell-nav-text-min: calc(204px * var(--font-scale));
   --shell-pill-height: calc(42px * var(--density-scale));
   --shell-nav-pad-x: calc(15px * var(--density-scale));
   --shell-nav-gap: calc(8px * var(--density-scale));
@@ -1310,9 +1318,9 @@ html {
   --shell-icon-size: calc(15px * var(--density-scale));
   --shell-icon-size-sm: calc(14px * var(--density-scale));
   --sidebar-width: clamp(
-    calc(250px * var(--density-scale)),
+    calc(330px * var(--density-scale)),
     calc((var(--tile-pad) * 1.6) + (var(--shell-nav-pad-x) * 2) + var(--shell-icon-col) + var(--shell-nav-text-min) + (44px * var(--density-scale))),
-    calc(320px * var(--density-scale))
+    calc(380px * var(--density-scale))
   );
 
   --settings-nav-size: calc(14px * var(--font-scale));
@@ -1355,7 +1363,7 @@ html[data-density="expanded"] {
   html {
     --content-outer-gap: calc(10px * var(--density-scale));
     --content-pad-inline: calc(14px * var(--density-scale));
-    --content-pad-block: calc(16px * var(--density-scale));
+    --content-pad-block: calc(12px * var(--density-scale));
     --library-card-sm: calc(142px * var(--density-scale));
     --library-card-md: calc(158px * var(--density-scale));
     --library-card-lg: calc(174px * var(--density-scale));

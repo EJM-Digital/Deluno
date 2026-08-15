@@ -75,7 +75,7 @@ public sealed class ImportPipelineServiceTests
         Assert.True(result.Response.CatalogUpdated);
         Assert.Equal("copy", result.Response.TransferModeUsed);
 
-        var destinationPath = Path.Combine(movieRootPath, "Arrival (2016)", "Arrival.2016.WEB.1080p.mkv");
+        var destinationPath = Path.Combine(movieRootPath, "Arrival (2016)", "Arrival (2016).mkv");
         Assert.True(File.Exists(sourcePath));
         Assert.True(File.Exists(destinationPath));
         Assert.Equal(new FileInfo(sourcePath).Length, new FileInfo(destinationPath).Length);
@@ -100,7 +100,7 @@ public sealed class ImportPipelineServiceTests
         await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 2048).Select(value => (byte)(value % 193)).ToArray());
 
         var destinationFolder = Path.Combine(movieRootPath, "Blade Runner 2017 (2017)");
-        var blockedDestinationPath = Path.Combine(destinationFolder, "Blade.Runner.2017.WEB.720p.mkv");
+        var blockedDestinationPath = Path.Combine(destinationFolder, "Blade Runner 2017 (2017).mkv");
         Directory.CreateDirectory(blockedDestinationPath);
 
         var platform = CreatePlatformRepository(storage, timeProvider);

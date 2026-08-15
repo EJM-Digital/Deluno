@@ -252,6 +252,70 @@ public sealed class SchemaValidationTests
         Assert.Contains("notification_webhooks", tables);
     }
 
+    [Fact]
+    public async Task Platform_schema_has_immutable_migration_audit_reports_table()
+    {
+        using var storage = CreateStorage();
+        var migrator = new SqliteDatabaseMigrator(storage.Factory, new FixedTimeProvider(DateTimeOffset.UnixEpoch));
+        await new PlatformSchemaInitializer(storage.Factory, migrator,
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        await using var conn = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Platform);
+        var cols = await GetColumnsAsync(conn, "migration_audit_reports");
+
+        Assert.Contains("id", cols);
+        Assert.Contains("source_kind", cols);
+        Assert.Contains("source_name", cols);
+        Assert.Contains("applied_utc", cols);
+        Assert.Contains("preflight_report_json", cols);
+        Assert.Contains("result_report_json", cols);
+        Assert.Contains("applied_items_json", cols);
+    }
+
+    [Fact]
+    public async Task Platform_schema_has_processor_connections_with_encrypted_secret_storage()
+    {
+        using var storage = CreateStorage();
+        var migrator = new SqliteDatabaseMigrator(storage.Factory, new FixedTimeProvider(DateTimeOffset.UnixEpoch));
+        await new PlatformSchemaInitializer(storage.Factory, migrator,
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        await using var conn = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Platform);
+        var cols = await GetColumnsAsync(conn, "processor_connections");
+
+        Assert.Contains("id", cols);
+        Assert.Contains("name", cols);
+        Assert.Contains("provider", cols);
+        Assert.Contains("submission_url", cols);
+        Assert.Contains("auth_header_name", cols);
+        Assert.Contains("secret_value", cols);
+        Assert.Contains("is_enabled", cols);
+        Assert.Contains("health_status", cols);
+        Assert.Contains("last_health_test_utc", cols);
+    }
+
+    [Fact]
+    public async Task Platform_schema_has_durable_import_list_title_origins()
+    {
+        using var storage = CreateStorage();
+        var migrator = new SqliteDatabaseMigrator(storage.Factory, new FixedTimeProvider(DateTimeOffset.UnixEpoch));
+        await new PlatformSchemaInitializer(storage.Factory, migrator,
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        await using var conn = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Platform);
+        var cols = await GetColumnsAsync(conn, "intake_title_origins");
+
+        Assert.Contains("source_id", cols);
+        Assert.Contains("source_name", cols);
+        Assert.Contains("provider", cols);
+        Assert.Contains("media_type", cols);
+        Assert.Contains("entity_id", cols);
+        Assert.Contains("entry_key", cols);
+        Assert.Contains("imdb_id", cols);
+        Assert.Contains("first_seen_utc", cols);
+        Assert.Contains("last_seen_utc", cols);
+    }
+
     // ── Jobs database ─────────────────────────────────────────────────────
 
     [Fact]

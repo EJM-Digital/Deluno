@@ -1,0 +1,13 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "deluno-metadata-gateway",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-14",
+  "workers_dev": true,
+  "kv_namespaces": [
+    {
+      "binding": "METADATA_CACHE",
+      "id": "920f62211cfa4ea79788e1f7f1582bd5"
+    }
+  ]
+}

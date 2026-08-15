@@ -10,5 +10,11 @@ services:
     environment:
       ASPNETCORE_URLS: http://+:8080
       Storage__DataRoot: /data
+      # Service credentials stay on the host (usually in an untracked .env file)
+      # and are never exposed through the Deluno web interface.
+      DELUNO_METADATA_PROVIDER_MODE: ${DELUNO_METADATA_PROVIDER_MODE:-hybrid}
+      DELUNO_METADATA_BROKER_URL: ${DELUNO_METADATA_BROKER_URL:-}
+      TMDB_API_KEY: ${TMDB_API_KEY:-}
+      MDBLIST_API_KEY: ${MDBLIST_API_KEY:-}
     volumes:
       - ./artifacts/docker/data:/data

@@ -114,7 +114,7 @@ export function SystemPage() {
   useSignalREvent("QueueItemRemoved", () => setLiveActiveJobs((n) => Math.max(0, n - 1)));
 
   const auditCard = (
-    <Card>
+    <Card className="self-start">
       <CardHeader>
         <CardTitle className="flex items-center justify-between gap-3">
           <span>Audit timeline</span>
@@ -194,7 +194,7 @@ export function SystemPage() {
   if (location.pathname.startsWith("/system/backups")) {
     return (
       <SystemShell title="Backups" description="Manual backups, automatic schedule, restore preview, and backup downloads.">
-        <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
+        <div className="grid items-start gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
           <BackupCard initialBackups={backups} initialSettings={backupSettings} />
           <div className="space-y-[var(--page-gap)]">
             <OperationsFlowCard />
@@ -208,7 +208,7 @@ export function SystemPage() {
   if (location.pathname.startsWith("/system/updates")) {
     return (
       <SystemShell title="Updates" description="Version status, update preferences, and restart workflow.">
-        <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+        <div className="grid items-start gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
           <UpgradeCard status={updateStatus} />
           <div className="space-y-[var(--page-gap)]">
             <OperationsFlowCard />
@@ -222,7 +222,7 @@ export function SystemPage() {
   if (location.pathname.startsWith("/system/audit")) {
     return (
       <SystemShell title="Audit Timeline" description="Searchable live system activity.">
-        <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.45fr)]">
+        <div className="grid items-start gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.45fr)]">
           {auditCard}
           <div className="space-y-[var(--page-gap)]">
             {jobsCard}
@@ -278,9 +278,9 @@ export function SystemPage() {
       </div>
 
       {/* Main grid */}
-      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.4fr)] 2xl:grid-cols-[minmax(0,1.8fr)_minmax(380px,0.32fr)]">
+      <div className="grid items-start gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.4fr)] 2xl:grid-cols-[minmax(0,1.8fr)_minmax(380px,0.32fr)]">
         {/* Audit timeline — the star of the show */}
-        <Card>
+        <Card className="self-start">
           <CardHeader>
             <CardTitle className="flex items-center justify-between gap-3">
               <span>Audit timeline</span>
@@ -401,7 +401,7 @@ function AutomationCard({
           Scheduled searches for missing and upgradeable titles.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-[var(--page-gap)]">
         <div className="grid grid-cols-3 gap-2">
           <AutomationMetric label="Active" value={running} />
           <AutomationMetric label="Runs" value={cycles.length} />
@@ -953,7 +953,7 @@ function MonitoringCard({ monitoring }: { monitoring: MonitoringDashboardSnapsho
           Health, alert rules, performance trends, and export endpoints for external dashboards.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-[var(--page-gap)]">
         <div className="grid grid-cols-2 gap-2">
           <AutomationMetric label="Health checks" value={`${readiness.totalChecks - readiness.failedChecks}/${readiness.totalChecks}`} compact />
           <AutomationMetric label="Open alerts" value={alerts.length} compact />

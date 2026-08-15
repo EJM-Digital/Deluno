@@ -20,12 +20,12 @@ export function TvUpgradesPage() {
   if (!data) return <RouteSkeleton />;
 
   const upgradeItems = data.wanted.recentItems.filter((item) => item.wantedStatus === "upgrade");
-  const waitingItems = data.wanted.recentItems.filter((item) => item.wantedStatus === "waiting");
+  const waitingItems = upgradeItems.filter((item) => item.nextEligibleSearchUtc);
   const strongCandidates = upgradeItems.filter((item) => item.currentQuality && item.targetQuality).length;
 
   return (
     <div className="space-y-[var(--page-gap)]">
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-[var(--grid-gap)] sm:grid-cols-3">
         <MetricCard
           icon={TrendingUp}
           label="Upgrade candidates"
@@ -40,9 +40,9 @@ export function TvUpgradesPage() {
         />
         <MetricCard
           icon={Clock3}
-          label="Waiting retry"
+          label="Upgrade retry"
           value={waitingItems.length}
-          helper="Items still inside search cooldown"
+          helper="Upgrade candidates still inside their retry window"
         />
       </div>
 

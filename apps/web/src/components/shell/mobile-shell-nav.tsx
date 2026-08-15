@@ -1,43 +1,33 @@
-import { Fragment } from "react";
-import {
-  Activity,
-  Calendar,
-  Download,
-  Film,
-  LayoutGrid,
-  LogOut,
-  MoreHorizontal,
-  RadioTower,
-  ServerCog,
-  Settings,
-  Tv
-} from "lucide-react";
+import { Fragment, useEffect, useState } from "react";
+import { ChevronRight, LogOut, MoreHorizontal } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { Sheet, SheetClose, SheetContent, SheetTrigger } from "../ui/sheet";
 import { AttentionDot, type Severity } from "./attention-dot";
 import { cn } from "../../lib/utils";
 import type { AttentionSnapshot } from "../../lib/use-attention";
+import { configurationNavAreas, maintenanceNavItems } from "../app/settings-shell";
+import { DelunoNavGlyph, type DelunoNavGlyphKind } from "./deluno-nav-glyph";
 
 const PRIMARY = [
-  { to: "/", label: "Home", icon: LayoutGrid, end: true as const },
-  { to: "/movies", label: "Movies", icon: Film, end: false as const },
-  { to: "/tv", label: "TV", icon: Tv, end: false as const },
-  { to: "/queue", label: "Queue", icon: Download, end: false as const }
+  { to: "/", label: "Library", icon: "dashboard", end: true as const },
+  { to: "/movies", label: "Movies", icon: "movies", end: false as const },
+  { to: "/tv", label: "TV", icon: "shows", end: false as const },
+  { to: "/queue", label: "Transfers", icon: "transfers", end: false as const }
 ] as const;
 
 const DRAWER_LINKS = [
-  { to: "/calendar", label: "Calendar", icon: Calendar, group: "Library" as const },
-  { to: "/indexers", label: "Indexers", icon: RadioTower, group: "Library" as const },
-  { to: "/activity", label: "Activity", icon: Activity, group: "App" as const },
-  { to: "/system", label: "System", icon: ServerCog, group: "App" as const },
-  { to: "/settings", label: "Settings", icon: Settings, group: "App" as const }
+  { to: "/calendar", label: "Schedule", icon: "schedule", group: "Your media" as const },
+  { to: "/search-cycles", label: "Automation", icon: "automation", group: "What Deluno is doing" as const },
+  { to: "/activity", label: "Activity", icon: "activity", group: "What Deluno is doing" as const }
 ] as const;
 
 function moreTabActive(pathname: string): boolean {
   if (pathname.startsWith("/calendar")) return true;
   if (pathname.startsWith("/indexers")) return true;
+  if (pathname.startsWith("/search-cycles")) return true;
   if (pathname.startsWith("/activity")) return true;
   if (pathname.startsWith("/system")) return true;
+  if (pathname.startsWith("/setup-guide")) return true;
   if (pathname.startsWith("/settings")) return true;
   return false;
 }
@@ -83,7 +73,6 @@ export function MobileShellNav({ attention, user, onLogout }: MobileShellNavProp
       >
         <ul className="mx-auto grid h-[var(--mobile-tabbar-height)] w-full max-w-md grid-cols-5">
           {primaryWithAttention.map((tab) => {
-            const Icon = tab.icon;
             return (
               <li key={tab.to} className="flex min-w-0">
                 <NavLink
@@ -101,9 +90,9 @@ export function MobileShellNav({ attention, user, onLogout }: MobileShellNavProp
                   {({ isActive }) => (
                     <>
                       <span className="relative flex h-[var(--control-height-icon)] w-[var(--control-height-icon)] shrink-0 items-center justify-center rounded-xl transition-colors">
-                        <Icon
+                        <DelunoNavGlyph
+                          kind={tab.icon}
                           className={cn("h-[calc(var(--shell-icon-size)+0.35rem)] w-[calc(var(--shell-icon-size)+0.35rem)]", isActive ? "text-primary" : "text-muted-foreground")}
-                          strokeWidth={isActive ? 2.1 : 1.75}
                         />
                         {"attention" in tab && tab.attention ? (
                           <AttentionDot
@@ -169,7 +158,6 @@ export function MobileShellNav({ attention, user, onLogout }: MobileShellNavProp
           <div className="flex w-full items-start justify-between gap-3 pr-10">
             <div className="min-w-0">
               <p className="text-dynamic-base font-semibold tracking-tight text-foreground">Navigate</p>
-              <p className="text-[length:var(--shell-subtle-size)] text-muted-foreground">Calendar, indexers, and app pages</p>
             </div>
           </div>
         </div>
@@ -178,14 +166,15 @@ export function MobileShellNav({ attention, user, onLogout }: MobileShellNavProp
           aria-label="Additional destinations"
           className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-2 py-2"
         >
-          {(["Library", "App"] as const).map((group) => (
+          {(["Your media", "What Deluno is doing", "Set up your library", "Maintain Deluno"] as const).map((group) => (
             <div key={group} className="mb-3 last:mb-0">
               <p className="px-3 pb-1.5 pt-2 text-[length:var(--shell-subtle-size)] font-semibold uppercase tracking-wider text-muted-foreground/70">
                 {group}
               </p>
               <ul className="space-y-0.5">
+                {group === "Set up your library" ? <MobileConfigurationTree pathname={pathname} /> : null}
+                {group === "Maintain Deluno" ? <MobileMaintenanceTree pathname={pathname} /> : null}
                 {DRAWER_LINKS.filter((l) => l.group === group).map((item) => {
-                  const Icon = item.icon;
                   const isActive = pathname === item.to || pathname.startsWith(`${item.to}/`);
                   return (
                     <li key={item.to}>
@@ -199,14 +188,11 @@ export function MobileShellNav({ attention, user, onLogout }: MobileShellNavProp
                               : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
                           )}
                         >
-                          <Icon
+                          <DelunoNavGlyph
+                            kind={item.icon as DelunoNavGlyphKind}
                             className={cn("h-5 w-5 shrink-0", isActive ? "text-primary" : "text-muted-foreground")}
-                            strokeWidth={isActive ? 2.1 : 1.75}
                           />
                           <span className="flex-1">{item.label}</span>
-                          {item.to === "/indexers" && indexerAttn ? (
-                            <AttentionDot severity={indexerAttn} className="shrink-0" />
-                          ) : null}
                         </NavLink>
                       </SheetClose>
                     </li>
@@ -243,5 +229,161 @@ export function MobileShellNav({ attention, user, onLogout }: MobileShellNavProp
       </SheetContent>
       </Fragment>
     </Sheet>
+  );
+}
+
+function MobileConfigurationTree({ pathname }: { pathname: string }) {
+  const activeArea = configurationNavAreas.find((area) => area.match(pathname));
+  const isConfigurationRoute = pathname.startsWith("/settings") || pathname.startsWith("/indexers");
+  const [setupOpen, setSetupOpen] = useState(isConfigurationRoute);
+  const [openAreas, setOpenAreas] = useState<Set<string>>(() => new Set(activeArea ? [activeArea.label] : []));
+
+  useEffect(() => {
+    if (!isConfigurationRoute) return;
+    setSetupOpen(true);
+    if (activeArea) setOpenAreas((current) => new Set([...current, activeArea.label]));
+  }, [activeArea?.label, isConfigurationRoute]);
+
+  const toggleArea = (label: string) => {
+    setOpenAreas((current) => {
+      const next = new Set(current);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
+      return next;
+    });
+  };
+
+  return (
+    <li>
+      <div className="relative flex min-h-11 items-center rounded-xl pr-11">
+        <SheetClose asChild>
+          <NavLink
+            to="/settings"
+            className={cn(
+              "absolute inset-y-0 left-0 right-11 flex items-center gap-3 rounded-l-xl px-3 text-dynamic-base font-medium transition-colors",
+              isConfigurationRoute ? "bg-primary/12 text-foreground ring-1 ring-inset ring-primary/20" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+            )}
+          >
+            <DelunoNavGlyph kind="setup" className="h-5 w-5 shrink-0 text-muted-foreground" />
+            <span className="flex-1">Library setup</span>
+          </NavLink>
+        </SheetClose>
+        <button
+          type="button"
+          aria-label={`${setupOpen ? "Collapse" : "Expand"} Library setup`}
+          aria-expanded={setupOpen}
+          onClick={() => setSetupOpen((open) => !open)}
+          className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-xl text-muted-foreground transition hover:bg-muted/60 hover:text-foreground"
+        >
+          <ChevronRight className={cn("h-4 w-4 transition-transform", setupOpen && "rotate-90 text-primary")} />
+        </button>
+      </div>
+      {setupOpen ? (
+        <div className="ml-7 mt-1 space-y-1.5 pl-3">
+          {configurationNavAreas.map((area) => {
+            const hasChildren = area.items.some((item) => item.to !== area.to);
+            const isOpen = openAreas.has(area.label);
+            const isActive = activeArea?.label === area.label;
+            return (
+              <div key={area.label}>
+                <div className="relative flex min-h-9 items-center rounded-lg pr-9">
+                  <SheetClose asChild>
+                    <NavLink
+                      to={area.to}
+                      className={cn(
+                        "flex flex-1 items-center rounded-xl px-2.5 py-2 text-sm font-semibold transition-colors",
+                        isActive ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                      )}
+                    >
+                      {area.label}
+                    </NavLink>
+                  </SheetClose>
+                  {hasChildren ? (
+                    <button
+                      type="button"
+                      aria-label={`${isOpen ? "Collapse" : "Expand"} ${area.label}`}
+                      aria-expanded={isOpen}
+                      onClick={() => toggleArea(area.label)}
+                      className="absolute inset-y-0 right-0 flex w-9 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-muted/60 hover:text-foreground"
+                    >
+                      <ChevronRight className={cn("h-3.5 w-3.5 transition-transform", isOpen && "rotate-90 text-primary")} />
+                    </button>
+                  ) : null}
+                </div>
+                {isOpen && hasChildren ? (
+                  <div className="ml-4 mt-1 space-y-1 pl-3">
+                    {area.items.filter((item) => item.to !== area.to).map((item) => (
+                      <SheetClose asChild key={item.to}>
+                        <NavLink
+                          to={item.to}
+                          end={item.end}
+                          className="relative block rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition before:absolute before:left-0 before:top-1/2 before:h-1 before:w-1 before:-translate-y-1/2 before:rounded-full before:bg-muted-foreground/35 hover:bg-muted/60 hover:text-foreground"
+                        >
+                          {item.label}
+                        </NavLink>
+                      </SheetClose>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
+function MobileMaintenanceTree({ pathname }: { pathname: string }) {
+  const activeArea = maintenanceNavItems.find((area) => area.match(pathname));
+  const isMaintenanceRoute = Boolean(activeArea);
+  const [open, setOpen] = useState(isMaintenanceRoute);
+
+  useEffect(() => {
+    if (isMaintenanceRoute) setOpen(true);
+  }, [isMaintenanceRoute]);
+
+  const area = maintenanceNavItems[0];
+  return (
+    <li>
+      <div className="relative flex min-h-11 items-center rounded-xl pr-11">
+        <SheetClose asChild>
+          <NavLink
+            to={area.to}
+            className={cn(
+              "absolute inset-y-0 left-0 right-11 flex items-center gap-3 rounded-l-xl px-3 text-dynamic-base font-medium transition-colors",
+              isMaintenanceRoute ? "bg-primary/12 text-foreground ring-1 ring-inset ring-primary/20" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+            )}
+          >
+            <DelunoNavGlyph kind="system" className={cn("h-5 w-5 shrink-0", isMaintenanceRoute ? "text-primary" : "text-muted-foreground")} />
+            <span className="flex-1">System &amp; settings</span>
+          </NavLink>
+        </SheetClose>
+        <button
+          type="button"
+          aria-label={`${open ? "Collapse" : "Expand"} System & settings`}
+          aria-expanded={open}
+          onClick={() => setOpen((current) => !current)}
+          className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-xl text-muted-foreground transition hover:bg-muted/60 hover:text-foreground"
+        >
+          <ChevronRight className={cn("h-4 w-4 transition-transform", open && "rotate-90 text-primary")} />
+        </button>
+      </div>
+      {open ? (
+        <div className="ml-7 mt-1 space-y-1 pl-3">
+          {area.items.filter((item) => item.to !== area.to).map((item) => (
+            <SheetClose asChild key={item.to}>
+              <NavLink
+                to={item.to}
+                end={item.end}
+                className="relative block rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition before:absolute before:left-0 before:top-1/2 before:h-1 before:w-1 before:-translate-y-1/2 before:rounded-full before:bg-muted-foreground/35 hover:bg-muted/60 hover:text-foreground"
+              >
+                {item.label}
+              </NavLink>
+            </SheetClose>
+          ))}
+        </div>
+      ) : null}
+    </li>
   );
 }

@@ -3,6 +3,10 @@ using Deluno.Persistence.Tests.Support;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Deluno.Platform.Migration;
+using Deluno.Movies.Data;
+using Deluno.Movies.Migration;
+using Deluno.Series.Data;
+using Deluno.Series.Migration;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Deluno.Persistence.Tests.Platform;
@@ -27,10 +31,21 @@ public sealed class MigrationAssistantServiceTests
         Assert.Equal(2, report.Summary.TitleCount);
         Assert.Equal(1, report.Summary.MonitoredCount);
         Assert.Equal(1, report.Summary.WantedCount);
+        Assert.All(report.Operations.SelectMany(operation => operation.Data), pair =>
+        {
+            if (pair.Key.Contains("api", StringComparison.OrdinalIgnoreCase) ||
+                pair.Key.Contains("password", StringComparison.OrdinalIgnoreCase) ||
+                pair.Key.Contains("secret", StringComparison.OrdinalIgnoreCase) ||
+                pair.Key.Contains("token", StringComparison.OrdinalIgnoreCase))
+            {
+                Assert.Equal("[redacted]", pair.Value);
+            }
+        });
 
         var repository = CreateRepository(storage);
         var libraries = await repository.ListLibrariesAsync(CancellationToken.None);
         Assert.DoesNotContain(libraries, library => library.RootPath == "/mnt/media/migrated-movies");
+        Assert.Empty(await repository.ListMigrationAuditReportsAsync(10, CancellationToken.None));
     }
 
     [Fact]
@@ -58,10 +73,55 @@ public sealed class MigrationAssistantServiceTests
         Assert.Contains(indexers, indexer => indexer.BaseUrl == "https://indexer.example/api");
         Assert.Contains(clients, client => client.Host == "qbittorrent");
 
+        Assert.DoesNotContain(applied.Report.Operations.SelectMany(operation => operation.Data.Values), value => value == "secret");
+
+        var audit = Assert.Single(await repository.ListMigrationAuditReportsAsync(10, CancellationToken.None));
+        Assert.Equal("radarr", audit.SourceKind);
+        Assert.Equal("Radarr test", audit.SourceName);
+        Assert.Equal(applied.AuditReportId, audit.Id);
+        Assert.Contains(audit.Applied, item => item.TargetType == "library" && item.Result == "created");
+        Assert.DoesNotContain(audit.PreflightReport.Operations.SelectMany(operation => operation.Data.Values), value => value == "secret");
+        Assert.Contains(audit.ResultReport.Operations, operation => operation.TargetType == "library" && operation.Action == "skip");
+
+        var loadedAudit = await repository.GetMigrationAuditReportAsync(audit.Id, CancellationToken.None);
+        Assert.NotNull(loadedAudit);
+        Assert.Equal(audit.Id, loadedAudit.Id);
+        Assert.Equal(audit.AppliedUtc, loadedAudit.AppliedUtc);
+        Assert.Equal(audit.PreflightReport.SourceName, loadedAudit.PreflightReport.SourceName);
+        Assert.Equal(audit.ResultReport.Summary, loadedAudit.ResultReport.Summary);
+        Assert.Equal(audit.Applied, loadedAudit.Applied);
+
         var secondPreview = await service.PreviewAsync(CreateRadarrRequest(), CancellationToken.None);
         Assert.Contains(secondPreview.Operations, operation => operation.TargetType == "library" && operation.Action == "skip");
         Assert.Contains(secondPreview.Operations, operation => operation.TargetType == "quality-profile" && operation.Action == "skip");
         Assert.DoesNotContain(secondPreview.Operations, operation => operation.TargetType == "library" && operation.Action == "create");
+    }
+
+    [Fact]
+    public async Task ApplyAsync_applies_only_the_explicitly_selected_safe_operations()
+    {
+        using var storage = TestStorage.Create();
+        var service = await CreateServiceAsync(storage);
+        var request = CreateRadarrRequest();
+        var preview = await service.PreviewAsync(request, CancellationToken.None);
+        var selectedIndexer = Assert.Single(preview.Operations, operation => operation.TargetType == "indexer" && operation.Action == "create");
+
+        var applied = await service.ApplyAsync(
+            request with { SelectedOperationIds = [selectedIndexer.Id] },
+            CancellationToken.None);
+
+        Assert.Single(applied.Applied);
+        Assert.Equal("indexer", applied.Applied[0].TargetType);
+
+        var repository = CreateRepository(storage);
+        Assert.Single(await repository.ListIndexersAsync(CancellationToken.None));
+        Assert.Empty(await repository.ListLibrariesAsync(CancellationToken.None));
+        Assert.DoesNotContain(await repository.ListQualityProfilesAsync(CancellationToken.None), profile => profile.Name == "Migrated UHD");
+        Assert.Empty(await repository.ListDownloadClientsAsync(CancellationToken.None));
+
+        var audit = Assert.Single(await repository.ListMigrationAuditReportsAsync(10, CancellationToken.None));
+        Assert.Single(audit.Applied);
+        Assert.Equal(selectedIndexer.Id, audit.Applied[0].OperationId);
     }
 
     [Fact]
@@ -124,6 +184,116 @@ public sealed class MigrationAssistantServiceTests
             operation.Name == "Conflicting Movies" &&
             operation.Action == "conflict" &&
             !operation.CanApply);
+    }
+
+    [Fact]
+    public async Task PreviewAsync_maps_arr_tmdb_and_imdb_list_ids_without_guessing_other_list_types()
+    {
+        using var storage = TestStorage.Create();
+        var service = await CreateServiceAsync(storage);
+
+        var report = await service.PreviewAsync(
+            new MigrationImportRequest("radarr", "Arr list IDs", """
+                {
+                  "importLists": [
+                    { "name": "TMDb favourites", "implementation": "TMDb", "fields": [{ "name": "listId", "value": "12345" }] },
+                    { "name": "IMDb watchlist", "implementation": "IMDb", "fields": [{ "name": "listId", "value": "ls012345678" }] },
+                    { "name": "Unknown custom list", "implementation": "Custom", "fields": [{ "name": "listId", "value": "not-a-url" }] }
+                  ]
+                }
+                """),
+            CancellationToken.None);
+
+        var tmdb = Assert.Single(report.Operations, operation => operation.Name == "TMDb favourites");
+        Assert.Equal("create", tmdb.Action);
+        Assert.Equal("tmdb", tmdb.Data["provider"]);
+        Assert.Equal("12345", tmdb.Data["feedUrl"]);
+
+        var imdb = Assert.Single(report.Operations, operation => operation.Name == "IMDb watchlist");
+        Assert.Equal("create", imdb.Action);
+        Assert.Equal("imdb", imdb.Data["provider"]);
+        Assert.Equal("ls012345678", imdb.Data["feedUrl"]);
+
+        var unsupported = Assert.Single(report.Operations, operation => operation.Name == "Unknown custom list");
+        Assert.Equal("unsupported", unsupported.Action);
+        Assert.False(unsupported.CanApply);
+    }
+
+    [Fact]
+    public async Task ApplyAsync_imports_deduplicated_movie_and_series_catalog_records_when_library_mapping_is_unambiguous()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-14T00:00:00Z"));
+        var migrator = new SqliteDatabaseMigrator(storage.Factory, timeProvider);
+        await new PlatformSchemaInitializer(storage.Factory, migrator, NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        await new MoviesSchemaInitializer(storage.Factory, migrator, NullLogger<MoviesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        await new SeriesSchemaInitializer(storage.Factory, migrator, NullLogger<SeriesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var platform = new SqlitePlatformSettingsRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var series = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var service = new MigrationAssistantService(platform,
+        [
+            new MovieMigrationCatalogImporter(movies),
+            new SeriesMigrationCatalogImporter(series)
+        ]);
+        var request = new MigrationImportRequest("custom", "Combined stack", """
+            {
+              "radarr": {
+                "rootFolders": [{ "path": "/media/movies" }],
+                "movies": [{ "title": "Dune Part Two", "year": 2024, "imdbId": "tt15239678", "monitored": true, "hasFile": false }]
+              },
+              "sonarr": {
+                "rootFolders": [{ "path": "/media/tv" }],
+                "series": [{ "title": "Severance", "year": 2022, "imdbId": "tt11280740", "monitored": true, "hasFile": true }]
+              }
+            }
+            """);
+
+        var applied = await service.ApplyAsync(request, CancellationToken.None);
+
+        var importedMovies = await movies.ListAsync(CancellationToken.None);
+        Assert.True(importedMovies.Count == 1, $"Applied: {string.Join(", ", applied.Applied.Select(item => $"{item.TargetType}:{item.Result}"))}; warnings: {string.Join(" | ", applied.Report.Warnings)}");
+        var movie = Assert.Single(importedMovies);
+        var show = Assert.Single(await series.ListAsync(CancellationToken.None));
+        Assert.True(movie.Monitored);
+        Assert.True(show.Monitored);
+        Assert.Contains(applied.Applied, item => item.TargetType == "movie" && item.Result == "created");
+        Assert.Contains(applied.Applied, item => item.TargetType == "series" && item.Result == "created");
+
+        var libraries = await platform.ListLibrariesAsync(CancellationToken.None);
+        var movieLibrary = libraries.Single(item => item.MediaType == "movies");
+        var tvLibrary = libraries.Single(item => item.MediaType == "tv");
+        Assert.Equal("missing", (await movies.GetMovieWantedStateAsync(movie.Id, movieLibrary.Id, CancellationToken.None))!.WantedStatus);
+        Assert.Equal("waiting", (await series.GetSeriesWantedStateAsync(show.Id, tvLibrary.Id, CancellationToken.None))!.WantedStatus);
+
+        var repeated = await service.ApplyAsync(request, CancellationToken.None);
+        Assert.Single(await movies.ListAsync(CancellationToken.None));
+        Assert.Single(await series.ListAsync(CancellationToken.None));
+        Assert.Contains(repeated.Applied, item => item.TargetType == "movie" && item.Result == "skipped");
+        Assert.Contains(repeated.Applied, item => item.TargetType == "series" && item.Result == "skipped");
+    }
+
+    [Fact]
+    public async Task ApplyAsync_records_a_recoverable_audit_when_a_catalog_stage_fails_and_a_retry_skips_saved_configuration()
+    {
+        using var storage = TestStorage.Create();
+        await CreateServiceAsync(storage);
+        var repository = CreateRepository(storage);
+        var failingService = new MigrationAssistantService(repository, [new ThrowingCatalogImporter()]);
+
+        var failed = await failingService.ApplyAsync(CreateRadarrRequest(), CancellationToken.None);
+
+        Assert.Contains(failed.Applied, item => item.Result == "failed" && item.TargetType == "movies");
+        Assert.Contains(failed.Report.Errors, error => error.Contains("stopped while importing movies catalogue", StringComparison.OrdinalIgnoreCase));
+        var failedAudit = Assert.Single(await repository.ListMigrationAuditReportsAsync(10, CancellationToken.None));
+        Assert.Contains(failedAudit.Applied, item => item.Result == "failed");
+        Assert.Contains(failedAudit.ResultReport.Errors, error => error.Contains("retry", StringComparison.OrdinalIgnoreCase));
+
+        var retry = await new MigrationAssistantService(repository).ApplyAsync(CreateRadarrRequest(), CancellationToken.None);
+
+        Assert.Empty(retry.Report.Errors);
+        Assert.Empty(retry.Applied);
+        Assert.Equal(2, (await repository.ListMigrationAuditReportsAsync(10, CancellationToken.None)).Count);
     }
 
     private static MigrationImportRequest CreateRadarrRequest()
@@ -205,5 +375,15 @@ public sealed class MigrationAssistantServiceTests
             storage.Factory,
             new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T00:00:00Z")),
             TestSecretProtection.Create(storage));
+    }
+
+    private sealed class ThrowingCatalogImporter : IMigrationCatalogImporter
+    {
+        public string MediaType => "movies";
+
+        public Task<MigrationCatalogImportResult> ImportAsync(
+            MigrationCatalogImportRequest request,
+            CancellationToken cancellationToken)
+            => throw new InvalidOperationException("Synthetic catalog failure.");
     }
 }

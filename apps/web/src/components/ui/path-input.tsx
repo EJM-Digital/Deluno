@@ -197,7 +197,7 @@ export function PathInput({
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="right" className="flex max-w-2xl flex-col gap-0 p-0" aria-label={browseTitle}>
           <div className="border-b border-hairline px-[var(--tile-pad)] py-[calc(var(--tile-pad)*0.85)]">
-            <div className="flex items-start justify-between gap-4 pr-10">
+            <div className="flex items-start justify-between gap-[var(--grid-gap)] pr-10">
               <div className="space-y-1">
                 <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Filesystem</p>
                 <h2 className="font-display text-xl font-semibold tracking-tight text-foreground">

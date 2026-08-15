@@ -45,18 +45,18 @@ public sealed class TmdbMetadataProvider(
                 brokerConfigured,
                 brokerConfigured ? "broker" : "unconfigured",
                 brokerConfigured
-                    ? "Deluno metadata broker is configured. Users do not need local provider API keys for lookup."
-                    : "Deluno broker mode is selected, but no broker URL is configured yet.",
+                    ? "Deluno's managed metadata service is ready for title matching."
+                    : "Title matching has not been configured for this Deluno installation yet.",
                 sources),
             "hybrid" => new MetadataProviderStatus(
                 BrokerProviderName,
                 brokerConfigured || directConfigured,
                 brokerConfigured ? "hybrid" : directConfigured ? "direct-fallback" : "unconfigured",
                 brokerConfigured
-                    ? "Deluno will try the metadata broker first and fall back to local TMDb when a direct key exists."
+                    ? "Deluno's managed metadata service is ready for title matching."
                     : directConfigured
-                        ? "Hybrid mode is selected. Broker is not configured, so Deluno is using local TMDb fallback."
-                        : "Hybrid mode needs either a broker URL or a local TMDb fallback key.",
+                        ? "Deluno's metadata service is ready using this installation's configured fallback."
+                        : "Title matching has not been configured for this Deluno installation yet.",
                 sources),
             _ => new MetadataProviderStatus(
                 ProviderName,
@@ -64,9 +64,9 @@ public sealed class TmdbMetadataProvider(
                 directConfigured ? "direct" : "unconfigured",
                 directConfigured
                     ? string.IsNullOrWhiteSpace(config.OmdbApiKey)
-                        ? "Direct TMDb metadata search is configured. Add OMDb to enrich IMDb, Rotten Tomatoes, and Metacritic ratings."
-                        : "Direct TMDb search and OMDb ratings enrichment are configured."
-                    : "Direct metadata mode needs a TMDb API key before provider lookup can run.",
+                        ? "Deluno's title-matching service is ready."
+                        : "Deluno's title-matching and ratings service is ready."
+                    : "Title matching has not been configured for this Deluno installation yet.",
                 sources)
         };
     }
@@ -82,9 +82,9 @@ public sealed class TmdbMetadataProvider(
             configured ? "direct" : "unconfigured",
             configured
                 ? string.IsNullOrWhiteSpace(omdbApiKey)
-                    ? "Direct TMDb lookup is configured. OMDb enrichment is not configured."
-                    : "Direct TMDb lookup and OMDb ratings enrichment are configured."
-                : "Direct TMDb lookup needs a TMDb API key.",
+                    ? "Deluno's title-matching service is ready."
+                    : "Deluno's title-matching and ratings service is ready."
+                : "Title matching has not been configured for this Deluno installation yet.",
             BuildSourceStatuses(
                 new MetadataProviderConfiguration("direct", null, apiKey, omdbApiKey),
                 configured,
@@ -652,19 +652,41 @@ public sealed class TmdbMetadataProvider(
     private async Task<MetadataProviderConfiguration> GetMetadataConfigurationAsync(CancellationToken cancellationToken)
     {
         var settings = await platformRepository.GetAsync(cancellationToken);
+        var providerMode = ResolveProviderMode(settings.MetadataProviderMode);
+        var brokerUrl = ResolveBrokerUrl(settings.MetadataBrokerUrl);
+
+        // Broker mode is the normal product route. Do not even read a legacy
+        // per-install provider secret there: it is neither needed nor an
+        // acceptable implicit fallback for a managed-metadata installation.
+        var requiresDirectFallback = providerMode is "direct" or "hybrid";
         return new MetadataProviderConfiguration(
-            settings.MetadataProviderMode,
-            ResolveBrokerUrl(settings.MetadataBrokerUrl),
-            await GetApiKeyAsync(cancellationToken),
-            await GetOmdbApiKeyAsync(cancellationToken));
+            providerMode,
+            brokerUrl,
+            requiresDirectFallback ? await GetApiKeyAsync(cancellationToken) : null,
+            requiresDirectFallback ? await GetOmdbApiKeyAsync(cancellationToken) : null);
+    }
+
+    private string ResolveProviderMode(string? legacySettingsValue)
+    {
+        var value = configuration["Deluno:Metadata:ProviderMode"]
+                    ?? configuration["DELUNO_METADATA_PROVIDER_MODE"]
+                    ?? Environment.GetEnvironmentVariable("DELUNO_METADATA_PROVIDER_MODE")
+                    ?? legacySettingsValue;
+
+        return value?.Trim().ToLowerInvariant() switch
+        {
+            "broker" => "broker",
+            "hybrid" => "hybrid",
+            _ => "direct"
+        };
     }
 
     private string? ResolveBrokerUrl(string? settingsValue)
     {
-        var value = string.IsNullOrWhiteSpace(settingsValue) ? null : settingsValue.Trim();
-        value ??= configuration["Deluno:Metadata:BrokerUrl"]
-                  ?? configuration["DELUNO_METADATA_BROKER_URL"]
-                  ?? Environment.GetEnvironmentVariable("DELUNO_METADATA_BROKER_URL");
+        var value = configuration["Deluno:Metadata:BrokerUrl"]
+                    ?? configuration["DELUNO_METADATA_BROKER_URL"]
+                    ?? Environment.GetEnvironmentVariable("DELUNO_METADATA_BROKER_URL");
+        value = string.IsNullOrWhiteSpace(value) ? settingsValue : value;
         return string.IsNullOrWhiteSpace(value) ? null : value.TrimEnd('/');
     }
 
@@ -720,16 +742,18 @@ public sealed class TmdbMetadataProvider(
     }
 
     private async Task<string?> GetApiKeyAsync(CancellationToken cancellationToken)
-        => await platformRepository.GetMetadataProviderSecretAsync(ProviderName, cancellationToken)
-           ?? configuration["Deluno:Metadata:TMDbApiKey"]
+        => configuration["Deluno:Metadata:TMDbApiKey"]
            ?? configuration["TMDB_API_KEY"]
-           ?? Environment.GetEnvironmentVariable("TMDB_API_KEY");
+           ?? Environment.GetEnvironmentVariable("TMDB_API_KEY")
+           // Legacy per-install secrets remain as a compatibility fallback. The normal UI no longer writes them.
+           ?? await platformRepository.GetMetadataProviderSecretAsync(ProviderName, cancellationToken);
 
     private async Task<string?> GetOmdbApiKeyAsync(CancellationToken cancellationToken)
-        => await platformRepository.GetMetadataProviderSecretAsync("omdb", cancellationToken)
-           ?? configuration["Deluno:Metadata:OMDbApiKey"]
+        => configuration["Deluno:Metadata:OMDbApiKey"]
            ?? configuration["OMDB_API_KEY"]
-           ?? Environment.GetEnvironmentVariable("OMDB_API_KEY");
+           ?? Environment.GetEnvironmentVariable("OMDB_API_KEY")
+           // Legacy per-install secrets remain as a compatibility fallback. The normal UI no longer writes them.
+           ?? await platformRepository.GetMetadataProviderSecretAsync("omdb", cancellationToken);
 
     private async Task<IReadOnlyList<MetadataSearchResult>?> TryBrokerSearchAsync(
         string brokerUrl,
@@ -825,7 +849,7 @@ public sealed class TmdbMetadataProvider(
         CancellationToken cancellationToken)
     {
         var path = mediaType == "tv" ? "tv" : "movie";
-        var url = $"https://api.themoviedb.org/3/{path}/{id}?api_key={Uri.EscapeDataString(apiKey)}&append_to_response=external_ids";
+        var url = $"https://api.themoviedb.org/3/{path}/{id}?api_key={Uri.EscapeDataString(apiKey)}&append_to_response=external_ids,credits";
         var detail = await GetJsonWithResilienceAsync<TmdbDetailItem>(
             url,
             $"metadata:tmdb:detail:{mediaType}",
@@ -867,7 +891,15 @@ public sealed class TmdbMetadataProvider(
             Ratings: ratings,
             Genres: detail.Genres?.Select(genre => genre.Name).Where(name => !string.IsNullOrWhiteSpace(name)).Cast<string>().ToArray() ?? [],
             ImdbId: detail.ExternalIds?.ImdbId,
-            ExternalUrl: BuildTmdbUrl(mediaType, detail.Id));
+            ExternalUrl: BuildTmdbUrl(mediaType, detail.Id),
+            Cast: detail.Credits?.Cast?
+                .Where(member => !string.IsNullOrWhiteSpace(member.Name))
+                .Take(10)
+                .Select(member => new MetadataCastMember(
+                    member.Name!,
+                    member.Character,
+                    string.IsNullOrWhiteSpace(member.ProfilePath) ? null : $"https://image.tmdb.org/t/p/w185{member.ProfilePath}"))
+                .ToArray() ?? []);
     }
 
     private async Task<TmdbExternalIds> GetExternalIdsAsync(
@@ -1239,7 +1271,16 @@ public sealed class TmdbMetadataProvider(
         [property: JsonPropertyName("vote_average")] double? VoteAverage,
         [property: JsonPropertyName("vote_count")] int? VoteCount,
         [property: JsonPropertyName("genres")] IReadOnlyList<TmdbGenre>? Genres,
-        [property: JsonPropertyName("external_ids")] TmdbExternalIds? ExternalIds);
+        [property: JsonPropertyName("external_ids")] TmdbExternalIds? ExternalIds,
+        [property: JsonPropertyName("credits")] TmdbCredits? Credits);
+
+    private sealed record TmdbCredits(
+        [property: JsonPropertyName("cast")] IReadOnlyList<TmdbCastMember>? Cast);
+
+    private sealed record TmdbCastMember(
+        [property: JsonPropertyName("name")] string? Name,
+        [property: JsonPropertyName("character")] string? Character,
+        [property: JsonPropertyName("profile_path")] string? ProfilePath);
 
     private sealed record TmdbGenre(
         [property: JsonPropertyName("id")] int Id,

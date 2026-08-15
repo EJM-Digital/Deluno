@@ -515,6 +515,7 @@ public sealed class SqliteMovieCatalogRepository(
                   INNER JOIN movie_entries m ON m.id = w.movie_id
                   WHERE w.library_id = @libraryId
                     AND w.wanted_status IN ('missing', 'upgrade')
+                    AND m.monitored = 1
                     AND (w.next_eligible_search_utc IS NULL OR w.next_eligible_search_utc <= @now)
                   ORDER BY
                       CASE w.wanted_status WHEN 'missing' THEN 0 ELSE 1 END,
@@ -549,11 +550,13 @@ public sealed class SqliteMovieCatalogRepository(
         command.CommandText =
             """
             SELECT COUNT(*)
-            FROM movie_wanted_state
-            WHERE library_id = @libraryId
-              AND wanted_status IN ('missing', 'upgrade')
-              AND next_eligible_search_utc IS NOT NULL
-              AND next_eligible_search_utc > @now;
+            FROM movie_wanted_state w
+            INNER JOIN movie_entries m ON m.id = w.movie_id
+            WHERE w.library_id = @libraryId
+              AND w.wanted_status IN ('missing', 'upgrade')
+              AND m.monitored = 1
+              AND w.next_eligible_search_utc IS NOT NULL
+              AND w.next_eligible_search_utc > @now;
             """;
 
         AddParameter(command, "@libraryId", libraryId);
@@ -892,6 +895,76 @@ public sealed class SqliteMovieCatalogRepository(
         }
 
         await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task<bool> DeferWantedSearchAsync(
+        string movieId,
+        string libraryId,
+        DateTimeOffset deferredUntilUtc,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Movies, cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE movie_wanted_state
+            SET next_eligible_search_utc = @deferredUntilUtc,
+                last_search_result = 'Deferred by user.',
+                updated_utc = @updatedUtc
+            WHERE movie_id = @movieId
+              AND library_id = @libraryId
+              AND wanted_status IN ('missing', 'upgrade');
+            """;
+        AddParameter(command, "@movieId", movieId);
+        AddParameter(command, "@libraryId", libraryId);
+        AddParameter(command, "@deferredUntilUtc", deferredUntilUtc.ToString("O"));
+        AddParameter(command, "@updatedUtc", timeProvider.GetUtcNow().ToString("O"));
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
+    public async Task<bool> SkipNextWantedSearchAsync(
+        string movieId,
+        string libraryId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Movies, cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE movie_wanted_state
+            SET skip_next_automation_search = 1,
+                last_search_result = 'Will skip the next scheduled search by user request.',
+                updated_utc = @updatedUtc
+            WHERE movie_id = @movieId
+              AND library_id = @libraryId
+              AND wanted_status IN ('missing', 'upgrade');
+            """;
+        AddParameter(command, "@movieId", movieId);
+        AddParameter(command, "@libraryId", libraryId);
+        AddParameter(command, "@updatedUtc", timeProvider.GetUtcNow().ToString("O"));
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
+    public async Task<bool> ConsumeSkipNextWantedSearchAsync(
+        string movieId,
+        string libraryId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Movies, cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE movie_wanted_state
+            SET skip_next_automation_search = 0,
+                updated_utc = @updatedUtc
+            WHERE movie_id = @movieId
+              AND library_id = @libraryId
+              AND skip_next_automation_search = 1;
+            """;
+        AddParameter(command, "@movieId", movieId);
+        AddParameter(command, "@libraryId", libraryId);
+        AddParameter(command, "@updatedUtc", timeProvider.GetUtcNow().ToString("O"));
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
     public async Task<int> ReevaluateLibraryWantedStateAsync(
@@ -1286,7 +1359,7 @@ public sealed class SqliteMovieCatalogRepository(
             cancellationToken);
 
         using var command = connection.CreateCommand();
-        command.CommandText = "DELETE FROM movies WHERE id = @id;";
+        command.CommandText = "DELETE FROM movie_entries WHERE id = @id;";
         AddParameter(command, "@id", movieId);
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
@@ -1298,7 +1371,7 @@ public sealed class SqliteMovieCatalogRepository(
             cancellationToken);
 
         using var command = connection.CreateCommand();
-        command.CommandText = "UPDATE movies SET quality_profile_id = @qualityProfileId, updated_utc = @now WHERE id = @id;";
+        command.CommandText = "UPDATE movie_entries SET quality_profile_id = @qualityProfileId, updated_utc = @now WHERE id = @id;";
         AddParameter(command, "@id", movieId);
         AddParameter(command, "@qualityProfileId", qualityProfileId);
         AddParameter(command, "@now", DateTimeOffset.UtcNow.ToString("O"));

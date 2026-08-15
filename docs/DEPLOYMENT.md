@@ -101,7 +101,7 @@ Inside that root, Deluno creates:
 
 ### Recommended Local Compose Flow
 
-Use the checked-in [compose.yaml](/C:/Users/User/Projects/Deluno/compose.yaml):
+Use the checked-in [compose.yaml](../compose.yaml):
 
 ```powershell
 docker compose up --build -d
@@ -273,6 +273,41 @@ For dev-mode local runs, the convenience script writes:
 | `Storage__DataRoot` | Choose where Deluno stores databases, keys, and backups. |
 
 Keep this list intentionally small unless more repo-backed configuration points are documented and verified.
+
+## Metadata Service Configuration (deployment only)
+
+Normal Deluno users never enter provider credentials in the web UI. Title
+matching is an installation service, like it is in Radarr and Sonarr: fresh
+Deluno installs use the Deluno-managed TMDb gateway automatically, then users
+simply search for and select titles. OMDb enrichment is deliberately deferred
+from the launch service.
+
+Set these only in the host environment, deployment secret store, or service
+manager; do not place real credentials in `appsettings.json`, source control,
+screenshots, or support tickets.
+
+| Setting | Purpose |
+| --- | --- |
+| `TMDB_API_KEY` | Operator-only direct fallback credential. The managed gateway keeps its own secret; normal Deluno installations do not set this. |
+| `DELUNO_METADATA_PROVIDER_MODE` | Override the normal managed `broker` route. `hybrid` permits an operator-only direct fallback. |
+| `DELUNO_METADATA_BROKER_URL` | Override the managed gateway endpoint for a private Deluno deployment. |
+| `MDBLIST_API_KEY` | Legacy/advanced only. Public MDbList URLs work without it. |
+
+The equivalent .NET configuration keys are `Deluno__Metadata__TMDbApiKey`,
+`Deluno__Metadata__ProviderMode`, and `Deluno__Metadata__BrokerUrl`. Host
+configuration takes precedence over legacy per-install values so a deployment
+can be operated consistently. Existing legacy secrets continue as a migration
+compatibility fallback, but OMDb is not a launch requirement.
+
+For Docker Compose, no metadata environment variables are needed for the
+managed service. Use an `.env` file only when an operator deliberately runs a
+private gateway or a direct fallback; Deluno never returns those values through
+its API or shows them in the web interface.
+
+For the Windows local launcher, run `./scripts/start-local-app.ps1` without a
+metadata key. An operator can add `.env.local` only to override the managed
+route or enable a direct fallback. The launcher records variable names—not
+values—in `.deluno/boot-health.json`.
 
 ## Known Deployment Rules
 

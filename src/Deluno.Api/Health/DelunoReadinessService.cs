@@ -171,12 +171,23 @@ public sealed class DelunoReadinessService(
                 cancellationToken,
                 ("@lagThreshold", checkedUtc.AddMinutes(-15).ToString("O")));
 
+            var backgroundAutomationEnabled = await IsBackgroundAutomationEnabledAsync(cancellationToken);
+
             var details = new Dictionary<string, object?>
             {
                 ["stalledRunning"] = stalledRunning,
                 ["laggedQueued"] = laggedQueued,
-                ["lagThresholdMinutes"] = 15
+                ["lagThresholdMinutes"] = 15,
+                ["backgroundAutomationEnabled"] = backgroundAutomationEnabled
             };
+
+            if (!backgroundAutomationEnabled)
+            {
+                return Ready(
+                    "jobs:queue",
+                    "Background automation is paused; queued jobs are intentionally held.",
+                    details);
+            }
 
             return stalledRunning == 0 && laggedQueued == 0
                 ? Ready("jobs:queue", "No stalled or lagged jobs detected.", details)
@@ -188,6 +199,27 @@ public sealed class DelunoReadinessService(
                 "jobs:queue",
                 $"Queue state could not be checked: {ex.Message}",
                 new Dictionary<string, object?>());
+        }
+    }
+
+    private async Task<bool> IsBackgroundAutomationEnabledAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+                DelunoDatabaseNames.Platform,
+                cancellationToken);
+            var storedValue = await ReadScalarAsync<string?>(
+                connection,
+                "SELECT setting_value FROM system_settings WHERE setting_key = 'jobs.autoStart';",
+                cancellationToken);
+
+            return string.Equals(storedValue, "true", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // A missing or not-yet-migrated platform database must not hide queue pressure.
+            return true;
         }
     }
 

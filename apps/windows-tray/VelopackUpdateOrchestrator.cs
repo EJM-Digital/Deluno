@@ -353,8 +353,12 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
         };
 
         var sourceUrl = settings.UpdateSource;
+        // RC channels are represented by prerelease GitHub releases. Stable
+        // installs stay on the published stable feed; other channels opt in to
+        // prereleases so a freshly-installed RC can find its own channel.
+        var includePrereleases = !string.Equals(settings.UpdateChannel, "stable", StringComparison.OrdinalIgnoreCase);
         IUpdateSource source = sourceUrl.Contains("github.com", StringComparison.OrdinalIgnoreCase)
-            ? new GithubSource(sourceUrl, accessToken: null, prerelease: false)
+            ? new GithubSource(sourceUrl, accessToken: null, prerelease: includePrereleases)
             : new SimpleWebSource(sourceUrl);
 
         _manager = new UpdateManager(source, options);
@@ -385,7 +389,7 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
         var settingsPathState = AppSettings.InspectPathState();
         var notes = new List<string>
         {
-            "Updates are checked against the stable channel by default.",
+            $"Updates are checked against the {settings.UpdateChannel} channel for this install.",
             "Deluno data lives outside the app install folder so updates do not overwrite your databases or keys.",
             "A backup is created before restart-based apply from the System > Updates page."
         };

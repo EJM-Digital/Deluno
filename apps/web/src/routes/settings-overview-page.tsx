@@ -1,906 +1,96 @@
-import { useMemo, useState } from "react";
-import { Link, useLoaderData, useRevalidator } from "react-router-dom";
-import { FolderCog, HardDrive, LoaderCircle, Settings2, SlidersHorizontal } from "lucide-react";
+import { Link, useLoaderData } from "react-router-dom";
 import {
-  emptyPlatformSettingsSnapshot,
   fetchJson,
-  readValidationProblem,
+  type DownloadClientItem,
+  type IndexerItem,
   type LibraryItem,
   type PlatformSettingsSnapshot,
+  type PolicySetItem,
   type QualityProfileItem
 } from "../lib/api";
-import { KpiCard } from "../components/app/kpi-card";
-import { OperationsGuide } from "../components/app/operations-guide";
 import { SettingsShell } from "../components/app/settings-shell";
-import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
-import { Input } from "../components/ui/input";
-import { PathInput } from "../components/ui/path-input";
-import { PresetField } from "../components/ui/preset-field";
-import { authedFetch } from "../lib/use-auth";
 import { RouteSkeleton } from "../components/shell/skeleton";
 
 interface SettingsOverviewLoaderData {
   libraries: LibraryItem[];
+  downloadClients: DownloadClientItem[];
+  indexers: IndexerItem[];
+  policySets: PolicySetItem[];
   qualityProfiles: QualityProfileItem[];
   settings: PlatformSettingsSnapshot;
 }
 
-interface LibraryFormState {
-  name: string;
-  mediaType: string;
-  purpose: string;
-  rootPath: string;
-  downloadsPath: string;
-  qualityProfileId: string;
-  autoSearchEnabled: boolean;
-  missingSearchEnabled: boolean;
-  upgradeSearchEnabled: boolean;
-  searchIntervalHours: number;
-  retryDelayHours: number;
-  maxItemsPerRun: number;
-  searchWindowStartHour: number | null;
-  searchWindowEndHour: number | null;
-}
-
-interface QualityProfileFormState {
-  name: string;
-  mediaType: string;
-  cutoffQuality: string;
-  allowedQualities: string;
-  upgradeUntilCutoff: boolean;
-  upgradeUnknownItems: boolean;
-}
-
-const INTERVAL_OPTIONS = [
-  { label: "Off / manual only", value: "0" },
-  { label: "Every hour", value: "1" },
-  { label: "Every 3 hours", value: "3" },
-  { label: "Every 6 hours", value: "6" },
-  { label: "Every 12 hours", value: "12" },
-  { label: "Daily", value: "24" }
-];
-
-const RETRY_OPTIONS = [
-  { label: "No delay", value: "0" },
-  { label: "1 hour", value: "1" },
-  { label: "3 hours", value: "3" },
-  { label: "6 hours", value: "6" },
-  { label: "12 hours", value: "12" },
-  { label: "Daily", value: "24" }
-];
-
-const MAX_PER_RUN_OPTIONS = [
-  { label: "Conservative (5)", value: "5" },
-  { label: "Balanced (10)", value: "10" },
-  { label: "Heavy (25)", value: "25" },
-  { label: "Aggressive (50)", value: "50" }
-];
-
-const HOUR_OPTIONS = [
-  { label: "Midnight (0)", value: "0" },
-  { label: "1 AM", value: "1" },
-  { label: "2 AM", value: "2" },
-  { label: "6 AM", value: "6" },
-  { label: "8 AM", value: "8" },
-  { label: "Noon (12)", value: "12" },
-  { label: "6 PM (18)", value: "18" },
-  { label: "10 PM (22)", value: "22" },
-  { label: "11 PM (23)", value: "23" }
-];
-
-const QUALITY_OPTIONS = [
-  { label: "WEB-DL 2160p", value: "WEB-DL 2160p" },
-  { label: "Bluray-2160p", value: "Bluray-2160p" },
-  { label: "WEB-DL 1080p", value: "WEB-DL 1080p" },
-  { label: "Bluray-1080p", value: "Bluray-1080p" },
-  { label: "WEB-DL 720p", value: "WEB-DL 720p" },
-  { label: "HDTV-720p", value: "HDTV-720p" }
-];
-
 export async function settingsOverviewLoader(): Promise<SettingsOverviewLoaderData> {
-  const [settings, libraries, qualityProfiles] = await Promise.all([
+  const [settings, libraries, qualityProfiles, policySets, indexers, downloadClients] = await Promise.all([
     fetchJson<PlatformSettingsSnapshot>("/api/settings"),
     fetchJson<LibraryItem[]>("/api/libraries"),
-    fetchJson<QualityProfileItem[]>("/api/quality-profiles")
+    fetchJson<QualityProfileItem[]>("/api/quality-profiles"),
+    fetchJson<PolicySetItem[]>("/api/policy-sets"),
+    fetchJson<IndexerItem[]>("/api/indexers"),
+    fetchJson<DownloadClientItem[]>("/api/download-clients")
   ]);
 
-  return { libraries, qualityProfiles, settings };
+  return { downloadClients, indexers, libraries, policySets, qualityProfiles, settings };
 }
 
 export function SettingsOverviewPage() {
   const loaderData = useLoaderData() as SettingsOverviewLoaderData | undefined;
   if (!loaderData) return <RouteSkeleton />;
-  const { libraries, qualityProfiles, settings } = loaderData;
-  const revalidator = useRevalidator();
-  const [formState, setFormState] = useState(settings);
-  const [libraryForm, setLibraryForm] = useState<LibraryFormState>(() =>
-    createEmptyLibraryForm(qualityProfiles[0]?.id ?? "")
-  );
-  const [profileForm, setProfileForm] = useState<QualityProfileFormState>(createEmptyQualityProfileForm);
-  const [isSaving, setIsSaving] = useState(false);
-  const [busyKey, setBusyKey] = useState<string | null>(null);
-  const [actionMessage, setActionMessage] = useState<string | null>(null);
 
-  const autoLibraries = libraries.filter((library) => library.autoSearchEnabled).length;
+  const { downloadClients, indexers, libraries, policySets, qualityProfiles, settings } = loaderData;
+  const enabledIndexers = indexers.filter((indexer) => indexer.isEnabled);
+  const enabledClients = downloadClients.filter((client) => client.isEnabled);
+  const healthyIndexers = enabledIndexers.filter((indexer) => indexer.healthStatus === "healthy");
+  const healthyClients = enabledClients.filter((client) => client.healthStatus === "healthy");
+  const activePlans = policySets.filter((plan) => plan.isEnabled).length;
   const movieLibraries = libraries.filter((library) => library.mediaType === "movies").length;
   const tvLibraries = libraries.filter((library) => library.mediaType === "tv").length;
-  const profileOptions = useMemo(
-    () =>
-      qualityProfiles.map((profile) => ({
-        label: `${profile.name} (${profile.mediaType})`,
-        value: profile.id
-      })),
-    [qualityProfiles]
-  );
+  const autoLibraries = libraries.filter((library) => library.autoSearchEnabled).length;
 
-  async function handleSaveSettings(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setIsSaving(true);
-    setActionMessage(null);
-
-    try {
-      const response = await authedFetch("/api/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formState)
-      });
-
-      if (!response.ok) {
-        const problem = await readValidationProblem(response);
-        throw new Error(problem?.title ?? "settings-save-failed");
-      }
-
-      setActionMessage("Settings saved.");
-      revalidator.revalidate();
-    } catch (error) {
-      setActionMessage(error instanceof Error ? error.message : "Settings could not be saved.");
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
-  async function handleLibraryAction(libraryId: string, intent: "search-now" | "import-existing") {
-    setBusyKey(`${intent}:${libraryId}`);
-    setActionMessage(null);
-
-    try {
-      const response = await authedFetch(
-        `/api/libraries/${libraryId}/${intent === "search-now" ? "search-now" : "import-existing"}`,
-        { method: "POST" }
-      );
-
-      if (!response.ok) {
-        throw new Error("library-action-failed");
-      }
-
-      setActionMessage(
-        intent === "search-now" ? "Library search queued." : "Existing library import started."
-      );
-      revalidator.revalidate();
-    } catch {
-      setActionMessage(
-        intent === "search-now"
-          ? "Library search could not be queued."
-          : "Library import could not be started."
-      );
-    } finally {
-      setBusyKey(null);
-    }
-  }
-
-  async function handleCreateLibrary(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setBusyKey("create-library");
-    setActionMessage(null);
-
-    try {
-      const response = await authedFetch("/api/libraries", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(libraryForm)
-      });
-
-      if (!response.ok) {
-        const problem = await readValidationProblem(response);
-        throw new Error(problem?.title ?? "Library could not be created.");
-      }
-
-      setLibraryForm(createEmptyLibraryForm(qualityProfiles[0]?.id ?? ""));
-      setActionMessage("Library created.");
-      revalidator.revalidate();
-    } catch (error) {
-      setActionMessage(error instanceof Error ? error.message : "Library could not be created.");
-    } finally {
-      setBusyKey(null);
-    }
-  }
-
-  async function handleCreateProfile(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setBusyKey("create-profile");
-    setActionMessage(null);
-
-    try {
-      const response = await authedFetch("/api/quality-profiles", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(profileForm)
-      });
-
-      if (!response.ok) {
-        const problem = await readValidationProblem(response);
-        throw new Error(problem?.title ?? "Profile could not be created.");
-      }
-
-      setProfileForm(createEmptyQualityProfileForm());
-      setActionMessage("Quality profile created.");
-      revalidator.revalidate();
-    } catch (error) {
-      setActionMessage(error instanceof Error ? error.message : "Profile could not be created.");
-    } finally {
-      setBusyKey(null);
-    }
-  }
-
-  async function handleUpdateLibraryAutomation(
-    library: LibraryItem,
-    patch: Partial<Pick<LibraryItem, "autoSearchEnabled" | "missingSearchEnabled" | "upgradeSearchEnabled" | "searchIntervalHours" | "retryDelayHours" | "maxItemsPerRun" | "searchWindowStartHour" | "searchWindowEndHour">>
-  ) {
-    setBusyKey(`automation:${library.id}`);
-    setActionMessage(null);
-
-    try {
-      const response = await authedFetch(`/api/libraries/${library.id}/automation`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          autoSearchEnabled: patch.autoSearchEnabled ?? library.autoSearchEnabled,
-          missingSearchEnabled: patch.missingSearchEnabled ?? library.missingSearchEnabled,
-          upgradeSearchEnabled: patch.upgradeSearchEnabled ?? library.upgradeSearchEnabled,
-          searchIntervalHours: patch.searchIntervalHours ?? library.searchIntervalHours,
-          retryDelayHours: patch.retryDelayHours ?? library.retryDelayHours,
-          maxItemsPerRun: patch.maxItemsPerRun ?? library.maxItemsPerRun,
-          searchWindowStartHour: "searchWindowStartHour" in patch ? patch.searchWindowStartHour : library.searchWindowStartHour,
-          searchWindowEndHour: "searchWindowEndHour" in patch ? patch.searchWindowEndHour : library.searchWindowEndHour
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error("Library automation could not be updated.");
-      }
-
-      setActionMessage(`Automation updated for ${library.name}.`);
-      revalidator.revalidate();
-    } catch (error) {
-      setActionMessage(error instanceof Error ? error.message : "Library automation could not be updated.");
-    } finally {
-      setBusyKey(null);
-    }
-  }
-
-  async function handleUpdateLibraryProfile(libraryId: string, qualityProfileId: string) {
-    setBusyKey(`profile:${libraryId}`);
-    setActionMessage(null);
-
-    try {
-      const response = await authedFetch(`/api/libraries/${libraryId}/quality-profile`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ qualityProfileId })
-      });
-
-      if (!response.ok) {
-        throw new Error("Library profile could not be updated.");
-      }
-
-      setActionMessage("Library quality profile updated.");
-      revalidator.revalidate();
-    } catch (error) {
-      setActionMessage(error instanceof Error ? error.message : "Library profile could not be updated.");
-    } finally {
-      setBusyKey(null);
-    }
-  }
-
-  async function handleDeleteLibrary(libraryId: string) {
-    setBusyKey(`delete:${libraryId}`);
-    setActionMessage(null);
-
-    try {
-      const response = await authedFetch(`/api/libraries/${libraryId}`, { method: "DELETE" });
-      if (!response.ok && response.status !== 204) {
-        throw new Error("Library could not be removed.");
-      }
-      setActionMessage("Library removed.");
-      revalidator.revalidate();
-    } catch (error) {
-      setActionMessage(error instanceof Error ? error.message : "Library could not be removed.");
-    } finally {
-      setBusyKey(null);
-    }
-  }
+  const nextSetupTask = libraries.length === 0
+    ? { title: "Start with your library", copy: "Choose where movies and TV should live. Deluno needs a library route before it can safely import anything.", to: "/settings/media-management", action: "Set up library" }
+    : enabledIndexers.length === 0 || enabledClients.length === 0
+      ? { title: "Connect finding and downloading", copy: "Add at least one source and one download client before Deluno can acquire media automatically.", to: "/indexers", action: "Set up connections" }
+      : activePlans === 0
+        ? { title: "Choose media preferences", copy: "Select a Media Plan so Deluno knows what quality, size, releases, and upgrades you want.", to: "/settings/policy-sets", action: "Choose a Media Plan" }
+        : { title: "Your essentials are ready", copy: "You can add media from the Dashboard. Import lists and automation preferences are optional refinements.", to: "/", action: "Open Dashboard" };
 
   return (
-    <SettingsShell
-      title="Settings overview"
-      description="Deluno identity, libraries, automation, and quality policy in one workspace while the deeper settings areas expand into their own routes."
-    >
-      <OperationsGuide />
-
-      <div className="fluid-kpi-grid">
-        <KpiCard
-          label="Libraries"
-          value={String(libraries.length)}
-          icon={FolderCog}
-          meta="Movie and TV library containers Deluno is managing."
-          sparkline={[4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5]}
-        />
-        <KpiCard
-          label="Profiles"
-          value={String(qualityProfiles.length)}
-          icon={SlidersHorizontal}
-          meta="Quality profiles available across Movies and TV."
-          sparkline={[2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4]}
-        />
-        <KpiCard
-          label="Auto libraries"
-          value={String(autoLibraries)}
-          icon={Settings2}
-          meta="Libraries actively running on Deluno automation."
-          sparkline={[2, 2, 2, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4]}
-        />
-        <KpiCard
-          label="Storage roots"
-          value={String([settings.movieRootPath, settings.seriesRootPath].filter(Boolean).length)}
-          icon={HardDrive}
-          meta="Configured media roots across movies and television."
-          sparkline={[1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]}
-        />
-      </div>
-
-      <div className="settings-split settings-split-config-heavy">
-        <Card className="settings-panel">
-          <CardHeader>
-            <CardTitle>Single-install direction</CardTitle>
-            <CardDescription>
-              Deluno should replace multiple Arr instances with policy-driven routing inside one install.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm text-muted-foreground">
-            <p>
-              Destination rules and policy sets let users separate 4K, anime, kids, language, genre, or workflow
-              libraries without running extra Deluno instances.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="info">Destination rules</Badge>
-              <Badge variant="info">Policy sets</Badge>
-              <Badge variant="info">Multi-version targets</Badge>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="settings-panel">
-          <CardHeader>
-            <CardTitle>Daily work stays out of settings</CardTitle>
-            <CardDescription>
-              Search, queue, imports, and provider health have canonical pages. Settings only controls defaults and advanced policy.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3 sm:grid-cols-2">
-            <Button asChild>
-              <Link to="/setup-guide">Open guided setup</Link>
-            </Button>
-            <Button variant="secondary" asChild>
-              <Link to="/queue">Open import queue</Link>
-            </Button>
-            <Button variant="outline" asChild>
-              <Link to="/indexers">Configure sources</Link>
-            </Button>
-            <Button variant="outline" asChild>
-              <Link to="/settings/profiles">Tune quality</Link>
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-
-      {actionMessage ? (
-        <div className="rounded-xl border border-hairline bg-surface-1 px-4 py-3 text-sm text-muted-foreground">
-          {actionMessage}
+    <SettingsShell title="Settings overview" description="Set up your library once, then return here whenever you need to change how Deluno finds, processes, or stores media.">
+      <section className="flex flex-col gap-[var(--grid-gap)] rounded-3xl border border-primary/20 bg-gradient-to-br from-primary/[0.08] via-card to-card p-[var(--tile-pad)] sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.14em] text-primary">Your media setup</p>
+          <h2 className="mt-2 font-display text-2xl font-semibold tracking-tight text-foreground">{nextSetupTask.title}</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">{nextSetupTask.copy}</p>
         </div>
-      ) : null}
+        <Button asChild><Link to={nextSetupTask.to}>{nextSetupTask.action}</Link></Button>
+      </section>
 
-      <div className="settings-split settings-split-config-heavy">
-        <div className="settings-side-stack">
-          <Card>
-            <CardHeader>
-              <CardTitle>Platform</CardTitle>
-              <CardDescription>
-                Core runtime identity and storage paths for this Deluno instance.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form className="grid gap-[var(--grid-gap)] sm:grid-cols-2" onSubmit={handleSaveSettings}>
-                <Field label="Instance">
-                  <Input
-                    value={formState.appInstanceName}
-                    onChange={(event) =>
-                      setFormState((current) => ({ ...current, appInstanceName: event.target.value }))
-                    }
-                  />
-                </Field>
-                <SettingsStat label="Updated" value={formatWhen(settings.updatedUtc)} />
-                <Field label="Movies root">
-                  <PathInput
-                    value={formState.movieRootPath ?? ""}
-                    onChange={(nextValue) =>
-                      setFormState((current) => ({ ...current, movieRootPath: nextValue }))
-                    }
-                    browseTitle="Choose movies root"
-                  />
-                </Field>
-                <Field label="TV root">
-                  <PathInput
-                    value={formState.seriesRootPath ?? ""}
-                    onChange={(nextValue) =>
-                      setFormState((current) => ({ ...current, seriesRootPath: nextValue }))
-                    }
-                    browseTitle="Choose TV root"
-                  />
-                </Field>
-                <Field label="Downloads">
-                  <PathInput
-                    value={formState.downloadsPath ?? ""}
-                    onChange={(nextValue) =>
-                      setFormState((current) => ({ ...current, downloadsPath: nextValue }))
-                    }
-                    browseTitle="Choose downloads folder"
-                  />
-                </Field>
-                <Field label="Incomplete">
-                  <PathInput
-                    value={formState.incompleteDownloadsPath ?? ""}
-                    onChange={(nextValue) =>
-                      setFormState((current) => ({
-                        ...current,
-                        incompleteDownloadsPath: nextValue
-                      }))
-                    }
-                    browseTitle="Choose incomplete downloads folder"
-                  />
-                </Field>
-                <ToggleField
-                  label="Auto-start jobs"
-                  checked={formState.autoStartJobs}
-                  onChange={(checked) =>
-                    setFormState((current) => ({ ...current, autoStartJobs: checked }))
-                  }
-                />
-                <ToggleField
-                  label="Enable notifications"
-                  checked={formState.enableNotifications}
-                  onChange={(checked) =>
-                    setFormState((current) => ({ ...current, enableNotifications: checked }))
-                  }
-                />
-                <div className="sm:col-span-2">
-                  <Button type="submit" disabled={isSaving}>
-                    {isSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-                    Save settings
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Create library</CardTitle>
-              <CardDescription>Add a new movie or TV container to Deluno.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form className="grid gap-[var(--grid-gap)] sm:grid-cols-2" onSubmit={handleCreateLibrary}>
-                <Field label="Name">
-                  <Input value={libraryForm.name} onChange={(event) => setLibraryForm((current) => ({ ...current, name: event.target.value }))} />
-                </Field>
-                <Field label="Media type">
-                  <select
-                    value={libraryForm.mediaType}
-                    onChange={(event) => setLibraryForm((current) => ({ ...current, mediaType: event.target.value }))}
-                    className="density-control-text h-[var(--control-height)] w-full rounded-xl border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none"
-                  >
-                    <option value="movies">Movies</option>
-                    <option value="tv">TV</option>
-                  </select>
-                </Field>
-                <Field label="Purpose">
-                  <PresetField
-                    value={libraryForm.purpose}
-                    onChange={(value) => setLibraryForm((current) => ({ ...current, purpose: value }))}
-                    options={[
-                      { label: "General library", value: "General library" },
-                      { label: "4K / UHD library", value: "4K library" },
-                      { label: "Kids and family", value: "Kids and family" },
-                      { label: "Anime", value: "Anime" },
-                      { label: "Documentaries", value: "Documentaries" },
-                      { label: "Archive", value: "Archive" }
-                    ]}
-                    customLabel="Custom purpose"
-                    customPlaceholder="Describe this library"
-                  />
-                </Field>
-                <Field label="Quality profile">
-                  <select
-                    value={libraryForm.qualityProfileId}
-                    onChange={(event) => setLibraryForm((current) => ({ ...current, qualityProfileId: event.target.value }))}
-                    className="density-control-text h-[var(--control-height)] w-full rounded-xl border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none"
-                  >
-                    <option value="">No profile</option>
-                    {profileOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Root path">
-                  <PathInput
-                    value={libraryForm.rootPath}
-                    onChange={(nextValue) => setLibraryForm((current) => ({ ...current, rootPath: nextValue }))}
-                    browseTitle="Choose library root"
-                  />
-                </Field>
-                <Field label="Downloads path">
-                  <PathInput
-                    value={libraryForm.downloadsPath}
-                    onChange={(nextValue) => setLibraryForm((current) => ({ ...current, downloadsPath: nextValue }))}
-                    browseTitle="Choose library downloads folder"
-                  />
-                </Field>
-                <Field label="Search interval (hours)">
-                  <PresetField inputType="number" value={String(libraryForm.searchIntervalHours)} onChange={(value) => setLibraryForm((current) => ({ ...current, searchIntervalHours: Number(value || 0) }))} options={INTERVAL_OPTIONS} customLabel="Custom interval" customPlaceholder="Hours" />
-                </Field>
-                <Field label="Retry delay (hours)">
-                  <PresetField inputType="number" value={String(libraryForm.retryDelayHours)} onChange={(value) => setLibraryForm((current) => ({ ...current, retryDelayHours: Number(value || 0) }))} options={RETRY_OPTIONS} customLabel="Custom retry delay" customPlaceholder="Hours" />
-                </Field>
-                <Field label="Max items per run">
-                  <PresetField inputType="number" value={String(libraryForm.maxItemsPerRun)} onChange={(value) => setLibraryForm((current) => ({ ...current, maxItemsPerRun: Number(value || 10) }))} options={MAX_PER_RUN_OPTIONS} customLabel="Custom max" customPlaceholder="Items per run" />
-                </Field>
-                <Field label="Search window start (hour)">
-                  <PresetField
-                    inputType="number"
-                    value={libraryForm.searchWindowStartHour !== null ? String(libraryForm.searchWindowStartHour) : ""}
-                    onChange={(value) => setLibraryForm((current) => ({ ...current, searchWindowStartHour: value === "" ? null : Number(value) }))}
-                    options={HOUR_OPTIONS}
-                    customLabel="Custom hour (0–23)"
-                    customPlaceholder="Hour 0–23"
-                  />
-                  <p className="density-help mt-1 text-muted-foreground">Earliest hour searches may run. Leave blank for anytime.</p>
-                </Field>
-                <Field label="Search window end (hour)">
-                  <PresetField
-                    inputType="number"
-                    value={libraryForm.searchWindowEndHour !== null ? String(libraryForm.searchWindowEndHour) : ""}
-                    onChange={(value) => setLibraryForm((current) => ({ ...current, searchWindowEndHour: value === "" ? null : Number(value) }))}
-                    options={HOUR_OPTIONS}
-                    customLabel="Custom hour (0–23)"
-                    customPlaceholder="Hour 0–23"
-                  />
-                  <p className="density-help mt-1 text-muted-foreground">Latest hour searches may run. Leave blank for anytime.</p>
-                </Field>
-                <div className="grid gap-3 sm:col-span-2 sm:grid-cols-3">
-                  <ToggleField label="Auto search" checked={libraryForm.autoSearchEnabled} onChange={(checked) => setLibraryForm((current) => ({ ...current, autoSearchEnabled: checked }))} />
-                  <ToggleField label="Missing search" checked={libraryForm.missingSearchEnabled} onChange={(checked) => setLibraryForm((current) => ({ ...current, missingSearchEnabled: checked }))} />
-                  <ToggleField label="Upgrade search" checked={libraryForm.upgradeSearchEnabled} onChange={(checked) => setLibraryForm((current) => ({ ...current, upgradeSearchEnabled: checked }))} />
-                </div>
-                <div className="sm:col-span-2">
-                  <Button type="submit" disabled={busyKey === "create-library"}>
-                    {busyKey === "create-library" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-                    Create library
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Libraries</CardTitle>
-              <CardDescription>
-                Your libraries and their current automation settings.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-[calc(var(--field-group-pad)*0.9)]">
-              {libraries.map((library) => (
-                <div key={library.id} className="rounded-xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.8)]">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="font-display text-base font-semibold text-foreground">{library.name}</p>
-                      <p className="text-sm text-muted-foreground">{library.purpose}</p>
-                    </div>
-                    <Badge variant={library.autoSearchEnabled ? "success" : "default"}>
-                      {library.mediaType === "tv" ? "TV" : "Movies"}
-                    </Badge>
-                  </div>
-                  <div className="fluid-field-grid mt-3">
-                    <Field label="Profile">
-                      <select
-                        value={library.qualityProfileId ?? ""}
-                        onChange={(event) => void handleUpdateLibraryProfile(library.id, event.target.value)}
-                        className="density-control-text h-[var(--control-height)] w-full rounded-xl border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none"
-                      >
-                        <option value="">No profile</option>
-                        {profileOptions.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </Field>
-                    <Field label="Interval (h)">
-                      <PresetField
-                        inputType="number"
-                        value={String(library.searchIntervalHours)}
-                        onChange={(value) => void handleUpdateLibraryAutomation(library, { searchIntervalHours: Number(value || 0) })}
-                        options={INTERVAL_OPTIONS}
-                        customLabel="Custom interval"
-                        customPlaceholder="Hours"
-                      />
-                    </Field>
-                    <Field label="Retry (h)">
-                      <PresetField
-                        inputType="number"
-                        value={String(library.retryDelayHours)}
-                        onChange={(value) => void handleUpdateLibraryAutomation(library, { retryDelayHours: Number(value || 0) })}
-                        options={RETRY_OPTIONS}
-                        customLabel="Custom retry delay"
-                        customPlaceholder="Hours"
-                      />
-                    </Field>
-                    <Field label="Max per run">
-                      <PresetField
-                        inputType="number"
-                        value={String(library.maxItemsPerRun)}
-                        onChange={(value) => void handleUpdateLibraryAutomation(library, { maxItemsPerRun: Number(value || 10) })}
-                        options={MAX_PER_RUN_OPTIONS}
-                        customLabel="Custom max"
-                        customPlaceholder="Items per run"
-                      />
-                    </Field>
-                    <Field label="Window start (h)">
-                      <PresetField
-                        inputType="number"
-                        value={library.searchWindowStartHour !== null && library.searchWindowStartHour !== undefined ? String(library.searchWindowStartHour) : ""}
-                        onChange={(value) => void handleUpdateLibraryAutomation(library, { searchWindowStartHour: value === "" ? null : Number(value) })}
-                        options={HOUR_OPTIONS}
-                        customLabel="Custom hour"
-                        customPlaceholder="0–23"
-                      />
-                    </Field>
-                    <Field label="Window end (h)">
-                      <PresetField
-                        inputType="number"
-                        value={library.searchWindowEndHour !== null && library.searchWindowEndHour !== undefined ? String(library.searchWindowEndHour) : ""}
-                        onChange={(value) => void handleUpdateLibraryAutomation(library, { searchWindowEndHour: value === "" ? null : Number(value) })}
-                        options={HOUR_OPTIONS}
-                        customLabel="Custom hour"
-                        customPlaceholder="0–23"
-                      />
-                    </Field>
-                  </div>
-                  <div className="mt-3 grid gap-3 md:grid-cols-3">
-                    <ToggleField label="Automation" checked={library.autoSearchEnabled} onChange={(checked) => void handleUpdateLibraryAutomation(library, { autoSearchEnabled: checked })} />
-                    <ToggleField label="Missing runs" checked={library.missingSearchEnabled} onChange={(checked) => void handleUpdateLibraryAutomation(library, { missingSearchEnabled: checked })} />
-                    <ToggleField label="Upgrade runs" checked={library.upgradeSearchEnabled} onChange={(checked) => void handleUpdateLibraryAutomation(library, { upgradeSearchEnabled: checked })} />
-                  </div>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <Button
-                      size="sm"
-                      onClick={() => void handleLibraryAction(library.id, "search-now")}
-                      disabled={busyKey === `search-now:${library.id}`}
-                    >
-                      {busyKey === `search-now:${library.id}` ? (
-                        <LoaderCircle className="h-4 w-4 animate-spin" />
-                      ) : null}
-                      Search now
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => void handleLibraryAction(library.id, "import-existing")}
-                      disabled={busyKey === `import-existing:${library.id}`}
-                    >
-                      {busyKey === `import-existing:${library.id}` ? (
-                        <LoaderCircle className="h-4 w-4 animate-spin" />
-                      ) : null}
-                      Import existing
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => void handleDeleteLibrary(library.id)}
-                      disabled={busyKey === `delete:${library.id}`}
-                    >
-                      {busyKey === `delete:${library.id}` ? (
-                        <LoaderCircle className="h-4 w-4 animate-spin" />
-                      ) : null}
-                      Remove library
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+      <section aria-labelledby="setup-status-heading" className="overflow-hidden rounded-2xl border border-hairline bg-card shadow-card dark:border-white/[0.07]">
+        <div className="border-b border-hairline px-[var(--tile-pad)] py-4">
+          <h2 id="setup-status-heading" className="font-display text-lg font-semibold text-foreground">Setup status</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Open a section to configure it. These rows only show what still needs attention.</p>
         </div>
-
-        <div className="settings-side-stack">
-          <Card>
-            <CardHeader>
-              <CardTitle>Create quality profile</CardTitle>
-              <CardDescription>Set the minimum quality and which versions are allowed.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form className="grid gap-[var(--grid-gap)]" onSubmit={handleCreateProfile}>
-                <Field label="Name">
-                  <Input value={profileForm.name} onChange={(event) => setProfileForm((current) => ({ ...current, name: event.target.value }))} />
-                </Field>
-                <Field label="Media type">
-                  <select
-                    value={profileForm.mediaType}
-                    onChange={(event) => setProfileForm((current) => ({ ...current, mediaType: event.target.value }))}
-                    className="density-control-text h-[var(--control-height)] w-full rounded-xl border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none"
-                  >
-                    <option value="movies">Movies</option>
-                    <option value="tv">TV</option>
-                  </select>
-                </Field>
-                <Field label="Upgrade stops at">
-                  <PresetField value={profileForm.cutoffQuality} onChange={(value) => setProfileForm((current) => ({ ...current, cutoffQuality: value }))} options={QUALITY_OPTIONS} customLabel="Custom quality" customPlaceholder="Quality name" />
-                </Field>
-                <Field label="Allowed qualities">
-                  <PresetField
-                    value={profileForm.allowedQualities}
-                    onChange={(value) => setProfileForm((current) => ({ ...current, allowedQualities: value }))}
-                    options={[
-                      { label: "All common HD/UHD qualities", value: QUALITY_OPTIONS.map((quality) => quality.value).join(",") },
-                      { label: "4K only", value: "WEB-DL 2160p,Bluray-2160p" },
-                      { label: "1080p only", value: "WEB-DL 1080p,Bluray-1080p" },
-                      { label: "720p and 1080p", value: "WEB-DL 720p,HDTV-720p,WEB-DL 1080p,Bluray-1080p" }
-                    ]}
-                    customLabel="Custom quality list"
-                    customPlaceholder="Comma-separated quality names"
-                  />
-                </Field>
-                <ToggleField label="Keep upgrading until target quality" checked={profileForm.upgradeUntilCutoff} onChange={(checked) => setProfileForm((current) => ({ ...current, upgradeUntilCutoff: checked }))} />
-                <ToggleField label="Upgrade unknown items" checked={profileForm.upgradeUnknownItems} onChange={(checked) => setProfileForm((current) => ({ ...current, upgradeUnknownItems: checked }))} />
-                <Button type="submit" disabled={busyKey === "create-profile"}>
-                  {busyKey === "create-profile" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-                  Create profile
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Quality profiles</CardTitle>
-              <CardDescription>
-                Quality settings available to your libraries.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-[calc(var(--field-group-pad)*0.9)]">
-              {qualityProfiles.map((profile) => (
-                <div key={profile.id} className="rounded-xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.8)]">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="font-display text-base font-semibold text-foreground">{profile.name}</p>
-                    <Badge variant="info">{profile.mediaType === "tv" ? "TV" : "Movies"}</Badge>
-                  </div>
-                  <p className="mt-2 text-sm text-muted-foreground">Stops at {profile.cutoffQuality}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{profile.allowedQualities}</p>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Movies vs TV</CardTitle>
-              <CardDescription>
-                How your libraries are split between movies and TV shows.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-4">
-              <div className="rounded-xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.8)] text-center">
-                <p className="tabular text-2xl font-semibold text-foreground">{movieLibraries}</p>
-                <p className="mt-1 text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                  Movie libraries
-                </p>
-              </div>
-              <div className="rounded-xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.8)] text-center">
-                <p className="tabular text-2xl font-semibold text-foreground">{tvLibraries}</p>
-                <p className="mt-1 text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                  TV libraries
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+        <div className="divide-y divide-hairline">
+          <SetupStatusRow label="Library" detail={libraries.length === 0 ? "No media folders configured" : `${movieLibraries} movie · ${tvLibraries} TV library`} to="/settings/media-management" action="Configure" />
+          <SetupStatusRow label="Connections" detail={enabledIndexers.length === 0 && enabledClients.length === 0 ? "No indexers or download clients enabled" : `${healthyIndexers.length}/${enabledIndexers.length} indexers · ${healthyClients.length}/${enabledClients.length} download clients healthy`} to="/indexers" action="Configure" />
+          <SetupStatusRow label="Media plans & quality" detail={activePlans > 0 ? `${activePlans} active Media Plan · ${qualityProfiles.length} quality profile${qualityProfiles.length === 1 ? "" : "s"}` : "No active Media Plan"} to="/settings/policy-sets" action="Configure" />
+          <SetupStatusRow label="Automation & recovery" detail={settings.autoStartJobs ? `${autoLibraries} library automation setting${autoLibraries === 1 ? "" : "s"} active` : "Background automation is paused"} to="/settings/automation" action="Configure" />
         </div>
-      </div>
+      </section>
     </SettingsShell>
   );
 }
 
-function createEmptyLibraryForm(defaultProfileId: string): LibraryFormState {
-  return {
-    name: "",
-    mediaType: "movies",
-    purpose: "",
-    rootPath: "",
-    downloadsPath: "",
-    qualityProfileId: defaultProfileId,
-    autoSearchEnabled: true,
-    missingSearchEnabled: true,
-    upgradeSearchEnabled: false,
-    searchIntervalHours: 6,
-    retryDelayHours: 12,
-    maxItemsPerRun: 25,
-    searchWindowStartHour: null,
-    searchWindowEndHour: null
-  };
-}
-
-function createEmptyQualityProfileForm(): QualityProfileFormState {
-  return {
-    name: "",
-    mediaType: "movies",
-    cutoffQuality: "WEB-DL 2160p",
-    allowedQualities: "WEB-DL 1080p, WEB-DL 2160p, Bluray-1080p, Bluray-2160p",
-    upgradeUntilCutoff: true,
-    upgradeUnknownItems: true
-  };
-}
-
-function Field({ children, label }: { children: React.ReactNode; label: string }) {
+function SetupStatusRow({ label, detail, to, action }: { label: string; detail: string; to: string; action: string }) {
   return (
-    <div className="density-field rounded-xl border border-hairline bg-surface-1">
-      <p className="density-label uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
-      <div style={{ marginTop: "var(--field-label-gap)" }}>{children}</div>
+    <div className="flex flex-col gap-3 px-[var(--tile-pad)] py-4 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h3 className="font-semibold text-foreground">{label}</h3>
+        <p className="mt-1 text-sm text-muted-foreground">{detail}</p>
+      </div>
+      <Button asChild size="sm" variant="ghost"><Link to={to}>{action}</Link></Button>
     </div>
   );
-}
-
-function ToggleField({
-  checked,
-  label,
-  onChange
-}: {
-  checked: boolean;
-  label: string;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <label className="density-field density-control-text flex items-center gap-3 rounded-xl border border-hairline bg-surface-1 text-foreground">
-      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
-      {label}
-    </label>
-  );
-}
-
-function SettingsStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="density-field rounded-xl border border-hairline bg-surface-1">
-      <p className="density-label uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
-      <p className="mt-2 break-words text-sm text-foreground">{value}</p>
-    </div>
-  );
-}
-
-function formatWhen(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit"
-  }).format(new Date(value));
 }

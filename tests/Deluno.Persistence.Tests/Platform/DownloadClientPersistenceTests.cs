@@ -83,6 +83,35 @@ public sealed class DownloadClientPersistenceTests
         Assert.Equal(2, list.Count);
     }
 
+    [Fact]
+    public async Task Download_client_path_mappings_are_scoped_to_the_client_and_can_be_removed()
+    {
+        using var storage = TestStorage.Create();
+        var repo = await CreateRepositoryAsync(storage);
+        var first = await repo.CreateDownloadClientAsync(BaseCreateRequest("qBittorrent"), CancellationToken.None);
+        var second = await repo.CreateDownloadClientAsync(BaseCreateRequest("SABnzbd"), CancellationToken.None);
+
+        var mapping = await repo.CreateDownloadClientPathMappingAsync(
+            first.Id,
+            new CreateDownloadClientPathMappingRequest("/downloads/complete", "D:\\Downloads\\complete", true, 10),
+            CancellationToken.None);
+        await repo.CreateDownloadClientPathMappingAsync(
+            second.Id,
+            new CreateDownloadClientPathMappingRequest("/sab/complete", "E:\\Usenet", true, 10),
+            CancellationToken.None);
+
+        Assert.NotNull(mapping);
+        var firstMappings = await repo.ListDownloadClientPathMappingsAsync(first.Id, CancellationToken.None);
+        Assert.Single(firstMappings);
+        Assert.Equal("/downloads/complete", firstMappings[0].RemotePath);
+        Assert.Equal("D:\\Downloads\\complete", firstMappings[0].LocalPath);
+
+        var removed = await repo.DeleteDownloadClientPathMappingAsync(first.Id, mapping!.Id, CancellationToken.None);
+        Assert.True(removed);
+        Assert.Empty(await repo.ListDownloadClientPathMappingsAsync(first.Id, CancellationToken.None));
+        Assert.Single(await repo.ListDownloadClientPathMappingsAsync(second.Id, CancellationToken.None));
+    }
+
     // ── UpdateDownloadClientAsync — null/patch semantics ──────────────────────
 
     [Fact]

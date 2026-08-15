@@ -179,7 +179,7 @@ export function AuditTimeline({ events, liveEvents = [], maxVisible = 200 }: Aud
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-[var(--grid-gap)]">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[180px]">
@@ -246,7 +246,7 @@ export function AuditTimeline({ events, liveEvents = [], maxVisible = 200 }: Aud
               <li
                 key={event.id}
                 className={cn(
-                  "relative flex gap-4 pb-5",
+                  "relative flex gap-[var(--grid-gap)] pb-5",
                   isFirst && "animate-[reveal-item_0.3s_ease_both]"
                 )}
               >

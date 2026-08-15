@@ -19,8 +19,8 @@ if (-not (Test-Path $dotnetPath)) {
 
 # Kill anything already on the ports
 foreach ($port in 5099, 5173) {
-    $pid = (Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue).OwningProcess | Select-Object -First 1
-    if ($pid) { Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue }
+    $listenerPid = (Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue).OwningProcess | Select-Object -First 1
+    if ($listenerPid) { Stop-Process -Id $listenerPid -Force -ErrorAction SilentlyContinue }
 }
 
 Write-Host "Starting backend  (http://127.0.0.1:5099) ..." -ForegroundColor Cyan

@@ -113,7 +113,7 @@ Checks:
 
 Primary backup/restore procedure:
 
-- [backup-restore-runbook.md](/C:/Users/User/Projects/Deluno/docs/backup-restore-runbook.md)
+- [Backup and restore runbook](./backup-restore-runbook.md)
 
 ### Issue: Deluno Starts But Nothing Loads
 

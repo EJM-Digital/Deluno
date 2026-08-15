@@ -8,6 +8,15 @@ public interface IJobQueueRepository
 
     Task<int> RetryFailedAsync(CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Removes work that has not started for a title which is no longer managed.
+    /// Running work is deliberately left alone so workers can finish safely.
+    /// </summary>
+    Task<int> CancelPendingForRelatedEntityAsync(
+        string relatedEntityType,
+        string relatedEntityId,
+        CancellationToken cancellationToken);
+
     Task<JobQueueItem?> LeaseNextAsync(
         string workerId,
         TimeSpan leaseDuration,

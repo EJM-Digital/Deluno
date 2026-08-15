@@ -9,7 +9,7 @@
  */
 
 import { useState, useMemo, useRef } from "react";
-import { useLoaderData, useNavigation, useRevalidator } from "react-router-dom";
+import { Link, useLoaderData, useLocation, useNavigation, useRevalidator } from "react-router-dom";
 import {
   AlertTriangle,
   BadgeCheck,
@@ -35,6 +35,7 @@ import {
   fetchJson,
   readValidationProblem,
   type DownloadClientItem,
+  type DownloadClientPathMappingItem,
   type ImportExecuteResponse,
   type ImportJobResponse,
   type ImportPreviewRequest,
@@ -54,6 +55,7 @@ import { KpiCard } from "../components/app/kpi-card";
 import { OperationPathBanner } from "../components/app/operations-guide";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { Input } from "../components/ui/input";
 import { PresetField } from "../components/ui/preset-field";
 import { EmptyState } from "../components/shell/empty-state";
@@ -93,6 +95,7 @@ const TV_CATEGORY_OPTIONS = [
 /* ── Loader ───────────────────────────────────────────────────────── */
 interface LoaderData {
   clients: DownloadClientItem[];
+  pathMappings: DownloadClientPathMappingItem[];
   indexers: IndexerItem[];
   libraries: LibraryItem[];
   routing: LibraryRoutingSnapshot[];
@@ -120,7 +123,10 @@ export async function indexersLoader(): Promise<LoaderData> {
       }))
     )
   );
-  return { clients, indexers, libraries, routing, settings, tags, telemetry };
+  const pathMappings = (await Promise.all(
+    clients.map((client) => fetchJson<DownloadClientPathMappingItem[]>(`/api/download-clients/${client.id}/path-mappings`).catch(() => []))
+  )).flat();
+  return { clients, pathMappings, indexers, libraries, routing, settings, tags, telemetry };
 }
 
 /* ── Indexer protocol presets ─────────────────────────────────────── */
@@ -523,11 +529,12 @@ function ScopeBadge({ scope }: { scope?: string | null }) {
 }
 
 /* ── Toggle switch ────────────────────────────────────────────────── */
-function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+function Toggle({ checked, onChange, ariaLabel }: { checked: boolean; onChange: (v: boolean) => void; ariaLabel?: string }) {
   return (
     <button
       type="button"
       role="switch"
+      aria-label={ariaLabel}
       aria-checked={checked}
       onClick={() => onChange(!checked)}
       className={cn(
@@ -627,7 +634,7 @@ function IndexerAddPanel({ onSave, onCancel }: {
     <div className="space-y-[var(--page-gap)] rounded-2xl border border-primary/20 bg-surface-1 p-[var(--tile-pad)] shadow-[0_0_40px_hsl(var(--primary)/0.06)]">
       <div className="flex items-center justify-between">
         <div>
-          <p className="font-semibold text-foreground">Add indexer</p>
+          <p className="font-semibold text-foreground">Connect an indexer</p>
           <p className="text-[12px] text-muted-foreground">Choose a type, fill in the details, done.</p>
         </div>
         <button type="button" onClick={onCancel} className="rounded-xl p-1.5 text-muted-foreground hover:bg-muted/30">
@@ -669,8 +676,8 @@ function IndexerAddPanel({ onSave, onCancel }: {
           {/* Step 2: Media scope */}
           <div className="space-y-2">
             <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground flex items-center gap-1.5">
-              What does this indexer cover?
-              <Help text="This determines which searches use this indexer. Movies use categories 2000-2999, TV uses categories 5000-5999. Deluno sets the categories automatically." />
+              What should Deluno search here?
+              <Help text="This determines which searches use this source. Deluno handles the matching categories automatically." />
             </p>
             <div className="flex gap-2">
               {MEDIA_SCOPE_OPTIONS.map((opt) => (
@@ -755,7 +762,7 @@ function IndexerAddPanel({ onSave, onCancel }: {
               className="gap-2"
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-              {saving ? "Adding…" : "Add indexer"}
+              {saving ? "Connecting…" : "Connect source"}
             </Button>
           </div>
         </>
@@ -816,7 +823,7 @@ function ClientAddPanel({ onSave, onCancel }: {
     <div className="space-y-[var(--page-gap)] rounded-2xl border border-primary/20 bg-surface-1 p-[var(--tile-pad)] shadow-[0_0_40px_hsl(var(--primary)/0.06)]">
       <div className="flex items-center justify-between">
         <div>
-          <p className="font-semibold text-foreground">Add download client</p>
+          <p className="font-semibold text-foreground">Connect downloads</p>
           <p className="text-[12px] text-muted-foreground">Movies and TV will be sent to separate categories automatically.</p>
         </div>
         <button type="button" onClick={onCancel} className="rounded-xl p-1.5 text-muted-foreground hover:bg-muted/30">
@@ -826,7 +833,7 @@ function ClientAddPanel({ onSave, onCancel }: {
 
       {/* Client type picker */}
       <div className="space-y-2">
-        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Client type</p>
+        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Download app</p>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {CLIENT_PRESETS.map((p) => (
             <button
@@ -956,11 +963,99 @@ function ClientAddPanel({ onSave, onCancel }: {
               className="gap-2"
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-              {saving ? "Adding…" : "Add client"}
+              {saving ? "Connecting…" : "Connect downloads"}
             </Button>
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function ClientFileAccess({
+  client,
+  mappings,
+  onAdd,
+  onRemove,
+  onTest
+}: {
+  client: DownloadClientItem;
+  mappings: DownloadClientPathMappingItem[];
+  onAdd: (clientId: string, remotePath: string, localPath: string) => Promise<void>;
+  onRemove: (clientId: string, mappingId: string) => Promise<void>;
+  onTest: (clientId: string, mappingId: string) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [remotePath, setRemotePath] = useState("");
+  const [localPath, setLocalPath] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function addMapping() {
+    if (!remotePath.trim() || !localPath.trim()) return;
+    setSaving(true);
+    try {
+      await onAdd(client.id, remotePath.trim(), localPath.trim());
+      setRemotePath("");
+      setLocalPath("");
+      setOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 rounded-xl border border-hairline bg-surface-1 px-3 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-[11.5px] font-semibold text-foreground">File locations</p>
+          <p className="mt-0.5 text-[10.5px] text-muted-foreground">
+            {mappings.length > 0
+              ? `${mappings.length} path translation${mappings.length === 1 ? "" : "s"} tells Deluno where this client’s completed files are visible.`
+              : "Configure this client’s completed-download folder in the client itself. Nothing else is needed when Deluno can see that same folder."}
+          </p>
+        </div>
+        <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-[10.5px]" onClick={() => setOpen((value) => !value)}>
+          {open ? "Done" : mappings.length ? "Manage locations" : "Link different paths"}
+        </Button>
+      </div>
+
+      {mappings.length > 0 ? (
+        <div className="mt-2 space-y-1.5">
+          {mappings.map((mapping) => (
+            <div key={mapping.id} className="flex min-w-0 items-center gap-2 rounded-lg bg-background/45 px-2.5 py-2 text-[10.5px]">
+              <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground" title={mapping.remotePath}>{mapping.remotePath}</span>
+              <span aria-hidden="true" className="text-primary">→</span>
+              <span className="min-w-0 flex-1 truncate font-mono text-foreground" title={mapping.localPath}>{mapping.localPath}</span>
+              <button type="button" onClick={() => void onTest(client.id, mapping.id)} className="rounded px-1.5 py-1 text-[10px] font-semibold text-primary hover:bg-primary/10">
+                Test
+              </button>
+              <button type="button" aria-label={`Remove ${mapping.remotePath} mapping`} onClick={() => void onRemove(client.id, mapping.id)} className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {open ? (
+        <div className="mt-3 grid gap-2 border-t border-hairline pt-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+          <label className="block">
+            <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Path reported by {client.name}</span>
+            <Input value={remotePath} onChange={(event) => setRemotePath(event.target.value)} placeholder="/downloads/complete" className="mt-1 h-8 font-mono text-[11px]" />
+          </label>
+          <label className="block">
+            <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Matching path visible to Deluno</span>
+            <Input value={localPath} onChange={(event) => setLocalPath(event.target.value)} placeholder="D:\\Downloads\\complete" className="mt-1 h-8 font-mono text-[11px]" />
+          </label>
+          <Button type="button" size="sm" onClick={() => void addMapping()} disabled={saving || !remotePath.trim() || !localPath.trim()} className="h-8 gap-1.5 text-[10.5px]">
+            {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+            Link paths
+          </Button>
+          <p className="text-[10.5px] text-muted-foreground sm:col-span-3">
+            Use this only when the same completed files have different paths. Example: a Docker client reports <span className="font-mono">/downloads/complete</span>, while Deluno reads them at <span className="font-mono">D:\\Downloads\\complete</span>. This is the technical “remote path mapping”, explained as a location link.
+          </p>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1017,7 +1112,7 @@ function LibraryRoutingPanel({
         <div>
           <p className="font-semibold text-foreground">{library.name}</p>
           <p className="text-[11.5px] text-muted-foreground">
-            {sourceIds.length} indexer{sourceIds.length !== 1 ? "s" : ""} · {clientIds.length} client{clientIds.length !== 1 ? "s" : ""}
+            {sourceIds.length} indexer{sourceIds.length !== 1 ? "s" : ""} · {clientIds.length} download client{clientIds.length !== 1 ? "s" : ""}
           </p>
         </div>
       </div>
@@ -1027,7 +1122,7 @@ function LibraryRoutingPanel({
         <div className="space-y-2">
           <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
             Indexers
-            <Help text={`Only indexers scoped to "${isTV ? "TV" : "Movies"}" or "Both" are shown here. Indexers limited to the other media type are hidden to prevent mis-routing.`} />
+            <Help text={`Only sources that cover "${isTV ? "TV" : "Movies"}" or "Both" are shown here. Sources limited to the other media type are hidden to prevent mis-routing.`} />
           </p>
           {relevantIndexers.length > 0 ? (
             <div className="space-y-1.5">
@@ -1059,7 +1154,7 @@ function LibraryRoutingPanel({
             </div>
           ) : (
             <p className="rounded-xl border border-dashed border-hairline px-3 py-4 text-center text-[12px] text-muted-foreground">
-              No {isTV ? "TV" : "movie"}-compatible indexers yet. Add one above.
+              No {isTV ? "TV" : "movie"}-compatible indexers yet. Connect one above.
             </p>
           )}
         </div>
@@ -1067,8 +1162,8 @@ function LibraryRoutingPanel({
         {/* Download clients column */}
         <div className="space-y-2">
           <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-            Download clients
-            <Help text="Deluno will use the movies or TV category configured on each client depending on what's being downloaded — you don't need separate clients for movies and TV." />
+            Download connections
+            <Help text="Deluno uses the movies or TV category configured on each download connection. You do not need separate download apps for movies and TV." />
           </p>
           {relevantClients.length > 0 ? (
             <div className="space-y-1.5">
@@ -1109,7 +1204,7 @@ function LibraryRoutingPanel({
             </div>
           ) : (
             <p className="rounded-xl border border-dashed border-hairline px-3 py-4 text-center text-[12px] text-muted-foreground">
-              No download clients yet. Add one above.
+              No download connections yet. Connect one above.
             </p>
           )}
         </div>
@@ -1119,13 +1214,13 @@ function LibraryRoutingPanel({
         {sourceIds.length === 0 && (
           <p className="flex items-center gap-1.5 text-[11.5px] text-amber-400">
             <AlertTriangle className="h-3.5 w-3.5" />
-            No indexers assigned — searches won't work
+            No indexers assigned — Deluno cannot look for releases yet
           </p>
         )}
         {clientIds.length === 0 && sourceIds.length > 0 && (
           <p className="flex items-center gap-1.5 text-[11.5px] text-amber-400">
             <AlertTriangle className="h-3.5 w-3.5" />
-            No download client — grabs will fail
+            No download connection — Deluno cannot send approved releases yet
           </p>
         )}
         <div className="ml-auto">
@@ -1142,7 +1237,7 @@ function LibraryRoutingPanel({
 /* ── Page ─────────────────────────────────────────────────────────── */
 function IndexersLoadingShell() {
   return (
-    <div className="space-y-8" aria-busy="true" aria-live="polite">
+    <div className="space-y-[var(--page-gap)]" aria-busy="true" aria-live="polite">
       <CardSkeleton />
       <div className="fluid-kpi-grid">
         <CardSkeleton />
@@ -1165,8 +1260,39 @@ function RouteSectionSkeleton() {
   );
 }
 
+function ConnectionStartCard({
+  to,
+  title,
+  description,
+  action,
+  icon: Icon
+}: {
+  to: string;
+  title: string;
+  description: string;
+  action: string;
+  icon: typeof RadioTower;
+}) {
+  return (
+    <Link
+      to={to}
+      className="group rounded-2xl border border-hairline bg-card p-[var(--tile-pad)] transition hover:border-primary/35 hover:bg-primary/[0.035] dark:border-white/[0.07]"
+    >
+      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+        <Icon className="h-4 w-4" />
+      </span>
+      <h2 className="mt-4 text-[15px] font-semibold text-foreground">{title}</h2>
+      <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">{description}</p>
+      <span className="mt-4 inline-flex items-center gap-1 text-[11px] font-semibold text-primary">
+        {action} <ChevronRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" />
+      </span>
+    </Link>
+  );
+}
+
 export function IndexersPage() {
   const loaderData = useLoaderData() as LoaderData | undefined;
+  const location = useLocation();
   const navigation = useNavigation();
   const revalidator = useRevalidator();
   const lastTelemetryEventRefresh = useRef(0);
@@ -1174,13 +1300,21 @@ export function IndexersPage() {
   const [showIndexerAdd, setShowIndexerAdd] = useState(false);
   const [showClientAdd, setShowClientAdd] = useState(false);
   const [importPreviews, setImportPreviews] = useState<Record<string, ImportPreviewResponse>>({});
+  const [pendingQueueRemoval, setPendingQueueRemoval] = useState<DownloadQueueItem | null>(null);
 
   if (!loaderData) {
     return <IndexersLoadingShell />;
   }
 
-  const { clients, indexers, libraries, routing, settings, tags, telemetry } = loaderData;
+  const { clients, pathMappings, indexers, libraries, routing, settings, tags, telemetry } = loaderData;
   const isRouteLoading = navigation.state !== "idle";
+  const activeSection = location.pathname.endsWith("/indexers/indexers")
+    ? "indexers"
+      : location.pathname.endsWith("/download-clients")
+        ? "clients"
+      : location.pathname.endsWith("/library-routing")
+        ? "routing"
+        : "overview";
 
   useSignalREvent("DownloadProgress", () => {
     const now = Date.now();
@@ -1195,6 +1329,12 @@ export function IndexersPage() {
   const linkedSources = routing.reduce((n, r) => n + r.sources.length, 0);
   const linkedClients = routing.reduce((n, r) => n + r.downloadClients.length, 0);
   const telemetryByClientId = new Map(telemetry?.clients.map((item) => [item.clientId, item]) ?? []);
+  const pathMappingsByClientId = new Map<string, DownloadClientPathMappingItem[]>();
+  pathMappings.forEach((mapping) => {
+    const items = pathMappingsByClientId.get(mapping.downloadClientId) ?? [];
+    items.push(mapping);
+    pathMappingsByClientId.set(mapping.downloadClientId, items);
+  });
 
   const movieLibraries = libraries.filter((l) => l.mediaType !== "tv");
   const tvLibraries = libraries.filter((l) => l.mediaType === "tv");
@@ -1272,6 +1412,24 @@ export function IndexersPage() {
     }
   }
 
+  async function handleExternalClientRemovalChange(allowed: boolean) {
+    setBusyKey("external-client-removal");
+    try {
+      const response = await authedFetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...settings, removeCompletedDownloads: allowed })
+      });
+      if (!response.ok) throw new Error("Could not update queue removal permission.");
+      toast.success(allowed ? "Confirmed external-client removal enabled." : "External-client removal disabled.");
+      revalidator.revalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update queue removal permission.");
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
   async function handleQueueAction(clientId: string, item: DownloadQueueItem, action: "pause" | "resume" | "delete" | "recheck") {
     setBusyKey(`queue:${clientId}:${item.id}:${action}`);
     try {
@@ -1288,6 +1446,42 @@ export function IndexersPage() {
     } finally {
       setBusyKey(null);
     }
+  }
+
+  async function handleAddPathMapping(clientId: string, remotePath: string, localPath: string) {
+    const response = await authedFetch(`/api/download-clients/${clientId}/path-mappings`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ remotePath, localPath, isEnabled: true, priority: 10 })
+    });
+    if (!response.ok) {
+      const problem = await readValidationProblem(response);
+      throw new Error(problem?.title ?? "File location link could not be saved.");
+    }
+    toast.success("File location link added");
+    revalidator.revalidate();
+  }
+
+  async function handleRemovePathMapping(clientId: string, mappingId: string) {
+    const response = await authedFetch(`/api/download-clients/${clientId}/path-mappings/${mappingId}`, { method: "DELETE" });
+    if (!response.ok && response.status !== 204) throw new Error("File location link could not be removed.");
+    toast.success("File location link removed");
+    revalidator.revalidate();
+  }
+
+  async function handleTestPathMapping(clientId: string, mappingId: string) {
+    const response = await authedFetch(`/api/download-clients/${clientId}/path-mappings/${mappingId}/test`, { method: "POST" });
+    if (!response.ok) throw new Error("Deluno could not test this file location.");
+    const result = await response.json() as { reachable: boolean; message: string };
+    if (result.reachable) toast.success(result.message);
+    else toast.error(result.message);
+  }
+
+  async function confirmQueueRemoval() {
+    if (!pendingQueueRemoval) return;
+    const item = pendingQueueRemoval;
+    await handleQueueAction(item.clientId, item, "delete");
+    setPendingQueueRemoval(null);
   }
 
   async function handlePreviewImport(item: DownloadQueueItem) {
@@ -1446,36 +1640,47 @@ export function IndexersPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-[var(--page-gap)]">
       {/* Page header */}
       <div>
-        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Sources and destinations</p>
-        <h1 className="font-display text-3xl font-semibold text-foreground sm:text-4xl">Sources and clients</h1>
+        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Connections</p>
+        <h1 className="font-display text-3xl font-semibold text-foreground sm:text-4xl">
+          {activeSection === "indexers" ? "Indexers" : activeSection === "clients" ? "Download clients" : activeSection === "routing" ? "Library routing" : "Connect Deluno"}
+        </h1>
         <p className="mt-1 text-[13px] text-muted-foreground">
-          Add search providers and download clients. Movies and TV are always routed separately to prevent conflicts.
+          {activeSection === "indexers"
+            ? "Connect the services Deluno searches when it needs a release."
+            : activeSection === "clients"
+              ? "Connect the app that downloads approved releases, then make sure Deluno can see its completed files."
+              : activeSection === "routing"
+                ? "Choose which indexers and download clients each library is allowed to use."
+                : "Set up where Deluno finds releases, where it sends them, and which connections each library can use."}
         </p>
       </div>
 
-      <OperationPathBanner
-        pathId="sources"
-        actionTo="/queue"
-        actionLabel="Open queue"
-      />
+      {activeSection === "overview" ? (
+        <>
+          <Stagger className="fluid-kpi-grid">
+            <StaggerItem><KpiCard label="Indexers" value={String(indexers.length)} icon={RadioTower} meta="Services Deluno can search" sparkline={[8,9,9,10,11,12,12,13,14,14,15,15,16,16,17]} /></StaggerItem>
+            <StaggerItem><KpiCard label="Ready" value={String(healthyIndexers)} icon={BadgeCheck} meta="Search connections responding normally" delta={unhealthyCount > 0 ? { value: `${unhealthyCount} need review`, tone: "down" } : undefined} sparkline={[18,20,19,21,23,24,24,25,26,25,27,28,28,29,29]} /></StaggerItem>
+            <StaggerItem><KpiCard label="Library routing" value={String(linkedSources + linkedClients)} icon={Route} meta="Configured library-to-connection links" sparkline={[3,4,4,5,6,7,6,7,8,9,8,9,10,10,11]} /></StaggerItem>
+            <StaggerItem><KpiCard label="Download clients" value={String(clients.length)} icon={Cable} meta="Apps Deluno can send releases to" sparkline={[4,5,4,6,5,6,7,6,7,8,7,8,9,8,9]} /></StaggerItem>
+          </Stagger>
 
-      {/* KPI row */}
-      <Stagger className="fluid-kpi-grid">
-        <StaggerItem><KpiCard label="Indexers" value={String(indexers.length)} icon={RadioTower} meta="Configured search providers" sparkline={[8,9,9,10,11,12,12,13,14,14,15,15,16,16,17]} /></StaggerItem>
-        <StaggerItem><KpiCard label="Healthy" value={String(healthyIndexers)} icon={BadgeCheck} meta="Providers reporting ready" delta={unhealthyCount > 0 ? { value: `${unhealthyCount} alert`, tone: "down" } : undefined} sparkline={[18,20,19,21,23,24,24,25,26,25,27,28,28,29,29]} /></StaggerItem>
-        <StaggerItem><KpiCard label="Routing links" value={String(linkedSources + linkedClients)} icon={Route} meta="Library → provider links" sparkline={[3,4,4,5,6,7,6,7,8,9,8,9,10,10,11]} /></StaggerItem>
-        <StaggerItem><KpiCard label="Clients" value={String(clients.length)} icon={Cable} meta="Download destinations" sparkline={[4,5,4,6,5,6,7,6,7,8,7,8,9,8,9]} /></StaggerItem>
-      </Stagger>
+          <div className="grid gap-3 lg:grid-cols-3">
+            <ConnectionStartCard to="/indexers/indexers" title="Indexers" description="Connect the services that find releases." action="Manage indexers" icon={RadioTower} />
+            <ConnectionStartCard to="/indexers/download-clients" title="Download clients" description="Connect SABnzbd, qBittorrent, or another downloader. File locations are clear and visible on each client." action="Manage clients" icon={Cable} />
+            <ConnectionStartCard to="/indexers/library-routing" title="Library routing" description="Choose the allowed indexers and clients for every library." action="Set routing" icon={Route} />
+          </div>
+        </>
+      ) : null}
 
       {/* ── INDEXERS section ── */}
-      <section className="space-y-[var(--page-gap)]">
+      {activeSection === "indexers" ? <section className="space-y-[var(--page-gap)]">
         <SectionHeader
           icon={RadioTower}
           title="Indexers"
-          meta="Search providers — Torznab, Newznab, or RSS. Each is scoped to Movies, TV, or both."
+          meta="Services Deluno asks for releases. Each can be used for Movies, TV, or both."
           action={
             <Button onClick={() => { setShowIndexerAdd(true); setShowClientAdd(false); }} className="gap-2" size="sm">
               <Plus className="h-4 w-4" />
@@ -1572,7 +1777,7 @@ export function IndexersPage() {
             size="sm"
             variant="custom"
             title="No indexers yet"
-            description="Add a Torznab or Newznab indexer to start searching."
+            description="Add a Torznab, Newznab, or RSS indexer when you are ready for Deluno to start looking for releases."
             action={
               <Button onClick={() => setShowIndexerAdd(true)} className="gap-2" size="sm">
                 <Plus className="h-4 w-4" />
@@ -1581,21 +1786,38 @@ export function IndexersPage() {
             }
           />
         )}
-      </section>
+      </section> : null}
 
       {/* ── DOWNLOAD CLIENTS section ── */}
-      <section className="space-y-[var(--page-gap)]">
+      {activeSection === "clients" ? <section className="space-y-[var(--page-gap)]">
         <SectionHeader
           icon={Cable}
           title="Download clients"
-          meta="Where completed downloads land. Movies and TV go to separate categories — no conflicts."
+          meta="Where Deluno sends approved releases. Each client clearly shows where it saves files and whether Deluno needs a location link to import them."
           action={
             <Button onClick={() => { setShowClientAdd(true); setShowIndexerAdd(false); }} className="gap-2" size="sm">
               <Plus className="h-4 w-4" />
-              Add client
+              Connect downloads
             </Button>
           }
         />
+
+        <div className="flex flex-col gap-[var(--grid-gap)] rounded-2xl border border-hairline bg-surface-1 p-[var(--tile-pad)] sm:flex-row sm:items-center sm:justify-between">
+          <div className="max-w-3xl">
+            <p className="font-semibold text-foreground">Queue removal permission</p>
+            <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+              Allow a confirmed <span className="font-medium text-foreground">Remove</span> action for items in external apps such as SABnzbd or qBittorrent. This is for a deliberate manual action only. Automatic failed-download replacement and cleanup are configured separately in Automation &amp; recovery.
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-3 rounded-xl border border-hairline bg-background/45 px-3 py-2">
+            <span className="text-sm font-medium text-foreground">{settings.removeCompletedDownloads ? "Allowed" : "Blocked"}</span>
+            <Toggle
+              checked={settings.removeCompletedDownloads}
+              onChange={(allowed) => void handleExternalClientRemovalChange(allowed)}
+              ariaLabel="Allow removing client queue entries"
+            />
+          </div>
+        </div>
 
         {showClientAdd && (
           <ClientAddPanel
@@ -1686,6 +1908,13 @@ export function IndexersPage() {
                     <HealthFact label="Response time" value={client.lastHealthLatencyMs != null ? `${client.lastHealthLatencyMs} ms` : "Not yet measured"} />
                     {client.lastHealthFailureCategory ? <HealthFact label="Error" value={client.lastHealthFailureCategory} /> : null}
                   </div>
+                  <ClientFileAccess
+                    client={client}
+                    mappings={pathMappingsByClientId.get(client.id) ?? []}
+                    onAdd={handleAddPathMapping}
+                    onRemove={handleRemovePathMapping}
+                    onTest={handleTestPathMapping}
+                  />
                 </div>
                 <div className="flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
                   <Button
@@ -1770,7 +1999,16 @@ export function IndexersPage() {
                         {clientTelemetry?.capabilities.supportsRecheck ? (
                           <QueueActionButton busyKey={busyKey} clientId={client.id} item={item} action="recheck" onAction={handleQueueAction} />
                         ) : null}
-                        <QueueActionButton busyKey={busyKey} clientId={client.id} item={item} action="delete" onAction={handleQueueAction} />
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setPendingQueueRemoval(item)}
+                          disabled={busyKey !== null}
+                          className="h-7 px-2 text-[10.5px] text-destructive hover:text-destructive"
+                        >
+                          Remove
+                        </Button>
                       </div>
                     </div>
                   ))}
@@ -1810,24 +2048,25 @@ export function IndexersPage() {
           <EmptyState
             size="sm"
             variant="custom"
-            title="No download clients"
-            description="Add qBittorrent, SABnzbd, NZBGet, Deluge, Transmission, or uTorrent to dispatch downloads."
+            title="No download app connected"
+            description="Connect qBittorrent, SABnzbd, NZBGet, Deluge, Transmission, or another supported app when you are ready to download approved releases."
             action={
               <Button onClick={() => setShowClientAdd(true)} className="gap-2" size="sm">
                 <Plus className="h-4 w-4" />
-                Add your first client
+                Connect downloads
               </Button>
             }
           />
         )}
-      </section>
+
+      </section> : null}
 
       {/* ── ROUTING section ── */}
-      <section className="space-y-[var(--page-gap)]">
+      {activeSection === "routing" ? <section className="space-y-[var(--page-gap)]">
         <SectionHeader
           icon={Route}
           title="Library routing"
-          meta="Connect each library to its indexers and clients. Movie libraries only see movie-scoped indexers."
+          meta="Choose the indexers and download clients each library can use. Movie libraries only see movie-compatible indexers."
         />
 
         {isRouteLoading && libraries.length === 0 ? (
@@ -1837,7 +2076,7 @@ export function IndexersPage() {
             size="sm"
             variant="custom"
             title="No libraries yet"
-            description="Create a movies or TV library first, then wire it to providers here."
+            description="Create a Movies or TV library first, then choose its search and download connections here."
           />
         ) : null}
 
@@ -1898,12 +2137,12 @@ export function IndexersPage() {
             })}
           </div>
         )}
-      </section>
+      </section> : null}
 
       {/* ── Health watch ── */}
-      {unhealthyCount > 0 && (
+      {activeSection === "overview" && unhealthyCount > 0 && (
         <section className="space-y-3">
-          <SectionHeader icon={ShieldAlert} title="Health alerts" meta="Indexers or clients needing attention" />
+          <SectionHeader icon={ShieldAlert} title="Connections needing attention" meta="Indexers or download clients that need a review" />
           <div className="rounded-2xl border border-destructive/20 bg-destructive/5 divide-y divide-destructive/10 overflow-hidden">
             {[...indexers, ...clients]
               .filter((item) => item.isEnabled && item.healthStatus !== "healthy")
@@ -1922,6 +2161,20 @@ export function IndexersPage() {
           </div>
         </section>
       )}
+
+      <ConfirmDialog
+        open={pendingQueueRemoval !== null}
+        onOpenChange={(open) => {
+          if (!open && busyKey === null) setPendingQueueRemoval(null);
+        }}
+        title="Remove this download?"
+        description={pendingQueueRemoval
+          ? `Deluno will ask ${pendingQueueRemoval.clientName} to remove “${pendingQueueRemoval.title}”. This may remove the download-client item and its payload files. It will not remove files already in your media library; cancel if this item could be shared or cross-seeded.`
+          : ""}
+        confirmLabel="Remove download"
+        busy={pendingQueueRemoval !== null && busyKey === `queue:${pendingQueueRemoval.clientId}:${pendingQueueRemoval.id}:delete`}
+        onConfirm={() => void confirmQueueRemoval()}
+      />
     </div>
   );
 }

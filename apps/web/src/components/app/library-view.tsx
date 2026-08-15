@@ -17,12 +17,16 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Star,
+  Trash2,
   Undo2,
+  X,
   Zap,
 } from "lucide-react";
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useNavigation } from "react-router-dom";
+import * as Dialog from "@radix-ui/react-dialog";
+import { Link, useNavigate, useNavigation, useSearchParams } from "react-router-dom";
 import type { MediaItem, MediaStatus } from "../../lib/media-types";
+import { MEDIA_STATUS_PRESENTATION, MONITORING_PRESENTATION, mediaStatusIsActive } from "../../lib/media-status-presentation";
 import {
   ApiRequestError,
   fetchJson,
@@ -43,6 +47,7 @@ import { LibraryGridSkeleton } from "../shell/skeleton";
 import { toast } from "../shell/toaster";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { ConfirmDialog } from "../ui/confirm-dialog";
 import { Input } from "../ui/input";
 
 type Variant = "movies" | "shows";
@@ -53,7 +58,8 @@ type QuickFilter =
   | "downloaded"
   | "downloading"
   | "missing"
-  | "wanted";
+  | "upgrades"
+  | "needsAttention";
 type ViewMode = "grid" | "list";
 type SortField =
   | "title"
@@ -157,6 +163,17 @@ type BulkWorkflowOperation =
   | "search"
   | "renamePreview";
 
+interface BulkRemovalResponse {
+  successCount?: number;
+  failureCount?: number;
+  results?: Array<{
+    movieId?: string;
+    seriesId?: string;
+    succeeded?: boolean;
+    errorMessage?: string | null;
+  }>;
+}
+
 interface BulkRenamePreviewItem {
   itemId: string;
   title: string;
@@ -229,8 +246,25 @@ const quickFilterConfig: Array<{ key: QuickFilter; label: string }> = [
   { key: "downloaded", label: "Downloaded" },
   { key: "downloading", label: "Downloading" },
   { key: "missing", label: "Missing" },
-  { key: "wanted", label: "Wanted" }
+  { key: "upgrades", label: "Upgrades" },
+  { key: "needsAttention", label: "Needs attention" }
 ];
+
+function isQuickFilter(value: string | null): value is QuickFilter {
+  return quickFilterConfig.some((filter) => filter.key === value);
+}
+
+function isUpgradeCandidate(item: MediaItem) {
+  return item.wantedReason?.toLowerCase().includes("upgrade") === true ||
+    (item.status === "downloaded" &&
+      Boolean(item.currentQuality) &&
+      Boolean(item.targetQuality) &&
+      item.currentQuality !== item.targetQuality);
+}
+
+function isAttentionCandidate(item: MediaItem) {
+  return item.status === "importFailed" || item.status === "processingFailed";
+}
 
 const sortFieldOptions: Array<{ value: SortField; label: string }> = [
   { value: "title", label: "Title" },
@@ -404,6 +438,7 @@ export function LibraryView({
 }) {
   const navigate = useNavigate();
   const navigation = useNavigation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { density } = useDensity();
   const [libraryItems, setLibraryItems] = useState(items);
   const [query, setQuery] = useState("");
@@ -429,6 +464,7 @@ export function LibraryView({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
   const [isBulkToolsOpen, setIsBulkToolsOpen] = useState(false);
+  const [isRemovalConfirmationOpen, setIsRemovalConfirmationOpen] = useState(false);
   const [bulkOperation, setBulkOperation] = useState<BulkWorkflowOperation>("monitoring");
   const [bulkMonitored, setBulkMonitored] = useState(true);
   const [bulkQualityProfileId, setBulkQualityProfileId] = useState("");
@@ -443,11 +479,12 @@ export function LibraryView({
   const [bulkOptionsLoading, setBulkOptionsLoading] = useState(false);
   const [undoStack, setUndoStack] = useState<BulkHistoryEntry[]>([]);
   const [redoStack, setRedoStack] = useState<BulkHistoryEntry[]>([]);
-  const [showCreate, setShowCreate] = useState(false);
+  const [showCreate, setShowCreate] = useState(() => searchParams.get("add") === "true");
   const [isCreating, setIsCreating] = useState(false);
   const [createForm, setCreateForm] = useState(() => createInitialForm());
   const [metadataResults, setMetadataResults] = useState<MetadataSearchResult[]>([]);
   const [isSearchingMetadata, setIsSearchingMetadata] = useState(false);
+  const metadataSearchSequence = useRef(0);
 
   useEffect(() => {
     setLibraryItems(items);
@@ -457,6 +494,42 @@ export function LibraryView({
   useEffect(() => {
     setCreateForm(createInitialForm());
   }, [variant]);
+
+  useEffect(() => {
+    if (searchParams.get("add") === "true") {
+      setShowCreate(true);
+    }
+    const filter = searchParams.get("filter");
+    if (isQuickFilter(filter)) {
+      setQuickFilter(filter);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    const query = createForm.title.trim();
+    const selectedTitle = createForm.metadata?.title.trim().toLocaleLowerCase();
+    if (
+      !showCreate ||
+      query.length < 2 ||
+      metadataStatus?.isConfigured === false ||
+      selectedTitle === query.toLocaleLowerCase()
+    ) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void handleMetadataSearch({ silent: true });
+    }, 350);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    createForm.metadata?.title,
+    createForm.title,
+    createForm.year,
+    metadataStatus?.isConfigured,
+    showCreate,
+    variant
+  ]);
 
   useEffect(() => {
     setSavedPresets([]);
@@ -592,7 +665,8 @@ export function LibraryView({
         (quickFilter === "downloaded" && item.status === "downloaded") ||
         (quickFilter === "downloading" && item.status === "downloading") ||
         (quickFilter === "missing" && item.status === "missing") ||
-        (quickFilter === "wanted" && (item.status === "missing" || item.status === "downloading" || Boolean(item.wantedReason)));
+        (quickFilter === "upgrades" && isUpgradeCandidate(item)) ||
+        (quickFilter === "needsAttention" && isAttentionCandidate(item));
 
       const matchesRules = customRules.every((rule) => matchesCustomRule(item, rule));
 
@@ -792,15 +866,10 @@ export function LibraryView({
           selectedIds.includes(item.id)
             ? {
                 ...item,
-                monitored,
-                status:
-                  item.status === "missing"
-                    ? "missing"
-                    : monitored
-                      ? item.status === "monitored"
-                        ? "downloaded"
-                        : item.status
-                      : "monitored"
+                // Monitoring is a policy choice; availability is a separate fact.
+                // Never turn an un-downloaded title into "downloaded" just because
+                // someone starts monitoring it (or vice versa).
+                monitored
               }
             : item
         )
@@ -1240,7 +1309,7 @@ export function LibraryView({
   const activeFilterCount =
     (quickFilter !== "all" ? 1 : 0) + customRules.filter((rule) => rule.value.trim()).length;
 
-  async function handleMetadataSearch() {
+  async function handleMetadataSearch(options: { silent?: boolean } = {}) {
     const searchTitle = createForm.title.trim();
     if (!searchTitle) {
       toast.info(`Type a ${singular} name first.`);
@@ -1248,12 +1317,14 @@ export function LibraryView({
     }
 
     if (metadataStatus && !metadataStatus.isConfigured) {
-      toast.warning("TMDb is not configured yet.", {
-        description: "Add a TMDb API key in Settings > Metadata to enable live title lookup."
+      toast.warning("Title matching is not available yet.", {
+        description: "You can add the title manually now. Live matching will return when the Deluno server's metadata connection is available."
       });
       return;
     }
 
+    const searchSequence = metadataSearchSequence.current + 1;
+    metadataSearchSequence.current = searchSequence;
     setIsSearchingMetadata(true);
     try {
       const params = new URLSearchParams({
@@ -1265,18 +1336,26 @@ export function LibraryView({
       }
 
       const results = await fetchJson<MetadataSearchResult[]>(`/api/metadata/search?${params.toString()}`);
+      if (searchSequence !== metadataSearchSequence.current) {
+        return;
+      }
+
       setMetadataResults(results);
-      if (results.length === 0) {
-        toast.info(metadataStatus?.isConfigured === false ? "TMDb is not configured yet." : "No metadata matches found.");
+      if (results.length === 0 && !options.silent) {
+        toast.info(metadataStatus?.isConfigured === false ? "Title matching is temporarily unavailable." : "No metadata matches found.");
       }
     } catch (error) {
       const message =
         error instanceof ApiRequestError
           ? error.message
           : "Metadata search failed.";
-      toast.error(message);
+      if (!options.silent) {
+        toast.error(message);
+      }
     } finally {
-      setIsSearchingMetadata(false);
+      if (searchSequence === metadataSearchSequence.current) {
+        setIsSearchingMetadata(false);
+      }
     }
   }
 
@@ -1289,6 +1368,97 @@ export function LibraryView({
       metadata: result
     }));
     toast.success(`Selected ${result.title}`);
+    void enrichSelectedMetadata(result);
+  }
+
+  async function enrichSelectedMetadata(result: MetadataSearchResult) {
+    try {
+      const params = new URLSearchParams({
+        mediaType: variant === "movies" ? "movies" : "tv",
+        query: result.title,
+        providerId: result.providerId
+      });
+      if (result.year) {
+        params.set("year", String(result.year));
+      }
+
+      const details = await fetchJson<MetadataSearchResult[]>(`/api/metadata/search?${params.toString()}`);
+      const detailedResult = details.find((item) => item.providerId === result.providerId);
+      if (!detailedResult) {
+        return;
+      }
+
+      setCreateForm((current) =>
+        current.metadata?.provider === result.provider && current.metadata.providerId === result.providerId
+          ? {
+              ...current,
+              title: detailedResult.title,
+              year: detailedResult.year ? String(detailedResult.year) : current.year,
+              imdbId: detailedResult.imdbId ?? current.imdbId,
+              metadata: detailedResult
+            }
+          : current);
+    } catch {
+      // The card result remains enough to add the chosen title; full detail can be refreshed later.
+    }
+  }
+
+  async function handleRemoveFromDeluno() {
+    if (!selectedIds.length) return;
+
+    setIsBulkUpdating(true);
+    try {
+      const response = await authedFetch(variant === "movies" ? "/api/movies/bulk" : "/api/series/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          variant === "movies"
+            ? { movieIds: selectedIds, operation: "remove" }
+            : { seriesIds: selectedIds, operation: "remove" }
+        )
+      });
+      if (!response.ok) throw new Error("remove-from-deluno-failed");
+
+      const result = await response.json() as BulkRemovalResponse;
+      const removedIds = (result.results ?? [])
+        .filter((item) => item.succeeded)
+        .map((item) => item.movieId ?? item.seriesId)
+        .filter((id): id is string => Boolean(id));
+      const idsToRemove = removedIds.length ? removedIds : selectedIds;
+      const failedCount = result.failureCount ?? Math.max(0, selectedIds.length - idsToRemove.length);
+
+      setLibraryItems((current) => current.filter((item) => !idsToRemove.includes(item.id)));
+      setSelectedIds((current) => current.filter((id) => !idsToRemove.includes(id)));
+      setIsRemovalConfirmationOpen(false);
+      toast.success(
+        `${idsToRemove.length} ${singular}${idsToRemove.length === 1 ? "" : "s"} removed from Deluno. Imported files and download-client items were left alone.`
+      );
+      if (failedCount > 0) {
+        toast.error(`${failedCount} title${failedCount === 1 ? "" : "s"} could not be removed.`);
+      }
+      onReload?.();
+    } catch {
+      toast.error("Could not remove the selected titles from Deluno.");
+    } finally {
+      setIsBulkUpdating(false);
+    }
+  }
+
+  function openCreate() {
+    setShowCreate(true);
+  }
+
+  function closeCreate() {
+    metadataSearchSequence.current += 1;
+    setIsSearchingMetadata(false);
+    setShowCreate(false);
+    if (searchParams.has("add")) {
+      setSearchParams((current) => {
+        const next = new URLSearchParams(current);
+        next.delete("add");
+        return next;
+      }, { replace: true });
+    }
   }
 
   async function handleCreate(event: React.FormEvent<HTMLFormElement>) {
@@ -1323,7 +1493,7 @@ export function LibraryView({
       toast.success(variant === "movies" ? "Movie added" : "TV show added");
       setCreateForm(createInitialForm());
       setMetadataResults([]);
-      setShowCreate(false);
+      closeCreate();
       onReload?.();
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Create failed.";
@@ -1335,7 +1505,7 @@ export function LibraryView({
 
   return (
     <>
-      <section className="space-y-[var(--page-gap)]">
+      <section className="space-y-[var(--grid-gap)]">
         <div className="relative overflow-hidden rounded-2xl border border-hairline bg-card p-[var(--tile-pad)] shadow-card dark:border-white/[0.06]">
           <span
             aria-hidden
@@ -1345,11 +1515,7 @@ export function LibraryView({
           <span aria-hidden className="pointer-events-none absolute -right-20 -top-28 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
           <div className="relative flex flex-col gap-[var(--grid-gap)] lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
-              <p className="flex items-center gap-2 text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-                <Star className="h-3.5 w-3.5 text-primary" />
-                {variant === "movies" ? "Movie library" : "TV library"}
-              </p>
-              <h2 className="mt-1 font-display text-[length:var(--type-title-md)] font-semibold tracking-tight text-foreground">
+              <h2 className="font-display text-[length:var(--type-title-md)] font-semibold tracking-tight text-foreground">
                 Browse and manage your {label}
               </h2>
               <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[length:var(--type-body-sm)] text-muted-foreground">
@@ -1357,7 +1523,7 @@ export function LibraryView({
                 <span className="text-muted-foreground/45">·</span>
                 <span><span className="tabular font-semibold text-success">{downloadedCount}</span> downloaded</span>
                 <span className="text-muted-foreground/45">·</span>
-                <span><span className="tabular font-semibold text-primary">{monitoredCount}</span> monitored</span>
+                <span><span className="tabular font-semibold text-success">{monitoredCount}</span> monitored</span>
                 {missingCount > 0 ? (
                   <>
                     <span className="text-muted-foreground/45">·</span>
@@ -1375,7 +1541,7 @@ export function LibraryView({
               </p>
             </div>
             <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <Button className="gap-2" onClick={() => setShowCreate((current) => !current)}>
+              <Button className="gap-2" onClick={() => showCreate ? closeCreate() : openCreate()}>
                 <Plus className="h-4 w-4" strokeWidth={2.5} />
                 Add {singular}
               </Button>
@@ -1431,7 +1597,7 @@ export function LibraryView({
           ]}
           actions={
             <>
-              <Button className="gap-2" onClick={() => setShowCreate((c) => !c)}>
+              <Button className="gap-2" onClick={() => showCreate ? closeCreate() : openCreate()}>
                 <Plus className="h-4 w-4" strokeWidth={2.5} />
                 Add {singular}
               </Button>
@@ -1446,130 +1612,133 @@ export function LibraryView({
         />
         </div>
 
-        {/* ═══════ CREATE FORM (inline, expandable) ═══════ */}
-        {showCreate ? (
-          <GlassTile className="p-5">
-            <div className="mb-4 rounded-xl border border-hairline bg-background/35 p-4">
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <Dialog.Root open={showCreate} onOpenChange={(open) => (open ? openCreate() : closeCreate())}>
+          <Dialog.Portal>
+            <Dialog.Overlay className="fixed inset-0 z-50 bg-black/55 backdrop-blur-[3px]" />
+            <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex max-h-[min(88dvh,760px)] w-[calc(100%-2rem)] max-w-5xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-hairline bg-card shadow-2xl">
+              <div className="flex items-start justify-between gap-[var(--grid-gap)] border-b border-hairline px-6 py-5">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-sm font-semibold text-foreground">Metadata lookup</p>
+                    <Dialog.Title className="font-display text-xl font-semibold tracking-tight text-foreground">Add {singular}</Dialog.Title>
                     <Badge variant={metadataStatus?.isConfigured ? "success" : "warning"}>
-                      {metadataStatus?.isConfigured ? "TMDb live" : "TMDb setup needed"}
+                      {metadataStatus?.isConfigured ? "Title matching ready" : "Manual entry"}
                     </Badge>
-                    {createForm.metadata ? (
-                      <Badge variant="info">
-                        {createForm.metadata.provider.toUpperCase()} #{createForm.metadata.providerId}
-                      </Badge>
-                    ) : null}
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Search TMDb, select the correct match, then Deluno stores poster, backdrop, overview, rating, genres, and external IDs with the title.
+                  <Dialog.Description className="mt-1 text-sm text-muted-foreground">
+                    Start typing, choose the right title, then add it. Deluno applies your configured library and Media Plan automatically.
+                  </Dialog.Description>
+                </div>
+                <Dialog.Close asChild>
+                  <Button variant="ghost" size="icon" aria-label={`Close add ${singular}`} disabled={isCreating}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </Dialog.Close>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto p-6">
+                <form onSubmit={(event) => { event.preventDefault(); void handleMetadataSearch(); }}>
+                  <label className="text-sm font-semibold text-foreground" htmlFor={`add-${variant}-title`}>What do you want to add?</label>
+                  <div className="mt-2 flex gap-2">
+                    <Input
+                      id={`add-${variant}-title`}
+                      autoFocus
+                      value={createForm.title}
+                      onChange={(event) => {
+                        metadataSearchSequence.current += 1;
+                        setMetadataResults([]);
+                        setCreateForm((current) => ({ ...current, title: event.target.value, metadata: null }));
+                      }}
+                      placeholder={variant === "movies" ? "Search movies, for example Top Gun" : "Search TV shows, for example Severance"}
+                    />
+                    <Button type="submit" disabled={isSearchingMetadata || metadataStatus?.isConfigured === false} className="shrink-0 gap-2">
+                      {isSearchingMetadata ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                      Search now
+                    </Button>
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Matches appear automatically after you pause typing.
                   </p>
-                  {metadataStatus && !metadataStatus.isConfigured ? (
-                    <p className="mt-2 text-xs text-warning">
-                      Metadata lookup is disabled until a TMDb API key is saved in Settings &gt; Metadata.
-                    </p>
-                  ) : null}
-                </div>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => void handleMetadataSearch()}
-                  disabled={isSearchingMetadata || metadataStatus?.isConfigured === false}
-                  className="gap-2"
-                >
-                  {isSearchingMetadata ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                  Search metadata
-                </Button>
+                </form>
+
+                {metadataStatus?.isConfigured === false ? (
+                  <p className="mt-3 rounded-xl border border-warning/25 bg-warning/10 p-3 text-sm text-warning">
+                    Title matching is temporarily unavailable. You can still add this title manually below.
+                  </p>
+                ) : null}
+
+                {metadataResults.length > 0 ? (
+                  <div className="mt-5">
+                    <p className="text-sm font-semibold text-foreground">Choose the right match</p>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {metadataResults.slice(0, 6).map((result) => (
+                        <button
+                          key={`${result.provider}:${result.providerId}`}
+                          type="button"
+                          onClick={() => applyMetadataResult(result)}
+                          className={cn(
+                            "flex min-w-0 gap-3 rounded-xl border p-3 text-left transition hover:border-primary/45 hover:bg-primary/5",
+                            createForm.metadata?.provider === result.provider && createForm.metadata.providerId === result.providerId
+                              ? "border-primary/60 bg-primary/10 ring-1 ring-primary/25"
+                              : "border-hairline bg-surface-1"
+                          )}
+                        >
+                          {result.posterUrl ? (
+                            <img src={result.posterUrl} alt="" className="h-24 w-16 shrink-0 rounded-lg bg-muted object-cover" />
+                          ) : (
+                            <div className="flex h-24 w-16 shrink-0 items-center justify-center rounded-lg bg-muted text-[11px] text-muted-foreground">No art</div>
+                          )}
+                          <span className="min-w-0 self-center">
+                            <span className="block truncate text-sm font-semibold text-foreground">{result.title}</span>
+                            <span className="mt-1 block text-xs text-muted-foreground">{result.year ?? "Unknown year"} · TMDb</span>
+                            {result.rating ? <span className="mt-2 block font-mono text-xs text-primary">{result.rating.toFixed(1)} rating</span> : null}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                <details className="mt-5 rounded-xl border border-hairline bg-surface-1 px-4 py-3">
+                  <summary className="cursor-pointer text-sm font-medium text-muted-foreground">Can’t find it? Add it manually</summary>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <Input
+                      type="number"
+                      value={createForm.year}
+                      onChange={(event) => setCreateForm((current) => ({ ...current, year: event.target.value }))}
+                      placeholder={variant === "movies" ? "Year (optional)" : "Start year (optional)"}
+                    />
+                    <Input
+                      value={createForm.imdbId}
+                      onChange={(event) => setCreateForm((current) => ({ ...current, imdbId: event.target.value }))}
+                      placeholder="IMDb ID (optional)"
+                    />
+                  </div>
+                </details>
               </div>
-              {metadataResults.length > 0 ? (
-                  <div className="mt-3 grid gap-[calc(var(--grid-gap)*0.65)] md:grid-cols-3">
-                  {metadataResults.slice(0, 6).map((result) => (
-                    <button
-                      key={`${result.provider}:${result.providerId}`}
-                      type="button"
-                      onClick={() => applyMetadataResult(result)}
-                      className={cn(
-                        "flex min-w-0 gap-3 rounded-xl border p-2 text-left transition hover:border-primary/35 hover:bg-primary/5",
-                        createForm.metadata?.provider === result.provider && createForm.metadata.providerId === result.providerId
-                          ? "border-primary/45 bg-primary/10"
-                          : "border-hairline bg-surface-1"
-                      )}
-                    >
-                      {result.posterUrl ? (
-                        <img src={result.posterUrl} alt="" className="h-16 w-11 rounded-md object-cover" />
-                      ) : (
-                        <div className="h-16 w-11 rounded-md bg-muted" />
-                      )}
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-semibold text-foreground">{result.title}</span>
-                        <span className="mt-0.5 block text-xs text-muted-foreground">
-                          {result.year ?? "Unknown year"} · {result.provider.toUpperCase()}
-                        </span>
-                        {result.rating ? (
-                          <span className="mt-1 block font-mono text-[11px] text-primary">{result.rating.toFixed(1)} rating</span>
-                        ) : null}
-                      </span>
-                    </button>
-                  ))}
+
+              <form onSubmit={handleCreate} className="flex flex-col gap-3 border-t border-hairline bg-surface-1/70 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <label className="inline-flex select-none items-center gap-2 text-sm text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={createForm.monitored}
+                    onChange={(event) => setCreateForm((current) => ({ ...current, monitored: event.target.checked }))}
+                    className="accent-primary"
+                  />
+                  Monitor and search automatically
+                </label>
+                <div className="flex gap-2">
+                  <Dialog.Close asChild>
+                    <Button type="button" variant="ghost" disabled={isCreating}>Cancel</Button>
+                  </Dialog.Close>
+                  <Button type="submit" disabled={isCreating || !createForm.title.trim()} className="gap-2">
+                    {isCreating ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                    Add {singular}
+                  </Button>
                 </div>
-              ) : null}
-            </div>
-            <form
-              className="grid gap-[calc(var(--grid-gap)*0.75)] md:grid-cols-[minmax(0,1fr)_140px_180px_auto]"
-              onSubmit={handleCreate}
-            >
-              <Input
-                value={createForm.title}
-                onChange={(e) =>
-                  setCreateForm((c) => ({ ...c, title: e.target.value }))
-                }
-                placeholder={variant === "movies" ? "Movie title" : "TV show title"}
-              />
-              <Input
-                type="number"
-                value={createForm.year}
-                onChange={(e) =>
-                  setCreateForm((c) => ({ ...c, year: e.target.value }))
-                }
-                placeholder={variant === "movies" ? "Year" : "Start year"}
-              />
-              <Input
-                value={createForm.imdbId}
-                onChange={(e) =>
-                  setCreateForm((c) => ({ ...c, imdbId: e.target.value }))
-                }
-                placeholder="IMDb ID (optional)"
-              />
-              <div className="flex gap-2">
-                <Button type="submit" disabled={isCreating} className="gap-1.5">
-                  {isCreating ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : null}
-                  Add
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => setShowCreate(false)}
-                  disabled={isCreating}
-                >
-                  Cancel
-                </Button>
-              </div>
-              <label className="md:col-span-4 inline-flex select-none items-center gap-2 text-[13px] text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={createForm.monitored}
-                  onChange={(e) =>
-                    setCreateForm((c) => ({ ...c, monitored: e.target.checked }))
-                  }
-                  className="accent-primary"
-                />
-                Start monitoring immediately
-              </label>
-            </form>
-          </GlassTile>
-        ) : null}
+              </form>
+            </Dialog.Content>
+          </Dialog.Portal>
+        </Dialog.Root>
 
         {/* ═══════ CONTROL RAIL ═══════ */}
         <ControlRail
@@ -1603,15 +1772,16 @@ export function LibraryView({
           activeFilterCount={activeFilterCount}
         />
 
-        {/* ═══════ RESULT + SELECT ROW ═══════ */}
+        {/* Results only occupy space when there is something to report. */}
+        {(filtered.length !== libraryItems.length || selectedCount > 0) ? (
         <div className="flex items-center justify-between gap-3">
-          {/* Left — count */}
-          <p className="text-[length:var(--library-toolbar-size)] font-medium text-muted-foreground">
-            {filtered.length === libraryItems.length
-              ? <><span className="font-bold tabular text-foreground">{filtered.length}</span> {label}</>
-              : <><span className="font-bold tabular text-foreground">{filtered.length}</span> of {libraryItems.length} {label}</>
-            }
-          </p>
+          {filtered.length !== libraryItems.length ? (
+            <p className="text-[length:var(--library-toolbar-size)] font-medium text-muted-foreground">
+              Showing <span className="font-bold tabular text-foreground">{filtered.length}</span> of {libraryItems.length}
+            </p>
+          ) : (
+            <span />
+          )}
 
           {/* Right — premium select-all toggle */}
           <button
@@ -1645,6 +1815,7 @@ export function LibraryView({
             {selectedCount > 0 ? `${selectedCount} selected` : "Select all"}
           </button>
         </div>
+        ) : null}
 
         {/* Action messages now surface through the global Toaster */}
 
@@ -1716,6 +1887,13 @@ export function LibraryView({
                   disabled={isBulkUpdating}
                 />
                 <BulkAction
+                  label="Remove"
+                  icon={<Trash2 className="h-3.5 w-3.5" />}
+                  onClick={() => setIsRemovalConfirmationOpen(true)}
+                  disabled={isBulkUpdating}
+                  variant="danger"
+                />
+                <BulkAction
                   label="Bulk tools"
                   icon={<FolderTree className="h-3.5 w-3.5" />}
                   onClick={() => openBulkTools("quality")}
@@ -1751,7 +1929,7 @@ export function LibraryView({
               title={`Your ${label} library is empty`}
               description={`Add your first ${singular} to start monitoring releases, running search, and building out your collection.`}
               action={
-                <Button onClick={() => setShowCreate(true)} className="gap-1.5">
+                <Button onClick={openCreate} className="gap-1.5">
                   <Plus className="h-4 w-4" strokeWidth={2.5} />
                   Add {singular}
                 </Button>
@@ -1805,7 +1983,7 @@ export function LibraryView({
 
       {isBulkToolsOpen ? (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 px-4 py-6 backdrop-blur-sm">
-          <div className="w-full max-w-2xl space-y-4 rounded-2xl border border-hairline bg-card p-5 shadow-2xl">
+          <div className="w-full max-w-2xl space-y-[var(--page-gap)] rounded-2xl border border-hairline bg-card p-5 shadow-2xl">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-[length:var(--type-caption)] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
@@ -1830,7 +2008,7 @@ export function LibraryView({
               </Button>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-[var(--grid-gap)] md:grid-cols-2">
               <BulkField label="Operation" description="Choose the bulk action to run.">
                 <select
                   value={bulkOperation}
@@ -1984,6 +2162,16 @@ export function LibraryView({
           </div>
         </div>
       ) : null}
+
+      <ConfirmDialog
+        open={isRemovalConfirmationOpen}
+        onOpenChange={setIsRemovalConfirmationOpen}
+        title={`Remove ${selectedIds.length} ${singular}${selectedIds.length === 1 ? "" : "s"} from Deluno?`}
+        description="This removes the selected catalog record and stops Deluno managing it. It does not delete imported media files or remove anything from your download client."
+        confirmLabel="Remove from Deluno"
+        busy={isBulkUpdating}
+        onConfirm={() => void handleRemoveFromDeluno()}
+      />
 
     </>
   );
@@ -2169,13 +2357,14 @@ function PosterCard({
               <StatusPill status={item.status} />
             </div>
           ) : displayOptions.showStatusPill ? (
-            /* Compact status dot on small */
-            <div className={cn(
-              "absolute right-1.5 top-1.5 z-10 h-2 w-2 rounded-full ring-[1.5px] ring-black/40",
-              item.status === "downloaded" ? "bg-success" :
-              item.status === "downloading" ? "bg-primary" :
-              item.status === "missing" ? "bg-warning" : "bg-muted-foreground"
-            )} />
+            <span
+              role="img"
+              aria-label={item.monitored ? MONITORING_PRESENTATION.active.label : MONITORING_PRESENTATION.passive.label}
+              title={item.monitored ? MONITORING_PRESENTATION.active.label : MONITORING_PRESENTATION.passive.label}
+              className="absolute right-1.5 top-1.5 z-10 rounded-full bg-black/40 p-0.5 ring-[1.5px] ring-black/40"
+            >
+              <MonitorDot monitored={item.monitored} />
+            </span>
           ) : null}
 
           {/* Gradient overlay — condenses on small */}
@@ -2256,82 +2445,36 @@ function PosterCard({
 }
 
 function StatusPill({ status }: { status: MediaStatus }) {
-  const config = {
-    downloaded: { dot: "bg-success", label: "Ready", tone: "border-success/30 bg-success/15 text-success" },
-    downloading: { dot: "bg-info", label: "DL", tone: "border-info/30 bg-info/15 text-info" },
-    processing: { dot: "bg-primary", label: "Clean", tone: "border-primary/30 bg-primary/15 text-primary" },
-    processed: { dot: "bg-success", label: "Cleaned", tone: "border-success/30 bg-success/15 text-success" },
-    waitingForProcessor: { dot: "bg-warning", label: "Waiting", tone: "border-warning/30 bg-warning/15 text-warning" },
-    importReady: { dot: "bg-success", label: "Import", tone: "border-success/30 bg-success/15 text-success" },
-    importQueued: { dot: "bg-primary", label: "Queued", tone: "border-primary/30 bg-primary/15 text-primary" },
-    importFailed: { dot: "bg-destructive", label: "Import failed", tone: "border-destructive/30 bg-destructive/15 text-destructive" },
-    imported: { dot: "bg-success", label: "Imported", tone: "border-success/30 bg-success/15 text-success" },
-    processingFailed: { dot: "bg-destructive", label: "Review", tone: "border-destructive/30 bg-destructive/15 text-destructive" },
-    monitored: { dot: "bg-primary", label: "Monitor", tone: "border-primary/30 bg-primary/15 text-primary" },
-    missing: { dot: "bg-destructive", label: "Missing", tone: "border-destructive/30 bg-destructive/15 text-destructive" }
-  }[status];
+  const config = MEDIA_STATUS_PRESENTATION[status];
 
   return (
     <div
+      role="img"
+      aria-label={config.label}
+      title={config.label}
       className={cn(
         "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[length:var(--library-badge-size)] font-bold uppercase tracking-wider backdrop-blur-md",
         config.tone
       )}
     >
-      <span className={cn("h-1.5 w-1.5 rounded-full", config.dot, status === "downloading" && "animate-pulse")} />
-      {config.label}
+      <span className={cn("h-1.5 w-1.5 rounded-full", config.dot, mediaStatusIsActive(status) && "animate-pulse")} />
+      {config.compactLabel}
     </div>
   );
 }
 
 function StatusDot({ status }: { status: MediaStatus }) {
-  const color = {
-    downloaded: "bg-success",
-    downloading: "bg-info animate-pulse",
-    processing: "bg-primary animate-pulse",
-    processed: "bg-success",
-    waitingForProcessor: "bg-warning animate-pulse",
-    importReady: "bg-success",
-    importQueued: "bg-primary animate-pulse",
-    importFailed: "bg-destructive",
-    imported: "bg-success",
-    processingFailed: "bg-destructive",
-    monitored: "bg-primary",
-    missing: "bg-destructive"
-  }[status];
-  return <span className={cn("h-2 w-2 shrink-0 rounded-full", color)} />;
+  return <span className={cn("h-2 w-2 shrink-0 rounded-full", MEDIA_STATUS_PRESENTATION[status].dot, mediaStatusIsActive(status) && "animate-pulse")} />;
+}
+
+function MonitorDot({ monitored }: { monitored: boolean }) {
+  const config = monitored ? MONITORING_PRESENTATION.active : MONITORING_PRESENTATION.passive;
+  return <span className={cn("h-2 w-2 shrink-0 rounded-full", config.dot)} />;
 }
 
 function StatusBadge({ status }: { status: MediaStatus }) {
-  const variant = {
-    downloaded: "success" as const,
-    downloading: "info" as const,
-    processing: "default" as const,
-    processed: "success" as const,
-    waitingForProcessor: "warning" as const,
-    importReady: "success" as const,
-    importQueued: "default" as const,
-    importFailed: "destructive" as const,
-    imported: "success" as const,
-    processingFailed: "destructive" as const,
-    monitored: "default" as const,
-    missing: "destructive" as const
-  }[status];
-  const label = {
-    downloaded: "Ready",
-    downloading: "Downloading",
-    processing: "Processing",
-    processed: "Processed",
-    waitingForProcessor: "Waiting for processor",
-    importReady: "Import ready",
-    importQueued: "Import queued",
-    importFailed: "Import failed",
-    imported: "Imported",
-    processingFailed: "Processing failed",
-    monitored: "Monitored",
-    missing: "Missing"
-  }[status];
-  return <Badge variant={variant}>{label}</Badge>;
+  const config = MEDIA_STATUS_PRESENTATION[status];
+  return <Badge variant={config.variant}>{config.label}</Badge>;
 }
 
 function PosterArtwork({
@@ -2408,13 +2551,14 @@ function BulkAction({
   onClick: () => void;
   disabled?: boolean;
   loading?: boolean;
-  variant?: "ghost" | "primary";
+  variant?: "ghost" | "primary" | "danger";
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
+      aria-label={label}
       className={cn(
         "flex min-h-[var(--library-toolbar-height)] items-center gap-1.5 rounded-xl px-3 text-[length:var(--library-toolbar-size)] font-medium transition-all duration-150 select-none",
         "disabled:opacity-40 disabled:cursor-not-allowed",
@@ -2424,7 +2568,9 @@ function BulkAction({
               "shadow-[0_2px_8px_hsl(var(--primary-deep)/0.4),inset_0_1px_0_hsl(0_0%_100%/0.15)]",
               "hover:brightness-110 active:scale-95"
             ].join(" ")
-          : [
+          : variant === "danger"
+            ? "text-destructive hover:bg-destructive/10 hover:text-destructive active:bg-destructive/15"
+            : [
               "text-[hsl(var(--media-muted-foreground))] hover:bg-white/[0.07] hover:text-[hsl(var(--media-foreground))] active:bg-white/[0.04]"
             ].join(" ")
       )}
@@ -2745,11 +2891,12 @@ function ControlRail({
     downloaded: libraryItems.filter((item) => item.status === "downloaded").length,
     downloading: libraryItems.filter((item) => item.status === "downloading").length,
     missing: libraryItems.filter((item) => item.status === "missing").length,
-    wanted: libraryItems.filter((item) => item.status === "missing" || item.status === "downloading" || Boolean(item.wantedReason)).length
+    upgrades: libraryItems.filter(isUpgradeCandidate).length,
+    needsAttention: libraryItems.filter(isAttentionCandidate).length
   };
 
   return (
-    <div className="sticky top-[var(--topbar-height-mobile)] z-20 py-3 lg:top-topbar">
+    <div className="sticky top-[var(--topbar-height-mobile)] z-20 lg:top-topbar">
       <div
         className={cn(
           "relative overflow-hidden rounded-2xl",
@@ -2766,7 +2913,7 @@ function ControlRail({
           style={{ background: "linear-gradient(90deg, transparent 5%, hsl(var(--primary)/0.4) 35%, hsl(var(--primary-2)/0.4) 65%, transparent 95%)" }}
         />
 
-        <div className="px-4 py-3">
+        <div className="px-[calc(var(--tile-pad)*0.8)] py-[calc(var(--tile-pad)*0.65)]">
           <div className="flex flex-wrap items-center gap-2">
             <div className={cn(
               "group relative flex min-w-[240px] flex-1 items-center gap-2.5 rounded-xl px-3.5 transition-all duration-200",
@@ -2799,24 +2946,24 @@ function ControlRail({
             </div>
 
             <ToolbarMenuButton
-              label="View"
+              label="Display"
               icon={LayoutTemplate}
               active={openPanel === "view"}
-              meta={view === "grid" ? cardSize.toUpperCase() : "LIST"}
+              meta={view === "grid" ? `Poster grid · ${cardSize === "sm" ? "Small" : cardSize === "lg" ? "Large" : "Medium"}` : "Compact list"}
               onClick={() => setOpenPanel((current) => current === "view" ? null : "view")}
             />
             <ToolbarMenuButton
-              label="Sort"
+              label="Order"
               icon={ArrowUpDown}
               active={openPanel === "sort"}
-              meta={`${sortFieldOptions.find((option) => option.value === sortField)?.label ?? "Title"} ${sortDirection === "asc" ? "↑" : "↓"}`}
+              meta={`${sortFieldOptions.find((option) => option.value === sortField)?.label ?? "Title"} · ${sortDirection === "asc" ? "A–Z" : "Z–A"}`}
               onClick={() => setOpenPanel((current) => current === "sort" ? null : "sort")}
             />
             <ToolbarMenuButton
-              label="Filter"
+              label="Refine"
               icon={Filter}
               active={openPanel === "filter"}
-              meta={activeFilterCount > 0 ? `${activeFilterCount} active` : "Quick + custom"}
+              meta={activeFilterCount > 0 ? `${activeFilterCount} active` : "Quick filters"}
               onClick={() => setOpenPanel((current) => current === "filter" ? null : "filter")}
             />
           </div>
@@ -2867,92 +3014,115 @@ function ControlRail({
           </div>
 
           {openPanel === "view" ? (
-            <div className="mt-3 grid gap-[var(--grid-gap)] rounded-2xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.8)] xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)] 2xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.7fr)]">
-              <div className="space-y-[calc(var(--field-group-pad)*0.75)]">
-                <SectionLabel>Display mode</SectionLabel>
-                <div className="flex flex-wrap items-center gap-2">
-                  {([
-                    { mode: "grid" as ViewMode, icon: LayoutGrid, label: "Grid" },
-                    { mode: "list" as ViewMode, icon: List, label: "List" }
-                  ]).map(({ mode, icon: Icon, label: itemLabel }) => (
-                    <Button key={mode} type="button" size="sm" variant={view === mode ? "default" : "outline"} onClick={() => setView(mode)}>
-                      <Icon className="h-4 w-4" />
-                      {itemLabel}
-                    </Button>
-                  ))}
+            <div className="mt-3 overflow-hidden rounded-2xl border border-hairline bg-surface-1">
+              <LibraryControlPanelHeader
+                icon={LayoutTemplate}
+                eyebrow="Display"
+                title="Choose how your library feels"
+                description="Start with a visual poster grid or a dense list. Your choice is remembered separately for movies and TV."
+                onClose={() => setOpenPanel(null)}
+              />
+              <div className="grid gap-[var(--grid-gap)] p-[calc(var(--tile-pad)*0.8)] xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)]">
+                <div className="space-y-[var(--grid-gap)]">
+                  <div>
+                    <SectionLabel>Layout</SectionLabel>
+                    <p className="mt-1 text-[length:var(--type-caption)] text-muted-foreground">Pick the view that best fits the job in front of you.</p>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <LibraryViewChoice mode="grid" label="Poster grid" description="Artwork-led browsing for your collection." selected={view === "grid"} onClick={() => setView("grid")} />
+                    <LibraryViewChoice mode="list" label="Compact list" description="More titles and file details in less space." selected={view === "list"} onClick={() => setView("list")} />
+                  </div>
+
+                  {view === "grid" ? (
+                    <div className="rounded-xl border border-hairline bg-background/45 p-3">
+                      <SectionLabel>Poster size</SectionLabel>
+                      <div className="mt-2 grid grid-cols-3 gap-2">
+                        {(["sm", "md", "lg"] as CardSize[]).map((size) => (
+                          <PosterSizeChoice key={size} size={size} selected={cardSize === size} onClick={() => changeSize(size)} />
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
-                {view === "grid" ? (
-                  <div className="space-y-2">
-                    <SectionLabel>Poster size</SectionLabel>
-                    <div className="flex flex-wrap gap-2">
-                      {(["sm", "md", "lg"] as CardSize[]).map((size) => (
-                        <Button key={size} type="button" size="sm" variant={cardSize === size ? "default" : "outline"} onClick={() => changeSize(size)}>
-                          {size === "sm" ? "Small" : size === "md" ? "Medium" : "Large"}
-                        </Button>
-                      ))}
-                    </div>
+                <div className="rounded-xl border border-hairline bg-background/45 p-3">
+                  <SectionLabel>What each poster shows</SectionLabel>
+                  <p className="mt-1 text-[length:var(--type-caption)] text-muted-foreground">Keep the essentials visible; turn on extra metadata only when it helps your workflow.</p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <DisplayToggle label="Title" description="The movie or series name" checked={displayOptions.showTitle} onChange={(checked) => setDisplayOptions({ ...displayOptions, showTitle: checked })} />
+                    <DisplayToggle label="Year & monitoring" description="Release year and monitored state" checked={displayOptions.showMeta} onChange={(checked) => setDisplayOptions({ ...displayOptions, showMeta: checked })} />
+                    <DisplayToggle label="Availability" description="Missing, downloading, or imported" checked={displayOptions.showStatusPill} onChange={(checked) => setDisplayOptions({ ...displayOptions, showStatusPill: checked })} />
+                    <DisplayToggle label="Quality" description="Current or target quality" checked={displayOptions.showQualityBadge} onChange={(checked) => setDisplayOptions({ ...displayOptions, showQualityBadge: checked })} />
+                    <DisplayToggle label="Rating" description="The preferred metadata score" checked={displayOptions.showRating} onChange={(checked) => setDisplayOptions({ ...displayOptions, showRating: checked })} />
                   </div>
-                ) : null}
-              </div>
-
-              <div className="space-y-3">
-                <SectionLabel>Poster information</SectionLabel>
-                <DisplayToggle label="Show title" checked={displayOptions.showTitle} onChange={(checked) => setDisplayOptions({ ...displayOptions, showTitle: checked })} />
-                <DisplayToggle label="Show year and monitored state" checked={displayOptions.showMeta} onChange={(checked) => setDisplayOptions({ ...displayOptions, showMeta: checked })} />
-                <DisplayToggle label="Show status badge" checked={displayOptions.showStatusPill} onChange={(checked) => setDisplayOptions({ ...displayOptions, showStatusPill: checked })} />
-                <DisplayToggle label="Show quality badge" checked={displayOptions.showQualityBadge} onChange={(checked) => setDisplayOptions({ ...displayOptions, showQualityBadge: checked })} />
-                <DisplayToggle label="Show rating" checked={displayOptions.showRating} onChange={(checked) => setDisplayOptions({ ...displayOptions, showRating: checked })} />
+                </div>
               </div>
             </div>
           ) : null}
 
           {openPanel === "sort" ? (
-            <div className="mt-3 grid gap-[var(--grid-gap)] rounded-2xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.8)] sm:grid-cols-2">
-              <div className="space-y-2">
-                <SectionLabel>Sort field</SectionLabel>
-                <select
-                  value={sortField}
-                  onChange={(event) => setSortField(event.target.value as SortField)}
-                  className="density-control-text h-[var(--control-height)] w-full rounded-[10px] border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none"
-                >
-                  {sortFieldOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-2">
-                <SectionLabel>Direction</SectionLabel>
-                <div className="flex gap-2">
-                  <Button type="button" size="sm" variant={sortDirection === "asc" ? "default" : "outline"} onClick={() => setSortDirection("asc")}>
-                    <ArrowDownAZ className="h-4 w-4" />
-                    Ascending
-                  </Button>
-                  <Button type="button" size="sm" variant={sortDirection === "desc" ? "default" : "outline"} onClick={() => setSortDirection("desc")}>
-                    <ArrowUpDown className="h-4 w-4" />
-                    Descending
-                  </Button>
+            <div className="mt-3 overflow-hidden rounded-2xl border border-hairline bg-surface-1">
+              <LibraryControlPanelHeader
+                icon={ArrowUpDown}
+                eyebrow="Order"
+                title="Put the right titles first"
+                description="Use a common order for everyday browsing, or open the complete list when you need a precise audit."
+                onClose={() => setOpenPanel(null)}
+              />
+              <div className="grid gap-[var(--grid-gap)] p-[calc(var(--tile-pad)*0.8)] xl:grid-cols-[minmax(0,1fr)_18rem]">
+                <div>
+                  <SectionLabel>Sort by</SectionLabel>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                    {sortFieldOptions.slice(0, 6).map((option) => (
+                      <SortChoice key={option.value} label={option.label} selected={sortField === option.value} onClick={() => setSortField(option.value)} />
+                    ))}
+                  </div>
+                  <details className="mt-3 rounded-xl border border-hairline bg-background/45 px-3 py-2.5">
+                    <summary className="cursor-pointer text-[length:var(--type-caption)] font-semibold text-foreground">More ways to order your library</summary>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                      {sortFieldOptions.slice(6).map((option) => (
+                        <SortChoice key={option.value} label={option.label} selected={sortField === option.value} onClick={() => setSortField(option.value)} />
+                      ))}
+                    </div>
+                  </details>
+                </div>
+                <div className="rounded-xl border border-hairline bg-background/45 p-3">
+                  <SectionLabel>Direction</SectionLabel>
+                  <p className="mt-1 text-[length:var(--type-caption)] text-muted-foreground">Choose whether the smallest or largest value leads.</p>
+                  <div className="mt-3 grid gap-2">
+                    <SortDirectionChoice icon={ArrowDownAZ} label="Ascending" description="A–Z, oldest first, or lowest value." selected={sortDirection === "asc"} onClick={() => setSortDirection("asc")} />
+                    <SortDirectionChoice icon={ArrowUpDown} label="Descending" description="Z–A, newest first, or highest value." selected={sortDirection === "desc"} onClick={() => setSortDirection("desc")} />
+                  </div>
                 </div>
               </div>
             </div>
           ) : null}
 
           {openPanel === "filter" ? (
-            <div className="mt-3 space-y-[calc(var(--field-group-pad)*0.8)] rounded-2xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.8)]">
+            <div className="mt-3 overflow-hidden rounded-2xl border border-hairline bg-surface-1">
+              <LibraryControlPanelHeader
+                icon={Filter}
+                eyebrow="Refine"
+                title="Narrow the library without losing your place"
+                description={`You are viewing ${quickFilterConfig.find((filter) => filter.key === quickFilter)?.label.toLowerCase() ?? "all"} titles${customRules.filter((rule) => rule.value.trim()).length ? ` with ${customRules.filter((rule) => rule.value.trim()).length} precise rule${customRules.filter((rule) => rule.value.trim()).length === 1 ? "" : "s"}` : ""}. Quick filters stay above; add rules only when you need something more specific.`}
+                onClose={() => setOpenPanel(null)}
+              />
+            <div className="space-y-[calc(var(--field-group-pad)*0.8)] p-[calc(var(--tile-pad)*0.8)]">
               <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.34fr)]">
                 <div className="space-y-3">
                   <div className="flex items-center justify-between gap-3">
-                    <SectionLabel>Custom rules</SectionLabel>
+                    <div>
+                      <SectionLabel>Precise rules</SectionLabel>
+                      <p className="mt-1 text-[length:var(--type-caption)] text-muted-foreground">Combine as many conditions as you need; every rule must match.</p>
+                    </div>
                     <Button type="button" size="sm" variant="outline" onClick={addCustomRule}>
                       <Plus className="h-4 w-4" />
-                      Add rule
+                      Add precise rule
                     </Button>
                   </div>
                   {customRules.length === 0 ? (
                     <div className="rounded-xl border border-dashed border-hairline bg-background/40 px-4 py-4 text-sm text-muted-foreground">
-                      Build filters around status, monitoring, quality, genre, rating, bitrate, release group, tags, certifications, provider ratings, path, studio, language, and more.
+                      Need more than the quick filters? Build a focused view around quality, genre, rating, bitrate, release group, tags, certification, provider score, path, studio, language, and more.
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -3019,7 +3189,7 @@ function ControlRail({
 
                 <div className="space-y-[calc(var(--field-group-pad)*0.8)]">
                   <div className="space-y-2">
-                    <SectionLabel>Saved filters</SectionLabel>
+                    <SectionLabel>Saved library views</SectionLabel>
                     <div className="flex gap-2">
                       <Input value={newPresetName} onChange={(event) => setNewPresetName(event.target.value)} placeholder="Name this filter" className="h-[var(--control-height-sm)]" />
                       <Button type="button" size="sm" onClick={saveCurrentPreset} disabled={isSavingPreset}>
@@ -3047,11 +3217,12 @@ function ControlRail({
                     </div>
                   ) : (
                     <div className="rounded-xl border border-dashed border-hairline bg-background/40 px-4 py-4 text-sm text-muted-foreground">
-                      Save complex filters here so users can jump straight into slices like anime 4K, kids missing, language-specific upgrades, or any other smart view.
+                      Save a refined view once, then return to it in one click—anime 4K, kids missing, language-specific upgrades, or whatever matters to your library.
                     </div>
                   )}
                 </div>
               </div>
+            </div>
             </div>
           ) : null}
         </div>
@@ -3078,16 +3249,125 @@ function ToolbarMenuButton({
       type="button"
       onClick={onClick}
       className={cn(
-        "inline-flex min-h-[var(--library-toolbar-height)] items-center gap-2 rounded-xl px-3 text-[length:var(--library-toolbar-size)] font-medium transition-all",
+        "group inline-flex min-h-[var(--library-toolbar-height)] items-center gap-2 rounded-xl px-2.5 pr-3 text-left text-[length:var(--library-toolbar-size)] font-medium transition-all",
         active
           ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/25"
           : "bg-foreground/[0.04] text-foreground ring-1 ring-inset ring-hairline/60 hover:bg-foreground/[0.06] dark:bg-white/[0.05] dark:ring-white/[0.06]"
       )}
     >
-      <Icon className="h-3.5 w-3.5" />
-      <span>{label}</span>
-      <span className="hidden text-[length:var(--type-caption)] text-muted-foreground sm:inline">{meta}</span>
-      <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", active && "rotate-180")} />
+      <span className={cn("flex h-6 w-6 shrink-0 items-center justify-center rounded-lg", active ? "bg-primary/16" : "bg-foreground/[0.06] dark:bg-white/[0.07]")}>
+        <Icon className="h-3.5 w-3.5" />
+      </span>
+      <span className="hidden min-w-0 leading-tight sm:block">
+        <span className="block font-semibold">{label}</span>
+        <span className={cn("block max-w-28 truncate text-[length:var(--type-micro)] font-medium", active ? "text-primary/75" : "text-muted-foreground")}>{meta}</span>
+      </span>
+      <span className="sm:hidden font-semibold">{label}</span>
+      <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 transition-transform", active && "rotate-180")} />
+    </button>
+  );
+}
+
+function LibraryControlPanelHeader({
+  icon: Icon,
+  eyebrow,
+  title,
+  description,
+  onClose
+}: {
+  icon: typeof Filter;
+  eyebrow: string;
+  title: string;
+  description: string;
+  onClose: () => void;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-3 border-b border-hairline bg-background/35 px-[calc(var(--tile-pad)*0.8)] py-3">
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
+          <Icon className="h-4 w-4" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.16em] text-primary">{eyebrow}</p>
+          <h3 className="mt-0.5 font-display text-[length:var(--type-card-title)] font-semibold tracking-tight text-foreground">{title}</h3>
+          <p className="mt-1 max-w-4xl text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">{description}</p>
+        </div>
+      </div>
+      <button type="button" onClick={onClose} aria-label={`Close ${eyebrow.toLowerCase()} controls`} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground">
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
+function LibraryViewChoice({
+  mode,
+  label,
+  description,
+  selected,
+  onClick
+}: {
+  mode: ViewMode;
+  label: string;
+  description: string;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  const Icon = mode === "grid" ? LayoutGrid : List;
+  return (
+    <button type="button" onClick={onClick} className={cn("rounded-xl border p-3 text-left transition", selected ? "border-primary/35 bg-primary/[0.09] shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.1)]" : "border-hairline bg-background/45 hover:border-primary/25 hover:bg-background/70")}>
+      <div className="flex items-center justify-between gap-3">
+        <span className={cn("flex h-8 w-8 items-center justify-center rounded-lg", selected ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground")}><Icon className="h-4 w-4" /></span>
+        {selected ? <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[length:var(--type-micro)] font-bold text-primary">Selected</span> : null}
+      </div>
+      <p className="mt-3 text-sm font-semibold text-foreground">{label}</p>
+      <p className="mt-1 text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">{description}</p>
+    </button>
+  );
+}
+
+function PosterSizeChoice({ size, selected, onClick }: { size: CardSize; selected: boolean; onClick: () => void }) {
+  const labels: Record<CardSize, { label: string; detail: string; height: string }> = {
+    sm: { label: "Small", detail: "More titles", height: "h-6" },
+    md: { label: "Medium", detail: "Balanced", height: "h-8" },
+    lg: { label: "Large", detail: "Artwork first", height: "h-10" }
+  };
+  const item = labels[size];
+  return (
+    <button type="button" onClick={onClick} className={cn("rounded-lg border px-2 py-2 text-center transition", selected ? "border-primary/35 bg-primary/[0.09] text-primary" : "border-hairline bg-background/45 text-muted-foreground hover:border-primary/25")}>
+      <span className={cn("mx-auto block w-7 rounded-md border", item.height, selected ? "border-primary/45 bg-primary/20" : "border-hairline bg-muted/50")} />
+      <span className="mt-1.5 block text-[length:var(--type-caption)] font-semibold">{item.label}</span>
+      <span className="block text-[length:var(--type-micro)] opacity-75">{item.detail}</span>
+    </button>
+  );
+}
+
+function SortChoice({ label, selected, onClick }: { label: string; selected: boolean; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className={cn("flex min-h-[var(--control-height)] items-center justify-between rounded-xl border px-3 text-left text-[length:var(--type-caption)] font-semibold transition", selected ? "border-primary/35 bg-primary/[0.09] text-primary" : "border-hairline bg-background/45 text-foreground hover:border-primary/25 hover:bg-background/70")}>
+      {label}
+      {selected ? <span className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_8px_hsl(var(--primary)/0.75)]" /> : null}
+    </button>
+  );
+}
+
+function SortDirectionChoice({
+  icon: Icon,
+  label,
+  description,
+  selected,
+  onClick
+}: {
+  icon: typeof ArrowDownAZ;
+  label: string;
+  description: string;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button type="button" onClick={onClick} className={cn("flex items-center gap-3 rounded-xl border p-3 text-left transition", selected ? "border-primary/35 bg-primary/[0.09]" : "border-hairline bg-background/45 hover:border-primary/25 hover:bg-background/70")}>
+      <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", selected ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground")}><Icon className="h-4 w-4" /></span>
+      <span className="min-w-0 flex-1"><span className={cn("block text-[length:var(--type-caption)] font-semibold", selected ? "text-primary" : "text-foreground")}>{label}</span><span className="mt-0.5 block text-[length:var(--type-micro)] leading-snug text-muted-foreground">{description}</span></span>
     </button>
   );
 }
@@ -3120,17 +3400,19 @@ function BulkField({
 
 function DisplayToggle({
   label,
+  description,
   checked,
   onChange
 }: {
   label: string;
+  description: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="flex items-center gap-3 rounded-xl border border-hairline bg-background/40 px-3 py-3 text-sm text-foreground">
-      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
-      {label}
+    <label className={cn("flex cursor-pointer items-start gap-2.5 rounded-xl border px-3 py-2.5 transition", checked ? "border-primary/25 bg-primary/[0.06]" : "border-hairline bg-background/45 hover:border-primary/20")}>
+      <input className="mt-0.5 accent-[hsl(var(--primary))]" type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+      <span className="min-w-0"><span className="block text-[length:var(--type-caption)] font-semibold text-foreground">{label}</span><span className="mt-0.5 block text-[length:var(--type-micro)] leading-snug text-muted-foreground">{description}</span></span>
     </label>
   );
 }

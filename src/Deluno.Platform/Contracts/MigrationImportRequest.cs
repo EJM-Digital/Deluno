@@ -3,4 +3,5 @@ namespace Deluno.Platform.Contracts;
 public sealed record MigrationImportRequest(
     string? SourceKind,
     string? SourceName,
-    string? PayloadJson);
+    string? PayloadJson,
+    IReadOnlyList<string>? SelectedOperationIds = null);

@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
-import { LoaderCircle, Plus, RotateCcw, X } from "lucide-react";
+import { LoaderCircle } from "lucide-react";
 import { SettingsShell } from "../components/app/settings-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
@@ -28,7 +28,6 @@ export function SettingsGeneralPage() {
   const settings = loaderData.settings;
   const revalidator = useRevalidator();
   const [formState, setFormState] = useState(settings);
-  const [newNeverGrabRule, setNewNeverGrabRule] = useState("");
   const [busy, setBusy] = useState(false);
   const save = useSaveStatus();
 
@@ -60,32 +59,10 @@ export function SettingsGeneralPage() {
     }
   }
 
-  function updateNeverGrabRules(rules: string[]) {
-    setFormState((current) => ({
-      ...current,
-      releaseNeverGrabPatterns: normalizeRules(rules).join("\n")
-    }));
-  }
-
-  function addNeverGrabRule() {
-    const value = newNeverGrabRule.trim();
-    if (!value) return;
-    updateNeverGrabRules([...splitRules(formState.releaseNeverGrabPatterns), value]);
-    setNewNeverGrabRule("");
-  }
-
-  function removeNeverGrabRule(rule: string) {
-    updateNeverGrabRules(splitRules(formState.releaseNeverGrabPatterns).filter((item) => item !== rule));
-  }
-
-  function restoreNeverGrabDefaults() {
-    updateNeverGrabRules(DEFAULT_NEVER_GRAB_RULES);
-  }
-
   return (
     <SettingsShell
       title="General"
-      description="Host, runtime, identity, and basic application behavior should live here rather than being mixed into media policy pages."
+      description="Instance name and network access. Media, notification, and automation choices stay in their own named sections."
     >
       <div className="settings-split settings-split-balanced">
         <Card className="settings-panel">
@@ -160,96 +137,6 @@ export function SettingsGeneralPage() {
                 </Field>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <ToggleField
-                  label="Auto-start jobs"
-                  description="Automatically run search and import jobs when Deluno starts. Disable to manually trigger jobs only."
-                  checked={formState.autoStartJobs}
-                  onChange={(checked) =>
-                    setFormState((current) => ({ ...current, autoStartJobs: checked }))
-                  }
-                />
-                <ToggleField
-                  label="Enable notifications"
-                  description="Send notifications for imports, failures, and alerts. Configure specific channels in System settings."
-                  checked={formState.enableNotifications}
-                  onChange={(checked) =>
-                    setFormState((current) => ({ ...current, enableNotifications: checked }))
-                  }
-                />
-              </div>
-
-              <Field label="Search scoring mode">
-                <PresetField
-                  value={formState.searchScoringMode}
-                  onChange={(value) =>
-                    setFormState((current) => ({ ...current, searchScoringMode: value }))
-                  }
-                  options={[
-                    { label: "Hybrid (rules + ML)", value: "hybrid" },
-                    { label: "Rules only", value: "rules-only" },
-                    { label: "ML only", value: "ml-only" }
-                  ]}
-                  customLabel="Custom mode"
-                  customPlaceholder="hybrid"
-                />
-                <InputDescription>
-                  Hybrid is recommended for most users. Rules-only disables ML impact. ML-only prioritizes model ranking and falls back to rules when no model signal is available.
-                </InputDescription>
-              </Field>
-
-              <Field label="Never grab rules">
-                <div className="space-y-3">
-                  <div className="flex flex-wrap gap-2">
-                    {splitRules(formState.releaseNeverGrabPatterns).map((rule) => (
-                      <span
-                        key={rule}
-                        className="inline-flex items-center gap-2 rounded-full border border-hairline bg-background/60 px-3 py-1.5 text-sm font-medium text-foreground"
-                      >
-                        {rule}
-                        <button
-                          type="button"
-                          className="rounded-full text-muted-foreground transition hover:text-destructive"
-                          onClick={() => removeNeverGrabRule(rule)}
-                          aria-label={`Remove ${rule}`}
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
-                    <Input
-                      value={newNeverGrabRule}
-                      onChange={(event) => setNewNeverGrabRule(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          addNeverGrabRule();
-                        }
-                      }}
-                      placeholder="Add a word, phrase, or release group"
-                    />
-                    <Button type="button" variant="outline" onClick={addNeverGrabRule}>
-                      <Plus className="h-4 w-4" />
-                      Add
-                    </Button>
-                    <Button type="button" variant="ghost" onClick={restoreNeverGrabDefaults}>
-                      <RotateCcw className="h-4 w-4" />
-                      Defaults
-                    </Button>
-                  </div>
-                  <div className="rounded-xl border border-hairline bg-background/40 p-3">
-                    <p className="text-xs leading-relaxed text-muted-foreground">
-                      Plain matching, no regex required. If a release name contains any rule, Deluno rejects it for automation and shows Force as the explicit override path.
-                    </p>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      Useful examples: <span className="text-foreground">hardsub</span>, <span className="text-foreground">dubbed</span>, <span className="text-foreground">cam</span>, <span className="text-foreground">bad-release-group</span>.
-                    </p>
-                  </div>
-                </div>
-              </Field>
-
               <Button type="submit" disabled={busy}>
                 {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
                 Save general settings
@@ -267,8 +154,6 @@ export function SettingsGeneralPage() {
             <GeneralStat label="Instance" value={settings.appInstanceName} />
             <GeneralStat label="Host" value={`${settings.hostBindAddress}:${settings.hostPort}`} />
             <GeneralStat label="Authentication" value="Required" />
-            <GeneralStat label="Scoring mode" value={scoreModeLabel(settings.searchScoringMode)} />
-            <GeneralStat label="Never grab rules" value={`${splitRules(settings.releaseNeverGrabPatterns).length} active`} />
             <GeneralStat label="Updated" value={formatWhen(settings.updatedUtc)} />
           </CardContent>
         </Card>
@@ -282,28 +167,6 @@ function Field({ children, label }: { children: ReactNode; label: string }) {
     <div className="density-field rounded-xl border border-hairline bg-surface-1">
       <p className="density-label uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
       <div style={{ marginTop: "var(--field-label-gap)" }}>{children}</div>
-    </div>
-  );
-}
-
-function ToggleField({
-  checked,
-  description,
-  label,
-  onChange
-}: {
-  checked: boolean;
-  description?: string;
-  label: string;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <div className="rounded-xl border border-hairline bg-surface-1 p-4">
-      <label className="flex items-center gap-3 text-foreground cursor-pointer">
-        <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
-        <span className="font-medium">{label}</span>
-      </label>
-      {description && <InputDescription>{description}</InputDescription>}
     </div>
   );
 }
@@ -324,35 +187,4 @@ function formatWhen(value: string) {
     hour: "numeric",
     minute: "2-digit"
   }).format(new Date(value));
-}
-
-function splitRules(value: string) {
-  return value.split(/\r?\n|,/).map((item) => item.trim()).filter(Boolean);
-}
-
-function normalizeRules(rules: string[]) {
-  return Array.from(new Set(rules.map((item) => item.trim()).filter(Boolean)));
-}
-
-const DEFAULT_NEVER_GRAB_RULES = [
-  "cam",
-  "camrip",
-  "telesync",
-  "telecine",
-  "workprint",
-  "screener",
-  "sample",
-  "trailer",
-  "extras"
-];
-
-function scoreModeLabel(value: string) {
-  switch (value) {
-    case "rules-only":
-      return "Rules only";
-    case "ml-only":
-      return "ML only";
-    default:
-      return "Hybrid";
-  }
 }

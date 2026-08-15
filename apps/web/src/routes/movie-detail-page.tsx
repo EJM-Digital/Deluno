@@ -1,13 +1,13 @@
 import { useState } from "react";
-import { Link, useLoaderData, useRevalidator } from "react-router-dom";
+import { Link, useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
+import * as Dialog from "@radix-ui/react-dialog";
 import {
-  Activity,
   ArrowLeft,
-  Clapperboard,
   LoaderCircle,
   RefreshCw,
   Search,
-  ShieldCheck
+  Trash2,
+  X
 } from "lucide-react";
 import {
   fetchJson,
@@ -15,6 +15,8 @@ import {
   type DecisionExplanationItem,
   type DownloadDispatchItem,
   type LibraryItem,
+  type IntakeTitleOriginItem,
+  type MetadataCastMember,
   type MetadataSearchResult,
   type MovieImportRecoverySummary,
   type MovieListItem,
@@ -25,7 +27,7 @@ import { authedFetch } from "../lib/use-auth";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
-import { KpiCard } from "../components/app/kpi-card";
+import { RemoveMediaDialog, type MediaRemovalPreview, type RemoveMediaOptions } from "../components/app/remove-media-dialog";
 import { DecisionExplanationList } from "../components/app/decision-explanation-list";
 import { RatingStrip } from "../components/app/rating-strip";
 import { EmptyState } from "../components/shell/empty-state";
@@ -38,6 +40,8 @@ interface MovieDetailLoaderData {
   importRecovery: MovieImportRecoverySummary;
   libraries: LibraryItem[];
   movie: MovieListItem;
+  origins: IntakeTitleOriginItem[];
+  removalPreview: MediaRemovalPreview;
   searchHistory: MovieSearchHistoryItem[];
   wanted: MovieWantedSummary;
   workflowStatus: MovieWorkflowStatus | null;
@@ -71,7 +75,7 @@ export async function movieDetailLoader({
   params: { id?: string };
 }): Promise<MovieDetailLoaderData> {
   const id = params.id!;
-  const [movie, wanted, searchHistory, dispatches, importRecovery, activity, decisions, libraries, workflowStatus] = await Promise.all([
+  const [movie, wanted, searchHistory, dispatches, importRecovery, activity, decisions, libraries, workflowStatus, origins, removalPreview] = await Promise.all([
     fetchJson<MovieListItem>(`/api/movies/${id}`),
     fetchJson<MovieWantedSummary>("/api/movies/wanted"),
     fetchJson<MovieSearchHistoryItem[]>("/api/movies/search-history"),
@@ -80,18 +84,22 @@ export async function movieDetailLoader({
     fetchJson<ActivityEventItem[]>(`/api/activity?relatedEntityType=movie&relatedEntityId=${id}&take=20`),
     fetchJson<DecisionExplanationItem[]>(`/api/decisions?relatedEntityType=movie&relatedEntityId=${id}&take=40`),
     fetchJson<LibraryItem[]>("/api/libraries"),
-    fetchJson<MovieWorkflowStatus>(`/api/movies/${id}/workflow-status`).catch(() => null)
+    fetchJson<MovieWorkflowStatus>(`/api/movies/${id}/workflow-status`).catch(() => null),
+    fetchJson<IntakeTitleOriginItem[]>(`/api/intake-title-origins?mediaType=movies&entityId=${encodeURIComponent(id)}`).catch(() => []),
+    fetchJson<MediaRemovalPreview>(`/api/movies/${id}/removal-preview`).catch(() => ({ filePaths: [], folderPaths: [], warnings: [] }))
   ]);
 
-  return { activity, decisions, dispatches, importRecovery, libraries, movie, searchHistory, wanted, workflowStatus };
+  return { activity, decisions, dispatches, importRecovery, libraries, movie, origins, removalPreview, searchHistory, wanted, workflowStatus };
 }
 
 export function MovieDetailPage() {
   const loaderData = useLoaderData() as MovieDetailLoaderData | undefined;
   if (!loaderData) return <RouteSkeleton />;
-  const { activity, decisions, dispatches, importRecovery, libraries, movie, searchHistory, wanted, workflowStatus } = loaderData;
+  const { activity, decisions, dispatches, importRecovery, libraries, movie, origins, removalPreview, searchHistory, wanted, workflowStatus } = loaderData;
+  const navigate = useNavigate();
   const revalidator = useRevalidator();
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [isRemoveConfirmationOpen, setIsRemoveConfirmationOpen] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [metadataQuery, setMetadataQuery] = useState(movie.title);
   const [metadataMatches, setMetadataMatches] = useState<MetadataSearchResult[]>([]);
@@ -108,6 +116,8 @@ export function MovieDetailPage() {
   });
   const [releaseCandidates, setReleaseCandidates] = useState<SearchPlanCandidate[]>([]);
   const [preventLowerQuality, setPreventLowerQuality] = useState(workflowStatus?.preventLowerQualityReplacements ?? true);
+  const [activeDetailSection, setActiveDetailSection] = useState<"details" | "history">("details");
+  const [isMetadataEditorOpen, setIsMetadataEditorOpen] = useState(false);
 
   const wantedItem = wanted.recentItems.find((item) => item.movieId === movie.id) ?? null;
   const library = wantedItem ? libraries.find((item) => item.id === wantedItem.libraryId) ?? null : null;
@@ -116,7 +126,7 @@ export function MovieDetailPage() {
   const importCases = importRecovery.recentCases.filter(
     (item) => item.title.trim().toLowerCase() === movie.title.trim().toLowerCase()
   );
-
+  const cast = readStoredCast(movie.metadataJson);
   async function handleMonitoring(monitored: boolean) {
     setBusyAction(monitored ? "monitor" : "unmonitor");
     setActionMessage(null);
@@ -132,7 +142,7 @@ export function MovieDetailPage() {
         throw new Error("movie-monitoring-failed");
       }
 
-      setActionMessage(monitored ? "Movie monitored." : "Movie unmonitored.");
+      setActionMessage(monitored ? "Background automation resumed for this movie." : "Background automation paused for this movie.");
       revalidator.revalidate();
     } catch {
       setActionMessage("Movie update failed.");
@@ -141,12 +151,74 @@ export function MovieDetailPage() {
     }
   }
 
-  async function handleSearchNow() {
-    setBusyAction("search");
+  async function handleRemoveFromDeluno(options: RemoveMediaOptions) {
+    setBusyAction("remove");
+    setActionMessage(null);
+    try {
+      const response = await authedFetch("/api/movies/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ movieIds: [movie.id], operation: "remove", ...options })
+      });
+      if (!response.ok) throw new Error("movie-remove-failed");
+
+      const result = await response.json() as { successCount?: number };
+      if ((result.successCount ?? 0) !== 1) throw new Error("movie-remove-failed");
+      navigate("/movies", { replace: true });
+    } catch {
+      setActionMessage("Could not remove this movie from Deluno.");
+    } finally {
+      setBusyAction(null);
+      setIsRemoveConfirmationOpen(false);
+    }
+  }
+
+  async function handleDeferAutomation() {
+    if (!wantedItem) return;
+    setBusyAction("defer");
+    setActionMessage(null);
+    try {
+      const response = await authedFetch(`/api/movies/${movie.id}/automation/defer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ libraryId: wantedItem.libraryId, hours: 24 })
+      });
+      if (!response.ok) throw new Error("movie-defer-failed");
+      setActionMessage("Background automation deferred for 24 hours. You can still search manually.");
+      revalidator.revalidate();
+    } catch {
+      setActionMessage("Could not defer background automation for this movie.");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleSkipNextAutomationSearch() {
+    if (!wantedItem) return;
+    setBusyAction("skip-once");
+    setActionMessage(null);
+    try {
+      const response = await authedFetch(`/api/movies/${movie.id}/automation/skip-once`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ libraryId: wantedItem.libraryId })
+      });
+      if (!response.ok) throw new Error("movie-skip-once-failed");
+      setActionMessage("The next scheduled search will be skipped. You can still search manually.");
+      revalidator.revalidate();
+    } catch {
+      setActionMessage("Could not skip the next scheduled search for this movie.");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleSearchNow(mode: "automatic" | "interactive") {
+    setBusyAction(`${mode}-search`);
     setActionMessage(null);
 
     try {
-      const response = await authedFetch(`/api/movies/${movie.id}/search?mode=preview`, { method: "POST" });
+      const response = await authedFetch(`/api/movies/${movie.id}/search${mode === "interactive" ? "?mode=preview" : ""}`, { method: "POST" });
       if (!response.ok) {
         throw new Error("movie-search-failed");
       }
@@ -161,8 +233,8 @@ export function MovieDetailPage() {
         candidates?: SearchPlanCandidate[];
       };
       const best = payload.releaseName ? `${payload.releaseName}${payload.indexerName ? ` via ${payload.indexerName}` : ""}` : null;
-      setReleaseCandidates(payload.candidates ?? []);
-      setActionMessage(formatSearchActionMessage("movie", best, payload));
+      setReleaseCandidates(mode === "interactive" ? payload.candidates ?? [] : []);
+      setActionMessage(mode === "interactive" ? formatSearchActionMessage("movie", best, payload) : (best ? `Deluno selected ${best} using this movie’s Media Plan.` : "Deluno searched using this movie’s Media Plan."));
       revalidator.revalidate();
     } catch {
       setActionMessage("Search request failed.");
@@ -375,99 +447,151 @@ export function MovieDetailPage() {
 
   return (
     <div className="space-y-[var(--page-gap)]">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <Link
-            to="/movies"
-            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to Movies
-          </Link>
-          <p className="mt-3 text-sm text-muted-foreground">Movie workspace</p>
-          <h1 className="font-display text-3xl font-semibold text-foreground sm:text-4xl">
-            {movie.title}
-            {movie.releaseYear ? (
-              <span className="ml-3 text-muted-foreground">{movie.releaseYear}</span>
-            ) : null}
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Search, dispatch, import, and monitoring context for this movie.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Badge variant={movie.monitored ? "success" : "default"}>
-            {movie.monitored ? "Monitored" : "Passive"}
-          </Badge>
-          {wantedItem ? (
-            <Badge
-              variant={
-                wantedItem.wantedStatus === "missing"
-                  ? "destructive"
-                  : wantedItem.wantedStatus === "upgrade"
-                    ? "warning"
-                    : "info"
-              }
-            >
-              {formatWantedStatus(wantedItem.wantedStatus)}
-            </Badge>
-          ) : null}
-          {importCases.length ? (
-            <Badge variant="warning">
-              {importCases.length} import issue{importCases.length === 1 ? "" : "s"}
-            </Badge>
-          ) : null}
-        </div>
-      </div>
+      <Link
+        to="/movies"
+        className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Back to Movies
+      </Link>
+
+      <Card className="relative isolate min-h-[19rem] overflow-hidden border-primary/25 bg-card">
+        {movie.backdropUrl ? (
+          <img
+            src={movie.backdropUrl}
+            alt=""
+            className="pointer-events-none absolute inset-0 h-full w-full scale-105 object-cover opacity-[0.34] saturate-[0.8]"
+          />
+        ) : null}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-card via-card/80 to-card/45" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-card/90 via-transparent to-card/25" />
+        <CardContent className="relative p-[var(--tile-pad)] sm:p-[calc(var(--tile-pad)*1.15)]">
+          <div className="grid min-h-[15rem] items-center gap-[var(--grid-gap)] md:grid-cols-[10rem_minmax(0,1fr)] xl:grid-cols-[10rem_minmax(0,1fr)_14rem]">
+            {movie.posterUrl ? (
+              <img src={movie.posterUrl} alt={`${movie.title} poster`} className="h-64 w-40 justify-self-center rounded-2xl border border-white/15 bg-surface-1 object-cover shadow-2xl md:justify-self-start" />
+            ) : (
+              <div className="flex h-64 w-40 justify-self-center items-center justify-center rounded-2xl border border-hairline bg-surface-1 px-3 text-center text-xs text-muted-foreground md:justify-self-start">Artwork is being refreshed</div>
+            )}
+            <div className="min-w-0 self-center">
+              <p className="text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-primary">Movie</p>
+              <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <h1 className="font-display text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">{movie.title}</h1>
+                {movie.releaseYear ? <span className="font-display text-2xl text-muted-foreground sm:text-3xl">{movie.releaseYear}</span> : null}
+              </div>
+              {movie.originalTitle && movie.originalTitle !== movie.title ? <p className="mt-1 text-sm text-muted-foreground">Also known as {movie.originalTitle}</p> : null}
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Badge variant={movie.monitored ? "success" : "default"}>{movie.monitored ? "Monitored" : "Passive"}</Badge>
+                {wantedItem ? <Badge variant={wantedItem.wantedStatus === "missing" ? "destructive" : wantedItem.wantedStatus === "upgrade" ? "warning" : "info"}>{formatWantedStatus(wantedItem.wantedStatus)}</Badge> : null}
+                {movie.genres?.split(",").map((genre) => <span key={genre} className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">{genre.trim()}</span>)}
+              </div>
+              <p className="mt-4 max-w-4xl text-sm leading-relaxed text-muted-foreground">
+                {movie.overview ?? "No overview has been stored yet. Refresh metadata when you want Deluno to enrich this title."}
+              </p>
+              {cast.length ? (
+                <section className="mt-5 border-t border-white/10 pt-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Starring</p>
+                    <span className="text-[11px] text-muted-foreground">{cast.length} credited</span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-x-5 gap-y-3">
+                  {cast.slice(0, 6).map((person) => (
+                    <div key={`${person.name}-${person.character ?? ""}`} className="flex min-w-0 items-center gap-2.5">
+                      {person.profileUrl ? <img src={person.profileUrl} alt="" className="h-10 w-10 shrink-0 rounded-full border border-white/15 bg-surface-2 object-cover shadow-lg" /> : <div className="h-10 w-10 shrink-0 rounded-full border border-white/15 bg-surface-2" />}
+                      <span className="max-w-28 min-w-0 leading-tight"><span className="block truncate text-xs font-semibold text-foreground">{person.name}</span>{person.character ? <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">{person.character}</span> : null}</span>
+                    </div>
+                  ))}
+                  </div>
+                </section>
+              ) : null}
+            </div>
+            <aside className="w-full self-center rounded-xl border border-white/10 bg-card/80 p-4 backdrop-blur-sm">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Ratings &amp; IDs</p>
+              <p className="mt-1 text-xs text-muted-foreground">The metadata Deluno is using</p>
+              <div className="mt-3"><RatingStrip ratings={movie.ratings} fallbackRating={movie.rating} /></div>
+              <div className="mt-4 space-y-2 border-t border-hairline pt-4 text-sm">
+                <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Source</span><span className="font-medium text-foreground">{movie.metadataProvider?.toUpperCase() ?? "Not linked"}</span></div>
+                <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">IMDb</span><span className="font-medium text-foreground">{movie.imdbId ?? "—"}</span></div>
+              </div>
+              <Button variant="outline" className="mt-4 w-full" onClick={() => setIsMetadataEditorOpen(true)}>Edit metadata</Button>
+            </aside>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Dialog.Root open={isMetadataEditorOpen} onOpenChange={setIsMetadataEditorOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/65 backdrop-blur-sm" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex max-h-[88dvh] w-[calc(100%-2rem)] max-w-5xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-hairline bg-card shadow-2xl">
+            <div className="flex items-start justify-between gap-[var(--grid-gap)] border-b border-hairline px-6 py-5">
+              <div>
+                <Dialog.Title className="font-display text-xl font-semibold tracking-tight text-foreground">Edit movie metadata</Dialog.Title>
+                <Dialog.Description className="mt-1 text-sm text-muted-foreground">Correct the match or update the title details Deluno stores for this movie.</Dialog.Description>
+              </div>
+              <Dialog.Close asChild><Button variant="ghost" size="icon" aria-label="Close metadata editor"><X className="h-4 w-4" /></Button></Dialog.Close>
+            </div>
+            <div className="grid min-h-0 flex-1 gap-[var(--grid-gap)] overflow-y-auto p-6 lg:grid-cols-[minmax(0,1fr)_16rem]">
+              <div className="space-y-[var(--page-gap)]">
+                <div className="rounded-xl border border-hairline bg-surface-1 p-4">
+                  <p className="text-sm font-semibold text-foreground">Find the correct match</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Search the provider, then select the right movie. Deluno refreshes the artwork, title, overview, IDs, genres, and ratings.</p>
+                  <div className="mt-4"><MetadataCorrectionPanel busyAction={busyAction} mediaLabel="movie" query={metadataQuery} matches={metadataMatches} searchAttempted={metadataSearchAttempted} onQueryChange={setMetadataQuery} onSearch={handleMetadataSearch} onLink={handleMetadataLink} /></div>
+                </div>
+                <details className="rounded-xl border border-hairline bg-surface-1 px-4 py-3">
+                  <summary className="cursor-pointer text-sm font-semibold text-foreground">Manual override</summary>
+                  <p className="mt-1 text-sm text-muted-foreground">Use this only when the provider data needs a deliberate correction.</p>
+                  <div className="mt-4"><ManualMetadataOverridePanel busyAction={busyAction} value={metadataOverride} onChange={setMetadataOverride} onSave={handleMetadataOverrideSave} /></div>
+                </details>
+              </div>
+              <aside className="space-y-[var(--page-gap)] rounded-xl border border-hairline bg-surface-1 p-4">
+                {movie.posterUrl ? <img src={movie.posterUrl} alt={`${movie.title} poster`} className="mx-auto w-32 rounded-lg border border-white/10 object-cover shadow-xl" /> : null}
+                <div className="space-y-3 text-sm">
+                  <div><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Provider</p><p className="mt-1 font-medium text-foreground">{movie.metadataProvider?.toUpperCase() ?? "Not linked"}</p></div>
+                  <div><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Provider ID</p><p className="mt-1 break-all font-medium text-foreground">{movie.metadataProviderId ?? "—"}</p></div>
+                  <div><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">IMDb</p><p className="mt-1 font-medium text-foreground">{movie.imdbId ?? "—"}</p></div>
+                </div>
+                <Button variant="outline" className="w-full" onClick={() => void handleRefreshMetadata()} disabled={busyAction !== null}><RefreshCw className="h-4 w-4" /> Refresh metadata</Button>
+                {movie.externalUrl ? <Button asChild variant="outline" className="w-full"><a href={movie.externalUrl} target="_blank" rel="noreferrer">Open provider page</a></Button> : null}
+              </aside>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
 
       <div className="flex flex-wrap gap-2">
-        <Button onClick={() => void handleSearchNow()} disabled={busyAction !== null}>
-          {busyAction === "search" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-          Search now
+        <Button onClick={() => void handleSearchNow("automatic")} disabled={busyAction !== null} title="Deluno applies the active Media Plan and automatically sends the best acceptable release.">
+          {busyAction === "automatic-search" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+          Automatic search
+        </Button>
+        <Button variant="outline" onClick={() => void handleSearchNow("interactive")} disabled={busyAction !== null} title="Review every candidate and choose the release yourself.">
+          {busyAction === "interactive-search" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+          Interactive search
         </Button>
         <Button
-          variant="outline"
-          onClick={() => void handleMonitoring(!movie.monitored)}
+          variant="ghost"
+          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+          onClick={() => setIsRemoveConfirmationOpen(true)}
           disabled={busyAction !== null}
         >
-          {busyAction === "monitor" || busyAction === "unmonitor" ? (
-            <LoaderCircle className="h-4 w-4 animate-spin" />
-          ) : (
-            <ShieldCheck className="h-4 w-4" />
-          )}
-          {movie.monitored ? "Unmonitor" : "Monitor"}
-        </Button>
-        <Button
-          variant={preventLowerQuality ? "outline" : "outline"}
-          className={preventLowerQuality ? "border-primary/50 bg-primary/5" : ""}
-          onClick={() => void handleUpdateReplacementProtection(!preventLowerQuality)}
-          disabled={busyAction !== null}
-          title="Prevent Deluno from replacing your current file with a lower quality release"
-        >
-          {busyAction === "replacement-protection" ? (
-            <LoaderCircle className="h-4 w-4 animate-spin" />
-          ) : (
-            <ShieldCheck className="h-4 w-4" />
-          )}
-          {preventLowerQuality ? "Replacement protection ON" : "Replacement protection OFF"}
-        </Button>
-        <Button
-          variant="outline"
-          onClick={() => void handleRefreshMetadata()}
-          disabled={busyAction !== null}
-        >
-          {busyAction === "metadata" ? (
-            <LoaderCircle className="h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4" />
-          )}
-          Refresh metadata
-        </Button>
-        <Button variant="ghost" onClick={() => revalidator.revalidate()} disabled={revalidator.state !== "idle"}>
-          <RefreshCw className="h-4 w-4" />
-          Refresh
+          <Trash2 className="h-4 w-4" />
+          Remove from Deluno
         </Button>
       </div>
+
+      <nav className="flex flex-wrap gap-1 rounded-xl border border-hairline bg-surface-1 p-1" aria-label="Movie detail sections">
+        {[
+          ["details", "Files & destination"],
+          ["history", "History & activity"]
+        ].map(([section, label]) => (
+          <button
+            key={section}
+            type="button"
+            onClick={() => setActiveDetailSection(section as "details" | "history")}
+            className={activeDetailSection === section ? "rounded-lg bg-card px-4 py-2 text-sm font-semibold text-foreground shadow-sm" : "rounded-lg px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground"}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
 
       {actionMessage ? (
         <div className="rounded-xl border border-hairline bg-surface-1 px-4 py-3 text-sm text-muted-foreground" role="status" aria-live="polite">
@@ -476,55 +600,27 @@ export function MovieDetailPage() {
       ) : null}
 
       {releaseCandidates.length ? (
+        <div id="release-choices">
         <ReleaseCandidatePicker
           candidates={releaseCandidates}
           busyAction={busyAction}
           onGrab={handleGrabCandidate}
         />
+        </div>
       ) : null}
 
-      <div className="fluid-kpi-grid">
-        <KpiCard
-          label="Wanted state"
-          value={wantedItem ? formatWantedStatus(wantedItem.wantedStatus) : "Tracked"}
-          icon={Clapperboard}
-          meta={wantedItem?.wantedReason ?? "No explicit wanted pressure is currently recorded."}
-          sparkline={[5, 6, 5, 6, 7, 8, 7, 8, 9, 8, 8, 9, 10, 9, 9]}
-        />
-        <KpiCard
-          label="Searches"
-          value={String(movieSearches.length)}
-          icon={Search}
-          meta="Recorded search attempts tied to this title."
-          sparkline={[1, 1, 2, 2, 3, 3, 3, 4, 4, 5, 5, 5, 6, 6, 6]}
-        />
-        <KpiCard
-          label="Dispatches"
-          value={String(movieDispatches.length)}
-          icon={Clapperboard}
-          meta="Releases sent to a download client for this title."
-          sparkline={[0, 1, 0, 1, 1, 2, 1, 2, 3, 2, 2, 3, 3, 4, 4]}
-        />
-        <KpiCard
-          label="Activity"
-          value={String(activity.length)}
-          icon={Activity}
-          meta="Entity-scoped activity events recorded for this movie."
-          sparkline={[2, 2, 3, 3, 4, 4, 5, 4, 5, 6, 6, 7, 7, 8, 8]}
-        />
-      </div>
-
-      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.18fr)_minmax(380px,0.82fr)] 2xl:grid-cols-[minmax(0,1.35fr)_minmax(440px,0.65fr)]">
+      <div className={activeDetailSection === "details" ? "space-y-[var(--page-gap)]" : "grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.18fr)_minmax(380px,0.82fr)] 2xl:grid-cols-[minmax(0,1.35fr)_minmax(440px,0.65fr)]"}>
         <div className="space-y-[var(--page-gap)]">
-          <RoutingCard
-            library={library}
-            currentQuality={workflowStatus?.currentQuality ?? wantedItem?.currentQuality ?? null}
-            targetQuality={workflowStatus?.targetQuality ?? wantedItem?.targetQuality ?? "WEB 1080p"}
-            workflow={library?.importWorkflow ?? "standard"}
-            workflowStatus={workflowStatus}
-          />
+          {activeDetailSection === "details" ? <RoutingCard
+              library={library}
+              currentQuality={workflowStatus?.currentQuality ?? wantedItem?.currentQuality ?? null}
+              targetQuality={workflowStatus?.targetQuality ?? wantedItem?.targetQuality ?? "WEB 1080p"}
+              workflow={library?.importWorkflow ?? "standard"}
+              workflowStatus={workflowStatus}
+            /> : null}
+          {activeDetailSection === "details" ? <IntakeOriginsCard origins={origins} mediaLabel="movie" /> : null}
 
-          <Card>
+          {activeDetailSection === "history" ? <Card>
             <CardHeader>
               <CardTitle>Search and dispatch</CardTitle>
               <CardDescription>
@@ -575,61 +671,18 @@ export function MovieDetailPage() {
                       </p>
                     </div>
                   ))}
+                  <Link to="/queue" className="inline-flex text-sm font-medium text-amber-400 hover:text-amber-300">
+                    Open Transfers to manage download-client work →
+                  </Link>
                 </div>
               ) : null}
             </CardContent>
-          </Card>
+          </Card> : null}
         </div>
 
-        <div className="space-y-[var(--page-gap)]">
-          <Card>
-            <CardHeader>
-              <CardTitle>Metadata</CardTitle>
-              <CardDescription>
-                Provider identity, artwork context, ratings, and overview stored for this title.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-[calc(var(--field-group-pad)*0.9)]">
-              {movie.overview ? (
-                <p className="text-sm leading-relaxed text-muted-foreground">{movie.overview}</p>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  No provider overview has been stored yet. Refresh metadata to enrich this title.
-                </p>
-              )}
-              <div className="grid gap-3 sm:grid-cols-2">
-                <MetadataStat label="Provider" value={movie.metadataProvider ?? "Not linked"} />
-                <MetadataStat label="Provider ID" value={movie.metadataProviderId ?? "None"} />
-                <MetadataStat label="Genres" value={movie.genres ?? "None"} />
-              </div>
-              <RatingStrip ratings={movie.ratings} fallbackRating={movie.rating} />
-              <MetadataCorrectionPanel
-                busyAction={busyAction}
-                mediaLabel="movie"
-                query={metadataQuery}
-                matches={metadataMatches}
-                searchAttempted={metadataSearchAttempted}
-                onQueryChange={setMetadataQuery}
-                onSearch={handleMetadataSearch}
-                onLink={handleMetadataLink}
-              />
-              <ManualMetadataOverridePanel
-                busyAction={busyAction}
-                value={metadataOverride}
-                onChange={setMetadataOverride}
-                onSave={handleMetadataOverrideSave}
-              />
-              {movie.externalUrl ? (
-                <Button asChild variant="outline" size="sm">
-                  <a href={movie.externalUrl} target="_blank" rel="noreferrer">
-                    Open provider page
-                  </a>
-                </Button>
-              ) : null}
-            </CardContent>
-          </Card>
+        {activeDetailSection === "history" ? <div className="space-y-[var(--page-gap)]">
 
-          <Card>
+          <Card id="decision-trail">
             <CardHeader>
               <CardTitle>Decision trail</CardTitle>
               <CardDescription>
@@ -641,7 +694,7 @@ export function MovieDetailPage() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card id="import-activity">
             <CardHeader>
               <CardTitle>Import and activity</CardTitle>
               <CardDescription>
@@ -691,9 +744,44 @@ export function MovieDetailPage() {
               ) : null}
             </CardContent>
           </Card>
-        </div>
+        </div> : null}
       </div>
+      <RemoveMediaDialog
+        open={isRemoveConfirmationOpen}
+        onOpenChange={setIsRemoveConfirmationOpen}
+        title={movie.title}
+        mediaLabel="movie"
+        removalPreview={removalPreview}
+        importListCount={origins.length}
+        busy={busyAction === "remove"}
+        onConfirm={(options) => void handleRemoveFromDeluno(options)}
+      />
     </div>
+  );
+}
+
+function IntakeOriginsCard({ origins, mediaLabel }: { origins: IntakeTitleOriginItem[]; mediaLabel: string }) {
+  if (!origins.length) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>How this {mediaLabel} was added</CardTitle>
+        <CardDescription>
+          Import-list origin is kept for context. Removing a list never removes this {mediaLabel} or its files.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {origins.map((origin) => (
+          <div key={origin.id} className="rounded-xl border border-hairline bg-surface-1 p-3">
+            <p className="text-sm font-medium text-foreground">{origin.sourceName}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Import list · {origin.provider} · first seen {formatDateTime(origin.firstSeenUtc)}
+            </p>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -704,6 +792,30 @@ function MetadataStat({ label, value }: { label: string; value: string }) {
       <p className="mt-1 truncate text-sm font-medium text-foreground">{value}</p>
     </div>
   );
+}
+
+function readStoredCast(metadataJson: string | null): MetadataCastMember[] {
+  if (!metadataJson) return [];
+  try {
+    const value = JSON.parse(metadataJson) as { cast?: unknown; Cast?: unknown };
+    const cast = value.cast ?? value.Cast;
+    if (!Array.isArray(cast)) return [];
+
+    return cast.flatMap((person) => {
+      if (typeof person !== "object" || person === null) return [];
+      const item = person as Record<string, unknown>;
+      const name = item.name ?? item.Name;
+      if (typeof name !== "string" || !name.trim()) return [];
+
+      return [{
+        name,
+        character: typeof (item.character ?? item.Character) === "string" ? (item.character ?? item.Character) as string : null,
+        profileUrl: typeof (item.profileUrl ?? item.ProfileUrl) === "string" ? (item.profileUrl ?? item.ProfileUrl) as string : null
+      }];
+    });
+  } catch {
+    return [];
+  }
 }
 
 function RoutingCard({

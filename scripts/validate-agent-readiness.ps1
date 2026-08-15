@@ -92,38 +92,27 @@ foreach ($rule in $forbiddenReferences) {
     }
 }
 
-# Invariant text-pin. AGENTS.md and docs/ARCHITECTURE.md historically said
-# "Deluno orchestrates external indexers and download clients; it does not
-# embed a downloader." That invariant was rewritten when the in-process
-# Deluno.Downloader engine was scoped (see
-# docs/exec-plans/active/builtin-downloader-architecture.md).
-#
-# Pin the new text by substring so accidental reverts or paraphrases get
-# caught here, not at code-review time. We check three distinctive phrases
-# from the canonical invariant — all three must be present in each file.
+# Product boundary: Deluno orchestrates external indexers and download clients;
+# it does not include an in-process transfer engine. Pin that boundary in the
+# two canonical architecture documents so an accidental protocol implementation
+# cannot return through a documentation-only change.
 $invariantPhrases = @(
-    "optional in-process download engine",
-    "covering NZB (Usenet) and BitTorrent",
-    "Domain modules and Integrations must remain agnostic"
+    "orchestrates external indexers and download clients",
+    "does not embed a transfer engine",
+    "external clients remain responsible"
 )
 $invariantFiles = @(
     @{ Path = "AGENTS.md"; Label = "AGENTS.md" },
     @{ Path = "docs\ARCHITECTURE.md"; Label = "docs/ARCHITECTURE.md" }
 )
-$forbiddenOldInvariant = "it does not embed a downloader"
-
 foreach ($entry in $invariantFiles) {
     $path = Join-Path $Root $entry.Path
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
     $content = Get-Content -LiteralPath $path -Raw
 
-    if ($content.Contains($forbiddenOldInvariant)) {
-        Add-Failure "Old downloader invariant text 'it does not embed a downloader' is back in $($entry.Label). The in-process Deluno.Downloader engine has been scoped; do not revert the invariant. See docs/exec-plans/active/builtin-downloader-architecture.md."
-    }
-
     foreach ($phrase in $invariantPhrases) {
         if (-not $content.Contains($phrase)) {
-            Add-Failure "Invariant phrase missing from $($entry.Label): '$phrase'. The downloader invariant must be present verbatim in both AGENTS.md and docs/ARCHITECTURE.md."
+            Add-Failure "External-download-client invariant phrase missing from $($entry.Label): '$phrase'."
         }
     }
 }
@@ -133,14 +122,9 @@ foreach ($entry in $invariantFiles) {
 #   - apps/windows-tray/DelunoServer.cs + ServiceHost.cs (Windows tray)
 # Both MUST register the same set of services and map the same set of
 # endpoints; if they diverge, the binary that ships in the Velopack
-# installer (built from the tray) silently lacks features the Docker
-# image has — see v1.1.0 → v1.1.1 hotfix where downloader endpoints
-# 500'd because the tray wiring forgot AddDelunoBuiltInDownloaders +
-# AddDelunoPlatformSecrets.
+# installer (built from the tray) silently lacks features the Docker image has.
 $hostWiringRequiredCalls = @(
-    "AddDelunoBuiltInDownloaders",
     "AddDelunoPlatformSecrets",
-    "MapDelunoDownloaderEndpoints",
     "MapDelunoSecretsDiagnostics"
 )
 $hostWiringFiles = @(
@@ -154,12 +138,32 @@ foreach ($entry in $hostWiringFiles) {
     $content = Get-Content -LiteralPath $path -Raw
     foreach ($call in $hostWiringRequiredCalls) {
         if (-not $content.Contains($call)) {
-            Add-Failure "Host-wiring parity: $($entry.Label) is missing required call '$call'. Both Deluno.Host/Program.cs and the windows-tray hosts must register and map the same Deluno modules — if one ships without these the runtime will resolve-fail at first /api/downloader request. See v1.1.1 hotfix."
+            Add-Failure "Host-wiring parity: $($entry.Label) is missing required call '$call'."
         }
     }
 }
 
-$downloadTelemetryStatusPattern = '["''](downloading|queued|completed|stalled|processing|processed|processingFailed|waitingForProcessor|importReady|importQueued|imported|importFailed)["'']'
+# Stable 1.x releases must never silently fall back to unsigned Windows
+# artifacts. Early 0.x prereleases are deliberately exempt, but the release
+# workflow must fail before packaging when certificate material is absent and
+# verify signatures for every 1.x executable.
+$releaseWorkflowPath = Join-Path $Root ".github\workflows\release.yml"
+if (-not (Test-Path -LiteralPath $releaseWorkflowPath -PathType Leaf)) {
+    Add-Failure "Missing release workflow: .github/workflows/release.yml"
+} else {
+    $releaseWorkflow = Get-Content -LiteralPath $releaseWorkflowPath -Raw
+    foreach ($requiredReleaseGate in @(
+        "Enforce certificate material for 1.x",
+        "CERT_PATH was not prepared for a 1.x release.",
+        "!startsWith(steps.version.outputs.version, '0.') || env.CERT_PATH != ''"
+    )) {
+        if (-not $releaseWorkflow.Contains($requiredReleaseGate)) {
+            Add-Failure "Release signing gate is missing '$requiredReleaseGate'. 1.x releases must fail without certificate material and verify signatures."
+        }
+    }
+}
+
+$downloadTelemetryStatusPattern = '(downloading|queued|completed|stalled|processing|processed|processingFailed|waitingForProcessor|importReady|importQueued|imported|importFailed)'
 $downloadTelemetryFiles = @(
     "apps\web\src\routes\dashboard-page.tsx",
     "apps\web\src\routes\indexers-page.tsx",
@@ -184,8 +188,8 @@ foreach ($relativePath in $downloadTelemetryFiles) {
         $isStatusLogic =
             $line -match "\.status\s*[!=]==" -or
             $line -match "\.status\s+is" -or
-            $line -match "case\s+[""']" -or
-            $line -match "status:\s*[""']"
+            $line -match 'case\s+' -or
+            $line -match 'status:\s*'
 
         if (-not $isStatusLogic) {
             continue

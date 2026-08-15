@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
-import { LoaderCircle, PencilLine, RefreshCcw, Trash2 } from "lucide-react";
+import { Eye, LoaderCircle, PencilLine, RefreshCcw, Trash2 } from "lucide-react";
 import { SettingsShell } from "../components/app/settings-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
@@ -11,6 +11,9 @@ import { EmptyState } from "../components/shell/empty-state";
 import {
   emptyPlatformSettingsSnapshot,
   fetchJson,
+  type IntakeListPreviewResult,
+  type IntakeListPreviewItem,
+  type IntakeListApprovalResult,
   type IntakeSourceItem,
   type LibraryItem,
   type PlatformSettingsSnapshot,
@@ -21,12 +24,12 @@ import { authedFetch } from "../lib/use-auth";
 import { RouteSkeleton } from "../components/shell/skeleton";
 
 const INTAKE_PROVIDER_OPTIONS = [
+  { label: "Custom list URL", value: "url-list" },
   { label: "Trakt", value: "trakt" },
   { label: "IMDb", value: "imdb" },
   { label: "TMDb", value: "tmdb" },
   { label: "Letterboxd", value: "letterboxd" },
-  { label: "RSS feed", value: "rss" },
-  { label: "Plain URL list", value: "url-list" }
+  { label: "RSS feed", value: "rss" }
 ];
 
 interface SettingsOverviewLoaderData {
@@ -59,7 +62,7 @@ export function SettingsListsPage() {
   );
   const [createForm, setCreateForm] = useState({
     name: "",
-    provider: "trakt",
+    provider: "url-list",
     feedUrl: "",
     mediaType: "movies",
     libraryId: libraries[0]?.id ?? "",
@@ -76,6 +79,8 @@ export function SettingsListsPage() {
   });
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [previews, setPreviews] = useState<Record<string, IntakeListPreviewResult>>({});
+  const [selectedPreviewEntries, setSelectedPreviewEntries] = useState<Record<string, string[]>>({});
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -98,7 +103,7 @@ export function SettingsListsPage() {
       });
 
       if (!response.ok) {
-        throw new Error("Intake source could not be created.");
+        throw new Error(await readIntakeSourceError(response, "Intake source could not be created."));
       }
 
       setCreateForm((current) => ({
@@ -148,7 +153,7 @@ export function SettingsListsPage() {
       });
 
       if (!response.ok) {
-        throw new Error("Intake source could not be updated.");
+        throw new Error(await readIntakeSourceError(response, "Intake source could not be updated."));
       }
 
       setEditingId(null);
@@ -199,10 +204,127 @@ export function SettingsListsPage() {
     }
   }
 
+  async function handlePreview(id: string) {
+    setBusyKey(`preview:${id}`);
+    setMessage(null);
+    try {
+      const response = await authedFetch(`/api/intake-sources/${id}/preview`, { method: "POST" });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null) as { message?: string } | null;
+        throw new Error(body?.message ?? "Preview could not be loaded.");
+      }
+      const preview = await response.json() as IntakeListPreviewResult;
+      setPreviews((current) => ({ ...current, [id]: preview }));
+      setSelectedPreviewEntries((current) => ({
+        ...current,
+        [id]: preview.items
+          .filter((item) => item.action === "would add")
+          .map(previewEntryKey)
+      }));
+      setMessage("Preview ready. Nothing was added or searched.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Preview could not be loaded.");
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function handleApprovePreview(id: string, searchAfterAdd: boolean) {
+    const preview = previews[id];
+    if (!preview) return;
+    const keys = new Set(selectedPreviewEntries[id] ?? []);
+    const entries = preview.items
+      .filter((item) => keys.has(previewEntryKey(item)) && item.action === "would add")
+      .map((item) => ({ title: item.title, year: item.year, imdbId: item.imdbId }));
+    if (entries.length === 0) {
+      setMessage("Choose at least one eligible preview entry first.");
+      return;
+    }
+
+    setBusyKey(`approve:${id}:${searchAfterAdd ? "search" : "add"}`);
+    setMessage(null);
+    try {
+      const response = await authedFetch(`/api/intake-sources/${id}/approve-preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entries, searchAfterAdd })
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null) as { message?: string } | null;
+        throw new Error(body?.message ?? "Selected entries could not be added.");
+      }
+      const result = await response.json() as IntakeListApprovalResult;
+      setMessage(`${result.addedCount} title${result.addedCount === 1 ? "" : "s"} added from ${result.selectedCount} approved preview entry${result.selectedCount === 1 ? "" : "ies"}.${result.searchRequested ? " Deluno will search them using normal automation rules." : ""}`);
+      setPreviews((current) => {
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
+      revalidator.revalidate();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Selected entries could not be added.");
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function handleExcludePreview(id: string, entry: IntakeListPreviewItem, durationDays: number | null) {
+    setBusyKey(`exclude:${id}:${previewEntryKey(entry)}`);
+    setMessage(null);
+    try {
+      const response = await authedFetch(`/api/intake-sources/${id}/exclude-preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: entry.title, year: entry.year, imdbId: entry.imdbId, durationDays })
+      });
+      if (!response.ok) throw new Error("This entry could not be excluded.");
+      const exclusion = await response.json() as { id: string };
+      setPreviews((current) => ({
+        ...current,
+        [id]: {
+          ...current[id],
+          items: current[id].items.map((item) => previewEntryKey(item) === previewEntryKey(entry)
+            ? { ...item, action: "excluded", reason: durationDays ? `Ignored for ${durationDays} days.` : "Excluded from this list.", exclusionId: exclusion.id }
+            : item)
+        }
+      }));
+      setSelectedPreviewEntries((current) => ({ ...current, [id]: (current[id] ?? []).filter((key) => key !== previewEntryKey(entry)) }));
+      setMessage(durationDays ? `${entry.title} will be ignored for ${durationDays} days.` : `${entry.title} will not be added from this list again.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "This entry could not be excluded.");
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function handleRestorePreviewEntry(id: string, entry: IntakeListPreviewItem) {
+    if (!entry.exclusionId) return;
+    setBusyKey(`restore:${id}:${entry.exclusionId}`);
+    setMessage(null);
+    try {
+      const response = await authedFetch(`/api/intake-sources/${id}/exclusions/${entry.exclusionId}`, { method: "DELETE" });
+      if (!response.ok && response.status !== 204) throw new Error("This entry could not be restored.");
+      setPreviews((current) => ({
+        ...current,
+        [id]: {
+          ...current[id],
+          items: current[id].items.map((item) => previewEntryKey(item) === previewEntryKey(entry)
+            ? { ...item, action: "would add", reason: "Eligible again. Choose it when you are ready to add it.", exclusionId: null }
+            : item)
+        }
+      }));
+      setMessage(`${entry.title} is eligible for this list again.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "This entry could not be restored.");
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
   return (
     <SettingsShell
-      title="Intake Sources"
-      description="Configure watchlists, discovery feeds, and automatic title sources without needing to understand provider internals."
+      title="Import lists"
+      description="Follow the watchlists and curated lists you trust. Deluno checks them on a schedule, adds only matching titles, and can start a search when they arrive."
     >
       {message ? (
         <div className="density-help rounded-xl border border-hairline bg-surface-1 px-4 py-3 text-muted-foreground">
@@ -213,18 +335,18 @@ export function SettingsListsPage() {
       <div className="settings-split settings-split-config-heavy">
         <Card className="settings-panel">
           <CardHeader>
-            <CardTitle>Add intake source</CardTitle>
-            <CardDescription>Define how Deluno should ingest titles from external watchlists and discovery feeds.</CardDescription>
+            <CardTitle>Add an import list</CardTitle>
+            <CardDescription>Start with a watchlist or curated list. The advanced filters below are optional; leave them empty to follow the whole list.</CardDescription>
           </CardHeader>
           <CardContent>
             <form className="space-y-3" onSubmit={handleCreate}>
-              <Field label="Name" description="A friendly label to identify this intake source in your configuration.">
+              <Field label="Name" description="A friendly label for this list in Deluno, such as “Weekend movies” or “My TV watchlist”.">
                 <Input
                   value={createForm.name}
                   onChange={(event) => setCreateForm((state) => ({ ...state, name: event.target.value }))}
                 />
               </Field>
-              <Field label="Provider" description="The service you're importing from: Trakt, IMDb, TMDb, Letterboxd, RSS feed, or a custom list.">
+              <Field label="List type" description="Start with Custom list URL for a public list. Deluno recognises compatible list sites automatically.">
                 <PresetField
                   value={createForm.provider}
                   onChange={(value) => setCreateForm((state) => ({ ...state, provider: value }))}
@@ -233,7 +355,7 @@ export function SettingsListsPage() {
                   customPlaceholder="Provider key"
                 />
               </Field>
-              <Field label="Feed URL / identifier" description="The URL (for RSS/feeds) or identifier (Trakt username, IMDb list ID, etc.) for this intake source.">
+              <Field label="List URL" description={listAddressHelp(createForm.provider)}>
                 <Input
                   value={createForm.feedUrl}
                   onChange={(event) => setCreateForm((state) => ({ ...state, feedUrl: event.target.value }))}
@@ -322,7 +444,7 @@ export function SettingsListsPage() {
                     <input type="checkbox" checked={createForm.searchOnAdd} onChange={(event) => setCreateForm((state) => ({ ...state, searchOnAdd: event.target.checked }))} />
                     <span className="font-medium">Search on add</span>
                   </label>
-                  <InputDescription>Automatically search for and add matching titles when new items are discovered in this intake source.</InputDescription>
+                  <InputDescription>When a new matching title is found, add it to the chosen library and ask Deluno to search for it. Turn this off to add without downloading.</InputDescription>
                 </div>
                 <div className="rounded-xl border border-hairline bg-surface-1 p-4">
                   <label className="flex items-center gap-3 text-foreground cursor-pointer">
@@ -334,7 +456,7 @@ export function SettingsListsPage() {
               </div>
               <Button type="submit" disabled={busyKey === "create"}>
                 {busyKey === "create" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-                Add intake source
+                Add import list
               </Button>
             </form>
           </CardContent>
@@ -342,8 +464,8 @@ export function SettingsListsPage() {
 
         <Card className="settings-panel">
           <CardHeader>
-            <CardTitle>Configured sources</CardTitle>
-            <CardDescription>Saved watchlists and feed definitions Deluno can manage today.</CardDescription>
+            <CardTitle>Your import lists</CardTitle>
+            <CardDescription>Each list has its own destination, filters, schedule, and last-sync result. Syncing never removes titles already in your library.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {intakeSources.length ? (
@@ -373,6 +495,15 @@ export function SettingsListsPage() {
                         <Button
                           variant="ghost"
                           size="icon"
+                          onClick={() => void handlePreview(item.id)}
+                          disabled={busyKey === `preview:${item.id}`}
+                          title="Preview without adding titles"
+                        >
+                          {busyKey === `preview:${item.id}` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           onClick={() => void handleSync(item.id)}
                           disabled={busyKey === `sync:${item.id}`}
                           title="Sync now"
@@ -398,7 +529,7 @@ export function SettingsListsPage() {
                     </div>
 
                     <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                      <Field label="Provider">
+                      <Field label="List type">
                         {editing ? (
                           <PresetField
                             value={current.provider}
@@ -641,6 +772,21 @@ export function SettingsListsPage() {
                         </Button>
                       </div>
                     ) : null}
+                    {previews[item.id] ? (
+                      <ImportListPreview
+                        preview={previews[item.id]}
+                        selectedKeys={selectedPreviewEntries[item.id] ?? []}
+                        busy={busyKey?.startsWith(`approve:${item.id}:`) ?? false}
+                        onSelectionChange={(key, selected) => setSelectedPreviewEntries((current) => {
+                          const next = new Set(current[item.id] ?? []);
+                          if (selected) next.add(key); else next.delete(key);
+                          return { ...current, [item.id]: [...next] };
+                        })}
+                        onApprove={(searchAfterAdd) => void handleApprovePreview(item.id, searchAfterAdd)}
+                        onExclude={(entry, durationDays) => void handleExcludePreview(item.id, entry, durationDays)}
+                        onRestore={(entry) => void handleRestorePreviewEntry(item.id, entry)}
+                      />
+                    ) : null}
                   </div>
                 );
               })
@@ -648,8 +794,8 @@ export function SettingsListsPage() {
               <EmptyState
                 size="sm"
                 variant="custom"
-                title="No intake sources yet"
-                description="Add an intake source such as IMDb, TMDB, or Trakt to auto-populate your libraries."
+                title="No import lists yet"
+                description="Add a custom list URL, a supported list provider, or an RSS feed to bring the titles you follow into Deluno."
               />
             )}
           </CardContent>
@@ -657,6 +803,114 @@ export function SettingsListsPage() {
       </div>
     </SettingsShell>
   );
+}
+
+function previewEntryKey(entry: { title: string; year: number | null; imdbId: string | null }) {
+  return `${entry.imdbId ?? "title"}:${entry.title.toLocaleLowerCase()}:${entry.year ?? ""}`;
+}
+
+function ImportListPreview({
+  preview,
+  selectedKeys,
+  busy,
+  onSelectionChange,
+  onApprove,
+  onExclude,
+  onRestore
+}: {
+  preview: IntakeListPreviewResult;
+  selectedKeys: string[];
+  busy: boolean;
+  onSelectionChange: (key: string, selected: boolean) => void;
+  onApprove: (searchAfterAdd: boolean) => void;
+  onExclude: (entry: IntakeListPreviewItem, durationDays: number | null) => void;
+  onRestore: (entry: IntakeListPreviewItem) => void;
+}) {
+  const wouldAdd = preview.items.filter((item) => item.action === "would add").length;
+  const existing = preview.items.filter((item) => item.action === "already in library").length;
+  const eligible = preview.items.filter((item) => item.action === "would add");
+  return (
+    <div className="mt-4 rounded-xl border border-primary/25 bg-primary/5 p-4">
+      <p className="font-semibold text-foreground">Read-only preview</p>
+      <p className="mt-1 text-sm text-muted-foreground">
+        {preview.fetchedCount} found · {wouldAdd} would add · {existing} already in library
+        {preview.targetLibraryName ? ` · destination: ${preview.targetLibraryName}` : " · no destination configured"}
+      </p>
+      {preview.warnings.map((warning) => <p key={warning} className="mt-2 text-xs text-warning">{warning}</p>)}
+      <div className="mt-3 max-h-64 space-y-2 overflow-y-auto">
+        {preview.items.map((entry, index) => {
+          const key = previewEntryKey(entry);
+          const selectable = entry.action === "would add";
+          return (
+          <div key={`${entry.title}-${entry.year ?? "unknown"}-${index}`} className="rounded-lg border border-hairline bg-surface-1 px-3 py-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <label className="flex items-center gap-2 font-medium text-foreground">
+                {selectable ? <input type="checkbox" checked={selectedKeys.includes(key)} onChange={(event) => onSelectionChange(key, event.target.checked)} /> : null}
+                {entry.title}{entry.year ? ` (${entry.year})` : ""}
+              </label>
+              <span className="font-mono text-[10px] uppercase text-muted-foreground">{entry.action} · {entry.matchConfidence} confidence</span>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">{entry.reason}</p>
+            {selectable ? (
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button type="button" size="sm" variant="ghost" onClick={() => onExclude(entry, 7)}>Ignore 7 days</Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => onExclude(entry, null)}>Exclude</Button>
+              </div>
+            ) : entry.action === "excluded" && entry.exclusionId ? (
+              <Button type="button" size="sm" variant="ghost" className="mt-2" onClick={() => onRestore(entry)}>Allow again</Button>
+            ) : null}
+          </div>
+          );
+        })}
+      </div>
+      {eligible.length ? (
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" disabled={busy || selectedKeys.length === 0} onClick={() => onApprove(false)}>
+            {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+            Add selected
+          </Button>
+          <Button size="sm" disabled={busy || selectedKeys.length === 0} onClick={() => onApprove(true)}>
+            {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+            Add selected and search
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function listAddressHelp(provider: string) {
+  switch (provider) {
+    case "trakt":
+      return "Paste a Trakt list or watchlist URL. A Trakt username also follows that person's watchlist.";
+    case "imdb":
+      return "Paste an IMDb list URL, its ls… identifier, or an IMDb CSV export URL.";
+    case "tmdb":
+      return "Paste a TMDb list URL or list ID. Deluno uses the title-matching service configured for this installation.";
+    case "mdblist":
+      return "Existing MDbList source. For a public MDbList list, choose Custom list URL and paste https://mdblist.com/lists/owner/list-name.";
+    case "letterboxd":
+      return "Paste a public Letterboxd list URL or its RSS feed.";
+    case "rss":
+      return "Paste a public RSS or Atom feed URL.";
+    case "url-list":
+      return "Paste a public list URL. Deluno recognises compatible list sites automatically.";
+    default:
+      return "Paste the provider's public list URL or identifier.";
+  }
+
+}
+
+async function readIntakeSourceError(response: Response, fallback: string) {
+  const body = await response.json().catch(() => null) as {
+    errors?: Record<string, string[] | undefined>;
+    detail?: string;
+    title?: string;
+  } | null;
+  const validationMessage = body?.errors
+    ? Object.values(body.errors).flat().find((value): value is string => Boolean(value?.trim()))
+    : null;
+  return validationMessage ?? body?.detail ?? body?.title ?? fallback;
 }
 
 function Field({ children, description, label }: { children: ReactNode; description?: string; label: string }) {

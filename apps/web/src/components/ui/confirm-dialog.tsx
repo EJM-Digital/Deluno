@@ -40,7 +40,7 @@ export function ConfirmDialog({
         >
           <Dialog.Title className="sr-only">{title}</Dialog.Title>
           <div className="p-6">
-            <div className="mb-4 flex items-start gap-4">
+            <div className="mb-4 flex items-start gap-[var(--grid-gap)]">
               {confirmVariant === "destructive" && (
                 <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-500/10">
                   <AlertTriangle className="h-4 w-4 text-red-500" />

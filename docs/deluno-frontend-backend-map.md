@@ -210,7 +210,7 @@ Lives mostly in:
 
 The codebase is moving toward:
 
-- operational media workspaces rather than thin catalog pages
+- operational media detail pages rather than thin catalog pages
 - indexers replacing generic connections as the user-facing mental model
 - richer library-aware routing, health, and explanation surfaces
 - more live revalidation via SignalR

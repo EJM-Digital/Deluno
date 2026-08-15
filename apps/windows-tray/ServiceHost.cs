@@ -1,7 +1,5 @@
 using Deluno.Api;
 using Deluno.Api.Backup;
-using Deluno.Downloader.DependencyInjection;
-using Deluno.Downloader.Engine;
 using Deluno.Filesystem;
 using Deluno.Infrastructure;
 using Deluno.Infrastructure.Observability;
@@ -49,16 +47,13 @@ public static class ServiceHost
         builder.Services.AddDelunoFilesystemModule();
         builder.Services.AddDelunoRealtimeModule();
         builder.Services.AddDelunoWorkerModule();
-        builder.Services.AddDelunoBuiltInDownloaders();
 
         builder.Services
             .AddDataProtection()
             .SetApplicationName("Deluno")
             .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(settings.DataRoot, "protection-keys")));
 
-        // ISecretProtector pipeline. Required by SqliteNzbServerRepository
-        // (via DownloaderSecretProtectorAdapter) and by the secrets
-        // diagnostics endpoint. Bug-parity with DelunoServer.cs.
+        // Protect local integration credentials and platform secrets.
         builder.Services.AddDelunoPlatformSecrets(
             Path.Combine(settings.DataRoot, "secrets", "master.key"));
 
@@ -131,7 +126,6 @@ public static class ServiceHost
         app.MapDelunoMetadataEndpoints();
         app.MapDelunoFilesystemEndpoints();
         app.MapDelunoSecretsDiagnostics();
-        app.MapDelunoDownloaderEndpoints();
         app.MapDelunoRealtime();
         app.MapFallbackToFile("index.html");
 

@@ -142,7 +142,7 @@ export function EpisodeSearchPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-[var(--grid-gap)] sm:grid-cols-2">
         <Card>
           <CardContent className="pt-6">
             <p className="text-sm text-muted-foreground">Eligible now</p>

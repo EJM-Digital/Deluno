@@ -132,7 +132,7 @@ export const navigationCommands: CommandItem[] = [
 export const settingsCommands: CommandItem[] = [
   {
     id: "settings.general",
-    label: "Settings · System · General",
+    label: "Maintain Deluno · General",
     keywords: ["system", "startup", "url", "branding", "app", "instance"],
     group: "navigation",
     icon: Settings,
@@ -140,7 +140,7 @@ export const settingsCommands: CommandItem[] = [
   },
   {
     id: "settings.ui",
-    label: "Settings · System · Interface",
+    label: "Maintain Deluno · Interface",
     keywords: ["system", "appearance", "theme", "density", "display", "ui", "interface"],
     group: "navigation",
     icon: Palette,
@@ -148,7 +148,7 @@ export const settingsCommands: CommandItem[] = [
   },
   {
     id: "settings.media-management",
-    label: "Settings · Library · Media Management",
+    label: "Library setup · Library & import",
     keywords: ["library", "folders", "paths", "naming", "import", "organise", "root"],
     group: "navigation",
     icon: FolderTree,
@@ -156,7 +156,7 @@ export const settingsCommands: CommandItem[] = [
   },
   {
     id: "settings.destination-rules",
-    label: "Settings · Library · Destination Rules",
+    label: "Library setup · Destinations",
     keywords: ["library", "routing", "rules", "root folders", "genre", "tag", "language"],
     group: "navigation",
     icon: FolderTree,
@@ -164,7 +164,7 @@ export const settingsCommands: CommandItem[] = [
   },
   {
     id: "settings.metadata",
-    label: "Settings · Library · Metadata",
+    label: "Library setup · Library details",
     keywords: ["library", "tmdb", "tvdb", "fanart", "metadata", "nfo"],
     group: "navigation",
     icon: Sparkles,
@@ -172,7 +172,7 @@ export const settingsCommands: CommandItem[] = [
   },
   {
     id: "settings.tags",
-    label: "Settings · Library · Tags",
+    label: "Library setup · Tags",
     keywords: ["library", "tags", "labels", "groups", "routing"],
     group: "navigation",
     icon: Tag,
@@ -180,7 +180,7 @@ export const settingsCommands: CommandItem[] = [
   },
   {
     id: "settings.policy-sets",
-    label: "Settings · Quality · Policy Sets",
+    label: "Library setup · Media Plan",
     keywords: ["quality", "policy", "routing", "destination", "multi version"],
     group: "navigation",
     icon: Stars,
@@ -188,7 +188,7 @@ export const settingsCommands: CommandItem[] = [
   },
   {
     id: "settings.profiles",
-    label: "Settings · Quality · Profiles",
+    label: "Library setup · Quality profiles",
     keywords: ["quality", "profiles", "policy", "upgrades"],
     group: "navigation",
     icon: Stars,
@@ -196,7 +196,7 @@ export const settingsCommands: CommandItem[] = [
   },
   {
     id: "settings.quality",
-    label: "Settings · Quality · Size Rules",
+    label: "Library setup · Quality & size limits",
     keywords: ["quality", "resolution", "bitrate", "size limits", "sizes"],
     group: "navigation",
     icon: SlidersHorizontal,
@@ -204,7 +204,7 @@ export const settingsCommands: CommandItem[] = [
   },
   {
     id: "settings.custom-formats",
-    label: "Settings · Quality · Custom Formats",
+    label: "Library setup · Release scoring",
     keywords: ["quality", "scoring", "release", "format", "rules"],
     group: "navigation",
     icon: Wand2,
@@ -212,7 +212,7 @@ export const settingsCommands: CommandItem[] = [
   },
   {
     id: "settings.lists",
-    label: "Settings · Automation · Intake Sources",
+    label: "Library setup · Import lists",
     keywords: ["automation", "imdb", "trakt", "intake", "source", "auto import", "lists"],
     group: "navigation",
     icon: ListChecks,

@@ -4,54 +4,75 @@ import { HelpCircle } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { GlossaryModal } from "../ui/glossary-modal";
 
-/**
- * Settings navigation organised around the main configuration decisions:
- * overview, library, quality, automation, and system behaviour.
- */
-export const settingsNavGroups = [
+export const configurationNavAreas = [
   {
-    label: "Overview",
-    items: [
-      { to: "/settings", label: "Settings Home", end: true, tip: "Overview of all settings and quick actions" }
-    ]
-  },
-  {
+    match: (path: string) => path.startsWith("/settings/media-management") || path.startsWith("/settings/processing") || path.startsWith("/settings/destination-rules") || path.startsWith("/settings/metadata") || path.startsWith("/settings/tags"),
     label: "Library",
+    to: "/settings/media-management",
     items: [
-      { to: "/settings/media-management", label: "Media Management", end: false, tip: "Root folders, rename rules, hardlinks, and import behaviour" },
-      { to: "/settings/destination-rules", label: "Destination Rules", end: false, tip: "Route titles into root folders based on tags, genres, languages, and more" },
-      { to: "/settings/metadata", label: "Metadata", end: false, tip: "NFO files, artwork exports, and external media metadata output" },
-      { to: "/settings/tags", label: "Tags", end: false, tip: "Organise titles for filtering, routing, and policy targeting" }
+      { to: "/settings/media-management", label: "Files, processing & import", end: false },
+      { to: "/settings/processing", label: "Processing & import", end: false },
+      { to: "/settings/destination-rules", label: "Final destinations", end: false },
+      { to: "/settings/metadata", label: "Metadata & sidecars", end: false },
+      { to: "/settings/tags", label: "Tags", end: false }
     ]
   },
   {
-    label: "Quality",
+    match: (path: string) => path.startsWith("/indexers"),
+    label: "Connections",
+    to: "/indexers",
     items: [
-      { to: "/settings/policy-sets", label: "Policy Sets", end: false, tip: "Combine quality targets and destination rules into reusable acquisition policies" },
-      { to: "/settings/profiles", label: "Profiles", end: false, tip: "Quality targets and upgrade policy per media policy set" },
-      { to: "/settings/quality", label: "Size Rules", end: false, tip: "Minimum and maximum size boundaries for each quality tier" },
-      { to: "/settings/custom-formats", label: "Custom Formats", end: false, tip: "Score releases by HDR, source, codec, language, and more" }
+      { to: "/indexers/indexers", label: "Indexers", end: false },
+      { to: "/indexers/download-clients", label: "Download clients", end: false },
+      { to: "/indexers/library-routing", label: "Library routing", end: false }
     ]
   },
   {
-    label: "Automation",
+    match: (path: string) => path.startsWith("/settings/policy-sets") || path.startsWith("/settings/profiles") || path.startsWith("/settings/quality") || path.startsWith("/settings/custom-formats"),
+    label: "Media plans & quality",
+    to: "/settings/policy-sets",
     items: [
-      { to: "/settings/lists", label: "Intake Sources", end: false, tip: "Bring titles in from Trakt, IMDb, or other external list sources" },
-      { to: "/settings/migration", label: "Migration", end: false, tip: "Safely import Radarr, Sonarr, Prowlarr, and compatible configuration" }
+      { to: "/settings/policy-sets", label: "Media Plan", end: false },
+      { to: "/settings/profiles", label: "Quality profiles", end: false },
+      { to: "/settings/quality", label: "Quality & size limits", end: false },
+      { to: "/settings/custom-formats", label: "Release scoring", end: false }
     ]
   },
   {
-    label: "System",
+    match: (path: string) => path.startsWith("/settings/lists"),
+    label: "Discover media",
+    to: "/settings/lists",
+    items: [{ to: "/settings/lists", label: "Import lists", end: false }]
+  },
+  {
+    match: (path: string) => path.startsWith("/settings/automation"),
+    label: "Automation & recovery",
+    to: "/settings/automation",
+    items: [{ to: "/settings/automation", label: "Search, retries & failed downloads", end: false }]
+  },
+] as const;
+
+/** Installation-wide controls belong under Maintain Deluno, never under library setup. */
+export const maintenanceNavItems = [
+  {
+    match: (path: string) => path.startsWith("/settings/migration") || path.startsWith("/settings/general") || path.startsWith("/settings/notifications") || path.startsWith("/settings/ui") || path.startsWith("/system") || path.startsWith("/setup-guide"),
+    label: "System & settings",
+    to: "/system",
     items: [
-      { to: "/settings/general", label: "General", end: false, tip: "Instance identity, host settings, notifications, and startup behaviour" },
-      { to: "/settings/notifications", label: "Notifications", end: false, tip: "Outbound webhook endpoints for Discord, Slack, Gotify, ntfy, and any HTTP service" },
-      { to: "/settings/ui", label: "Interface", end: false, tip: "Theme, density, default views, and experience preferences" }
+      { to: "/system", label: "System health", end: true },
+      { to: "/system/audit", label: "System activity", end: false },
+      { to: "/system/backups", label: "Backups", end: false },
+      { to: "/system/updates", label: "Updates", end: false },
+      { to: "/system/api", label: "API access", end: false },
+      { to: "/system/docs", label: "Help & guides", end: false },
+      { to: "/settings/general", label: "General", end: false },
+      { to: "/settings/notifications", label: "Notifications", end: false },
+      { to: "/settings/ui", label: "Interface", end: false },
+      { to: "/settings/migration", label: "Migration", end: false },
+      { to: "/setup-guide", label: "Guided setup", end: false }
     ]
   }
 ] as const;
-
-/** Flat list kept for backwards compatibility. */
-export const settingsNavItems = settingsNavGroups.flatMap((group) => [...group.items]);
 
 const SettingsWorkspaceContext = createContext(false);
 const SystemWorkspaceContext = createContext(false);
@@ -67,45 +88,55 @@ const systemNavItems = [
 
 const settingsPageMeta = [
   {
+    match: (path: string) => path.startsWith("/settings/processing"),
+    title: "Processing & import",
+    description: "Configure the optional FileFlows, Weir, or other processor hand-off before Deluno imports the finished file."
+  },
+  {
     match: (path: string) => path === "/settings",
     title: "Settings overview",
     description:
-      "Guided configuration for libraries, quality policy, automation, and runtime behaviour."
+      "Guided configuration for your media library, quality policy, automation, and runtime behaviour."
   },
   {
     match: (path: string) => path.startsWith("/settings/media-management"),
-    title: "Media Management",
-    description: "Naming, import, and file-handling behaviour for movies and TV."
+    title: "Files, processing & import",
+    description: "How Deluno reaches completed files, optionally waits for processed output, and imports the result into your library."
   },
   {
     match: (path: string) => path.startsWith("/settings/destination-rules"),
-    title: "Destination Rules",
-    description: "Route media into the right root folders without running multiple Deluno instances."
+    title: "Final destinations",
+    description: "Choose where completed movies and TV shows finally live after Deluno imports and names them."
   },
   {
     match: (path: string) => path.startsWith("/settings/policy-sets"),
-    title: "Policy Sets",
-    description: "Reusable acquisition policies that combine quality, routing, and automation decisions."
+    title: "Media plans & quality",
+    description: "The quality, size, release, language, and upgrade behaviour you want for your media."
   },
   {
     match: (path: string) => path.startsWith("/settings/profiles"),
-    title: "Profiles",
+    title: "Quality profiles",
     description: "Quality targets and upgrade settings for each library."
   },
   {
     match: (path: string) => path.startsWith("/settings/quality"),
-    title: "Size Rules",
+    title: "Quality & size limits",
     description: "Size limits that keep downloads sane and predictable across qualities."
   },
   {
     match: (path: string) => path.startsWith("/settings/custom-formats"),
-    title: "Custom Formats",
+    title: "Release scoring",
     description: "Release scoring for source, codec, HDR, language, group, and preference rules."
   },
   {
     match: (path: string) => path.startsWith("/settings/lists"),
-    title: "Intake Sources",
-    description: "External list sources and automated discovery behaviour."
+    title: "Import lists",
+    description: "Watchlists and curated lists that can add the movies or shows you want Deluno to manage."
+  },
+  {
+    match: (path: string) => path.startsWith("/settings/automation"),
+    title: "Automation & recovery",
+    description: "Control scheduled searches, retries, upgrades, and what happens after a failed download."
   },
   {
     match: (path: string) => path.startsWith("/settings/migration"),
@@ -114,8 +145,8 @@ const settingsPageMeta = [
   },
   {
     match: (path: string) => path.startsWith("/settings/metadata"),
-    title: "Metadata",
-    description: "NFO, artwork, certification, and library metadata output."
+    title: "Metadata & sidecars",
+    description: "Language, ratings region, artwork, and optional files saved beside your media."
   },
   {
     match: (path: string) => path.startsWith("/settings/tags"),
@@ -125,7 +156,7 @@ const settingsPageMeta = [
   {
     match: (path: string) => path.startsWith("/settings/general"),
     title: "General",
-    description: "Host identity, runtime defaults, startup behaviour, and notifications."
+    description: "Instance name, network address, port, and reverse-proxy routing."
   },
   {
     match: (path: string) => path.startsWith("/settings/notifications"),
@@ -199,7 +230,7 @@ export function SystemWorkspaceLayout() {
 }
 
 export function SettingsShell({
-  eyebrow = "Settings",
+  eyebrow = "Library setup",
   title,
   description,
   children
@@ -218,7 +249,7 @@ export function SettingsShell({
   return (
     <div className="space-y-[var(--page-gap)]">
       <GlossaryModal open={glossaryOpen} onOpenChange={setGlossaryOpen} />
-      <div className="flex flex-col gap-2 xl:flex-row xl:items-end xl:justify-between xl:gap-[var(--grid-gap)]">
+      <div className="max-w-4xl">
         <div className="min-w-0">
           <p className="text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-muted-foreground">
             {eyebrow}
@@ -236,18 +267,10 @@ export function SettingsShell({
             </button>
           </div>
         </div>
-        <p className="max-w-[min(58rem,100%)] text-[length:var(--section-subtitle-size)] leading-relaxed text-muted-foreground xl:text-right">
+        <p className="mt-3 max-w-3xl text-[length:var(--section-subtitle-size)] leading-relaxed text-muted-foreground">
           {description}
         </p>
       </div>
-
-      <div className="grid gap-[var(--grid-gap)] rounded-2xl border border-hairline/80 bg-card/80 p-[calc(var(--tile-pad)*0.8)] shadow-card dark:border-white/[0.07] dark:bg-white/[0.035] md:grid-cols-3">
-        <SettingsStep step="A" title="Library" copy="Choose roots, naming, metadata, and destination rules first." />
-        <SettingsStep step="B" title="Quality" copy="Set profiles, sizes, and custom formats after storage is clear." />
-        <SettingsStep step="C" title="Automation" copy="Enable lists, schedules, and UI defaults once policy is correct." />
-      </div>
-
-      <SectionSubnav groups={settingsNavGroups} />
 
       <div className="min-w-0 space-y-[var(--page-gap)]">
         {children}
@@ -256,29 +279,15 @@ export function SettingsShell({
   );
 }
 
-function SettingsStep({ copy, step, title }: { copy: string; step: string; title: string }) {
-  return (
-    <div className="flex gap-3 rounded-xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.62)]">
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 font-mono text-sm font-bold text-primary">
-        {step}
-      </span>
-      <span className="min-w-0">
-        <span className="block font-display text-[length:var(--type-card-title)] font-semibold tracking-tight text-foreground">
-          {title}
-        </span>
-        <span className="mt-1 block text-[length:var(--section-subtitle-size)] leading-relaxed text-muted-foreground">
-          {copy}
-        </span>
-      </span>
-    </div>
-  );
+export function ConfigurationWorkspaceLayout() {
+  return <Outlet />;
 }
 
 function SettingsNavLink({
   item,
   compact = false
 }: {
-  item: (typeof settingsNavItems)[number] | (typeof systemNavItems)[number];
+  item: (typeof systemNavItems)[number];
   compact?: boolean;
 }) {
   return (
@@ -318,7 +327,7 @@ function SettingsNavLink({
 function SectionSubnav({
   groups
 }: {
-  groups: typeof settingsNavGroups | readonly { label: string; items: readonly (typeof systemNavItems)[number][] }[];
+  groups: readonly { label: string; items: readonly (typeof systemNavItems)[number][] }[];
 }) {
   return (
     <div className="no-scrollbar overflow-x-auto">
@@ -351,7 +360,7 @@ export function SystemShell({
 
   return (
     <div className="space-y-[var(--page-gap)]">
-      <div className="flex flex-col gap-2 xl:flex-row xl:items-end xl:justify-between xl:gap-[var(--grid-gap)]">
+      <div className="max-w-4xl">
         <div>
           <p className="text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-muted-foreground">
             System
@@ -360,7 +369,7 @@ export function SystemShell({
             {title}
           </h1>
         </div>
-        <p className="max-w-[min(58rem,100%)] text-[length:var(--section-subtitle-size)] leading-relaxed text-muted-foreground xl:text-right">
+        <p className="mt-3 max-w-3xl text-[length:var(--section-subtitle-size)] leading-relaxed text-muted-foreground">
           {description}
         </p>
       </div>

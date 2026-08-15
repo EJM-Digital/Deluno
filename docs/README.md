@@ -12,6 +12,7 @@ Deluno keeps product, architecture, and repo-state context in the repository so 
 - `deluno-frontend-backend-map.md`: user-facing IA and backend ownership map.
 - `deluno-ui-api-contract.md`: implemented UI-facing API contract and active gaps.
 - `external-integration-api.md`: external automation and refine-before-import surface.
+- `metadata-broker-contract.md`: managed TMDb gateway contract, deployment endpoint, and privacy boundary.
 - `packaging.md`: source-backed Docker and Windows packaging guide.
 - `DEPLOYMENT.md`: current deployment instructions for Docker, Compose, and Windows publish runs.
 - `TROUBLESHOOTING.md`: runtime, path-mapping, and startup troubleshooting.
@@ -21,6 +22,7 @@ Deluno keeps product, architecture, and repo-state context in the repository so 
 - `release-evidence-template.md`: standard issue comment template for RC/GA evidence and go/no-go decisions.
 - `release-notes-1.0.0-draft.md`: draft 1.0.0 release notes structure for final GA publication.
 - `upgrade-guide-0x-to-1x.md`: user upgrade procedure from prerelease line to GA line.
+- `MEDIA_AUTOMATION_TERMINOLOGY.md`: familiar media-automation terms and Deluno's simpler, media-first equivalents.
 
 ## Execution Plans
 

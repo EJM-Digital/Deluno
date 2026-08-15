@@ -1,4 +1,4 @@
-import { type FormEvent, type ReactNode, useMemo, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useLoaderData, useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -27,6 +27,8 @@ import {
   type MetadataProviderStatus,
   type MetadataSearchResult,
   type PlatformSettingsSnapshot,
+  type SetupProgressItem,
+  type SetupDraftItem,
   type QualityProfileItem,
   type CustomFormatItem
 } from "../lib/api";
@@ -55,6 +57,8 @@ interface SetupGuideLoaderData {
   indexers: IndexerItem[];
   clients: DownloadClientItem[];
   metadataStatus: MetadataProviderStatus | null;
+  progress: SetupProgressItem;
+  draft: SetupDraftItem;
 }
 
 interface GuideForm {
@@ -75,10 +79,6 @@ interface GuideForm {
   clientPort: string;
   clientUsername: string;
   clientPassword: string;
-  metadataProviderMode: "broker" | "hybrid" | "direct";
-  metadataBrokerUrl: string;
-  metadataTmdbApiKey: string;
-  metadataOmdbApiKey: string;
   backupEnabled: boolean;
   firstTitleType: "movies" | "tv";
   firstTitle: string;
@@ -110,12 +110,24 @@ type SetupCompletion = {
   firstTitlePath: string | null;
 };
 
+function toSetupDraft(form: GuideForm) {
+  return {
+    mode: form.mode, mediaIntent: form.mediaIntent, movieRootPath: form.movieRootPath, seriesRootPath: form.seriesRootPath,
+    downloadsPath: form.downloadsPath, qualityPreset: form.qualityPreset, formatGoal: form.formatGoal,
+    indexerName: form.indexerName, indexerProtocol: form.indexerProtocol, indexerUrl: form.indexerUrl,
+    clientName: form.clientName, clientProtocol: form.clientProtocol, clientHost: form.clientHost, clientPort: form.clientPort,
+    backupEnabled: form.backupEnabled,
+    firstTitleType: form.firstTitleType, firstTitle: form.firstTitle, firstTitleYear: form.firstTitleYear,
+    firstTitleMonitored: form.firstTitleMonitored
+  };
+}
+
 const STEPS: { id: StepId; label: string; copy: string }[] = [
-  { id: "mode", label: "Goal", copy: "Choose simple setup or jump to advanced controls." },
+  { id: "mode", label: "Your library", copy: "Choose what you want Deluno to manage." },
   { id: "folders", label: "Folders", copy: "Tell Deluno where media and downloads live." },
-  { id: "quality", label: "Quality", copy: "Choose how strict Deluno should be about quality." },
-  { id: "services", label: "Services", copy: "Connect optional indexers and download clients." },
-  { id: "finish", label: "Finish", copy: "Create the baseline and hand off to the app." }
+  { id: "quality", label: "Media plan", copy: "Choose the quality and release experience you want." },
+  { id: "services", label: "Connections", copy: "Connect search sources and downloads when you are ready." },
+  { id: "finish", label: "Start", copy: "Create your plan and open the Dashboard." }
 ];
 
 const QUALITY_PRESETS = {
@@ -200,17 +212,19 @@ const CLIENT_SETUP_PRESETS = [
 ] as const;
 
 export async function setupGuideLoader(): Promise<SetupGuideLoaderData> {
-  const [settings, libraries, qualityProfiles, customFormats, indexers, clients, metadataStatus] = await Promise.all([
+  const [settings, libraries, qualityProfiles, customFormats, indexers, clients, metadataStatus, progress, draft] = await Promise.all([
     fetchJson<PlatformSettingsSnapshot>("/api/settings"),
     fetchJson<LibraryItem[]>("/api/libraries"),
     fetchJson<QualityProfileItem[]>("/api/quality-profiles"),
     fetchJson<CustomFormatItem[]>("/api/custom-formats"),
     fetchJson<IndexerItem[]>("/api/indexers"),
     fetchJson<DownloadClientItem[]>("/api/download-clients"),
-    fetchJson<MetadataProviderStatus>("/api/metadata/status").catch(() => null)
+    fetchJson<MetadataProviderStatus>("/api/metadata/status").catch(() => null),
+    fetchJson<SetupProgressItem>("/api/setup/progress"),
+    fetchJson<SetupDraftItem>("/api/setup/draft")
   ]);
 
-  return { clients, customFormats, indexers, libraries, metadataStatus, qualityProfiles, settings };
+  return { clients, customFormats, draft, indexers, libraries, metadataStatus, progress, qualityProfiles, settings };
 }
 
 export function SetupGuidePage() {
@@ -220,7 +234,7 @@ export function SetupGuidePage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const returnTo = params.get("return") || "/";
-  const [stepIndex, setStepIndex] = useState(0);
+  const [stepIndex, setStepIndex] = useState(() => Math.min(STEPS.length - 1, Math.max(0, data.progress.lastCompletedStep)));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SetupCompletion | null>(null);
@@ -234,32 +248,28 @@ export function SetupGuidePage() {
     clientMessage: null
   });
   const [form, setForm] = useState<GuideForm>(() => ({
-    mode: "simple",
-    mediaIntent: "both",
-    movieRootPath: data.settings.movieRootPath ?? "",
-    seriesRootPath: data.settings.seriesRootPath ?? "",
-    downloadsPath: data.settings.downloadsPath ?? "",
-    qualityPreset: "",
-    formatGoal: "",
-    indexerName: data.indexers[0]?.name ?? "Primary indexer",
-    indexerProtocol: (data.indexers[0]?.protocol as GuideForm["indexerProtocol"]) ?? "torznab",
-    indexerUrl: data.indexers[0]?.baseUrl ?? "",
+    mode: data.draft.mode as GuideForm["mode"],
+    mediaIntent: data.draft.mediaIntent as GuideForm["mediaIntent"],
+    movieRootPath: data.draft.movieRootPath || data.settings.movieRootPath || "",
+    seriesRootPath: data.draft.seriesRootPath || data.settings.seriesRootPath || "",
+    downloadsPath: data.draft.downloadsPath || data.settings.downloadsPath || "",
+    qualityPreset: data.draft.qualityPreset as GuideForm["qualityPreset"],
+    formatGoal: data.draft.formatGoal as GuideForm["formatGoal"],
+    indexerName: data.draft.indexerName || data.indexers[0]?.name || "Primary indexer",
+    indexerProtocol: (data.draft.indexerProtocol || data.indexers[0]?.protocol || "torznab") as GuideForm["indexerProtocol"],
+    indexerUrl: data.draft.indexerUrl || data.indexers[0]?.baseUrl || "",
     indexerApiKey: data.indexers[0]?.apiKey ?? "",
-    clientName: data.clients[0]?.name ?? "Primary download client",
-    clientProtocol: (data.clients[0]?.protocol as GuideForm["clientProtocol"]) ?? "qbittorrent",
-    clientHost: data.clients[0]?.host ?? "",
-    clientPort: data.clients[0]?.port ? String(data.clients[0].port) : "8080",
+    clientName: data.draft.clientName || data.clients[0]?.name || "Primary download client",
+    clientProtocol: (data.draft.clientProtocol || data.clients[0]?.protocol || "qbittorrent") as GuideForm["clientProtocol"],
+    clientHost: data.draft.clientHost || data.clients[0]?.host || "",
+    clientPort: data.draft.clientPort || (data.clients[0]?.port ? String(data.clients[0].port) : "8080"),
     clientUsername: data.clients[0]?.username ?? "",
     clientPassword: "",
-    metadataProviderMode: (data.settings.metadataProviderMode as GuideForm["metadataProviderMode"]) ?? "direct",
-    metadataBrokerUrl: data.settings.metadataBrokerUrl ?? "",
-    metadataTmdbApiKey: "",
-    metadataOmdbApiKey: "",
-    backupEnabled: true,
-    firstTitleType: "movies",
-    firstTitle: "",
-    firstTitleYear: "",
-    firstTitleMonitored: true,
+    backupEnabled: data.draft.backupEnabled,
+    firstTitleType: data.draft.firstTitleType as GuideForm["firstTitleType"],
+    firstTitle: data.draft.firstTitle,
+    firstTitleYear: data.draft.firstTitleYear,
+    firstTitleMonitored: data.draft.firstTitleMonitored,
     firstTitleMetadata: null
   }));
 
@@ -270,23 +280,43 @@ export function SetupGuidePage() {
   const canCreateTv = hasTv && form.seriesRootPath.trim().length > 0;
   const hasQualityChoice = Boolean(form.qualityPreset);
   const hasReleaseRuleChoice = Boolean(form.formatGoal);
-  const canFinish = (canCreateMovies || canCreateTv) && hasQualityChoice && hasReleaseRuleChoice;
+  const hasReadyIndexer = data.indexers.some((item) => item.isEnabled && item.healthStatus === "healthy") || serviceTest.indexer === "passed";
+  const hasReadyClient = data.clients.some((item) => item.isEnabled && item.healthStatus === "healthy") || serviceTest.client === "passed";
+  const indexerConnectionRequested = Boolean(form.indexerUrl.trim()) && !hasReadyIndexer;
+  const clientConnectionRequested = Boolean(form.clientHost.trim()) && !hasReadyClient;
+  const canFinish =
+    (canCreateMovies || canCreateTv) &&
+    hasQualityChoice &&
+    hasReleaseRuleChoice &&
+    !indexerConnectionRequested &&
+    !clientConnectionRequested;
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void authedFetch("/api/setup/draft", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(toSetupDraft(form))
+      }).catch(() => undefined);
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [form]);
 
   const completion = useMemo(() => {
     const checks = [
       { label: "Account created", done: true },
       { label: "Media root chosen", done: canCreateMovies || canCreateTv },
       { label: "Quality profile chosen", done: hasQualityChoice },
-      { label: "Release rules chosen", done: hasReleaseRuleChoice },
-      { label: "Search source connected", done: data.indexers.length > 0 || serviceTest.indexer === "passed" },
-      { label: "Download client connected", done: data.clients.length > 0 || serviceTest.client === "passed" }
+      { label: "Release scoring chosen", done: hasReleaseRuleChoice },
+      { label: "Search source ready", done: hasReadyIndexer },
+      { label: "Downloads ready", done: hasReadyClient }
     ];
     return checks;
   }, [
     canCreateMovies,
     canCreateTv,
-    data.clients.length,
-    data.indexers.length,
+    hasReadyClient,
+    hasReadyIndexer,
     form.formatGoal,
     form.qualityPreset,
     serviceTest.client,
@@ -294,15 +324,31 @@ export function SetupGuidePage() {
   ]);
 
   function patch(patchValue: Partial<GuideForm>) {
+    if (["indexerName", "indexerProtocol", "indexerUrl", "indexerApiKey"].some((key) => key in patchValue)) {
+      setServiceTest((current) => ({ ...current, indexer: "idle", indexerMessage: null }));
+    }
+    if (["clientName", "clientProtocol", "clientHost", "clientPort", "clientUsername", "clientPassword"].some((key) => key in patchValue)) {
+      setServiceTest((current) => ({ ...current, client: "idle", clientMessage: null }));
+    }
     setForm((currentForm) => ({ ...currentForm, ...patchValue }));
   }
 
+  function saveProgress(lastCompletedStep: number, isSkipped = false, isCompleted = false) {
+    return authedFetch("/api/setup/progress", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lastCompletedStep, isSkipped, isCompleted })
+    });
+  }
+
+  function moveToStep(nextStep: number) {
+    const boundedStep = Math.min(STEPS.length - 1, Math.max(0, nextStep));
+    setStepIndex(boundedStep);
+    void saveProgress(boundedStep).catch(() => undefined);
+  }
+
   function skipWizard() {
-    try {
-      window.localStorage.setItem("deluno-setup-wizard-skipped", "1");
-    } catch {
-      // noop
-    }
+    void saveProgress(stepIndex, true).catch(() => undefined);
     navigate(returnTo, { replace: true });
   }
 
@@ -319,6 +365,13 @@ export function SetupGuidePage() {
       } else if (!hasQualityChoice || !hasReleaseRuleChoice) {
         setError("Choose a picture quality and release preference before finishing simple setup.");
         setStepIndex(2);
+      } else if (indexerConnectionRequested || clientConnectionRequested) {
+        setError(indexerConnectionRequested && clientConnectionRequested
+          ? "Test the search source and download destination before Deluno saves and routes them. Or clear either connection to finish a manual-only setup."
+          : indexerConnectionRequested
+            ? "Test the search source before Deluno saves and routes it. Or clear it to finish a manual-only setup."
+            : "Test the download destination before Deluno saves and routes it. Or clear it to finish a manual-only setup.");
+        setStepIndex(3);
       }
       return;
     }
@@ -333,8 +386,8 @@ export function SetupGuidePage() {
       const tvCustomFormatIds = hasTv ? await ensureCustomFormats(customFormatCache, "tv", form, createdEntities) : [];
       const movieProfile = hasMovies ? await ensureQualityProfile(qualityProfileCache, "movies", form, movieCustomFormatIds, createdEntities) : null;
       const tvProfile = hasTv ? await ensureQualityProfile(qualityProfileCache, "tv", form, tvCustomFormatIds, createdEntities) : null;
-      const indexer = await ensureIndexer(data.indexers, form, createdEntities);
-      const client = await ensureClient(data.clients, form, createdEntities);
+      const indexer = await ensureIndexer(data.indexers, form, serviceTest.indexer === "passed", createdEntities);
+      const client = await ensureClient(data.clients, form, serviceTest.client === "passed", createdEntities);
       const movieLibrary = canCreateMovies
         ? await ensureLibrary(data.libraries, "movies", form.movieRootPath, settings.downloadsPath, movieProfile?.id ?? null, form, createdEntities)
         : null;
@@ -370,6 +423,7 @@ export function SetupGuidePage() {
       };
 
       await recordSetupCompleted(completionResult).catch(() => undefined);
+      await authedFetch("/api/setup/draft", { method: "DELETE" }).catch(() => undefined);
       setResult(completionResult);
     } catch (err) {
       if (createdEntities.length > 0) {
@@ -388,12 +442,8 @@ export function SetupGuidePage() {
       setError("Type a movie or TV title before searching metadata.");
       return;
     }
-    const canConfigureMetadataNow =
-      (form.metadataProviderMode === "broker" && form.metadataBrokerUrl.trim()) ||
-      (form.metadataProviderMode === "hybrid" && (form.metadataBrokerUrl.trim() || form.metadataTmdbApiKey.trim())) ||
-      (form.metadataProviderMode === "direct" && form.metadataTmdbApiKey.trim());
-    if (data.metadataStatus && !data.metadataStatus.isConfigured && !canConfigureMetadataNow) {
-      setError("Metadata lookup is not configured yet. Choose a broker URL, hybrid fallback, or direct TMDb key before searching.");
+    if (data.metadataStatus && !data.metadataStatus.isConfigured) {
+      setError("Title matching is temporarily unavailable. You can still add this title manually and try metadata search again later.");
       return;
     }
 
@@ -401,9 +451,6 @@ export function SetupGuidePage() {
     setMetadataBusy(true);
     setMetadataResults([]);
     try {
-      if (data.metadataStatus && !data.metadataStatus.isConfigured && canConfigureMetadataNow) {
-        await saveSettings(data.settings, form);
-      }
       const params = new URLSearchParams({
         mediaType: form.firstTitleType,
         query: title
@@ -416,6 +463,41 @@ export function SetupGuidePage() {
       setError(err instanceof Error ? err.message : "Metadata lookup failed.");
     } finally {
       setMetadataBusy(false);
+    }
+  }
+
+  function selectMetadataResult(item: MetadataSearchResult) {
+    patch({
+      firstTitle: item.title,
+      firstTitleYear: item.year ? String(item.year) : form.firstTitleYear,
+      firstTitleMetadata: item
+    });
+    void enrichSelectedMetadata(item);
+  }
+
+  async function enrichSelectedMetadata(item: MetadataSearchResult) {
+    try {
+      const params = new URLSearchParams({
+        mediaType: form.firstTitleType,
+        query: item.title,
+        providerId: item.providerId
+      });
+      if (item.year) params.set("year", String(item.year));
+      const details = await fetchJson<MetadataSearchResult[]>(`/api/metadata/search?${params.toString()}`);
+      const detailedItem = details.find((candidate) => candidate.providerId === item.providerId);
+      if (!detailedItem) return;
+
+      setForm((currentForm) =>
+        currentForm.firstTitleMetadata?.provider === item.provider && currentForm.firstTitleMetadata.providerId === item.providerId
+          ? {
+              ...currentForm,
+              firstTitle: detailedItem.title,
+              firstTitleYear: detailedItem.year ? String(detailedItem.year) : currentForm.firstTitleYear,
+              firstTitleMetadata: detailedItem
+            }
+          : currentForm);
+    } catch {
+      // The chosen card remains valid; enrichment will be available from the title page later.
     }
   }
 
@@ -439,7 +521,7 @@ export function SetupGuidePage() {
             <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
               <SetupOutcome label="Folders" value="Movies, TV, downloads" />
               <SetupOutcome label="Quality" value="Simple profile choice" />
-              <SetupOutcome label="Release rules" value="Plain-English formats" />
+              <SetupOutcome label="Release scoring" value="Plain-English format rules" />
               <SetupOutcome label="Routing" value="Optional source + client" />
             </div>
           </div>
@@ -469,7 +551,7 @@ export function SetupGuidePage() {
               <button
                 key={step.id}
                 type="button"
-                onClick={() => setStepIndex(index)}
+                onClick={() => moveToStep(index)}
                 className={cn(
                   "w-full rounded-2xl border p-4 text-left transition",
                   active ? "border-primary/40 bg-primary/10" : "border-hairline bg-card hover:border-primary/25",
@@ -515,11 +597,12 @@ export function SetupGuidePage() {
               />
             ) : null}
             {current.id === "finish" ? (
-              <FinishStep
-                form={form}
-                patch={patch}
-                canFinish={canFinish}
-                result={result}
+          <FinishStep
+            form={form}
+            patch={patch}
+            canFinish={canFinish}
+            connectionTestsRequired={indexerConnectionRequested || clientConnectionRequested}
+            result={result}
                 error={error}
                 rollbackMessage={rollbackMessage}
                 metadataStatus={data.metadataStatus}
@@ -527,12 +610,13 @@ export function SetupGuidePage() {
                 metadataBusy={metadataBusy}
                 existingMetadataConfigured={Boolean(data.metadataStatus?.isConfigured)}
                 onMetadataSearch={() => void handleMetadataSearch()}
+                onSelectMetadata={selectMetadataResult}
               />
             ) : null}
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-hairline p-[var(--tile-pad)]">
-            <Button type="button" variant="outline" onClick={() => (stepIndex === 0 ? skipWizard() : setStepIndex((value) => Math.max(0, value - 1)))} disabled={busy}>
+            <Button type="button" variant="outline" onClick={() => (stepIndex === 0 ? skipWizard() : moveToStep(stepIndex - 1))} disabled={busy}>
               {stepIndex === 0 ? <Settings2 className="h-4 w-4" /> : <ArrowLeft className="h-4 w-4" />}
               {stepIndex === 0 ? "Skip to advanced" : "Back"}
             </Button>
@@ -548,7 +632,7 @@ export function SetupGuidePage() {
                   </Link>
                 </Button>
               ) : stepIndex < STEPS.length - 1 ? (
-                <Button type="button" onClick={() => setStepIndex((value) => Math.min(STEPS.length - 1, value + 1))}>
+                <Button type="button" onClick={() => moveToStep(stepIndex + 1)}>
                   Continue
                   <ArrowRight className="h-4 w-4" />
                 </Button>
@@ -620,7 +704,7 @@ export function SetupGuidePage() {
 
 function ModeStep({ form, patch, onSkip }: { form: GuideForm; patch: (patchValue: Partial<GuideForm>) => void; onSkip: () => void }) {
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
+    <div className="grid gap-[var(--grid-gap)] lg:grid-cols-2">
       <ChoiceCard
         active={form.mode === "simple"}
         icon={Rocket}
@@ -651,7 +735,7 @@ function ModeStep({ form, patch, onSkip }: { form: GuideForm; patch: (patchValue
 
 function FoldersStep({ form, patch }: { form: GuideForm; patch: (patchValue: Partial<GuideForm>) => void }) {
   return (
-    <div className="space-y-5">
+    <div className="space-y-[var(--page-gap)]">
       <div className="grid gap-3 sm:grid-cols-3">
         {(["both", "movies", "tv"] as const).map((value) => (
           <button
@@ -677,7 +761,7 @@ function FoldersStep({ form, patch }: { form: GuideForm; patch: (patchValue: Par
         </p>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-[var(--grid-gap)] lg:grid-cols-2">
         {(form.mediaIntent === "movies" || form.mediaIntent === "both") ? (
           <FieldShell icon={FolderTree} label="Movies root" copy="Where movie folders should live. UNC, Docker mount, mapped drives, and local paths are supported.">
             <PathInput value={form.movieRootPath} onChange={(value) => patch({ movieRootPath: value })} placeholder="D:\\Media\\Movies or /media/movies" browseTitle="Choose movies root" />
@@ -701,7 +785,7 @@ function QualityStep({ form, patch }: { form: GuideForm; patch: (patchValue: Par
   const selectedBundle = form.formatGoal ? getFormatBundle(form.formatGoal) : null;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-[var(--page-gap)]">
       <section>
         <div className="mb-3">
           <p className="text-sm font-semibold text-foreground">Picture quality</p>
@@ -709,7 +793,7 @@ function QualityStep({ form, patch }: { form: GuideForm; patch: (patchValue: Par
             Choose a preset and Deluno handles the details. You can fine-tune everything later.
           </p>
         </div>
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid gap-[var(--grid-gap)] lg:grid-cols-2">
           {Object.entries(QUALITY_PRESETS).map(([id, preset]) => (
             <ChoiceCard
               key={id}
@@ -790,7 +874,7 @@ function ServicesStep({
   onTestClient: () => void;
 }) {
   return (
-    <div className="grid gap-4 xl:grid-cols-2">
+    <div className="grid gap-[var(--grid-gap)] xl:grid-cols-2">
       <FieldShell icon={RadioTower} label="Search source" copy="Optional. Connect a search provider now, or skip this and add one later.">
         <div className="grid gap-3">
           <div className="grid gap-2 sm:grid-cols-2">
@@ -889,6 +973,7 @@ function FinishStep({
   form,
   patch,
   canFinish,
+  connectionTestsRequired,
   result,
   error,
   rollbackMessage,
@@ -896,11 +981,13 @@ function FinishStep({
   metadataResults,
   metadataBusy,
   existingMetadataConfigured,
-  onMetadataSearch
+  onMetadataSearch,
+  onSelectMetadata
 }: {
   form: GuideForm;
   patch: (patchValue: Partial<GuideForm>) => void;
   canFinish: boolean;
+  connectionTestsRequired: boolean;
   result: SetupCompletion | null;
   error: string | null;
   rollbackMessage: string | null;
@@ -909,23 +996,18 @@ function FinishStep({
   metadataBusy: boolean;
   existingMetadataConfigured: boolean;
   onMetadataSearch: () => void;
+  onSelectMetadata: (item: MetadataSearchResult) => void;
 }) {
   if (result) {
     return <SetupComplete result={result} />;
   }
 
-  const metadataRouteReady =
-    existingMetadataConfigured ||
-    (form.metadataProviderMode === "broker" && Boolean(form.metadataBrokerUrl.trim())) ||
-    (form.metadataProviderMode === "hybrid" && Boolean(form.metadataBrokerUrl.trim() || form.metadataTmdbApiKey.trim())) ||
-    (form.metadataProviderMode === "direct" && Boolean(form.metadataTmdbApiKey.trim()));
-
   return (
-    <div className="space-y-4">
+    <div className="space-y-[var(--page-gap)]">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <SummaryTile label="Libraries" value={form.mediaIntent === "both" ? "Movies + TV" : form.mediaIntent === "tv" ? "TV" : "Movies"} />
         <SummaryTile label="Quality" value={form.qualityPreset ? QUALITY_PRESETS[form.qualityPreset].label : "Not chosen"} />
-        <SummaryTile label="Release rules" value={form.formatGoal ? FORMAT_GOALS[form.formatGoal].label : "Not chosen"} />
+        <SummaryTile label="Release scoring" value={form.formatGoal ? FORMAT_GOALS[form.formatGoal].label : "Not chosen"} />
         <SummaryTile label="Indexer" value={form.indexerUrl.trim() ? form.indexerProtocol : "Later"} />
         <SummaryTile label="Client" value={form.clientHost.trim() ? form.clientProtocol : "Later"} />
       </div>
@@ -953,7 +1035,9 @@ function FinishStep({
       </div>
       {!canFinish ? (
         <p className="rounded-xl border border-warning/25 bg-warning/10 p-4 text-sm text-warning">
-          Choose at least one library root folder, picture quality, and release preference before Deluno can create the baseline.
+          {connectionTestsRequired
+            ? "Test each connection you entered before Deluno saves it. Clear a connection to continue with a manual-only setup."
+            : "Choose at least one library root folder, picture quality, and release preference before Deluno can create the baseline."}
         </p>
       ) : null}
       {error ? <p className="rounded-xl border border-destructive/25 bg-destructive/10 p-4 text-sm text-destructive">{error}</p> : null}
@@ -1008,70 +1092,22 @@ function FinishStep({
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {!existingMetadataConfigured ? (
-            <div className="grid w-full gap-3 rounded-xl border border-hairline bg-background/35 p-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-              <div>
-                <p className="text-sm font-semibold text-foreground">Metadata lookup provider</p>
-                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                  Choose how Deluno should resolve title search, posters, artwork, provider IDs, and ratings.
-                </p>
-                <div className="mt-3 grid gap-2">
-                  {[
-                    { value: "broker", label: "Deluno broker", copy: "No user keys once the hosted broker is available." },
-                    { value: "hybrid", label: "Hybrid", copy: "Broker first, then direct TMDb fallback." },
-                    { value: "direct", label: "Direct", copy: "Use your own TMDb key locally." }
-                  ].map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => patch({ metadataProviderMode: option.value as GuideForm["metadataProviderMode"] })}
-                      className={cn(
-                        "rounded-lg border px-3 py-2 text-left text-xs transition",
-                        form.metadataProviderMode === option.value
-                          ? "border-primary/45 bg-primary/10 text-foreground"
-                          : "border-hairline bg-background/35 text-muted-foreground hover:text-foreground"
-                      )}
-                    >
-                      <span className="block font-semibold">{option.label}</span>
-                      <span className="mt-1 block">{option.copy}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="grid gap-2">
-                {form.metadataProviderMode !== "direct" ? (
-                  <Input
-                    value={form.metadataBrokerUrl}
-                    onChange={(event) => patch({ metadataBrokerUrl: event.target.value })}
-                    placeholder="https://metadata.deluno.app"
-                  />
-                ) : null}
-                <Input
-                  value={form.metadataTmdbApiKey}
-                  onChange={(event) => patch({ metadataTmdbApiKey: event.target.value })}
-                  placeholder={form.metadataProviderMode === "broker" ? "Optional TMDb fallback key" : "TMDb API key"}
-                  type="password"
-                />
-                <Input
-                  value={form.metadataOmdbApiKey}
-                  onChange={(event) => patch({ metadataOmdbApiKey: event.target.value })}
-                  placeholder="OMDb key for IMDb / Rotten Tomatoes ratings later"
-                  type="password"
-                />
-              </div>
-            </div>
+            <p className="w-full rounded-xl border border-warning/25 bg-warning/10 p-3 text-xs leading-relaxed text-warning">
+              Title matching is not available on this Deluno installation yet. You can finish setup and add this title manually; the administrator can restore matching later without changing your library setup.
+            </p>
           ) : null}
           <Button
             type="button"
             variant="secondary"
             onClick={onMetadataSearch}
-            disabled={metadataBusy || !metadataRouteReady}
+            disabled={metadataBusy || !existingMetadataConfigured}
             className="gap-2"
           >
             {metadataBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
             Search metadata
           </Button>
           <Badge variant={metadataStatus?.isConfigured ? "success" : "warning"}>
-            {metadataStatus?.isConfigured ? metadataStatus.mode : metadataRouteReady ? "Will save metadata route" : "Manual title entry"}
+            {metadataStatus?.isConfigured ? "Title matching ready" : "Manual title entry"}
           </Badge>
           {form.firstTitleMetadata ? (
             <Badge variant="info">{form.firstTitleMetadata.provider.toUpperCase()} #{form.firstTitleMetadata.providerId}</Badge>
@@ -1083,11 +1119,7 @@ function FinishStep({
               <button
                 key={`${item.provider}:${item.providerId}`}
                 type="button"
-                onClick={() => patch({
-                  firstTitle: item.title,
-                  firstTitleYear: item.year ? String(item.year) : form.firstTitleYear,
-                  firstTitleMetadata: item
-                })}
+                onClick={() => onSelectMetadata(item)}
                 className={cn(
                   "flex min-w-0 gap-3 rounded-xl border p-2 text-left transition hover:border-primary/35",
                   form.firstTitleMetadata?.provider === item.provider && form.firstTitleMetadata.providerId === item.providerId
@@ -1129,7 +1161,7 @@ function FinishStep({
       </div>
       <p className="text-sm leading-relaxed text-muted-foreground">
         Nothing here is permanent. After setup, you can open Settings for destination rules, custom formats, quality profiles,
-        metadata providers, tags, multi-library routing, and advanced automation.
+        metadata preferences, tags, multi-library routing, and advanced automation.
       </p>
     </div>
   );
@@ -1137,7 +1169,7 @@ function FinishStep({
 
 function SetupComplete({ result }: { result: SetupCompletion }) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-[var(--page-gap)]">
       <div className="rounded-2xl border border-success/25 bg-success/10 p-5">
         <p className="flex items-center gap-2 font-display text-2xl font-semibold tracking-tight text-foreground">
           <CheckCircle2 className="h-5 w-5 text-success" />
@@ -1341,10 +1373,8 @@ async function saveSettings(settings: PlatformSettingsSnapshot, form: GuideForm)
     metadataArtworkEnabled: settings.metadataArtworkEnabled,
     metadataCertificationCountry: settings.metadataCertificationCountry || "US",
     metadataLanguage: settings.metadataLanguage || "en",
-    metadataProviderMode: form.metadataProviderMode || settings.metadataProviderMode || "direct",
-    metadataBrokerUrl: form.metadataBrokerUrl.trim() || settings.metadataBrokerUrl || "",
-    metadataTmdbApiKey: form.metadataTmdbApiKey.trim() || null,
-    metadataOmdbApiKey: form.metadataOmdbApiKey.trim() || null
+    metadataProviderMode: settings.metadataProviderMode || "direct",
+    metadataBrokerUrl: settings.metadataBrokerUrl || ""
   };
 
   return await fetchJson<PlatformSettingsSnapshot>("/api/settings", {
@@ -1459,30 +1489,52 @@ async function ensureQualityProfile(
   return created;
 }
 
-async function ensureIndexer(existing: IndexerItem[], form: GuideForm, createdEntities: CreatedEntity[]) {
-  if (existing[0]) return existing[0];
+async function ensureIndexer(existing: IndexerItem[], form: GuideForm, tested: boolean, createdEntities: CreatedEntity[]) {
   if (!form.indexerUrl.trim()) return null;
+  if (!tested) throw new Error("Test the search source before saving it.");
 
-  const created = await fetchJson<IndexerItem>("/api/indexers", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(buildIndexerPayload(form))
-  });
-  createdEntities.push({ kind: "indexer", id: created.id });
-  return created;
+  const item = existing[0]
+    ? await fetchJson<IndexerItem>(`/api/indexers/${existing[0].id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildIndexerPayload(form))
+      })
+    : await fetchJson<IndexerItem>("/api/indexers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildIndexerPayload(form))
+      });
+  if (!existing[0]) createdEntities.push({ kind: "indexer", id: item.id });
+
+  const persistedTest = await fetchJson<ConnectionTestResponse>(`/api/indexers/${item.id}/test`, { method: "POST" });
+  if (persistedTest.healthStatus !== "healthy") {
+    throw new Error(persistedTest.message || "Search source did not pass its persisted connection test.");
+  }
+  return item;
 }
 
-async function ensureClient(existing: DownloadClientItem[], form: GuideForm, createdEntities: CreatedEntity[]) {
-  if (existing[0]) return existing[0];
+async function ensureClient(existing: DownloadClientItem[], form: GuideForm, tested: boolean, createdEntities: CreatedEntity[]) {
   if (!form.clientHost.trim()) return null;
+  if (!tested) throw new Error("Test the download destination before saving it.");
 
-  const created = await fetchJson<DownloadClientItem>("/api/download-clients", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(buildClientPayload(form))
-  });
-  createdEntities.push({ kind: "client", id: created.id });
-  return created;
+  const item = existing[0]
+    ? await fetchJson<DownloadClientItem>(`/api/download-clients/${existing[0].id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildClientPayload(form))
+      })
+    : await fetchJson<DownloadClientItem>("/api/download-clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildClientPayload(form))
+      });
+  if (!existing[0]) createdEntities.push({ kind: "client", id: item.id });
+
+  const persistedTest = await fetchJson<ConnectionTestResponse>(`/api/download-clients/${item.id}/test`, { method: "POST" });
+  if (persistedTest.healthStatus !== "healthy") {
+    throw new Error(persistedTest.message || "Download destination did not pass its persisted connection test.");
+  }
+  return item;
 }
 
 function buildIndexerPayload(form: GuideForm) {

@@ -1,10 +1,5 @@
 import { expect, test } from "@playwright/test";
-
-const fallbackCredentials = {
-  displayName: "Deluno Smoke User",
-  username: "deluno-smoke",
-  password: "deluno-smoke-password"
-};
+import { fallbackCredentials } from "../helpers/auth-helper";
 
 let credentials: { username: string; password: string } | null = null;
 
@@ -60,17 +55,24 @@ test.describe("authenticated app smoke", () => {
     "/tv/upgrades",
     "/calendar",
     "/indexers",
+    "/indexers/indexers",
+    "/indexers/download-clients",
+    "/indexers/library-routing",
     "/activity",
     "/queue",
     "/settings",
     "/settings/media-management",
+    "/settings/processing",
     "/settings/destination-rules",
     "/settings/profiles",
     "/settings/quality",
     "/settings/custom-formats",
     "/settings/lists",
+    "/settings/automation",
     "/settings/metadata",
     "/settings/general",
+    "/settings/notifications",
+    "/settings/migration",
     "/settings/ui",
     "/system",
     "/system/api",
@@ -84,25 +86,42 @@ test.describe("authenticated app smoke", () => {
     });
   }
 
-  test("opens full movie and TV workspaces from library pages", async ({ page }) => {
-    await page.goto("/movies");
-    const movieLink = page.locator('a[href^="/movies/"]').first();
-    if ((await movieLink.count()) > 0) {
-      await movieLink.click();
-      await expect(page).toHaveURL(/\/movies\/[^/]+$/);
-      await expect(page.getByText("Unexpected Application Error")).toHaveCount(0);
-      await expect(page.getByText("This area could not load")).toHaveCount(0);
-      await expect(page.locator("body")).toContainText(/Movie workspace|Search and dispatch|Metadata/);
-    }
+  test("desktop Library setup navigation expands in place and keeps child navigation clear", async ({ page }) => {
+    test.skip(test.info().project.name === "mobile", "The desktop sidebar is replaced by the mobile navigation drawer.");
 
-    await page.goto("/tv");
-    const tvLink = page.locator('a[href^="/tv/"]').first();
-    if ((await tvLink.count()) > 0) {
-      await tvLink.click();
-      await expect(page).toHaveURL(/\/tv\/[^/]+$/);
-      await expect(page.getByText("Unexpected Application Error")).toHaveCount(0);
-      await expect(page.getByText("This area could not load")).toHaveCount(0);
-      await expect(page.locator("body")).toContainText(/TV workspace|Search and dispatch|Metadata|Episodes/);
-    }
+    await page.goto("/settings/media-management");
+
+    const sidebar = page.locator("aside");
+    const setupToggle = page.getByRole("button", { name: "Collapse Library setup" });
+    const librarySection = page.getByRole("link", { name: "Library", exact: true });
+    const processingAndImport = page.getByRole("link", { name: "Processing & import", exact: true });
+
+    await expect(sidebar).toBeVisible();
+    expect(await sidebar.evaluate((element) => getComputedStyle(element).overflowX)).toBe("visible");
+    await expect(setupToggle).toBeVisible();
+    await expect(librarySection).toBeVisible();
+    await expect(processingAndImport).toBeVisible();
+
+    const parentBox = await librarySection.boundingBox();
+    const childBox = await processingAndImport.boundingBox();
+    expect(parentBox).not.toBeNull();
+    expect(childBox).not.toBeNull();
+    expect(childBox!.x).toBeGreaterThan(parentBox!.x);
+
+    await setupToggle.click();
+    await expect(processingAndImport).toBeHidden();
+    await expect(page).toHaveURL(/\/settings\/media-management$/);
+
+    await page.getByRole("button", { name: "Expand Library setup" }).click();
+    await expect(processingAndImport).toBeVisible();
+
+    await page.getByRole("link", { name: "Connections", exact: true }).click();
+    await expect(page).toHaveURL(/\/indexers$/);
+    const downloadClients = page.getByRole("link", { name: "Download clients", exact: true });
+    await expect(downloadClients).toBeVisible();
+    await downloadClients.click();
+    await expect(page).toHaveURL(/\/indexers\/download-clients$/);
+    await expect(page.getByText("Queue removal permission", { exact: true })).toBeVisible();
   });
+
 });

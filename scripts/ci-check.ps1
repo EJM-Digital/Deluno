@@ -43,18 +43,17 @@ function Invoke-LoggedCommand {
     $exitCode = 1
 
     try {
-        $process = Start-Process `
-            -FilePath $FilePath `
-            -ArgumentList $Arguments `
-            -WorkingDirectory $Root `
-            -NoNewWindow `
-            -Wait `
-            -PassThru `
-            -RedirectStandardOutput $stdoutPath `
-            -RedirectStandardError $stderrPath
-
-        if ($null -ne $process) {
-            $exitCode = $process.ExitCode
+        # Invoke directly instead of Start-Process.  The latter can keep the
+        # wrapper alive after a caller has timed out when a tool spawns a
+        # short-lived child that inherits one of the redirected handles.
+        # Direct invocation preserves the real exit code and waits for the
+        # complete command tree before we read its captured output.
+        Push-Location $Root
+        try {
+            & $FilePath @Arguments 1> $stdoutPath 2> $stderrPath
+            $exitCode = $LASTEXITCODE
+        } finally {
+            Pop-Location
         }
     } finally {
         $stdout = if (Test-Path $stdoutPath) { Get-Content $stdoutPath -Raw } else { "" }
@@ -99,6 +98,20 @@ function Resolve-NpmPath {
     throw "npm.cmd was not found on PATH and no fallback path was found."
 }
 
+function Resolve-NodePath {
+    $nodeCommand = Get-Command node.exe -ErrorAction SilentlyContinue
+    if ($null -ne $nodeCommand) {
+        return $nodeCommand.Source
+    }
+
+    $commonNodePath = "C:\Program Files\nodejs\node.exe"
+    if (Test-Path $commonNodePath) {
+        return $commonNodePath
+    }
+
+    throw "node.exe was not found on PATH and no fallback path was found."
+}
+
 function Resolve-PowerShellPath {
     $psCommand = Get-Command powershell.exe -ErrorAction SilentlyContinue
     if ($null -ne $psCommand) {
@@ -115,6 +128,7 @@ function Resolve-PowerShellPath {
 
 $dotnetPath = Resolve-DotnetPath
 $npmPath = Resolve-NpmPath
+$nodePath = Resolve-NodePath
 $powerShellPath = Resolve-PowerShellPath
 
 Write-Host ""
@@ -186,6 +200,19 @@ if ($web.ExitCode -eq 0) {
 } else {
     if ($web.Output) { Write-Host $web.Output }
     Write-Fail "build:web failed"
+}
+
+Write-Host ""
+Write-Host "Metadata gateway"
+
+$gatewaySyntax = Invoke-LoggedCommand -FilePath $nodePath -Arguments @("--check", "services/metadata-gateway/src/index.js")
+$gatewayTests = Invoke-LoggedCommand -FilePath $nodePath -Arguments @("--test", "services/metadata-gateway/test/index.test.js")
+if ($gatewaySyntax.ExitCode -eq 0 -and $gatewayTests.ExitCode -eq 0) {
+    Write-Ok "metadata gateway contract"
+} else {
+    if ($gatewaySyntax.Output) { Write-Host $gatewaySyntax.Output }
+    if ($gatewayTests.Output) { Write-Host $gatewayTests.Output }
+    Write-Fail "metadata gateway contract"
 }
 
 Write-Host ""

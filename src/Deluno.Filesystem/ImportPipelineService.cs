@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Deluno.Infrastructure.Observability;
 using Deluno.Jobs.Data;
 using Deluno.Jobs.Decisions;
@@ -17,7 +18,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Deluno.Filesystem;
 
-public sealed class ImportPipelineService(
+public sealed partial class ImportPipelineService(
     IPlatformSettingsRepository platformRepository,
     IMovieCatalogRepository movieCatalogRepository,
     ISeriesCatalogRepository seriesCatalogRepository,
@@ -504,9 +505,8 @@ public sealed class ImportPipelineService(
                        (mediaType == "tv" ? settings.SeriesFolderFormat : settings.MovieFolderFormat);
         var folder = ApplyTemplate(template, title, request.Year);
         var destinationFolder = string.IsNullOrWhiteSpace(rootPath) ? folder : Path.Combine(rootPath, folder);
-        var fileName = string.IsNullOrWhiteSpace(request.FileName)
-            ? Path.GetFileName(request.SourcePath)
-            : request.FileName.Trim();
+        var resolvedName = ResolveDestinationFileName(request, settings, mediaType, title);
+        var fileName = resolvedName.FileName;
         var destinationPath = Path.Combine(destinationFolder, SanitizeFileName(fileName));
         var canHardlink = CanLikelyHardlink(request.SourcePath, destinationPath);
         var sourceExists = File.Exists(request.SourcePath);
@@ -514,7 +514,11 @@ public sealed class ImportPipelineService(
         var sourceSize = sourceExists ? new FileInfo(request.SourcePath).Length : 0;
         var destinationSize = destinationExists ? new FileInfo(destinationPath).Length : 0;
         var isSupportedMediaFile = SupportedVideoExtensions.Contains(Path.GetExtension(destinationPath));
-        var warnings = BuildImportWarnings(request.SourcePath, destinationPath, sourceExists, destinationExists, canHardlink, isSupportedMediaFile);
+        var warnings = BuildImportWarnings(request.SourcePath, destinationPath, sourceExists, destinationExists, canHardlink, isSupportedMediaFile).ToList();
+        if (!string.IsNullOrWhiteSpace(resolvedName.Warning))
+        {
+            warnings.Add(resolvedName.Warning);
+        }
         var preferredMode = settings.UseHardlinks && canHardlink ? "hardlink" : "copy";
         var explanation = rule is null
             ? "No destination rule matched, so Deluno used the default root folder."
@@ -1043,12 +1047,65 @@ public sealed class ImportPipelineService(
             .Replace("{Year}", safeYear, StringComparison.OrdinalIgnoreCase));
     }
 
+    private static ResolvedDestinationFileName ResolveDestinationFileName(
+        ImportPreviewRequest request,
+        PlatformSettingsSnapshot settings,
+        string mediaType,
+        string title)
+    {
+        var incomingName = string.IsNullOrWhiteSpace(request.FileName)
+            ? Path.GetFileName(request.SourcePath)
+            : request.FileName.Trim();
+        if (!settings.RenameOnImport)
+        {
+            return new ResolvedDestinationFileName(incomingName, null);
+        }
+
+        var extension = Path.GetExtension(incomingName);
+        if (string.IsNullOrWhiteSpace(extension))
+        {
+            return new ResolvedDestinationFileName(incomingName, "Rename on import could not determine the file extension, so Deluno preserved the incoming filename.");
+        }
+
+        if (mediaType != "tv")
+        {
+            var movieName = ApplyTemplate("{Movie Title} ({Release Year})", title, request.Year);
+            return new ResolvedDestinationFileName($"{movieName}{extension}", null);
+        }
+
+        var episode = EpisodeNumberPattern().Match(incomingName);
+        if (!episode.Success ||
+            !int.TryParse(episode.Groups["season"].Value, out var seasonNumber) ||
+            !int.TryParse(episode.Groups["episode"].Value, out var episodeNumber))
+        {
+            return new ResolvedDestinationFileName(
+                incomingName,
+                "Rename on import preserved this TV filename because Deluno could not safely determine its season and episode number.");
+        }
+
+        var formatted = settings.EpisodeFileFormat
+            .Replace("{Series Title}", SanitizeFileName(title), StringComparison.OrdinalIgnoreCase)
+            .Replace("{Title}", SanitizeFileName(title), StringComparison.OrdinalIgnoreCase)
+            .Replace("{season:00}", seasonNumber.ToString("D2"), StringComparison.OrdinalIgnoreCase)
+            .Replace("{season}", seasonNumber.ToString(), StringComparison.OrdinalIgnoreCase)
+            .Replace("{episode:00}", episodeNumber.ToString("D2"), StringComparison.OrdinalIgnoreCase)
+            .Replace("{episode}", episodeNumber.ToString(), StringComparison.OrdinalIgnoreCase)
+            .Replace("{Episode Title}", $"Episode {episodeNumber:D2}", StringComparison.OrdinalIgnoreCase)
+            .Replace("{Quality}", "", StringComparison.OrdinalIgnoreCase);
+        return new ResolvedDestinationFileName($"{SanitizeFileName(formatted)}{extension}", null);
+    }
+
+    [GeneratedRegex(@"\bS(?<season>\d{1,2})E(?<episode>\d{1,3})\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex EpisodeNumberPattern();
+
     private static string SanitizeFileName(string value)
     {
         var invalid = Path.GetInvalidFileNameChars();
-        var cleaned = new string(value.Select(character => invalid.Contains(character) ? '-' : character).ToArray());
+        var cleaned = new string(value.Select(character => invalid.Contains(character) || character is '<' or '>' or ':' or '"' or '/' or '\\' or '|' or '?' or '*' ? '-' : character).ToArray());
         return string.IsNullOrWhiteSpace(cleaned) ? "Untitled" : cleaned.Trim();
     }
+
+    private sealed record ResolvedDestinationFileName(string FileName, string? Warning);
 
     private static string TitleForActivity(ImportPreviewRequest request)
         => string.IsNullOrWhiteSpace(request.Title)

@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
-import { LoaderCircle, Route, ShieldCheck, SlidersHorizontal, Sparkles, Wand2 } from "lucide-react";
+import { ChevronDown, LoaderCircle, Route, ShieldCheck, SlidersHorizontal, Sparkles, Wand2 } from "lucide-react";
 import { SettingsShell } from "../components/app/settings-shell";
 import { KpiCard } from "../components/app/kpi-card";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -42,6 +42,66 @@ const OVERRIDE_RETRY_OPTIONS = [
   { label: "6 hours", value: "6" },
   { label: "12 hours", value: "12" },
   { label: "Daily", value: "24" }
+];
+
+const MEDIA_PLAN_STARTERS: Array<{
+  id: string;
+  title: string;
+  description: string;
+  values: Pick<PolicySetFormState, "name" | "mediaType" | "searchIntervalOverrideHours" | "retryDelayOverrideHours" | "upgradeUntilCutoff" | "notes">;
+}> = [
+  {
+    id: "family-movies",
+    title: "Family movies",
+    description: "Balanced quality, sensible upgrades, and a gentle search schedule.",
+    values: {
+      name: "Family Movies 1080p",
+      mediaType: "movies",
+      searchIntervalOverrideHours: "12",
+      retryDelayOverrideHours: "6",
+      upgradeUntilCutoff: true,
+      notes: "A dependable 1080p movie experience for the whole household."
+    }
+  },
+  {
+    id: "premium-4k",
+    title: "Premium 4K",
+    description: "A quality-first plan for a home-theatre movie collection.",
+    values: {
+      name: "Premium 4K Movies",
+      mediaType: "movies",
+      searchIntervalOverrideHours: "12",
+      retryDelayOverrideHours: "6",
+      upgradeUntilCutoff: true,
+      notes: "A 4K and HDR-focused movie plan. Choose the matching quality goal and release preferences below."
+    }
+  },
+  {
+    id: "everyday-tv",
+    title: "Everyday TV",
+    description: "Keep monitored shows current without overwhelming your sources.",
+    values: {
+      name: "Everyday TV 1080p",
+      mediaType: "tv",
+      searchIntervalOverrideHours: "6",
+      retryDelayOverrideHours: "3",
+      upgradeUntilCutoff: true,
+      notes: "An everyday TV plan with steady missing-episode and upgrade searches."
+    }
+  },
+  {
+    id: "anime",
+    title: "Anime",
+    description: "A starting point for anime-specific language, group, and format preferences.",
+    values: {
+      name: "Anime",
+      mediaType: "tv",
+      searchIntervalOverrideHours: "6",
+      retryDelayOverrideHours: "3",
+      upgradeUntilCutoff: true,
+      notes: "Choose anime release preferences below, then fine-tune language and quality for this library."
+    }
+  }
 ];
 
 interface SettingsPolicySetsLoaderData {
@@ -92,6 +152,8 @@ export function SettingsPolicySetsPage() {
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formState, setFormState] = useState<PolicySetFormState>(createPolicySetForm);
+  const [selectedStarterId, setSelectedStarterId] = useState<string | null>(null);
+  const [showDetailedRules, setShowDetailedRules] = useState(false);
 
   const enabledSets = policySets.filter((set) => set.isEnabled).length;
   const linkedDestinationRules = policySets.filter((set) => set.destinationRuleId).length;
@@ -113,10 +175,24 @@ export function SettingsPolicySetsPage() {
   function startCreate() {
     setEditingId(null);
     setFormState(createPolicySetForm());
+    setSelectedStarterId(null);
+    setShowDetailedRules(false);
+  }
+
+  function applyStarter(starter: (typeof MEDIA_PLAN_STARTERS)[number]) {
+    setEditingId(null);
+    setFormState({
+      ...createPolicySetForm(),
+      ...starter.values
+    });
+    setSelectedStarterId(starter.id);
+    setShowDetailedRules(false);
   }
 
   function startEdit(policySet: PolicySetItem) {
     setEditingId(policySet.id);
+    setSelectedStarterId(null);
+    setShowDetailedRules(false);
     setFormState({
       name: policySet.name,
       mediaType: policySet.mediaType,
@@ -160,14 +236,14 @@ export function SettingsPolicySetsPage() {
       });
 
       if (!response.ok) {
-        throw new Error(isEditing ? "Policy set could not be updated." : "Policy set could not be created.");
+        throw new Error(isEditing ? "Media plan could not be updated." : "Media plan could not be created.");
       }
 
-      toast.success(isEditing ? "Policy set updated" : "Policy set created");
+      toast.success(isEditing ? "Media plan updated" : "Media plan created");
       startCreate();
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Policy set action failed.");
+      toast.error(error instanceof Error ? error.message : "Media plan action failed.");
     } finally {
       setBusyKey(null);
     }
@@ -178,16 +254,16 @@ export function SettingsPolicySetsPage() {
     try {
       const response = await authedFetch(`/api/policy-sets/${policySetId}`, { method: "DELETE" });
       if (!response.ok && response.status !== 204) {
-        throw new Error("Policy set could not be removed.");
+        throw new Error("Media plan could not be removed.");
       }
 
-      toast.success("Policy set removed");
+      toast.success("Media plan removed");
       if (editingId === policySetId) {
         startCreate();
       }
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Policy set could not be removed.");
+      toast.error(error instanceof Error ? error.message : "Media plan could not be removed.");
     } finally {
       setBusyKey(null);
     }
@@ -195,55 +271,85 @@ export function SettingsPolicySetsPage() {
 
   return (
     <SettingsShell
-      title="Policy Sets"
-      description="Combine quality profiles, custom formats, and destination rules into reusable policies that keep Deluno single-install and easier to reason about."
+      title="Media Plans"
+      description="Describe the experience you want for a part of your library. Deluno combines quality, release preferences, storage routing, and automation behind that plan."
     >
       <div className="fluid-kpi-grid">
         <KpiCard
-          label="Policy sets"
+          label="Media plans"
           value={String(policySets.length)}
           icon={ShieldCheck}
-          meta="Reusable acquisition policies available to future title and library assignment."
+          meta="Reusable experiences available to your libraries and titles."
           sparkline={[1, 1, 1, 2, 2, 2, 3, 3, 4, 4, 4, 5, 5, 6, 6]}
         />
         <KpiCard
-          label="Enabled"
+          label="Active"
           value={String(enabledSets)}
           icon={Sparkles}
-          meta="Policies currently active for assignment."
+          meta="Plans currently ready to use."
           sparkline={[1, 1, 1, 1, 2, 2, 3, 3, 3, 4, 4, 4, 4, 5, 5]}
         />
         <KpiCard
-          label="With route"
+          label="With library route"
           value={String(linkedDestinationRules)}
           icon={Route}
-          meta="Policy sets already attached to a destination rule."
+          meta="Plans that know where imported media belongs."
           sparkline={[0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5]}
         />
         <KpiCard
-          label="With quality"
+          label="With quality goal"
           value={String(linkedQualityProfiles)}
           icon={SlidersHorizontal}
-          meta="Policy sets already attached to a quality profile."
+          meta="Plans with a defined quality target."
           sparkline={[0, 1, 1, 1, 2, 2, 2, 3, 3, 4, 4, 4, 5, 5, 5]}
         />
       </div>
 
+      <Card className="border-primary/20 bg-gradient-to-r from-primary/[0.08] via-primary/[0.03] to-transparent">
+        <CardHeader>
+          <CardTitle>Start with the library you want</CardTitle>
+          <CardDescription>
+            Choose a starting point, then tailor the details below. Nothing is saved until you create the media plan.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {MEDIA_PLAN_STARTERS.map((starter) => (
+            <button
+              key={starter.id}
+              type="button"
+              onClick={() => applyStarter(starter)}
+              className={`rounded-xl border p-4 text-left transition hover:-translate-y-0.5 hover:border-primary/40 hover:bg-primary/5 ${
+                selectedStarterId === starter.id ? "border-primary/50 bg-primary/[0.07]" : "border-hairline bg-card/85"
+              }`}
+            >
+              <p className="font-display text-base font-semibold tracking-tight text-foreground">{starter.title}</p>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{starter.description}</p>
+              <span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-primary">
+                Use this starting point <Wand2 className="h-3.5 w-3.5" />
+              </span>
+              <span className="mt-2 block text-xs leading-relaxed text-muted-foreground">
+                Includes: {describeStarter(starter)}
+              </span>
+            </button>
+          ))}
+        </CardContent>
+      </Card>
+
       <div className="settings-split settings-split-balanced">
         <Card className="settings-panel">
           <CardHeader>
-            <CardTitle>{editingId ? "Edit policy set" : "Create policy set"}</CardTitle>
+            <CardTitle>{editingId ? "Edit media plan" : "Create media plan"}</CardTitle>
             <CardDescription>
-              Policy sets are where Deluno starts to beat multiple Arr installs. They combine what to grab with where to put it.
+              Start with the outcome you want. Detailed rules are available when you need them and never replace choices you have already made.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form className="space-y-[calc(var(--field-group-pad)*0.9)]" onSubmit={handleSubmit}>
               <div className="grid gap-[var(--grid-gap)] md:grid-cols-2">
-                <Field label="Policy name" description="A descriptive name for this acquisition policy (e.g., Standard 1080p, Premium 4K, Anime).">
+                <Field label="Plan name" description="Give this experience an understandable name, such as Family Movies 1080p, Premium 4K, or Anime.">
                   <Input value={formState.name} onChange={(event) => setFormState((current) => ({ ...current, name: event.target.value }))} />
                 </Field>
-                <Field label="Media type" description="Whether this policy applies to Movies or TV series. Changing this resets quality and route selections.">
+                <Field label="Media type" description="Choose Movies or TV. Changing this resets choices that only apply to the other media type.">
                   <select
                     value={formState.mediaType}
                     onChange={(event) => setFormState((current) => ({
@@ -259,13 +365,13 @@ export function SettingsPolicySetsPage() {
                     <option value="tv">TV</option>
                   </select>
                 </Field>
-                <Field label="Quality profile" description="What quality tiers and upgrade behaviour this policy should use when searching.">
+                <Field label="Quality goal" description="The quality tiers and upgrade behaviour Deluno should aim for when searching.">
                   <select
                     value={formState.qualityProfileId}
                     onChange={(event) => setFormState((current) => ({ ...current, qualityProfileId: event.target.value }))}
                     className="density-control-text h-[var(--control-height)] w-full rounded-xl border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none"
                   >
-                    <option value="">No profile selected</option>
+                    <option value="">Choose later</option>
                     {availableProfiles.map((profile) => (
                       <option key={profile.id} value={profile.id}>
                         {profile.name}
@@ -273,39 +379,19 @@ export function SettingsPolicySetsPage() {
                     ))}
                   </select>
                 </Field>
-                <Field label="Destination rule" description="Where imported titles should be routed (which root folder and naming pattern).">
+                <Field label="Library route" description="Where imported titles should go: the root folder and naming pattern.">
                   <select
                     value={formState.destinationRuleId}
                     onChange={(event) => setFormState((current) => ({ ...current, destinationRuleId: event.target.value }))}
                     className="density-control-text h-[var(--control-height)] w-full rounded-xl border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none"
                   >
-                    <option value="">No rule selected</option>
+                    <option value="">Choose later</option>
                     {availableDestinationRules.map((rule) => (
                       <option key={rule.id} value={rule.id}>
                         {rule.name}
                       </option>
                     ))}
                   </select>
-                </Field>
-                <Field label="Search override (hours)" description="How often Deluno should search for this policy instead of using the library default interval.">
-                  <PresetField
-                    inputType="number"
-                    value={formState.searchIntervalOverrideHours}
-                    onChange={(value) => setFormState((current) => ({ ...current, searchIntervalOverrideHours: value }))}
-                    options={OVERRIDE_INTERVAL_OPTIONS}
-                    customLabel="Custom interval"
-                    customPlaceholder="Hours"
-                  />
-                </Field>
-                <Field label="Retry override (hours)" description="How long Deluno should wait before retrying a failed search for this policy.">
-                  <PresetField
-                    inputType="number"
-                    value={formState.retryDelayOverrideHours}
-                    onChange={(value) => setFormState((current) => ({ ...current, retryDelayOverrideHours: value }))}
-                    options={OVERRIDE_RETRY_OPTIONS}
-                    customLabel="Custom retry delay"
-                    customPlaceholder="Hours"
-                  />
                 </Field>
               </div>
 
@@ -314,40 +400,80 @@ export function SettingsPolicySetsPage() {
                   value={formState.notes}
                   onChange={(event) => setFormState((current) => ({ ...current, notes: event.target.value }))}
                   className="density-control-text min-h-24 w-full rounded-xl border border-hairline bg-surface-2 px-3 py-2 text-foreground outline-none"
-                  placeholder="Explain what this policy is for: Kids 1080p, Anime Dual Audio, Premium 4K..."
+                  placeholder="Describe this plan: Kids 1080p, Anime Dual Audio, Premium 4K..."
                 />
               </Field>
 
-              <Card className="border-hairline bg-surface-1">
-                <CardHeader>
-                  <CardTitle>Custom format boosts</CardTitle>
-                  <CardDescription>
-                    Pick the release scoring rules this policy should carry with it.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="flex flex-wrap gap-2">
-                  {availableCustomFormats.map((format) => {
-                    const active = formState.customFormatIds.includes(format.id);
-                    return (
-                      <button
-                        key={format.id}
-                        type="button"
-                        onClick={() => toggleCustomFormat(format.id)}
-                        className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
-                          active
-                            ? "border-primary/40 bg-primary/10 text-primary"
-                            : "border-hairline bg-card text-muted-foreground hover:border-primary/30 hover:text-foreground"
-                        }`}
-                      >
-                        {format.name} · {format.score >= 0 ? `+${format.score}` : format.score}
-                      </button>
-                    );
-                  })}
-                  {availableCustomFormats.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No custom formats available for this media type yet.</p>
-                  ) : null}
-                </CardContent>
-              </Card>
+              <div className="rounded-xl border border-hairline bg-surface-1">
+                <button
+                  type="button"
+                  onClick={() => setShowDetailedRules((current) => !current)}
+                  className="flex w-full items-center justify-between gap-[var(--grid-gap)] p-4 text-left"
+                  aria-expanded={showDetailedRules}
+                >
+                  <span>
+                    <span className="block font-display text-base font-semibold text-foreground">Fine-tune detailed rules</span>
+                    <span className="mt-1 block text-sm leading-relaxed text-muted-foreground">
+                      Optional search timing and release-preference rules for granular setups. Your basic plan works without changing these.
+                    </span>
+                  </span>
+                  <ChevronDown className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform ${showDetailedRules ? "rotate-180" : ""}`} />
+                </button>
+
+                {showDetailedRules ? (
+                  <div className="space-y-[var(--page-gap)] border-t border-hairline p-4">
+                    <div className="grid gap-[var(--grid-gap)] md:grid-cols-2">
+                      <Field label="Search schedule" description="How often Deluno should search for this plan instead of using the library default.">
+                        <PresetField
+                          inputType="number"
+                          value={formState.searchIntervalOverrideHours}
+                          onChange={(value) => setFormState((current) => ({ ...current, searchIntervalOverrideHours: value }))}
+                          options={OVERRIDE_INTERVAL_OPTIONS}
+                          customLabel="Custom interval"
+                          customPlaceholder="Hours"
+                        />
+                      </Field>
+                      <Field label="Try again after" description="How long Deluno should wait before retrying a failed search for this plan.">
+                        <PresetField
+                          inputType="number"
+                          value={formState.retryDelayOverrideHours}
+                          onChange={(value) => setFormState((current) => ({ ...current, retryDelayOverrideHours: value }))}
+                          options={OVERRIDE_RETRY_OPTIONS}
+                          customLabel="Custom retry delay"
+                          customPlaceholder="Hours"
+                        />
+                      </Field>
+                    </div>
+
+                    <div>
+                      <p className="font-medium text-foreground">Release preferences</p>
+                      <p className="mt-1 text-sm text-muted-foreground">Pick the custom-format rules this plan should apply when comparing candidates.</p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {availableCustomFormats.map((format) => {
+                          const active = formState.customFormatIds.includes(format.id);
+                          return (
+                            <button
+                              key={format.id}
+                              type="button"
+                              onClick={() => toggleCustomFormat(format.id)}
+                              className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
+                                active
+                                  ? "border-primary/40 bg-primary/10 text-primary"
+                                  : "border-hairline bg-card text-muted-foreground hover:border-primary/30 hover:text-foreground"
+                              }`}
+                            >
+                              {format.name} · {format.score >= 0 ? `+${format.score}` : format.score}
+                            </button>
+                          );
+                        })}
+                        {availableCustomFormats.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">No custom formats available for this media type yet.</p>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
 
               <div className="grid gap-3 md:grid-cols-2">
                 <ToggleField
@@ -367,7 +493,7 @@ export function SettingsPolicySetsPage() {
                   {busyKey === "create" || (editingId !== null && busyKey === `save:${editingId}`) ? (
                     <LoaderCircle className="h-4 w-4 animate-spin" />
                   ) : null}
-                  {editingId ? "Save policy set" : "Create policy set"}
+                  {editingId ? "Save media plan" : "Create media plan"}
                 </Button>
                 {editingId ? (
                   <Button type="button" variant="outline" onClick={startCreate}>
@@ -382,28 +508,28 @@ export function SettingsPolicySetsPage() {
         <div className="settings-side-stack">
           <Card>
             <CardHeader>
-              <CardTitle>What policy sets solve</CardTitle>
+              <CardTitle>What media plans solve</CardTitle>
               <CardDescription>
-                Policy sets are how Deluno should collapse multiple Arr instances into one install.
+                Media plans let one Deluno library handle different scenarios without duplicating the app.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm text-muted-foreground">
-              <GuidanceRow icon={ShieldCheck} title="One install, many policies">
+              <GuidanceRow icon={ShieldCheck} title="One library, many experiences">
                 Keep separate behaviour for standard, 4K, anime, or kids content without cloning the whole app.
               </GuidanceRow>
-              <GuidanceRow icon={Route} title="Routing plus quality">
-                Pair a destination rule with a quality profile so the policy says both <strong className="text-foreground">what</strong> to acquire and <strong className="text-foreground">where</strong> it goes.
+              <GuidanceRow icon={Route} title="Storage plus quality">
+                Pair a library route with a quality goal so the plan says both <strong className="text-foreground">what</strong> to acquire and <strong className="text-foreground">where</strong> it goes.
               </GuidanceRow>
-              <GuidanceRow icon={Wand2} title="Reusable scoring">
-                Carry custom-format scoring with the policy instead of rebuilding the same preference stack repeatedly.
+              <GuidanceRow icon={Wand2} title="Reusable release preferences">
+                Carry the same release preferences with the plan instead of rebuilding them title by title.
               </GuidanceRow>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle>Current policy sets</CardTitle>
-              <CardDescription>Reusable policy building blocks for the next assignment layer.</CardDescription>
+              <CardTitle>Current media plans</CardTitle>
+              <CardDescription>The library experiences you have defined so far.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {policySets.map((policySet) => (
@@ -418,7 +544,7 @@ export function SettingsPolicySetsPage() {
                         <Badge variant="info">{policySet.mediaType === "tv" ? "TV" : "Movies"}</Badge>
                       </div>
                       <p className="text-sm text-muted-foreground">
-                        {policySet.qualityProfileName ?? "No quality profile"} · {policySet.destinationRuleName ?? "No destination rule"}
+                        {policySet.qualityProfileName ?? "Quality goal not chosen"} · {policySet.destinationRuleName ?? "Library route not chosen"}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {splitCsv(policySet.customFormatIds).length} custom formats · upgrade until cutoff {policySet.upgradeUntilCutoff ? "on" : "off"}
@@ -442,8 +568,8 @@ export function SettingsPolicySetsPage() {
                 </div>
               ))}
               {policySets.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-hairline bg-surface-1 p-6 text-sm text-muted-foreground">
-                  No policy sets yet. Start with one for a core case like Standard 1080p, Premium 4K, or Anime Dual Audio.
+                <div className="rounded-xl border border-dashed border-hairline bg-surface-1 p-[var(--tile-pad)] text-sm text-muted-foreground">
+                  No media plans yet. Start with Family Movies, Premium 4K, Everyday TV, or Anime.
                 </div>
               ) : null}
             </CardContent>
@@ -452,14 +578,14 @@ export function SettingsPolicySetsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Your libraries</CardTitle>
-              <CardDescription>Libraries available for policy set assignment.</CardDescription>
+              <CardDescription>Libraries available for media-plan assignment.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {libraries.map((library) => (
                 <div key={library.id} className="rounded-xl border border-hairline bg-surface-1 p-4">
                   <p className="font-medium text-foreground">{library.name}</p>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    {library.qualityProfileName ?? "No quality profile"} · {library.rootPath}
+                    {library.qualityProfileName ?? "Quality goal not chosen"} · {library.rootPath}
                   </p>
                 </div>
               ))}
@@ -491,6 +617,19 @@ function splitCsv(value: string) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function describeStarter(starter: (typeof MEDIA_PLAN_STARTERS)[number]) {
+  const mediaType = starter.values.mediaType === "tv" ? "TV" : "movies";
+  const searchSchedule = starter.values.searchIntervalOverrideHours
+    ? `search every ${starter.values.searchIntervalOverrideHours} hours`
+    : "use the library search schedule";
+  const retryDelay = starter.values.retryDelayOverrideHours
+    ? `retry after ${starter.values.retryDelayOverrideHours} hours`
+    : "use the library retry delay";
+  const upgrades = starter.values.upgradeUntilCutoff ? "upgrade until the quality goal is met" : "keep the first accepted release";
+
+  return `${mediaType}; ${searchSchedule}; ${retryDelay}; ${upgrades}.`;
 }
 
 function Field({ children, description, label }: { children: ReactNode; description?: string; label: string }) {

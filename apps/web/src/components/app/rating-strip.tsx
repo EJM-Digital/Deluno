@@ -1,4 +1,3 @@
-import { Badge } from "../ui/badge";
 import type { MetadataRatingItem } from "../../lib/api";
 
 interface RatingStripProps {
@@ -21,15 +20,20 @@ export function RatingStrip({ ratings, fallbackRating }: RatingStripProps) {
     <div className="grid gap-2 sm:grid-cols-2">
       {visibleRatings.map((rating) => {
         const value = formatRating(rating);
+        const sourceTone = rating.source === "tmdb"
+          ? "border-sky-400/30 bg-gradient-to-br from-sky-500/15 via-surface-1 to-surface-1"
+          : rating.source === "imdb"
+            ? "border-amber-400/30 bg-gradient-to-br from-amber-500/15 via-surface-1 to-surface-1"
+            : "border-hairline bg-surface-1";
         const content = (
-          <div className="rounded-xl border border-hairline bg-surface-1 p-3 transition hover:border-primary/25 hover:bg-surface-2">
+          <div className={`rounded-xl border p-3 transition hover:border-primary/35 hover:bg-surface-2 ${sourceTone}`}>
             <div className="flex items-center justify-between gap-3">
               <span className="text-[length:var(--type-caption)] font-bold uppercase tracking-[0.14em] text-muted-foreground">
                 {rating.label}
               </span>
-              <Badge variant={badgeVariant(rating.source)}>{rating.kind ?? "rating"}</Badge>
+              <span className="h-2 w-2 rounded-full bg-primary shadow-[0_0_12px_hsl(var(--primary)/0.8)]" aria-hidden="true" />
             </div>
-            <p className="mt-2 font-display text-[length:var(--type-title-sm)] font-semibold tracking-tight text-foreground">
+            <p className="mt-2 font-display text-2xl font-semibold tracking-tight text-foreground">
               {value}
             </p>
             {rating.voteCount ? (
@@ -67,7 +71,7 @@ function normalizeRatings(ratings?: MetadataRatingItem[] | null, fallbackRating?
           maxScore: 10,
           voteCount: null,
           url: null,
-          kind: "community"
+          kind: null
         }
       ];
 }
@@ -86,11 +90,4 @@ function formatRating(rating: MetadataRatingItem) {
   }
 
   return rating.score.toFixed(1);
-}
-
-function badgeVariant(source: string) {
-  if (source === "rotten_tomatoes") return "destructive" as const;
-  if (source === "imdb") return "warning" as const;
-  if (source === "tmdb") return "info" as const;
-  return "default" as const;
 }

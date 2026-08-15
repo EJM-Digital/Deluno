@@ -19,7 +19,6 @@ COPY Directory.Build.props ./
 COPY global.json ./
 COPY src/Deluno.Api/Deluno.Api.csproj ./src/Deluno.Api/
 COPY src/Deluno.Contracts/Deluno.Contracts.csproj ./src/Deluno.Contracts/
-COPY src/Deluno.Downloader/Deluno.Downloader.csproj ./src/Deluno.Downloader/
 COPY src/Deluno.Filesystem/Deluno.Filesystem.csproj ./src/Deluno.Filesystem/
 COPY src/Deluno.Host/Deluno.Host.csproj ./src/Deluno.Host/
 COPY src/Deluno.Infrastructure/Deluno.Infrastructure.csproj ./src/Deluno.Infrastructure/
@@ -35,7 +34,6 @@ COPY src/Deluno.Worker/Deluno.Worker.csproj ./src/Deluno.Worker/
 COPY apps/windows-tray/Deluno.Tray.csproj ./apps/windows-tray/
 
 # Test projects (restore only; tests are not run in the Docker build)
-COPY tests/Deluno.Downloader.Tests/Deluno.Downloader.Tests.csproj ./tests/Deluno.Downloader.Tests/
 COPY tests/Deluno.Integrations.Tests/Deluno.Integrations.Tests.csproj ./tests/Deluno.Integrations.Tests/
 COPY tests/Deluno.Movies.Tests/Deluno.Movies.Tests.csproj ./tests/Deluno.Movies.Tests/
 COPY tests/Deluno.Persistence.Tests/Deluno.Persistence.Tests.csproj ./tests/Deluno.Persistence.Tests/
@@ -52,12 +50,8 @@ RUN dotnet publish ./src/Deluno.Host/Deluno.Host.csproj -c Release -o /app/publi
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
-# Runtime tools used by the app:
+# Runtime tool used by the app:
 #   ffmpeg/ffprobe — media stream probing/validation (Ubuntu: universe)
-#   par2          — built-in NZB downloader's verify/repair  (universe)
-#   unrar         — proprietary RAR extractor                (multiverse)
-#                   The rarlab license permits extraction-only use; we
-#                   ship the binary, not the source.
 #
 # The .NET 10 aspnet base image is Ubuntu (noble/resolute), NOT Debian
 # — an earlier version of this Dockerfile assumed Debian and added a
@@ -70,7 +64,7 @@ WORKDIR /app
 RUN ( sed -i 's/Components: main restricted/Components: main restricted universe multiverse/g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true ) \
     && ( sed -i 's/main restricted$/main restricted universe multiverse/g' /etc/apt/sources.list 2>/dev/null || true ) \
     && apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg par2 unrar \
+    && apt-get install -y --no-install-recommends ffmpeg unrar \
     && rm -rf /var/lib/apt/lists/*
 
 ENV ASPNETCORE_URLS=http://+:8080

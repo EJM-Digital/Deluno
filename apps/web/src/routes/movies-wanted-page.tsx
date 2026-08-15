@@ -1,5 +1,5 @@
 import { Link, useLoaderData, useRevalidator } from "react-router-dom";
-import { AlertTriangle, ArrowUpRight, Clock, Film, RefreshCw, Search, TrendingUp } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Clock, Film, RefreshCw, Search } from "lucide-react";
 import {
   fetchJson,
   type LibraryAutomationStateItem,
@@ -39,8 +39,7 @@ export function MoviesWantedPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const missing = wanted.recentItems.filter((i) => i.wantedStatus === "missing");
-  const upgrades = wanted.recentItems.filter((i) => i.wantedStatus === "upgrade");
-  const waiting = wanted.recentItems.filter((i) => i.wantedStatus === "waiting" || i.nextEligibleSearchUtc);
+  const waiting = wanted.recentItems.filter((i) => i.wantedStatus === "waiting");
 
   async function handleSearchNow(libraryId: string) {
     setBusyId(libraryId);
@@ -61,20 +60,13 @@ export function MoviesWantedPage() {
   return (
     <div className="space-y-[var(--page-gap)]">
       {/* Plain-English summary for beginners */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-[var(--grid-gap)] sm:grid-cols-2">
         <SummaryTile
           icon={AlertTriangle}
           label="Missing"
           value={wanted.missingCount}
           tone="warn"
           tip="Movies Deluno has never found a release for"
-        />
-        <SummaryTile
-          icon={TrendingUp}
-          label="Ready for an upgrade"
-          value={wanted.upgradeCount}
-          tone="primary"
-          tip="Movies in your library that can be improved to a better quality"
         />
         <SummaryTile
           icon={Clock}
@@ -137,23 +129,6 @@ export function MoviesWantedPage() {
           <p className="border-t border-hairline px-[var(--tile-pad)] py-3 text-[12px] text-muted-foreground">
             Showing {missing.length} of {wanted.missingCount} — open a movie to see its full history.
           </p>
-        )}
-      </GlassTile>
-
-      {/* Upgrade-eligible */}
-      <GlassTile>
-        <SectionHeader
-          title="Ready for an upgrade"
-          count={wanted.upgradeCount}
-          description="These movies are in your library but a better quality release exists. Deluno will grab it automatically, or you can trigger a search manually."
-          tone="primary"
-        />
-        {upgrades.length > 0 ? (
-          <WantedTable items={upgrades} mediaType="movie" />
-        ) : (
-          <div className="px-[var(--tile-pad)] pb-[var(--tile-pad)]">
-            <EmptyState size="sm" variant="custom" title="No upgrades waiting" description="All monitored movies are already at or above their target quality." />
-          </div>
         )}
       </GlassTile>
 
@@ -303,7 +278,7 @@ function WantedTable({
 }
 
 function WantedStatusBadge({ status }: { status: string }) {
-  if (status === "missing") return <Badge variant="destructive" className="text-[9.5px]">Missing</Badge>;
+  if (status === "missing") return <Badge variant="warning" className="text-[9.5px]">Missing</Badge>;
   if (status === "upgrade") return <Badge variant="info" className="text-[9.5px]">Upgrade available</Badge>;
   if (status === "waiting") return <Badge variant="default" className="text-[9.5px]">Retry pending</Badge>;
   return <Badge variant="default" className="text-[9.5px]">{status}</Badge>;

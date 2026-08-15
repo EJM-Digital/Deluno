@@ -5,7 +5,6 @@
   <Folder Name="/src/">
     <Project Path="src/Deluno.Api/Deluno.Api.csproj" />
     <Project Path="src/Deluno.Contracts/Deluno.Contracts.csproj" />
-    <Project Path="src/Deluno.Downloader/Deluno.Downloader.csproj" />
     <Project Path="src/Deluno.Filesystem/Deluno.Filesystem.csproj" />
     <Project Path="src/Deluno.Host/Deluno.Host.csproj" />
     <Project Path="src/Deluno.Infrastructure/Deluno.Infrastructure.csproj" />
@@ -18,7 +17,6 @@
     <Project Path="src/Deluno.Worker/Deluno.Worker.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/Deluno.Downloader.Tests/Deluno.Downloader.Tests.csproj" />
     <Project Path="tests/Deluno.Integrations.Tests/Deluno.Integrations.Tests.csproj" />
     <Project Path="tests/Deluno.Movies.Tests/Deluno.Movies.Tests.csproj" />
     <Project Path="tests/Deluno.Persistence.Tests/Deluno.Persistence.Tests.csproj" />

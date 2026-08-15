@@ -95,7 +95,7 @@ Operational visibility is split intentionally:
 
 ## Agent-Legible Invariants
 
-- Deluno orchestrates external indexers and download clients. It also ships an optional in-process download engine (`Deluno.Downloader`) covering NZB (Usenet) and BitTorrent, which users can select per library instead of a remote SAB/NZBGet/qBittorrent/etc. The torrent protocol is implemented via MonoTorrent; the NZB protocol is implemented in-tree. Domain modules and Integrations must remain agnostic to which client is in use.
+- Deluno orchestrates external indexers and download clients. It does not embed a transfer engine; external clients remain responsible for protocol work, queueing, repair, unpacking, retention, and seeding.
 - The app is single-user. Avoid operator/admin/team language unless an external API requires it.
 - Movie and TV engines stay separated internally even when UI workflows are unified.
 - Services/Broker, Queue, Activity, Health, and Imports should consume normalized client/indexer data rather than raw external payload quirks.

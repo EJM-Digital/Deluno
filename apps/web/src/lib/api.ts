@@ -253,6 +253,22 @@ export interface ValidationProblem {
   errors?: Record<string, string[]>;
 }
 
+export interface DownloadCleanupPreview {
+  clientId: string;
+  queueItemId: string;
+  releaseName: string;
+  matchedPolicy: string;
+  reason: string;
+  proposedAction: string;
+  affectedFiles: string;
+  removalAllowed: boolean;
+  replacementSearchWillRun: boolean;
+  requiresReview: boolean;
+  strikeThreshold: number;
+  blocksRelease: boolean;
+  purgesPayload: boolean;
+}
+
 export interface PlatformSettingsSnapshot {
   appInstanceName: string;
   movieRootPath: string | null;
@@ -286,8 +302,47 @@ export interface PlatformSettingsSnapshot {
   metadataBrokerConfigured: boolean;
   metadataTmdbApiKeyConfigured: boolean;
   metadataOmdbApiKeyConfigured: boolean;
+  mdbListApiKeyConfigured: boolean;
   releaseNeverGrabPatterns: string;
   searchScoringMode: "hybrid" | "rules-only" | "ml-only" | string;
+  downloadHealthStrikeThreshold: number;
+  cleanupBlockReleaseAfterThreshold: boolean;
+  cleanupQueueReplacementAfterThreshold: boolean;
+  cleanupRemoveClientEntryAfterThreshold: boolean;
+  cleanupPurgePayloadAfterThreshold: boolean;
+  updatedUtc: string;
+}
+
+export interface SetupProgressItem {
+  lastCompletedStep: number;
+  isSkipped: boolean;
+  isCompleted: boolean;
+  updatedUtc: string;
+}
+
+/** Resumable guided-setup values. Connection keys and passwords are intentionally excluded. */
+export interface SetupDraftItem {
+  mode: "simple" | "advanced" | string;
+  mediaIntent: "movies" | "tv" | "both" | string;
+  movieRootPath: string;
+  seriesRootPath: string;
+  downloadsPath: string;
+  qualityPreset: "" | "balanced1080p" | "premium4k" | string;
+  formatGoal: "" | "simpleClean" | "balanced" | "homeTheater" | "storageSaver" | "anime" | string;
+  indexerName: string;
+  indexerProtocol: "torznab" | "newznab" | "rss" | string;
+  indexerUrl: string;
+  clientName: string;
+  clientProtocol: string;
+  clientHost: string;
+  clientPort: string;
+  metadataProviderMode: "broker" | "hybrid" | "direct" | string;
+  metadataBrokerUrl: string;
+  backupEnabled: boolean;
+  firstTitleType: "movies" | "tv" | string;
+  firstTitle: string;
+  firstTitleYear: string;
+  firstTitleMonitored: boolean;
   updatedUtc: string;
 }
 
@@ -339,8 +394,14 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   metadataBrokerConfigured: false,
   metadataTmdbApiKeyConfigured: false,
   metadataOmdbApiKeyConfigured: false,
+  mdbListApiKeyConfigured: false,
   releaseNeverGrabPatterns: "cam\ncamrip\ntelesync\ntelecine\nworkprint\nscreener\nsample\ntrailer\nextras",
   searchScoringMode: "hybrid",
+  downloadHealthStrikeThreshold: 3,
+  cleanupBlockReleaseAfterThreshold: true,
+  cleanupQueueReplacementAfterThreshold: true,
+  cleanupRemoveClientEntryAfterThreshold: false,
+  cleanupPurgePayloadAfterThreshold: false,
   updatedUtc: new Date(0).toISOString()
 };
 
@@ -699,6 +760,136 @@ export interface DownloadQueueItem {
   errorMessage: string | null;
   addedUtc: string;
   sourcePath: string | null;
+  healthFindings: DownloadHealthFinding[] | null;
+}
+
+/** A client-specific translation from the path it reports to the path Deluno can access. */
+export interface DownloadClientPathMappingItem {
+  id: string;
+  downloadClientId: string;
+  remotePath: string;
+  localPath: string;
+  isEnabled: boolean;
+  priority: number;
+  createdUtc: string;
+  updatedUtc: string;
+}
+
+export interface DownloadHealthFinding {
+  severity: "critical" | "warning" | string;
+  kind: string;
+  summary: string;
+  evidence: string;
+  recommendedAction: string;
+  canSafelyRetry: boolean;
+  canSafelyRemove: boolean;
+  strikeCount: number;
+  candidateBlocked: boolean;
+  ignoredUntilUtc: string | null;
+}
+
+export interface DownloadHealthRecord {
+  clientId: string;
+  queueItemId: string;
+  releaseName: string;
+  kind: string;
+  severity: string;
+  evidence: string;
+  firstObservedUtc: string;
+  lastObservedUtc: string;
+  strikeCount: number;
+  ignoredUntilUtc: string | null;
+}
+
+export interface ProcessorHandoffItem {
+  id: string;
+  libraryId: string;
+  mediaType: string;
+  clientId: string;
+  queueItemId: string;
+  releaseName: string;
+  sourcePath: string;
+  processorName: string | null;
+  status: string;
+  outputPath: string | null;
+  importJobId: string | null;
+  failureMessage: string | null;
+  createdUtc: string;
+  updatedUtc: string;
+}
+
+export interface ProcessorConnectionItem {
+  id: string;
+  name: string;
+  provider: "fileflows-webhook" | "generic-webhook" | string;
+  submissionUrl: string;
+  authHeaderName: string;
+  secretConfigured: boolean;
+  isEnabled: boolean;
+  healthStatus: "unknown" | "healthy" | "degraded" | "unreachable" | string;
+  lastHealthMessage: string | null;
+  lastHealthTestUtc: string | null;
+  createdUtc: string;
+  updatedUtc: string;
+}
+
+export interface ProcessorConnectionTestResult {
+  connectionId: string;
+  isReachable: boolean;
+  status: string;
+  message: string;
+  statusCode: number | null;
+  latencyMs: number | null;
+}
+
+export interface IntakeListPreviewItem {
+  title: string;
+  year: number | null;
+  mediaType: string;
+  imdbId: string | null;
+  action: string;
+  reason: string;
+  matchConfidence: string;
+  exclusionId?: string | null;
+}
+
+export interface IntakeListPreviewResult {
+  sourceId: string;
+  sourceName: string;
+  provider: string;
+  mediaType: string;
+  targetLibraryName: string | null;
+  fetchedCount: number;
+  shownCount: number;
+  isTruncated: boolean;
+  items: IntakeListPreviewItem[];
+  warnings: string[];
+}
+
+export interface IntakeListApprovalResult {
+  selectedCount: number;
+  matchedCount: number;
+  addedCount: number;
+  duplicateCount: number;
+  skippedCount: number;
+  errorCount: number;
+  searchRequested: boolean;
+  summary: string;
+}
+
+export interface IntakeTitleOriginItem {
+  id: string;
+  sourceId: string;
+  sourceName: string;
+  provider: string;
+  mediaType: string;
+  entityId: string;
+  entryKey: string;
+  title: string;
+  year: number | null;
+  imdbId: string | null;
+  firstSeenUtc: string;
+  lastSeenUtc: string;
 }
 
 export interface DownloadClientHistoryItem {
@@ -766,6 +957,7 @@ export interface MetadataSearchResult {
   rating: number | null;
   ratings?: MetadataRatingItem[] | null;
   genres: string[];
+  cast?: MetadataCastMember[] | null;
   imdbId: string | null;
   externalUrl: string | null;
 }
@@ -1117,6 +1309,13 @@ export interface MigrationImportRequest {
   sourceKind: "radarr" | "sonarr" | "prowlarr" | "recyclarr" | "custom" | string;
   sourceName: string;
   payloadJson: string;
+  selectedOperationIds?: string[];
+}
+
+export interface MetadataCastMember {
+  name: string;
+  character: string | null;
+  profileUrl: string | null;
 }
 
 export interface MigrationReportSummary {
@@ -1162,6 +1361,17 @@ export interface MigrationAppliedItem {
 
 export interface MigrationApplyResponse {
   report: MigrationReport;
+  applied: MigrationAppliedItem[];
+  auditReportId?: string | null;
+}
+
+export interface MigrationAuditReport {
+  id: string;
+  sourceKind: string;
+  sourceName: string;
+  appliedUtc: string;
+  preflightReport: MigrationReport;
+  resultReport: MigrationReport;
   applied: MigrationAppliedItem[];
 }
 

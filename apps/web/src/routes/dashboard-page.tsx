@@ -9,15 +9,17 @@ import {
   HardDrive,
   RadioTower,
   Sparkles,
-  TrendingUp,
+  Tv,
   Zap
 } from "lucide-react";
 import type { ActiveDownload, IndexerHealthItem, MediaItem } from "../lib/media-types";
+import { MEDIA_STATUS_PRESENTATION, mediaStatusIsActive } from "../lib/media-status-presentation";
 import {
   fetchJson,
   type DownloadClientItem,
   type DownloadTelemetryOverview,
   type IndexerItem,
+  type LibraryItem,
   type LibraryAutomationStateItem,
   type MovieListItem,
   type MovieWantedSummary,
@@ -28,12 +30,9 @@ import {
   type SeriesWantedSummary
 } from "../lib/api";
 import { adaptIndexerHealth, adaptMovieItems, adaptSeriesItems, adaptTelemetryDownloads } from "../lib/ui-adapters";
-import { downloadQueueStatuses } from "../lib/download-telemetry";
 import { JOB_STATUS, isJobActive, type JobStatus } from "../lib/job-status-constants";
 import { cn } from "../lib/utils";
 import { OnboardingBanner } from "../components/shell/onboarding-banner";
-import { AreaChart } from "../components/shell/area-chart";
-import { LiveWaveform } from "../components/app/live-waveform";
 import { Badge } from "../components/ui/badge";
 import { RouteSkeleton } from "../components/shell/skeleton";
 
@@ -41,7 +40,8 @@ interface DashboardLoaderData {
   activeDownloads: ActiveDownload[];
   activeDownloadCount: number;
   indexerHealth: IndexerHealthItem[];
-  indexerHealthPercent: number;
+  indexerHealthPercent: number | null;
+  configuredLibraryCount: number;
   librarySizeTb: string;
   missingCount: number;
   monitoredCount: number;
@@ -81,7 +81,7 @@ export async function dashboardLoader(): Promise<DashboardLoaderData> {
     capturedUtc: new Date().toISOString()
   };
 
-  const [movieItems, movieWanted, showItems, showWanted, telemetry, indexers, clients, automation, searchCycles, retryWindows, upcomingEpisodes] = await Promise.all([
+  const [movieItems, movieWanted, showItems, showWanted, telemetry, indexers, clients, libraries, automation, searchCycles, retryWindows, upcomingEpisodes] = await Promise.all([
     fetchJson<MovieListItem[]>("/api/movies").catch((): MovieListItem[] => []),
     fetchJson<MovieWantedSummary>("/api/movies/wanted").catch(() => emptyMovieWanted),
     fetchJson<SeriesListItem[]>("/api/series").catch((): SeriesListItem[] => []),
@@ -89,6 +89,7 @@ export async function dashboardLoader(): Promise<DashboardLoaderData> {
     fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry").catch(() => emptyTelemetry),
     fetchJson<IndexerItem[]>("/api/indexers").catch((): IndexerItem[] => []),
     fetchJson<DownloadClientItem[]>("/api/download-clients").catch((): DownloadClientItem[] => []),
+    fetchJson<LibraryItem[]>("/api/libraries").catch((): LibraryItem[] => []),
     fetchJson<LibraryAutomationStateItem[]>("/api/library-automation").catch((): LibraryAutomationStateItem[] => []),
     fetchJson<SearchCycleRunItem[]>("/api/search-cycles?take=8").catch((): SearchCycleRunItem[] => []),
     fetchJson<SearchRetryWindowItem[]>("/api/search-retry-windows?take=8").catch((): SearchRetryWindowItem[] => []),
@@ -108,7 +109,8 @@ export async function dashboardLoader(): Promise<DashboardLoaderData> {
     activeDownloads,
     activeDownloadCount: telemetry.summary.activeCount + telemetry.summary.queuedCount + telemetry.summary.importReadyCount,
     indexerHealth,
-    indexerHealthPercent: indexerHealth.length ? Math.round((healthyCount / indexerHealth.length) * 100) : 100,
+    indexerHealthPercent: indexerHealth.length ? Math.round((healthyCount / indexerHealth.length) * 100) : null,
+    configuredLibraryCount: libraries.length,
     librarySizeTb: (librarySizeGb / 1024).toFixed(1),
     missingCount: movieWanted.missingCount + showWanted.missingCount,
     monitoredCount,
@@ -126,7 +128,7 @@ export async function dashboardLoader(): Promise<DashboardLoaderData> {
     onboarding: {
       hasIndexer: indexers.length > 0,
       hasDownloadClient: clients.length > 0,
-      hasLibrary: allItems.length > 0
+      hasLibrary: libraries.length > 0
     }
   };
 }
@@ -137,25 +139,53 @@ export function DashboardPage() {
   const healthIssues = data.indexerHealth.filter((item) => item.status !== "healthy").length;
   const topDownload = data.activeDownloads[0];
   const upcomingGroups = groupDashboardUpcoming(data.upcoming);
-  const librarySparkline = buildSparkline(data.totalCount);
-  const healthSparkline = buildSparkline(data.indexerHealthPercent);
-  const queueLoad = Math.min(100, data.activeDownloadCount * 12 + data.waitingCount * 3);
   const runningAutomation = data.automation.filter((item) => isJobActive(item.status as JobStatus) || item.searchRequested).length;
   const latestCycle = data.searchCycles[0] ?? null;
 
   return (
-    <div className="space-y-[var(--page-gap)]">
+    <div className="space-y-[var(--grid-gap)]">
       <OnboardingBanner state={data.onboarding} />
+
+      <section className="relative overflow-hidden rounded-2xl border border-hairline bg-card p-[var(--tile-pad)] shadow-card dark:border-white/[0.06]">
+        <span aria-hidden className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full bg-primary/10 blur-3xl" />
+        <div className="relative flex flex-col gap-[var(--grid-gap)] lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0">
+            <p className="flex items-center gap-2 text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+              <Sparkles className="h-3.5 w-3.5 text-primary" />
+              Dashboard
+            </p>
+            <h2 className="mt-1 font-display text-[length:var(--type-title-md)] font-semibold tracking-tight text-foreground">
+              Your media, your way.
+            </h2>
+            <p className="mt-1 max-w-2xl text-[length:var(--type-body-sm)] leading-relaxed text-muted-foreground">
+              Build your library, decide what to monitor, and let Deluno handle the work in the background.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link to="/movies?add=true" className="inline-flex h-[var(--control-height-sm)] items-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-semibold text-primary-foreground shadow-glow transition hover:-translate-y-0.5">
+              <Film className="h-4 w-4" />
+              Add a movie
+            </Link>
+            <Link to="/tv?add=true" className="inline-flex h-[var(--control-height-sm)] items-center gap-2 rounded-xl border border-hairline bg-card px-4 text-[13px] font-semibold text-muted-foreground transition hover:border-primary/30 hover:text-foreground">
+              <Tv className="h-4 w-4" />
+              Add a show
+            </Link>
+            <Link to="/settings" className="inline-flex h-[var(--control-height-sm)] items-center gap-2 rounded-xl px-3 text-[13px] font-semibold text-primary transition hover:bg-primary/8">
+              Tune automation
+              <ArrowUpRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+        </div>
+      </section>
 
       <section className="dashboard-metric-grid">
         <MetricPlane
           label="Library"
           value={data.totalCount.toLocaleString()}
-          meta={`${data.librarySizeTb} TB indexed`}
+          meta={data.totalCount > 0 ? `${data.librarySizeTb} TB indexed` : data.configuredLibraryCount > 0 ? `${data.configuredLibraryCount} library${data.configuredLibraryCount === 1 ? "" : "ies"} ready for media` : "No library configured yet"}
           icon={HardDrive}
           tone="primary"
           wide
-          visual={<MiniSparkline data={librarySparkline} tone="primary" />}
         />
         <MetricPlane
           label="Monitored"
@@ -170,7 +200,6 @@ export function DashboardPage() {
           meta={topDownload ? `${topDownload.speedMbps.toFixed(1)} MB/s active` : "No active transfers"}
           icon={Download}
           tone="info"
-          visual={<ProgressLine value={queueLoad} />}
         />
         <MetricPlane
           label="Missing"
@@ -181,20 +210,19 @@ export function DashboardPage() {
         />
         <MetricPlane
           label="Health"
-          value={`${data.indexerHealthPercent}`}
-          unit="%"
-          meta={healthIssues > 0 ? `${healthIssues} providers need review` : "All providers healthy"}
+          value={data.indexerHealthPercent === null ? "—" : `${data.indexerHealthPercent}`}
+          unit={data.indexerHealthPercent === null ? undefined : "%"}
+          meta={data.indexerHealth.length === 0 ? "No providers connected" : healthIssues > 0 ? `${healthIssues} providers need review` : "All providers healthy"}
           icon={RadioTower}
-          tone={healthIssues > 0 ? "warn" : "success"}
-          visual={<MiniSparkline data={healthSparkline} tone={healthIssues > 0 ? "warn" : "success"} />}
+          tone={data.indexerHealth.length === 0 ? "neutral" : healthIssues > 0 ? "warn" : "success"}
         />
       </section>
 
       <section className="grid gap-[var(--grid-gap)] xl:grid-cols-12">
         <RenderPanel className="xl:col-span-8">
           <PanelHeader
-            eyebrow="Network"
-            title="Downloads"
+            eyebrow="Live work"
+            title="Transfers in progress"
             action={
               <Link to="/queue" className="inline-flex items-center gap-1 text-[length:var(--type-caption)] font-semibold text-primary">
                 Open queue
@@ -202,16 +230,13 @@ export function DashboardPage() {
               </Link>
             }
           />
-          <LiveWaveform
-            seed={data.activeDownloadCount > 0
-              ? [22, 24, 23, 26, 25, 27, 31, 34, 30, 28, 26, 24, 22, 19, 16, 22, 28, 32, 30, 28]
-              : Array(20).fill(0)}
-            idle={data.activeDownloadCount === 0}
-            label="Download speed"
-            subLabel={data.activeDownloadCount > 0
-              ? "Combined speed across all your download clients"
-              : "No active downloads"}
-          />
+          {data.activeDownloads.length ? (
+            <div className="divide-y divide-hairline">
+              {data.activeDownloads.slice(0, 5).map((download) => <DownloadSummaryRow key={download.id} download={download} />)}
+            </div>
+          ) : (
+            <EmptyPanelText>No downloads, processing, or imports need your attention right now.</EmptyPanelText>
+          )}
         </RenderPanel>
 
         <RenderPanel className="xl:col-span-4">
@@ -224,9 +249,9 @@ export function DashboardPage() {
               href="/movies"
             />
             <DecisionRow
-              tone={healthIssues > 0 ? "warn" : "success"}
-              title={healthIssues > 0 ? "Provider health degraded" : "Indexers healthy"}
-              text={healthIssues > 0 ? `${healthIssues} indexer or client checks need review.` : "All configured providers are currently responding."}
+              tone={data.indexerHealth.length === 0 ? "neutral" : healthIssues > 0 ? "warn" : "success"}
+              title={data.indexerHealth.length === 0 ? "Providers not connected" : healthIssues > 0 ? "Provider health degraded" : "Providers healthy"}
+              text={data.indexerHealth.length === 0 ? "Connect a search source and download client before Deluno can automate acquisition." : healthIssues > 0 ? `${healthIssues} indexer or client checks need review.` : "All configured providers are currently responding."}
               href="/indexers"
             />
             <DecisionRow
@@ -250,7 +275,7 @@ export function DashboardPage() {
           </div>
         </RenderPanel>
 
-        <RenderPanel className="min-h-[420px] xl:col-span-8">
+        <RenderPanel className="xl:col-span-8">
           <PanelHeader
             eyebrow="Library"
             title="Fresh in the library"
@@ -266,12 +291,17 @@ export function DashboardPage() {
               <PosterPreview key={`${item.type}-${item.id}`} item={item} />
             ))}
           </div>
+          {data.recentlyAdded.length === 0 ? (
+            <EmptyPanelText>
+              Your recently imported movies and shows will appear here. Add a title when you are ready to start your library.
+            </EmptyPanelText>
+          ) : null}
         </RenderPanel>
 
         <div className="grid gap-[var(--grid-gap)] xl:col-span-4">
           <RenderPanel>
             <PanelHeader eyebrow="Calendar" title="Next 72 hours" icon={Calendar} />
-            <div className="space-y-4">
+            <div className="space-y-[var(--page-gap)]">
               {upcomingGroups.length ? (
                 upcomingGroups.slice(0, 3).map(({ day, entries }) => (
                   <div key={day} className="space-y-2">
@@ -307,34 +337,6 @@ export function DashboardPage() {
           </RenderPanel>
         </div>
 
-        <RenderPanel className="xl:col-span-12">
-          <PanelHeader eyebrow="Trends" title="Library and health over time" icon={TrendingUp} />
-          <div className="grid gap-[var(--grid-gap)] lg:grid-cols-2">
-            <AreaChart
-              height={220}
-              ariaLabel="Library size over the last 14 days"
-              series={[
-                {
-                  name: "Titles",
-                  tone: "primary",
-                  data: librarySparkline.map((y, i) => ({ x: `D${i + 1 - librarySparkline.length}`, y }))
-                }
-              ]}
-            />
-            <AreaChart
-              height={220}
-              ariaLabel="Indexer health score"
-              yAxis={false}
-              series={[
-                {
-                  name: "Health",
-                tone: healthIssues > 0 ? "warning" : "success",
-                  data: healthSparkline.map((y, i) => ({ x: `D${i + 1 - healthSparkline.length}`, y }))
-                }
-              ]}
-            />
-          </div>
-        </RenderPanel>
       </section>
     </div>
   );
@@ -400,7 +402,7 @@ function RenderPanel({
   className?: string;
 }) {
   return (
-    <section className={cn("relative overflow-hidden rounded-2xl border border-hairline bg-card p-[var(--tile-pad)] shadow-card dark:border-white/[0.06]", className)}>
+    <section className={cn("relative self-start overflow-hidden rounded-2xl border border-hairline bg-card p-[var(--tile-pad)] shadow-card dark:border-white/[0.06]", className)}>
       <span
         aria-hidden
         className="pointer-events-none absolute inset-x-5 top-0 h-px rounded-full"
@@ -423,7 +425,7 @@ function PanelHeader({
   icon?: typeof Sparkles;
 }) {
   return (
-    <div className="mb-[var(--grid-gap)] flex items-start justify-between gap-4">
+    <div className="mb-[var(--grid-gap)] flex items-start justify-between gap-[var(--grid-gap)]">
       <div className="min-w-0">
         <p className="flex items-center gap-2 text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-muted-foreground">
           {Icon ? <Icon className="h-3.5 w-3.5 text-primary" /> : null}
@@ -457,6 +459,26 @@ function DecisionRow({
           <span className="mt-1 block text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">{text}</span>
         </span>
       </div>
+    </Link>
+  );
+}
+
+function DownloadSummaryRow({ download }: { download: ActiveDownload }) {
+  return (
+    <Link to="/queue" className="grid gap-3 px-[var(--tile-pad)] py-3 transition hover:bg-primary/5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+      <span className="min-w-0">
+        <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{download.title}</span>
+        <span className="mt-1 block text-[length:var(--type-caption)] text-muted-foreground">
+          {download.quality ?? "Quality not reported"} · {download.indexer || "source not reported"}
+        </span>
+        <span className="mt-2 block h-1.5 overflow-hidden rounded-full bg-muted/60">
+          <span className="block h-full rounded-full bg-primary" style={{ width: `${Math.max(0, Math.min(100, download.progress))}%` }} />
+        </span>
+      </span>
+      <span className="text-left sm:text-right">
+        <span className="block font-mono text-[13px] font-semibold text-foreground">{Math.round(download.progress)}%</span>
+        <span className="block text-[length:var(--type-caption)] text-muted-foreground">{download.speedMbps.toFixed(1)} MB/s · {download.etaMinutes > 0 ? `${download.etaMinutes} min left` : "finishing"}</span>
+      </span>
     </Link>
   );
 }
@@ -548,37 +570,6 @@ function AmbientTone({ tone, subtle = false }: { tone: "primary" | "success" | "
   );
 }
 
-function MiniSparkline({ data, tone }: { data: number[]; tone: "primary" | "success" | "warn" }) {
-  const w = 160;
-  const h = 28;
-  const min = Math.min(...data) - 2;
-  const max = Math.max(...data) + 2;
-  const range = max - min || 1;
-  const path = data
-    .map((value, index) => {
-      const x = (index / (data.length - 1)) * w;
-      const y = h - ((value - min) / range) * h;
-      return `${index === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(" ");
-  return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="h-7 w-full" preserveAspectRatio="none" aria-hidden>
-      <path d={path} fill="none" stroke={toneStroke(tone)} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-    </svg>
-  );
-}
-
-function ProgressLine({ value }: { value: number }) {
-  return (
-    <div className="h-1.5 overflow-hidden rounded-full bg-muted/60">
-      <div
-        className="h-full rounded-full bg-gradient-to-r from-primary to-[hsl(var(--primary-2))] shadow-[0_0_10px_hsl(var(--primary)/0.55)]"
-        style={{ width: `${Math.max(0, Math.min(100, value))}%` }}
-      />
-    </div>
-  );
-}
-
 function toneClass(tone: "primary" | "success" | "warn" | "info" | "neutral", part: "icon" | "dot") {
   if (part === "dot") {
     return {
@@ -599,29 +590,8 @@ function toneClass(tone: "primary" | "success" | "warn" | "info" | "neutral", pa
   }[tone];
 }
 
-function toneStroke(tone: "primary" | "success" | "warn") {
-  return {
-    primary: "hsl(var(--primary))",
-    success: "hsl(var(--success))",
-    warn: "hsl(var(--warning))"
-  }[tone];
-}
-
 function statusDot(status: MediaItem["status"]) {
-  return {
-    downloaded: "bg-success",
-    [downloadQueueStatuses.downloading]: "bg-info animate-pulse",
-    [downloadQueueStatuses.processing]: "bg-primary animate-pulse",
-    [downloadQueueStatuses.processed]: "bg-success",
-    [downloadQueueStatuses.waitingForProcessor]: "bg-warning animate-pulse",
-    [downloadQueueStatuses.importReady]: "bg-success",
-    [downloadQueueStatuses.importQueued]: "bg-primary animate-pulse",
-    [downloadQueueStatuses.importFailed]: "bg-destructive",
-    [downloadQueueStatuses.imported]: "bg-success",
-    [downloadQueueStatuses.processingFailed]: "bg-destructive",
-    monitored: "bg-primary",
-    missing: "bg-destructive"
-  }[status];
+  return cn(MEDIA_STATUS_PRESENTATION[status].dot, mediaStatusIsActive(status) && "animate-pulse");
 }
 
 function healthDot(status: IndexerHealthItem["status"]) {
@@ -739,17 +709,13 @@ function formatDashboardTime(date: Date) {
   return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
-function buildSparkline(value: number) {
-  const normalized = Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0;
-  return Array.from({ length: 15 }, (_, index) => Math.max(0, normalized - 5 + ((index * 7) % 11)));
-}
-
 function emptyDashboardData(): DashboardLoaderData {
   return {
     activeDownloads: [],
     activeDownloadCount: 0,
     indexerHealth: [],
-    indexerHealthPercent: 100,
+    indexerHealthPercent: null,
+    configuredLibraryCount: 0,
     librarySizeTb: "0.0",
     missingCount: 0,
     monitoredCount: 0,

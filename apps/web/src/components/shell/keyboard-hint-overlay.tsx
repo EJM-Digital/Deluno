@@ -58,7 +58,7 @@ export function KeyboardHintOverlay({
             </Dialog.Close>
           </div>
           <div className="max-h-[70vh] overflow-y-auto px-5 py-4">
-            <div className="grid gap-6 sm:grid-cols-2">
+            <div className="grid gap-[var(--grid-gap)] sm:grid-cols-2">
               {groups.map(([group, list]) => (
                 <div key={group} className="space-y-2">
                   <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">

@@ -238,7 +238,7 @@ export function SettingsDestinationRulesPage() {
 
   return (
     <SettingsShell
-      title="Destination Rules"
+      title="Final destinations"
       description="Route titles into the right root folders without splitting Deluno into multiple installs. Rules are reusable and explainable."
     >
       <div className="fluid-kpi-grid">
@@ -597,7 +597,7 @@ export function SettingsDestinationRulesPage() {
                 </div>
               ))}
               {destinationRules.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-hairline bg-surface-1 p-6 text-sm text-muted-foreground">
+                <div className="rounded-xl border border-dashed border-hairline bg-surface-1 p-[var(--tile-pad)] text-sm text-muted-foreground">
                   No destination rules yet. Start with one rule for kids, anime, 4K, or language-based separation.
                 </div>
               ) : null}

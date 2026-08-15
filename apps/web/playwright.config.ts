@@ -7,38 +7,56 @@ import { defineConfig, devices } from "@playwright/test";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../..");
 const smokeDataRoot = path.join(os.tmpdir(), "deluno-playwright", `${process.pid}-${Date.now()}`);
+const smokeApiPort = 5199;
+const smokeWebPort = 5174;
+const smokeApiUrl = `http://127.0.0.1:${smokeApiPort}`;
+const smokeWebUrl = `http://127.0.0.1:${smokeWebPort}`;
 const repoLocalDotnet = path.join(repoRoot, ".dotnet", "dotnet.exe");
 const dotnetCommand = process.platform === "win32" && fs.existsSync(repoLocalDotnet)
   ? `"${repoLocalDotnet}"`
   : "dotnet";
-const backendCommand = `${dotnetCommand} run --project ../../src/Deluno.Host/Deluno.Host.csproj --urls http://127.0.0.1:5099`;
+// Start from the project rather than a previously compiled DLL. This keeps the
+// browser suite honest when an API route has just been added: it must exercise
+// the source revision under test, not an older artifact left in bin/Release.
+const backendCommand = `${dotnetCommand} run --project ../../src/Deluno.Host/Deluno.Host.csproj --configuration Release --no-launch-profile`;
 
 export default defineConfig({
   testDir: "./tests",
+  // The smoke suite shares one disposable API and static production-bundle server.
+  // Tests intentionally share one disposable database. A single worker keeps
+  // setup drafts and seeded media from one scenario from leaking into another;
+  // projects still verify both desktop and mobile in the same regression run.
+  workers: 1,
   timeout: 30_000,
   expect: {
     timeout: 5_000
   },
   use: {
-    baseURL: "http://127.0.0.1:5173",
+    baseURL: smokeWebUrl,
     trace: "retain-on-failure"
   },
   webServer: [
     {
       command: backendCommand,
-      url: "http://127.0.0.1:5099/health",
-      reuseExistingServer: !process.env.CI,
+      url: `${smokeApiUrl}/health`,
+      reuseExistingServer: false,
       timeout: 90_000,
       env: {
         ...process.env,
-        Storage__DataRoot: smokeDataRoot
+        Storage__DataRoot: smokeDataRoot,
+        Server__Port: String(smokeApiPort)
       }
     },
     {
-      command: "npm run dev -- --host 127.0.0.1",
-      url: "http://127.0.0.1:5173",
-      reuseExistingServer: !process.env.CI,
-      timeout: 60_000
+      command: "npm run build && node scripts/serve-smoke-preview.mjs",
+      url: smokeWebUrl,
+      reuseExistingServer: false,
+      timeout: 60_000,
+      env: {
+        ...process.env,
+        DELUNO_WEB_PORT: String(smokeWebPort),
+        DELUNO_API_ORIGIN: smokeApiUrl
+      }
     }
   ],
   projects: [

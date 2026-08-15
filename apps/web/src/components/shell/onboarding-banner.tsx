@@ -41,26 +41,26 @@ export function OnboardingBanner({ state }: { state: OnboardingState }) {
 
   const steps: { label: string; to: string; done: boolean; hint: string }[] = [
     {
-      label: "Choose folders",
-      hint: "Where media and completed downloads live.",
+      label: "Choose media folders",
+      hint: "Where your media and completed downloads will live.",
       to: "/setup-guide",
       done: state.hasLibrary
     },
     {
-      label: "Set quality",
-      hint: "Simple quality and release rules.",
+      label: "Choose a media plan",
+      hint: "Quality, storage, and release preferences in plain language.",
       to: "/setup-guide",
       done: state.hasLibrary
     },
     {
-      label: "Add an indexer",
-      hint: "Providers Deluno queries for releases.",
+      label: "Connect a search source",
+      hint: "Where Deluno looks for releases when your library needs one.",
       to: "/indexers",
       done: state.hasIndexer
     },
     {
-      label: "Add a download client",
-      hint: "Where approved releases will be sent.",
+      label: "Choose downloads",
+      hint: "Where approved releases go before Deluno imports them.",
       to: "/indexers",
       done: state.hasDownloadClient
     },
@@ -102,21 +102,21 @@ export function OnboardingBanner({ state }: { state: OnboardingState }) {
         <X className="h-3.5 w-3.5" />
       </button>
 
-      <div className="relative flex items-start gap-4">
+      <div className="relative flex items-start gap-[var(--grid-gap)]">
         <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary ring-1 ring-inset ring-primary/25">
           <Sparkles className="h-5 w-5" strokeWidth={2.1} />
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
             <h2 className="font-display text-lg font-bold tracking-tight text-foreground">
-              Finish setting up Deluno
+              Build your media library
             </h2>
             <span className="tabular text-[12px] text-muted-foreground">
               {completedCount}/{steps.length} complete
             </span>
           </div>
           <p className="mt-0.5 text-[13px] text-muted-foreground">
-            Guided setup creates folders, quality profiles, release rules, provider routing, and the first library baseline.
+            Tell Deluno what kind of library you want. It will create the folders, media plan, release rules, routing, and first library baseline.
           </p>
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -124,14 +124,14 @@ export function OnboardingBanner({ state }: { state: OnboardingState }) {
               to="/setup-guide"
               className="inline-flex h-[var(--control-height-sm)] items-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-semibold text-primary-foreground shadow-glow transition hover:-translate-y-0.5"
             >
-              Start guided setup
+              Build my setup
               <ArrowRight className="h-3.5 w-3.5" />
             </Link>
             <Link
               to="/settings"
               className="inline-flex h-[var(--control-height-sm)] items-center rounded-xl border border-hairline bg-card px-4 text-[13px] font-semibold text-muted-foreground transition hover:text-foreground"
             >
-              Advanced settings
+              Open library setup
             </Link>
           </div>
 

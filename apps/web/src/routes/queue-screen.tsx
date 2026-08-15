@@ -17,8 +17,11 @@ import {
   Wand2
 } from "lucide-react";
 import {
+  ApiRequestError,
   fetchJson,
   type DownloadClientHistoryItem,
+  type DownloadCleanupPreview,
+  type DownloadHealthRecord,
   type DownloadClientTelemetrySnapshot,
   type DownloadDispatchItem,
   type DownloadQueueItem,
@@ -32,6 +35,7 @@ import {
   type MovieImportRecoveryCase,
   type MovieImportRecoverySummary,
   type PlatformSettingsSnapshot,
+  type ProcessorHandoffItem,
   type SeriesImportRecoveryCase,
   type SeriesImportRecoverySummary
 } from "../lib/api";
@@ -49,6 +53,7 @@ import { GlassTile, PageHero } from "../components/shell/page-hero";
 import { Stagger, StaggerItem } from "../components/shell/motion";
 import { RouteSkeleton } from "../components/shell/skeleton";
 import { toast } from "../components/shell/toaster";
+import { ConfirmDialog } from "../components/ui/confirm-dialog";
 
 type QueueAction = "pause" | "resume" | "delete" | "recheck";
 
@@ -70,19 +75,28 @@ interface QueueLoaderData {
   seriesRecovery: SeriesImportRecoverySummary;
   settings: PlatformSettingsSnapshot;
   jobs: JobQueueItem[];
+  healthRecords: DownloadHealthRecord[];
+  processorHandoffs: ProcessorHandoffItem[];
 }
 
 export async function queueLoader(): Promise<QueueLoaderData> {
-  const [telemetry, dispatches, movieRecovery, seriesRecovery, settings, jobs] = await Promise.all([
+  const [telemetry, dispatches, movieRecovery, seriesRecovery, settings, jobs, healthRecords, processorHandoffs] = await Promise.all([
     fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry"),
     fetchJson<DownloadDispatchItem[]>("/api/download-dispatches?take=60"),
     fetchJson<MovieImportRecoverySummary>("/api/movies/import-recovery"),
     fetchJson<SeriesImportRecoverySummary>("/api/series/import-recovery"),
     fetchJson<PlatformSettingsSnapshot>("/api/settings"),
-    fetchJson<JobQueueItem[]>("/api/jobs?take=80")
+    fetchJson<JobQueueItem[]>("/api/jobs?take=80"),
+    fetchJson<DownloadHealthRecord[]>("/api/download-health?take=30"),
+    fetchJson<ProcessorHandoffItem[]>("/api/integrations/processors/handoffs?take=30").catch((error) => {
+      // Permit a newly deployed web build to remain usable during a rolling upgrade
+      // while an older local API is still running. Other failures remain visible.
+      if (error instanceof ApiRequestError && error.status === 404) return [];
+      throw error;
+    })
   ]);
 
-  return { telemetry, dispatches, movieRecovery, seriesRecovery, settings, jobs };
+  return { telemetry, dispatches, movieRecovery, seriesRecovery, settings, jobs, healthRecords, processorHandoffs };
 }
 
 export function QueuePage() {
@@ -102,6 +116,7 @@ export function QueuePage() {
     transferMode: "auto"
   }));
   const [manualPreview, setManualPreview] = useState<ImportPreviewResponse | null>(null);
+  const [pendingRemoval, setPendingRemoval] = useState<DownloadQueueItem | null>(null);
 
   const telemetry = loaderData.telemetry;
   const dispatches = loaderData.dispatches;
@@ -109,6 +124,9 @@ export function QueuePage() {
   const seriesRecovery = loaderData.seriesRecovery;
   const settings = loaderData.settings;
   const jobs = loaderData.jobs;
+  const healthRecords = loaderData.healthRecords;
+  const processorHandoffs = loaderData.processorHandoffs;
+  const [cleanupPreviews, setCleanupPreviews] = useState<Record<string, DownloadCleanupPreview>>({});
 
   const allQueue = useMemo(
     () => telemetry.clients.flatMap((client) => client.queue.map((item) => ({ ...item, clientProtocol: client.protocol }))),
@@ -124,11 +142,14 @@ export function QueuePage() {
   const importJobs = useMemo(() => jobs.filter((job) => job.jobType === "filesystem.import.execute"), [jobs]);
   const importReady = allQueue.filter((item) => isImportReadyStatus(item.status));
   const processing = allQueue.filter((item) => isProcessingStatus(item.status));
-  const stalled = allQueue.filter((item) => item.status === downloadQueueStatuses.stalled || item.errorMessage);
+  const queueAttention = allQueue.filter((item) =>
+    item.status === downloadQueueStatuses.stalled || Boolean(item.errorMessage) || Boolean(item.healthFindings?.length)
+  );
   const openRecovery = movieRecovery.openCount + seriesRecovery.openCount;
   const activeImportJobs = importJobs.filter((job) => isJobActive(job.status as any)).length;
   const failedImportJobs = importJobs.filter((job) => job.status === JOB_STATUS.FAILED).length;
   const activeClients = telemetry.clients.filter((client) => isHealthyClient(client.healthStatus)).length;
+  const activeProcessorHandoffs = processorHandoffs.filter((handoff) => ["waiting", "accepted", "started"].includes(handoff.status));
 
   async function handleQueueAction(clientId: string, item: DownloadQueueItem, action: QueueAction) {
     const key = `queue:${clientId}:${item.id}:${action}`;
@@ -147,6 +168,47 @@ export function QueuePage() {
       revalidator.revalidate();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Download action failed.");
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function confirmRemoval() {
+    if (!pendingRemoval) return;
+    const item = pendingRemoval;
+    await handleQueueAction(item.clientId, item, "delete");
+    setPendingRemoval(null);
+  }
+
+  async function ignoreHealthFinding(item: DownloadQueueItem, kind: string) {
+    const key = `health-ignore:${item.clientId}:${item.id}:${kind}`;
+    setBusyKey(key);
+    try {
+      const response = await authedFetch(`/api/download-clients/${item.clientId}/queue/${item.id}/health/${encodeURIComponent(kind)}/ignore`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ durationDays: 7 })
+      });
+      if (!response.ok) throw new Error("Could not pause this health finding.");
+      toast.success("Health finding ignored for seven days. No data was removed.");
+      revalidator.revalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not pause this health finding.");
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function previewCleanup(item: DownloadQueueItem) {
+    const key = `cleanup-preview:${item.clientId}:${item.id}`;
+    setBusyKey(key);
+    try {
+      const response = await authedFetch(`/api/download-clients/${item.clientId}/queue/${item.id}/cleanup-preview`);
+      if (!response.ok) throw new Error("Could not prepare a cleanup preview for this queue item.");
+      const preview = (await response.json()) as DownloadCleanupPreview;
+      setCleanupPreviews((current) => ({ ...current, [`${item.clientId}:${item.id}`]: preview }));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not prepare a cleanup preview.");
     } finally {
       setBusyKey(null);
     }
@@ -279,6 +341,24 @@ export function QueuePage() {
     }
   }
 
+  async function handleRetryProcessorHandoff(handoff: ProcessorHandoffItem) {
+    const key = `processor-handoff-retry:${handoff.id}`;
+    setBusyKey(key);
+    try {
+      const res = await authedFetch(`/api/integrations/processors/handoffs/${handoff.id}/retry`, { method: "POST" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null) as { message?: string } | null;
+        throw new Error(body?.message || "The processor hand-off could not be tried again.");
+      }
+      toast.success("Processor hand-off queued to try again. Deluno will use the same hand-off ID and still wait for a confirmed output.");
+      revalidator.revalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "The processor hand-off could not be tried again.");
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
   function buildManualImportRequest(): ImportPreviewRequest {
     return {
       sourcePath: manualImport.sourcePath.trim(),
@@ -347,16 +427,16 @@ export function QueuePage() {
   return (
     <div className="space-y-[var(--page-gap)]">
       <PageHero
-        eyebrow="Queue and imports"
+        eyebrow="Downloads & imports"
         eyebrowIcon={<HardDriveDownload className="h-3 w-3 text-primary" />}
         title={
           <>
-            Downloads, imports, and recovery in one operational view.
+            Your downloads, ready for your library.
           </>
         }
         subtitle={
           <>
-            Live download status from your download clients, with a preview before files are moved into your library.
+            This is the hand-off view: external client download, optional processing, then safe import. Step in only when a transfer needs attention.
           </>
         }
         stats={[
@@ -364,6 +444,7 @@ export function QueuePage() {
           { label: "Processing", value: (telemetry.summary.processingCount ?? processing.length).toString(), tone: processing.length ? "primary" : "neutral" },
           { label: "Import ready", value: telemetry.summary.importReadyCount.toString(), tone: "success" },
           { label: "Import jobs", value: activeImportJobs.toString(), tone: activeImportJobs ? "primary" : "neutral" },
+          { label: "External processing", value: activeProcessorHandoffs.length.toString(), tone: activeProcessorHandoffs.length ? "primary" : "neutral" },
           { label: "Recovery", value: openRecovery.toString(), tone: openRecovery ? "danger" : "neutral" }
         ]}
         actions={
@@ -375,7 +456,7 @@ export function QueuePage() {
             <Button asChild size="lg" variant="secondary" className="gap-2">
               <Link to="/indexers">
                 <Wand2 className="h-4 w-4" />
-                Configure clients
+                Configure downloads
               </Link>
             </Button>
           </>
@@ -385,12 +466,12 @@ export function QueuePage() {
       <OperationPathBanner
         pathId="queue"
         actionTo="/indexers"
-        actionLabel="Configure clients"
+        actionLabel="Configure downloads"
       />
 
       <Stagger className="fluid-kpi-grid">
         <StaggerItem>
-          <MetricTile icon={Download} label="Connected clients" value={`${activeClients}/${telemetry.clients.length}`} sub="download clients" tone="primary" />
+          <MetricTile icon={Download} label="Download apps" value={`${activeClients}/${telemetry.clients.length}`} sub="connected and ready" tone="primary" />
         </StaggerItem>
         <StaggerItem>
           <MetricTile icon={ArrowDownToLine} label="Total speed" value={`${telemetry.summary.totalSpeedMbps.toFixed(1)}`} unit="MB/s" sub="combined speed" tone="success" />
@@ -405,16 +486,52 @@ export function QueuePage() {
           <MetricTile icon={GitBranch} label="Import jobs" value={activeImportJobs} sub="queued or running" tone={activeImportJobs ? "primary" : "neutral"} />
         </StaggerItem>
         <StaggerItem>
-          <MetricTile icon={AlertTriangle} label="Needs action" value={openRecovery + stalled.length} sub="stalled or recovery" tone={openRecovery + stalled.length ? "warn" : "neutral"} />
+          <MetricTile icon={Wand2} label="External processing" value={activeProcessorHandoffs.length} sub="waiting on your processor" tone={activeProcessorHandoffs.length ? "primary" : "neutral"} />
+        </StaggerItem>
+        <StaggerItem>
+          <MetricTile icon={AlertTriangle} label="Needs action" value={openRecovery + queueAttention.length} sub="download health or recovery" tone={openRecovery + queueAttention.length ? "warn" : "neutral"} />
         </StaggerItem>
       </Stagger>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(360px,0.8fr)]">
+      <GlassTile className="p-[var(--tile-pad)]">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">Next up</p>
+            <h2 className="mt-1 text-[17px] font-semibold text-foreground">What to do next</h2>
+          </div>
+          {openRecovery + queueAttention.length + failedImportJobs > 0 ? (
+            <Badge variant="warning">{openRecovery + queueAttention.length + failedImportJobs} need attention</Badge>
+          ) : importReady.length > 0 ? (
+            <Badge variant="success">{importReady.length} ready to review</Badge>
+          ) : (
+            <Badge variant="success">All clear</Badge>
+          )}
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {queueAttention.length > 0 ? (
+            <NextStep href="#download-queue" icon={AlertTriangle} tone="warning" title="Review download health" description={`${queueAttention.length} download${queueAttention.length === 1 ? " needs" : "s need"} a safe next action.`} />
+          ) : null}
+          {failedImportJobs > 0 ? (
+            <NextStep href="#import-jobs" icon={RotateCw} tone="warning" title="Retry failed imports" description={`${failedImportJobs} import job${failedImportJobs === 1 ? " is" : "s are"} ready to retry.`} />
+          ) : null}
+          {openRecovery > 0 ? (
+            <NextStep href="#recovery" icon={FileSearch} tone="warning" title="Resolve import issues" description={`${openRecovery} file handoff${openRecovery === 1 ? " needs" : "s need"} your decision.`} />
+          ) : null}
+          {importReady.length > 0 ? (
+            <NextStep href="#download-queue" icon={CheckCircle2} tone="success" title="Add completed downloads" description={`${importReady.length} completed download${importReady.length === 1 ? " is" : "s are"} ready to review.`} />
+          ) : null}
+          {openRecovery + queueAttention.length + failedImportJobs + importReady.length === 0 ? (
+            <NextStep icon={CheckCircle2} tone="success" title="Nothing for you to do" description="Deluno is tracking the active downloads and imports." />
+          ) : null}
+        </div>
+      </GlassTile>
+
+      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.45fr)_minmax(360px,0.8fr)]">
         <div className="space-y-[var(--page-gap)]">
           <GlassTile>
             <PanelHeader
-              title="Download queue"
-              subtitle="Everything currently being downloaded."
+              title="Download progress"
+              subtitle="Everything currently being downloaded or prepared for import."
               meta={`${allQueue.length} queue items`}
             />
             {allQueue.length ? (
@@ -425,7 +542,12 @@ export function QueuePage() {
                     item={item}
                     busyKey={busyKey}
                     preview={importPreviews[item.id]}
+                    cleanupPreview={cleanupPreviews[`${item.clientId}:${item.id}`]}
+                    allowExternalClientRemoval={settings.removeCompletedDownloads}
                     onAction={handleQueueAction}
+                    onIgnoreHealthFinding={ignoreHealthFinding}
+                    onPreviewCleanup={previewCleanup}
+                    onRequestRemove={setPendingRemoval}
                     onPreview={handlePreviewImport}
                     onImport={handleImportNow}
                     onQueueImport={handleQueueImport}
@@ -442,10 +564,47 @@ export function QueuePage() {
             )}
           </GlassTile>
 
-          <GlassTile>
+          <GlassTile id="download-health-history">
             <PanelHeader
-              title="Import job monitor"
-              subtitle="Queued import work from Deluno's mover, hardlink, and catalog update pipeline."
+              title="Download health history"
+              subtitle="Recent evidence is retained after an item leaves the live queue. Persisted import paths are redacted."
+              meta={`${healthRecords.length} recent`}
+            />
+            {healthRecords.length ? (
+              <div className="divide-y divide-hairline">
+                {healthRecords.slice(0, 12).map((record) => <DownloadHealthHistoryRow key={`${record.clientId}:${record.queueItemId}:${record.kind}`} record={record} />)}
+              </div>
+            ) : (
+              <EmptyState size="sm" variant="custom" title="No health history yet" description="Deluno will retain explainable health evidence when a download needs attention." />
+            )}
+          </GlassTile>
+
+          <GlassTile id="external-processing">
+            <PanelHeader
+              title="External processing handoffs"
+              subtitle="Items Deluno has handed to FileFlows, Weir, or another configured processor before safe import."
+              meta={activeProcessorHandoffs.length ? `${activeProcessorHandoffs.length} active` : `${processorHandoffs.length} recent`}
+            />
+            {processorHandoffs.length ? (
+              <div className="divide-y divide-hairline">
+                {processorHandoffs.slice(0, 12).map((handoff) => (
+                  <ProcessorHandoffRow
+                    key={handoff.id}
+                    handoff={handoff}
+                    isRetrying={busyKey === `processor-handoff-retry:${handoff.id}`}
+                    onRetry={() => void handleRetryProcessorHandoff(handoff)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <EmptyState size="sm" variant="custom" title="No external handoffs yet" description="When a library is configured to refine completed downloads first, the safe handoff and its import result will appear here." />
+            )}
+          </GlassTile>
+
+          <GlassTile id="download-queue">
+            <PanelHeader
+              title="Imports in progress"
+              subtitle="Files Deluno is moving, linking, and adding to your library."
               meta={failedImportJobs ? `${failedImportJobs} failed` : `${importJobs.length} recent`}
             />
             {failedImportJobs ? (
@@ -479,10 +638,10 @@ export function QueuePage() {
             )}
           </GlassTile>
 
-          <GlassTile>
+          <GlassTile id="import-jobs">
             <PanelHeader
-              title="Client history"
-              subtitle="Completed, failed, and import-ready items reported by external clients and Deluno dispatches."
+              title="Download app history"
+              subtitle="Completed, failed, and ready-to-import items reported by your download apps."
               meta={`${clientHistory.length} normalized`}
             />
             {clientHistory.length ? (
@@ -496,10 +655,10 @@ export function QueuePage() {
             )}
           </GlassTile>
 
-          <GlassTile>
+          <GlassTile id="recovery">
             <PanelHeader
-              title="Dispatch history"
-              subtitle="What Deluno sent, where it was sent, and which client received it."
+              title="What Deluno sent"
+              subtitle="The releases Deluno approved and sent to a download app."
               meta={`${dispatches.length} recent`}
             />
             {dispatches.length ? (
@@ -541,7 +700,7 @@ export function QueuePage() {
           />
 
           <GlassTile>
-            <PanelHeader title="Recovery center" subtitle="Failed imports and unresolved media handoffs." meta={`${openRecovery} open`} />
+            <PanelHeader title="Needs attention" subtitle="Imports that could not be completed automatically." meta={`${openRecovery} open`} />
             <div className="space-y-3 p-[calc(var(--tile-pad)*0.85)]">
               <RecoveryGroup
                 title="Movies"
@@ -579,11 +738,106 @@ export function QueuePage() {
               {telemetry.clients.length ? telemetry.clients.map((client) => (
                 <CapabilityCard key={client.clientId} client={client} />
               )) : (
-                <EmptyState size="sm" variant="custom" title="No clients configured" description="Add qBittorrent, SABnzbd, NZBGet, Deluge, Transmission, or uTorrent from Indexers." />
+                <EmptyState size="sm" variant="custom" title="No clients configured" description="Add qBittorrent, SABnzbd, NZBGet, Deluge, Transmission, or uTorrent in Library setup → Connections → Download clients." />
               )}
             </div>
           </GlassTile>
         </aside>
+      </div>
+
+      <ConfirmDialog
+        open={pendingRemoval !== null}
+        onOpenChange={(open) => {
+          if (!open && busyKey === null) setPendingRemoval(null);
+        }}
+        title="Remove this client queue entry?"
+        description={pendingRemoval
+          ? `Deluno will ask ${pendingRemoval.clientName} to remove “${pendingRemoval.title}” from its queue. The client controls its own payload behaviour; Deluno never removes media-library files from this action.`
+          : ""}
+        confirmLabel="Remove queue entry"
+        busy={pendingRemoval !== null && busyKey === `queue:${pendingRemoval.clientId}:${pendingRemoval.id}:delete`}
+        onConfirm={() => void confirmRemoval()}
+      />
+    </div>
+  );
+}
+
+function DownloadHealthHistoryRow({ record }: { record: DownloadHealthRecord }) {
+  const ignored = record.ignoredUntilUtc && new Date(record.ignoredUntilUtc).getTime() > Date.now();
+  return (
+    <div className="px-[calc(var(--tile-pad)*0.85)] py-[calc(var(--tile-pad)*0.65)]">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="truncate font-medium text-foreground">{record.releaseName}</p>
+        <Badge variant={record.severity === "critical" ? "destructive" : "warning"} className="text-[9.5px]">{record.kind.replaceAll("-", " ")}</Badge>
+        <span className="text-[10.5px] text-muted-foreground">{record.strikeCount} {record.strikeCount === 1 ? "strike" : "strikes"}</span>
+        {ignored ? <span className="text-[10.5px] text-muted-foreground">temporarily ignored</span> : null}
+      </div>
+      <p className="mt-1 text-[11px] text-muted-foreground">{record.evidence}</p>
+      <p className="mt-1 text-[10.5px] text-muted-foreground">Last observed {new Date(record.lastObservedUtc).toLocaleString()}.</p>
+    </div>
+  );
+}
+
+function ProcessorHandoffRow({
+  handoff,
+  isRetrying,
+  onRetry
+}: {
+  handoff: ProcessorHandoffItem;
+  isRetrying: boolean;
+  onRetry: () => void;
+}) {
+  const statusVariant = handoff.status === "completed"
+    ? "success"
+    : handoff.status === "failed" || handoff.status === "timed-out"
+      ? "destructive"
+      : handoff.status === "accepted" || handoff.status === "started"
+        ? "default"
+        : "info";
+  const statusLabel = handoff.status === "waiting"
+    ? "Waiting for processor"
+    : handoff.status === "accepted"
+      ? "Accepted by processor"
+      : handoff.status === "started"
+        ? "Processing"
+    : handoff.status === "timed-out"
+      ? "Processor timed out"
+      : handoff.status.replace(/([a-z])([A-Z])/g, "$1 $2");
+
+  return (
+    <div className="px-[calc(var(--tile-pad)*0.85)] py-[calc(var(--tile-pad)*0.65)]">
+      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="truncate font-medium text-foreground">{handoff.releaseName}</p>
+            <Badge variant={statusVariant} className="text-[9.5px]">{statusLabel}</Badge>
+            <span className="rounded-full border border-hairline px-1.5 py-0.5 text-[10px] font-semibold uppercase text-muted-foreground">
+              {handoff.mediaType || "media"}
+            </span>
+            {handoff.processorName ? (
+              <span className="rounded-full border border-hairline px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                {handoff.processorName}
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-1 truncate font-mono text-[10.5px] text-muted-foreground">from {handoff.sourcePath}</p>
+          {handoff.outputPath ? <p className="mt-1 truncate font-mono text-[10.5px] text-muted-foreground">output {handoff.outputPath}</p> : null}
+          {handoff.failureMessage ? (
+            <p className="mt-2 rounded-lg border border-destructive/20 bg-destructive/5 px-2.5 py-1.5 text-[12px] text-destructive">
+              {handoff.failureMessage}
+            </p>
+          ) : null}
+        </div>
+        <div className="grid gap-1 text-left md:text-right">
+          <span className="font-mono text-[11px] text-muted-foreground">updated {formatDateTime(handoff.updatedUtc)}</span>
+          {handoff.importJobId ? <span className="font-mono text-[11px] text-muted-foreground">import {handoff.importJobId.slice(0, 8)}</span> : null}
+          {handoff.status === "failed" || handoff.status === "timed-out" ? (
+            <Button type="button" variant="outline" size="sm" className="mt-1.5" disabled={isRetrying} onClick={onRetry}>
+              {isRetrying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCw className="h-3.5 w-3.5" />}
+              Try processor again
+            </Button>
+          ) : null}
+        </div>
       </div>
     </div>
   );
@@ -638,7 +892,12 @@ function QueueRow({
   item,
   busyKey,
   preview,
+  cleanupPreview,
+  allowExternalClientRemoval,
   onAction,
+  onIgnoreHealthFinding,
+  onPreviewCleanup,
+  onRequestRemove,
   onPreview,
   onImport,
   onQueueImport
@@ -646,7 +905,12 @@ function QueueRow({
   item: DownloadQueueItem;
   busyKey: string | null;
   preview?: ImportPreviewResponse;
+  cleanupPreview?: DownloadCleanupPreview;
+  allowExternalClientRemoval: boolean;
   onAction: (clientId: string, item: DownloadQueueItem, action: QueueAction) => Promise<void>;
+  onIgnoreHealthFinding: (item: DownloadQueueItem, kind: string) => Promise<void>;
+  onPreviewCleanup: (item: DownloadQueueItem) => Promise<void>;
+  onRequestRemove: (item: DownloadQueueItem) => void;
   onPreview: (item: DownloadQueueItem) => Promise<void>;
   onImport: (item: DownloadQueueItem) => Promise<void>;
   onQueueImport: (item: DownloadQueueItem) => Promise<void>;
@@ -657,13 +921,16 @@ function QueueRow({
   const isImported = item.status === downloadQueueStatuses.imported;
   const isImportFailed = item.status === downloadQueueStatuses.importFailed;
   const isBusy = busyKey !== null;
+  const healthFindings = item.healthFindings ?? [];
   const statusTone = item.status === downloadQueueStatuses.stalled || item.errorMessage || isImportFailed
     ? "destructive"
     : isReady || isImported
       ? "success"
-    : item.status === downloadQueueStatuses.downloading || isProcessing || isQueuedImport
-        ? "default"
-        : "info";
+      : item.status === downloadQueueStatuses.waitingForProcessor
+        ? "warning"
+        : item.status === downloadQueueStatuses.downloading || isProcessing || isQueuedImport
+          ? "info"
+          : "default";
 
   return (
     <div className="px-[calc(var(--tile-pad)*0.85)] py-[calc(var(--tile-pad)*0.75)]">
@@ -708,6 +975,62 @@ function QueueRow({
               {item.errorMessage}
             </p>
           ) : null}
+          {healthFindings.map((finding) => (
+            <div
+              key={finding.kind}
+              className={cn(
+                "mt-2 rounded-xl border px-3 py-2.5",
+                finding.severity === "critical" ? "border-destructive/20 bg-destructive/5" : "border-warning/25 bg-warning/5"
+              )}
+            >
+              <p className={cn("text-[10px] font-semibold uppercase tracking-[0.14em]", finding.severity === "critical" ? "text-destructive" : "text-warning")}>
+                Download health · {finding.kind.replaceAll("-", " ")}
+              </p>
+              <p className="mt-1 text-[12px] font-medium text-foreground">{finding.summary}</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">{finding.evidence} {finding.recommendedAction}</p>
+              {finding.strikeCount > 0 ? (
+                <p className="mt-1 text-[10.5px] text-muted-foreground">
+                  {finding.strikeCount} health {finding.strikeCount === 1 ? "strike" : "strikes"}{finding.candidateBlocked ? "; this exact release is blocked from new grabs." : "."}
+                </p>
+              ) : null}
+              {finding.ignoredUntilUtc ? (
+                <p className="mt-1 text-[10.5px] text-muted-foreground">Ignored until {new Date(finding.ignoredUntilUtc).toLocaleString()}.</p>
+              ) : (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="mt-1 h-7 px-2 text-[10.5px]"
+                  disabled={isBusy}
+                  onClick={() => void onIgnoreHealthFinding(item, finding.kind)}
+                >
+                  Ignore for 7 days
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="mt-1 h-7 px-2 text-[10.5px]"
+                disabled={isBusy}
+                onClick={() => void onPreviewCleanup(item)}
+              >
+                {busyKey === `cleanup-preview:${item.clientId}:${item.id}` ? "Preparing preview…" : "Preview safe cleanup"}
+              </Button>
+              {cleanupPreview ? (
+                <div className="mt-2 rounded-lg border border-hairline bg-surface-1 px-2.5 py-2 text-[10.5px] text-muted-foreground">
+                  <p className="font-medium text-foreground">{cleanupPreview.matchedPolicy}</p>
+                  <p className="mt-1">{cleanupPreview.reason}</p>
+                  <p className="mt-1">{cleanupPreview.proposedAction}</p>
+                  <p className="mt-1">{cleanupPreview.affectedFiles}</p>
+                  <p className="mt-1">This preview does not take action. It shows what the Automation & recovery policy will be allowed to do after its ownership checks.</p>
+                </div>
+              ) : null}
+              <p className="mt-1.5 text-[10.5px] text-muted-foreground">
+                Configure the three-strike policy in Automation & recovery; Deluno keeps a durable record of every finding and action.
+              </p>
+            </div>
+          ))}
           {preview ? <ImportPreviewPanel preview={preview} /> : null}
           {isProcessing ? (
             <div className="mt-3 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5">
@@ -762,12 +1085,35 @@ function QueueRow({
               />
             </>
           ) : null}
+          {isImportFailed && item.sourcePath ? (
+            <>
+              <ActionButton
+                icon={FileSearch}
+                label="Preview retry"
+                busy={busyKey === `import-preview:${item.clientId}:${item.id}`}
+                disabled={isBusy}
+                onClick={() => void onPreview(item)}
+              />
+              <ActionButton
+                icon={ArrowDownToLine}
+                label="Retry import"
+                busy={busyKey === `import-now:${item.clientId}:${item.id}`}
+                disabled={isBusy}
+                onClick={() => void onImport(item)}
+                primary
+              />
+            </>
+          ) : null}
           <ActionButton icon={Pause} label="Pause" busy={busyKey === `queue:${item.clientId}:${item.id}:pause`} disabled={isBusy} onClick={() => void onAction(item.clientId, item, "pause")} />
           <ActionButton icon={Play} label="Resume" busy={busyKey === `queue:${item.clientId}:${item.id}:resume`} disabled={isBusy} onClick={() => void onAction(item.clientId, item, "resume")} />
           {["qbittorrent", "transmission", "deluge", "utorrent"].includes(item.protocol) ? (
             <ActionButton icon={RotateCw} label="Recheck" busy={busyKey === `queue:${item.clientId}:${item.id}:recheck`} disabled={isBusy} onClick={() => void onAction(item.clientId, item, "recheck")} />
           ) : null}
-          <ActionButton icon={Trash2} label="Remove" busy={busyKey === `queue:${item.clientId}:${item.id}:delete`} disabled={isBusy} onClick={() => void onAction(item.clientId, item, "delete")} destructive />
+          {allowExternalClientRemoval ? (
+            <ActionButton icon={Trash2} label="Remove" busy={busyKey === `queue:${item.clientId}:${item.id}:delete`} disabled={isBusy} onClick={() => onRequestRemove(item)} destructive />
+          ) : (
+            <p className="basis-full text-[10.5px] text-muted-foreground">External-client queue removal is off. Enable it in Library setup → Media management if you want this confirmed control here.</p>
+          )}
         </div>
       </div>
     </div>
@@ -1155,6 +1501,37 @@ function ManualImportPanel({
   );
 }
 
+function NextStep({
+  href,
+  icon: Icon,
+  title,
+  description,
+  tone
+}: {
+  href?: string;
+  icon: typeof Download;
+  title: string;
+  description: string;
+  tone: "success" | "warning";
+}) {
+  const className = cn(
+    "group rounded-xl border p-3 transition-colors",
+    href && "hover:bg-muted/30",
+    tone === "warning" ? "border-warning/25 bg-warning/5" : "border-success/25 bg-success/5"
+  );
+  const content = (
+    <>
+      <div className={cn("flex h-8 w-8 items-center justify-center rounded-lg", tone === "warning" ? "bg-warning/15 text-warning" : "bg-success/15 text-success")}>
+        <Icon className="h-4 w-4" />
+      </div>
+      <p className="mt-3 text-[13px] font-semibold text-foreground">{title}</p>
+      <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">{description}</p>
+    </>
+  );
+
+  return href ? <Link to={href} className={className}>{content}</Link> : <div className={className}>{content}</div>;
+}
+
 function PanelHeader({ title, subtitle, meta }: { title: string; subtitle: string; meta?: string }) {
   return (
     <div className="flex flex-wrap items-start justify-between gap-3 border-b border-hairline px-[calc(var(--tile-pad)*0.85)] py-[calc(var(--tile-pad)*0.7)]">
@@ -1282,7 +1659,7 @@ function actionLabel(action: QueueAction) {
   return {
     pause: "Pause",
     resume: "Resume",
-    delete: "Remove",
+    delete: "Cancel",
     recheck: "Recheck"
   }[action];
 }

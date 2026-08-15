@@ -32,16 +32,40 @@ const GLOSSARY: GlossaryItem[] = [
     definition: "A named configuration that combines a ranked list of qualities, a quality cutoff, and custom format rules. Assigned to each library."
   },
   {
+    term: "Media Plan",
+    definition: "Deluno's outcome-first home for what you want: quality, file size, release preferences, upgrades, and destination. Quality profiles, cutoffs, and custom formats remain available as advanced detail."
+  },
+  {
     term: "Dry Run",
     definition: "A test mode where Deluno shows what it would grab or import without actually taking action. Useful for verifying automation rules."
   },
   {
     term: "Indexer",
-    definition: "A source that Deluno queries for releases (Torznab/Usenet indexers, RSS feeds). Must be configured before searching."
+    definition: "The technical name for a search source. Deluno queries indexers, Torznab/Newznab services, or RSS feeds for releases. People moving from Prowlarr can manage them under Search sources."
+  },
+  {
+    term: "Search Source",
+    definition: "The friendly name for an indexer or release-search service. Deluno tests it before saying it is ready to search."
   },
   {
     term: "Download Client",
     definition: "Software that Deluno sends releases to for downloading (qBittorrent, Transmission, SABnzbd, etc.). Must be configured before importing."
+  },
+  {
+    term: "Transfers",
+    definition: "The live handoff from an approved release through downloading, processing, import, and recovery. It combines the practical queue and import work without hiding the history in Activity."
+  },
+  {
+    term: "Live Automation",
+    definition: "The operational view of what Deluno is searching, retrying, waiting on, or pausing right now. It is separate from Library setup so a live action is not mistaken for a permanent configuration change."
+  },
+  {
+    term: "Download Health & Cleanup",
+    definition: "Deluno's integrated replacement for a separate cleanup tool: it explains unhealthy downloads, previews a safe action, and can schedule a bounded replacement search. It is not antivirus protection and never silently deletes unproven shared data."
+  },
+  {
+    term: "Guide-backed Plan",
+    definition: "A plan informed by a quality guide or imported configuration. Deluno must show its source, effective rules, and any overrides rather than claiming every Recyclarr or Configarr setting maps exactly."
   },
   {
     term: "Monitored Episode",
@@ -78,7 +102,7 @@ export function GlossaryModal({ open, onOpenChange }: GlossaryModalProps) {
         </div>
 
         <div className="overflow-auto flex-1">
-          <div className="space-y-4 p-6">
+          <div className="space-y-[var(--page-gap)] p-6">
             {GLOSSARY.map((item) => (
               <div key={item.term} className="space-y-1.5">
                 <p className="font-semibold text-foreground">{item.term}</p>

@@ -191,7 +191,7 @@ export function CalendarPage() {
 
       <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.3fr)_minmax(360px,0.92fr)] 2xl:grid-cols-[minmax(0,1.55fr)_minmax(420px,0.72fr)]">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-4">
+          <CardHeader className="flex flex-row items-center justify-between gap-[var(--grid-gap)]">
             <div>
               <CardTitle>{week.label}</CardTitle>
               <CardDescription>

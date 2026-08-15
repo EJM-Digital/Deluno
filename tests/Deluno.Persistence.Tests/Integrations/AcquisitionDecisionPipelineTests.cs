@@ -1,5 +1,9 @@
 using Deluno.Integrations.Search;
+using Deluno.Infrastructure.Storage.Migrations;
+using Deluno.Persistence.Tests.Support;
 using Deluno.Platform.Contracts;
+using Deluno.Platform.Data;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Deluno.Persistence.Tests.Integrations;
 
@@ -139,6 +143,40 @@ public sealed class AcquisitionDecisionPipelineTests
         Assert.Equal("client-b", plan.SelectedDownloadClient!.DownloadClientId);
     }
 
+    [Fact]
+    public async Task PlanAsync_never_searches_or_dispatches_against_connections_that_have_not_passed_health_checks()
+    {
+        using var storage = TestStorage.Create();
+        var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-14T00:00:00Z"));
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, time),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SqlitePlatformSettingsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
+        var indexer = await repository.CreateIndexerAsync(new CreateIndexerRequest(
+            "Untested source", "torznab", "public", "https://fixture.invalid/api", null, 1, "2000", null, "movies", true), CancellationToken.None);
+        var client = await repository.CreateDownloadClientAsync(new CreateDownloadClientRequest(
+            "Untested external client", "qbittorrent", "localhost", 8080, null, null, null, "movies", "tv", null, 1, true), CancellationToken.None);
+        var request = new AcquisitionDecisionRequest(
+            "Dune Part Two", 2024, "movies", null, "WEB 1080p",
+            [new LibrarySourceLinkItem("source-link", "library", indexer.Id, indexer.Name, 1, "", "", time.GetUtcNow(), time.GetUtcNow())],
+            [new LibraryDownloadClientLinkItem("client-link", "library", client.Id, client.Name, 1, time.GetUtcNow(), time.GetUtcNow())]);
+        var pipeline = new AcquisitionDecisionPipeline(new ThrowingPlanner(), platformRepository: repository);
+
+        var sourceBlocked = await pipeline.PlanAsync(request);
+
+        Assert.Equal("blocked", sourceBlocked.Outcome);
+        Assert.False(sourceBlocked.ShouldDispatch);
+        Assert.Contains("Test a source successfully", sourceBlocked.SearchResult, StringComparison.OrdinalIgnoreCase);
+
+        await repository.UpdateIndexerHealthAsync(indexer.Id, "healthy", "Fixture source verified.", null, 1, CancellationToken.None);
+        var clientBlocked = await pipeline.PlanAsync(request);
+
+        Assert.Equal("blocked", clientBlocked.Outcome);
+        Assert.False(clientBlocked.ShouldDispatch);
+        Assert.Contains("Test a client successfully", clientBlocked.SearchResult, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static MediaSearchCandidate Candidate(string status, bool meetsCutoff, int qualityDelta)
         => new(
             ReleaseName: "Dune.Part.Two.2024.1080p.WEB-DL-GRP",
@@ -192,6 +230,22 @@ public sealed class AcquisitionDecisionPipelineTests
             int? episodeNumber = null,
             CancellationToken cancellationToken = default)
             => Task.FromResult(plan);
+    }
+
+    private sealed class ThrowingPlanner : IMediaSearchPlanner
+    {
+        public Task<MediaSearchPlan> BuildPlanAsync(
+            string title,
+            int? year,
+            string mediaType,
+            string? currentQuality,
+            string? targetQuality,
+            IReadOnlyList<LibrarySourceLinkItem> sources,
+            IReadOnlyList<CustomFormatItem>? customFormats = null,
+            int? seasonNumber = null,
+            int? episodeNumber = null,
+            CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("An unready connection must not reach the search planner.");
     }
 
     private sealed class StubIntelligentRoutingService(IReadOnlyDictionary<string, double> clientRates) : IIntelligentRoutingService

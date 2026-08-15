@@ -151,6 +151,144 @@ public sealed class TmdbMetadataProviderTests : IDisposable
         Assert.True(File.Exists(cached!.FilePath));
     }
 
+    [Fact]
+    public async Task GetDirectStatusAsync_prefers_host_configuration_before_legacy_install_secret()
+    {
+        var settings = new Mock<IPlatformSettingsRepository>();
+        settings.Setup(repo => repo.GetMetadataProviderSecretAsync("tmdb", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Legacy secret should not be read when the host config is present."));
+        settings.Setup(repo => repo.GetMetadataProviderSecretAsync("omdb", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
+
+        var provider = new TmdbMetadataProvider(
+            new HttpClient(new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound))),
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Deluno:Metadata:TMDbApiKey"] = "host-managed-key"
+                })
+                .Build(),
+            settings.Object,
+            new SqliteDatabaseConnectionFactory(Options.Create(new StoragePathOptions { DataRoot = _dataRoot })),
+            Options.Create(new StoragePathOptions { DataRoot = _dataRoot }),
+            TimeProvider.System,
+            new PassthroughResiliencePolicy(),
+            NullLogger<TmdbMetadataProvider>.Instance);
+
+        var status = await provider.GetDirectStatusAsync(CancellationToken.None);
+
+        Assert.True(status.IsConfigured);
+        Assert.Equal("direct", status.Mode);
+    }
+
+    [Fact]
+    public async Task SearchAsync_uses_the_managed_broker_without_a_direct_provider_key()
+    {
+        var settings = new Mock<IPlatformSettingsRepository>(MockBehavior.Strict);
+        settings.Setup(repo => repo.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateSettingsSnapshot("broker", "https://metadata.deluno.test"));
+
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            Assert.Equal(
+                "https://metadata.deluno.test/metadata/search?mediaType=movies&query=Interstellar&year=2014",
+                request.RequestUri?.ToString());
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    """
+                    {
+                      "provider": "deluno-broker",
+                      "mode": "broker",
+                      "resultCount": 1,
+                      "results": [{
+                        "provider": "tmdb",
+                        "providerId": "157336",
+                        "mediaType": "movies",
+                        "title": "Interstellar",
+                        "year": 2014,
+                        "overview": "A controlled broker result.",
+                        "posterUrl": null,
+                        "backdropUrl": null,
+                        "rating": 8.5,
+                        "ratings": [],
+                        "genres": ["Adventure"],
+                        "imdbId": "tt0816692",
+                        "externalUrl": "https://www.themoviedb.org/movie/157336",
+                        "cast": []
+                      }]
+                    }
+                    """,
+                    Encoding.UTF8,
+                    "application/json")
+            };
+        });
+
+        var storageOptions = Options.Create(new StoragePathOptions { DataRoot = _dataRoot });
+        var factory = new SqliteDatabaseConnectionFactory(storageOptions);
+        await new CacheSchemaInitializer(
+            factory,
+            new SqliteDatabaseMigrator(factory, TimeProvider.System),
+            NullLogger<CacheSchemaInitializer>.Instance)
+            .StartAsync(CancellationToken.None);
+        var provider = new TmdbMetadataProvider(
+            new HttpClient(handler),
+            new ConfigurationBuilder().Build(),
+            settings.Object,
+            factory,
+            storageOptions,
+            TimeProvider.System,
+            new PassthroughResiliencePolicy(),
+            NullLogger<TmdbMetadataProvider>.Instance);
+
+        var result = Assert.Single(await provider.SearchAsync(
+            new MetadataLookupRequest("Interstellar", "movies", 2014, null),
+            CancellationToken.None));
+
+        Assert.Equal("Interstellar", result.Title);
+        Assert.Equal("tmdb", result.Provider);
+        settings.Verify(repo => repo.GetMetadataProviderSecretAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    private static PlatformSettingsSnapshot CreateSettingsSnapshot(string providerMode, string brokerUrl)
+        => new(
+            AppInstanceName: "Deluno Test",
+            MovieRootPath: null,
+            SeriesRootPath: null,
+            DownloadsPath: null,
+            IncompleteDownloadsPath: null,
+            AutoStartJobs: true,
+            EnableNotifications: true,
+            RenameOnImport: true,
+            UseHardlinks: false,
+            CleanupEmptyFolders: true,
+            RemoveCompletedDownloads: false,
+            UnmonitorWhenCutoffMet: false,
+            MovieFolderFormat: "{Movie Title} ({Release Year})",
+            SeriesFolderFormat: "{Series Title} ({Series Year})",
+            EpisodeFileFormat: "{Series Title} - S{season:00}E{episode:00} - {Episode Title}",
+            HostBindAddress: "127.0.0.1",
+            HostPort: 5099,
+            UrlBase: string.Empty,
+            RequireAuthentication: true,
+            UiTheme: "system",
+            UiDensity: "comfortable",
+            DefaultMovieView: "grid",
+            DefaultShowView: "grid",
+            MetadataNfoEnabled: false,
+            MetadataArtworkEnabled: true,
+            MetadataCertificationCountry: "US",
+            MetadataLanguage: "en",
+            MetadataProviderMode: providerMode,
+            MetadataBrokerUrl: brokerUrl,
+            MetadataBrokerConfigured: !string.IsNullOrWhiteSpace(brokerUrl),
+            MetadataTmdbApiKeyConfigured: false,
+            MetadataOmdbApiKeyConfigured: false,
+            ReleaseNeverGrabPatterns: string.Empty,
+            SearchScoringMode: SearchScoringModes.Hybrid,
+            ImportRecoveryRetentionDays: 30,
+            UpdatedUtc: DateTimeOffset.UtcNow);
+
     public void Dispose()
     {
         try

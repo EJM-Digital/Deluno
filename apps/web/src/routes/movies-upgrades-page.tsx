@@ -20,13 +20,13 @@ export function MoviesUpgradesPage() {
   if (!data) return <RouteSkeleton />;
 
   const upgradeItems = data.wanted.recentItems.filter((item) => item.wantedStatus === "upgrade");
-  const waitingItems = data.wanted.recentItems.filter((item) => item.wantedStatus === "waiting");
+  const waitingItems = upgradeItems.filter((item) => item.nextEligibleSearchUtc);
 
   const strongCandidates = upgradeItems.filter((item) => item.currentQuality && item.targetQuality).length;
 
   return (
     <div className="space-y-[var(--page-gap)]">
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-[var(--grid-gap)] sm:grid-cols-3">
         <MetricCard
           icon={TrendingUp}
           label="Upgrade candidates"
@@ -41,9 +41,9 @@ export function MoviesUpgradesPage() {
         />
         <MetricCard
           icon={Clock3}
-          label="Waiting retry"
+          label="Upgrade retry"
           value={waitingItems.length}
-          helper="Items waiting for the next retry window"
+          helper="Upgrade candidates waiting for their next retry window"
         />
       </div>
 

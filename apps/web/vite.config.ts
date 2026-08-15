@@ -1,6 +1,17 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
+const developmentPort = Number(process.env.DELUNO_WEB_PORT ?? 5173);
+const apiProxyTarget = process.env.DELUNO_API_ORIGIN ?? "http://127.0.0.1:5099";
+const apiProxy = {
+  "/api": apiProxyTarget,
+  "/hubs": {
+    target: apiProxyTarget,
+    ws: true,
+    changeOrigin: true
+  }
+};
+
 export default defineConfig({
   plugins: [react()],
   build: {
@@ -51,15 +62,14 @@ export default defineConfig({
   },
   server: {
     host: "0.0.0.0",
-    port: 5173,
+    port: developmentPort,
     strictPort: true,
-    proxy: {
-      "/api": "http://127.0.0.1:5099",
-      "/hubs": {
-        target: "http://127.0.0.1:5099",
-        ws: true,
-        changeOrigin: true
-      }
-    }
+    proxy: apiProxy
+  },
+  preview: {
+    host: "0.0.0.0",
+    port: developmentPort,
+    strictPort: true,
+    proxy: apiProxy
   }
 });

@@ -6,17 +6,21 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../co
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { toast } from "../components/shell/toaster";
-import { fetchJson, type NotificationWebhookItem } from "../lib/api";
+import { fetchJson, type NotificationWebhookItem, type PlatformSettingsSnapshot } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
 import { RouteSkeleton } from "../components/shell/skeleton";
 
 interface LoaderData {
+  settings: PlatformSettingsSnapshot;
   webhooks: NotificationWebhookItem[];
 }
 
 export async function settingsNotificationsLoader(): Promise<LoaderData> {
-  const webhooks = await fetchJson<NotificationWebhookItem[]>("/api/notification-webhooks");
-  return { webhooks };
+  const [settings, webhooks] = await Promise.all([
+    fetchJson<PlatformSettingsSnapshot>("/api/settings"),
+    fetchJson<NotificationWebhookItem[]>("/api/notification-webhooks")
+  ]);
+  return { settings, webhooks };
 }
 
 const EVENT_OPTIONS = [
@@ -42,12 +46,32 @@ function emptyForm(): WebhookFormState {
 export function SettingsNotificationsPage() {
   const loaderData = useLoaderData() as LoaderData | undefined;
   if (!loaderData) return <RouteSkeleton />;
-  const { webhooks } = loaderData;
+  const { settings, webhooks } = loaderData;
   const revalidator = useRevalidator();
 
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState<WebhookFormState>(emptyForm);
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(settings.enableNotifications);
+
+  async function toggleNotifications() {
+    setBusyKey("global");
+    try {
+      const response = await authedFetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...settings, enableNotifications: !notificationsEnabled })
+      });
+      if (!response.ok) throw new Error("Could not update notifications.");
+      setNotificationsEnabled((current) => !current);
+      toast.success(notificationsEnabled ? "Notifications paused." : "Notifications enabled.");
+      revalidator.revalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update notifications.");
+    } finally {
+      setBusyKey(null);
+    }
+  }
 
   async function handleCreate(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -135,6 +159,13 @@ export function SettingsNotificationsPage() {
       title="Notifications"
       description="Send outbound webhook events to Discord, Slack, Gotify, ntfy, or any HTTP endpoint when Deluno grabs, imports, upgrades, or detects a health issue."
     >
+      <section className={`flex flex-wrap items-center justify-between gap-[var(--grid-gap)] rounded-2xl border p-4 ${notificationsEnabled ? "border-success/25 bg-success/[0.04]" : "border-warning/30 bg-warning/[0.05]"}`}>
+        <div>
+          <h2 className="font-semibold text-foreground">Notifications are {notificationsEnabled ? "enabled" : "paused"}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{notificationsEnabled ? "Enabled webhook endpoints can receive the events they are configured for." : "Webhook settings are kept, but Deluno will not send them until you resume notifications."}</p>
+        </div>
+        <Button type="button" variant={notificationsEnabled ? "outline" : "default"} disabled={busyKey === "global"} onClick={() => void toggleNotifications()}>{busyKey === "global" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}{notificationsEnabled ? "Pause notifications" : "Resume notifications"}</Button>
+      </section>
       <div className="settings-split settings-split-config-heavy">
         <div className="settings-panel space-y-[calc(var(--field-group-pad)*0.9)]">
           <div className="flex items-center justify-between">
@@ -292,7 +323,7 @@ export function SettingsNotificationsPage() {
               ))}
             </div>
           ) : !showCreate ? (
-            <div className="flex flex-col items-center gap-4 rounded-2xl border-2 border-dashed border-hairline py-12 text-center">
+            <div className="flex flex-col items-center gap-[var(--grid-gap)] rounded-2xl border-2 border-dashed border-hairline py-12 text-center">
               <Bell className="h-8 w-8 text-muted-foreground/30" />
               <div>
                 <p className="font-medium text-foreground">No webhooks yet</p>
@@ -315,7 +346,7 @@ export function SettingsNotificationsPage() {
               Deluno sends a JSON POST to every enabled webhook when a matching event fires.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4 text-[13px] text-muted-foreground">
+          <CardContent className="space-y-[var(--page-gap)] text-[13px] text-muted-foreground">
             <div className="space-y-3">
               {[
                 {

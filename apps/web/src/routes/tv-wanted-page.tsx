@@ -1,5 +1,5 @@
 import { Link, useLoaderData, useRevalidator } from "react-router-dom";
-import { AlertTriangle, Clock, RefreshCw, Search, TrendingUp, Tv } from "lucide-react";
+import { AlertTriangle, Clock, RefreshCw, Search, Tv } from "lucide-react";
 import {
   fetchJson,
   type LibraryAutomationStateItem,
@@ -40,8 +40,7 @@ export function TvWantedPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const missing = wanted.recentItems.filter((i) => i.wantedStatus === "missing");
-  const upgrades = wanted.recentItems.filter((i) => i.wantedStatus === "upgrade");
-  const waiting = wanted.recentItems.filter((i) => i.wantedStatus === "waiting" || i.nextEligibleSearchUtc);
+  const waiting = wanted.recentItems.filter((i) => i.wantedStatus === "waiting");
 
   const tvLibraries = automation.filter((a) => a.mediaType === "tv");
 
@@ -61,9 +60,8 @@ export function TvWantedPage() {
 
   return (
     <div className="space-y-[var(--page-gap)]">
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-[var(--grid-gap)] sm:grid-cols-2">
         <SummaryTile icon={AlertTriangle} label="Missing" value={wanted.missingCount} tone="warn" tip="Shows or seasons Deluno has never found a release for" />
-        <SummaryTile icon={TrendingUp} label="Ready for an upgrade" value={wanted.upgradeCount} tone="primary" tip="Shows already in your library that can be improved" />
         <SummaryTile icon={Clock} label="Waiting for retry" value={wanted.waitingCount} tone="neutral" tip="Searches that ran recently — Deluno will try again automatically" />
       </div>
 
@@ -111,17 +109,6 @@ export function TvWantedPage() {
           <p className="border-t border-hairline px-[var(--tile-pad)] py-3 text-[12px] text-muted-foreground">
             Showing {missing.length} of {wanted.missingCount} — open a show to see its full episode inventory.
           </p>
-        )}
-      </GlassTile>
-
-      <GlassTile>
-        <SectionHeader title="Ready for an upgrade" count={wanted.upgradeCount} description="These shows are in your library but a better quality release is available. Deluno will grab it automatically." tone="primary" />
-        {upgrades.length > 0 ? (
-          <WantedTable items={upgrades} />
-        ) : (
-          <div className="px-[var(--tile-pad)] pb-[var(--tile-pad)]">
-            <EmptyState size="sm" variant="custom" title="No upgrades waiting" description="All monitored shows are at or above their target quality." />
-          </div>
         )}
       </GlassTile>
 
@@ -196,7 +183,7 @@ function WantedTable({ items, showRetryTime = false }: { items: SeriesWantedItem
 }
 
 function WantedStatusBadge({ status }: { status: string }) {
-  if (status === "missing") return <Badge variant="destructive" className="text-[9.5px]">Missing</Badge>;
+  if (status === "missing") return <Badge variant="warning" className="text-[9.5px]">Missing</Badge>;
   if (status === "upgrade") return <Badge variant="info" className="text-[9.5px]">Upgrade available</Badge>;
   if (status === "waiting") return <Badge variant="default" className="text-[9.5px]">Retry pending</Badge>;
   return <Badge variant="default" className="text-[9.5px]">{status}</Badge>;

@@ -9,4 +9,5 @@ public sealed record ProcessorEventRequest(
     string? OutputPath,
     string? Status,
     string? Message,
-    string? ProcessorName);
+    string? ProcessorName,
+    string? HandoffId = null);

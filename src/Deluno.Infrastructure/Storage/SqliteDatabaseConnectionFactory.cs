@@ -1,4 +1,5 @@
 using System.Data.Common;
+using System.Collections.Concurrent;
 using Deluno.Contracts.Manifest;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Options;
@@ -8,6 +9,9 @@ namespace Deluno.Infrastructure.Storage;
 public sealed class SqliteDatabaseConnectionFactory(IOptions<StoragePathOptions> storageOptions)
     : IDelunoDatabaseConnectionFactory
 {
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> InitializationLocks = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, byte> InitializedPaths = new(StringComparer.OrdinalIgnoreCase);
+
     private static readonly IReadOnlyDictionary<string, DatabaseDescriptor> DatabaseLookup =
         DelunoStorageLayout.Databases.ToDictionary(database => database.Key, StringComparer.OrdinalIgnoreCase);
 
@@ -25,9 +29,19 @@ public sealed class SqliteDatabaseConnectionFactory(IOptions<StoragePathOptions>
         string databaseName,
         CancellationToken cancellationToken = default)
     {
+        var databasePath = GetDatabasePath(databaseName);
+        var requiresInitialization = !InitializedPaths.ContainsKey(databasePath);
+        SemaphoreSlim? initializationLock = null;
+        if (requiresInitialization)
+        {
+            initializationLock = InitializationLocks.GetOrAdd(databasePath, static _ => new SemaphoreSlim(1, 1));
+            await initializationLock.WaitAsync(cancellationToken);
+            requiresInitialization = !InitializedPaths.ContainsKey(databasePath);
+        }
+
         var connectionStringBuilder = new SqliteConnectionStringBuilder
         {
-            DataSource = GetDatabasePath(databaseName),
+            DataSource = databasePath,
             Mode = SqliteOpenMode.ReadWriteCreate,
             Cache = SqliteCacheMode.Shared,
             ForeignKeys = true,
@@ -35,19 +49,43 @@ public sealed class SqliteDatabaseConnectionFactory(IOptions<StoragePathOptions>
             DefaultTimeout = 5
         };
 
-        var connection = new SqliteConnection(connectionStringBuilder.ToString());
-        await connection.OpenAsync(cancellationToken);
+        try
+        {
+            var connection = new SqliteConnection(connectionStringBuilder.ToString());
+            await connection.OpenAsync(cancellationToken);
 
-        using var command = connection.CreateCommand();
-        command.CommandText =
-            """
-            PRAGMA busy_timeout = 5000;
-            PRAGMA journal_mode = WAL;
-            PRAGMA synchronous = NORMAL;
-            PRAGMA temp_store = MEMORY;
-            """;
-        await command.ExecuteNonQueryAsync(cancellationToken);
+            try
+            {
+                using var command = connection.CreateCommand();
+                command.CommandText = requiresInitialization
+                    ? """
+                      PRAGMA busy_timeout = 5000;
+                      PRAGMA journal_mode = WAL;
+                      PRAGMA synchronous = NORMAL;
+                      PRAGMA temp_store = MEMORY;
+                      """
+                    : """
+                      PRAGMA busy_timeout = 5000;
+                      PRAGMA synchronous = NORMAL;
+                      PRAGMA temp_store = MEMORY;
+                      """;
+                await command.ExecuteNonQueryAsync(cancellationToken);
+                if (requiresInitialization)
+                {
+                    InitializedPaths.TryAdd(databasePath, 0);
+                }
 
-        return connection;
+                return connection;
+            }
+            catch
+            {
+                await connection.DisposeAsync();
+                throw;
+            }
+        }
+        finally
+        {
+            initializationLock?.Release();
+        }
     }
 }

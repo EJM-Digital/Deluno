@@ -5,7 +5,9 @@ using Deluno.Platform.Data;
 
 namespace Deluno.Platform.Migration;
 
-public sealed class MigrationAssistantService(IPlatformSettingsRepository repository) : IMigrationAssistantService
+public sealed class MigrationAssistantService(
+    IPlatformSettingsRepository repository,
+    IEnumerable<IMigrationCatalogImporter>? catalogImporters = null) : IMigrationAssistantService
 {
     private static readonly JsonDocumentOptions DocumentOptions = new()
     {
@@ -14,6 +16,12 @@ public sealed class MigrationAssistantService(IPlatformSettingsRepository reposi
     };
 
     public async Task<MigrationReport> PreviewAsync(MigrationImportRequest request, CancellationToken cancellationToken)
+        => await BuildPreviewAsync(request, redactSensitiveData: true, cancellationToken);
+
+    private async Task<MigrationReport> BuildPreviewAsync(
+        MigrationImportRequest request,
+        bool redactSensitiveData,
+        CancellationToken cancellationToken)
     {
         var sourceKind = NormalizeSourceKind(request.SourceKind);
         var sourceName = NormalizeText(request.SourceName) ?? GetDefaultSourceName(sourceKind);
@@ -23,7 +31,7 @@ public sealed class MigrationAssistantService(IPlatformSettingsRepository reposi
         if (string.IsNullOrWhiteSpace(request.PayloadJson))
         {
             errors.Add("Paste a Radarr, Sonarr, Prowlarr, Recyclarr, or compatible JSON export before previewing.");
-            return BuildReport(sourceKind, sourceName, [], warnings, errors, 0, 0, 0);
+            return BuildReport(sourceKind, sourceName, [], warnings, errors, 0, 0, 0, redactSensitiveData);
         }
 
         JsonDocument document;
@@ -34,7 +42,7 @@ public sealed class MigrationAssistantService(IPlatformSettingsRepository reposi
         catch (JsonException ex)
         {
             errors.Add($"The migration payload is not valid JSON: {ex.Message}");
-            return BuildReport(sourceKind, sourceName, [], warnings, errors, 0, 0, 0);
+            return BuildReport(sourceKind, sourceName, [], warnings, errors, 0, 0, 0, redactSensitiveData);
         }
 
         using (document)
@@ -67,7 +75,7 @@ public sealed class MigrationAssistantService(IPlatformSettingsRepository reposi
                     $"{titleStats.TitleCount.ToString(CultureInfo.InvariantCulture)} imported titles",
                     "report",
                     false,
-                    "Deluno detected monitored/wanted state in the export. Titles are reported here and should be reconciled through metadata search before creating catalog records.",
+                    "Deluno detected monitored/wanted state in the export. On apply, Deluno creates deduplicated catalog records only when it can safely map each title to one migrated library; existing files still require a later library scan to reconcile file associations.",
                     new Dictionary<string, string?>
                     {
                         ["titleCount"] = titleStats.TitleCount.ToString(CultureInfo.InvariantCulture),
@@ -77,22 +85,30 @@ public sealed class MigrationAssistantService(IPlatformSettingsRepository reposi
                     []));
             }
 
-            return BuildReport(sourceKind, sourceName, operations, warnings, errors, titleStats.TitleCount, titleStats.MonitoredCount, titleStats.WantedCount);
+            return BuildReport(sourceKind, sourceName, operations, warnings, errors, titleStats.TitleCount, titleStats.MonitoredCount, titleStats.WantedCount, redactSensitiveData);
         }
     }
 
     public async Task<MigrationApplyResponse> ApplyAsync(MigrationImportRequest request, CancellationToken cancellationToken)
     {
-        var report = await PreviewAsync(request, cancellationToken);
+        var report = await BuildPreviewAsync(request, redactSensitiveData: false, cancellationToken);
         if (!report.Valid)
         {
-            return new MigrationApplyResponse(report, []);
+            return new MigrationApplyResponse(RedactReport(report), []);
         }
 
         var applied = new List<MigrationAppliedItem>();
+        string? stageFailure = null;
+        var selectedOperationIds = request.SelectedOperationIds is { Count: > 0 }
+            ? request.SelectedOperationIds.ToHashSet(StringComparer.Ordinal)
+            : null;
+        var isSelected = (MigrationReportOperation operation) =>
+            selectedOperationIds is null || selectedOperationIds.Contains(operation.Id);
 
-        foreach (var operation in report.Operations.Where(operation => operation.CanApply && operation.Action == "create"))
+        foreach (var operation in report.Operations.Where(operation => operation.CanApply && operation.Action == "create" && isSelected(operation)))
         {
+            try
+            {
             switch (operation.TargetType)
             {
                 case "quality-profile":
@@ -201,10 +217,77 @@ public sealed class MigrationAssistantService(IPlatformSettingsRepository reposi
                     break;
                 }
             }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                applied.Add(new MigrationAppliedItem(operation.Id, operation.TargetType, operation.Name, string.Empty, "failed"));
+                stageFailure = $"Migration stopped while creating {operation.TargetType}. Items listed as created are already saved; no external media was changed. Review the audit, then retry and Deluno will skip matching saved items.";
+                break;
+            }
         }
 
-        var afterApply = await PreviewAsync(request, cancellationToken);
-        return new MigrationApplyResponse(afterApply, applied);
+        var catalogWarnings = new List<string>();
+        var catalogTitles = ExtractCatalogTitles(request);
+        var catalogOperation = report.Operations.FirstOrDefault(operation =>
+            operation.Category == "catalog" && operation.TargetType == "monitored-state");
+        if (stageFailure is null && catalogTitles.Count > 0 && (catalogOperation is null || isSelected(catalogOperation)))
+        {
+            var libraries = await repository.ListLibrariesAsync(cancellationToken);
+            var catalogRequest = new MigrationCatalogImportRequest(
+                report.SourceKind,
+                report.SourceName,
+                catalogTitles,
+                libraries.Select(library => new MigrationCatalogLibrary(
+                    library.Id,
+                    library.MediaType,
+                    library.RootPath,
+                    library.Name)).ToArray());
+            foreach (var importer in catalogImporters ?? [])
+            {
+                try
+                {
+                    var imported = await importer.ImportAsync(catalogRequest, cancellationToken);
+                    applied.AddRange(imported.Applied);
+                    catalogWarnings.AddRange(imported.Warnings);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch
+                {
+                    applied.Add(new MigrationAppliedItem(catalogOperation?.Id ?? "catalog", importer.MediaType, $"{importer.MediaType} catalog", string.Empty, "failed"));
+                    stageFailure = $"Migration stopped while importing {importer.MediaType} catalogue records. Items listed as created are already saved; no external media was changed. Review the audit, then retry and Deluno will skip matching saved items.";
+                    break;
+                }
+            }
+        }
+
+        var preflight = RedactReport(report);
+        var afterApply = await BuildPreviewAsync(request, redactSensitiveData: true, cancellationToken);
+        if (catalogWarnings.Count > 0)
+        {
+            afterApply = afterApply with { Warnings = afterApply.Warnings.Concat(catalogWarnings).ToArray() };
+        }
+        if (stageFailure is not null)
+        {
+            afterApply = afterApply with { Errors = afterApply.Errors.Concat([stageFailure]).ToArray() };
+        }
+        var audit = await repository.RecordMigrationAuditReportAsync(
+            new MigrationAuditReport(
+                Id: string.Empty,
+                SourceKind: preflight.SourceKind,
+                SourceName: preflight.SourceName,
+                AppliedUtc: DateTimeOffset.MinValue,
+                PreflightReport: preflight,
+                ResultReport: afterApply,
+                Applied: applied),
+            cancellationToken);
+        return new MigrationApplyResponse(afterApply, applied, audit.Id);
     }
 
     private static void ExtractQualityProfiles(MigrationContext context, ExistingState existing, List<MigrationReportOperation> operations)
@@ -423,20 +506,20 @@ public sealed class MigrationAssistantService(IPlatformSettingsRepository reposi
         foreach (var item in EnumerateArrays(context.Root, "importLists", "lists", "intakeSources"))
         {
             var name = ReadString(item, "name") ?? ReadString(item, "implementationName");
-            var feedUrl = ReadString(item, "url") ?? ReadString(item, "link") ?? ExtractFieldValue(item, "listUrl") ?? ExtractFieldValue(item, "url");
             if (string.IsNullOrWhiteSpace(name))
             {
                 operations.Add(Unsupported(context, "intake-source", "Unnamed intake source", "Intake source is missing a name."));
                 continue;
             }
 
+            var provider = NormalizeProvider(ReadString(item, "implementation") ?? ReadString(item, "provider") ?? name);
+            var feedUrl = ResolveIntakeFeedUrl(item, provider);
             if (string.IsNullOrWhiteSpace(feedUrl))
             {
-                operations.Add(Unsupported(context, "intake-source", name, "Intake source has no feed URL or identifier."));
+                operations.Add(Unsupported(context, "intake-source", name, $"{ProviderLabel(provider)} import list has no supported public URL or stable list identifier."));
                 continue;
             }
 
-            var provider = NormalizeProvider(ReadString(item, "implementation") ?? ReadString(item, "provider") ?? name);
             var data = new Dictionary<string, string?>
             {
                 ["name"] = name,
@@ -494,6 +577,55 @@ public sealed class MigrationAssistantService(IPlatformSettingsRepository reposi
         return new TitleStats(titleCount, monitoredCount, wantedCount);
     }
 
+    private static IReadOnlyList<MigrationCatalogTitle> ExtractCatalogTitles(MigrationImportRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.PayloadJson))
+        {
+            return [];
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(request.PayloadJson, DocumentOptions);
+            var sourceKind = NormalizeSourceKind(request.SourceKind);
+            var titles = new List<MigrationCatalogTitle>();
+            foreach (var context in ResolveContexts(document.RootElement, sourceKind))
+            {
+                if (context.MediaType is not ("movies" or "tv"))
+                {
+                    continue;
+                }
+
+                foreach (var item in EnumerateArrays(context.Root, "movies", "series", "shows", "titles"))
+                {
+                    var title = ReadString(item, "title") ?? ReadString(item, "name") ?? ReadString(item, "sortTitle");
+                    if (string.IsNullOrWhiteSpace(title))
+                    {
+                        continue;
+                    }
+
+                    var tmdbId = ReadString(item, "tmdbId") ?? ReadString(item, "tmdb_id");
+                    titles.Add(new MigrationCatalogTitle(
+                        context.MediaType,
+                        title,
+                        ReadInt(item, "year") ?? ReadInt(item, "releaseYear") ?? ReadInt(item, "startYear"),
+                        ReadString(item, "imdbId") ?? ReadString(item, "imdb_id"),
+                        string.IsNullOrWhiteSpace(tmdbId) ? null : "tmdb",
+                        tmdbId,
+                        ReadBool(item, "monitored") ?? true,
+                        ReadBool(item, "hasFile") == true,
+                        ReadString(item, "rootFolderPath") ?? ReadString(item, "rootPath")));
+                }
+            }
+
+            return titles;
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
     private static MigrationReport BuildReport(
         string sourceKind,
         string sourceName,
@@ -502,7 +634,8 @@ public sealed class MigrationAssistantService(IPlatformSettingsRepository reposi
         IReadOnlyList<string> errors,
         int titleCount,
         int monitoredCount,
-        int wantedCount)
+        int wantedCount,
+        bool redactSensitiveData)
     {
         var summary = new MigrationReportSummary(
             CreateCount: operations.Count(operation => operation.Action == "create"),
@@ -519,10 +652,28 @@ public sealed class MigrationAssistantService(IPlatformSettingsRepository reposi
             sourceName,
             errors.Count == 0,
             summary,
-            operations,
+            redactSensitiveData ? operations.Select(RedactOperation).ToArray() : operations,
             warnings,
             errors);
     }
+
+    private static MigrationReport RedactReport(MigrationReport report)
+        => report with { Operations = report.Operations.Select(RedactOperation).ToArray() };
+
+    private static MigrationReportOperation RedactOperation(MigrationReportOperation operation)
+    {
+        var data = operation.Data.ToDictionary(
+            pair => pair.Key,
+            pair => IsSensitiveKey(pair.Key) && !string.IsNullOrWhiteSpace(pair.Value) ? "[redacted]" : pair.Value,
+            StringComparer.OrdinalIgnoreCase);
+        return operation with { Data = data };
+    }
+
+    private static bool IsSensitiveKey(string key)
+        => key.Contains("api", StringComparison.OrdinalIgnoreCase) && key.Contains("key", StringComparison.OrdinalIgnoreCase) ||
+           key.Contains("password", StringComparison.OrdinalIgnoreCase) ||
+           key.Contains("secret", StringComparison.OrdinalIgnoreCase) ||
+           key.Contains("token", StringComparison.OrdinalIgnoreCase);
 
     private static IEnumerable<MigrationContext> ResolveContexts(JsonElement root, string sourceKind)
     {
@@ -557,11 +708,12 @@ public sealed class MigrationAssistantService(IPlatformSettingsRepository reposi
             yield break;
         }
 
-        foreach (var name in names)
+        var acceptedNames = names.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var property in root.EnumerateObject())
         {
-            if (TryGetPropertyCaseInsensitive(root, name, out var array) && array.ValueKind == JsonValueKind.Array)
+            if (acceptedNames.Contains(property.Name) && property.Value.ValueKind == JsonValueKind.Array)
             {
-                foreach (var item in array.EnumerateArray())
+                foreach (var item in property.Value.EnumerateArray())
                 {
                     yield return item;
                 }
@@ -869,12 +1021,54 @@ public sealed class MigrationAssistantService(IPlatformSettingsRepository reposi
     private static string NormalizeProvider(string? value)
     {
         var normalized = NormalizeToken(value);
+        if (normalized.Contains("mdblist", StringComparison.OrdinalIgnoreCase)) return "mdblist";
+        if (normalized.Contains("letterboxd", StringComparison.OrdinalIgnoreCase)) return "letterboxd";
         if (normalized.Contains("trakt", StringComparison.OrdinalIgnoreCase)) return "trakt";
         if (normalized.Contains("imdb", StringComparison.OrdinalIgnoreCase)) return "imdb";
         if (normalized.Contains("tmdb", StringComparison.OrdinalIgnoreCase)) return "tmdb";
         if (normalized.Contains("rss", StringComparison.OrdinalIgnoreCase)) return "rss";
         return "url-list";
     }
+
+    private static string? ResolveIntakeFeedUrl(JsonElement item, string provider)
+    {
+        var address = ReadString(item, "url")
+                      ?? ReadString(item, "link")
+                      ?? ExtractFieldValue(item, "listUrl")
+                      ?? ExtractFieldValue(item, "url");
+        if (!string.IsNullOrWhiteSpace(address))
+        {
+            return address.Trim();
+        }
+
+        var listId = ExtractFieldValue(item, "listId")
+                     ?? ExtractFieldValue(item, "list")
+                     ?? ReadString(item, "listId");
+        if (string.IsNullOrWhiteSpace(listId))
+        {
+            return null;
+        }
+
+        var trimmed = listId.Trim();
+        return provider switch
+        {
+            "tmdb" when trimmed.All(char.IsDigit) => trimmed,
+            "imdb" when trimmed.Length > 2 && trimmed.StartsWith("ls", StringComparison.OrdinalIgnoreCase) && trimmed[2..].All(char.IsDigit) => trimmed,
+            _ => null
+        };
+    }
+
+    private static string ProviderLabel(string provider)
+        => provider switch
+        {
+            "tmdb" => "TMDb",
+            "imdb" => "IMDb",
+            "trakt" => "Trakt",
+            "mdblist" => "MDbList",
+            "letterboxd" => "Letterboxd",
+            "rss" => "RSS",
+            _ => "This"
+        };
 
     private static string NormalizeToken(string? value)
     {

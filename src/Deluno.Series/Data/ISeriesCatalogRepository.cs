@@ -106,6 +106,24 @@ public interface ISeriesCatalogRepository
         string? detailsJson,
         CancellationToken cancellationToken);
 
+    Task<bool> DeferWantedSearchAsync(
+        string seriesId,
+        string libraryId,
+        DateTimeOffset deferredUntilUtc,
+        CancellationToken cancellationToken);
+
+    /// <summary>Request that exactly one eligible background search is skipped. Manual searches are unaffected.</summary>
+    Task<bool> SkipNextWantedSearchAsync(
+        string seriesId,
+        string libraryId,
+        CancellationToken cancellationToken);
+
+    /// <summary>Atomically consumes a pending single background-search skip.</summary>
+    Task<bool> ConsumeSkipNextWantedSearchAsync(
+        string seriesId,
+        string libraryId,
+        CancellationToken cancellationToken);
+
     Task<int> ReevaluateLibraryWantedStateAsync(
         string libraryId,
         string? cutoffQuality,

@@ -80,6 +80,52 @@ public sealed class ReadinessServiceTests
             (long)check.Details["stalledRunning"]! == 1);
     }
 
+    [Fact]
+    public async Task CheckAsync_reports_ready_when_background_automation_is_paused_with_held_jobs()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T06:00:00Z"));
+        var jobs = await InitializeJobsAsync(storage, timeProvider);
+        await jobs.HeartbeatAsync("worker-test", CancellationToken.None);
+
+        await using (var platform = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Platform))
+        {
+            using var setup = platform.CreateCommand();
+            setup.CommandText =
+                "CREATE TABLE system_settings (setting_key TEXT PRIMARY KEY, setting_value TEXT NOT NULL, updated_utc TEXT NOT NULL);" +
+                "INSERT INTO system_settings (setting_key, setting_value, updated_utc) VALUES ('jobs.autoStart', 'false', '2026-04-29T06:00:00Z');";
+            await setup.ExecuteNonQueryAsync();
+        }
+
+        await using (var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Jobs))
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                INSERT INTO job_queue (
+                    id, job_type, source, status, payload_json, attempts, created_utc, scheduled_utc,
+                    started_utc, completed_utc, leased_until_utc, worker_id, last_error, related_entity_type, related_entity_id
+                )
+                VALUES (
+                    'held-job', 'movies.catalog.refresh', 'test', 'queued', NULL, 0, @createdUtc, @scheduledUtc,
+                    NULL, NULL, NULL, NULL, NULL, 'movie', 'movie-1'
+                );
+                """;
+            AddParameter(command, "@createdUtc", "2026-04-29T05:00:00Z");
+            AddParameter(command, "@scheduledUtc", "2026-04-29T05:00:00Z");
+            await command.ExecuteNonQueryAsync();
+        }
+
+        var readiness = CreateReadiness(storage, timeProvider);
+        var result = await readiness.CheckAsync(CancellationToken.None);
+
+        Assert.True(result.Ready);
+        Assert.Contains(result.Checks, check =>
+            check.Name == "jobs:queue" &&
+            check.Status == "ready" &&
+            check.Details["backgroundAutomationEnabled"] is false);
+    }
+
     private static DelunoReadinessService CreateReadiness(
         TestStorage storage,
         TimeProvider timeProvider)

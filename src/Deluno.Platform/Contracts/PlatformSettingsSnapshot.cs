@@ -36,4 +36,10 @@ public sealed record PlatformSettingsSnapshot(
     string ReleaseNeverGrabPatterns,
     string SearchScoringMode,
     int ImportRecoveryRetentionDays,
-    DateTimeOffset UpdatedUtc);
+    DateTimeOffset UpdatedUtc,
+    bool MdbListApiKeyConfigured = false,
+    int DownloadHealthStrikeThreshold = 3,
+    bool CleanupBlockReleaseAfterThreshold = true,
+    bool CleanupQueueReplacementAfterThreshold = true,
+    bool CleanupRemoveClientEntryAfterThreshold = false,
+    bool CleanupPurgePayloadAfterThreshold = false);

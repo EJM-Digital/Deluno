@@ -39,7 +39,7 @@ export function EpisodeMonitoringWidget({
             : "Overview of episode monitoring across this series"}
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-[var(--page-gap)]">
         <div className="grid grid-cols-2 gap-3">
           {stats.map((stat) => (
             <div key={stat.label} className="rounded-lg border border-hairline bg-surface-1 p-3">

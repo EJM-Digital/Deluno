@@ -8,12 +8,7 @@
  * against label/placeholder changes.
  */
 import { expect, test } from "@playwright/test";
-
-const fallbackCredentials = {
-  displayName: "Deluno Smoke User",
-  username: "deluno-smoke",
-  password: "deluno-smoke-password"
-};
+import { fallbackCredentials } from "../helpers/auth-helper";
 
 let credentials: { username: string; password: string } | null = null;
 let authToken: string | null = null;
@@ -93,7 +88,7 @@ test.describe("indexer and download client CRUD", () => {
     const indexer = await createResp.json() as { id: string };
 
     try {
-      await page.goto("/indexers");
+      await page.goto("/indexers/indexers");
       await expect(page.getByText(uniqueName).first()).toBeVisible();
     } finally {
       // Cleanup
@@ -123,7 +118,7 @@ test.describe("indexer and download client CRUD", () => {
     const indexer = await createResp.json() as { id: string };
 
     // Verify it shows
-    await page.goto("/indexers");
+    await page.goto("/indexers/indexers");
     await expect(page.getByText(uniqueName).first()).toBeVisible();
 
     // Delete via API
@@ -135,14 +130,14 @@ test.describe("indexer and download client CRUD", () => {
     await expect(page.getByText(uniqueName)).toHaveCount(0);
   });
 
-  test("indexers page shows Add indexer button and opens the add form", async ({ page }) => {
-    await page.goto("/indexers");
+  test("sources page explains and opens the search-source connection flow", async ({ page }) => {
+    await page.goto("/indexers/indexers");
     const addButton = page.getByRole("button", { name: "Add indexer" });
     await expect(addButton).toBeVisible();
 
     await addButton.click();
-    // Form heading appears
-    await expect(page.getByText("Add indexer").first()).toBeVisible();
+    // The guided connection panel appears.
+    await expect(page.getByText("Connect an indexer", { exact: true })).toBeVisible();
     // Protocol options are visible
     await expect(page.getByRole("button", { name: /Torznab/i })).toBeVisible();
     await expect(page.getByRole("button", { name: /Newznab/i })).toBeVisible();
@@ -150,7 +145,7 @@ test.describe("indexer and download client CRUD", () => {
   });
 
   test("indexer add form shows URL and scope fields after selecting protocol", async ({ page }) => {
-    await page.goto("/indexers");
+    await page.goto("/indexers/indexers");
     await page.getByRole("button", { name: "Add indexer" }).click();
     await page.getByRole("button", { name: /Torznab/i }).click();
 
@@ -233,7 +228,7 @@ test.describe("indexer and download client CRUD", () => {
     const client = await createResp.json() as { id: string };
 
     try {
-      await page.goto("/indexers");
+      await page.goto("/indexers/download-clients");
       await expect(page.getByText(uniqueName).first()).toBeVisible();
     } finally {
       await page.request.delete(`/api/download-clients/${client.id}`, { headers: authHeaders() });
@@ -263,7 +258,7 @@ test.describe("indexer and download client CRUD", () => {
     expect(createResp.ok()).toBe(true);
     const client = await createResp.json() as { id: string };
 
-    await page.goto("/indexers");
+    await page.goto("/indexers/download-clients");
     await expect(page.getByText(uniqueName).first()).toBeVisible();
 
     await page.request.delete(`/api/download-clients/${client.id}`, { headers: authHeaders() });
@@ -272,9 +267,9 @@ test.describe("indexer and download client CRUD", () => {
     await expect(page.getByText(uniqueName)).toHaveCount(0);
   });
 
-  test("download clients page shows Add client button", async ({ page }) => {
-    await page.goto("/indexers");
-    await expect(page.getByRole("button", { name: /Add client/i })).toBeVisible();
+  test("sources page provides the download connection flow", async ({ page }) => {
+    await page.goto("/indexers/download-clients");
+    await expect(page.getByRole("button", { name: "Connect downloads" }).first()).toBeVisible();
   });
 
   test("updated download client fields are returned correctly by the API", async ({ page }) => {

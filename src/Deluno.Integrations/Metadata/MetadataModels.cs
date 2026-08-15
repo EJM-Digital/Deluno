@@ -14,7 +14,13 @@ public sealed record MetadataSearchResult(
     IReadOnlyList<MetadataRatingItem> Ratings,
     IReadOnlyList<string> Genres,
     string? ImdbId,
-    string? ExternalUrl);
+    string? ExternalUrl,
+    IReadOnlyList<MetadataCastMember>? Cast = null);
+
+public sealed record MetadataCastMember(
+    string Name,
+    string? Character,
+    string? ProfileUrl);
 
 public sealed record MetadataRatingItem(
     string Source,

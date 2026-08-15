@@ -11,14 +11,21 @@
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
     <!-- Allows dotnet restore/build on Linux CI for the windows-targeted project -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
-    <!-- Version injected at publish time via /p:Version. Bumped 1.1.1 → 1.1.2
-         for: direct POST /api/downloader/jobs endpoint (live-test affordance)
-         + torrent engine Settings UI page (/settings/builtin-torrent) with
-         JSON-file backed config store. -->
+    <!-- Version injected at publish time via /p:Version. -->
     <Version>1.1.2</Version>
+    <!-- Set by the release workflow. This keeps fresh RC installs on the RC
+         feed until the user deliberately changes their update channel. -->
+    <DelunoUpdateChannel Condition="'$(DelunoUpdateChannel)' == ''">stable</DelunoUpdateChannel>
     <!-- Brand icon embedded in the exe and shown in taskbar/alt-tab -->
     <ApplicationIcon>..\..\installer\deluno.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>DelunoUpdateChannel</_Parameter1>
+      <_Parameter2>$(DelunoUpdateChannel)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.0" />
@@ -33,7 +40,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Deluno.Api\Deluno.Api.csproj" />
-    <ProjectReference Include="..\..\src\Deluno.Downloader\Deluno.Downloader.csproj" />
     <ProjectReference Include="..\..\src\Deluno.Filesystem\Deluno.Filesystem.csproj" />
     <ProjectReference Include="..\..\src\Deluno.Infrastructure\Deluno.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Deluno.Integrations\Deluno.Integrations.csproj" />

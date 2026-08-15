@@ -34,4 +34,10 @@ public sealed record UpdatePlatformSettingsRequest(
     string? MetadataOmdbApiKey,
     string? ReleaseNeverGrabPatterns,
     string? SearchScoringMode = null,
-    int? ImportRecoveryRetentionDays = null);
+    int? ImportRecoveryRetentionDays = null,
+    string? MdbListApiKey = null,
+    int? DownloadHealthStrikeThreshold = null,
+    bool? CleanupBlockReleaseAfterThreshold = null,
+    bool? CleanupQueueReplacementAfterThreshold = null,
+    bool? CleanupRemoveClientEntryAfterThreshold = null,
+    bool? CleanupPurgePayloadAfterThreshold = null);

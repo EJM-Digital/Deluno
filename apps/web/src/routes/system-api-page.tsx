@@ -201,6 +201,7 @@ export function SystemApiPage() {
                     ["read", "GET", "/api/intelligent-routing/anomalies"],
                     ["write", "POST", "/api/intelligent-routing/recommend-release"],
                     ["imports", "POST", "/api/integrations/external/import-preview"],
+                    ["imports", "GET", "/api/integrations/processors/handoffs?libraryId={libraryId}"],
                     ["imports", "POST", "/api/integrations/processors/events"],
                     ["queue", "POST", "/api/integrations/external/trigger-refresh"],
                     ["queue", "POST", "/api/download-clients/{clientId}/webhook"],
