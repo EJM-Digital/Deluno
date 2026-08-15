@@ -21,7 +21,7 @@ test.describe("dashboard workflow", () => {
   test("shows real empty-state information instead of invented dashboard activity", async ({ page }) => {
     await authenticateAndNavigate(page, "/");
 
-    await expect(page.getByText("No providers connected", { exact: true })).toBeVisible();
+    await expect(page.getByText("No search sources or download clients", { exact: true })).toBeVisible();
     await expect(page.getByText("No downloads, processing, or imports need your attention right now.", { exact: true })).toBeVisible();
     await expect(page.getByText("Library and health over time", { exact: true })).toHaveCount(0);
     await expect(page.getByText("Download speed", { exact: true })).toHaveCount(0);
