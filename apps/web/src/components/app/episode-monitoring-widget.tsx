@@ -25,7 +25,7 @@ export function EpisodeMonitoringWidget({
   ).length;
 
   const stats = [
-    { label: "Monitored", value: monitoredCount, total: episodes.length, fill: "bg-success" },
+    { label: "Monitored", value: monitoredCount, total: episodes.length, fill: "bg-muted-foreground/55" },
     { label: "Unmonitored", value: unmonitoredCount, total: episodes.length, fill: "bg-muted-foreground/35" }
   ];
 
@@ -64,7 +64,7 @@ export function EpisodeMonitoringWidget({
             <div className="flex flex-wrap gap-2 mb-3">
               <Badge variant="info">{selectedCount} selected</Badge>
               {selectedMonitored > 0 && (
-                <Badge variant="success">{selectedMonitored} monitored</Badge>
+                <Badge variant="default">{selectedMonitored} monitored</Badge>
               )}
             </div>
           </div>

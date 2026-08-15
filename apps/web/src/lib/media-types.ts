@@ -2,8 +2,6 @@ export type MediaStatus =
   | "downloaded"
   | "downloading"
   | "missing"
-  | "monitored"
-  | "unmonitored"
   | "processing"
   | "processed"
   | "importReady"

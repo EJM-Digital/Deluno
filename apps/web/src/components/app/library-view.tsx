@@ -26,7 +26,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "re
 import * as Dialog from "@radix-ui/react-dialog";
 import { Link, useNavigate, useNavigation, useSearchParams } from "react-router-dom";
 import type { MediaItem, MediaStatus } from "../../lib/media-types";
-import { MEDIA_STATUS_PRESENTATION, MONITORING_PRESENTATION, librarySummaryTone, mediaStatusIsActive } from "../../lib/media-status-presentation";
+import { MEDIA_STATUS_PRESENTATION, librarySummaryTone, mediaStatusIsActive } from "../../lib/media-status-presentation";
 import {
   ApiRequestError,
   fetchJson,
@@ -338,8 +338,11 @@ const enumOptions: Partial<Record<FilterField, Array<{ value: string; label: str
     { value: "downloaded", label: "Downloaded" },
     { value: "downloading", label: "Downloading" },
     { value: "missing", label: "Missing" },
-    { value: "monitored", label: "Monitored" },
-    { value: "unmonitored", label: "Not monitored" }
+    { value: "processing", label: "Processing" },
+    { value: "importReady", label: "Import ready" },
+    { value: "importQueued", label: "Import queued" },
+    { value: "importFailed", label: "Import failed" },
+    { value: "processingFailed", label: "Processing failed" }
   ],
   monitored: [
     { value: "true", label: "Yes" },
@@ -1526,7 +1529,7 @@ export function LibraryView({
                 <span className="text-muted-foreground/45">·</span>
                 <span><span className={cn("tabular font-semibold", librarySummaryTone("availability", downloadedCount))}>{downloadedCount}</span> downloaded</span>
                 <span className="text-muted-foreground/45">·</span>
-                <span><span className={cn("tabular font-semibold", librarySummaryTone("monitoring", monitoredCount))}>{monitoredCount}</span> monitored</span>
+                <span><span className="tabular font-semibold text-muted-foreground">{monitoredCount}</span> monitored</span>
                 {missingCount > 0 ? (
                   <>
                     <span className="text-muted-foreground/45">·</span>
@@ -2354,7 +2357,8 @@ function PosterCard({
             className="h-full w-full transition-transform duration-500 group-hover:scale-[1.04]"
           />
 
-          {/* Top-right status pill — hidden on small for space */}
+          {/* The poster marker always represents lifecycle state. Monitoring is
+              shown only as quiet supporting text below, never as a colour. */}
           {displayOptions.showStatusPill && size !== "sm" ? (
             <div className="absolute right-1.5 top-1.5 z-10">
               <StatusPill status={item.status} />
@@ -2362,17 +2366,15 @@ function PosterCard({
           ) : displayOptions.showStatusPill ? (
             <span
               role="img"
-              aria-label={item.monitored ? MONITORING_PRESENTATION.active.label : MONITORING_PRESENTATION.passive.label}
-              title={item.monitored ? MONITORING_PRESENTATION.active.label : MONITORING_PRESENTATION.passive.label}
+              aria-label={MEDIA_STATUS_PRESENTATION[item.status].label}
+              title={MEDIA_STATUS_PRESENTATION[item.status].label}
               className={cn(
-                "absolute right-1.5 top-1.5 z-10 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full ring-[1.5px]",
-                item.monitored
-                  ? "bg-success ring-background/90 shadow-[0_0_0_1px_hsl(var(--success)/0.45)]"
-                  : "bg-black/55 ring-black/50"
+                "absolute right-1.5 top-1.5 z-10 inline-flex h-2 w-2 items-center justify-center rounded-full ring-1",
+                MEDIA_STATUS_PRESENTATION[item.status].dot,
+                "ring-background/90",
+                mediaStatusIsActive(item.status) && "animate-pulse"
               )}
-            >
-              <MonitorDot monitored={item.monitored} />
-            </span>
+            />
           ) : null}
 
           {/* Gradient overlay — condenses on small */}
@@ -2388,12 +2390,11 @@ function PosterCard({
             {showMeta ? (
               <div className="mt-0.5 flex items-center gap-1.5 text-[length:var(--library-meta-size)] text-[hsl(var(--media-muted-foreground))]">
                 <span className="tabular">{item.year}</span>
-                {item.monitored ? (
-                  <>
-                    <span className="text-[hsl(var(--media-muted-foreground)/0.45)]">·</span>
-                    <ShieldCheck className="h-3 w-3 text-primary" />
-                  </>
-                ) : null}
+                <span className="text-[hsl(var(--media-muted-foreground)/0.45)]">·</span>
+                <span className="inline-flex items-center gap-1" title={item.monitored ? "Deluno will keep looking for this title." : "Deluno will not search for this title automatically."}>
+                  <ShieldCheck className="h-3 w-3 text-[hsl(var(--media-muted-foreground))]" />
+                  {item.monitored ? "Monitored" : "Not monitored"}
+                </span>
               </div>
             ) : null}
             {showMeta && (displayOptions.showRating || displayOptions.showQualityBadge) ? (
@@ -2439,12 +2440,11 @@ function PosterCard({
         {showMeta ? (
           <div className="flex items-center gap-1.5 text-[length:var(--library-meta-size)] text-muted-foreground">
             <span className="tabular">{item.year}</span>
-            {item.monitored ? (
-              <>
-                <span className="text-foreground/20">·</span>
-                <ShieldCheck className="h-3 w-3 text-primary" />
-              </>
-            ) : null}
+            <span className="text-foreground/20">·</span>
+            <span className="inline-flex items-center gap-1" title={item.monitored ? "Deluno will keep looking for this title." : "Deluno will not search for this title automatically."}>
+              <ShieldCheck className="h-3 w-3" />
+              {item.monitored ? "Monitored" : "Not monitored"}
+            </span>
           </div>
         ) : null}
       </div>
@@ -2473,11 +2473,6 @@ function StatusPill({ status }: { status: MediaStatus }) {
 
 function StatusDot({ status }: { status: MediaStatus }) {
   return <span className={cn("h-2 w-2 shrink-0 rounded-full", MEDIA_STATUS_PRESENTATION[status].dot, mediaStatusIsActive(status) && "animate-pulse")} />;
-}
-
-function MonitorDot({ monitored }: { monitored: boolean }) {
-  const config = monitored ? MONITORING_PRESENTATION.active : MONITORING_PRESENTATION.passive;
-  return <span className={cn("h-2 w-2 shrink-0 rounded-full", config.dot)} />;
 }
 
 function StatusBadge({ status }: { status: MediaStatus }) {
@@ -2754,7 +2749,7 @@ function LibraryTable({
                       </div>
                       <p className="text-[11px] text-muted-foreground">
                         {item.type === "movie" ? "Movie" : "TV"} · {item.year}
-                        {item.monitored ? " · Monitored" : ""}
+                        {item.monitored ? " · Monitored" : " · Not monitored"}
                       </p>
                     </div>
                   </div>

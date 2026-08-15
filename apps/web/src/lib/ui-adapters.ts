@@ -98,16 +98,15 @@ export function adaptMovieItems(items: MovieListItem[], wanted: MovieWantedSumma
       poster: item.posterUrl,
       backdrop: item.backdropUrl,
       quality: wantedItem?.currentQuality ?? wantedItem?.targetQuality ?? null,
+      // A title without a file is Missing whether or not it is monitored.
+      // Monitoring is a separate automation preference and must never become
+      // the visible availability state.
       status:
-        wantedItem?.wantedStatus === "missing"
-          ? "missing"
-          : wantedItem?.wantedStatus === "waiting"
-            ? "downloading"
-            : item.hasFile
-              ? "downloaded"
-              : item.monitored
-                ? "monitored"
-                : "unmonitored",
+        wantedItem?.wantedStatus === "waiting"
+          ? "downloading"
+          : item.hasFile
+            ? "downloaded"
+            : "missing",
       monitored: item.monitored,
       sizeGb: readNumber(meta, "sizeGb", "sizeGB", "sizeOnDiskGb"),
       rating: item.rating,
@@ -132,7 +131,7 @@ export function adaptMovieItems(items: MovieListItem[], wanted: MovieWantedSumma
       hdrFormat: readString(meta, "hdrFormat"),
       releaseStatus: wantedItem?.wantedStatus === "waiting"
         ? "Downloading"
-        : wantedItem?.wantedStatus ?? (item.hasFile ? "Available" : item.monitored ? "Monitored" : "Not monitored"),
+        : wantedItem?.wantedStatus ?? (item.hasFile ? "Available" : "Missing"),
       certification: readString(meta, "certification"),
       collection: readString(meta, "collection"),
       minimumAvailability: readString(meta, "minimumAvailability"),
@@ -177,16 +176,15 @@ export function adaptSeriesItems(items: SeriesListItem[], wanted: SeriesWantedSu
       poster: item.posterUrl,
       backdrop: item.backdropUrl,
       quality: wantedItem?.currentQuality ?? wantedItem?.targetQuality ?? null,
+      // A title without a file is Missing whether or not it is monitored.
+      // Monitoring is a separate automation preference and must never become
+      // the visible availability state.
       status:
-        wantedItem?.wantedStatus === "missing"
-          ? "missing"
-          : wantedItem?.wantedStatus === "waiting"
-            ? "downloading"
-            : item.hasFile
-              ? "downloaded"
-              : item.monitored
-                ? "monitored"
-                : "unmonitored",
+        wantedItem?.wantedStatus === "waiting"
+          ? "downloading"
+          : item.hasFile
+            ? "downloaded"
+            : "missing",
       monitored: item.monitored,
       sizeGb: readNumber(meta, "sizeGb", "sizeGB", "sizeOnDiskGb"),
       rating: item.rating,
@@ -212,7 +210,7 @@ export function adaptSeriesItems(items: SeriesListItem[], wanted: SeriesWantedSu
       hdrFormat: readString(meta, "hdrFormat"),
       releaseStatus: wantedItem?.wantedStatus === "waiting"
         ? "Downloading"
-        : wantedItem?.wantedStatus ?? (item.hasFile ? "Available" : item.monitored ? "Monitored" : "Not monitored"),
+        : wantedItem?.wantedStatus ?? (item.hasFile ? "Available" : "Missing"),
       certification: readString(meta, "certification"),
       collection: readString(meta, "collection"),
       minimumAvailability: readString(meta, "minimumAvailability"),

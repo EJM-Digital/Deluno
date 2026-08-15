@@ -603,7 +603,7 @@ export function ShowDetailPage() {
               </div>
               {series.originalTitle && series.originalTitle !== series.title ? <p className="mt-1 text-sm text-muted-foreground">Also known as {series.originalTitle}</p> : null}
               <div className="mt-4 flex flex-wrap gap-2">
-                <Badge variant={series.monitored ? "success" : "default"}>{series.monitored ? "Monitored" : "Passive"}</Badge>
+                <Badge variant="default">{series.monitored ? "Monitored" : "Not monitored"}</Badge>
                 {wantedItem ? <Badge variant={wantedItem.wantedStatus === "missing" || wantedItem.wantedStatus === "upgrade" ? "warning" : "info"}>{formatWantedStatus(wantedItem.wantedStatus)}</Badge> : null}
                 {importCases.length ? <Badge variant="warning">{importCases.length} import issue{importCases.length === 1 ? "" : "s"}</Badge> : null}
                 {series.genres?.split(",").map((genre) => <span key={genre} className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">{genre.trim()}</span>)}
@@ -930,8 +930,8 @@ export function ShowDetailPage() {
                                 >
                                   {formatWantedStatus(episode.wantedStatus)}
                                 </Badge>
-                                <Badge variant={episode.monitored ? "success" : "default"}>
-                                  {episode.monitored ? "Monitored" : "Passive"}
+                                <Badge variant="default">
+                                  {episode.monitored ? "Monitored" : "Not monitored"}
                                 </Badge>
                                 <Button
                                   size="sm"

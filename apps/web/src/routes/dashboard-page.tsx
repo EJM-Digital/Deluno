@@ -192,7 +192,7 @@ export function DashboardPage() {
           value={data.monitoredCount.toLocaleString()}
           meta="Titles being tracked"
           icon={Film}
-          tone="success"
+          tone="neutral"
         />
         <MetricPlane
           label="Queue"

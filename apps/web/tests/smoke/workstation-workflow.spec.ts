@@ -48,7 +48,7 @@ test.describe("dashboard workflow", () => {
     await expect(page.getByText("Saved library views", { exact: true })).toBeVisible();
   });
 
-  test("uses the same visible monitored marker across movie and TV poster sizes", async ({ page }) => {
+  test("uses lifecycle status, not monitoring, for movie and TV poster markers", async ({ page }) => {
     await authenticateAndNavigate(page, "/movies");
     const token = await page.evaluate(() => sessionStorage.getItem("deluno-auth-token"));
     const headers = token ? { Authorization: `Bearer ${token}` } : {};
@@ -78,8 +78,7 @@ test.describe("dashboard workflow", () => {
     for (const scenario of scenarios) {
       for (const monitored of [true, false]) {
         const title = `${monitored ? "Monitored" : "Passive"} presentation ${scenario.route} ${Date.now()}`;
-        const label = monitored ? "Monitored" : "Not monitored";
-        const markerClass = monitored ? /bg-success/ : /bg-muted-foreground/;
+        const monitoringLabel = monitored ? "Monitored" : "Not monitored";
         let created: { id: string } | null = null;
         try {
           const create = await api.post(scenario.createPath, {
@@ -90,19 +89,21 @@ test.describe("dashboard workflow", () => {
 
           await page.goto(scenario.route);
           await page.getByPlaceholder(scenario.placeholder).fill(title);
-          await expect(page.getByRole("button", { name: new RegExp(title) })).toBeVisible();
+          const titleCard = page.getByRole("button", { name: new RegExp(title) }).last();
+          await expect(titleCard).toBeVisible();
 
           await page.getByRole("button", { name: /^Display/ }).click();
           await page.getByRole("button", { name: /Medium Balanced/ }).click();
-          const mediumMarker = page.getByRole("img", { name: label });
+          const mediumMarker = page.getByRole("img", { name: "Missing" });
           await expect(mediumMarker).toBeVisible();
-          await expect(mediumMarker.locator("span").first()).toHaveClass(markerClass);
+          await expect(mediumMarker.locator("span").first()).toHaveClass(/bg-warning/);
+          await expect(titleCard.getByText(monitoringLabel, { exact: true })).toBeVisible();
 
           await page.getByRole("button", { name: /Small More titles/ }).click();
-          const smallMarker = page.getByRole("img", { name: label });
+          const smallMarker = page.getByRole("img", { name: "Missing" });
           await expect(smallMarker).toBeVisible();
-          await expect(smallMarker).toHaveClass(monitored ? /bg-success/ : /bg-black/);
-          await expect(smallMarker.locator("span").first()).toHaveClass(markerClass);
+          await expect(smallMarker).toHaveClass(/bg-warning/);
+          await expect(smallMarker).not.toHaveClass(/bg-success/);
         } finally {
           if (created) {
             await api.post(scenario.removePath, {
