@@ -25,40 +25,43 @@ export function SettingsQualityPage() {
 
   return (
     <SettingsShell
-      title="Quality & size limits"
-      description="Set the practical file-size bounds and upgrade-stop rules Deluno uses after a quality profile has chosen what is acceptable."
+      title="File-size guardrails"
+      description="Usually leave these at their balanced defaults. Media Plans and quality profiles decide what Deluno wants; these guardrails only reject files that are implausibly small or large."
     >
-      <Card className="settings-panel">
+      <Card className="border-primary/20 bg-gradient-to-r from-primary/[0.07] via-primary/[0.025] to-transparent">
         <CardHeader>
-          <CardTitle>Quality tiers</CardTitle>
+          <CardTitle>Quality decides; size protects</CardTitle>
           <CardDescription>
-            These are safety bounds, not another quality profile. A Media Plan and its quality profile decide which tiers are allowed; these limits reject implausibly small or large files in those tiers.
+            A quality profile chooses allowed release tiers and an upgrade target. These limits are a final sanity check before Deluno accepts a release. They apply across your libraries, so you only need to adjust them when your storage or source material has unusual requirements.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-[var(--page-gap)]">
-          {message ? <p className="rounded-xl border border-hairline bg-surface-1 px-3 py-2 text-sm text-muted-foreground">{message}</p> : null}
+      </Card>
 
-          <div className="space-y-3">
-            {qualityModel.tiers.map((tier, index) => (
-              <section key={tier.name} className="rounded-2xl border border-hairline bg-surface-1 p-[var(--tile-pad)]">
-                <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-                  <h2 className="font-semibold text-foreground">{tier.name}</h2>
-                  <span className="text-xs text-muted-foreground">Quality rank {tier.rank}</span>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <SizeLimitField label="Movie minimum" unit="GB" value={tier.movieMinGb} onChange={(value) => setQualityModel((current) => updateTierValue(current, index, "movieMinGb", value))} />
-                  <SizeLimitField label="Movie maximum" unit="GB" value={tier.movieMaxGb} onChange={(value) => setQualityModel((current) => updateTierValue(current, index, "movieMaxGb", value))} />
-                  <SizeLimitField label="Episode minimum" unit="MB" value={tier.episodeMinMb} onChange={(value) => setQualityModel((current) => updateTierValue(current, index, "episodeMinMb", value))} />
-                  <SizeLimitField label="Episode maximum" unit="MB" value={tier.episodeMaxMb} onChange={(value) => setQualityModel((current) => updateTierValue(current, index, "episodeMaxMb", value))} />
-                </div>
-              </section>
-            ))}
-          </div>
+      {message ? <p className="rounded-xl border border-hairline bg-surface-1 px-3 py-2 text-sm text-muted-foreground">{message}</p> : null}
 
-          <section className="rounded-2xl border border-hairline bg-surface-1 p-[var(--tile-pad)]">
-            <h2 className="font-semibold text-foreground">Upgrade stop rules</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Choose when Deluno should stop looking for a replacement after a title is already imported.</p>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+      <SizeLimitsCard
+        title="Movies"
+        description="Final file-size checks for movies. Values are in GB."
+        mediaType="movies"
+        tiers={qualityModel.tiers}
+        onChange={(index, key, value) => setQualityModel((current) => updateTierValue(current, index, key, value))}
+      />
+      <SizeLimitsCard
+        title="TV shows"
+        description="Final file-size checks for individual episodes. Values are in MB."
+        mediaType="tv"
+        tiers={qualityModel.tiers}
+        onChange={(index, key, value) => setQualityModel((current) => updateTierValue(current, index, key, value))}
+      />
+      <p className="text-xs leading-relaxed text-muted-foreground">Drag a slider for a sensible range, or type an exact number when needed. These limits are protection, not quality preferences: each library’s selected quality profile still decides what Deluno aims to find.</p>
+
+      <Card className="settings-panel">
+        <CardHeader>
+          <CardTitle>Upgrade behaviour</CardTitle>
+          <CardDescription>These advanced guardrails refine what happens after a file is already imported. Most libraries should keep the defaults.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-[var(--grid-gap)]">
+          <div className="grid gap-[var(--grid-gap)] sm:grid-cols-2">
               <ToggleField
                 label="Stop at the profile cutoff"
                 description="Stop upgrades when the current file has reached the quality profile’s target tier."
@@ -71,11 +74,9 @@ export function SettingsQualityPage() {
                 checked={qualityModel.upgradeStop.requireCustomFormatGainForSameQuality}
                 onChange={(checked) => setQualityModel((current) => ({ ...current, upgradeStop: { ...current.upgradeStop, requireCustomFormatGainForSameQuality: checked } }))}
               />
-            </div>
-          </section>
-
+          </div>
           <Button type="button" disabled={saving} onClick={() => void saveModel(qualityModel, setSaving, setMessage, setQualityModel)}>
-            {saving ? "Saving…" : "Save quality & size limits"}
+            {saving ? "Saving…" : "Save file-size guardrails"}
           </Button>
         </CardContent>
       </Card>
@@ -83,12 +84,96 @@ export function SettingsQualityPage() {
   );
 }
 
-function SizeLimitField({ label, unit, value, onChange }: { label: string; unit: string; value: number; onChange: (value: number) => void }) {
+function SizeLimitsCard({
+  title,
+  description,
+  mediaType,
+  tiers,
+  onChange
+}: {
+  title: string;
+  description: string;
+  mediaType: "movies" | "tv";
+  tiers: QualityTierDefinition[];
+  onChange: (index: number, key: keyof QualityTierDefinition, value: number) => void;
+}) {
+  const isMovies = mediaType === "movies";
+  const minKey: keyof QualityTierDefinition = isMovies ? "movieMinGb" : "episodeMinMb";
+  const maxKey: keyof QualityTierDefinition = isMovies ? "movieMaxGb" : "episodeMaxMb";
+  const unit = isMovies ? "GB" : "MB";
+  const minimumMaximum = isMovies ? 50 : 10000;
+  const maximumMinimum = isMovies ? 1 : 100;
+  const maximumMaximum = isMovies ? 200 : 50000;
+  const step = isMovies ? 0.1 : 100;
+
   return (
-    <label className="block text-sm font-medium text-foreground">
-      {label} ({unit})
-      <Input className="mt-2" type="number" min={0} value={value} onChange={(event) => onChange(Number(event.target.value || 0))} />
-    </label>
+    <Card className="settings-panel">
+      <CardHeader>
+        <CardTitle>{title} file-size guardrails</CardTitle>
+        <CardDescription>{description} Adjust only when Deluno is accepting obvious junk or rejecting legitimate releases.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="overflow-x-auto rounded-2xl border border-hairline">
+          <table className="w-full min-w-[34rem] border-collapse text-sm">
+            <thead className="bg-surface-1 text-left text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
+              <tr>
+                <th className="px-[var(--tile-pad)] py-3">Quality tier</th>
+                <th className="border-l border-hairline px-[var(--tile-pad)] py-3">Minimum ({unit})</th>
+                <th className="border-l border-hairline px-[var(--tile-pad)] py-3">Maximum ({unit})</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tiers.map((tier, index) => (
+                <tr key={tier.name} className="border-t border-hairline transition-colors hover:bg-muted/20">
+                  <td className="px-[var(--tile-pad)] py-3"><span className="font-semibold text-foreground">{tier.name}</span><span className="ml-2 text-xs text-muted-foreground">Rank {tier.rank}</span></td>
+                  <td className="border-l border-hairline px-[var(--tile-pad)] py-2"><SliderLimitInput label={`${tier.name} ${isMovies ? "movie" : "episode"} minimum`} value={tier[minKey] as number} min={0} max={minimumMaximum} step={step} unit={unit} onChange={(value) => onChange(index, minKey, value)} /></td>
+                  <td className="border-l border-hairline px-[var(--tile-pad)] py-2"><SliderLimitInput label={`${tier.name} ${isMovies ? "movie" : "episode"} maximum`} value={tier[maxKey] as number} min={maximumMinimum} max={maximumMaximum} step={isMovies ? 0.5 : 100} unit={unit} onChange={(value) => onChange(index, maxKey, value)} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SliderLimitInput({
+  label,
+  value,
+  min,
+  max,
+  step,
+  unit,
+  onChange
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  unit: string;
+  onChange: (value: number) => void;
+}) {
+  const sliderValue = Math.max(min, Math.min(max, value));
+  return (
+    <div className="min-w-32 space-y-2">
+      <input
+        aria-label={label}
+        className="h-2 w-full cursor-pointer appearance-none rounded-full bg-muted accent-primary"
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={sliderValue}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+      <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <span className="sr-only">{label}</span>
+        <Input className="h-8 min-w-0 px-2 text-right" type="number" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value || 0))} />
+        <span>{unit}</span>
+      </label>
+    </div>
   );
 }
 

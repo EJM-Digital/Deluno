@@ -52,7 +52,7 @@ export const operationPaths: OperationPath[] = [
   },
   {
     id: "queue",
-    title: "Downloads and imports",
+    title: "Transfers",
     description: "One queue for client telemetry, import previews, recovery cases, and manual imports.",
     to: "/queue",
     area: "queue",
@@ -62,7 +62,7 @@ export const operationPaths: OperationPath[] = [
   },
   {
     id: "sources",
-    title: "Sources and clients",
+    title: "Connections",
     description: "Configure indexers, download clients, health tests, and library provider routing.",
     to: "/indexers",
     area: "providers",
@@ -82,17 +82,27 @@ export const operationPaths: OperationPath[] = [
   },
   {
     id: "folders",
-    title: "Folders and naming",
-    description: "Set root paths, folder formats, rename rules, hardlinks, and import behaviour.",
+    title: "Library folders",
+    description: "Create movie and TV libraries and choose the main folder where each one lives.",
+    to: "/settings/libraries",
+    area: "policy",
+    mode: "advanced",
+    icon: FolderTree,
+    keywords: ["folders", "paths", "library", "root", "movies", "tv"]
+  },
+  {
+    id: "file-handling",
+    title: "File handling & naming",
+    description: "Set folder formats, rename rules, hardlinks, cleanup, and default completed-file handling.",
     to: "/settings/media-management",
     area: "policy",
     mode: "advanced",
     icon: FolderTree,
-    keywords: ["folders", "paths", "naming", "hardlinks", "rename"]
+    keywords: ["naming", "hardlinks", "rename", "cleanup", "import"]
   },
   {
     id: "destination-rules",
-    title: "Destination rules",
+    title: "Final destinations",
     description: "Route content by media type, genre, tags, language, quality, and workflow.",
     to: "/settings/destination-rules",
     area: "policy",
@@ -112,7 +122,7 @@ export const operationPaths: OperationPath[] = [
   },
   {
     id: "formats",
-    title: "Custom formats",
+    title: "Release scoring",
     description: "Score releases using source, codec, HDR, language, release group, bitrate, and tags.",
     to: "/settings/custom-formats",
     area: "policy",
@@ -152,8 +162,8 @@ export const operationPaths: OperationPath[] = [
   },
   {
     id: "settings",
-    title: "Advanced settings",
-    description: "Tune platform defaults, interface density, metadata, tags, lists, and policy internals.",
+    title: "Library setup",
+    description: "Configure library folders, file handling, final destinations, metadata, media plans, quality, discovery, and automation.",
     to: "/settings",
     area: "system",
     mode: "advanced",

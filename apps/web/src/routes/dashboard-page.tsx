@@ -27,9 +27,11 @@ import {
   type SearchRetryWindowItem,
   type SeriesUpcomingEpisodeItem,
   type SeriesListItem,
-  type SeriesWantedSummary
+  type SeriesWantedSummary,
+  type SetupProgressItem
 } from "../lib/api";
 import { adaptIndexerHealth, adaptMovieItems, adaptSeriesItems, adaptTelemetryDownloads } from "../lib/ui-adapters";
+import { authedFetch } from "../lib/use-auth";
 import { JOB_STATUS, isJobActive, type JobStatus } from "../lib/job-status-constants";
 import { cn } from "../lib/utils";
 import { OnboardingBanner } from "../components/shell/onboarding-banner";
@@ -62,6 +64,7 @@ interface DashboardLoaderData {
     hasDownloadClient: boolean;
     hasLibrary: boolean;
   };
+  setupProgress: SetupProgressItem;
 }
 
 interface DashboardUpcomingItem {
@@ -85,7 +88,7 @@ export async function dashboardLoader(): Promise<DashboardLoaderData> {
     capturedUtc: new Date().toISOString()
   };
 
-  const [movieItems, movieWanted, showItems, showWanted, telemetry, indexers, clients, libraries, automation, searchCycles, retryWindows, upcomingEpisodes] = await Promise.all([
+  const [movieItems, movieWanted, showItems, showWanted, telemetry, indexers, clients, libraries, automation, searchCycles, retryWindows, upcomingEpisodes, setupProgress] = await Promise.all([
     fetchJson<MovieListItem[]>("/api/movies").catch((): MovieListItem[] => []),
     fetchJson<MovieWantedSummary>("/api/movies/wanted").catch(() => emptyMovieWanted),
     fetchJson<SeriesListItem[]>("/api/series").catch((): SeriesListItem[] => []),
@@ -97,7 +100,13 @@ export async function dashboardLoader(): Promise<DashboardLoaderData> {
     fetchJson<LibraryAutomationStateItem[]>("/api/library-automation").catch((): LibraryAutomationStateItem[] => []),
     fetchJson<SearchCycleRunItem[]>("/api/search-cycles?take=8").catch((): SearchCycleRunItem[] => []),
     fetchJson<SearchRetryWindowItem[]>("/api/search-retry-windows?take=8").catch((): SearchRetryWindowItem[] => []),
-    fetchJson<SeriesUpcomingEpisodeItem[]>("/api/series/upcoming?take=12&hours=72").catch((): SeriesUpcomingEpisodeItem[] => [])
+    fetchJson<SeriesUpcomingEpisodeItem[]>("/api/series/upcoming?take=12&hours=72").catch((): SeriesUpcomingEpisodeItem[] => []),
+    fetchJson<SetupProgressItem>("/api/setup/progress").catch((): SetupProgressItem => ({
+      lastCompletedStep: 0,
+      isSkipped: false,
+      isCompleted: false,
+      updatedUtc: new Date(0).toISOString()
+    }))
   ]);
 
   const adaptedMovies = adaptMovieItems(movieItems, movieWanted);
@@ -137,7 +146,8 @@ export async function dashboardLoader(): Promise<DashboardLoaderData> {
       hasIndexer: indexers.length > 0,
       hasDownloadClient: clients.length > 0,
       hasLibrary: libraries.length > 0
-    }
+    },
+    setupProgress
   };
 }
 
@@ -149,10 +159,27 @@ export function DashboardPage() {
   const upcomingGroups = groupDashboardUpcoming(data.upcoming);
   const runningAutomation = data.automation.filter((item) => isJobActive(item.status as JobStatus) || item.searchRequested).length;
   const latestCycle = data.searchCycles[0] ?? null;
+  const setupProgress = data.setupProgress;
+
+  function dismissOnboarding() {
+    void authedFetch("/api/setup/progress", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        lastCompletedStep: setupProgress.lastCompletedStep,
+        isSkipped: true,
+        isCompleted: setupProgress.isCompleted
+      })
+    }).catch(() => undefined);
+  }
 
   return (
     <div className="space-y-[var(--grid-gap)]">
-      <OnboardingBanner state={data.onboarding} />
+      <OnboardingBanner
+        state={data.onboarding}
+        isSetupSuppressed={setupProgress.isSkipped || setupProgress.isCompleted}
+        onDismiss={dismissOnboarding}
+      />
 
       <section className="relative overflow-hidden rounded-2xl border border-hairline bg-card p-[var(--tile-pad)] shadow-card dark:border-white/[0.06]">
         <span aria-hidden className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full bg-primary/10 blur-3xl" />
@@ -219,7 +246,7 @@ export function DashboardPage() {
           label="Connections"
           value={data.indexerHealthPercent === null ? "—" : `${data.indexerHealthPercent}`}
           unit={data.indexerHealthPercent === null ? undefined : "%"}
-          meta={data.indexerHealth.length === 0 ? "No search sources or download clients" : healthIssues > 0 ? `${healthIssues} connections need review` : "All sources and clients responding"}
+          meta={data.indexerHealth.length === 0 ? "No search sources or download clients" : healthIssues > 0 ? `${healthIssues} connections need review` : "All connections responding"}
           icon={RadioTower}
           tone={data.indexerHealth.length === 0 ? "neutral" : healthIssues > 0 ? "warn" : "success"}
         />
@@ -739,6 +766,12 @@ function emptyDashboardData(): DashboardLoaderData {
       hasIndexer: false,
       hasDownloadClient: false,
       hasLibrary: false
+    },
+    setupProgress: {
+      lastCompletedStep: 0,
+      isSkipped: false,
+      isCompleted: false,
+      updatedUtc: new Date(0).toISOString()
     }
   };
 }

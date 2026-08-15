@@ -193,6 +193,15 @@ public interface IPlatformSettingsRepository
         UpdateLibraryQualityProfileRequest request,
         CancellationToken cancellationToken);
 
+    Task<LibraryItem?> UpdateLibraryMediaPlanAsync(
+        string id,
+        UpdateLibraryMediaPlanRequest request,
+        CancellationToken cancellationToken);
+
+    Task<int> ApplyMediaPlanToAssignedLibrariesAsync(
+        string policySetId,
+        CancellationToken cancellationToken);
+
     Task<LibraryItem?> UpdateLibraryWorkflowAsync(
         string id,
         UpdateLibraryWorkflowRequest request,

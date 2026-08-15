@@ -4,22 +4,20 @@ import { HelpCircle } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { GlossaryModal } from "../ui/glossary-modal";
 
+export const librarySetupNavItems = [
+  { to: "/settings/libraries", label: "Library folders", end: false },
+  { to: "/settings/media-management", label: "File handling & naming", end: false },
+  { to: "/settings/processing", label: "Processing workflow", end: false },
+  { to: "/settings/destination-rules", label: "Final destinations", end: false },
+  { to: "/settings/metadata", label: "Metadata & sidecars", end: false },
+  { to: "/settings/tags", label: "Tags", end: false }
+] as const;
+
 export const configurationNavAreas = [
-  {
-    match: (path: string) => path.startsWith("/settings/media-management") || path.startsWith("/settings/processing") || path.startsWith("/settings/destination-rules") || path.startsWith("/settings/metadata") || path.startsWith("/settings/tags"),
-    label: "Library",
-    to: "/settings/media-management",
-    items: [
-      { to: "/settings/media-management", label: "Files, processing & import", end: false },
-      { to: "/settings/processing", label: "Processing & import", end: false },
-      { to: "/settings/destination-rules", label: "Final destinations", end: false },
-      { to: "/settings/metadata", label: "Metadata & sidecars", end: false },
-      { to: "/settings/tags", label: "Tags", end: false }
-    ]
-  },
   {
     match: (path: string) => path.startsWith("/indexers"),
     label: "Connections",
+    icon: "connections",
     to: "/indexers",
     items: [
       { to: "/indexers/indexers", label: "Indexers", end: false },
@@ -28,25 +26,34 @@ export const configurationNavAreas = [
     ]
   },
   {
-    match: (path: string) => path.startsWith("/settings/policy-sets") || path.startsWith("/settings/profiles") || path.startsWith("/settings/quality") || path.startsWith("/settings/custom-formats"),
-    label: "Media plans & quality",
+    match: (path: string) => path.startsWith("/settings/policy-sets"),
+    label: "Media plans",
+    icon: "plans",
     to: "/settings/policy-sets",
+    items: [{ to: "/settings/policy-sets", label: "Media plans", end: false }]
+  },
+  {
+    match: (path: string) => path.startsWith("/settings/profiles") || path.startsWith("/settings/quality") || path.startsWith("/settings/custom-formats"),
+    label: "Quality",
+    icon: "quality",
+    to: "/settings/profiles",
     items: [
-      { to: "/settings/policy-sets", label: "Media Plan", end: false },
       { to: "/settings/profiles", label: "Quality profiles", end: false },
-      { to: "/settings/quality", label: "Quality & size limits", end: false },
+      { to: "/settings/quality", label: "File-size guardrails", end: false },
       { to: "/settings/custom-formats", label: "Release scoring", end: false }
     ]
   },
   {
     match: (path: string) => path.startsWith("/settings/lists"),
     label: "Discover media",
+    icon: "discover",
     to: "/settings/lists",
     items: [{ to: "/settings/lists", label: "Import lists", end: false }]
   },
   {
     match: (path: string) => path.startsWith("/settings/automation"),
     label: "Automation & recovery",
+    icon: "recovery",
     to: "/settings/automation",
     items: [{ to: "/settings/automation", label: "Search, retries & failed downloads", end: false }]
   },
@@ -89,19 +96,24 @@ const systemNavItems = [
 const settingsPageMeta = [
   {
     match: (path: string) => path.startsWith("/settings/processing"),
-    title: "Processing & import",
-    description: "Configure the optional FileFlows, Weir, or other processor hand-off before Deluno imports the finished file."
+    title: "Processing workflow",
+    description: "Optional: let an external processor finish a file before Deluno imports and renames it."
   },
   {
     match: (path: string) => path === "/settings",
-    title: "Settings overview",
+    title: "Setup overview",
     description:
       "Guided configuration for your media library, quality policy, automation, and runtime behaviour."
   },
   {
     match: (path: string) => path.startsWith("/settings/media-management"),
-    title: "Files, processing & import",
-    description: "How Deluno reaches completed files, optionally waits for processed output, and imports the result into your library."
+    title: "File handling & naming",
+    description: "Set how completed files are named, linked, cleaned up, and imported into your library."
+  },
+  {
+    match: (path: string) => path.startsWith("/settings/libraries"),
+    title: "Library folders",
+    description: "Create the movie and TV libraries Deluno manages, and choose where each one lives."
   },
   {
     match: (path: string) => path.startsWith("/settings/destination-rules"),
@@ -110,8 +122,8 @@ const settingsPageMeta = [
   },
   {
     match: (path: string) => path.startsWith("/settings/policy-sets"),
-    title: "Media plans & quality",
-    description: "The quality, size, release, language, and upgrade behaviour you want for your media."
+    title: "Media plans",
+    description: "Choose the simple quality, size, release, language, and upgrade policy you want for your media."
   },
   {
     match: (path: string) => path.startsWith("/settings/profiles"),
@@ -120,8 +132,8 @@ const settingsPageMeta = [
   },
   {
     match: (path: string) => path.startsWith("/settings/quality"),
-    title: "Quality & size limits",
-    description: "Size limits that keep downloads sane and predictable across qualities."
+    title: "File-size guardrails",
+    description: "Safety limits that reject implausibly small or large files after quality has been chosen."
   },
   {
     match: (path: string) => path.startsWith("/settings/custom-formats"),

@@ -833,7 +833,7 @@ function ClientAddPanel({ onSave, onCancel }: {
 
       {/* Client type picker */}
       <div className="space-y-2">
-        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Download app</p>
+        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Download client</p>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {CLIENT_PRESETS.map((p) => (
             <button
@@ -1163,7 +1163,7 @@ function LibraryRoutingPanel({
         <div className="space-y-2">
           <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
             Download connections
-            <Help text="Deluno uses the movies or TV category configured on each download connection. You do not need separate download apps for movies and TV." />
+              <Help text="Deluno uses the movies or TV category configured on each download client. You do not need separate download clients for movies and TV." />
           </p>
           {relevantClients.length > 0 ? (
             <div className="space-y-1.5">
@@ -2048,8 +2048,8 @@ export function IndexersPage() {
           <EmptyState
             size="sm"
             variant="custom"
-            title="No download app connected"
-            description="Connect qBittorrent, SABnzbd, NZBGet, Deluge, Transmission, or another supported app when you are ready to download approved releases."
+            title="No download client connected"
+            description="Connect qBittorrent, SABnzbd, NZBGet, Deluge, Transmission, or another supported client when you are ready to download approved releases."
             action={
               <Button onClick={() => setShowClientAdd(true)} className="gap-2" size="sm">
                 <Plus className="h-4 w-4" />

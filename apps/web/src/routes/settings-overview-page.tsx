@@ -9,7 +9,6 @@ import {
   type QualityProfileItem
 } from "../lib/api";
 import { SettingsShell } from "../components/app/settings-shell";
-import { Button } from "../components/ui/button";
 import { RouteSkeleton } from "../components/shell/skeleton";
 
 interface SettingsOverviewLoaderData {
@@ -48,49 +47,100 @@ export function SettingsOverviewPage() {
   const tvLibraries = libraries.filter((library) => library.mediaType === "tv").length;
   const autoLibraries = libraries.filter((library) => library.autoSearchEnabled).length;
 
-  const nextSetupTask = libraries.length === 0
-    ? { title: "Start with your library", copy: "Choose where movies and TV should live. Deluno needs a library route before it can safely import anything.", to: "/settings/media-management", action: "Set up library" }
-    : enabledIndexers.length === 0 || enabledClients.length === 0
-      ? { title: "Connect finding and downloading", copy: "Add at least one source and one download client before Deluno can acquire media automatically.", to: "/indexers", action: "Set up connections" }
-      : activePlans === 0
-        ? { title: "Choose media preferences", copy: "Select a Media Plan so Deluno knows what quality, size, releases, and upgrades you want.", to: "/settings/policy-sets", action: "Choose a Media Plan" }
-        : { title: "Your essentials are ready", copy: "You can add media from the Dashboard. Import lists and automation preferences are optional refinements.", to: "/", action: "Open Dashboard" };
+  const setupSteps = [
+    {
+      number: 1,
+      title: "Library & storage",
+      description: "Create your movie and TV libraries, choose their folders, then set the standard naming and import behaviour.",
+      status: libraries.length === 0 ? "Not configured" : `${movieLibraries} movie · ${tvLibraries} TV library`,
+      complete: libraries.length > 0,
+      to: "/settings/libraries",
+      action: libraries.length === 0 ? "Configure library" : "Review library"
+    },
+    {
+      number: 2,
+      title: "Connections",
+      description: "Connect the indexers that find releases and the download clients that receive approved downloads.",
+      status:
+        enabledIndexers.length === 0 || enabledClients.length === 0
+          ? "Indexers and download clients still need to be connected"
+          : `${healthyIndexers.length}/${enabledIndexers.length} indexers · ${healthyClients.length}/${enabledClients.length} download clients healthy`,
+      complete: enabledIndexers.length > 0 && enabledClients.length > 0,
+      to: "/indexers",
+      action: enabledIndexers.length === 0 || enabledClients.length === 0 ? "Configure connections" : "Review connections"
+    },
+    {
+      number: 3,
+      title: "Media plan & quality",
+      description: "Choose the simple plan Deluno should follow for quality, size, releases and upgrades. Fine-tune profiles and scoring only if you need to.",
+      status: activePlans > 0 ? `${activePlans} active Media Plan${activePlans === 1 ? "" : "s"} · ${qualityProfiles.length} quality profile${qualityProfiles.length === 1 ? "" : "s"}` : "No active Media Plan",
+      complete: activePlans > 0,
+      to: "/settings/policy-sets",
+      action: activePlans > 0 ? "Review media plan" : "Choose media plan"
+    },
+    {
+      number: 4,
+      title: "Automation & recovery",
+      description: "Decide when Deluno searches, upgrades, retries failed downloads and alerts you when a decision needs attention.",
+      status: settings.autoStartJobs ? `${autoLibraries} library automation setting${autoLibraries === 1 ? "" : "s"} active` : "Background automation is paused",
+      complete: settings.autoStartJobs,
+      to: "/settings/automation",
+      action: settings.autoStartJobs ? "Review automation" : "Configure automation"
+    }
+  ];
+  const nextStep = setupSteps.find((step) => !step.complete) ?? null;
 
   return (
-    <SettingsShell title="Settings overview" description="Set up your library once, then return here whenever you need to change how Deluno finds, processes, or stores media.">
-      <section className="flex flex-col gap-[var(--grid-gap)] rounded-3xl border border-primary/20 bg-gradient-to-br from-primary/[0.08] via-card to-card p-[var(--tile-pad)] sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.14em] text-primary">Your media setup</p>
-          <h2 className="mt-2 font-display text-2xl font-semibold tracking-tight text-foreground">{nextSetupTask.title}</h2>
-          <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">{nextSetupTask.copy}</p>
-        </div>
-        <Button asChild><Link to={nextSetupTask.to}>{nextSetupTask.action}</Link></Button>
-      </section>
-
+    <SettingsShell title="Setup overview" description="Set up Deluno once in this order. Advanced configuration is always available from the sidebar when you need it.">
       <section aria-labelledby="setup-status-heading" className="overflow-hidden rounded-2xl border border-hairline bg-card shadow-card dark:border-white/[0.07]">
         <div className="border-b border-hairline px-[var(--tile-pad)] py-4">
-          <h2 id="setup-status-heading" className="font-display text-lg font-semibold text-foreground">Setup status</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Open a section to configure it. These rows only show what still needs attention.</p>
+          <p className="text-xs font-bold uppercase tracking-[0.14em] text-primary">Your media setup</p>
+          <h2 id="setup-status-heading" className="mt-1 font-display text-lg font-semibold text-foreground">Set up Deluno in order</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {nextStep ? `Start with step ${nextStep.number}: ${nextStep.title}.` : "Your core setup is complete. Use the sidebar whenever you want to refine a specific area."}
+          </p>
         </div>
         <div className="divide-y divide-hairline">
-          <SetupStatusRow label="Library" detail={libraries.length === 0 ? "No media folders configured" : `${movieLibraries} movie · ${tvLibraries} TV library`} to="/settings/media-management" action="Configure" />
-          <SetupStatusRow label="Connections" detail={enabledIndexers.length === 0 && enabledClients.length === 0 ? "No indexers or download clients enabled" : `${healthyIndexers.length}/${enabledIndexers.length} indexers · ${healthyClients.length}/${enabledClients.length} download clients healthy`} to="/indexers" action="Configure" />
-          <SetupStatusRow label="Media plans & quality" detail={activePlans > 0 ? `${activePlans} active Media Plan · ${qualityProfiles.length} quality profile${qualityProfiles.length === 1 ? "" : "s"}` : "No active Media Plan"} to="/settings/policy-sets" action="Configure" />
-          <SetupStatusRow label="Automation & recovery" detail={settings.autoStartJobs ? `${autoLibraries} library automation setting${autoLibraries === 1 ? "" : "s"} active` : "Background automation is paused"} to="/settings/automation" action="Configure" />
+          {setupSteps.map((step) => <SetupJourneyStep key={step.number} {...step} current={nextStep?.number === step.number} />)}
         </div>
       </section>
     </SettingsShell>
   );
 }
 
-function SetupStatusRow({ label, detail, to, action }: { label: string; detail: string; to: string; action: string }) {
+function SetupJourneyStep({
+  number,
+  title,
+  description,
+  status,
+  complete,
+  current,
+  to,
+  action
+}: {
+  number: number;
+  title: string;
+  description: string;
+  status: string;
+  complete: boolean;
+  current: boolean;
+  to: string;
+  action: string;
+}) {
   return (
-    <div className="flex flex-col gap-3 px-[var(--tile-pad)] py-4 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <h3 className="font-semibold text-foreground">{label}</h3>
-        <p className="mt-1 text-sm text-muted-foreground">{detail}</p>
+    <Link to={to} className="group flex gap-[var(--grid-gap)] px-[var(--tile-pad)] py-5 transition hover:bg-muted/35">
+      <span className={complete ? "flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-success/15 text-sm font-bold text-success" : current ? "flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground" : "flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-bold text-muted-foreground"}>
+        {complete ? "✓" : number}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="font-semibold text-foreground">{title}</h3>
+          {current ? <span className="rounded-full bg-primary/12 px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.1em] text-primary">Next</span> : null}
+        </div>
+        <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">{description}</p>
+        <p className={complete ? "mt-2 text-sm font-medium text-success" : "mt-2 text-sm font-medium text-muted-foreground"}>{status}</p>
       </div>
-      <Button asChild size="sm" variant="ghost"><Link to={to}>{action}</Link></Button>
-    </div>
+      <span className="self-center whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-muted-foreground transition group-hover:bg-primary/12 group-hover:text-primary">{action} →</span>
+    </Link>
   );
 }

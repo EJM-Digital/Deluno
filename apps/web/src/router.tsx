@@ -283,6 +283,13 @@ export const router = createBrowserRouter([
             })
           },
           {
+            path: "libraries",
+            lazy: withSkeleton(async () => {
+              const module = await import("./routes/settings-libraries-page");
+              return { loader: module.settingsLibrariesLoader, Component: module.SettingsLibrariesPage };
+            })
+          },
+          {
             path: "media-management",
             lazy: withSkeleton(async () => {
               const module = await import("./routes/settings-media-management-page-v2");

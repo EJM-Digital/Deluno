@@ -393,9 +393,10 @@ public sealed class SqlitePlatformSettingsRepository(
                 l.import_workflow, l.processor_name, l.processor_output_path, l.processor_timeout_minutes, l.processor_failure_mode,
                 l.auto_search_enabled, l.missing_search_enabled, l.upgrade_search_enabled, l.search_interval_hours,
                 l.retry_delay_hours, l.max_items_per_run, l.search_window_start_hour, l.search_window_end_hour,
-                l.created_utc, l.updated_utc
+                l.created_utc, l.updated_utc, l.default_policy_set_id, p.name
             FROM libraries l
             LEFT JOIN quality_profiles q ON q.id = l.quality_profile_id
+            LEFT JOIN policy_sets p ON p.id = l.default_policy_set_id
             ORDER BY l.media_type ASC, l.name ASC;
             """;
 
@@ -413,6 +414,11 @@ public sealed class SqlitePlatformSettingsRepository(
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
             cancellationToken);
+
+        // A greenfield installation must always have a sensible quality baseline.
+        // Advanced profiles remain optional, but a new library can immediately use
+        // the standard profile for its media type without a circular setup step.
+        await EnsureSeedQualityProfilesAsync(connection, cancellationToken);
 
         var items = new List<QualityProfileItem>();
 
@@ -2198,6 +2204,7 @@ public sealed class SqlitePlatformSettingsRepository(
             UPDATE libraries
             SET
                 quality_profile_id = @qualityProfileId,
+                default_policy_set_id = NULL,
                 updated_utc = @updatedUtc
             WHERE id = @id;
             """;
@@ -2208,6 +2215,98 @@ public sealed class SqlitePlatformSettingsRepository(
         await command.ExecuteNonQueryAsync(cancellationToken);
 
         return await GetLibraryAsync(connection, id, cancellationToken);
+    }
+
+    public async Task<LibraryItem?> UpdateLibraryMediaPlanAsync(
+        string id,
+        UpdateLibraryMediaPlanRequest request,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        var library = await GetLibraryAsync(connection, id, cancellationToken);
+        if (library is null)
+        {
+            return null;
+        }
+
+        var policySetId = NormalizeName(request.PolicySetId);
+        PolicySetItem? policySet = null;
+        if (!string.IsNullOrWhiteSpace(policySetId))
+        {
+            policySet = await GetPolicySetAsync(connection, policySetId, cancellationToken);
+            if (policySet is null || !string.Equals(policySet.MediaType, library.MediaType, StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+        }
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE libraries
+            SET
+                default_policy_set_id = @policySetId,
+                quality_profile_id = CASE
+                    WHEN @qualityProfileId IS NULL THEN quality_profile_id
+                    ELSE @qualityProfileId
+                END,
+                search_interval_hours = COALESCE(@searchIntervalHours, search_interval_hours),
+                retry_delay_hours = COALESCE(@retryDelayHours, retry_delay_hours),
+                updated_utc = @updatedUtc
+            WHERE id = @id;
+            """;
+
+        AddParameter(command, "@id", id);
+        AddParameter(command, "@policySetId", policySet?.Id);
+        AddParameter(command, "@qualityProfileId", policySet?.QualityProfileId);
+        AddParameter(command, "@searchIntervalHours", policySet?.SearchIntervalOverrideHours);
+        AddParameter(command, "@retryDelayHours", policySet?.RetryDelayOverrideHours);
+        AddParameter(command, "@updatedUtc", now.ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+
+        return await GetLibraryAsync(connection, id, cancellationToken);
+    }
+
+    public async Task<int> ApplyMediaPlanToAssignedLibrariesAsync(
+        string policySetId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        var policySet = await GetPolicySetAsync(connection, policySetId, cancellationToken);
+        if (policySet is null)
+        {
+            return 0;
+        }
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE libraries
+            SET
+                quality_profile_id = CASE
+                    WHEN @qualityProfileId IS NULL THEN quality_profile_id
+                    ELSE @qualityProfileId
+                END,
+                search_interval_hours = COALESCE(@searchIntervalHours, search_interval_hours),
+                retry_delay_hours = COALESCE(@retryDelayHours, retry_delay_hours),
+                updated_utc = @updatedUtc
+            WHERE default_policy_set_id = @policySetId;
+            """;
+
+        AddParameter(command, "@policySetId", policySet.Id);
+        AddParameter(command, "@qualityProfileId", policySet.QualityProfileId);
+        AddParameter(command, "@searchIntervalHours", policySet.SearchIntervalOverrideHours);
+        AddParameter(command, "@retryDelayHours", policySet.RetryDelayOverrideHours);
+        AddParameter(command, "@updatedUtc", timeProvider.GetUtcNow().ToString("O"));
+        return await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     public async Task<LibraryItem?> UpdateLibraryWorkflowAsync(
@@ -3241,6 +3340,13 @@ public sealed class SqlitePlatformSettingsRepository(
             DelunoDatabaseNames.Platform,
             cancellationToken);
 
+        using (var unlink = connection.CreateCommand())
+        {
+            unlink.CommandText = "UPDATE libraries SET default_policy_set_id = NULL WHERE default_policy_set_id = @id;";
+            AddParameter(unlink, "@id", id);
+            await unlink.ExecuteNonQueryAsync(cancellationToken);
+        }
+
         using var command = connection.CreateCommand();
         command.CommandText = "DELETE FROM policy_sets WHERE id = @id;";
         AddParameter(command, "@id", id);
@@ -3615,9 +3721,10 @@ public sealed class SqlitePlatformSettingsRepository(
                 l.import_workflow, l.processor_name, l.processor_output_path, l.processor_timeout_minutes, l.processor_failure_mode,
                 l.auto_search_enabled, l.missing_search_enabled, l.upgrade_search_enabled, l.search_interval_hours,
                 l.retry_delay_hours, l.max_items_per_run, l.search_window_start_hour, l.search_window_end_hour,
-                l.created_utc, l.updated_utc
+                l.created_utc, l.updated_utc, l.default_policy_set_id, p.name
             FROM libraries l
             LEFT JOIN quality_profiles q ON q.id = l.quality_profile_id
+            LEFT JOIN policy_sets p ON p.id = l.default_policy_set_id
             WHERE l.id = @id
             LIMIT 1;
             """;
@@ -4475,7 +4582,9 @@ public sealed class SqlitePlatformSettingsRepository(
             LastSearchedUtc: null,
             NextSearchUtc: null,
             CreatedUtc: ParseTimestamp(reader.GetString(24)),
-            UpdatedUtc: ParseTimestamp(reader.GetString(25)));
+            UpdatedUtc: ParseTimestamp(reader.GetString(25)),
+            DefaultPolicySetId: reader.IsDBNull(26) ? null : reader.GetString(26),
+            DefaultPolicySetName: reader.IsDBNull(27) ? null : reader.GetString(27));
     }
 
     private static QualityProfileItem ReadQualityProfile(System.Data.Common.DbDataReader reader)
@@ -4853,6 +4962,7 @@ public sealed class SqlitePlatformSettingsRepository(
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
             cancellationToken);
+
         using var command = connection.CreateCommand();
         command.CommandText =
             "SELECT id, name, provider, submission_url, auth_header_name, secret_value, is_enabled, health_status, last_health_message, last_health_test_utc, created_utc, updated_utc FROM processor_connections ORDER BY name COLLATE NOCASE;";

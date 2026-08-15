@@ -1352,7 +1352,9 @@ html[data-density="expanded"] {
   --content-max-width: calc(2180px * var(--density-scale));
 }
 
-@media (max-width: 1180px) {
+/* The desktop sidebar is visible from Tailwind's `lg` breakpoint (1024px).
+   Never collapse it to an icon rail while full desktop labels are still rendered. */
+@media (max-width: 1023px) {
   html {
     --sidebar-width: calc(84px * var(--density-scale));
     --content-max-width: 100vw;

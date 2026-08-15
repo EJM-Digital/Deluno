@@ -29,7 +29,7 @@ import { useAuth, type UserProfile } from "../lib/use-auth";
 import { DENSITY_LABELS, DensityProvider, useDensity, type Density } from "../lib/use-density";
 import { SignalRProvider } from "../lib/use-signalr";
 import { cn } from "../lib/utils";
-import { configurationNavAreas, maintenanceNavItems } from "../components/app/settings-shell";
+import { configurationNavAreas, librarySetupNavItems, maintenanceNavItems } from "../components/app/settings-shell";
 import { DelunoNavGlyph, type DelunoNavGlyphKind } from "../components/shell/deluno-nav-glyph";
 
 function isEditableTarget(target: EventTarget | null) {
@@ -60,11 +60,16 @@ const routeMeta = [
   { match: (path: string) => path.startsWith("/tv"), title: "TV Shows", subtitle: "Manage your shows, episodes, and upgrades" },
   { match: (path: string) => path.startsWith("/calendar"), title: "Schedule", subtitle: "Upcoming releases and retry windows" },
   { match: (path: string) => path.startsWith("/queue"), title: "Transfers", subtitle: "Follow downloads through processing and safe import" },
-  { match: (path: string) => path.startsWith("/indexers"), title: "Connections", subtitle: "Search sources and download apps Deluno uses" },
+  { match: (path: string) => path.startsWith("/indexers"), title: "Connections", subtitle: "Search sources and download clients Deluno uses" },
   { match: (path: string) => path.startsWith("/search-cycles"), title: "Automation", subtitle: "Choose what Deluno should search for, retry, and upgrade next" },
   { match: (path: string) => path.startsWith("/activity"), title: "Activity", subtitle: "The permanent record of what happened and why" },
+  { match: (path: string) => path.startsWith("/settings/policy-sets"), title: "Media plans", subtitle: "Choose the policy Deluno follows for quality, size, releases, and upgrades" },
+  { match: (path: string) => path.startsWith("/settings/profiles") || path.startsWith("/settings/quality") || path.startsWith("/settings/custom-formats"), title: "Quality", subtitle: "Define the quality, size, and release rules your media must meet" },
+  { match: (path: string) => path.startsWith("/settings/lists"), title: "Discover media", subtitle: "Bring movies and shows in from import lists and feeds" },
+  { match: (path: string) => path.startsWith("/settings/automation"), title: "Automation & recovery", subtitle: "Control searches, retries, upgrades, and failed-download recovery" },
+  { match: (path: string) => path.startsWith("/settings/general") || path.startsWith("/settings/notifications") || path.startsWith("/settings/ui") || path.startsWith("/settings/migration") || path.startsWith("/setup-guide"), title: "System & settings", subtitle: "Installation-wide controls, notifications, interface, and maintenance" },
   { match: (path: string) => path.startsWith("/settings"), title: "Library setup", subtitle: "How Deluno manages your media" },
-  { match: (path: string) => path.startsWith("/system"), title: "System", subtitle: "Health, backups, updates, and audit" }
+  { match: (path: string) => path.startsWith("/system"), title: "System & settings", subtitle: "Health, backups, updates, and audit" }
 ];
 
 export function AppLayout() {
@@ -411,17 +416,16 @@ function DesktopSidebar({
 
 function ConfigurationSidebarTree({ pathname }: { pathname: string }) {
   const activeArea = configurationNavAreas.find((area) => area.match(pathname));
-  const isConfigurationRoute = pathname.startsWith("/settings") || pathname.startsWith("/indexers");
-  const [setupOpen, setSetupOpen] = useState(isConfigurationRoute);
+  const isLibrarySetupRoute = pathname === "/settings" || librarySetupNavItems.some((item) => pathname.startsWith(item.to));
+  const [setupOpen, setSetupOpen] = useState(isLibrarySetupRoute);
   const [openAreas, setOpenAreas] = useState<Set<string>>(() => new Set(activeArea ? [activeArea.label] : []));
 
   useEffect(() => {
-    if (!isConfigurationRoute) return;
-    setSetupOpen(true);
+    if (isLibrarySetupRoute) setSetupOpen(true);
     if (activeArea) {
       setOpenAreas((current) => new Set([...current, activeArea.label]));
     }
-  }, [activeArea?.label, isConfigurationRoute]);
+  }, [activeArea?.label, isLibrarySetupRoute]);
 
   const toggleArea = (label: string) => {
     setOpenAreas((current) => {
@@ -433,83 +437,98 @@ function ConfigurationSidebarTree({ pathname }: { pathname: string }) {
   };
 
   return (
-    <div>
-      <div className="group relative flex min-h-[var(--shell-pill-height)] items-center rounded-2xl px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-nav-size)] font-semibold transition-all duration-200">
+    <div className="space-y-1">
+      <div className="flex min-h-[var(--shell-pill-height)] items-center gap-1">
         <NavLink
           to="/settings"
+          end
           className={({ isActive }) => cn(
-            "absolute inset-y-0 left-0 right-10 flex min-w-0 items-center gap-3 rounded-l-2xl pl-[calc(var(--shell-nav-pad-x)*0.55)] transition",
-            isActive || isConfigurationRoute ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+            "group relative flex min-h-[var(--shell-pill-height)] min-w-0 flex-1 items-center gap-3 rounded-2xl px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-nav-size)] font-semibold transition-all duration-200",
+            isActive || isLibrarySetupRoute
+              ? "bg-primary/12 text-foreground shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.08)]"
+              : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
           )}
         >
-          <span className="flex h-[calc(var(--shell-pill-height)*0.68)] w-[calc(var(--shell-pill-height)*0.68)] shrink-0 items-center justify-center rounded-xl bg-muted/30 text-muted-foreground">
+          {({ isActive }) => <>
+          <span aria-hidden className={cn("absolute left-0 h-[calc(var(--shell-pill-height)*0.58)] w-[3px] rounded-full", isActive || isLibrarySetupRoute ? "bg-primary" : "bg-transparent")} />
+          <span className={cn("flex h-[calc(var(--shell-pill-height)*0.68)] w-[calc(var(--shell-pill-height)*0.68)] shrink-0 items-center justify-center rounded-xl transition", isActive || isLibrarySetupRoute ? "bg-primary/18 text-primary" : "bg-muted/30 text-muted-foreground group-hover:text-foreground")}>
             <DelunoNavGlyph kind="setup" className="h-[var(--shell-icon-size)] w-[var(--shell-icon-size)]" />
           </span>
           <span className="min-w-0 flex-1 whitespace-nowrap">Library setup</span>
+          </>}
         </NavLink>
         <button
           type="button"
           aria-label={`${setupOpen ? "Collapse" : "Expand"} Library setup`}
           aria-expanded={setupOpen}
           onClick={() => setSetupOpen((open) => !open)}
-          className="absolute inset-y-0 right-0 flex w-10 items-center justify-center rounded-r-2xl text-muted-foreground transition hover:bg-muted/50 hover:text-foreground"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-muted/50 hover:text-foreground"
         >
           <ChevronRight className={cn("h-4 w-4 transition-transform duration-200", setupOpen && "rotate-90 text-primary")} />
         </button>
       </div>
 
       {setupOpen ? (
-        <div className="ml-[calc((var(--shell-nav-pad-x)*0.55)_+_1rem)] mt-1 space-y-1 pl-4">
-          {configurationNavAreas.map((area) => {
-            const hasChildren = area.items.some((item) => item.to !== area.to);
-            const isOpen = openAreas.has(area.label);
-            const isActive = activeArea?.label === area.label;
-            return (
-              <div key={area.label}>
-                <div className="relative flex min-h-8 items-center rounded-lg pr-8">
-                  <NavLink
-                    to={area.to}
-                    className={({ isActive: routeIsActive }) => cn(
-                      "flex min-w-0 flex-1 items-center rounded-xl px-2.5 py-2 text-[length:var(--shell-nav-size)] font-semibold transition",
-                      routeIsActive || isActive ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
-                    )}
-                  >
-                    {area.label}
-                  </NavLink>
-                  {hasChildren ? (
-                    <button
-                      type="button"
-                      aria-label={`${isOpen ? "Collapse" : "Expand"} ${area.label}`}
-                      aria-expanded={isOpen}
-                      onClick={() => toggleArea(area.label)}
-                      className="absolute inset-y-0 right-0 flex w-8 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-muted/50 hover:text-foreground"
-                    >
-                      <ChevronRight className={cn("h-3.5 w-3.5 transition-transform duration-200", isOpen && "rotate-90 text-primary")} />
-                    </button>
-                  ) : null}
-                </div>
-                {isOpen && hasChildren ? (
-                  <div className="ml-4 mt-1 space-y-1 pl-3">
-                    {area.items.filter((item) => item.to !== area.to).map((item) => (
-                      <NavLink
-                        key={item.to}
-                        to={item.to}
-                        end={item.end}
-                        className={({ isActive: routeIsActive }) => cn(
-                          "relative block rounded-lg px-3 py-2 text-[length:var(--shell-nav-size)] font-medium transition before:absolute before:left-0 before:top-1/2 before:h-1 before:w-1 before:-translate-y-1/2 before:rounded-full",
-                          routeIsActive ? "bg-primary/10 text-primary before:bg-primary" : "text-muted-foreground before:bg-muted-foreground/35 hover:bg-muted/40 hover:text-foreground"
-                        )}
-                      >
-                        {item.label}
-                      </NavLink>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
+        <div className="ml-[calc((var(--shell-nav-pad-x)*0.55)_+_1rem)] mt-0.5 space-y-0.5 pl-2">
+          {librarySetupNavItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              title={item.label}
+              className={({ isActive }) => cn(
+                "flex min-h-7 min-w-0 items-center gap-2 rounded-lg px-2.5 py-1.5 text-[length:calc(var(--shell-nav-size)*0.9)] font-medium transition",
+                isActive ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+              )}
+            >
+              {({ isActive }) => <><span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", isActive ? "bg-primary" : "bg-muted-foreground/35")} /><span className="min-w-0 truncate">{item.label}</span></>}
+            </NavLink>
+          ))}
         </div>
       ) : null}
+
+      {configurationNavAreas.map((area) => {
+        const hasChildren = area.items.some((item) => item.to !== area.to);
+        const isOpen = openAreas.has(area.label);
+        const isActive = activeArea?.label === area.label;
+        return (
+          <div key={area.label}>
+            <div className="flex min-h-[var(--shell-pill-height)] items-center gap-1">
+              <NavLink
+                to={area.to}
+                className={({ isActive: routeIsActive }) => cn(
+                  "group relative flex min-h-[var(--shell-pill-height)] min-w-0 flex-1 items-center gap-3 rounded-2xl px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-nav-size)] font-semibold transition-all duration-200",
+                  routeIsActive || isActive
+                    ? "bg-primary/12 text-foreground shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.08)]"
+                    : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                )}
+              >
+                {({ isActive: routeIsActive }) => <>
+                <span aria-hidden className={cn("absolute left-0 h-[calc(var(--shell-pill-height)*0.58)] w-[3px] rounded-full", routeIsActive || isActive ? "bg-primary" : "bg-transparent")} />
+                <span className={cn("flex h-[calc(var(--shell-pill-height)*0.68)] w-[calc(var(--shell-pill-height)*0.68)] shrink-0 items-center justify-center rounded-xl transition", routeIsActive || isActive ? "bg-primary/18 text-primary" : "bg-muted/30 text-muted-foreground group-hover:text-foreground")}>
+                  <DelunoNavGlyph kind={area.icon} className="h-[calc(var(--shell-icon-size)*0.9)] w-[calc(var(--shell-icon-size)*0.9)]" />
+                </span>
+                <span className="min-w-0 truncate">{area.label}</span>
+                </>}
+              </NavLink>
+              {hasChildren ? (
+                <button type="button" aria-label={`${isOpen ? "Collapse" : "Expand"} ${area.label}`} aria-expanded={isOpen} onClick={() => toggleArea(area.label)} className="flex h-[var(--shell-pill-height)] w-10 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-muted/50 hover:text-foreground">
+                  <ChevronRight className={cn("h-4 w-4 transition-transform duration-200", isOpen && "rotate-90 text-primary")} />
+                </button>
+              ) : null}
+            </div>
+            {isOpen && hasChildren ? (
+              <div className="ml-[calc((var(--shell-nav-pad-x)*0.55)_+_1rem)] mt-0.5 space-y-0.5 pl-2">
+                {area.items.filter((item) => item.to !== area.to).map((item) => (
+                  <NavLink key={item.to} to={item.to} end={item.end} title={item.label} className={({ isActive: routeIsActive }) => cn("flex min-h-7 min-w-0 items-center gap-2 rounded-lg px-2.5 py-1.5 text-[length:calc(var(--shell-nav-size)*0.9)] font-medium transition", routeIsActive ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/40 hover:text-foreground")}>
+                    {({ isActive: routeIsActive }) => <><span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", routeIsActive ? "bg-primary" : "bg-muted-foreground/35")} /><span className="min-w-0 truncate">{item.label}</span></>}
+                  </NavLink>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -526,42 +545,59 @@ function MaintenanceSidebarTree({ pathname }: { pathname: string }) {
   const area = maintenanceNavItems[0];
   return (
     <div>
-      <div className="group relative flex min-h-[var(--shell-pill-height)] items-center rounded-2xl px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-nav-size)] font-semibold transition-all duration-200">
+      <div className="flex min-h-[var(--shell-pill-height)] items-center gap-1">
         <NavLink
           to={area.to}
           className={({ isActive }) => cn(
-            "absolute inset-y-0 left-0 right-10 flex min-w-0 items-center gap-3 rounded-l-2xl pl-[calc(var(--shell-nav-pad-x)*0.55)] transition",
-            isActive || isMaintenanceRoute ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+            "group relative flex min-h-[var(--shell-pill-height)] min-w-0 flex-1 items-center gap-3 rounded-2xl px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-nav-size)] font-semibold transition-all duration-200",
+            isActive || isMaintenanceRoute
+              ? "bg-primary/12 text-foreground shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.08)]"
+              : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
           )}
         >
-          <span className={cn("flex h-[calc(var(--shell-pill-height)*0.68)] w-[calc(var(--shell-pill-height)*0.68)] shrink-0 items-center justify-center rounded-xl", isMaintenanceRoute ? "bg-primary/18 text-primary" : "bg-muted/30 text-muted-foreground")}>
+          {({ isActive }) => <>
+          <span aria-hidden className={cn("absolute left-0 h-[calc(var(--shell-pill-height)*0.58)] w-[3px] rounded-full", isActive || isMaintenanceRoute ? "bg-primary" : "bg-transparent")} />
+          <span className={cn("flex h-[calc(var(--shell-pill-height)*0.68)] w-[calc(var(--shell-pill-height)*0.68)] shrink-0 items-center justify-center rounded-xl transition", isActive || isMaintenanceRoute ? "bg-primary/18 text-primary" : "bg-muted/30 text-muted-foreground group-hover:text-foreground")}>
             <DelunoNavGlyph kind="system" className="h-[var(--shell-icon-size)] w-[var(--shell-icon-size)]" />
           </span>
           <span className="min-w-0 flex-1 whitespace-nowrap">System &amp; settings</span>
+          </>}
         </NavLink>
         <button
           type="button"
           aria-label={`${open ? "Collapse" : "Expand"} System & settings`}
           aria-expanded={open}
           onClick={() => setOpen((current) => !current)}
-          className="absolute inset-y-0 right-0 flex w-10 items-center justify-center rounded-r-2xl text-muted-foreground transition hover:bg-muted/50 hover:text-foreground"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-muted/50 hover:text-foreground"
         >
           <ChevronRight className={cn("h-4 w-4 transition-transform duration-200", open && "rotate-90 text-primary")} />
         </button>
       </div>
       {open ? (
-        <div className="ml-[calc((var(--shell-nav-pad-x)*0.55)_+_1rem)] mt-1 space-y-1 pl-4">
+        <div className="ml-[calc((var(--shell-nav-pad-x)*0.55)_+_1rem)] mt-0.5 space-y-0.5 pl-2">
           {area.items.filter((item) => item.to !== area.to).map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               end={item.end}
-              className={({ isActive }) => cn(
-                "relative block rounded-lg px-3 py-2 text-[length:var(--shell-nav-size)] font-medium transition before:absolute before:left-0 before:top-1/2 before:h-1 before:w-1 before:-translate-y-1/2 before:rounded-full",
-                isActive ? "bg-primary/10 text-primary before:bg-primary" : "text-muted-foreground before:bg-muted-foreground/35 hover:bg-muted/40 hover:text-foreground"
+              title={item.label}
+              className={({ isActive: routeIsActive }) => cn(
+                "flex min-h-7 min-w-0 items-center gap-2 rounded-lg px-2.5 py-1.5 text-[length:calc(var(--shell-nav-size)*0.9)] font-medium transition",
+                routeIsActive ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
               )}
             >
-              {item.label}
+              {({ isActive: routeIsActive }) => (
+                <>
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "h-1.5 w-1.5 shrink-0 rounded-full",
+                      routeIsActive ? "bg-primary" : "bg-muted-foreground/35"
+                    )}
+                  />
+                  <span className="min-w-0 truncate">{item.label}</span>
+                </>
+              )}
             </NavLink>
           ))}
         </div>

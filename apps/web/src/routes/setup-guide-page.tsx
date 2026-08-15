@@ -348,6 +348,8 @@ export function SetupGuidePage() {
   }
 
   function skipWizard() {
+    // The expert path is an explicit choice, not an incomplete setup. The
+    // persisted setup status keeps the dashboard prompt in sync per install.
     void saveProgress(stepIndex, true).catch(() => undefined);
     navigate(returnTo, { replace: true });
   }
@@ -403,12 +405,6 @@ export function SetupGuidePage() {
       const firstTitle = form.firstTitle.trim()
         ? await createFirstTitle(form, createdEntities)
         : null;
-
-      try {
-        window.localStorage.removeItem("deluno-onboarding-dismissed");
-      } catch {
-        // noop
-      }
 
       const created = [movieLibrary ? "Movies" : null, tvLibrary ? "TV Shows" : null].filter(Boolean).join(" and ");
       const completionResult = {
@@ -622,7 +618,7 @@ export function SetupGuidePage() {
             </Button>
             <div className="flex flex-wrap gap-2">
               <Button type="button" variant="ghost" asChild>
-                <Link to="/settings">Open settings</Link>
+                <Link to="/settings">Open Library setup</Link>
               </Button>
               {result ? (
                 <Button type="button" asChild>
@@ -1160,8 +1156,8 @@ function FinishStep({
         />
       </div>
       <p className="text-sm leading-relaxed text-muted-foreground">
-        Nothing here is permanent. After setup, you can open Settings for destination rules, custom formats, quality profiles,
-        metadata preferences, tags, multi-library routing, and advanced automation.
+        Nothing here is permanent. After setup, open Library setup to refine final destinations, release scoring, quality profiles,
+        metadata preferences, tags, multi-library routing, and automation.
       </p>
     </div>
   );
@@ -1189,7 +1185,7 @@ function SetupComplete({ result }: { result: SetupCompletion }) {
         <HandoffTile title="Dashboard" copy="See automation, provider health, queue, and recent activity." to="/" />
         <HandoffTile title="Add titles" copy="Browse and monitor the library you just created." to={result.firstTitlePath ?? "/movies"} />
         <HandoffTile title="Review routing" copy="Confirm indexer and download-client routing." to="/indexers" />
-        <HandoffTile title="Advanced settings" copy="Tune profiles, formats, destination rules, and metadata." to="/settings" />
+        <HandoffTile title="Library setup" copy="Tune plans, quality, final destinations, metadata, and automation." to="/settings" />
       </div>
     </div>
   );

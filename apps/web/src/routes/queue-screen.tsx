@@ -471,7 +471,7 @@ export function QueuePage() {
 
       <Stagger className="fluid-kpi-grid">
         <StaggerItem>
-          <MetricTile icon={Download} label="Download apps" value={`${activeClients}/${telemetry.clients.length}`} sub="connected and ready" tone="primary" />
+          <MetricTile icon={Download} label="Download clients" value={`${activeClients}/${telemetry.clients.length}`} sub="connected and ready" tone="primary" />
         </StaggerItem>
         <StaggerItem>
           <MetricTile icon={ArrowDownToLine} label="Total speed" value={`${telemetry.summary.totalSpeedMbps.toFixed(1)}`} unit="MB/s" sub="combined speed" tone="success" />
@@ -640,8 +640,8 @@ export function QueuePage() {
 
           <GlassTile id="import-jobs">
             <PanelHeader
-              title="Download app history"
-              subtitle="Completed, failed, and ready-to-import items reported by your download apps."
+              title="Download client history"
+              subtitle="Completed, failed, and ready-to-import items reported by your download clients."
               meta={`${clientHistory.length} normalized`}
             />
             {clientHistory.length ? (
@@ -658,7 +658,7 @@ export function QueuePage() {
           <GlassTile id="recovery">
             <PanelHeader
               title="What Deluno sent"
-              subtitle="The releases Deluno approved and sent to a download app."
+              subtitle="The releases Deluno approved and sent to a download client."
               meta={`${dispatches.length} recent`}
             />
             {dispatches.length ? (
@@ -1112,7 +1112,7 @@ function QueueRow({
           {allowExternalClientRemoval ? (
             <ActionButton icon={Trash2} label="Remove" busy={busyKey === `queue:${item.clientId}:${item.id}:delete`} disabled={isBusy} onClick={() => onRequestRemove(item)} destructive />
           ) : (
-            <p className="basis-full text-[10.5px] text-muted-foreground">External-client queue removal is off. Enable it in Library setup → Media management if you want this confirmed control here.</p>
+            <p className="basis-full text-[10.5px] text-muted-foreground">External-client queue removal is off. Enable it in Library setup → File handling &amp; naming if you want this confirmed control here.</p>
           )}
         </div>
       </div>

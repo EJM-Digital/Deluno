@@ -167,10 +167,10 @@ export function SettingsMediaManagementPage() {
 
   return (
     <SettingsShell
-      title={isProcessingPage ? "Processing & import" : "Files, processing & import"}
+      title={isProcessingPage ? "Processing workflow" : "File handling & naming"}
       description={isProcessingPage
-        ? "Configure the optional processing hand-off Deluno uses before it imports and renames the finished file."
-        : "Choose how Deluno reaches completed files, names them, and imports them into your media library."}
+        ? "Optional: configure the external processing hand-off Deluno uses before it imports and renames the finished file."
+        : "Choose how Deluno names completed files and what it does when it imports them into your media library."}
     >
       {message ? (
         <div className="density-help rounded-xl border border-hairline bg-surface-1 px-4 py-3 text-muted-foreground">
@@ -288,7 +288,7 @@ export function SettingsMediaManagementPage() {
 
               <Button type="submit" disabled={busy}>
                 {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-                Save media management
+                Save file handling
               </Button>
             </form>
           </CardContent>
@@ -297,7 +297,7 @@ export function SettingsMediaManagementPage() {
 
          {isProcessingPage ? <Card className="settings-panel">
           <CardHeader>
-            <CardTitle>Processing & import by library</CardTitle>
+            <CardTitle>Processing workflow by library</CardTitle>
             <CardDescription>
               Choose whether a finished download imports immediately or waits for a cleaner processor output first.
             </CardDescription>

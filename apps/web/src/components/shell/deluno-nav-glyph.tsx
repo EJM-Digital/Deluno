@@ -9,6 +9,12 @@ export type DelunoNavGlyphKind =
   | "automation"
   | "activity"
   | "setup"
+  | "library"
+  | "connections"
+  | "plans"
+  | "quality"
+  | "discover"
+  | "recovery"
   | "system";
 
 /**
@@ -68,6 +74,36 @@ export function DelunoNavGlyph({ kind, className }: { kind: DelunoNavGlyphKind; 
         <rect x="14" y="13.5" width="6.5" height="6.5" rx="2" {...shared} />
         <path d="M10 7.25h2a3 3 0 0 1 3 3v3.25M8.2 16.75h3.3a3.5 3.5 0 0 0 3.5-3.5v-1" {...shared} />
         <path d="m12.4 13.1 2.6 2.6 2.6-2.6" {...shared} />
+      </> : null}
+      {kind === "library" ? <>
+        <path d="M3.5 7.5h6l1.8 2h9.2v8.2A2.3 2.3 0 0 1 18.2 20H5.8a2.3 2.3 0 0 1-2.3-2.3V7.5Z" {...shared} />
+        <path d="M3.5 10h17M7.5 14h4M7.5 17h7" {...shared} />
+      </> : null}
+      {kind === "connections" ? <>
+        <circle cx="6" cy="8" r="2.25" {...shared} />
+        <circle cx="18" cy="6" r="2.25" {...shared} />
+        <circle cx="15" cy="17" r="2.25" {...shared} />
+        <path d="m7.9 8.8 7.9-2M7.7 9.7l5.5 5.7M17.6 8l-1.8 6.8" {...shared} />
+      </> : null}
+      {kind === "plans" ? <>
+        <path d="M5 5.5h14M5 12h14M5 18.5h14" {...shared} />
+        <circle cx="8" cy="5.5" r="1.75" fill="currentColor" stroke="none" />
+        <circle cx="15" cy="12" r="1.75" fill="currentColor" stroke="none" />
+        <circle cx="11" cy="18.5" r="1.75" fill="currentColor" stroke="none" />
+      </> : null}
+      {kind === "quality" ? <>
+        <path d="M12 3.5 19.5 8v8L12 20.5 4.5 16V8L12 3.5Z" {...shared} />
+        <path d="m12 8 1.2 2.5 2.8.4-2 2 .5 2.8-2.5-1.3-2.5 1.3.5-2.8-2-2 2.8-.4L12 8Z" {...shared} />
+      </> : null}
+      {kind === "discover" ? <>
+        <circle cx="12" cy="12" r="8" {...shared} />
+        <path d="m15.7 8.3-2 5.4-5.4 2 2-5.4 5.4-2Z" {...shared} />
+        <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
+      </> : null}
+      {kind === "recovery" ? <>
+        <path d="M19 9a7.5 7.5 0 1 0 .2 6" {...shared} />
+        <path d="M19 4.5V9h-4.5" {...shared} />
+        <path d="M8.5 15.5h7M12 12v7" {...shared} />
       </> : null}
       {kind === "system" ? <>
         <path d="M12 3.5 19 7v5c0 4.4-2.9 7.4-7 8.5-4.1-1.1-7-4.1-7-8.5V7l7-3.5Z" {...shared} />

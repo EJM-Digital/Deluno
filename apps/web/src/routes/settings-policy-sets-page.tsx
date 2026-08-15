@@ -154,6 +154,7 @@ export function SettingsPolicySetsPage() {
   const [formState, setFormState] = useState<PolicySetFormState>(createPolicySetForm);
   const [selectedStarterId, setSelectedStarterId] = useState<string | null>(null);
   const [showDetailedRules, setShowDetailedRules] = useState(false);
+  const [targetLibraryIds, setTargetLibraryIds] = useState<string[]>([]);
 
   const enabledSets = policySets.filter((set) => set.isEnabled).length;
   const linkedDestinationRules = policySets.filter((set) => set.destinationRuleId).length;
@@ -177,6 +178,7 @@ export function SettingsPolicySetsPage() {
     setFormState(createPolicySetForm());
     setSelectedStarterId(null);
     setShowDetailedRules(false);
+    setTargetLibraryIds([]);
   }
 
   function applyStarter(starter: (typeof MEDIA_PLAN_STARTERS)[number]) {
@@ -187,12 +189,14 @@ export function SettingsPolicySetsPage() {
     });
     setSelectedStarterId(starter.id);
     setShowDetailedRules(false);
+    setTargetLibraryIds(libraries.filter((library) => library.mediaType === starter.values.mediaType).map((library) => library.id));
   }
 
   function startEdit(policySet: PolicySetItem) {
     setEditingId(policySet.id);
     setSelectedStarterId(null);
     setShowDetailedRules(false);
+    setTargetLibraryIds(libraries.filter((library) => library.defaultPolicySetId === policySet.id).map((library) => library.id));
     setFormState({
       name: policySet.name,
       mediaType: policySet.mediaType,
@@ -216,9 +220,16 @@ export function SettingsPolicySetsPage() {
     }));
   }
 
+  function toggleTargetLibrary(id: string) {
+    setTargetLibraryIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const isEditing = editingId !== null;
+    const previouslyAssignedLibraryIds = isEditing
+      ? libraries.filter((library) => library.defaultPolicySetId === editingId).map((library) => library.id)
+      : [];
     setBusyKey(isEditing ? `save:${editingId}` : "create");
 
     try {
@@ -237,6 +248,31 @@ export function SettingsPolicySetsPage() {
 
       if (!response.ok) {
         throw new Error(isEditing ? "Media plan could not be updated." : "Media plan could not be created.");
+      }
+
+      const savedPlan = await response.json() as PolicySetItem;
+      const assignments = await Promise.all([
+        ...previouslyAssignedLibraryIds
+          .filter((libraryId) => !targetLibraryIds.includes(libraryId))
+          .map(async (libraryId) => {
+            const assignment = await authedFetch(`/api/libraries/${libraryId}/media-plan`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ policySetId: null })
+            });
+            return assignment.ok;
+          }),
+        ...targetLibraryIds.map(async (libraryId) => {
+          const assignment = await authedFetch(`/api/libraries/${libraryId}/media-plan`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ policySetId: savedPlan.id })
+          });
+          return assignment.ok;
+        })
+      ]);
+      if (assignments.some((assigned) => !assigned)) {
+        throw new Error("Media plan was saved, but could not be applied to every selected library.");
       }
 
       toast.success(isEditing ? "Media plan updated" : "Media plan created");
@@ -352,13 +388,16 @@ export function SettingsPolicySetsPage() {
                 <Field label="Media type" description="Choose Movies or TV. Changing this resets choices that only apply to the other media type.">
                   <select
                     value={formState.mediaType}
-                    onChange={(event) => setFormState((current) => ({
-                      ...current,
-                      mediaType: event.target.value,
-                      qualityProfileId: "",
-                      destinationRuleId: "",
-                      customFormatIds: []
-                    }))}
+                    onChange={(event) => {
+                      setTargetLibraryIds([]);
+                      setFormState((current) => ({
+                        ...current,
+                        mediaType: event.target.value,
+                        qualityProfileId: "",
+                        destinationRuleId: "",
+                        customFormatIds: []
+                      }));
+                    }}
                     className="density-control-text h-[var(--control-height)] w-full rounded-xl border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none"
                   >
                     <option value="movies">Movies</option>
@@ -394,6 +433,20 @@ export function SettingsPolicySetsPage() {
                   </select>
                 </Field>
               </div>
+
+              <fieldset className="rounded-xl border border-hairline bg-surface-1 p-[var(--tile-pad)]">
+                <legend className="px-1 text-sm font-semibold text-foreground">Apply this plan to</legend>
+                <p className="mt-1 text-sm text-muted-foreground">Choose the libraries that should use this plan as their default. Deluno will keep their quality profile and search timing in sync when you update this plan.</p>
+                <div className="mt-3 grid gap-[var(--grid-gap)] sm:grid-cols-2">
+                  {libraries.filter((library) => library.mediaType === formState.mediaType).map((library) => (
+                    <label key={library.id} className="flex items-start gap-3 rounded-xl border border-hairline bg-background/40 p-3 text-sm text-foreground">
+                      <input type="checkbox" checked={targetLibraryIds.includes(library.id)} onChange={() => toggleTargetLibrary(library.id)} />
+                      <span><span className="block font-semibold">{library.name}</span><span className="mt-0.5 block text-xs text-muted-foreground">{library.rootPath}</span></span>
+                    </label>
+                  ))}
+                  {libraries.filter((library) => library.mediaType === formState.mediaType).length === 0 ? <p className="text-sm text-muted-foreground">Create a {formState.mediaType === "tv" ? "TV" : "Movies"} library first; you can then apply this plan from Library folders.</p> : null}
+                </div>
+              </fieldset>
 
               <Field label="Notes">
                 <textarea
@@ -577,15 +630,15 @@ export function SettingsPolicySetsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Your libraries</CardTitle>
-              <CardDescription>Libraries available for media-plan assignment.</CardDescription>
+              <CardTitle>Library assignments</CardTitle>
+              <CardDescription>Each library shows the Media Plan it actually uses. Assign or change a plan from Library folders.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {libraries.map((library) => (
                 <div key={library.id} className="rounded-xl border border-hairline bg-surface-1 p-4">
                   <p className="font-medium text-foreground">{library.name}</p>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    {library.qualityProfileName ?? "Quality goal not chosen"} · {library.rootPath}
+                    {library.defaultPolicySetName ?? "No Media Plan assigned"} · {library.qualityProfileName ?? "Quality goal not chosen"}
                   </p>
                 </div>
               ))}

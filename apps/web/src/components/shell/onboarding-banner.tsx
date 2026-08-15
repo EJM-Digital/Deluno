@@ -14,7 +14,7 @@
 
 import { Link } from "react-router-dom";
 import { ArrowRight, CheckCircle2, Circle, Sparkles, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { cn } from "../../lib/utils";
 
 export interface OnboardingState {
@@ -23,21 +23,19 @@ export interface OnboardingState {
   hasLibrary: boolean;
 }
 
-const DISMISS_KEY = "deluno-onboarding-dismissed";
-
-export function OnboardingBanner({ state }: { state: OnboardingState }) {
+export function OnboardingBanner({
+  state,
+  isSetupSuppressed,
+  onDismiss
+}: {
+  state: OnboardingState;
+  isSetupSuppressed: boolean;
+  onDismiss: () => void;
+}) {
   const [dismissed, setDismissed] = useState(false);
 
-  useEffect(() => {
-    try {
-      setDismissed(window.localStorage.getItem(DISMISS_KEY) === "1");
-    } catch {
-      /* noop */
-    }
-  }, []);
-
   const allDone = state.hasIndexer && state.hasDownloadClient && state.hasLibrary;
-  if (allDone || dismissed) return null;
+  if (allDone || isSetupSuppressed || dismissed) return null;
 
   const steps: { label: string; to: string; done: boolean; hint: string }[] = [
     {
@@ -89,12 +87,8 @@ export function OnboardingBanner({ state }: { state: OnboardingState }) {
       <button
         type="button"
         onClick={() => {
-          try {
-            window.localStorage.setItem(DISMISS_KEY, "1");
-          } catch {
-            /* noop */
-          }
           setDismissed(true);
+          onDismiss();
         }}
         aria-label="Dismiss onboarding"
         className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted/40 hover:text-foreground"

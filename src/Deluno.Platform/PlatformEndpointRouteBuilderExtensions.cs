@@ -1184,6 +1184,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             }
 
             var item = await repository.CreatePolicySetAsync(request, cancellationToken);
+            await repository.ApplyMediaPlanToAssignedLibrariesAsync(item.Id, cancellationToken);
             return Results.Ok(item);
         });
 
@@ -1207,6 +1208,10 @@ public static class PlatformEndpointRouteBuilderExtensions
             }
 
             var item = await repository.UpdatePolicySetAsync(id, request, cancellationToken);
+            if (item is not null)
+            {
+                await repository.ApplyMediaPlanToAssignedLibrariesAsync(item.Id, cancellationToken);
+            }
             return item is null ? Results.NotFound() : Results.Ok(item);
         });
 
@@ -1414,6 +1419,47 @@ public static class PlatformEndpointRouteBuilderExtensions
                         cutoffQuality = item.CutoffQuality,
                         upgradeUntilCutoff = item.UpgradeUntilCutoff,
                         upgradeUnknownItems = item.UpgradeUnknownItems
+                    }),
+                    RelatedEntityType: "library",
+                    RelatedEntityId: item.Id),
+                cancellationToken);
+
+            return Results.Ok(item);
+        });
+
+        endpoints.MapPut("/api/libraries/{id}/media-plan", async (
+            string id,
+            HttpContext httpContext,
+            [FromBody] UpdateLibraryMediaPlanRequest request,
+            IPlatformSettingsRepository repository,
+            IJobScheduler jobScheduler,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var item = await repository.UpdateLibraryMediaPlanAsync(id, request, cancellationToken);
+            if (item is null)
+            {
+                return Results.NotFound();
+            }
+
+            await jobScheduler.EnqueueAsync(
+                new EnqueueJobRequest(
+                    JobType: item.MediaType == "tv" ? "series.quality.recalculate" : "movies.quality.recalculate",
+                    Source: item.MediaType,
+                    PayloadJson: JsonSerializer.Serialize(new
+                    {
+                        libraryId = item.Id,
+                        libraryName = item.Name,
+                        mediaType = item.MediaType,
+                        policySetId = item.DefaultPolicySetId,
+                        policySetName = item.DefaultPolicySetName,
+                        cutoffQuality = item.CutoffQuality,
+                        upgradeUntilCutoff = item.UpgradeUntilCutoff
                     }),
                     RelatedEntityType: "library",
                     RelatedEntityId: item.Id),

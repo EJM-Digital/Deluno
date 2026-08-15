@@ -436,6 +436,8 @@ export interface LibraryItem {
   nextSearchUtc: string | null;
   createdUtc: string;
   updatedUtc: string;
+  defaultPolicySetId?: string | null;
+  defaultPolicySetName?: string | null;
 }
 
 export interface LibrarySourceLinkItem {

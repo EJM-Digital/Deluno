@@ -30,4 +30,6 @@ public sealed record LibraryItem(
     DateTimeOffset? LastSearchedUtc,
     DateTimeOffset? NextSearchUtc,
     DateTimeOffset CreatedUtc,
-    DateTimeOffset UpdatedUtc);
+    DateTimeOffset UpdatedUtc,
+    string? DefaultPolicySetId = null,
+    string? DefaultPolicySetName = null);
