@@ -299,14 +299,17 @@ export function adaptIndexerHealth(
     responseMs: item.lastHealthLatencyMs ?? null
   }));
 
-  const clientItems = clients.slice(0, 2).map((item) => ({
+  const clientItems = clients.map((item) => ({
     id: item.id,
     name: item.name,
     status: normalizeIntegrationHealth(item.healthStatus),
     responseMs: item.lastHealthLatencyMs ?? null
   }));
 
-  return [...sources, ...clientItems].slice(0, 6);
+  // Dashboard health totals must account for every configured connection.
+  // Individual panels choose how many rows to display; the aggregate must not
+  // quietly ignore clients beyond an arbitrary limit.
+  return [...sources, ...clientItems];
 }
 
 function normalizeIntegrationHealth(status: string): "healthy" | "degraded" | "down" {

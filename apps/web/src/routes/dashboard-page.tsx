@@ -44,9 +44,13 @@ interface DashboardLoaderData {
   configuredLibraryCount: number;
   librarySizeTb: string;
   missingCount: number;
+  movieCount: number;
+  movieMissingCount: number;
   monitoredCount: number;
   recentlyAdded: MediaItem[];
   totalCount: number;
+  showCount: number;
+  showMissingCount: number;
   upcoming: DashboardUpcomingItem[];
   upgradeCount: number;
   waitingCount: number;
@@ -113,12 +117,16 @@ export async function dashboardLoader(): Promise<DashboardLoaderData> {
     configuredLibraryCount: libraries.length,
     librarySizeTb: (librarySizeGb / 1024).toFixed(1),
     missingCount: movieWanted.missingCount + showWanted.missingCount,
+    movieCount: adaptedMovies.length,
+    movieMissingCount: movieWanted.missingCount,
     monitoredCount,
     recentlyAdded: allItems
       .slice()
       .sort((left, right) => right.added.localeCompare(left.added))
       .slice(0, 14),
     totalCount: allItems.length,
+    showCount: adaptedShows.length,
+    showMissingCount: showWanted.missingCount,
     upcoming: buildDashboardUpcoming(upcomingEpisodes, showWanted, movieWanted),
     upgradeCount: movieWanted.upgradeCount + showWanted.upgradeCount,
     waitingCount: movieWanted.waitingCount + showWanted.waitingCount,
@@ -182,37 +190,36 @@ export function DashboardPage() {
         <MetricPlane
           label="Library"
           value={data.totalCount.toLocaleString()}
-          meta={data.totalCount > 0 ? `${data.librarySizeTb} TB indexed` : data.configuredLibraryCount > 0 ? `${data.configuredLibraryCount} library${data.configuredLibraryCount === 1 ? "" : "ies"} ready for media` : "No library configured yet"}
+          meta={data.totalCount > 0 ? `${data.movieCount} movie${data.movieCount === 1 ? "" : "s"} · ${data.showCount} TV show${data.showCount === 1 ? "" : "s"} · ${data.librarySizeTb} TB` : data.configuredLibraryCount > 0 ? `${data.configuredLibraryCount} library${data.configuredLibraryCount === 1 ? "" : "ies"} ready for media` : "No library configured yet"}
           icon={HardDrive}
           tone="primary"
-          wide
         />
         <MetricPlane
           label="Monitored"
           value={data.monitoredCount.toLocaleString()}
-          meta="Titles being tracked"
+          meta="Movies and TV shows Deluno will search for"
           icon={Film}
           tone="neutral"
         />
         <MetricPlane
           label="Queue"
           value={data.activeDownloadCount.toString()}
-          meta={topDownload ? `${topDownload.speedMbps.toFixed(1)} MB/s active` : "No active transfers"}
+          meta={topDownload ? `${topDownload.speedMbps.toFixed(1)} MB/s active` : "All movie and TV transfer work"}
           icon={Download}
           tone="info"
         />
         <MetricPlane
-          label="Missing"
+          label="Missing titles"
           value={data.missingCount.toString()}
-          meta={`${data.upgradeCount} upgrades · ${data.waitingCount} waiting`}
+          meta={`${data.movieMissingCount} movies · ${data.showMissingCount} TV shows · ${data.upgradeCount} upgrades`}
           icon={AlertTriangle}
           tone={data.missingCount > 0 ? "warn" : "success"}
         />
         <MetricPlane
-          label="Health"
+          label="Connections"
           value={data.indexerHealthPercent === null ? "—" : `${data.indexerHealthPercent}`}
           unit={data.indexerHealthPercent === null ? undefined : "%"}
-          meta={data.indexerHealth.length === 0 ? "No providers connected" : healthIssues > 0 ? `${healthIssues} providers need review` : "All providers healthy"}
+          meta={data.indexerHealth.length === 0 ? "No search sources or download clients" : healthIssues > 0 ? `${healthIssues} connections need review` : "All sources and clients responding"}
           icon={RadioTower}
           tone={data.indexerHealth.length === 0 ? "neutral" : healthIssues > 0 ? "warn" : "success"}
         />
@@ -326,7 +333,7 @@ export function DashboardPage() {
           </RenderPanel>
 
           <RenderPanel>
-            <PanelHeader eyebrow="Providers" title="Search providers" icon={RadioTower} />
+          <PanelHeader eyebrow="Connections" title="Search sources & download clients" icon={RadioTower} />
             <div className="space-y-2">
               {data.indexerHealth.length ? (
                 data.indexerHealth.slice(0, 6).map((item) => <HealthRow key={item.id} item={item} />)
@@ -349,8 +356,7 @@ function MetricPlane({
   meta,
   icon: Icon,
   tone,
-  visual,
-  wide = false
+  visual
 }: {
   label: string;
   value: string;
@@ -359,14 +365,12 @@ function MetricPlane({
   icon: typeof HardDrive;
   tone: "primary" | "success" | "warn" | "info" | "neutral";
   visual?: React.ReactNode;
-  wide?: boolean;
 }) {
   return (
     <article
       className={cn(
         "group relative min-h-[var(--metric-plane-min-height)] min-w-0 overflow-hidden rounded-2xl border border-hairline bg-card p-[var(--tile-pad)] shadow-card",
-        "transition duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg dark:border-white/[0.06]",
-        wide && "xl:col-span-2 2xl:col-span-2"
+        "transition duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg dark:border-white/[0.06]"
       )}
     >
       <AmbientTone tone={tone} />
@@ -718,9 +722,13 @@ function emptyDashboardData(): DashboardLoaderData {
     configuredLibraryCount: 0,
     librarySizeTb: "0.0",
     missingCount: 0,
+    movieCount: 0,
+    movieMissingCount: 0,
     monitoredCount: 0,
     recentlyAdded: [],
     totalCount: 0,
+    showCount: 0,
+    showMissingCount: 0,
     upcoming: [],
     upgradeCount: 0,
     waitingCount: 0,
