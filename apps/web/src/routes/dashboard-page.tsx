@@ -275,7 +275,7 @@ export function DashboardPage() {
           </div>
         </RenderPanel>
 
-        <RenderPanel className="xl:col-span-8">
+        <RenderPanel className="xl:col-span-8 xl:self-stretch">
           <PanelHeader
             eyebrow="Library"
             title="Fresh in the library"
