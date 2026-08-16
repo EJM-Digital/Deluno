@@ -108,7 +108,7 @@ test.describe("first-run and auth screens", () => {
     });
 
     await authenticateAndNavigate(page, "/setup-guide");
-    await page.getByRole("button", { name: /Connections/ }).click();
+    await page.getByRole("button", { name: /4 Connections/ }).click();
     await page.getByRole("button", { name: "Test search source" }).click();
 
     await expect(page.getByText("Enter an indexer URL before testing.")).toBeVisible();
@@ -116,7 +116,7 @@ test.describe("first-run and auth screens", () => {
 
   test("guided setup requires an external download app address before testing", async ({ page }) => {
     await authenticateAndNavigate(page, "/setup-guide");
-    await page.getByRole("button", { name: /Connections/ }).click();
+    await page.getByRole("button", { name: /4 Connections/ }).click();
     await page.getByRole("button", { name: "Test download client" }).click();
     await expect(page.getByText("Enter a download client host before testing.")).toBeVisible();
     await expect(page.getByPlaceholder("localhost or docker host")).toBeVisible();

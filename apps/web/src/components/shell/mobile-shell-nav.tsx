@@ -264,7 +264,10 @@ function MobileConfigurationTree({ pathname }: { pathname: string }) {
               isLibrarySetupRoute ? "bg-primary/12 text-foreground ring-1 ring-inset ring-primary/20" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
             )}
           >
-              <DelunoNavGlyph kind="setup" className={cn("h-5 w-5 shrink-0", isLibrarySetupRoute ? "text-primary" : "text-muted-foreground")} />
+              <DelunoNavGlyph
+                kind="setup"
+                className={cn("h-5 w-5 shrink-0", isLibrarySetupRoute ? "text-primary" : "text-muted-foreground")}
+              />
             <span className="flex-1">Library setup</span>
           </NavLink>
         </SheetClose>
@@ -334,7 +337,10 @@ function MobileMaintenanceTree({ pathname }: { pathname: string }) {
               isMaintenanceRoute ? "bg-primary/12 text-foreground ring-1 ring-inset ring-primary/20" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
             )}
           >
-            <DelunoNavGlyph kind="system" className={cn("h-5 w-5 shrink-0", isMaintenanceRoute ? "text-primary" : "text-muted-foreground")} />
+            <DelunoNavGlyph
+              kind="system"
+              className={cn("h-5 w-5 shrink-0", isMaintenanceRoute ? "text-primary" : "text-muted-foreground")}
+            />
             <span className="flex-1">System &amp; settings</span>
           </NavLink>
         </SheetClose>

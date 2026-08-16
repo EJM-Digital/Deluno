@@ -13,101 +13,174 @@ export type DelunoNavGlyphKind =
   | "connections"
   | "plans"
   | "quality"
+  | "size"
+  | "scoring"
+  | "destinations"
   | "discover"
+  | "search"
   | "recovery"
   | "system";
 
+const ICON_COLOR_MAP: Record<DelunoNavGlyphKind, string> = {
+  dashboard: "#ffd15a",
+  movies: "#ffd15a",
+  shows: "#ffd15a",
+  schedule: "#ff9d3a",
+  transfers: "#4bb7ff",
+  automation: "#ffd15a",
+  activity: "#2ee887",
+  setup: "#ffd15a",
+  library: "#ffd15a",
+  connections: "#2ee887",
+  plans: "#ffd15a",
+  quality: "#4bb7ff",
+  size: "#4bb7ff",
+  scoring: "#ff9d3a",
+  destinations: "#2ee887",
+  discover: "#4bb7ff",
+  search: "#4bb7ff",
+  recovery: "#ffd15a",
+  system: "#ffd15a"
+};
+
 /**
- * The Deluno navigation language. These are product marks, not an icon-library
- * grab bag: every mark uses the same rounded-path geometry and the same media
- * flow vocabulary (collection → decision → destination).
+ * Deluno's product icon language from the selected specific icon pack.
+ * Keep these line icons simple so they stay readable in nav, command, and setup UI.
  */
-export function DelunoNavGlyph({ kind, className }: { kind: DelunoNavGlyphKind; className?: string }) {
+export function DelunoNavGlyph({
+  kind,
+  className
+}: {
+  kind: DelunoNavGlyphKind;
+  className?: string;
+}) {
+  const iconColor = ICON_COLOR_MAP[kind];
   const shared = {
-    stroke: "currentColor",
-    strokeWidth: 1.75,
+    stroke: iconColor,
+    strokeWidth: 2.2,
     strokeLinecap: "round" as const,
     strokeLinejoin: "round" as const
   };
+  const iconClassName = cn("h-5 w-5", className);
 
   return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={cn("h-5 w-5", className)}>
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={iconClassName}>
       {kind === "dashboard" ? <>
-        <rect x="3.5" y="3.5" width="7" height="7" rx="2" {...shared} />
-        <rect x="13.5" y="3.5" width="7" height="7" rx="2" {...shared} />
-        <rect x="3.5" y="13.5" width="7" height="7" rx="2" {...shared} />
-        <path d="M15.5 17h5M18 14.5v5" {...shared} />
+        <path d="M4 13h6V4H4z" {...shared} />
+        <path d="M14 20h6V4h-6z" {...shared} />
+        <path d="M4 20h6v-3H4z" {...shared} />
       </> : null}
       {kind === "movies" ? <>
-        <rect x="3" y="4" width="18" height="16" rx="3" {...shared} />
-        <path d="M7 4v16M17 4v16M3 9h4M17 9h4M3 15h4M17 15h4" {...shared} />
-        <path d="m10.5 10 4 2-4 2v-4Z" fill="currentColor" stroke="none" />
+        <path d="M5 6h14v12H5z" {...shared} />
+        <path d="M8 6v12" {...shared} />
+        <path d="M16 6v12" {...shared} />
+        <path d="M5 10h14" {...shared} />
+        <path d="M5 14h14" {...shared} />
       </> : null}
       {kind === "shows" ? <>
-        <rect x="4" y="5" width="13" height="11" rx="2.5" {...shared} />
-        <path d="M8 19h10a2 2 0 0 0 2-2V9M7.5 8.5h5M7.5 12h3" {...shared} />
-        <circle cx="15" cy="13" r="1.5" fill="currentColor" stroke="none" />
+        <rect x="4" y="5" width="16" height="11" rx="2" {...shared} />
+        <path d="M9 20h6" {...shared} />
+        <path d="M12 16v4" {...shared} />
       </> : null}
       {kind === "schedule" ? <>
-        <rect x="4" y="5" width="16" height="15" rx="3" {...shared} />
-        <path d="M8 3.5v3M16 3.5v3M4 10h16M8 14h.01M12 14h.01M16 14h.01M12 17h.01" {...shared} />
+        <path d="M7 7V4" {...shared} />
+        <path d="M17 7V4" {...shared} />
+        <rect x="4" y="6" width="16" height="14" rx="2" {...shared} />
+        <path d="M4 11h16" {...shared} />
+        <path d="M8 15h2" {...shared} />
+        <path d="M14 15h2" {...shared} />
       </> : null}
       {kind === "transfers" ? <>
-        <path d="M4 7.5h10.5a3 3 0 0 1 3 3V12" {...shared} />
-        <path d="m15 9 2.5 3L15 15" {...shared} />
-        <path d="M20 16.5H9.5a3 3 0 0 1-3-3V12" {...shared} />
-        <path d="m9 15-2.5-3L9 9" {...shared} />
+        <path d="M6 4h12v8H6z" {...shared} />
+        <path d="M8 16h8" {...shared} />
+        <path d="M12 12v8" {...shared} />
+        <path d="M9 19l3 2 3-2" {...shared} />
       </> : null}
       {kind === "automation" ? <>
-        <circle cx="6" cy="7" r="2" {...shared} />
-        <circle cx="18" cy="7" r="2" {...shared} />
-        <circle cx="12" cy="17" r="2" {...shared} />
-        <path d="m7.7 8.1 2.9 6.1M16.3 8.1l-2.9 6.1M8 7h8" {...shared} />
+        <path d="M12 5v14" {...shared} />
+        <path d="M5 12h14" {...shared} />
+        <path d="M8 8l8 8" {...shared} />
+        <path d="M16 8l-8 8" {...shared} />
       </> : null}
       {kind === "activity" ? <>
-        <path d="M4 17h3l2.1-7 3.4 10 2.2-6H20" {...shared} />
-        <circle cx="4" cy="17" r="1.25" fill="currentColor" stroke="none" />
-        <circle cx="20" cy="14" r="1.25" fill="currentColor" stroke="none" />
+        <path d="M4 14h5l3-8 3 12 2-4h3" {...shared} />
+        <path d="M4 20h16" {...shared} />
       </> : null}
       {kind === "setup" ? <>
-        <rect x="3.5" y="4" width="6.5" height="6.5" rx="2" {...shared} />
-        <rect x="14" y="13.5" width="6.5" height="6.5" rx="2" {...shared} />
-        <path d="M10 7.25h2a3 3 0 0 1 3 3v3.25M8.2 16.75h3.3a3.5 3.5 0 0 0 3.5-3.5v-1" {...shared} />
-        <path d="m12.4 13.1 2.6 2.6 2.6-2.6" {...shared} />
+        <path d="M3 7h7l2 2h9v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" {...shared} />
+        <path d="M7 13h10" {...shared} />
+        <path d="M7 16h6" {...shared} />
       </> : null}
       {kind === "library" ? <>
-        <path d="M3.5 7.5h6l1.8 2h9.2v8.2A2.3 2.3 0 0 1 18.2 20H5.8a2.3 2.3 0 0 1-2.3-2.3V7.5Z" {...shared} />
-        <path d="M3.5 10h17M7.5 14h4M7.5 17h7" {...shared} />
+        <path d="M3 7h7l2 2h9v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" {...shared} />
+        <path d="M7 13h10" {...shared} />
+        <path d="M7 16h6" {...shared} />
       </> : null}
       {kind === "connections" ? <>
-        <circle cx="6" cy="8" r="2.25" {...shared} />
-        <circle cx="18" cy="6" r="2.25" {...shared} />
-        <circle cx="15" cy="17" r="2.25" {...shared} />
-        <path d="m7.9 8.8 7.9-2M7.7 9.7l5.5 5.7M17.6 8l-1.8 6.8" {...shared} />
+        <circle cx="6" cy="8" r="2" {...shared} />
+        <circle cx="18" cy="16" r="2" {...shared} />
+        <path d="M8 8h4a4 4 0 0 1 4 4v2" {...shared} />
+        <path d="M18 6v5" {...shared} />
+        <path d="M15.5 8.5L18 6l2.5 2.5" {...shared} />
       </> : null}
       {kind === "plans" ? <>
-        <path d="M5 5.5h14M5 12h14M5 18.5h14" {...shared} />
-        <circle cx="8" cy="5.5" r="1.75" fill="currentColor" stroke="none" />
-        <circle cx="15" cy="12" r="1.75" fill="currentColor" stroke="none" />
-        <circle cx="11" cy="18.5" r="1.75" fill="currentColor" stroke="none" />
+        <rect x="5" y="5" width="14" height="4" rx="1.5" {...shared} />
+        <rect x="3" y="10" width="18" height="4" rx="1.5" {...shared} />
+        <rect x="6" y="15" width="12" height="4" rx="1.5" {...shared} />
       </> : null}
       {kind === "quality" ? <>
-        <path d="M12 3.5 19.5 8v8L12 20.5 4.5 16V8L12 3.5Z" {...shared} />
-        <path d="m12 8 1.2 2.5 2.8.4-2 2 .5 2.8-2.5-1.3-2.5 1.3.5-2.8-2-2 2.8-.4L12 8Z" {...shared} />
+        <circle cx="12" cy="12" r="8" {...shared} />
+        <circle cx="12" cy="12" r="3" {...shared} />
+        <path d="M12 4v3" {...shared} />
+        <path d="M20 12h-3" {...shared} />
+      </> : null}
+      {kind === "size" ? <>
+        <path d="M6 5v14" {...shared} />
+        <path d="M18 5v14" {...shared} />
+        <path d="M9 7h6" {...shared} />
+        <path d="M9 17h6" {...shared} />
+        <path d="M12 9v6" {...shared} />
+      </> : null}
+      {kind === "scoring" ? <>
+        <path d="M4 18h16" {...shared} />
+        <path d="M6 15l4-4 3 3 5-7" {...shared} />
+        <path d="M18 7h-4" {...shared} />
+        <path d="M18 7v4" {...shared} />
+      </> : null}
+      {kind === "destinations" ? <>
+        <path d="M4 6h6l2 3h8v9H4z" {...shared} />
+        <path d="M7 18c5-1 5-9 10-10" {...shared} />
+        <path d="M17 8h-3" {...shared} />
+        <path d="M17 8v3" {...shared} />
       </> : null}
       {kind === "discover" ? <>
-        <circle cx="12" cy="12" r="8" {...shared} />
-        <path d="m15.7 8.3-2 5.4-5.4 2 2-5.4 5.4-2Z" {...shared} />
-        <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
+        <circle cx="10" cy="10" r="5" {...shared} />
+        <path d="M14 14l5 5" {...shared} />
+        <path d="M18 7v4" {...shared} />
+        <path d="M16 9h4" {...shared} />
+      </> : null}
+      {kind === "search" ? <>
+        <circle cx="10" cy="10" r="5" {...shared} />
+        <path d="M14 14l5 5" {...shared} />
+        <path d="M18 7v4" {...shared} />
+        <path d="M16 9h4" {...shared} />
       </> : null}
       {kind === "recovery" ? <>
-        <path d="M19 9a7.5 7.5 0 1 0 .2 6" {...shared} />
-        <path d="M19 4.5V9h-4.5" {...shared} />
-        <path d="M8.5 15.5h7M12 12v7" {...shared} />
+        <path d="M12 5v14" {...shared} />
+        <path d="M5 12h14" {...shared} />
+        <path d="M8 8l8 8" {...shared} />
+        <path d="M16 8l-8 8" {...shared} />
       </> : null}
       {kind === "system" ? <>
-        <path d="M12 3.5 19 7v5c0 4.4-2.9 7.4-7 8.5-4.1-1.1-7-4.1-7-8.5V7l7-3.5Z" {...shared} />
-        <path d="M9.5 12h5M12 9.5v5" {...shared} />
+        <path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" {...shared} />
+        <path d="M4 12h2" {...shared} />
+        <path d="M18 12h2" {...shared} />
+        <path d="M12 4v2" {...shared} />
+        <path d="M12 18v2" {...shared} />
+        <path d="M6.6 6.6 8 8" {...shared} />
+        <path d="M16 16l1.4 1.4" {...shared} />
+        <path d="M17.4 6.6 16 8" {...shared} />
+        <path d="M8 16l-1.4 1.4" {...shared} />
       </> : null}
     </svg>
   );

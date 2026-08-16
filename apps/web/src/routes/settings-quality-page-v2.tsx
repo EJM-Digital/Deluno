@@ -25,8 +25,8 @@ export function SettingsQualityPage() {
 
   return (
     <SettingsShell
-      title="File-size guardrails"
-      description="Usually leave these at their balanced defaults. Media Plans and quality profiles decide what Deluno wants; these guardrails only reject files that are implausibly small or large."
+      title="Size rules"
+      description="Usually leave these at their balanced defaults. Media Plans and quality profiles decide what Deluno wants; these rules reject files that are implausibly small or large."
     >
       <Card className="border-primary/20 bg-gradient-to-r from-primary/[0.07] via-primary/[0.025] to-transparent">
         <CardHeader>
@@ -58,7 +58,7 @@ export function SettingsQualityPage() {
       <Card className="settings-panel">
         <CardHeader>
           <CardTitle>Upgrade behaviour</CardTitle>
-          <CardDescription>These advanced guardrails refine what happens after a file is already imported. Most libraries should keep the defaults.</CardDescription>
+          <CardDescription>These rules refine what happens after a file is already imported. Most libraries should keep the defaults.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-[var(--grid-gap)]">
           <div className="grid gap-[var(--grid-gap)] sm:grid-cols-2">

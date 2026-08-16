@@ -213,15 +213,15 @@ export const settingsCommands: CommandItem[] = [
   },
   {
     id: "settings.policy-sets",
-    label: "Media plans",
-    keywords: ["quality", "policy", "routing", "destination", "multi version"],
+    label: "Media Plans",
+    keywords: ["quality", "policy", "media plan", "defaults", "custom plan", "multi version"],
     group: "navigation",
     icon: Stars,
     to: "/settings/policy-sets"
   },
   {
     id: "settings.profiles",
-    label: "Quality · Profiles",
+    label: "Media Plans · Quality profiles",
     keywords: ["quality", "profiles", "policy", "upgrades"],
     group: "navigation",
     icon: Stars,
@@ -229,7 +229,7 @@ export const settingsCommands: CommandItem[] = [
   },
   {
     id: "settings.quality",
-    label: "Quality · Size limits",
+    label: "Media Plans · Size rules",
     keywords: ["quality", "resolution", "bitrate", "size limits", "sizes"],
     group: "navigation",
     icon: SlidersHorizontal,
@@ -237,7 +237,7 @@ export const settingsCommands: CommandItem[] = [
   },
   {
     id: "settings.custom-formats",
-    label: "Quality · Release scoring",
+    label: "Media Plans · Release preferences",
     keywords: ["quality", "scoring", "release", "format", "rules"],
     group: "navigation",
     icon: Wand2,

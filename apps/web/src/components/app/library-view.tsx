@@ -78,6 +78,13 @@ type SortField =
   | "path";
 type SortDirection = "asc" | "desc";
 type CardSize = "sm" | "md" | "lg";
+type CreateFormDraft = {
+  title: string;
+  year: string;
+  imdbId: string;
+  monitored: boolean;
+  metadata: MetadataSearchResult | null;
+};
 type FilterField =
   | "title"
   | "status"
@@ -153,6 +160,10 @@ interface DisplayOptions {
   showStatusPill: boolean;
   showQualityBadge: boolean;
   showRating: boolean;
+}
+
+function sameMetadataResult(left: MetadataSearchResult, right: MetadataSearchResult) {
+  return left.provider === right.provider && left.providerId === right.providerId;
 }
 
 type BulkWorkflowOperation =
@@ -489,6 +500,7 @@ export function LibraryView({
   const [isCreating, setIsCreating] = useState(false);
   const [createForm, setCreateForm] = useState(() => createInitialForm());
   const [metadataResults, setMetadataResults] = useState<MetadataSearchResult[]>([]);
+  const [selectedMetadataResults, setSelectedMetadataResults] = useState<MetadataSearchResult[]>([]);
   const [isSearchingMetadata, setIsSearchingMetadata] = useState(false);
   const metadataSearchSequence = useRef(0);
 
@@ -536,6 +548,28 @@ export function LibraryView({
     showCreate,
     variant
   ]);
+
+  useEffect(() => {
+    const primarySelection = selectedMetadataResults[0] ?? null;
+    setCreateForm((current) => {
+      if (!primarySelection) {
+        if (current.metadata === null) return current;
+        return { ...current, metadata: null };
+      }
+
+      if (current.metadata?.provider === primarySelection.provider && current.metadata.providerId === primarySelection.providerId) {
+        return current;
+      }
+
+      return {
+        ...current,
+        title: primarySelection.title,
+        year: primarySelection.year ? String(primarySelection.year) : current.year,
+        imdbId: primarySelection.imdbId ?? current.imdbId,
+        metadata: primarySelection
+      };
+    });
+  }, [selectedMetadataResults]);
 
   useEffect(() => {
     setSavedPresets([]);
@@ -725,6 +759,7 @@ export function LibraryView({
 
   const label = variant === "movies" ? "movies" : "TV shows";
   const singular = variant === "movies" ? "movie" : "TV show";
+  const selectedMetadataCount = selectedMetadataResults.length;
 
   async function applyMonitoring(ids: string[], monitored: boolean) {
     const response = await authedFetch(
@@ -1365,19 +1400,7 @@ export function LibraryView({
     }
   }
 
-  function applyMetadataResult(result: MetadataSearchResult) {
-    setCreateForm((current) => ({
-      ...current,
-      title: result.title,
-      year: result.year ? String(result.year) : current.year,
-      imdbId: result.imdbId ?? current.imdbId,
-      metadata: result
-    }));
-    toast.success(`Selected ${result.title}`);
-    void enrichSelectedMetadata(result);
-  }
-
-  async function enrichSelectedMetadata(result: MetadataSearchResult) {
+  async function enrichMetadataResult(result: MetadataSearchResult) {
     try {
       const params = new URLSearchParams({
         mediaType: variant === "movies" ? "movies" : "tv",
@@ -1389,24 +1412,79 @@ export function LibraryView({
       }
 
       const details = await fetchJson<MetadataSearchResult[]>(`/api/metadata/search?${params.toString()}`);
-      const detailedResult = details.find((item) => item.providerId === result.providerId);
-      if (!detailedResult) {
-        return;
+      return details.find((item) => item.providerId === result.providerId) ?? result;
+    } catch {
+      // Keep card-level metadata available even if details fail.
+      return result;
+    }
+  }
+
+  function createDraftFromCurrentForm(): CreateFormDraft {
+    return {
+      title: createForm.title,
+      year: createForm.year,
+      imdbId: createForm.imdbId,
+      monitored: createForm.monitored,
+      metadata: createForm.metadata
+    };
+  }
+
+  function createDraftFromMetadataSelection(result: MetadataSearchResult): CreateFormDraft {
+    return {
+      title: result.title,
+      year: result.year ? String(result.year) : "",
+      imdbId: result.imdbId ?? "",
+      monitored: createForm.monitored,
+      metadata: result
+    };
+  }
+
+  async function submitCreateDraft(draft: CreateFormDraft) {
+    const resolvedMetadata = draft.metadata ? await enrichMetadataResult(draft.metadata) : null;
+    const response = await authedFetch(variant === "movies" ? "/api/movies" : "/api/series", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        variant === "movies"
+          ? {
+              title: draft.title,
+              releaseYear: draft.year ? Number(draft.year) : null,
+              imdbId: draft.imdbId || null,
+              monitored: draft.monitored,
+              ...metadataCreatePayload(resolvedMetadata)
+            }
+          : {
+              title: draft.title,
+              startYear: draft.year ? Number(draft.year) : null,
+              imdbId: draft.imdbId || null,
+              monitored: draft.monitored,
+              ...metadataCreatePayload(resolvedMetadata)
+            }
+      )
+    });
+    if (!response.ok) {
+      const problem = await readValidationProblem(response);
+      throw new Error(problem?.title ?? `Could not add ${singular}.`);
+    }
+  }
+
+  function applyMetadataResult(result: MetadataSearchResult) {
+    setSelectedMetadataResults((currentSelection) => {
+      const isSelected = currentSelection.some((item) => sameMetadataResult(item, result));
+      if (isSelected) {
+        return currentSelection.filter((item) => !sameMetadataResult(item, result));
       }
 
-      setCreateForm((current) =>
-        current.metadata?.provider === result.provider && current.metadata.providerId === result.providerId
-          ? {
-              ...current,
-              title: detailedResult.title,
-              year: detailedResult.year ? String(detailedResult.year) : current.year,
-              imdbId: detailedResult.imdbId ?? current.imdbId,
-              metadata: detailedResult
-            }
-          : current);
-    } catch {
-      // The card result remains enough to add the chosen title; full detail can be refreshed later.
-    }
+      void enrichMetadataResult(result).then((resolvedMetadata) => {
+        setSelectedMetadataResults((current) =>
+          current.some((item) => sameMetadataResult(item, result))
+            ? current.map((item) => (sameMetadataResult(item, result) ? resolvedMetadata : item))
+            : current
+        );
+      });
+
+      return [...currentSelection, result];
+    });
   }
 
   async function handleRemoveFromDeluno() {
@@ -1457,6 +1535,7 @@ export function LibraryView({
   function closeCreate() {
     metadataSearchSequence.current += 1;
     setIsSearchingMetadata(false);
+    setSelectedMetadataResults([]);
     setShowCreate(false);
     if (searchParams.has("add")) {
       setSearchParams((current) => {
@@ -1469,36 +1548,47 @@ export function LibraryView({
 
   async function handleCreate(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const selectedDrafts = selectedMetadataResults.map(createDraftFromMetadataSelection);
+    if (!createForm.title.trim() && selectedDrafts.length === 0) {
+      toast.info(`Type a ${singular} name first.`);
+      return;
+    }
+
     setIsCreating(true);
     try {
-      const response = await authedFetch(variant === "movies" ? "/api/movies" : "/api/series", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          variant === "movies"
-            ? {
-                title: createForm.title,
-                releaseYear: createForm.year ? Number(createForm.year) : null,
-                imdbId: createForm.imdbId || null,
-                monitored: createForm.monitored,
-                ...metadataCreatePayload(createForm.metadata)
-              }
-            : {
-                title: createForm.title,
-                startYear: createForm.year ? Number(createForm.year) : null,
-                imdbId: createForm.imdbId || null,
-                monitored: createForm.monitored,
-                ...metadataCreatePayload(createForm.metadata)
-              }
-        )
-      });
-      if (!response.ok) {
-        const problem = await readValidationProblem(response);
-        throw new Error(problem?.title ?? `Could not add ${singular}.`);
+      if (selectedDrafts.length > 0) {
+        const settled = await Promise.allSettled(selectedDrafts.map((draft) => submitCreateDraft(draft)));
+        const successCount = settled.filter((result) => result.status === "fulfilled").length;
+        const failureCount = settled.length - successCount;
+
+        if (successCount > 0) {
+          toast.success(`${successCount} ${successCount === 1 ? singular : label} added`);
+        }
+
+        if (failureCount === 0) {
+          setCreateForm(createInitialForm());
+          setMetadataResults([]);
+          setSelectedMetadataResults([]);
+          closeCreate();
+          onReload?.();
+          return;
+        }
+
+        setSelectedMetadataResults((current) =>
+          current.filter((_, index) => settled[index]?.status === "rejected")
+        );
+        toast.error(`${failureCount} ${failureCount === 1 ? "title" : "titles"} could not be added.`);
+        if (successCount > 0) {
+          onReload?.();
+        }
+        return;
       }
+
+      await submitCreateDraft(createDraftFromCurrentForm());
       toast.success(variant === "movies" ? "Movie added" : "TV show added");
       setCreateForm(createInitialForm());
       setMetadataResults([]);
+      setSelectedMetadataResults([]);
       closeCreate();
       onReload?.();
     } catch (error) {
@@ -1631,7 +1721,7 @@ export function LibraryView({
                     </Badge>
                   </div>
                   <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-                    Start typing, choose the right title, then add it. Deluno applies your configured library and Media Plan automatically.
+                    Start typing, then pick matches to prefill details. Use Add at the bottom to create what you selected.
                   </Dialog.Description>
                 </div>
                 <Dialog.Close asChild>
@@ -1644,7 +1734,7 @@ export function LibraryView({
               <div className="min-h-0 flex-1 overflow-y-auto p-6">
                 <form onSubmit={(event) => { event.preventDefault(); void handleMetadataSearch(); }}>
                   <label className="text-sm font-semibold text-foreground" htmlFor={`add-${variant}-title`}>What do you want to add?</label>
-                  <div className="mt-2 flex gap-2">
+                  <div className="mt-2">
                     <Input
                       id={`add-${variant}-title`}
                       autoFocus
@@ -1652,57 +1742,69 @@ export function LibraryView({
                       onChange={(event) => {
                         metadataSearchSequence.current += 1;
                         setMetadataResults([]);
+                        setSelectedMetadataResults([]);
                         setCreateForm((current) => ({ ...current, title: event.target.value, metadata: null }));
                       }}
                       placeholder={variant === "movies" ? "Search movies, for example Top Gun" : "Search TV shows, for example Severance"}
                     />
-                    <Button type="submit" disabled={isSearchingMetadata || metadataStatus?.isConfigured === false} className="shrink-0 gap-2">
-                      {isSearchingMetadata ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                      Search now
-                    </Button>
                   </div>
                   <p className="mt-2 text-xs text-muted-foreground">
-                    Matches appear automatically after you pause typing.
+                    <span className="inline-flex items-center gap-2">
+                      {isSearchingMetadata ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+                      {metadataStatus?.isConfigured === false
+                        ? "Metadata matching is currently unavailable."
+                        : isSearchingMetadata
+                          ? "Searching metadata..."
+                          : "Matches auto-refresh as you type, or press Enter to refresh now."}
+                    </span>
                   </p>
                 </form>
 
-                {metadataStatus?.isConfigured === false ? (
-                  <p className="mt-3 rounded-xl border border-warning/25 bg-warning/10 p-3 text-sm text-warning">
-                    Title matching is temporarily unavailable. You can still add this title manually below.
-                  </p>
-                ) : null}
-
-                {metadataResults.length > 0 ? (
-                  <div className="mt-5">
-                    <p className="text-sm font-semibold text-foreground">Choose the right match</p>
-                    <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                      {metadataResults.slice(0, 6).map((result) => (
-                        <button
-                          key={`${result.provider}:${result.providerId}`}
-                          type="button"
-                          onClick={() => applyMetadataResult(result)}
-                          className={cn(
-                            "flex min-w-0 gap-3 rounded-xl border p-3 text-left transition hover:border-primary/45 hover:bg-primary/5",
-                            createForm.metadata?.provider === result.provider && createForm.metadata.providerId === result.providerId
-                              ? "border-primary/60 bg-primary/10 ring-1 ring-primary/25"
-                              : "border-hairline bg-surface-1"
-                          )}
+                  {metadataStatus?.isConfigured === false ? (
+                    <p className="mt-3 rounded-xl border border-warning/25 bg-warning/10 p-3 text-sm text-warning">
+                      Title matching is temporarily unavailable. You can still add this title manually below.
+                    </p>
+                  ) : null}
+                  {metadataResults.length > 0 ? (
+                    <div className="mt-5">
+                      <p className="text-sm font-semibold text-foreground">
+                        Choose one or more matches to prefill (this does not add yet)
+                      </p>
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {metadataResults.slice(0, 6).map((result) => {
+                      const isSelected = selectedMetadataResults.some((selected) => sameMetadataResult(selected, result));
+                      return (
+                            <button
+                              key={`${result.provider}:${result.providerId}`}
+                              type="button"
+                              onClick={() => applyMetadataResult(result)}
+                              className={cn(
+                                "flex min-w-0 gap-3 rounded-xl border bg-surface-1 p-3 text-left transition hover:border-primary/45 hover:bg-primary/5",
+                                isSelected ? "border-primary/70 bg-primary/10 ring-1 ring-primary/25" : "border-hairline"
+                              )}
+                              title={`Select ${result.title}`}
                         >
-                          {result.posterUrl ? (
-                            <img src={result.posterUrl} alt="" className="h-24 w-16 shrink-0 rounded-lg bg-muted object-cover" />
-                          ) : (
-                            <div className="flex h-24 w-16 shrink-0 items-center justify-center rounded-lg bg-muted text-[11px] text-muted-foreground">No art</div>
-                          )}
-                          <span className="min-w-0 self-center">
-                            <span className="block truncate text-sm font-semibold text-foreground">{result.title}</span>
-                            <span className="mt-1 block text-xs text-muted-foreground">{result.year ?? "Unknown year"} · TMDb</span>
-                            {result.rating ? <span className="mt-2 block font-mono text-xs text-primary">{result.rating.toFixed(1)} rating</span> : null}
-                          </span>
-                        </button>
-                      ))}
+                              {result.posterUrl ? (
+                                <img src={result.posterUrl} alt="" className="h-24 w-16 shrink-0 rounded-lg bg-muted object-cover" />
+                              ) : (
+                                <div className="flex h-24 w-16 shrink-0 items-center justify-center rounded-lg bg-muted text-[11px] text-muted-foreground">No art</div>
+                              )}
+                              <span className="min-w-0 self-center">
+                                <span className="block truncate text-sm font-semibold text-foreground">{result.title}</span>
+                                <span className="mt-1 block text-xs text-muted-foreground">{result.year ?? "Unknown year"} · TMDb</span>
+                                {result.rating ? <span className="mt-2 block font-mono text-xs text-primary">{result.rating.toFixed(1)} rating</span> : null}
+                                {isSelected ? (
+                                  <span className="mt-1 inline-flex rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary">Selected</span>
+                                ) : (
+                                  <span className="mt-1 block text-[10px] text-muted-foreground">Click to select</span>
+                                )}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                ) : null}
+                  ) : null}
 
                 <details className="mt-5 rounded-xl border border-hairline bg-surface-1 px-4 py-3">
                   <summary className="cursor-pointer text-sm font-medium text-muted-foreground">Can’t find it? Add it manually</summary>
@@ -1723,22 +1825,34 @@ export function LibraryView({
               </div>
 
               <form onSubmit={handleCreate} className="flex flex-col gap-3 border-t border-hairline bg-surface-1/70 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <label className="inline-flex select-none items-center gap-2 text-sm text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    checked={createForm.monitored}
-                    onChange={(event) => setCreateForm((current) => ({ ...current, monitored: event.target.checked }))}
-                    className="accent-primary"
-                  />
-                  Monitor and search automatically
-                </label>
+                <div className="inline-flex min-h-[1.25rem] items-center gap-2 text-sm text-muted-foreground">
+                  <label className="inline-flex select-none items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={createForm.monitored}
+                      onChange={(event) => setCreateForm((current) => ({ ...current, monitored: event.target.checked }))}
+                      className="accent-primary"
+                    />
+                    Monitor and search automatically
+                  </label>
+                  {selectedMetadataCount > 0 ? (
+                    <span className="inline-flex items-center gap-2 text-xs font-semibold text-primary">
+                      <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                      {selectedMetadataCount} {selectedMetadataCount === 1 ? singular : label} selected
+                    </span>
+                  ) : null}
+                </div>
                 <div className="flex gap-2">
                   <Dialog.Close asChild>
                     <Button type="button" variant="ghost" disabled={isCreating}>Cancel</Button>
                   </Dialog.Close>
-                  <Button type="submit" disabled={isCreating || !createForm.title.trim()} className="gap-2">
+                  <Button type="submit" disabled={isCreating || (!createForm.title.trim() && selectedMetadataCount === 0)} className="gap-2">
                     {isCreating ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                    Add {singular}
+                    {selectedMetadataCount > 0
+                      ? selectedMetadataCount === 1
+                        ? `Add selected ${singular}`
+                        : `Add ${selectedMetadataCount} ${label}`
+                      : `Add ${singular} manually`}
                   </Button>
                 </div>
               </form>
@@ -1779,12 +1893,12 @@ export function LibraryView({
         />
 
         {/* Results only occupy space when there is something to report. */}
-        {(filtered.length !== libraryItems.length || selectedCount > 0) ? (
-        <div className="flex items-center justify-between gap-3">
-          {filtered.length !== libraryItems.length ? (
-            <p className="text-[length:var(--library-toolbar-size)] font-medium text-muted-foreground">
-              Showing <span className="font-bold tabular text-foreground">{filtered.length}</span> of {libraryItems.length}
-            </p>
+        {filtered.length !== libraryItems.length ? (
+          <div className="flex items-center justify-between gap-3">
+            {filtered.length !== libraryItems.length ? (
+              <p className="text-[length:var(--library-toolbar-size)] font-medium text-muted-foreground">
+                Showing <span className="font-bold tabular text-foreground">{filtered.length}</span> of {libraryItems.length}
+              </p>
           ) : (
             <span />
           )}
@@ -1837,13 +1951,11 @@ export function LibraryView({
           >
             <div className={cn(
               "flex items-center overflow-hidden rounded-2xl",
-              /* Deep glass panel */
               "border border-white/[0.1] dark:border-white/[0.08]",
               "bg-[hsl(226_24%_10%/0.97)] dark:bg-[hsl(226_24%_8%/0.98)]",
               "shadow-[0_24px_60px_hsl(0_0%_0%/0.45),0_8px_20px_hsl(0_0%_0%/0.3),inset_0_1px_0_hsl(0_0%_100%/0.06)]",
               "backdrop-blur-2xl"
             )}>
-              {/* Count pill */}
               <div className="flex items-center gap-2.5 border-r border-white/[0.07] px-4 py-3">
                 <span className={cn(
                   "flex h-6 min-w-6 items-center justify-center rounded-full px-2",
@@ -1858,7 +1970,6 @@ export function LibraryView({
                 </span>
               </div>
 
-              {/* Actions */}
               <div className="flex items-center gap-0.5 px-1.5 py-1.5">
                 <BulkAction
                   label="Undo"
@@ -1907,7 +2018,6 @@ export function LibraryView({
                 />
               </div>
 
-              {/* Dismiss */}
               <div className="border-l border-white/[0.07] px-1.5 py-1.5">
                 <button
                   type="button"
@@ -2517,7 +2627,7 @@ function shortQuality(value: string) {
   return value;
 }
 
-function createInitialForm() {
+function createInitialForm(): CreateFormDraft {
   return { title: "", year: "", imdbId: "", monitored: true, metadata: null as MetadataSearchResult | null };
 }
 
@@ -2540,7 +2650,7 @@ function metadataCreatePayload(metadata: MetadataSearchResult | null) {
   };
 }
 
-/* Premium bulk action button inside the floating command bar */
+/* Premium bulk action button inside the inline selection bar */
 function BulkAction({
   label,
   icon,

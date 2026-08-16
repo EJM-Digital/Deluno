@@ -14,7 +14,8 @@ test.describe("dashboard workflow", () => {
     await expect(page).toHaveURL(/\/movies\?add=true/);
     await expect(page.getByRole("dialog", { name: "Add movie" })).toBeVisible();
     await expect(page.getByRole("textbox", { name: "What do you want to add?" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Search now" })).toBeVisible();
+    await expect(page.getByText("Matches auto-refresh as you type, or press Enter to refresh now.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Add movie manually" })).toBeVisible();
     await expect(page.getByText("Can’t find it? Add it manually", { exact: true })).toBeVisible();
   });
 
@@ -23,6 +24,11 @@ test.describe("dashboard workflow", () => {
 
     await expect(page.getByText("No search sources or download clients", { exact: true })).toBeVisible();
     await expect(page.getByText("No downloads, processing, or imports need your attention right now.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Needs attention", exact: true })).toBeVisible();
+    await expect(page.getByText("0/4 setup", { exact: true })).toBeVisible();
+    await expect(page.getByText("Library not configured", { exact: true })).toBeVisible();
+    await expect(page.getByText("Connections incomplete", { exact: true })).toBeVisible();
+    await expect(page.getByText("No Media Plan selected", { exact: true })).toBeVisible();
     await expect(page.getByText("Library and health over time", { exact: true })).toHaveCount(0);
     await expect(page.getByText("Download speed", { exact: true })).toHaveCount(0);
   });
@@ -121,7 +127,7 @@ test.describe("dashboard workflow", () => {
     await authenticateAndNavigate(page, "/settings");
 
     await expect(page.getByRole("heading", { name: "Library setup" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Start with your library" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Setup overview" })).toBeVisible();
     if (testInfo.project.name === "mobile") {
       await page.getByRole("button", { name: "More destinations" }).click();
       await expect(page.getByLabel("Panel").getByRole("link", { name: "Library setup", exact: true })).toBeVisible();
@@ -133,7 +139,7 @@ test.describe("dashboard workflow", () => {
     for (const destination of ["/settings/media-management", "/indexers", "/settings/policy-sets", "/settings/lists"]) {
       await expect(tree.locator(`a[href="${destination}"]`).first()).toHaveCount(1);
     }
-    await expect(page.getByRole("heading", { name: "Setup status" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Set up Deluno in order" })).toBeVisible();
     await expect(page.getByText("Other configuration", { exact: true })).toHaveCount(0);
   });
 
@@ -206,13 +212,16 @@ test.describe("dashboard workflow", () => {
     await expect(setupToggle).toHaveAttribute("aria-expanded", "true");
     await setupToggle.click();
     await expect(page.getByRole("button", { name: "Expand Library setup" })).toHaveAttribute("aria-expanded", "false");
-    await expect(sidebar.getByRole("link", { name: "Library details", exact: true })).toHaveCount(0);
+    await expect(sidebar.getByRole("link", { name: "File handling & naming", exact: true })).toHaveCount(0);
 
     await page.getByRole("button", { name: "Expand Library setup" }).click();
-    const libraryToggle = page.getByRole("button", { name: "Collapse Library", exact: true });
-    await expect(libraryToggle).toHaveAttribute("aria-expanded", "true");
-    await libraryToggle.click();
-    await expect(page.getByRole("button", { name: "Expand Library", exact: true })).toHaveAttribute("aria-expanded", "false");
+    const plansToggle = page.getByRole("button", { name: "Expand Media Plans", exact: true });
+    await expect(plansToggle).toHaveAttribute("aria-expanded", "false");
+    await plansToggle.click();
+    const expandedPlansToggle = page.getByRole("button", { name: "Collapse Media Plans", exact: true });
+    await expect(expandedPlansToggle).toHaveAttribute("aria-expanded", "true");
+    await expandedPlansToggle.click();
+    await expect(page.getByRole("button", { name: "Expand Media Plans", exact: true })).toHaveAttribute("aria-expanded", "false");
   });
 
   test("keeps every system maintenance destination visible from System", async ({ page }) => {
@@ -289,10 +298,10 @@ test.describe("dashboard workflow", () => {
   test("starts a media plan from an understandable scenario", async ({ page }) => {
     await authenticateAndNavigate(page, "/settings/policy-sets");
 
-    await expect(page.getByRole("heading", { name: "Start with the library you want" })).toBeVisible();
-    await page.getByRole("button", { name: /Family movies/i }).click();
+    await expect(page.getByRole("heading", { name: "Create media plan" })).toBeVisible();
+    await page.getByLabel("Start from template").selectOption("everyday-movies");
 
-    await expect(page.locator('input[value="Family Movies 1080p"]')).toBeVisible();
+    await expect(page.locator('input[value="Default: Movies 1080p"]')).toBeVisible();
     await expect(page.getByRole("button", { name: "Create media plan" })).toBeVisible();
   });
 

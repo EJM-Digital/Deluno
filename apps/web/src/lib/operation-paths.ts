@@ -73,7 +73,7 @@ export const operationPaths: OperationPath[] = [
   {
     id: "setup",
     title: "Guided setup",
-    description: "Create the safe baseline first, then refine advanced policy only when needed.",
+    description: "Create the safe baseline first, then refine policy only when needed.",
     to: "/setup-guide",
     area: "policy",
     mode: "quick",
@@ -113,7 +113,7 @@ export const operationPaths: OperationPath[] = [
   {
     id: "profiles",
     title: "Quality profiles",
-    description: "Define cutoff quality, upgrade behaviour, and safe defaults per library intent.",
+    description: "Define cutoff quality, upgrade behaviour, and profile defaults used by Media Plans.",
     to: "/settings/profiles",
     area: "policy",
     mode: "advanced",
@@ -122,8 +122,8 @@ export const operationPaths: OperationPath[] = [
   },
   {
     id: "formats",
-    title: "Release scoring",
-    description: "Score releases using source, codec, HDR, language, release group, bitrate, and tags.",
+    title: "Release preferences",
+    description: "Score releases using source, codec, HDR, language, release group, bitrate, and tags inside Media Plans.",
     to: "/settings/custom-formats",
     area: "policy",
     mode: "advanced",
@@ -168,7 +168,7 @@ export const operationPaths: OperationPath[] = [
     area: "system",
     mode: "advanced",
     icon: Settings,
-    keywords: ["settings", "advanced", "interface", "metadata", "lists"]
+    keywords: ["settings", "interface", "metadata", "lists"]
   }
 ];
 

@@ -12,18 +12,18 @@
 */
 @layer base {
   :root {
-    --background: 42 18% 97%;
-    --foreground: 222 18% 8%;
+    --background: 220 20% 97%;
+    --foreground: 222 26% 10%;
     --card: 0 0% 100%;
     --card-elevated: 0 0% 100%;
     --card-foreground: 222 18% 8%;
     --popover: 0 0% 100%;
     --popover-foreground: 222 18% 8%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 10% 93%;
-    --secondary-foreground: 222 14% 16%;
-    --muted: 220 10% 93%;
-    --muted-foreground: 220 9% 38%;
+    --secondary: 220 14% 93%;
+    --secondary-foreground: 222 18% 15%;
+    --muted: 220 14% 93%;
+    --muted-foreground: 217 10% 40%;
     --destructive: 0 84% 48%;
     --destructive-foreground: 0 0% 100%;
     --success: 145 72% 34%;
@@ -32,24 +32,24 @@
     --warning-foreground: 28 40% 10%;
     --info: 207 92% 45%;
     --info-foreground: 0 0% 100%;
-    --border: 220 12% 86%;
-    --input: 220 12% 86%;
-    --surface-1: 0 0% 99%;
-    --surface-2: 220 12% 95%;
-    --surface-3: 220 10% 91%;
-    --hairline: 220 12% 88%;
-    --sidebar-background: 220 16% 96%;
-    --sidebar-foreground: 222 16% 12%;
-    --sidebar-accent: 220 12% 91%;
-    --sidebar-accent-foreground: 222 18% 8%;
-    --sidebar-border: 220 12% 88%;
+    --border: 220 14% 86%;
+    --input: 220 14% 86%;
+    --surface-1: 0 0% 100%;
+    --surface-2: 220 18% 95%;
+    --surface-3: 220 14% 91%;
+    --hairline: 220 14% 87%;
+    --sidebar-background: 220 18% 95%;
+    --sidebar-foreground: 222 20% 12%;
+    --sidebar-accent: 220 16% 90%;
+    --sidebar-accent-foreground: 222 24% 10%;
+    --sidebar-border: 220 14% 86%;
     --state-ok: 145 72% 34%;
     --state-warn: 24 94% 38%;
     --state-danger: 0 84% 48%;
     --state-info: 207 92% 45%;
     --media-foreground: 0 0% 98%;
     --media-muted-foreground: 0 0% 82%;
-    --gradient-surface: linear-gradient(160deg, hsl(0 0% 100%) 0%, hsl(42 18% 97%) 100%);
+    --gradient-surface: linear-gradient(160deg, hsl(0 0% 100%) 0%, hsl(220 20% 97%) 100%);
     --shadow-card: 0 1px 2px hsl(222 18% 8% / 0.05), 0 4px 12px hsl(222 18% 8% / 0.04);
     --shadow-md: 0 8px 32px hsl(222 18% 8% / 0.07), 0 2px 8px hsl(222 18% 8% / 0.04);
     --shadow-lg: 0 20px 60px hsl(222 18% 8% / 0.1);
@@ -83,17 +83,17 @@
   }
 
   .dark {
-    --background: 222 22% 6%;
+    --background: 222 35% 7%;
     --foreground: 220 18% 96%;
-    --card: 222 18% 9%;
-    --card-elevated: 222 16% 12%;
+    --card: 218 32% 11%;
+    --card-elevated: 217 28% 13%;
     --card-foreground: 220 18% 96%;
-    --popover: 222 20% 8%;
+    --popover: 218 32% 10%;
     --popover-foreground: 220 18% 96%;
-    --secondary: 222 14% 14%;
+    --secondary: 217 24% 15%;
     --secondary-foreground: 220 18% 96%;
-    --muted: 222 14% 13%;
-    --muted-foreground: 218 11% 68%;
+    --muted: 217 24% 15%;
+    --muted-foreground: 217 13% 70%;
     --destructive: 0 84% 62%;
     --destructive-foreground: 0 0% 100%;
     --success: 145 78% 52%;
@@ -102,27 +102,27 @@
     --warning-foreground: 28 40% 10%;
     --info: 207 96% 62%;
     --info-foreground: 210 30% 98%;
-    --border: 222 13% 18%;
-    --input: 222 13% 17%;
-    --surface-1: 222 18% 9%;
-    --surface-2: 222 16% 12%;
-    --surface-3: 222 14% 15%;
-    --hairline: 222 13% 19%;
-    --sidebar-background: 222 24% 5%;
+    --border: 217 22% 18%;
+    --input: 217 22% 18%;
+    --surface-1: 218 32% 11%;
+    --surface-2: 217 26% 14%;
+    --surface-3: 216 24% 17%;
+    --hairline: 217 24% 19%;
+    --sidebar-background: 222 44% 5%;
     --sidebar-foreground: 220 16% 92%;
-    --sidebar-accent: 222 16% 12%;
+    --sidebar-accent: 217 28% 13%;
     --sidebar-accent-foreground: 220 18% 98%;
-    --sidebar-border: 222 16% 13%;
+    --sidebar-border: 217 24% 15%;
     --state-ok: 145 78% 52%;
     --state-warn: 28 96% 58%;
     --state-danger: 0 84% 62%;
     --state-info: 207 96% 62%;
     --media-foreground: 0 0% 98%;
     --media-muted-foreground: 0 0% 82%;
-    --gradient-surface: linear-gradient(160deg, hsl(222 18% 11%) 0%, hsl(222 22% 7%) 100%);
-    --shadow-card: 0 1px 0 hsl(222 22% 3% / 0.55), 0 2px 8px hsl(222 22% 3% / 0.3);
-    --shadow-md: 0 8px 32px hsl(222 22% 3% / 0.4), 0 1px 0 hsl(0 0% 100% / 0.04) inset;
-    --shadow-lg: 0 24px 64px hsl(222 22% 2% / 0.55);
+    --gradient-surface: linear-gradient(160deg, hsl(218 32% 11%) 0%, hsl(222 35% 7%) 100%);
+    --shadow-card: 0 1px 0 hsl(222 44% 3% / 0.65), 0 2px 8px hsl(222 44% 3% / 0.32);
+    --shadow-md: 0 8px 32px hsl(222 44% 3% / 0.42), 0 1px 0 hsl(0 0% 100% / 0.04) inset;
+    --shadow-lg: 0 24px 64px hsl(222 44% 2% / 0.58);
     --shadow-glow: 0 0 0 1px hsl(0 0% 100% / 0.05) inset, 0 1px 0 hsl(0 0% 100% / 0.06) inset;
     --glass-bg: hsl(222 18% 9% / 0.78);
     --glass-border: hsl(0 0% 100% / 0.07);
@@ -134,32 +134,32 @@
   /* (--primary-2 = gradient end-stop, --primary-deep = deep shadow tone)*/
   /* ══════════════════════════════════════════════════════════════════ */
 
-  /* Default - Deluno Gold (graphite luxury, status colours remain semantic) */
+  /* Default - Navy Console cobalt, with status colours kept semantic. */
   :root,
   :root[data-accent="cobalt"] {
-    --primary: 39 82% 32%;
-    --primary-glow: 43 94% 48%;
-    --primary-2: 28 84% 43%;
-    --primary-deep: 36 74% 19%;
-    --primary-foreground: 35 52% 9%;
-    --accent: 42 78% 95%;
-    --accent-foreground: 34 62% 23%;
-    --ring: 39 82% 32%;
-    --sidebar-ring: 39 82% 32%;
-    --gradient-accent: linear-gradient(135deg, hsl(43 94% 48%) 0%, hsl(28 84% 43%) 100%);
+    --primary: 213 82% 46%;
+    --primary-glow: 211 90% 60%;
+    --primary-2: 216 82% 54%;
+    --primary-deep: 218 76% 20%;
+    --primary-foreground: 0 0% 100%;
+    --accent: 214 72% 96%;
+    --accent-foreground: 215 70% 24%;
+    --ring: 213 82% 46%;
+    --sidebar-ring: 213 82% 46%;
+    --gradient-accent: linear-gradient(135deg, hsl(213 82% 46%) 0%, hsl(216 82% 54%) 100%);
   }
   .dark,
   .dark[data-accent="cobalt"] {
-    --primary: 43 94% 68%;
-    --primary-glow: 46 96% 74%;
-    --primary-2: 29 92% 64%;
-    --primary-deep: 36 82% 15%;
-    --primary-foreground: 35 54% 9%;
-    --accent: 222 14% 15%;
-    --accent-foreground: 43 92% 78%;
-    --ring: 43 94% 68%;
-    --sidebar-ring: 43 94% 68%;
-    --gradient-accent: linear-gradient(135deg, hsl(43 94% 68%) 0%, hsl(29 92% 64%) 100%);
+    --primary: 211 100% 66%;
+    --primary-glow: 211 100% 72%;
+    --primary-2: 216 92% 64%;
+    --primary-deep: 218 76% 16%;
+    --primary-foreground: 218 48% 9%;
+    --accent: 216 24% 16%;
+    --accent-foreground: 211 96% 78%;
+    --ring: 211 100% 66%;
+    --sidebar-ring: 211 100% 66%;
+    --gradient-accent: linear-gradient(135deg, hsl(211 100% 66%) 0%, hsl(216 92% 64%) 100%);
   }
 
   /* Indigo — deep classic enterprise (Stripe OG) */
@@ -440,13 +440,9 @@
     overflow-x: hidden;
   }
 
-  /* Ambient depth gradient in dark mode — visible behind glass layers */
+  /* Console surfaces carry the depth; the page background stays quiet. */
   .dark body {
-    background-image: radial-gradient(
-      ellipse 80% 50% at 50% -10%,
-      hsl(var(--primary) / 0.07) 0%,
-      transparent 60%
-    );
+    background-image: none;
   }
 
   #root {
@@ -1301,7 +1297,7 @@ html {
   --shell-subtle-size: calc(12.5px * var(--font-scale));
   --shell-nav-size: calc(14px * var(--font-scale));
   --shell-nav-badge-size: calc(9.5px * var(--font-scale));
-  --shell-nav-text-min: calc(204px * var(--font-scale));
+  --shell-nav-text-min: calc(148px * var(--font-scale));
   --shell-pill-height: calc(42px * var(--density-scale));
   --shell-nav-pad-x: calc(15px * var(--density-scale));
   --shell-nav-gap: calc(8px * var(--density-scale));
@@ -1318,9 +1314,9 @@ html {
   --shell-icon-size: calc(15px * var(--density-scale));
   --shell-icon-size-sm: calc(14px * var(--density-scale));
   --sidebar-width: clamp(
-    calc(330px * var(--density-scale)),
-    calc((var(--tile-pad) * 1.6) + (var(--shell-nav-pad-x) * 2) + var(--shell-icon-col) + var(--shell-nav-text-min) + (44px * var(--density-scale))),
-    calc(380px * var(--density-scale))
+    calc(218px * var(--density-scale)),
+    calc((var(--tile-pad) * 1.15) + (var(--shell-nav-pad-x) * 2) + var(--shell-icon-col) + var(--shell-nav-text-min) + (28px * var(--density-scale))),
+    calc(256px * var(--density-scale))
   );
 
   --settings-nav-size: calc(14px * var(--font-scale));

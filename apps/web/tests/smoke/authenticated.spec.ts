@@ -93,8 +93,8 @@ test.describe("authenticated app smoke", () => {
 
     const sidebar = page.locator("aside");
     const setupToggle = page.getByRole("button", { name: "Collapse Library setup" });
-    const librarySection = page.getByRole("link", { name: "Library", exact: true });
-    const processingAndImport = page.getByRole("link", { name: "Processing & import", exact: true });
+    const librarySection = page.getByRole("link", { name: "Library setup", exact: true });
+    const processingAndImport = page.getByRole("link", { name: "File handling & naming", exact: true });
 
     await expect(sidebar).toBeVisible();
     expect(await sidebar.evaluate((element) => getComputedStyle(element).overflowX)).toBe("visible");

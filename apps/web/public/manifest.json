@@ -7,16 +7,28 @@
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone"],
   "orientation": "any",
-  "theme_color": "#F5A623",
-  "background_color": "#0e0f13",
+  "theme_color": "#07101D",
+  "background_color": "#07101D",
   "lang": "en",
   "categories": ["utilities", "productivity"],
   "icons": [
     {
-      "src": "/favicon.svg",
+      "src": "/icons/deluno-route-primary.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/deluno-minimal-favicon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
+    },
+    {
+      "src": "/icons/deluno-taskbar-mono.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "monochrome"
     }
   ],
   "shortcuts": [
@@ -25,28 +37,28 @@
       "short_name": "Movies",
       "description": "Browse and manage your movie library",
       "url": "/movies",
-      "icons": [{ "src": "/favicon.svg", "sizes": "any" }]
+      "icons": [{ "src": "/icons/deluno-library-route.svg", "sizes": "any" }]
     },
     {
       "name": "TV Shows",
       "short_name": "TV",
       "description": "Browse and manage your TV show library",
       "url": "/tv",
-      "icons": [{ "src": "/favicon.svg", "sizes": "any" }]
+      "icons": [{ "src": "/icons/deluno-library-route.svg", "sizes": "any" }]
     },
     {
       "name": "Activity",
       "short_name": "Activity",
       "description": "View download queue and activity log",
       "url": "/activity",
-      "icons": [{ "src": "/favicon.svg", "sizes": "any" }]
+      "icons": [{ "src": "/icons/deluno-signal-orbit.svg", "sizes": "any" }]
     },
     {
       "name": "System",
       "short_name": "System",
       "description": "System health and audit timeline",
       "url": "/system",
-      "icons": [{ "src": "/favicon.svg", "sizes": "any" }]
+      "icons": [{ "src": "/icons/deluno-taskbar-mono.svg", "sizes": "any" }]
     }
   ],
   "screenshots": [],

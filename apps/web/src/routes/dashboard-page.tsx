@@ -3,18 +3,17 @@ import {
   AlertTriangle,
   ArrowUpRight,
   Calendar,
-  CheckCircle2,
   Download,
   Film,
   HardDrive,
   RadioTower,
   Sparkles,
-  Tv,
-  Zap
+  Tv
 } from "lucide-react";
 import type { ActiveDownload, IndexerHealthItem, MediaItem } from "../lib/media-types";
 import { MEDIA_STATUS_PRESENTATION, mediaStatusIsActive } from "../lib/media-status-presentation";
 import {
+  emptyPlatformSettingsSnapshot,
   fetchJson,
   type DownloadClientItem,
   type DownloadTelemetryOverview,
@@ -23,6 +22,9 @@ import {
   type LibraryAutomationStateItem,
   type MovieListItem,
   type MovieWantedSummary,
+  type PlatformSettingsSnapshot,
+  type PolicySetItem,
+  type QualityProfileItem,
   type SearchCycleRunItem,
   type SearchRetryWindowItem,
   type SeriesUpcomingEpisodeItem,
@@ -32,7 +34,7 @@ import {
 } from "../lib/api";
 import { adaptIndexerHealth, adaptMovieItems, adaptSeriesItems, adaptTelemetryDownloads } from "../lib/ui-adapters";
 import { authedFetch } from "../lib/use-auth";
-import { JOB_STATUS, isJobActive, type JobStatus } from "../lib/job-status-constants";
+import { buildSetupStatus, type SetupAttentionTone, type SetupStatusModel } from "../lib/setup-status";
 import { cn } from "../lib/utils";
 import { OnboardingBanner } from "../components/shell/onboarding-banner";
 import { Badge } from "../components/ui/badge";
@@ -65,6 +67,7 @@ interface DashboardLoaderData {
     hasLibrary: boolean;
   };
   setupProgress: SetupProgressItem;
+  setupStatus: SetupStatusModel;
 }
 
 interface DashboardUpcomingItem {
@@ -88,7 +91,7 @@ export async function dashboardLoader(): Promise<DashboardLoaderData> {
     capturedUtc: new Date().toISOString()
   };
 
-  const [movieItems, movieWanted, showItems, showWanted, telemetry, indexers, clients, libraries, automation, searchCycles, retryWindows, upcomingEpisodes, setupProgress] = await Promise.all([
+  const [movieItems, movieWanted, showItems, showWanted, telemetry, indexers, clients, libraries, automation, searchCycles, retryWindows, upcomingEpisodes, setupProgress, settings, policySets, qualityProfiles] = await Promise.all([
     fetchJson<MovieListItem[]>("/api/movies").catch((): MovieListItem[] => []),
     fetchJson<MovieWantedSummary>("/api/movies/wanted").catch(() => emptyMovieWanted),
     fetchJson<SeriesListItem[]>("/api/series").catch((): SeriesListItem[] => []),
@@ -106,7 +109,10 @@ export async function dashboardLoader(): Promise<DashboardLoaderData> {
       isSkipped: false,
       isCompleted: false,
       updatedUtc: new Date(0).toISOString()
-    }))
+    })),
+    fetchJson<PlatformSettingsSnapshot>("/api/settings").catch(() => emptyPlatformSettingsSnapshot),
+    fetchJson<PolicySetItem[]>("/api/policy-sets").catch((): PolicySetItem[] => []),
+    fetchJson<QualityProfileItem[]>("/api/quality-profiles").catch((): QualityProfileItem[] => [])
   ]);
 
   const adaptedMovies = adaptMovieItems(movieItems, movieWanted);
@@ -147,7 +153,8 @@ export async function dashboardLoader(): Promise<DashboardLoaderData> {
       hasDownloadClient: clients.length > 0,
       hasLibrary: libraries.length > 0
     },
-    setupProgress
+    setupProgress,
+    setupStatus: buildSetupStatus({ downloadClients: clients, indexers, libraries, policySets, qualityProfiles, settings })
   };
 }
 
@@ -157,9 +164,8 @@ export function DashboardPage() {
   const healthIssues = data.indexerHealth.filter((item) => item.status !== "healthy").length;
   const topDownload = data.activeDownloads[0];
   const upcomingGroups = groupDashboardUpcoming(data.upcoming);
-  const runningAutomation = data.automation.filter((item) => isJobActive(item.status as JobStatus) || item.searchRequested).length;
-  const latestCycle = data.searchCycles[0] ?? null;
   const setupProgress = data.setupProgress;
+  const setupAttentionItems = data.setupStatus.attentionItems;
 
   function dismissOnboarding() {
     void authedFetch("/api/setup/progress", {
@@ -181,8 +187,7 @@ export function DashboardPage() {
         onDismiss={dismissOnboarding}
       />
 
-      <section className="relative overflow-hidden rounded-2xl border border-hairline bg-card p-[var(--tile-pad)] shadow-card dark:border-white/[0.06]">
-        <span aria-hidden className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full bg-primary/10 blur-3xl" />
+      <section className="relative overflow-hidden rounded-xl border border-hairline bg-card p-[var(--tile-pad)] shadow-card dark:border-white/[0.06]">
         <div className="relative flex flex-col gap-[var(--grid-gap)] lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0">
             <p className="flex items-center gap-2 text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-muted-foreground">
@@ -197,15 +202,15 @@ export function DashboardPage() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Link to="/movies?add=true" className="inline-flex h-[var(--control-height-sm)] items-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-semibold text-primary-foreground shadow-glow transition hover:-translate-y-0.5">
+            <Link to="/movies?add=true" className="inline-flex h-[var(--control-height-sm)] items-center gap-2 rounded-lg bg-primary px-4 text-[13px] font-semibold text-primary-foreground shadow-glow transition hover:bg-primary/90">
               <Film className="h-4 w-4" />
               Add a movie
             </Link>
-            <Link to="/tv?add=true" className="inline-flex h-[var(--control-height-sm)] items-center gap-2 rounded-xl border border-hairline bg-card px-4 text-[13px] font-semibold text-muted-foreground transition hover:border-primary/30 hover:text-foreground">
+            <Link to="/tv?add=true" className="inline-flex h-[var(--control-height-sm)] items-center gap-2 rounded-lg border border-hairline bg-card px-4 text-[13px] font-semibold text-muted-foreground transition hover:border-primary/30 hover:text-foreground">
               <Tv className="h-4 w-4" />
               Add a show
             </Link>
-            <Link to="/settings" className="inline-flex h-[var(--control-height-sm)] items-center gap-2 rounded-xl px-3 text-[13px] font-semibold text-primary transition hover:bg-primary/8">
+            <Link to="/settings/automation" className="inline-flex h-[var(--control-height-sm)] items-center gap-2 rounded-lg px-3 text-[13px] font-semibold text-primary transition hover:bg-primary/10">
               Tune automation
               <ArrowUpRight className="h-3.5 w-3.5" />
             </Link>
@@ -217,7 +222,7 @@ export function DashboardPage() {
         <MetricPlane
           label="Library"
           value={data.totalCount.toLocaleString()}
-          meta={data.totalCount > 0 ? `${data.movieCount} movie${data.movieCount === 1 ? "" : "s"} · ${data.showCount} TV show${data.showCount === 1 ? "" : "s"} · ${data.librarySizeTb} TB` : data.configuredLibraryCount > 0 ? `${data.configuredLibraryCount} library${data.configuredLibraryCount === 1 ? "" : "ies"} ready for media` : "No library configured yet"}
+          meta={data.totalCount > 0 ? `${data.movieCount} movie${data.movieCount === 1 ? "" : "s"} - ${data.showCount} TV show${data.showCount === 1 ? "" : "s"} - ${data.librarySizeTb} TB` : data.configuredLibraryCount > 0 ? `${data.configuredLibraryCount} library${data.configuredLibraryCount === 1 ? "" : "ies"} ready for media` : "No library configured yet"}
           icon={HardDrive}
           tone="primary"
         />
@@ -238,13 +243,13 @@ export function DashboardPage() {
         <MetricPlane
           label="Missing titles"
           value={data.missingCount.toString()}
-          meta={`${data.movieMissingCount} movies · ${data.showMissingCount} TV shows · ${data.upgradeCount} upgrades`}
+          meta={`${data.movieMissingCount} movies - ${data.showMissingCount} TV shows - ${data.upgradeCount} upgrades`}
           icon={AlertTriangle}
           tone={data.missingCount > 0 ? "warn" : "success"}
         />
         <MetricPlane
           label="Connections"
-          value={data.indexerHealthPercent === null ? "—" : `${data.indexerHealthPercent}`}
+          value={data.indexerHealthPercent === null ? "--" : `${data.indexerHealthPercent}`}
           unit={data.indexerHealthPercent === null ? undefined : "%"}
           meta={data.indexerHealth.length === 0 ? "No search sources or download clients" : healthIssues > 0 ? `${healthIssues} connections need review` : "All connections responding"}
           icon={RadioTower}
@@ -252,87 +257,106 @@ export function DashboardPage() {
         />
       </section>
 
-      <section className="grid gap-[var(--grid-gap)] xl:grid-cols-12">
-        <RenderPanel className="xl:col-span-8">
-          <PanelHeader
-            eyebrow="Live work"
-            title="Transfers in progress"
-            action={
-              <Link to="/queue" className="inline-flex items-center gap-1 text-[length:var(--type-caption)] font-semibold text-primary">
-                Open queue
-                <ArrowUpRight className="h-3.5 w-3.5" />
-              </Link>
-            }
-          />
-          {data.activeDownloads.length ? (
-            <div className="divide-y divide-hairline">
-              {data.activeDownloads.slice(0, 5).map((download) => <DownloadSummaryRow key={download.id} download={download} />)}
-            </div>
-          ) : (
-            <EmptyPanelText>No downloads, processing, or imports need your attention right now.</EmptyPanelText>
-          )}
-        </RenderPanel>
-
-        <RenderPanel className="xl:col-span-4">
-          <PanelHeader eyebrow="Status" title="Needs attention" />
-          <div className="space-y-3">
-            <DecisionRow
-              tone={data.missingCount > 0 ? "warn" : "success"}
-              title={data.missingCount > 0 ? "Missing media waiting" : "Everything looks good"}
-              text={data.missingCount > 0 ? `${data.missingCount} titles are missing or still waiting for a valid release.` : "No missing media currently requires manual attention."}
-              href="/movies"
-            />
-            <DecisionRow
-              tone={data.indexerHealth.length === 0 ? "neutral" : healthIssues > 0 ? "warn" : "success"}
-              title={data.indexerHealth.length === 0 ? "Providers not connected" : healthIssues > 0 ? "Provider health degraded" : "Providers healthy"}
-              text={data.indexerHealth.length === 0 ? "Connect a search source and download client before Deluno can automate acquisition." : healthIssues > 0 ? `${healthIssues} indexer or client checks need review.` : "All configured providers are currently responding."}
-              href="/indexers"
-            />
-            <DecisionRow
-              tone={data.activeDownloadCount > 0 ? "info" : "neutral"}
-              title={data.activeDownloadCount > 0 ? "Queue moving" : "Queue idle"}
-              text={topDownload ? `${topDownload.title} is leading the active queue.` : "No active imports are waiting to be moved."}
-              href="/queue"
-            />
-            <DecisionRow
-              tone={runningAutomation > 0 ? "info" : data.retryWindows.length > 0 ? "warn" : "neutral"}
-              title={runningAutomation > 0 ? "Automation active" : latestCycle ? "Last search cycle recorded" : "Automation waiting"}
-              text={
-                runningAutomation > 0
-                  ? `${runningAutomation} library search${runningAutomation === 1 ? "" : "es"} queued or running.`
-                  : latestCycle
-                    ? `${latestCycle.libraryName}: ${latestCycle.plannedCount} checked, ${latestCycle.queuedCount} sent, ${latestCycle.skippedCount} held back.`
-                    : "Scheduled searches will appear here once libraries are configured."
+      <section className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1fr)_430px]">
+        <div className="grid min-w-0 gap-[var(--grid-gap)]">
+          <RenderPanel>
+            <PanelHeader
+              eyebrow="Live work"
+              title="Transfers in progress"
+              action={
+                <Link to="/queue" className="inline-flex items-center gap-1 text-[length:var(--type-caption)] font-semibold text-primary">
+                  Open queue
+                  <ArrowUpRight className="h-3.5 w-3.5" />
+                </Link>
               }
-              href="/system"
             />
-          </div>
-        </RenderPanel>
+            {data.activeDownloads.length ? (
+              <div className="divide-y divide-hairline">
+                {data.activeDownloads.slice(0, 5).map((download) => <DownloadSummaryRow key={download.id} download={download} />)}
+              </div>
+            ) : (
+              <EmptyPanelText>No downloads, processing, or imports need your attention right now.</EmptyPanelText>
+            )}
+          </RenderPanel>
 
-        <RenderPanel className="xl:col-span-8 xl:self-stretch">
-          <PanelHeader
-            eyebrow="Library"
-            title="Fresh in the library"
-            action={
-              <Link to="/movies" className="inline-flex items-center gap-1 text-[length:var(--type-caption)] font-semibold text-primary">
-                Browse all
-                <ArrowUpRight className="h-3.5 w-3.5" />
-              </Link>
-            }
-          />
-          <div className="dashboard-poster-grid">
-            {data.recentlyAdded.slice(0, 12).map((item) => (
-              <PosterPreview key={`${item.type}-${item.id}`} item={item} />
-            ))}
-          </div>
-          {data.recentlyAdded.length === 0 ? (
-            <EmptyPanelText>
-              Your recently imported movies and shows will appear here. Add a title when you are ready to start your library.
-            </EmptyPanelText>
-          ) : null}
-        </RenderPanel>
+          <RenderPanel>
+            <PanelHeader
+              eyebrow="Library"
+              title="Fresh in the library"
+              action={
+                <Link to="/movies" className="inline-flex items-center gap-1 text-[length:var(--type-caption)] font-semibold text-primary">
+                  Browse all
+                  <ArrowUpRight className="h-3.5 w-3.5" />
+                </Link>
+              }
+            />
+            <div className="dashboard-poster-grid">
+              {data.recentlyAdded.slice(0, 12).map((item) => (
+                <PosterPreview key={`${item.type}-${item.id}`} item={item} />
+              ))}
+            </div>
+            {data.recentlyAdded.length === 0 ? (
+              <EmptyPanelText>
+                Your recently imported movies and shows will appear here. Add a title when you are ready to start your library.
+              </EmptyPanelText>
+            ) : null}
+          </RenderPanel>
+        </div>
 
-        <div className="grid gap-[var(--grid-gap)] xl:col-span-4">
+        <div className="grid min-w-0 gap-[var(--grid-gap)] self-start">
+          <RenderPanel>
+            <PanelHeader
+              eyebrow="Status"
+              title="Needs attention"
+              action={
+                <Link to="/settings" className="inline-flex items-center gap-1 text-[length:var(--type-caption)] font-semibold text-primary">
+                  {data.setupStatus.completedCount}/{data.setupStatus.totalCount} setup
+                  <ArrowUpRight className="h-3.5 w-3.5" />
+                </Link>
+              }
+            />
+            <div className="space-y-3">
+              {setupAttentionItems.length > 0 ? (
+                setupAttentionItems.map((item) => (
+                  <DecisionRow key={item.id} tone={item.tone} title={item.title} text={item.text} href={item.href} action={item.action} />
+                ))
+              ) : (
+                <DecisionRow
+                  tone="success"
+                  title="Setup complete"
+                  text="Libraries, connections, Media Plans, and automation are ready. New setup issues will appear here."
+                  href="/settings"
+                  action="Review setup"
+                />
+              )}
+              <DecisionRow
+                tone={data.missingCount > 0 ? "warn" : "success"}
+                title={data.missingCount > 0 ? "Missing media waiting" : "No missing media needs review"}
+                text={data.missingCount > 0 ? `${data.missingCount} titles are missing or still waiting for a valid release.` : "Wanted movies and shows are either satisfied or waiting on normal automation."}
+                href="/movies"
+                action={data.missingCount > 0 ? "Review missing" : "Browse library"}
+              />
+              {topDownload ? (
+                <DecisionRow
+                  tone="info"
+                  title="Queue moving"
+                  text={`${topDownload.title} is leading the active queue.`}
+                  href="/queue"
+                  action="Open queue"
+                />
+              ) : null}
+              {data.retryWindows.length > 0 ? (
+                <DecisionRow
+                  tone="warn"
+                  title="Retry windows pending"
+                  text={`${data.retryWindows.length} failed search or download retry window${data.retryWindows.length === 1 ? "" : "s"} scheduled.`}
+                  href="/system"
+                  action="Review activity"
+                />
+              ) : null}
+            </div>
+          </RenderPanel>
+
           <RenderPanel>
             <PanelHeader eyebrow="Calendar" title="Next 72 hours" icon={Calendar} />
             <div className="space-y-[var(--page-gap)]">
@@ -341,12 +365,12 @@ export function DashboardPage() {
                   <div key={day} className="space-y-2">
                     <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.18em] text-primary">{day}</p>
                     {entries.slice(0, 2).map((entry) => (
-                      <Link key={entry.id} to={entry.href} className="flex items-center gap-3 rounded-xl border border-hairline bg-surface-1/70 p-2.5 transition hover:border-primary/30 hover:bg-primary/5">
-                        <Artwork src={entry.poster} title={entry.title} className="h-12 w-8 rounded-lg" />
+                      <Link key={entry.id} to={entry.href} className="flex items-center gap-3 rounded-lg border border-hairline bg-surface-1/70 p-2.5 transition hover:border-primary/30 hover:bg-primary/5">
+                        <Artwork src={entry.poster} title={entry.title} className="h-12 w-8 rounded-md" />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{entry.title}</span>
                           <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">
-                            <span className="text-primary">{entry.episode}</span> · {entry.network}
+                            <span className="text-primary">{entry.episode}</span> - {entry.network}
                           </span>
                         </span>
                       </Link>
@@ -360,7 +384,7 @@ export function DashboardPage() {
           </RenderPanel>
 
           <RenderPanel>
-          <PanelHeader eyebrow="Connections" title="Search sources & download clients" icon={RadioTower} />
+            <PanelHeader eyebrow="Connections" title="Search sources & download clients" icon={RadioTower} />
             <div className="space-y-2">
               {data.indexerHealth.length ? (
                 data.indexerHealth.slice(0, 6).map((item) => <HealthRow key={item.id} item={item} />)
@@ -370,7 +394,6 @@ export function DashboardPage() {
             </div>
           </RenderPanel>
         </div>
-
       </section>
     </div>
   );
@@ -396,8 +419,8 @@ function MetricPlane({
   return (
     <article
       className={cn(
-        "group relative min-h-[var(--metric-plane-min-height)] min-w-0 overflow-hidden rounded-2xl border border-hairline bg-card p-[var(--tile-pad)] shadow-card",
-        "transition duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg dark:border-white/[0.06]"
+        "group relative min-h-[var(--metric-plane-min-height)] min-w-0 overflow-hidden rounded-xl border border-hairline bg-card p-[var(--tile-pad)] shadow-card",
+        "transition duration-200 hover:border-primary/30 hover:shadow-lg dark:border-white/[0.06]"
       )}
     >
       <AmbientTone tone={tone} />
@@ -412,7 +435,7 @@ function MetricPlane({
               {unit ? <span className="pb-1 text-[length:var(--metric-unit-size)] font-semibold text-muted-foreground">{unit}</span> : null}
             </div>
           </div>
-          <span className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border", toneClass(tone, "icon"))}>
+          <span className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border", toneClass(tone, "icon"))}>
             <Icon className="h-[var(--shell-icon-size)] w-[var(--shell-icon-size)]" strokeWidth={1.9} />
           </span>
         </div>
@@ -433,12 +456,7 @@ function RenderPanel({
   className?: string;
 }) {
   return (
-    <section className={cn("relative self-start overflow-hidden rounded-2xl border border-hairline bg-card p-[var(--tile-pad)] shadow-card dark:border-white/[0.06]", className)}>
-      <span
-        aria-hidden
-        className="pointer-events-none absolute inset-x-5 top-0 h-px rounded-full"
-        style={{ background: "linear-gradient(90deg, transparent, hsl(var(--primary)/0.34), hsl(var(--primary-2)/0.22), transparent)" }}
-      />
+    <section className={cn("relative self-start overflow-hidden rounded-xl border border-hairline bg-card p-[var(--tile-pad)] shadow-card dark:border-white/[0.06]", className)}>
       {children}
     </section>
   );
@@ -473,21 +491,29 @@ function DecisionRow({
   title,
   text,
   tone,
-  href
+  href,
+  action
 }: {
   title: string;
   text: string;
-  tone: "success" | "warn" | "info" | "neutral";
+  tone: SetupAttentionTone;
   href: string;
+  action?: string;
 }) {
   return (
-    <Link to={href} className="group relative block overflow-hidden rounded-xl border border-hairline bg-surface-1/70 p-4 transition hover:border-primary/30 hover:bg-primary/5">
+    <Link to={href} className="group relative block overflow-hidden rounded-lg border border-hairline bg-surface-1/70 p-4 transition hover:border-primary/30 hover:bg-primary/5">
       <AmbientTone tone={tone} subtle />
       <div className="relative flex gap-3">
         <span className={cn("mt-1 h-2.5 w-2.5 shrink-0 rounded-full", toneClass(tone, "dot"))} />
         <span className="min-w-0">
           <span className="block text-[length:var(--type-body-sm)] font-semibold text-foreground">{title}</span>
           <span className="mt-1 block text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">{text}</span>
+          {action ? (
+            <span className="mt-3 inline-flex items-center gap-1 text-[length:var(--type-micro)] font-bold uppercase tracking-[0.12em] text-primary">
+              {action}
+              <ArrowUpRight className="h-3 w-3" />
+            </span>
+          ) : null}
         </span>
       </div>
     </Link>
@@ -500,7 +526,7 @@ function DownloadSummaryRow({ download }: { download: ActiveDownload }) {
       <span className="min-w-0">
         <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{download.title}</span>
         <span className="mt-1 block text-[length:var(--type-caption)] text-muted-foreground">
-          {download.quality ?? "Quality not reported"} · {download.indexer || "source not reported"}
+          {download.quality ?? "Quality not reported"} - {download.indexer || "source not reported"}
         </span>
         <span className="mt-2 block h-1.5 overflow-hidden rounded-full bg-muted/60">
           <span className="block h-full rounded-full bg-primary" style={{ width: `${Math.max(0, Math.min(100, download.progress))}%` }} />
@@ -508,7 +534,7 @@ function DownloadSummaryRow({ download }: { download: ActiveDownload }) {
       </span>
       <span className="text-left sm:text-right">
         <span className="block font-mono text-[13px] font-semibold text-foreground">{Math.round(download.progress)}%</span>
-        <span className="block text-[length:var(--type-caption)] text-muted-foreground">{download.speedMbps.toFixed(1)} MB/s · {download.etaMinutes > 0 ? `${download.etaMinutes} min left` : "finishing"}</span>
+        <span className="block text-[length:var(--type-caption)] text-muted-foreground">{download.speedMbps.toFixed(1)} MB/s - {download.etaMinutes > 0 ? `${download.etaMinutes} min left` : "finishing"}</span>
       </span>
     </Link>
   );
@@ -517,7 +543,7 @@ function DownloadSummaryRow({ download }: { download: ActiveDownload }) {
 function PosterPreview({ item }: { item: MediaItem }) {
   return (
     <Link to={item.type === "show" ? `/tv/${item.id}` : `/movies/${item.id}`} className="group min-w-0">
-      <div className="relative aspect-[2/3] overflow-hidden rounded-2xl border border-hairline bg-surface-2 shadow-card transition duration-200 group-hover:-translate-y-0.5 group-hover:border-primary/40 group-hover:shadow-lg">
+      <div className="relative aspect-[2/3] overflow-hidden rounded-xl border border-hairline bg-surface-2 shadow-card transition duration-200 group-hover:border-primary/40 group-hover:shadow-lg">
         <Artwork src={item.poster} title={item.title} className="h-full w-full" />
         <div className="absolute left-2 top-2">
           <Badge className="border-white/15 bg-background/55 text-[length:var(--type-micro)] text-foreground backdrop-blur-md">
@@ -561,7 +587,7 @@ function Artwork({
 
 function HealthRow({ item }: { item: IndexerHealthItem }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-hairline bg-surface-1/70 px-3 py-2.5">
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-hairline bg-surface-1/70 px-3 py-2.5">
       <span className="min-w-0">
         <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{item.name}</span>
         <span className="block text-[length:var(--type-caption)] text-muted-foreground">
@@ -578,7 +604,7 @@ function HealthRow({ item }: { item: IndexerHealthItem }) {
 
 function EmptyPanelText({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-dashed border-hairline bg-surface-1/60 p-4 text-[length:var(--type-body-sm)] text-muted-foreground">
+    <div className="rounded-lg border border-dashed border-hairline bg-surface-1/60 p-4 text-[length:var(--type-body-sm)] text-muted-foreground">
       {children}
     </div>
   );
@@ -596,7 +622,7 @@ function AmbientTone({ tone, subtle = false }: { tone: "primary" | "success" | "
     <span
       aria-hidden
       className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full blur-3xl"
-      style={{ background: color, opacity: subtle ? 0.07 : 0.12 }}
+      style={{ background: color, opacity: subtle ? 0.06 : 0.1 }}
     />
   );
 }
@@ -772,6 +798,14 @@ function emptyDashboardData(): DashboardLoaderData {
       isSkipped: false,
       isCompleted: false,
       updatedUtc: new Date(0).toISOString()
-    }
+    },
+    setupStatus: buildSetupStatus({
+      downloadClients: [],
+      indexers: [],
+      libraries: [],
+      policySets: [],
+      qualityProfiles: [],
+      settings: emptyPlatformSettingsSnapshot
+    })
   };
 }

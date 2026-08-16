@@ -26,21 +26,15 @@ export const configurationNavAreas = [
     ]
   },
   {
-    match: (path: string) => path.startsWith("/settings/policy-sets"),
-    label: "Media plans",
+    match: (path: string) => path.startsWith("/settings/policy-sets") || path.startsWith("/settings/profiles") || path.startsWith("/settings/quality") || path.startsWith("/settings/custom-formats"),
+    label: "Media Plans",
     icon: "plans",
     to: "/settings/policy-sets",
-    items: [{ to: "/settings/policy-sets", label: "Media plans", end: false }]
-  },
-  {
-    match: (path: string) => path.startsWith("/settings/profiles") || path.startsWith("/settings/quality") || path.startsWith("/settings/custom-formats"),
-    label: "Quality",
-    icon: "quality",
-    to: "/settings/profiles",
     items: [
+      { to: "/settings/policy-sets", label: "Plans", end: false },
       { to: "/settings/profiles", label: "Quality profiles", end: false },
-      { to: "/settings/quality", label: "File-size guardrails", end: false },
-      { to: "/settings/custom-formats", label: "Release scoring", end: false }
+      { to: "/settings/quality", label: "Size rules", end: false },
+      { to: "/settings/custom-formats", label: "Release preferences", end: false }
     ]
   },
   {
@@ -123,22 +117,22 @@ const settingsPageMeta = [
   {
     match: (path: string) => path.startsWith("/settings/policy-sets"),
     title: "Media plans",
-    description: "Choose the simple quality, size, release, language, and upgrade policy you want for your media."
+    description: "Configure the quality, size, release, language, and upgrade rules Deluno follows."
   },
   {
     match: (path: string) => path.startsWith("/settings/profiles"),
     title: "Quality profiles",
-    description: "Quality targets and upgrade settings for each library."
+    description: "Quality ladders and cutoff targets used by Media Plans."
   },
   {
     match: (path: string) => path.startsWith("/settings/quality"),
-    title: "File-size guardrails",
-    description: "Safety limits that reject implausibly small or large files after quality has been chosen."
+    title: "Size rules",
+    description: "File-size boundaries Media Plans use to reject releases that are too small or too large."
   },
   {
     match: (path: string) => path.startsWith("/settings/custom-formats"),
-    title: "Release scoring",
-    description: "Release scoring for source, codec, HDR, language, group, and preference rules."
+    title: "Release preferences",
+    description: "Preference rules for source, codec, HDR, language, group, and custom-format scoring used by Media Plans."
   },
   {
     match: (path: string) => path.startsWith("/settings/lists"),

@@ -290,7 +290,7 @@ export function SettingsProfilesPage() {
   return (
     <SettingsShell
       title="Quality profiles"
-      description="Define which quality sources and custom formats Deluno targets. Assign profiles to individual libraries."
+      description="Define which quality sources Media Plans target and when upgrades should stop. You can still assign a profile directly when intentionally skipping plans."
     >
       <div className="settings-split settings-split-config-heavy">
         {/* ── Profile list ── */}

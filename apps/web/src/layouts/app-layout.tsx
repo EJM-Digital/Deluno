@@ -63,8 +63,7 @@ const routeMeta = [
   { match: (path: string) => path.startsWith("/indexers"), title: "Connections", subtitle: "Search sources and download clients Deluno uses" },
   { match: (path: string) => path.startsWith("/search-cycles"), title: "Automation", subtitle: "Choose what Deluno should search for, retry, and upgrade next" },
   { match: (path: string) => path.startsWith("/activity"), title: "Activity", subtitle: "The permanent record of what happened and why" },
-  { match: (path: string) => path.startsWith("/settings/policy-sets"), title: "Media plans", subtitle: "Choose the policy Deluno follows for quality, size, releases, and upgrades" },
-  { match: (path: string) => path.startsWith("/settings/profiles") || path.startsWith("/settings/quality") || path.startsWith("/settings/custom-formats"), title: "Quality", subtitle: "Define the quality, size, and release rules your media must meet" },
+  { match: (path: string) => path.startsWith("/settings/policy-sets") || path.startsWith("/settings/profiles") || path.startsWith("/settings/quality") || path.startsWith("/settings/custom-formats"), title: "Media Plans", subtitle: "Configure the plan Deluno follows for quality, size, releases, and upgrades" },
   { match: (path: string) => path.startsWith("/settings/lists"), title: "Discover media", subtitle: "Bring movies and shows in from import lists and feeds" },
   { match: (path: string) => path.startsWith("/settings/automation"), title: "Automation & recovery", subtitle: "Control searches, retries, upgrades, and failed-download recovery" },
   { match: (path: string) => path.startsWith("/settings/general") || path.startsWith("/settings/notifications") || path.startsWith("/settings/ui") || path.startsWith("/settings/migration") || path.startsWith("/setup-guide"), title: "System & settings", subtitle: "Installation-wide controls, notifications, interface, and maintenance" },
@@ -138,11 +137,6 @@ function AppLayoutContent() {
         >
           Skip to content
         </a>
-
-        <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-          <div className="absolute -top-60 left-[38%] h-[680px] w-[680px] rounded-full bg-primary/[0.08] blur-[190px]" />
-          <div className="absolute bottom-0 right-0 h-[520px] w-[520px] rounded-full bg-[hsl(var(--primary-2))]/[0.055] blur-[170px]" />
-        </div>
 
         <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} theme={resolvedTheme} onToggleTheme={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")} />
         <KeyboardHintOverlay open={helpOpen} onOpenChange={setHelpOpen} shortcuts={globalShortcuts.map((s) => ({ keys: s.keys, label: s.label, group: s.group }))} />
@@ -232,12 +226,12 @@ function DesktopSidebar({
   }
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-50 hidden w-[var(--sidebar-width)] border-r border-hairline/80 bg-sidebar/95 px-[calc(var(--tile-pad)*0.8)] py-[calc(var(--tile-pad)*1.15)] lg:flex lg:flex-col">
-      <NavLink to="/" aria-label="Deluno home" className="flex min-h-[calc(var(--shell-pill-height)*1.8)] items-center gap-3 rounded-2xl border border-hairline/80 bg-card/75 px-[calc(var(--tile-pad)*0.65)] text-foreground shadow-card no-underline dark:border-white/[0.07] dark:bg-white/[0.035]">
-        <AppMark size={42} />
+    <aside className="fixed inset-y-0 left-0 z-50 hidden w-[var(--sidebar-width)] border-r border-sidebar-border bg-sidebar px-3 py-3 text-sidebar-foreground lg:flex lg:flex-col">
+      <NavLink to="/" aria-label="Deluno home" className="flex min-h-[calc(var(--shell-pill-height)*1.45)] items-center gap-3 rounded-lg border border-sidebar-border bg-sidebar-accent/45 px-3 text-sidebar-foreground no-underline">
+        <AppMark size={34} />
         <span className="min-w-0">
-          <span className="block whitespace-nowrap font-display text-[length:var(--shell-brand-size)] font-bold tracking-[-0.04em]">Deluno</span>
-          <span className="block whitespace-nowrap text-[length:var(--shell-subtle-size)] font-medium text-muted-foreground">Media Manager</span>
+          <span className="block whitespace-nowrap font-display text-[length:var(--shell-brand-size)] font-bold tracking-[0.08em]">Deluno</span>
+          <span className="block whitespace-nowrap text-[length:var(--shell-subtle-size)] font-medium text-muted-foreground">Media console</span>
         </span>
       </NavLink>
 
@@ -289,7 +283,7 @@ function DesktopSidebar({
         </nav>
       </div>
 
-      <div className="mt-3 rounded-2xl border border-hairline/80 bg-card/75 p-[calc(var(--tile-pad)*0.8)] shadow-card dark:border-white/[0.07] dark:bg-white/[0.035]">
+      <div className="mt-3 rounded-lg border border-sidebar-border bg-sidebar-accent/45 p-3">
         <div className="flex items-center gap-2">
           <span className="h-2 w-2 rounded-full bg-success shadow-[0_0_12px_hsl(var(--success)/0.8)]" />
           <span className="density-nowrap text-[length:var(--type-body-sm)] font-semibold text-foreground">All systems normal</span>
@@ -302,7 +296,7 @@ function DesktopSidebar({
       <div className="group relative z-50 mt-3">
         <button
           type="button"
-          className="flex min-h-[var(--shell-pill-height)] w-full items-center gap-3 rounded-2xl border border-hairline/80 bg-card/75 px-[calc(var(--tile-pad)*0.65)] text-left transition hover:border-primary/30 hover:bg-muted/30 dark:border-white/[0.07] dark:bg-white/[0.035]"
+          className="flex min-h-[var(--shell-pill-height)] w-full items-center gap-3 rounded-lg border border-sidebar-border bg-sidebar-accent/45 px-3 text-left transition hover:border-primary/30 hover:bg-sidebar-accent"
         >
           <span className="flex h-[var(--shell-avatar-size)] w-[var(--shell-avatar-size)] shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-[hsl(var(--primary-2))] text-[length:var(--type-body-sm)] font-bold text-primary-foreground">
             {user?.avatarInitials ?? "DU"}
@@ -443,7 +437,7 @@ function ConfigurationSidebarTree({ pathname }: { pathname: string }) {
           to="/settings"
           end
           className={({ isActive }) => cn(
-            "group relative flex min-h-[var(--shell-pill-height)] min-w-0 flex-1 items-center gap-3 rounded-2xl px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-nav-size)] font-semibold transition-all duration-200",
+            "group relative flex min-h-[var(--shell-pill-height)] min-w-0 flex-1 items-center gap-3 rounded-lg px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-nav-size)] font-semibold transition-all duration-200",
             isActive || isLibrarySetupRoute
               ? "bg-primary/12 text-foreground shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.08)]"
               : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
@@ -451,7 +445,7 @@ function ConfigurationSidebarTree({ pathname }: { pathname: string }) {
         >
           {({ isActive }) => <>
           <span aria-hidden className={cn("absolute left-0 h-[calc(var(--shell-pill-height)*0.58)] w-[3px] rounded-full", isActive || isLibrarySetupRoute ? "bg-primary" : "bg-transparent")} />
-          <span className={cn("flex h-[calc(var(--shell-pill-height)*0.68)] w-[calc(var(--shell-pill-height)*0.68)] shrink-0 items-center justify-center rounded-xl transition", isActive || isLibrarySetupRoute ? "bg-primary/18 text-primary" : "bg-muted/30 text-muted-foreground group-hover:text-foreground")}>
+          <span className={cn("flex h-[calc(var(--shell-pill-height)*0.68)] w-[calc(var(--shell-pill-height)*0.68)] shrink-0 items-center justify-center rounded-md transition", isActive || isLibrarySetupRoute ? "bg-primary/18 text-primary" : "bg-muted/30 text-muted-foreground group-hover:text-foreground")}>
             <DelunoNavGlyph kind="setup" className="h-[var(--shell-icon-size)] w-[var(--shell-icon-size)]" />
           </span>
           <span className="min-w-0 flex-1 whitespace-nowrap">Library setup</span>
@@ -462,7 +456,7 @@ function ConfigurationSidebarTree({ pathname }: { pathname: string }) {
           aria-label={`${setupOpen ? "Collapse" : "Expand"} Library setup`}
           aria-expanded={setupOpen}
           onClick={() => setSetupOpen((open) => !open)}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-muted/50 hover:text-foreground"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-muted/50 hover:text-foreground"
         >
           <ChevronRight className={cn("h-4 w-4 transition-transform duration-200", setupOpen && "rotate-90 text-primary")} />
         </button>
@@ -497,7 +491,7 @@ function ConfigurationSidebarTree({ pathname }: { pathname: string }) {
               <NavLink
                 to={area.to}
                 className={({ isActive: routeIsActive }) => cn(
-                  "group relative flex min-h-[var(--shell-pill-height)] min-w-0 flex-1 items-center gap-3 rounded-2xl px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-nav-size)] font-semibold transition-all duration-200",
+                  "group relative flex min-h-[var(--shell-pill-height)] min-w-0 flex-1 items-center gap-3 rounded-lg px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-nav-size)] font-semibold transition-all duration-200",
                   routeIsActive || isActive
                     ? "bg-primary/12 text-foreground shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.08)]"
                     : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
@@ -505,14 +499,14 @@ function ConfigurationSidebarTree({ pathname }: { pathname: string }) {
               >
                 {({ isActive: routeIsActive }) => <>
                 <span aria-hidden className={cn("absolute left-0 h-[calc(var(--shell-pill-height)*0.58)] w-[3px] rounded-full", routeIsActive || isActive ? "bg-primary" : "bg-transparent")} />
-                <span className={cn("flex h-[calc(var(--shell-pill-height)*0.68)] w-[calc(var(--shell-pill-height)*0.68)] shrink-0 items-center justify-center rounded-xl transition", routeIsActive || isActive ? "bg-primary/18 text-primary" : "bg-muted/30 text-muted-foreground group-hover:text-foreground")}>
+                <span className={cn("flex h-[calc(var(--shell-pill-height)*0.68)] w-[calc(var(--shell-pill-height)*0.68)] shrink-0 items-center justify-center rounded-md transition", routeIsActive || isActive ? "bg-primary/18 text-primary" : "bg-muted/30 text-muted-foreground group-hover:text-foreground")}>
                   <DelunoNavGlyph kind={area.icon} className="h-[calc(var(--shell-icon-size)*0.9)] w-[calc(var(--shell-icon-size)*0.9)]" />
                 </span>
                 <span className="min-w-0 truncate">{area.label}</span>
                 </>}
               </NavLink>
               {hasChildren ? (
-                <button type="button" aria-label={`${isOpen ? "Collapse" : "Expand"} ${area.label}`} aria-expanded={isOpen} onClick={() => toggleArea(area.label)} className="flex h-[var(--shell-pill-height)] w-10 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-muted/50 hover:text-foreground">
+                <button type="button" aria-label={`${isOpen ? "Collapse" : "Expand"} ${area.label}`} aria-expanded={isOpen} onClick={() => toggleArea(area.label)} className="flex h-[var(--shell-pill-height)] w-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-muted/50 hover:text-foreground">
                   <ChevronRight className={cn("h-4 w-4 transition-transform duration-200", isOpen && "rotate-90 text-primary")} />
                 </button>
               ) : null}
@@ -549,7 +543,7 @@ function MaintenanceSidebarTree({ pathname }: { pathname: string }) {
         <NavLink
           to={area.to}
           className={({ isActive }) => cn(
-            "group relative flex min-h-[var(--shell-pill-height)] min-w-0 flex-1 items-center gap-3 rounded-2xl px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-nav-size)] font-semibold transition-all duration-200",
+            "group relative flex min-h-[var(--shell-pill-height)] min-w-0 flex-1 items-center gap-3 rounded-lg px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-nav-size)] font-semibold transition-all duration-200",
             isActive || isMaintenanceRoute
               ? "bg-primary/12 text-foreground shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.08)]"
               : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
@@ -557,7 +551,7 @@ function MaintenanceSidebarTree({ pathname }: { pathname: string }) {
         >
           {({ isActive }) => <>
           <span aria-hidden className={cn("absolute left-0 h-[calc(var(--shell-pill-height)*0.58)] w-[3px] rounded-full", isActive || isMaintenanceRoute ? "bg-primary" : "bg-transparent")} />
-          <span className={cn("flex h-[calc(var(--shell-pill-height)*0.68)] w-[calc(var(--shell-pill-height)*0.68)] shrink-0 items-center justify-center rounded-xl transition", isActive || isMaintenanceRoute ? "bg-primary/18 text-primary" : "bg-muted/30 text-muted-foreground group-hover:text-foreground")}>
+          <span className={cn("flex h-[calc(var(--shell-pill-height)*0.68)] w-[calc(var(--shell-pill-height)*0.68)] shrink-0 items-center justify-center rounded-md transition", isActive || isMaintenanceRoute ? "bg-primary/18 text-primary" : "bg-muted/30 text-muted-foreground group-hover:text-foreground")}>
             <DelunoNavGlyph kind="system" className="h-[var(--shell-icon-size)] w-[var(--shell-icon-size)]" />
           </span>
           <span className="min-w-0 flex-1 whitespace-nowrap">System &amp; settings</span>
@@ -568,7 +562,7 @@ function MaintenanceSidebarTree({ pathname }: { pathname: string }) {
           aria-label={`${open ? "Collapse" : "Expand"} System & settings`}
           aria-expanded={open}
           onClick={() => setOpen((current) => !current)}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-muted/50 hover:text-foreground"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-muted/50 hover:text-foreground"
         >
           <ChevronRight className={cn("h-4 w-4 transition-transform duration-200", open && "rotate-90 text-primary")} />
         </button>
@@ -619,7 +613,7 @@ function SidebarItem({
       end={item.end}
       className={({ isActive }) =>
         cn(
-          "group relative flex min-h-[var(--shell-pill-height)] items-center gap-3 rounded-2xl px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-nav-size)] font-semibold transition-all duration-200",
+          "group relative flex min-h-[var(--shell-pill-height)] items-center gap-3 rounded-lg px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-nav-size)] font-semibold transition-all duration-200",
           isActive
             ? "bg-primary/14 text-foreground shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.18)]"
             : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
@@ -629,7 +623,7 @@ function SidebarItem({
       {({ isActive }) => (
         <>
           <span className={cn("absolute left-0 h-[calc(var(--shell-pill-height)*0.58)] w-[3px] rounded-full", isActive ? "bg-primary" : "bg-transparent")} />
-          <span className={cn("flex h-[calc(var(--shell-pill-height)*0.68)] w-[calc(var(--shell-pill-height)*0.68)] shrink-0 items-center justify-center rounded-xl transition", isActive ? "bg-primary/18 text-primary" : "bg-muted/30 text-muted-foreground group-hover:text-foreground")}>
+          <span className={cn("flex h-[calc(var(--shell-pill-height)*0.68)] w-[calc(var(--shell-pill-height)*0.68)] shrink-0 items-center justify-center rounded-md transition", isActive ? "bg-primary/18 text-primary" : "bg-muted/30 text-muted-foreground group-hover:text-foreground")}>
             <DelunoNavGlyph kind={item.icon} className="h-[var(--shell-icon-size)] w-[var(--shell-icon-size)]" />
           </span>
           <span className="min-w-0 flex-1 whitespace-nowrap">{item.label}</span>
@@ -707,7 +701,7 @@ function ContentTopbar({
         <button
           type="button"
           onClick={onOpenCommand}
-          className="hidden min-h-[var(--shell-pill-height)] items-center gap-2 rounded-2xl border border-hairline/70 bg-card/75 px-4 text-left text-[length:var(--shell-nav-size)] font-medium text-muted-foreground transition hover:border-primary/30 hover:bg-muted/40 hover:text-foreground md:flex"
+          className="hidden min-h-[var(--shell-pill-height)] items-center gap-2 rounded-lg border border-hairline/70 bg-card/75 px-4 text-left text-[length:var(--shell-nav-size)] font-medium text-muted-foreground transition hover:border-primary/30 hover:bg-muted/40 hover:text-foreground md:flex"
         >
           <Search className="h-[var(--shell-icon-size-sm)] w-[var(--shell-icon-size-sm)]" />
           <span className="hidden xl:inline">Search...</span>
@@ -824,31 +818,32 @@ function attentionCount(attention: ReturnType<typeof useAttention>, key: "none" 
 }
 
 function AppMark({ size = 30 }: { size?: number }) {
+  const markColor = "#FFD15A";
   return (
     <svg
       width={size}
       height={size}
-      viewBox="0 0 30 30"
+      viewBox="0 0 1024 1024"
       fill="none"
       aria-hidden
       style={{
-        filter: "drop-shadow(0 2px 8px hsl(var(--primary-deep)/0.45))",
+        filter: "drop-shadow(0 2px 8px hsl(var(--primary)/0.28))",
         flexShrink: 0,
       }}
     >
-      <rect width="30" height="30" rx="7.5" fill="url(#mark-bg)" />
-      <rect x="0.75" y="0.75" width="28.5" height="14" rx="6.75" fill="white" fillOpacity="0.08" />
-      <rect x="4.5" y="7.5" width="21" height="15" rx="2.1" stroke="white" strokeWidth="1.5" fill="none" />
-      <rect x="2.7" y="10.8" width="3.6" height="2.7" rx="0.6" fill="white" />
-      <rect x="2.7" y="16.5" width="3.6" height="2.7" rx="0.6" fill="white" />
-      <rect x="23.7" y="10.8" width="3.6" height="2.7" rx="0.6" fill="white" />
-      <rect x="23.7" y="16.5" width="3.6" height="2.7" rx="0.6" fill="white" />
-      <polygon points="12.3,12 12.3,18 17.7,15" fill="white" />
+      <rect width="1024" height="1024" rx="228" fill="url(#mark-bg)" />
+      <rect x="76" y="76" width="872" height="872" rx="192" stroke={markColor} strokeOpacity="0.38" strokeWidth="20" />
+      <path d="M256 650C197 520 255 363 397 294C563 213 754 289 823 461" stroke={markColor} strokeWidth="52" strokeLinecap="round" />
+      <path d="M823 461L734 431" stroke={markColor} strokeWidth="52" strokeLinecap="round" />
+      <path d="M823 461L787 375" stroke={markColor} strokeWidth="52" strokeLinecap="round" />
+      <circle cx="256" cy="650" r="30" fill={markColor} />
+      <text x="512" y="635" textAnchor="middle" fontFamily="Inter, Arial, sans-serif" fontSize="350" fontWeight="900" fill={markColor}>D</text>
       <defs>
-        <linearGradient id="mark-bg" x1="0" y1="0" x2="30" y2="30" gradientUnits="userSpaceOnUse">
-          <stop style={{ stopColor: "hsl(var(--primary))" }} />
-          <stop offset="1" style={{ stopColor: "hsl(var(--primary-2))" }} />
-        </linearGradient>
+        <radialGradient id="mark-bg" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(705 184) rotate(124) scale(836)">
+          <stop offset="0%" stopColor="#2A2618" />
+          <stop offset="44%" stopColor="#111821" />
+          <stop offset="100%" stopColor="#070A0F" />
+        </radialGradient>
       </defs>
     </svg>
   );

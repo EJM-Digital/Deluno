@@ -1,9 +1,7 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
-import { useLoaderData, useRevalidator } from "react-router-dom";
-import { ChevronDown, LoaderCircle, Route, ShieldCheck, SlidersHorizontal, Sparkles, Wand2 } from "lucide-react";
+import { Link, useLoaderData, useRevalidator } from "react-router-dom";
+import { ArrowRight, CheckCircle2, ChevronDown, LoaderCircle } from "lucide-react";
 import { SettingsShell } from "../components/app/settings-shell";
-import { KpiCard } from "../components/app/kpi-card";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { InputDescription } from "../components/ui/input-description";
@@ -23,6 +21,9 @@ import {
 import { settingsOverviewLoader } from "./settings-overview-page";
 import { authedFetch } from "../lib/use-auth";
 import { RouteSkeleton } from "../components/shell/skeleton";
+import { MEDIA_PLAN_STARTERS, type MediaPlanStarter } from "../lib/media-plan-starters";
+import { cn } from "../lib/utils";
+import { DelunoNavGlyph, type DelunoNavGlyphKind } from "../components/shell/deluno-nav-glyph";
 
 const OVERRIDE_INTERVAL_OPTIONS = [
   { label: "Use library default", value: "" },
@@ -42,66 +43,6 @@ const OVERRIDE_RETRY_OPTIONS = [
   { label: "6 hours", value: "6" },
   { label: "12 hours", value: "12" },
   { label: "Daily", value: "24" }
-];
-
-const MEDIA_PLAN_STARTERS: Array<{
-  id: string;
-  title: string;
-  description: string;
-  values: Pick<PolicySetFormState, "name" | "mediaType" | "searchIntervalOverrideHours" | "retryDelayOverrideHours" | "upgradeUntilCutoff" | "notes">;
-}> = [
-  {
-    id: "family-movies",
-    title: "Family movies",
-    description: "Balanced quality, sensible upgrades, and a gentle search schedule.",
-    values: {
-      name: "Family Movies 1080p",
-      mediaType: "movies",
-      searchIntervalOverrideHours: "12",
-      retryDelayOverrideHours: "6",
-      upgradeUntilCutoff: true,
-      notes: "A dependable 1080p movie experience for the whole household."
-    }
-  },
-  {
-    id: "premium-4k",
-    title: "Premium 4K",
-    description: "A quality-first plan for a home-theatre movie collection.",
-    values: {
-      name: "Premium 4K Movies",
-      mediaType: "movies",
-      searchIntervalOverrideHours: "12",
-      retryDelayOverrideHours: "6",
-      upgradeUntilCutoff: true,
-      notes: "A 4K and HDR-focused movie plan. Choose the matching quality goal and release preferences below."
-    }
-  },
-  {
-    id: "everyday-tv",
-    title: "Everyday TV",
-    description: "Keep monitored shows current without overwhelming your sources.",
-    values: {
-      name: "Everyday TV 1080p",
-      mediaType: "tv",
-      searchIntervalOverrideHours: "6",
-      retryDelayOverrideHours: "3",
-      upgradeUntilCutoff: true,
-      notes: "An everyday TV plan with steady missing-episode and upgrade searches."
-    }
-  },
-  {
-    id: "anime",
-    title: "Anime",
-    description: "A starting point for anime-specific language, group, and format preferences.",
-    values: {
-      name: "Anime",
-      mediaType: "tv",
-      searchIntervalOverrideHours: "6",
-      retryDelayOverrideHours: "3",
-      upgradeUntilCutoff: true,
-      notes: "Choose anime release preferences below, then fine-tune language and quality for this library."
-    }
-  }
 ];
 
 interface SettingsPolicySetsLoaderData {
@@ -156,10 +97,6 @@ export function SettingsPolicySetsPage() {
   const [showDetailedRules, setShowDetailedRules] = useState(false);
   const [targetLibraryIds, setTargetLibraryIds] = useState<string[]>([]);
 
-  const enabledSets = policySets.filter((set) => set.isEnabled).length;
-  const linkedDestinationRules = policySets.filter((set) => set.destinationRuleId).length;
-  const linkedQualityProfiles = policySets.filter((set) => set.qualityProfileId).length;
-
   const availableProfiles = useMemo(
     () => qualityProfiles.filter((profile) => profile.mediaType === formState.mediaType),
     [qualityProfiles, formState.mediaType]
@@ -172,6 +109,18 @@ export function SettingsPolicySetsPage() {
     () => customFormats.filter((format) => format.mediaType === formState.mediaType),
     [customFormats, formState.mediaType]
   );
+  const matchingLibraries = useMemo(
+    () => libraries.filter((library) => library.mediaType === formState.mediaType),
+    [libraries, formState.mediaType]
+  );
+  const selectedLibraries = useMemo(
+    () => libraries.filter((library) => targetLibraryIds.includes(library.id)),
+    [libraries, targetLibraryIds]
+  );
+  const selectedStarter = MEDIA_PLAN_STARTERS.find((starter) => starter.id === selectedStarterId);
+  const selectedQualityProfile = availableProfiles.find((profile) => profile.id === formState.qualityProfileId);
+  const selectedDestinationRule = availableDestinationRules.find((rule) => rule.id === formState.destinationRuleId);
+  const selectedCustomFormats = availableCustomFormats.filter((format) => formState.customFormatIds.includes(format.id));
 
   function startCreate() {
     setEditingId(null);
@@ -181,7 +130,8 @@ export function SettingsPolicySetsPage() {
     setTargetLibraryIds([]);
   }
 
-  function applyStarter(starter: (typeof MEDIA_PLAN_STARTERS)[number]) {
+  function applyStarter(starter: MediaPlanStarter) {
+    const matchingLibraries = libraries.filter((library) => library.mediaType === starter.values.mediaType);
     setEditingId(null);
     setFormState({
       ...createPolicySetForm(),
@@ -189,7 +139,7 @@ export function SettingsPolicySetsPage() {
     });
     setSelectedStarterId(starter.id);
     setShowDetailedRules(false);
-    setTargetLibraryIds(libraries.filter((library) => library.mediaType === starter.values.mediaType).map((library) => library.id));
+    setTargetLibraryIds(matchingLibraries.length === 1 && matchingLibraries[0] ? [matchingLibraries[0].id] : []);
   }
 
   function startEdit(policySet: PolicySetItem) {
@@ -308,302 +258,323 @@ export function SettingsPolicySetsPage() {
   return (
     <SettingsShell
       title="Media Plans"
-      description="Describe the experience you want for a part of your library. Deluno combines quality, release preferences, storage routing, and automation behind that plan."
+      description="Create the plan Deluno follows for quality, size, releases, and upgrades."
     >
-      <div className="fluid-kpi-grid">
-        <KpiCard
-          label="Media plans"
-          value={String(policySets.length)}
-          icon={ShieldCheck}
-          meta="Reusable experiences available to your libraries and titles."
-          sparkline={[1, 1, 1, 2, 2, 2, 3, 3, 4, 4, 4, 5, 5, 6, 6]}
-        />
-        <KpiCard
-          label="Active"
-          value={String(enabledSets)}
-          icon={Sparkles}
-          meta="Plans currently ready to use."
-          sparkline={[1, 1, 1, 1, 2, 2, 3, 3, 3, 4, 4, 4, 4, 5, 5]}
-        />
-        <KpiCard
-          label="With library route"
-          value={String(linkedDestinationRules)}
-          icon={Route}
-          meta="Plans that know where imported media belongs."
-          sparkline={[0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5]}
-        />
-        <KpiCard
-          label="With quality goal"
-          value={String(linkedQualityProfiles)}
-          icon={SlidersHorizontal}
-          meta="Plans with a defined quality target."
-          sparkline={[0, 1, 1, 1, 2, 2, 2, 3, 3, 4, 4, 4, 5, 5, 5]}
-        />
-      </div>
-
-      <Card className="border-primary/20 bg-gradient-to-r from-primary/[0.08] via-primary/[0.03] to-transparent">
-        <CardHeader>
-          <CardTitle>Start with the library you want</CardTitle>
-          <CardDescription>
-            Choose a starting point, then tailor the details below. Nothing is saved until you create the media plan.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          {MEDIA_PLAN_STARTERS.map((starter) => (
-            <button
-              key={starter.id}
-              type="button"
-              onClick={() => applyStarter(starter)}
-              className={`rounded-xl border p-4 text-left transition hover:-translate-y-0.5 hover:border-primary/40 hover:bg-primary/5 ${
-                selectedStarterId === starter.id ? "border-primary/50 bg-primary/[0.07]" : "border-hairline bg-card/85"
-              }`}
-            >
-              <p className="font-display text-base font-semibold tracking-tight text-foreground">{starter.title}</p>
-              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{starter.description}</p>
-              <span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-primary">
-                Use this starting point <Wand2 className="h-3.5 w-3.5" />
-              </span>
-              <span className="mt-2 block text-xs leading-relaxed text-muted-foreground">
-                Includes: {describeStarter(starter)}
-              </span>
-            </button>
-          ))}
-        </CardContent>
-      </Card>
-
-      <div className="settings-split settings-split-balanced">
-        <Card className="settings-panel">
-          <CardHeader>
-            <CardTitle>{editingId ? "Edit media plan" : "Create media plan"}</CardTitle>
-            <CardDescription>
-              Start with the outcome you want. Detailed rules are available when you need them and never replace choices you have already made.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form className="space-y-[calc(var(--field-group-pad)*0.9)]" onSubmit={handleSubmit}>
-              <div className="grid gap-[var(--grid-gap)] md:grid-cols-2">
-                <Field label="Plan name" description="Give this experience an understandable name, such as Family Movies 1080p, Premium 4K, or Anime.">
-                  <Input value={formState.name} onChange={(event) => setFormState((current) => ({ ...current, name: event.target.value }))} />
-                </Field>
-                <Field label="Media type" description="Choose Movies or TV. Changing this resets choices that only apply to the other media type.">
-                  <select
-                    value={formState.mediaType}
-                    onChange={(event) => {
-                      setTargetLibraryIds([]);
-                      setFormState((current) => ({
-                        ...current,
-                        mediaType: event.target.value,
-                        qualityProfileId: "",
-                        destinationRuleId: "",
-                        customFormatIds: []
-                      }));
-                    }}
-                    className="density-control-text h-[var(--control-height)] w-full rounded-xl border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none"
-                  >
-                    <option value="movies">Movies</option>
-                    <option value="tv">TV</option>
-                  </select>
-                </Field>
-                <Field label="Quality goal" description="The quality tiers and upgrade behaviour Deluno should aim for when searching.">
-                  <select
-                    value={formState.qualityProfileId}
-                    onChange={(event) => setFormState((current) => ({ ...current, qualityProfileId: event.target.value }))}
-                    className="density-control-text h-[var(--control-height)] w-full rounded-xl border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none"
-                  >
-                    <option value="">Choose later</option>
-                    {availableProfiles.map((profile) => (
-                      <option key={profile.id} value={profile.id}>
-                        {profile.name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Library route" description="Where imported titles should go: the root folder and naming pattern.">
-                  <select
-                    value={formState.destinationRuleId}
-                    onChange={(event) => setFormState((current) => ({ ...current, destinationRuleId: event.target.value }))}
-                    className="density-control-text h-[var(--control-height)] w-full rounded-xl border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none"
-                  >
-                    <option value="">Choose later</option>
-                    {availableDestinationRules.map((rule) => (
-                      <option key={rule.id} value={rule.id}>
-                        {rule.name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
+      <div className="space-y-3">
+        <section className="overflow-hidden rounded-xl border border-hairline bg-card shadow-card dark:border-white/[0.07]">
+          <header className="flex min-h-[3.25rem] flex-wrap items-center justify-between gap-3 border-b border-hairline bg-surface-2/45 px-4 py-2.5">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="font-display text-[length:var(--type-card-title)] font-semibold text-foreground">
+                  {editingId ? "Edit media plan" : "Create media plan"}
+                </h2>
+                <Badge variant={formState.isEnabled ? "success" : "default"}>{formState.isEnabled ? "Enabled" : "Paused"}</Badge>
+                <Badge variant="info">{formState.mediaType === "tv" ? "TV" : "Movies"}</Badge>
               </div>
+              <p className="mt-0.5 text-[length:var(--type-caption)] text-muted-foreground">
+                Pick a starter, set the normal path, then tune only the rules this plan needs.
+              </p>
+            </div>
+            {editingId ? (
+              <Button type="button" variant="outline" size="sm" onClick={startCreate}>
+                New plan
+              </Button>
+            ) : null}
+          </header>
 
-              <fieldset className="rounded-xl border border-hairline bg-surface-1 p-[var(--tile-pad)]">
-                <legend className="px-1 text-sm font-semibold text-foreground">Apply this plan to</legend>
-                <p className="mt-1 text-sm text-muted-foreground">Choose the libraries that should use this plan as their default. Deluno will keep their quality profile and search timing in sync when you update this plan.</p>
-                <div className="mt-3 grid gap-[var(--grid-gap)] sm:grid-cols-2">
-                  {libraries.filter((library) => library.mediaType === formState.mediaType).map((library) => (
-                    <label key={library.id} className="flex items-start gap-3 rounded-xl border border-hairline bg-background/40 p-3 text-sm text-foreground">
-                      <input type="checkbox" checked={targetLibraryIds.includes(library.id)} onChange={() => toggleTargetLibrary(library.id)} />
-                      <span><span className="block font-semibold">{library.name}</span><span className="mt-0.5 block text-xs text-muted-foreground">{library.rootPath}</span></span>
-                    </label>
-                  ))}
-                  {libraries.filter((library) => library.mediaType === formState.mediaType).length === 0 ? <p className="text-sm text-muted-foreground">Create a {formState.mediaType === "tv" ? "TV" : "Movies"} library first; you can then apply this plan from Library folders.</p> : null}
-                </div>
-              </fieldset>
-
-              <Field label="Notes">
-                <textarea
-                  value={formState.notes}
-                  onChange={(event) => setFormState((current) => ({ ...current, notes: event.target.value }))}
-                  className="density-control-text min-h-24 w-full rounded-xl border border-hairline bg-surface-2 px-3 py-2 text-foreground outline-none"
-                  placeholder="Describe this plan: Kids 1080p, Anime Dual Audio, Premium 4K..."
+          <div className="grid xl:grid-cols-[280px_minmax(0,1fr)_320px]">
+            <aside className="border-b border-hairline bg-background/20 p-3 xl:border-b-0 xl:border-r">
+              <div className="mb-3">
+                <p className="text-[length:var(--type-body-sm)] font-semibold text-foreground">Plan starters</p>
+                <p className="mt-0.5 text-[length:var(--type-caption)] text-muted-foreground">Defaults are editable templates, not locked presets.</p>
+              </div>
+              <div className="space-y-2">
+                <PlanStarterChoice
+                  active={!editingId && selectedStarterId === null}
+                  title="Blank custom plan"
+                  description="Start empty when none of the defaults match."
+                  onClick={startCreate}
                 />
-              </Field>
+                {MEDIA_PLAN_STARTERS.map((starter) => (
+                  <PlanStarterChoice
+                    key={starter.id}
+                    active={!editingId && selectedStarterId === starter.id}
+                    title={starter.title}
+                    description={starter.description}
+                    onClick={() => applyStarter(starter)}
+                  />
+                ))}
+              </div>
+            </aside>
 
-              <div className="rounded-xl border border-hairline bg-surface-1">
-                <button
-                  type="button"
-                  onClick={() => setShowDetailedRules((current) => !current)}
-                  className="flex w-full items-center justify-between gap-[var(--grid-gap)] p-4 text-left"
-                  aria-expanded={showDetailedRules}
-                >
-                  <span>
-                    <span className="block font-display text-base font-semibold text-foreground">Fine-tune detailed rules</span>
-                    <span className="mt-1 block text-sm leading-relaxed text-muted-foreground">
-                      Optional search timing and release-preference rules for granular setups. Your basic plan works without changing these.
-                    </span>
-                  </span>
-                  <ChevronDown className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform ${showDetailedRules ? "rotate-180" : ""}`} />
-                </button>
-
-                {showDetailedRules ? (
-                  <div className="space-y-[var(--page-gap)] border-t border-hairline p-4">
-                    <div className="grid gap-[var(--grid-gap)] md:grid-cols-2">
-                      <Field label="Search schedule" description="How often Deluno should search for this plan instead of using the library default.">
-                        <PresetField
-                          inputType="number"
-                          value={formState.searchIntervalOverrideHours}
-                          onChange={(value) => setFormState((current) => ({ ...current, searchIntervalOverrideHours: value }))}
-                          options={OVERRIDE_INTERVAL_OPTIONS}
-                          customLabel="Custom interval"
-                          customPlaceholder="Hours"
-                        />
-                      </Field>
-                      <Field label="Try again after" description="How long Deluno should wait before retrying a failed search for this plan.">
-                        <PresetField
-                          inputType="number"
-                          value={formState.retryDelayOverrideHours}
-                          onChange={(value) => setFormState((current) => ({ ...current, retryDelayOverrideHours: value }))}
-                          options={OVERRIDE_RETRY_OPTIONS}
-                          customLabel="Custom retry delay"
-                          customPlaceholder="Hours"
-                        />
-                      </Field>
-                    </div>
-
-                    <div>
-                      <p className="font-medium text-foreground">Release preferences</p>
-                      <p className="mt-1 text-sm text-muted-foreground">Pick the custom-format rules this plan should apply when comparing candidates.</p>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {availableCustomFormats.map((format) => {
-                          const active = formState.customFormatIds.includes(format.id);
-                          return (
-                            <button
-                              key={format.id}
-                              type="button"
-                              onClick={() => toggleCustomFormat(format.id)}
-                              className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
-                                active
-                                  ? "border-primary/40 bg-primary/10 text-primary"
-                                  : "border-hairline bg-card text-muted-foreground hover:border-primary/30 hover:text-foreground"
-                              }`}
-                            >
-                              {format.name} · {format.score >= 0 ? `+${format.score}` : format.score}
-                            </button>
-                          );
-                        })}
-                        {availableCustomFormats.length === 0 ? (
-                          <p className="text-sm text-muted-foreground">No custom formats available for this media type yet.</p>
-                        ) : null}
-                      </div>
-                    </div>
+            <form onSubmit={handleSubmit} className="min-w-0">
+              <div className="space-y-[var(--page-gap)] p-4">
+                <FormSection title="Basics">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <Field label="Plan name">
+                      <Input className="bg-surface-2" value={formState.name} onChange={(event) => setFormState((current) => ({ ...current, name: event.target.value }))} />
+                    </Field>
+                    <Field label="Media type">
+                      <select
+                        value={formState.mediaType}
+                        onChange={(event) => {
+                          setTargetLibraryIds([]);
+                          setFormState((current) => ({
+                            ...current,
+                            mediaType: event.target.value,
+                            qualityProfileId: "",
+                            destinationRuleId: "",
+                            customFormatIds: []
+                          }));
+                        }}
+                        className="density-control-text h-[var(--control-height)] w-full rounded-lg border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <option value="movies">Movies</option>
+                        <option value="tv">TV</option>
+                      </select>
+                    </Field>
+                    <Field label="Quality goal">
+                      <select
+                        value={formState.qualityProfileId}
+                        onChange={(event) => setFormState((current) => ({ ...current, qualityProfileId: event.target.value }))}
+                        className="density-control-text h-[var(--control-height)] w-full rounded-lg border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <option value="">Choose later</option>
+                        {availableProfiles.map((profile) => (
+                          <option key={profile.id} value={profile.id}>
+                            {profile.name}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field label="Destination exception" description="Leave on library default unless this plan needs another final folder.">
+                      <select
+                        value={formState.destinationRuleId}
+                        onChange={(event) => setFormState((current) => ({ ...current, destinationRuleId: event.target.value }))}
+                        className="density-control-text h-[var(--control-height)] w-full rounded-lg border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <option value="">Use library default folder</option>
+                        {availableDestinationRules.map((rule) => (
+                          <option key={rule.id} value={rule.id}>
+                            {rule.name}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
                   </div>
-                ) : null}
-              </div>
+                </FormSection>
 
-              <div className="grid gap-3 md:grid-cols-2">
-                <ToggleField
-                  label="Upgrade until cutoff"
-                  checked={formState.upgradeUntilCutoff}
-                  onChange={(checked) => setFormState((current) => ({ ...current, upgradeUntilCutoff: checked }))}
-                />
-                <ToggleField
-                  label="Enabled"
-                  checked={formState.isEnabled}
-                  onChange={(checked) => setFormState((current) => ({ ...current, isEnabled: checked }))}
-                />
-              </div>
+                <FormSection title="Apply to libraries" description="For simple setups, choose your one library. Reuse a plan only where the same rules really fit.">
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {matchingLibraries.map((library) => {
+                      const active = targetLibraryIds.includes(library.id);
+                      return (
+                        <label
+                          key={library.id}
+                          className={cn(
+                            "group grid min-h-[4rem] cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-start gap-3 rounded-lg border px-3 py-2.5 text-sm transition-colors",
+                            active
+                              ? "border-primary/45 bg-primary/10 text-foreground"
+                              : "border-hairline bg-surface-2/60 text-foreground hover:border-primary/30 hover:bg-primary/[0.035]"
+                          )}
+                        >
+                          <input className="mt-1" type="checkbox" checked={active} onChange={() => toggleTargetLibrary(library.id)} />
+                          <span className="min-w-0">
+                            <span className="block font-semibold">{library.name}</span>
+                            <span className="mt-0.5 block truncate text-xs text-muted-foreground">{library.rootPath}</span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                    {matchingLibraries.length === 0 ? (
+                      <EmptyPanel>Create a {formState.mediaType === "tv" ? "TV" : "Movies"} library first, or assign this plan later from Library folders.</EmptyPanel>
+                    ) : null}
+                  </div>
+                </FormSection>
 
-              <div className="flex flex-wrap gap-2">
-                <Button type="submit" disabled={busyKey === "create" || (editingId !== null && busyKey === `save:${editingId}`)}>
-                  {busyKey === "create" || (editingId !== null && busyKey === `save:${editingId}`) ? (
-                    <LoaderCircle className="h-4 w-4 animate-spin" />
+                <div className="rounded-lg border border-hairline bg-surface-1/70">
+                  <button
+                    type="button"
+                    onClick={() => setShowDetailedRules((current) => !current)}
+                    className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/25"
+                    aria-expanded={showDetailedRules}
+                  >
+                    <span>
+                      <span className="block text-sm font-semibold text-foreground">Fine-tune rules</span>
+                      <span className="mt-0.5 block text-sm text-muted-foreground">Search timing, release preferences, and notes.</span>
+                    </span>
+                    <ChevronDown className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform ${showDetailedRules ? "rotate-180" : ""}`} />
+                  </button>
+
+                  {showDetailedRules ? (
+                    <div className="space-y-[var(--page-gap)] border-t border-hairline p-4">
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <Field label="Search schedule" description="How often Deluno should search for this plan instead of using the library default.">
+                          <PresetField
+                            inputType="number"
+                            value={formState.searchIntervalOverrideHours}
+                            onChange={(value) => setFormState((current) => ({ ...current, searchIntervalOverrideHours: value }))}
+                            options={OVERRIDE_INTERVAL_OPTIONS}
+                            customLabel="Custom interval"
+                            customPlaceholder="Hours"
+                          />
+                        </Field>
+                        <Field label="Try again after" description="How long Deluno should wait before retrying a failed search for this plan.">
+                          <PresetField
+                            inputType="number"
+                            value={formState.retryDelayOverrideHours}
+                            onChange={(value) => setFormState((current) => ({ ...current, retryDelayOverrideHours: value }))}
+                            options={OVERRIDE_RETRY_OPTIONS}
+                            customLabel="Custom retry delay"
+                            customPlaceholder="Hours"
+                          />
+                        </Field>
+                      </div>
+
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">Release preferences</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {availableCustomFormats.map((format) => {
+                            const active = formState.customFormatIds.includes(format.id);
+                            return (
+                              <button
+                                key={format.id}
+                                type="button"
+                                onClick={() => toggleCustomFormat(format.id)}
+                                className={cn(
+                                  "rounded-md border px-3 py-1.5 text-xs transition-colors",
+                                  active
+                                    ? "border-primary/40 bg-primary/10 text-primary"
+                                    : "border-hairline bg-surface-2 text-muted-foreground hover:border-primary/30 hover:text-foreground"
+                                )}
+                              >
+                                {format.name} - {format.score >= 0 ? `+${format.score}` : format.score}
+                              </button>
+                            );
+                          })}
+                          {availableCustomFormats.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">No release preferences available for this media type yet.</p>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <Field label="Notes">
+                        <textarea
+                          value={formState.notes}
+                          onChange={(event) => setFormState((current) => ({ ...current, notes: event.target.value }))}
+                          className="density-control-text min-h-24 w-full rounded-lg border border-hairline bg-surface-2 px-3 py-2 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          placeholder="Kids 1080p, Anime Dual Audio, Premium 4K..."
+                        />
+                      </Field>
+                    </div>
                   ) : null}
-                  {editingId ? "Save media plan" : "Create media plan"}
-                </Button>
-                {editingId ? (
-                  <Button type="button" variant="outline" onClick={startCreate}>
-                    Cancel editing
-                  </Button>
-                ) : null}
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center">
+                  <ToggleField
+                    label="Upgrade until cutoff"
+                    checked={formState.upgradeUntilCutoff}
+                    onChange={(checked) => setFormState((current) => ({ ...current, upgradeUntilCutoff: checked }))}
+                  />
+                  <ToggleField
+                    label="Enabled"
+                    checked={formState.isEnabled}
+                    onChange={(checked) => setFormState((current) => ({ ...current, isEnabled: checked }))}
+                  />
+                  <div className="flex flex-wrap gap-2 md:justify-end">
+                    <Button type="submit" disabled={busyKey === "create" || (editingId !== null && busyKey === `save:${editingId}`)}>
+                      {busyKey === "create" || (editingId !== null && busyKey === `save:${editingId}`) ? (
+                        <LoaderCircle className="h-4 w-4 animate-spin" />
+                      ) : null}
+                      {editingId ? "Save media plan" : "Create media plan"}
+                    </Button>
+                    {editingId ? (
+                      <Button type="button" variant="outline" onClick={startCreate}>
+                        Cancel
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
               </div>
             </form>
-          </CardContent>
-        </Card>
 
-        <div className="settings-side-stack">
-          <Card>
-            <CardHeader>
-              <CardTitle>What media plans solve</CardTitle>
-              <CardDescription>
-                Media plans let one Deluno library handle different scenarios without duplicating the app.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm text-muted-foreground">
-              <GuidanceRow icon={ShieldCheck} title="One library, many experiences">
-                Keep separate behaviour for standard, 4K, anime, or kids content without cloning the whole app.
-              </GuidanceRow>
-              <GuidanceRow icon={Route} title="Storage plus quality">
-                Pair a library route with a quality goal so the plan says both <strong className="text-foreground">what</strong> to acquire and <strong className="text-foreground">where</strong> it goes.
-              </GuidanceRow>
-              <GuidanceRow icon={Wand2} title="Reusable release preferences">
-                Carry the same release preferences with the plan instead of rebuilding them title by title.
-              </GuidanceRow>
-            </CardContent>
-          </Card>
+            <aside className="border-t border-hairline bg-sidebar/30 p-3 xl:border-l xl:border-t-0">
+              <div className="rounded-lg border border-hairline bg-card/75">
+                <div className="border-b border-hairline px-3 py-2.5">
+                  <p className="text-sm font-semibold text-foreground">Plan summary</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">What this plan will do when saved.</p>
+                </div>
+                <div className="divide-y divide-hairline">
+                  <PlanSummaryRow label="Starter" value={selectedStarter?.title ?? (editingId ? "Saved plan" : "Blank custom plan")} />
+                  <PlanSummaryRow label="Quality" value={selectedQualityProfile?.name ?? "Choose later"} />
+                  <PlanSummaryRow label="Destination" value={selectedDestinationRule?.name ?? "Library default folder"} />
+                  <PlanSummaryRow label="Libraries" value={selectedLibraries.length ? selectedLibraries.map((library) => library.name).join(", ") : "Not assigned yet"} />
+                  <PlanSummaryRow label="Releases" value={selectedCustomFormats.length ? `${selectedCustomFormats.length} preference${selectedCustomFormats.length === 1 ? "" : "s"}` : "None selected"} />
+                </div>
+              </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Current media plans</CardTitle>
-              <CardDescription>The library experiences you have defined so far.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {policySets.map((policySet) => (
-                <div key={policySet.id} className="rounded-xl border border-hairline bg-surface-1 p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="space-y-1">
+              <div className="mt-3 rounded-lg border border-hairline bg-card/75">
+                <div className="border-b border-hairline px-3 py-2.5">
+                  <p className="text-sm font-semibold text-foreground">Supporting rules</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">Open only when this plan needs more control.</p>
+                </div>
+                <div className="divide-y divide-hairline">
+                  <PlanConfigLink icon="quality" title="Quality profile" to="/settings/profiles" />
+                  <PlanConfigLink icon="size" title="Size rules" to="/settings/quality" />
+                  <PlanConfigLink icon="scoring" title="Release preferences" to="/settings/custom-formats" />
+                  <PlanConfigLink icon="destinations" title="Destination exceptions" to="/settings/destination-rules" />
+                </div>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <section className="overflow-hidden rounded-xl border border-hairline bg-card shadow-card dark:border-white/[0.07]">
+          <header className="flex min-h-[3.05rem] flex-wrap items-center justify-between gap-3 border-b border-hairline bg-surface-2/45 px-4 py-2.5">
+            <div>
+              <h2 className="text-[length:var(--type-body-sm)] font-semibold text-foreground">Saved media plans</h2>
+              <p className="mt-0.5 text-[length:var(--type-caption)] text-muted-foreground">Edit plans and see where each one is used.</p>
+            </div>
+            <Badge variant={policySets.length ? "info" : "default"}>{policySets.length} saved</Badge>
+          </header>
+          {policySets.length ? (
+            <div className="divide-y divide-hairline">
+              {policySets.map((policySet) => {
+                const assignedLibraries = libraries.filter((library) => library.defaultPolicySetId === policySet.id);
+                return (
+                  <div
+                    key={policySet.id}
+                    className="grid gap-3 px-4 py-3 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.9fr)_auto] lg:items-center"
+                  >
+                    <div className="min-w-0 space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-display text-base font-semibold text-foreground">{policySet.name}</p>
+                        <p className="font-semibold text-foreground">{policySet.name}</p>
                         <Badge variant={policySet.isEnabled ? "success" : "default"}>
                           {policySet.isEnabled ? "Enabled" : "Paused"}
                         </Badge>
                         <Badge variant="info">{policySet.mediaType === "tv" ? "TV" : "Movies"}</Badge>
                       </div>
                       <p className="text-sm text-muted-foreground">
-                        {policySet.qualityProfileName ?? "Quality goal not chosen"} · {policySet.destinationRuleName ?? "Library route not chosen"}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {splitCsv(policySet.customFormatIds).length} custom formats · upgrade until cutoff {policySet.upgradeUntilCutoff ? "on" : "off"}
+                        {policySet.qualityProfileName ?? "No quality goal"} - {policySet.destinationRuleName ?? "Library default"}
                       </p>
                     </div>
-                    <div className="flex gap-2">
+
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Used by</p>
+                      {assignedLibraries.length ? (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {assignedLibraries.map((library) => (
+                            <Badge key={library.id} variant="default">
+                              {library.name}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="mt-1 text-sm text-muted-foreground">No libraries assigned.</p>
+                      )}
+                    </div>
+
+                    <div className="flex gap-2 lg:justify-end">
                       <Button size="sm" variant="outline" onClick={() => startEdit(policySet)}>
                         Edit
                       </Button>
@@ -613,38 +584,15 @@ export function SettingsPolicySetsPage() {
                       </Button>
                     </div>
                   </div>
-                  {policySet.notes ? (
-                    <p className="mt-3 rounded-xl border border-hairline bg-card px-3 py-2 text-sm text-muted-foreground">
-                      {policySet.notes}
-                    </p>
-                  ) : null}
-                </div>
-              ))}
-              {policySets.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-hairline bg-surface-1 p-[var(--tile-pad)] text-sm text-muted-foreground">
-                  No media plans yet. Start with Family Movies, Premium 4K, Everyday TV, or Anime.
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Library assignments</CardTitle>
-              <CardDescription>Each library shows the Media Plan it actually uses. Assign or change a plan from Library folders.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {libraries.map((library) => (
-                <div key={library.id} className="rounded-xl border border-hairline bg-surface-1 p-4">
-                  <p className="font-medium text-foreground">{library.name}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {library.defaultPolicySetName ?? "No Media Plan assigned"} · {library.qualityProfileName ?? "Quality goal not chosen"}
-                  </p>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="p-4">
+              <EmptyPanel>No media plans yet. Create one above; selected libraries will appear in the saved plan row.</EmptyPanel>
+            </div>
+          )}
+        </section>
       </div>
     </SettingsShell>
   );
@@ -672,24 +620,105 @@ function splitCsv(value: string) {
     .filter(Boolean);
 }
 
-function describeStarter(starter: (typeof MEDIA_PLAN_STARTERS)[number]) {
-  const mediaType = starter.values.mediaType === "tv" ? "TV" : "movies";
-  const searchSchedule = starter.values.searchIntervalOverrideHours
-    ? `search every ${starter.values.searchIntervalOverrideHours} hours`
-    : "use the library search schedule";
-  const retryDelay = starter.values.retryDelayOverrideHours
-    ? `retry after ${starter.values.retryDelayOverrideHours} hours`
-    : "use the library retry delay";
-  const upgrades = starter.values.upgradeUntilCutoff ? "upgrade until the quality goal is met" : "keep the first accepted release";
+function PlanStarterChoice({
+  active,
+  description,
+  onClick,
+  title
+}: {
+  active: boolean;
+  description: string;
+  onClick: () => void;
+  title: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "group grid w-full grid-cols-[auto_minmax(0,1fr)] gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors",
+        active
+          ? "border-primary/45 bg-primary/10 text-foreground"
+          : "border-hairline bg-surface-1/70 text-foreground hover:border-primary/30 hover:bg-primary/[0.035]"
+      )}
+    >
+      <span
+        className={cn(
+          "mt-0.5 flex h-5 w-5 items-center justify-center rounded-full border text-[10px] font-bold",
+          active ? "border-primary/40 bg-primary text-primary-foreground" : "border-hairline bg-surface-2 text-muted-foreground"
+        )}
+      >
+        {active ? <CheckCircle2 className="h-3.5 w-3.5" /> : null}
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-semibold">{title}</span>
+        <span className="mt-0.5 line-clamp-2 block text-xs leading-relaxed text-muted-foreground">{description}</span>
+      </span>
+    </button>
+  );
+}
 
-  return `${mediaType}; ${searchSchedule}; ${retryDelay}; ${upgrades}.`;
+function PlanSummaryRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid gap-1 px-3 py-2.5">
+      <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
+      <p className="text-sm font-semibold text-foreground">{value}</p>
+    </div>
+  );
+}
+
+function PlanConfigLink({ icon, title, to }: { icon: DelunoNavGlyphKind; title: string; to: string }) {
+  return (
+    <Link
+      to={to}
+      className="group flex min-h-10 items-center justify-between gap-3 px-3 py-2 text-sm font-medium text-foreground transition hover:bg-primary/5"
+    >
+      <span className="flex min-w-0 items-center gap-2">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+          <DelunoNavGlyph kind={icon} className="h-4 w-4" />
+        </span>
+        <span className="truncate">{title}</span>
+      </span>
+      <ArrowRight className="h-4 w-4 text-muted-foreground transition group-hover:translate-x-0.5 group-hover:text-primary" />
+    </Link>
+  );
+}
+
+function FormSection({
+  children,
+  description,
+  title
+}: {
+  children: ReactNode;
+  description?: string;
+  title: string;
+}) {
+  return (
+    <section className="space-y-3">
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <p className="text-sm font-semibold text-foreground">{title}</p>
+          {description ? <p className="mt-0.5 text-sm text-muted-foreground">{description}</p> : null}
+        </div>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function EmptyPanel({ children }: { children: ReactNode }) {
+  return (
+    <div className="rounded-xl border border-dashed border-hairline bg-surface-1/55 p-3 text-sm leading-relaxed text-muted-foreground">
+      {children}
+    </div>
+  );
 }
 
 function Field({ children, description, label }: { children: ReactNode; description?: string; label: string }) {
   return (
-    <div className="density-field rounded-xl border border-hairline bg-surface-1">
+    <div className="grid min-w-0 gap-2">
       <p className="density-label uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
-      <div style={{ marginTop: "var(--field-label-gap)" }}>{children}</div>
+      {children}
       {description && <InputDescription>{description}</InputDescription>}
     </div>
   );
@@ -705,31 +734,12 @@ function ToggleField({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="density-field density-control-text flex items-center gap-3 rounded-xl border border-hairline bg-surface-1 text-foreground">
-      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
-      {label}
+    <label className="density-control-text flex min-h-10 items-center justify-between gap-3 rounded-xl border border-hairline bg-surface-1/70 px-3 py-2 text-foreground">
+      <span>{label}</span>
+      <input className="sr-only" type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+      <span className={cn("relative h-5 w-9 rounded-full transition-colors", checked ? "bg-primary" : "bg-muted")}>
+        <span className={cn("absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-background shadow-sm transition-transform", checked ? "translate-x-4" : "translate-x-0")} />
+      </span>
     </label>
-  );
-}
-
-function GuidanceRow({
-  icon: Icon,
-  title,
-  children
-}: {
-  icon: typeof ShieldCheck;
-  title: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="flex gap-3 rounded-xl border border-hairline bg-surface-1 p-4">
-      <div className="mt-0.5 rounded-lg bg-primary/10 p-2 text-primary">
-        <Icon className="h-4 w-4" />
-      </div>
-      <div>
-        <p className="font-medium text-foreground">{title}</p>
-        <p className="mt-1">{children}</p>
-      </div>
-    </div>
   );
 }

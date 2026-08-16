@@ -33,7 +33,7 @@ const GLOSSARY: GlossaryItem[] = [
   },
   {
     term: "Media Plan",
-    definition: "Deluno's outcome-first home for what you want: quality, file size, release preferences, upgrades, and destination. Quality profiles, cutoffs, and custom formats remain available as advanced detail."
+    definition: "Deluno's outcome-first home for what version you want: quality, file size, release preferences, language, and upgrades. Destination rules stay separate for folder exceptions."
   },
   {
     term: "Dry Run",

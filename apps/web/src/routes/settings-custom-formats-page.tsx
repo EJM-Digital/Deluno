@@ -90,7 +90,7 @@ type Tab = "library" | "mine" | "create" | "test";
 const TABS: { id: Tab; label: string; description: string }[] = [
   {
     id: "library",
-    label: "Advanced library",
+    label: "Rule library",
     description: "Pre-built format rules organised by category. Use this when presets do not cover your target.",
   },
   {
@@ -326,8 +326,8 @@ export function SettingsCustomFormatsPage() {
 
   return (
     <SettingsShell
-      title="Release scoring"
-      description="Prefer or avoid releases by their traits. Deluno calls these rules Custom Formats for Radarr and Sonarr users; presets and custom rules are both available."
+      title="Release preferences"
+      description="Prefer or avoid releases by their traits. Deluno calls these scoring rules Custom Formats for Radarr and Sonarr users; presets and custom rules are both available."
     >
       <PresetBundles
         selections={librarySelections}
@@ -506,7 +506,7 @@ function ReleaseSafeguards({ settings }: { settings: PlatformSettingsSnapshot })
 
   return (
     <details className="rounded-2xl border border-hairline bg-surface-1 p-[var(--tile-pad)]">
-      <summary className="cursor-pointer font-semibold text-foreground">Advanced: release safeguards</summary>
+      <summary className="cursor-pointer font-semibold text-foreground">Release safeguards</summary>
       <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">Set the final guardrails applied to every release after its quality and format score are evaluated.</p>
       <div className="mt-4 grid gap-[var(--grid-gap)] lg:grid-cols-2">
         <label className="block text-sm font-semibold text-foreground">
