@@ -107,7 +107,8 @@ const settingsPageMeta = [
   {
     match: (path: string) => path.startsWith("/settings/libraries"),
     title: "Library folders",
-    description: "Create the movie and TV libraries Deluno manages, and choose where each one lives."
+    description: "Create the movie and TV libraries Deluno manages, and choose where each one lives.",
+    chrome: "none"
   },
   {
     match: (path: string) => path.startsWith("/settings/destination-rules"),

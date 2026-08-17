@@ -2175,6 +2175,45 @@ public sealed class SqlitePlatformSettingsRepository(
         return await GetLibraryAsync(connection, id, cancellationToken);
     }
 
+    public async Task<LibraryItem?> UpdateLibraryDetailsAsync(
+        string id,
+        UpdateLibraryDetailsRequest request,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        var library = await GetLibraryAsync(connection, id, cancellationToken);
+        if (library is null)
+        {
+            return null;
+        }
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE libraries
+            SET
+                name = @name,
+                root_path = @rootPath,
+                downloads_path = @downloadsPath,
+                updated_utc = @updatedUtc
+            WHERE id = @id;
+            """;
+
+        AddParameter(command, "@id", id);
+        AddParameter(command, "@name", NormalizeName(request.Name) ?? library.Name);
+        AddParameter(command, "@rootPath", NormalizePath(request.RootPath) ?? library.RootPath);
+        AddParameter(command, "@downloadsPath", NormalizePath(request.DownloadsPath));
+        AddParameter(command, "@updatedUtc", now.ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+
+        return await GetLibraryAsync(connection, id, cancellationToken);
+    }
+
     public async Task<LibraryItem?> UpdateLibraryQualityProfileAsync(
         string id,
         UpdateLibraryQualityProfileRequest request,
