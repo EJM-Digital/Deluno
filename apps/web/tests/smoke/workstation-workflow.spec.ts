@@ -377,13 +377,17 @@ test.describe("dashboard workflow", () => {
     });
 
     await authenticateAndNavigate(page, "/settings/processing");
-    await expect(page.getByText("Optional processor notifications", { exact: true })).toBeVisible();
-    await expect(page.getByText(/Most processed libraries only need a processed-files folder/)).toBeVisible();
-    await page.getByPlaceholder("Processed media notifier").fill("Processed media notifier");
-    await page.getByPlaceholder("https://processor.example/webhooks/deluno").fill("https://processor.example.test/webhooks/deluno");
-    await page.getByRole("button", { name: "Save optional callback" }).click();
+    // Callbacks are optional: the empty state says so, and adding one is a drawer.
+    await expect(page.getByRole("heading", { name: "Completion callbacks", exact: true })).toBeVisible();
+    await expect(page.getByText(/Deluno watches the processed-files folder directly/)).toBeVisible();
 
-    await expect(page.getByText(/Optional completion callback saved/i)).toBeVisible();
+    await page.getByRole("button", { name: "New callback" }).first().click();
+    const drawer = page.getByRole("dialog", { name: "New completion callback" });
+    await drawer.getByLabel("Name", { exact: true }).fill("Processed media notifier");
+    await drawer.getByLabel("Notification URL").fill("https://processor.example.test/webhooks/deluno");
+    await drawer.getByRole("button", { name: "Save callback" }).click();
+
+    await expect(page.getByRole("dialog", { name: "New completion callback" })).toHaveCount(0);
   });
 
   test("makes external client queue removal an explicit manual setting", async ({ page }) => {
