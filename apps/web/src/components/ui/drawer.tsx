@@ -166,7 +166,8 @@ export function DrawerFooter({
   onCancel,
   onSave,
   saveType = "submit",
-  disabled
+  disabled,
+  saveEnabled
 }: {
   state: DrawerSaveState;
   message?: string | null;
@@ -175,6 +176,8 @@ export function DrawerFooter({
   onSave?: () => void;
   saveType?: "submit" | "button";
   disabled?: boolean;
+  /** Tool-style drawers (previews, tests) can keep the primary action enabled regardless of dirty state. */
+  saveEnabled?: boolean;
 }) {
   const statuses: Record<DrawerSaveState, FooterStatus | null> = {
     clean: null,
@@ -185,7 +188,7 @@ export function DrawerFooter({
   };
   const status = statuses[state];
   const saving = state === "saving";
-  const canSave = state === "dirty" || state === "error";
+  const canSave = saveEnabled ?? (state === "dirty" || state === "error");
   const StatusIcon = status?.icon;
 
   return (

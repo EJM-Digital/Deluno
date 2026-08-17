@@ -1,5 +1,12 @@
-import { useEffect, useState } from "react";
+/**
+ * PresetField — "pick a preset or type your own" as one control.
+ * Renders a Select (with an explicit placeholder when the value is empty and
+ * no option matches) plus an Input when the custom option is active.
+ * Picks up the surrounding Field's id/label like every other control.
+ */
+import { useEffect, useId, useMemo, useState } from "react";
 import { Input } from "./input";
+import { Select } from "./select";
 
 export interface PresetOption {
   label: string;
@@ -14,54 +21,53 @@ interface PresetFieldProps {
   customPlaceholder?: string;
   allowCustom?: boolean;
   inputType?: "text" | "number";
+  /** Shown while nothing is chosen. Defaults to "Choose…". */
+  placeholder?: string;
 }
 
-export function PresetField({
-  value,
-  onChange,
-  options,
-  customLabel = "Custom",
-  customPlaceholder,
-  allowCustom = true,
-  inputType = "text"
-}: PresetFieldProps) {
+const CUSTOM = "__custom";
+
+export function PresetField({ value, onChange, options, customLabel = "Custom", customPlaceholder, allowCustom = true, inputType = "text", placeholder = "Choose…" }: PresetFieldProps) {
   const [editingCustom, setEditingCustom] = useState(false);
-  const optionValues = new Set(options.map((option) => option.value));
+  const customInputId = useId();
+  const optionValues = useMemo(() => new Set(options.map((option) => option.value)), [options]);
   const isCustom = allowCustom && (editingCustom || (value !== "" && !optionValues.has(value)));
-  const selectValue = isCustom ? "__custom" : value;
+  const hasEmptyOption = optionValues.has("");
+  const selectValue = isCustom ? CUSTOM : value;
 
   useEffect(() => {
-    if (value !== "" && optionValues.has(value)) {
-      setEditingCustom(false);
-    }
+    if (value !== "" && optionValues.has(value)) setEditingCustom(false);
   }, [optionValues, value]);
 
   return (
-    <div className="space-y-2">
-      <select
+    <div className="grid gap-2">
+      <Select
         value={selectValue}
         onChange={(event) => {
-          if (event.target.value === "__custom") {
+          if (event.target.value === CUSTOM) {
             setEditingCustom(true);
             onChange(value && !optionValues.has(value) ? value : "");
             return;
           }
-
           setEditingCustom(false);
           onChange(event.target.value);
         }}
-        className="density-control-text h-[var(--control-height)] w-full rounded-[10px] border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
+        {!hasEmptyOption && value === "" && !isCustom ? (
+          <option value="" disabled>
+            {placeholder}
+          </option>
+        ) : null}
         {options.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}
           </option>
         ))}
-        {allowCustom ? <option value="__custom">{customLabel}</option> : null}
-      </select>
-
-      {isCustom || selectValue === "__custom" ? (
+        {allowCustom ? <option value={CUSTOM}>{customLabel}</option> : null}
+      </Select>
+      {isCustom ? (
         <Input
+          id={customInputId}
           type={inputType}
           value={value}
           onChange={(event) => {
@@ -69,6 +75,7 @@ export function PresetField({
             onChange(event.target.value);
           }}
           placeholder={customPlaceholder}
+          aria-label={customLabel}
         />
       ) : null}
     </div>

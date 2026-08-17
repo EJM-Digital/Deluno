@@ -113,7 +113,8 @@ const settingsPageMeta = [
   {
     match: (path: string) => path.startsWith("/settings/destination-rules"),
     title: "Final destinations",
-    description: "Choose where completed movies and TV shows finally live after Deluno imports and names them."
+    description: "Choose where completed movies and TV shows finally live after Deluno imports and names them.",
+    chrome: "none"
   },
   {
     match: (path: string) => path.startsWith("/settings/policy-sets"),
@@ -161,7 +162,8 @@ const settingsPageMeta = [
   {
     match: (path: string) => path.startsWith("/settings/tags"),
     title: "Tags",
-    description: "Labels used for filtering, routing, policies, and user organisation."
+    description: "Labels used for filtering, routing, policies, and user organisation.",
+    chrome: "none"
   },
   {
     match: (path: string) => path.startsWith("/settings/general"),
