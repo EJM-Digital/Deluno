@@ -140,7 +140,8 @@ const settingsPageMeta = [
   {
     match: (path: string) => path.startsWith("/settings/lists"),
     title: "Import lists",
-    description: "Watchlists and curated lists that can add the movies or shows you want Deluno to manage."
+    description: "Watchlists and curated lists that can add the movies or shows you want Deluno to manage.",
+    chrome: "none"
   },
   {
     match: (path: string) => path.startsWith("/settings/automation"),

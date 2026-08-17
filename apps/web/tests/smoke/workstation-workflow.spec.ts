@@ -326,8 +326,8 @@ test.describe("dashboard workflow", () => {
     await importLists.click();
 
     await expect(page.getByRole("heading", { name: "Import lists", exact: true })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Add an import list" })).toBeVisible();
-    await expect(page.getByText(/Paste a public list URL/)).toBeVisible();
+    await page.getByRole("button", { name: "New list" }).first().click();
+    await expect(page.getByRole("dialog", { name: "New import list" }).getByText(/Paste a public list URL/)).toBeVisible();
   });
 
   test("uses a custom list URL for public MDbList lists without a separate provider", async ({ page }) => {
@@ -389,8 +389,8 @@ test.describe("dashboard workflow", () => {
 
     const setting = page.getByRole("switch", { name: "Allow removing client queue entries" });
     await expect(setting).toHaveAttribute("aria-checked", "false");
-    await expect(page.getByText(/Allow a confirmed Remove action for items in external apps/)).toBeVisible();
-    await expect(page.getByText(/deliberate manual action only/)).toBeVisible();
+    await expect(page.getByText("Remove items from the client queue", { exact: true })).toBeVisible();
+    await expect(page.getByText(/A confirmed, manual Remove on Transfers/)).toBeVisible();
   });
 
   test("previews an import list without adding or searching titles", async ({ page }) => {
@@ -409,12 +409,14 @@ test.describe("dashboard workflow", () => {
     });
 
     await authenticateAndNavigate(page, "/settings/lists");
-    await page.getByRole("textbox").nth(0).fill("Weekend movies");
-    await page.getByRole("combobox").nth(0).selectOption("url-list");
-    await page.getByRole("textbox").nth(1).fill("https://example.com/weekend-movies.txt");
-    await page.getByRole("button", { name: "Add import list" }).click();
-    await expect(page.getByText("Weekend movies", { exact: true })).toBeVisible();
-    await page.getByTitle("Preview without adding titles").last().click();
+    await page.getByRole("button", { name: "New list" }).first().click();
+    const drawer = page.getByRole("dialog", { name: "New import list" });
+    await drawer.getByLabel("Name", { exact: true }).fill("Weekend movies");
+    await drawer.getByLabel("Provider").selectOption("url-list");
+    await drawer.getByLabel("List URL").fill("https://example.com/weekend-movies.txt");
+    await drawer.getByRole("button", { name: "Add list" }).click();
+    await expect(page.getByRole("dialog", { name: "Weekend movies" })).toBeVisible();
+    await page.getByTitle("Preview without adding titles").click();
 
     await expect(page.getByText("Preview ready. Nothing was added or searched.")).toBeVisible();
     await expect(page.getByText("Read-only preview", { exact: true })).toBeVisible();
@@ -444,11 +446,14 @@ test.describe("dashboard workflow", () => {
     });
 
     await authenticateAndNavigate(page, "/settings/lists");
-    await page.getByRole("textbox").nth(0).fill("Approved movies");
-    await page.getByRole("combobox").nth(0).selectOption("url-list");
-    await page.getByRole("textbox").nth(1).fill("https://example.com/approved.txt");
-    await page.getByRole("button", { name: "Add import list" }).click();
-    await page.getByTitle("Preview without adding titles").last().click();
+    await page.getByRole("button", { name: "New list" }).first().click();
+    const drawer = page.getByRole("dialog", { name: "New import list" });
+    await drawer.getByLabel("Name", { exact: true }).fill("Approved movies");
+    await drawer.getByLabel("Provider").selectOption("url-list");
+    await drawer.getByLabel("List URL").fill("https://example.com/approved.txt");
+    await drawer.getByRole("button", { name: "Add list" }).click();
+    await expect(page.getByRole("dialog", { name: "Approved movies" })).toBeVisible();
+    await page.getByTitle("Preview without adding titles").click();
 
     await page.getByRole("checkbox", { name: "Dune (2021)" }).uncheck();
     await page.getByRole("button", { name: "Add selected", exact: true }).click();
