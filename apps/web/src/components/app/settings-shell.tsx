@@ -126,7 +126,8 @@ const settingsPageMeta = [
   {
     match: (path: string) => path.startsWith("/settings/profiles"),
     title: "Quality profiles",
-    description: "Quality ladders and cutoff targets used by Media Plans."
+    description: "Quality ladders and cutoff targets used by Media Plans.",
+    chrome: "none"
   },
   {
     match: (path: string) => path.startsWith("/settings/quality"),

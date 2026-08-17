@@ -1,458 +1,552 @@
-import { useState } from "react";
+/**
+ * Quality profiles — list → drawer.
+ *
+ *   PageToolbar (Media Plans tabs · New profile)
+ *   ListCard  (name · allowed tiers · stops at · used by · status · ›)
+ *   Drawer    (Start from · Basics · Quality tiers · Formats [Fine-tune] · Used by · Delete)
+ *
+ * Tier vocabulary comes from /api/quality-model — the same names Size rules and
+ * the decision engine use — so a profile's allowed/cutoff values always resolve.
+ *
+ * Contracts: GET/POST /api/quality-profiles, PUT/DELETE /api/quality-profiles/{id},
+ * POST /api/custom-formats (when a preset needs a format that doesn't exist yet).
+ */
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
-import { GripVertical, HelpCircle, LoaderCircle, Plus, Sparkles, Trash2, X } from "lucide-react";
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent
-} from "@dnd-kit/core";
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import { restrictToVerticalAxis, restrictToParentElement } from "@dnd-kit/modifiers";
-import { SettingsShell } from "../components/app/settings-shell";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import { ArrowDown, ArrowUp, Plus, X } from "lucide-react";
 import { Button } from "../components/ui/button";
+import { Chip } from "../components/ui/chip";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
+import { Disclosure } from "../components/ui/disclosure";
+import { Drawer, DrawerDanger, DrawerFooter, DrawerSection, type DrawerSaveState } from "../components/ui/drawer";
+import { Field, FieldRow } from "../components/ui/field";
+import { Input } from "../components/ui/input";
+import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
+import { PageToolbar } from "../components/ui/page-toolbar";
+import { SegmentedControl } from "../components/ui/segmented-control";
+import { Select } from "../components/ui/select";
+import { SwitchRow } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
-import { QualityProfileWizard, type ProfileDraft } from "../components/app/quality-profile-wizard";
+import { configurationNavAreas } from "../components/app/settings-shell";
 import {
-  emptyPlatformSettingsSnapshot,
   fetchJson,
   type CustomFormatItem,
   type LibraryItem,
   type PlatformSettingsSnapshot,
+  type QualityModelSnapshot,
   type QualityProfileItem
 } from "../lib/api";
 import { settingsOverviewLoader } from "./settings-overview-page";
-import { cn } from "../lib/utils";
+import { findBundledCF, QUALITY_PRESETS } from "../lib/trash-guide-data";
 import { authedFetch } from "../lib/use-auth";
-import { findBundledCF } from "../lib/trash-guide-data";
-import { RouteSkeleton } from "../components/shell/skeleton";
+import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
+import { cn } from "../lib/utils";
 
-interface SettingsOverviewLoaderData {
+const TABS = configurationNavAreas.find((area) => area.label === "Media Plans")?.items ?? [];
+
+/**
+ * Starters expressed in the backend's own tier names, each linked to the TRaSH
+ * preset whose recommended custom formats we create on first save.
+ */
+const PROFILE_STARTERS: { id: string; label: string; mediaType: "movies" | "tv"; allowed: string[]; cutoff: string; summary: string; trashPresetId?: string }[] = [
+  { id: "movies-1080p", label: "1080p streaming", mediaType: "movies", allowed: ["WEB 1080p", "Bluray 1080p", "Remux 1080p"], cutoff: "WEB 1080p", summary: "Great quality, small files. The most popular choice.", trashPresetId: "web-1080p" },
+  { id: "movies-bluray", label: "1080p Blu-ray", mediaType: "movies", allowed: ["WEB 1080p", "Bluray 1080p", "Remux 1080p"], cutoff: "Bluray 1080p", summary: "Starts at WEB, upgrades to Blu-ray when available.", trashPresetId: "bluray-1080p" },
+  { id: "movies-4k", label: "4K streaming", mediaType: "movies", allowed: ["WEB 2160p", "Bluray 2160p", "Remux 2160p"], cutoff: "WEB 2160p", summary: "4K from streaming platforms, without Remux file sizes.", trashPresetId: "web-2160p" },
+  { id: "movies-remux", label: "4K Remux", mediaType: "movies", allowed: ["WEB 2160p", "Bluray 2160p", "Remux 2160p"], cutoff: "Remux 2160p", summary: "Uncompromising quality; very large files.", trashPresetId: "remux-2160p" },
+  { id: "tv-1080p", label: "1080p TV", mediaType: "tv", allowed: ["WEB 720p", "WEB 1080p", "HDTV 1080p"], cutoff: "WEB 1080p", summary: "Everyday TV at 1080p with a 720p fallback.", trashPresetId: "web-1080p-tv" },
+  { id: "tv-4k", label: "4K TV", mediaType: "tv", allowed: ["WEB 1080p", "WEB 2160p", "Bluray 2160p"], cutoff: "WEB 2160p", summary: "4K episodes where available, 1080p otherwise." },
+  { id: "tv-anime", label: "Anime", mediaType: "tv", allowed: ["WEB 1080p", "Bluray 1080p", "Remux 1080p"], cutoff: "Bluray 1080p", summary: "Anime-focused sources and release groups.", trashPresetId: "anime-1080p" }
+];
+
+interface LoaderData {
   libraries: LibraryItem[];
   qualityProfiles: QualityProfileItem[];
   customFormats: CustomFormatItem[];
   settings: PlatformSettingsSnapshot;
+  qualityModel: QualityModelSnapshot;
 }
 
-export async function settingsProfilesLoader(): Promise<SettingsOverviewLoaderData> {
-  const [overview, customFormats] = await Promise.all([
+interface ProfileForm {
+  name: string;
+  mediaType: "movies" | "tv";
+  /** Allowed tiers in preference order, least → most preferred (matches storage). */
+  allowed: string[];
+  cutoff: string;
+  customFormatIds: string[];
+  upgradeUntilCutoff: boolean;
+  upgradeUnknownItems: boolean;
+}
+
+type DrawerMode = { kind: "closed" } | { kind: "create" } | { kind: "edit"; id: string };
+
+export async function settingsProfilesLoader(): Promise<LoaderData> {
+  const [overview, customFormats, qualityModel] = await Promise.all([
     settingsOverviewLoader(),
-    fetchJson<CustomFormatItem[]>("/api/custom-formats")
+    fetchJson<CustomFormatItem[]>("/api/custom-formats"),
+    fetchJson<QualityModelSnapshot>("/api/quality-model")
   ]);
-  return { ...overview, customFormats };
+  return { ...overview, customFormats, qualityModel };
 }
 
-/* ── Helper: media type badge ────────────────────────────────────── */
-const MEDIA_BADGES: Record<string, { label: string; cls: string }> = {
-  movies: { label: "Movies", cls: "bg-sky-500/10 text-sky-400 border-sky-500/20" },
-  tv:     { label: "TV",     cls: "bg-violet-500/10 text-violet-400 border-violet-500/20" },
-  anime:  { label: "Anime",  cls: "bg-pink-500/10 text-pink-400 border-pink-500/20" },
-};
-
-/* ── Inline help tooltip ─────────────────────────────────────────── */
-function HelpTip({ text }: { text: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="relative inline-block">
-      <button
-        type="button"
-        onMouseEnter={() => setOpen(true)}
-        onMouseLeave={() => setOpen(false)}
-        onFocus={() => setOpen(true)}
-        onBlur={() => setOpen(false)}
-        className="text-muted-foreground/50 hover:text-muted-foreground"
-      >
-        <HelpCircle className="h-3.5 w-3.5" />
-      </button>
-      {open && (
-        <div className="absolute bottom-full left-1/2 z-50 mb-2 w-56 -translate-x-1/2 rounded-xl border border-hairline bg-popover px-3 py-2 text-[11.5px] leading-relaxed text-muted-foreground shadow-xl">
-          {text}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ── Sortable profile row ─────────────────────────────────────────── */
-function SortableProfileRow({
-  id,
-  profile,
-  customFormats,
-  busyKey,
-  onDelete
-}: {
-  id: string;
-  profile: QualityProfileItem;
-  customFormats: CustomFormatItem[];
-  busyKey: string | null;
-  onDelete: () => void;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
-  const badge = MEDIA_BADGES[profile.mediaType ?? "movies"] ?? MEDIA_BADGES.movies;
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.4 : 1,
-  };
-
-  const allowedCount = (profile.allowedQualities ?? "").split(",").filter(Boolean).length;
-  const cfIds = (profile.customFormatIds ?? "").split(",").map((value) => value.trim()).filter(Boolean);
-  const cfCount = cfIds.length;
-  const cfNames = cfIds
-    .map((idValue) => customFormats.find((format) => format.id === idValue || format.trashId === idValue)?.name)
-    .filter((name): name is string => Boolean(name));
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={cn(
-        "group flex items-start gap-3 rounded-2xl border border-hairline bg-surface-1 p-4 transition-shadow",
-        isDragging && "shadow-2xl ring-2 ring-primary/20"
-      )}
-    >
-      {/* Drag handle */}
-      <button
-        type="button"
-        {...attributes}
-        {...listeners}
-        aria-label="Drag to reorder"
-        className="mt-0.5 cursor-grab touch-none rounded-lg p-1.5 text-muted-foreground/30 hover:bg-muted/30 hover:text-muted-foreground active:cursor-grabbing"
-      >
-        <GripVertical className="h-4 w-4" />
-      </button>
-
-      {/* Content */}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <p className="font-semibold text-foreground">{profile.name}</p>
-          <span className={cn("rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide", badge.cls)}>
-            {badge.label}
-          </span>
-        </div>
-        <p className="mt-0.5 text-[12px] text-muted-foreground">
-          Stops at: <strong className="text-foreground">{profile.cutoffQuality}</strong>
-          {allowedCount > 0 && ` · ${allowedCount} quality tier${allowedCount === 1 ? "" : "s"} allowed`}
-          {cfCount > 0 && ` · ${cfCount} custom format${cfCount === 1 ? "" : "s"}`}
-        </p>
-      </div>
-
-      {/* Delete */}
-      <Button
-        variant="ghost"
-        size="icon"
-        aria-label={`Delete ${profile.name}`}
-        onClick={onDelete}
-        disabled={busyKey === `delete:${id}`}
-        className="shrink-0 text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10"
-      >
-        {busyKey === `delete:${id}` ? (
-          <LoaderCircle className="h-4 w-4 animate-spin" />
-        ) : (
-          <Trash2 className="h-4 w-4" />
-        )}
-      </Button>
-    </div>
-  );
-}
-
-/* ── Page ────────────────────────────────────────────────────────── */
 export function SettingsProfilesPage() {
-  const loaderData = useLoaderData() as SettingsOverviewLoaderData | undefined;
-  if (!loaderData) return <RouteSkeleton />;
-  const { libraries, qualityProfiles, customFormats } = loaderData;
+  const { libraries, qualityProfiles, customFormats, qualityModel } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
-  const [orderedProfiles, setOrderedProfiles] = useState<QualityProfileItem[]>(qualityProfiles);
-  const [busyKey, setBusyKey] = useState<string | null>(null);
-  const [showWizard, setShowWizard] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<QualityProfileItem | null>(null);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  );
-
-  async function handleDragEnd(event: DragEndEvent) {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = orderedProfiles.findIndex((p) => p.id === active.id);
-    const newIndex = orderedProfiles.findIndex((p) => p.id === over.id);
-    const reordered = arrayMove(orderedProfiles, oldIndex, newIndex);
-    setOrderedProfiles(reordered);
-    try {
-      await authedFetch("/api/quality-profiles/order", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: reordered.map((p) => p.id) })
-      });
-      toast.success("Profile order saved");
-    } catch {
-      toast.error("Could not save profile order");
+  const tiers = useMemo(() => [...qualityModel.tiers].sort((a, b) => b.rank - a.rank), [qualityModel.tiers]);
+  const sorted = useMemo(() => [...qualityProfiles].sort((a, b) => a.mediaType.localeCompare(b.mediaType) || a.name.localeCompare(b.name)), [qualityProfiles]);
+  const librariesByProfile = useMemo(() => {
+    const map = new Map<string, LibraryItem[]>();
+    for (const library of libraries) {
+      if (!library.qualityProfileId) continue;
+      map.set(library.qualityProfileId, [...(map.get(library.qualityProfileId) ?? []), library]);
     }
+    return map;
+  }, [libraries]);
+
+  /* ---------------------------------------------------------- drawer */
+  const [mode, setMode] = useState<DrawerMode>({ kind: "closed" });
+  const [form, setForm] = useState<ProfileForm>(() => emptyForm());
+  const [initialForm, setInitialForm] = useState<ProfileForm>(() => emptyForm());
+  const [starterId, setStarterId] = useState("");
+  const [addRecommended, setAddRecommended] = useState(true);
+  const [fineTuneOpen, setFineTuneOpen] = useState(false);
+  const [saveState, setSaveState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [errors, setErrors] = useState<{ name?: string; allowed?: string }>({});
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const isOpen = mode.kind !== "closed";
+  const editing = mode.kind === "edit" ? qualityProfiles.find((profile) => profile.id === mode.id) ?? null : null;
+  const dirty = useMemo(() => isOpen && !sameForm(form, initialForm), [isOpen, form, initialForm]);
+  const footerState: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
+  const blocker = useUnsavedChanges(dirty);
+  useEffect(() => {
+    if (dirty && (saveState === "saved" || saveState === "error")) setSaveState(undefined);
+  }, [dirty, saveState]);
+
+  const availableFormats = useMemo(() => customFormats.filter((format) => format.mediaType === form.mediaType), [customFormats, form.mediaType]);
+  const unusedTiers = useMemo(() => tiers.filter((tier) => !form.allowed.includes(tier.name)), [tiers, form.allowed]);
+  /** Most-preferred first for display; storage keeps the raw order. */
+  const allowedForDisplay = useMemo(() => [...form.allowed].reverse(), [form.allowed]);
+
+  function openCreate() {
+    const next = emptyForm();
+    setMode({ kind: "create" });
+    setForm(next);
+    setInitialForm(next);
+    setStarterId("");
+    setFineTuneOpen(false);
+    setSaveState(undefined);
+    setErrors({});
+  }
+  function openEdit(profile: QualityProfileItem) {
+    const next = formFrom(profile);
+    setMode({ kind: "edit", id: profile.id });
+    setForm(next);
+    setInitialForm(next);
+    setStarterId("");
+    setFineTuneOpen(false);
+    setSaveState(undefined);
+    setErrors({});
+  }
+  function closeDrawer() {
+    setMode({ kind: "closed" });
+    setConfirmDiscard(false);
+  }
+  function requestClose() {
+    if (dirty) setConfirmDiscard(true);
+    else closeDrawer();
   }
 
-  async function confirmDelete() {
-    if (!deleteTarget) return;
-    const profileId = deleteTarget.id;
-    setDeleteTarget(null);
-    setBusyKey(`delete:${profileId}`);
+  function applyStarter(id: string) {
+    setStarterId(id);
+    const starter = PROFILE_STARTERS.find((item) => item.id === id);
+    if (!starter) {
+      setForm(emptyForm());
+      return;
+    }
+    setAddRecommended(true);
+    setForm((current) => ({
+      ...emptyForm(),
+      name: current.name.trim() ? current.name : `${starter.mediaType === "tv" ? "TV Shows" : "Movies"} / ${starter.label}`,
+      mediaType: starter.mediaType,
+      allowed: starter.allowed.filter((name) => tiers.some((tier) => tier.name === name)),
+      cutoff: starter.cutoff
+    }));
+  }
+
+  function setMediaType(mediaType: "movies" | "tv") {
+    if (mediaType === form.mediaType) return;
+    setForm((current) => ({ ...current, mediaType, customFormatIds: [] }));
+  }
+
+  function addTier(name: string) {
+    if (!name) return;
+    setErrors((current) => ({ ...current, allowed: undefined }));
+    setForm((current) => {
+      // Keep storage order least → most preferred, by rank.
+      const next = [...current.allowed, name].sort((a, b) => rankOf(tiers, a) - rankOf(tiers, b));
+      return { ...current, allowed: next, cutoff: current.cutoff || name };
+    });
+  }
+  function removeTier(name: string) {
+    setForm((current) => {
+      const allowed = current.allowed.filter((tier) => tier !== name);
+      return { ...current, allowed, cutoff: current.cutoff === name ? allowed[allowed.length - 1] ?? "" : current.cutoff };
+    });
+  }
+  /** Move within the displayed (most-preferred-first) order. */
+  function moveTier(name: string, direction: -1 | 1) {
+    setForm((current) => {
+      const display = [...current.allowed].reverse();
+      const index = display.indexOf(name);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= display.length) return current;
+      [display[index], display[target]] = [display[target]!, display[index]!];
+      return { ...current, allowed: display.reverse() };
+    });
+  }
+  function toggleFormat(id: string) {
+    setForm((current) => ({ ...current, customFormatIds: current.customFormatIds.includes(id) ? current.customFormatIds.filter((item) => item !== id) : [...current.customFormatIds, id] }));
+  }
+
+  /* ---------------------------------------------------------- saving */
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!isOpen || busy) return;
+    const nextErrors: typeof errors = {};
+    if (!form.name.trim()) nextErrors.name = "Give this profile a name.";
+    if (!form.allowed.length) nextErrors.allowed = "Allow at least one quality tier.";
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length) return;
+
+    setBusy(true);
+    setSaveState("saving");
     try {
-      const res = await authedFetch(`/api/quality-profiles/${profileId}`, { method: "DELETE" });
-      if (!res.ok && res.status !== 204) throw new Error("Profile could not be removed.");
-      toast.success("Profile removed");
-      setOrderedProfiles((prev) => prev.filter((p) => p.id !== profileId));
+      const starterFormatIds = mode.kind === "create" && addRecommended ? await ensureRecommendedFormats(starterId, form.mediaType, customFormats) : [];
+      const formatIds = [...new Set([...form.customFormatIds, ...starterFormatIds])];
+      const payload = {
+        name: form.name.trim(),
+        mediaType: form.mediaType,
+        cutoffQuality: form.cutoff || form.allowed[form.allowed.length - 1],
+        allowedQualities: form.allowed.join(", "),
+        customFormatIds: formatIds.join(", "),
+        upgradeUntilCutoff: form.upgradeUntilCutoff,
+        upgradeUnknownItems: form.upgradeUnknownItems
+      };
+      const response = await authedFetch(mode.kind === "edit" ? `/api/quality-profiles/${mode.id}` : "/api/quality-profiles", { method: mode.kind === "edit" ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      if (!response.ok) throw new Error(mode.kind === "edit" ? "Profile could not be saved." : "Profile could not be created.");
+      const saved = (await response.json().catch(() => null)) as QualityProfileItem | null;
+      if (mode.kind === "create" && saved) setMode({ kind: "edit", id: saved.id });
+      const settled = saved ? formFrom(saved) : { ...form, name: payload.name };
+      setForm(settled);
+      setInitialForm(settled);
+      setSaveState("saved");
+      setSaveMessage(mode.kind === "create" ? "Profile created" : "Saved just now");
       revalidator.revalidate();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not remove profile.");
+    } catch (error) {
+      setSaveState("error");
+      setSaveMessage(error instanceof Error ? error.message : "Could not save");
     } finally {
-      setBusyKey(null);
+      setBusy(false);
     }
   }
 
-  async function ensureCustomFormats(draft: ProfileDraft) {
-    const existingByTrashId = new Map(
-      customFormats
-        .filter((format) => format.trashId)
-        .map((format) => [format.trashId!, format])
-    );
-    const ids: string[] = [];
-
-    for (const [trashId, score] of draft.activeCFs.entries()) {
-      const existing = existingByTrashId.get(trashId);
-      if (existing) {
-        ids.push(existing.id);
-        continue;
-      }
-
-      const bundled = findBundledCF(trashId);
-      if (!bundled) continue;
-
-      const res = await authedFetch("/api/custom-formats", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: bundled.name,
-          mediaType: draft.mediaType === "tv" || draft.mediaType === "anime" ? "tv" : "movies",
-          score,
-          trashId: bundled.trashId,
-          conditions: bundled.patterns.map((pattern) => `regex: ${pattern}`).join("\n"),
-          upgradeAllowed: true,
-        })
-      });
-      if (!res.ok) throw new Error(`Could not create format "${bundled.name}".`);
-      const created = (await res.json()) as CustomFormatItem;
-      ids.push(created.id);
-      existingByTrashId.set(trashId, created);
-    }
-
-    return ids;
-  }
-
-  async function handleWizardSave(draft: ProfileDraft) {
+  async function handleRemove() {
+    if (mode.kind !== "edit") return;
+    setBusy(true);
     try {
-      const cfIds = await ensureCustomFormats(draft);
-      const res = await authedFetch("/api/quality-profiles", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: draft.name,
-          mediaType: draft.mediaType,
-          cutoffQuality: draft.cutoffQualityId,
-          allowedQualities: draft.qualityOrder.join(", "),
-          customFormatIds: cfIds.join(", "),
-          upgradeUntilCutoff: draft.upgradeAllowed,
-          upgradeUnknownItems: false,
-        })
-      });
-      if (!res.ok) throw new Error("Profile could not be created.");
-      toast.success(`Profile "${draft.name}" created`);
-      setShowWizard(false);
+      const response = await authedFetch(`/api/quality-profiles/${mode.id}`, { method: "DELETE" });
+      if (!response.ok && response.status !== 204) throw new Error("Profile could not be removed.");
+      toast.success(`${editing?.name ?? "Profile"} removed`);
+      setConfirmRemove(false);
+      setInitialForm(form);
+      closeDrawer();
       revalidator.revalidate();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Profile could not be created.");
-      throw e;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Profile could not be removed.");
+    } finally {
+      setBusy(false);
     }
   }
+
+  /* ---------------------------------------------------------- render */
+  const usedBy = editing ? librariesByProfile.get(editing.id) ?? [] : [];
+  const recommendedCount = recommendedFormatsFor(starterId).length;
 
   return (
-    <SettingsShell
-      title="Quality profiles"
-      description="Define which quality sources Media Plans target and when upgrades should stop. You can still assign a profile directly when intentionally skipping plans."
-    >
-      <div className="settings-split settings-split-config-heavy">
-        {/* ── Profile list ── */}
-        <div className="settings-panel space-y-[calc(var(--field-group-pad)*0.9)]">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="font-semibold text-foreground">Your profiles</h3>
-              <p className="text-[12px] text-muted-foreground">
-                Drag to reorder. The list order doesn't affect priority — profiles are assigned per-library.
-              </p>
-            </div>
-            <Button onClick={() => setShowWizard(true)} className="gap-2 shrink-0">
-              <Sparkles className="h-4 w-4" />
-              New profile
-            </Button>
-          </div>
+    <div className="grid gap-[var(--page-gap)]">
+      <PageToolbar
+        tabs={TABS}
+        actions={
+          <Button type="button" onClick={openCreate}>
+            <Plus className="h-4 w-4" />
+            New profile
+          </Button>
+        }
+      />
 
-          {/* Wizard panel */}
-          {showWizard && (
-            <div className="rounded-2xl border border-primary/25 bg-surface-1 p-[var(--tile-pad)] shadow-[0_0_40px_hsl(var(--primary)/0.08)]">
-              <div className="mb-5 flex items-center justify-between">
-                <div>
-                  <p className="font-semibold text-foreground">Create a quality profile</p>
-                  <p className="text-[12px] text-muted-foreground">
-                    Based on TRaSH Guide recommendations. No JSON, no YAML, no guides required.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowWizard(false)}
-                  className="rounded-xl p-1.5 text-muted-foreground hover:bg-muted/30 hover:text-foreground"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-              <QualityProfileWizard
-                onSave={handleWizardSave}
-                onCancel={() => setShowWizard(false)}
-              />
-            </div>
-          )}
-
-          {orderedProfiles.length > 0 ? (
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              modifiers={[restrictToVerticalAxis, restrictToParentElement]}
-              onDragEnd={(e) => void handleDragEnd(e)}
-            >
-              <SortableContext
-                items={orderedProfiles.map((p) => p.id)}
-                strategy={verticalListSortingStrategy}
-              >
-                <div className="space-y-2.5">
-                  {orderedProfiles.map((profile) => (
-                    <SortableProfileRow
-                      key={profile.id}
-                      id={profile.id}
-                      profile={profile}
-                      customFormats={customFormats}
-                      busyKey={busyKey}
-                      onDelete={() => setDeleteTarget(profile)}
-                    />
-                  ))}
-                </div>
-              </SortableContext>
-            </DndContext>
-          ) : (
-            !showWizard && (
-              <div className="flex flex-col items-center gap-[var(--grid-gap)] rounded-2xl border-2 border-dashed border-hairline py-12 text-center">
-                <Sparkles className="h-8 w-8 text-muted-foreground/30" />
-                <div>
-                  <p className="font-medium text-foreground">No profiles yet</p>
-                  <p className="mt-1 text-[12px] text-muted-foreground">
-                    Create your first profile using a TRaSH preset — takes about 30 seconds.
-                  </p>
-                </div>
-                <Button onClick={() => setShowWizard(true)} className="gap-2">
-                  <Plus className="h-4 w-4" />
-                  Create first profile
-                </Button>
-              </div>
-            )
-          )}
-        </div>
-
-        {/* ── Libraries panel ── */}
-        <div className="settings-panel space-y-[calc(var(--field-group-pad)*0.9)]">
-          <div>
-            <h3 className="flex items-center gap-2 font-semibold text-foreground">
-              Library assignments
-              <HelpTip text="Each library is assigned exactly one quality profile. The profile determines which release qualities and custom format scores are used when searching and importing." />
-            </h3>
-            <p className="text-[12px] text-muted-foreground">
-              Change a library's profile from its library settings.
-            </p>
-          </div>
-          <div className="space-y-2">
-            {libraries.map((library) => {
-              const matchedProfile = orderedProfiles.find(
-                (p) => p.name === library.qualityProfileName
-              );
-              const badge = matchedProfile
-                ? MEDIA_BADGES[matchedProfile.mediaType ?? "movies"] ?? MEDIA_BADGES.movies
-                : null;
-
+      <ListCard title="Quality profiles" count={qualityProfiles.length ? `${qualityProfiles.length} ${qualityProfiles.length === 1 ? "profile" : "profiles"}` : undefined}>
+        {qualityProfiles.length === 0 ? (
+          <ListEmpty
+            title="No quality profiles yet"
+            description="A profile is the quality ladder a media plan follows: which release tiers are allowed, and where upgrades stop."
+            actions={
+              <Button type="button" size="sm" onClick={openCreate}>
+                <Plus className="h-3.5 w-3.5" />
+                New profile
+              </Button>
+            }
+          />
+        ) : (
+          <ListTable columns={[{ label: "Name" }, { label: "Allowed", width: "minmax(0,1.4fr)" }, { label: "Stops at" }, { label: "Used by" }, { label: "Formats", width: LIST_TRACK.status, mobile: true }]}>
+            {sorted.map((profile) => {
+              const allowed = splitCsv(profile.allowedQualities);
+              const formats = splitCsv(profile.customFormatIds);
+              const used = librariesByProfile.get(profile.id) ?? [];
+              const unknownTiers = allowed.filter((name) => !tiers.some((tier) => tier.name === name));
               return (
-                <div key={library.id} className="flex items-center gap-3 rounded-xl border border-hairline bg-surface-1 px-4 py-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[13px] font-medium text-foreground">{library.name}</p>
-                    <p className="text-[11.5px] text-muted-foreground">
-                      {library.qualityProfileName ?? "No profile assigned"}
-                    </p>
-                  </div>
-                  {badge && (
-                    <span className={cn("rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide", badge.cls)}>
-                      {badge.label}
-                    </span>
-                  )}
-                </div>
+                <ListRow key={profile.id} onClick={() => openEdit(profile)} selected={mode.kind === "edit" && mode.id === profile.id}>
+                  <ListNameCell name={profile.name} sub={profile.mediaType === "tv" ? "TV shows" : "Movies"} />
+                  <ListCell primary={[...allowed].reverse().join(" → ") || <span className="text-muted-foreground">None</span>} secondary={unknownTiers.length ? `${unknownTiers.length} tier${unknownTiers.length === 1 ? "" : "s"} not in the quality model` : `${allowed.length} tier${allowed.length === 1 ? "" : "s"}`} />
+                  <ListCell primary={profile.cutoffQuality} secondary={profile.upgradeUntilCutoff ? "Upgrades until this tier" : "No upgrades"} />
+                  <ListCell numeric primary={used.length ? `${used.length} ${used.length === 1 ? "library" : "libraries"}` : <span className="text-muted-foreground">Not assigned</span>} secondary={used.map((library) => library.name).join(", ") || "Assigned from a library or plan"} />
+                  <ListCell mobile>
+                    <Chip tone={unknownTiers.length ? "warn" : formats.length ? "info" : "muted"}>{unknownTiers.length ? "Check tiers" : formats.length ? `${formats.length} format${formats.length === 1 ? "" : "s"}` : "No formats"}</Chip>
+                  </ListCell>
+                </ListRow>
               );
             })}
-            {libraries.length === 0 && (
-              <p className="text-[12px] text-muted-foreground">No libraries set up yet.</p>
-            )}
-          </div>
+          </ListTable>
+        )}
+      </ListCard>
 
-          {/* Inline guide */}
-          <div className="rounded-2xl border border-hairline bg-surface-1 p-4 space-y-3">
-            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">How profiles work</p>
-            <div className="space-y-2 text-[12px] text-muted-foreground">
-              <div className="flex gap-2">
-                <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[9px] font-bold text-primary">1</span>
-                <p><strong className="text-foreground">Quality order</strong> — most preferred to least preferred release source</p>
-              </div>
-              <div className="flex gap-2">
-                <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[9px] font-bold text-primary">2</span>
-                <p><strong className="text-foreground">Cutoff quality</strong> — stop upgrading once this quality is reached</p>
-              </div>
-              <div className="flex gap-2">
-                <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[9px] font-bold text-primary">3</span>
-                <p><strong className="text-foreground">Custom formats</strong> — scoring bonuses and penalties applied to candidates</p>
-              </div>
-              <div className="flex gap-2">
-                <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[9px] font-bold text-primary">4</span>
-                <p><strong className="text-foreground">Min score</strong> — reject candidates scoring below this threshold</p>
-              </div>
+      <Drawer
+        open={isOpen}
+        onOpenChange={(open) => {
+          if (!open) requestClose();
+        }}
+        title={mode.kind === "create" ? "New quality profile" : editing?.name ?? form.name}
+        description={mode.kind === "create" ? "Which release tiers are allowed, and where upgrades stop." : `Quality profile · ${form.mediaType === "tv" ? "TV" : "Movies"} · stops at ${form.cutoff || "—"}`}
+        onSubmit={handleSubmit}
+        footer={<DrawerFooter state={footerState} message={saveMessage} saveLabel={mode.kind === "create" ? "Create profile" : "Save profile"} onCancel={requestClose} disabled={busy} />}
+      >
+        {mode.kind === "create" ? (
+          <DrawerSection title="Start from">
+            <Field label="Starter" help="Based on TRaSH Guide recommendations. Everything below stays editable.">
+              <Select value={starterId} onChange={(event) => applyStarter(event.target.value)} options={[{ value: "", label: "Blank profile" }, ...PROFILE_STARTERS.map((starter) => ({ value: starter.id, label: `${starter.label} · ${starter.mediaType === "tv" ? "TV" : "Movies"}` }))]} />
+            </Field>
+            {starterId ? <p className="-mt-1 text-[length:var(--type-caption)] text-muted-foreground">{PROFILE_STARTERS.find((starter) => starter.id === starterId)?.summary}</p> : null}
+            {recommendedCount ? (
+              <SwitchRow
+                label="Add the recommended formats"
+                description={`${recommendedCount} TRaSH-guide scoring rule${recommendedCount === 1 ? "" : "s"} — repack/proper preferences, codec and upscale penalties. Created on save if they don't exist yet.`}
+                checked={addRecommended}
+                onCheckedChange={setAddRecommended}
+              />
+            ) : null}
+          </DrawerSection>
+        ) : null}
+
+        <DrawerSection title="Basics">
+          <FieldRow>
+            <Field label="Profile name" error={errors.name}>
+              <Input value={form.name} onChange={(event) => { setErrors((current) => ({ ...current, name: undefined })); setForm((current) => ({ ...current, name: event.target.value })); }} placeholder="Movies / Standard" autoComplete="off" />
+            </Field>
+            <Field label="Media type">
+              <SegmentedControl<"movies" | "tv"> value={form.mediaType} onValueChange={setMediaType} options={[{ value: "movies", label: "Movies" }, { value: "tv", label: "TV shows" }]} />
+            </Field>
+          </FieldRow>
+        </DrawerSection>
+
+        <DrawerSection title="Quality tiers" aside={form.allowed.length ? `${form.allowed.length} allowed · best first` : undefined}>
+          {allowedForDisplay.length ? (
+            <ul className="grid gap-2">
+              {allowedForDisplay.map((name, index) => {
+                const tier = tiers.find((candidate) => candidate.name === name);
+                return (
+                  <li key={name} className="flex min-h-10 items-center gap-2 rounded-[10px] border border-hairline px-[var(--field-pad-x)]">
+                    <span className="w-5 shrink-0 text-[length:var(--type-caption)] tabular-nums text-muted-foreground">{index + 1}</span>
+                    <span className="min-w-0 flex-1 truncate text-[length:var(--type-body-sm)] font-medium text-foreground">
+                      {name}
+                      {tier ? <span className="ml-2 font-normal text-muted-foreground">rank {tier.rank}</span> : <span className="ml-2 font-normal text-warning">not in the quality model</span>}
+                    </span>
+                    <Button type="button" variant="ghost" size="icon" className="h-7 w-7" aria-label={`Move ${name} up`} disabled={index === 0} onClick={() => moveTier(name, -1)}>
+                      <ArrowUp className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button type="button" variant="ghost" size="icon" className="h-7 w-7" aria-label={`Move ${name} down`} disabled={index === allowedForDisplay.length - 1} onClick={() => moveTier(name, 1)}>
+                      <ArrowDown className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button type="button" variant="ghost" size="icon" className="h-7 w-7" aria-label={`Remove ${name}`} onClick={() => removeTier(name)}>
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
+          {errors.allowed ? <p role="alert" className="text-[length:var(--type-caption)] text-destructive">{errors.allowed}</p> : null}
+          <FieldRow>
+            <Field label="Add a tier" help="Most preferred at the top.">
+              <Select value="" onChange={(event) => addTier(event.target.value)} placeholder={unusedTiers.length ? "Choose a tier" : "All tiers allowed"} options={unusedTiers.map((tier) => ({ value: tier.name, label: `${tier.name} · rank ${tier.rank}` }))} disabled={!unusedTiers.length} />
+            </Field>
+            <Field label="Stop upgrading at" help="Deluno stops replacing files once this tier is reached.">
+              <Select value={form.cutoff} onChange={(event) => setForm((current) => ({ ...current, cutoff: event.target.value }))} placeholder="Choose a tier" options={allowedForDisplay.map((name) => ({ value: name, label: name }))} disabled={!form.allowed.length} />
+            </Field>
+          </FieldRow>
+          <SwitchRow label="Upgrade until cutoff" description="Keep replacing files until the cutoff tier is reached." checked={form.upgradeUntilCutoff} onCheckedChange={(checked) => setForm((current) => ({ ...current, upgradeUntilCutoff: checked }))} />
+        </DrawerSection>
+
+        <DrawerSection title="Formats" aside={form.customFormatIds.length ? `${form.customFormatIds.length} selected` : undefined}>
+          {availableFormats.length ? (
+            <div role="group" aria-label="Custom formats" className="flex flex-wrap gap-1.5">
+              {availableFormats.map((format) => {
+                const active = form.customFormatIds.includes(format.id);
+                return (
+                  <button
+                    key={format.id}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => toggleFormat(format.id)}
+                    className={cn(
+                      "inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[length:var(--type-caption)] font-medium transition-colors",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      active ? "border-primary/40 bg-primary/12 text-primary" : "border-hairline bg-surface-2 text-muted-foreground hover:border-primary/30 hover:text-foreground"
+                    )}
+                  >
+                    {format.name}
+                    <span className={cn("tabular-nums", active ? "text-primary/80" : "text-muted-foreground/70")}>{format.score >= 0 ? `+${format.score}` : format.score}</span>
+                  </button>
+                );
+              })}
             </div>
-          </div>
-        </div>
-      </div>
+          ) : (
+            <p className="text-[length:var(--type-caption)] text-muted-foreground">No {form.mediaType === "tv" ? "TV" : "movie"} formats yet — add them under Release preferences.</p>
+          )}
+          <Disclosure title="Fine-tune" summary="Unknown-quality handling" open={fineTuneOpen} onOpenChange={setFineTuneOpen}>
+            <SwitchRow label="Upgrade files of unknown quality" description="Replace files Deluno can't identify when a matching release appears." checked={form.upgradeUnknownItems} onCheckedChange={(checked) => setForm((current) => ({ ...current, upgradeUnknownItems: checked }))} />
+          </Disclosure>
+        </DrawerSection>
 
+        {editing ? (
+          <DrawerSection title="Used by" aside={usedBy.length ? `${usedBy.length} ${usedBy.length === 1 ? "library" : "libraries"}` : undefined}>
+            {usedBy.length ? (
+              <div className="grid gap-2">
+                {usedBy.map((library) => (
+                  <div key={library.id} className="flex min-h-10 items-center justify-between gap-[var(--grid-gap)] rounded-[10px] border border-hairline px-[var(--field-pad-x)] text-[length:var(--type-body-sm)]">
+                    <span className="truncate font-medium text-foreground">{library.name}</span>
+                    <span className="truncate text-[length:var(--type-caption)] text-muted-foreground">{library.defaultPolicySetName ? `via ${library.defaultPolicySetName}` : "direct assignment"}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[length:var(--type-caption)] text-muted-foreground">Not assigned yet. Libraries pick a profile through their media plan, or directly in Library setup.</p>
+            )}
+          </DrawerSection>
+        ) : null}
+
+        {editing ? (
+          <DrawerSection>
+            <DrawerDanger title="Delete this profile" description="Libraries and plans using it need another profile." action={<Button type="button" variant="destructive" size="sm" onClick={() => setConfirmRemove(true)} disabled={busy}>Delete</Button>} />
+          </DrawerSection>
+        ) : null}
+      </Drawer>
+
+      <ConfirmDialog open={confirmRemove} onOpenChange={setConfirmRemove} title={`Delete “${editing?.name ?? form.name}”?`} description={usedBy.length ? `${usedBy.length} ${usedBy.length === 1 ? "library uses" : "libraries use"} this profile and will need another one.` : "This profile is not assigned to any library."} confirmLabel="Delete profile" busy={busy} onConfirm={() => void handleRemove()} />
       <ConfirmDialog
-        open={deleteTarget !== null}
-        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
-        title={`Delete "${deleteTarget?.name}"?`}
-        description="This profile will be permanently removed. Libraries using it will need to be reassigned."
-        confirmLabel="Delete profile"
-        confirmVariant="destructive"
-        busy={busyKey !== null}
-        onConfirm={() => void confirmDelete()}
+        open={confirmDiscard || blocker.state === "blocked"}
+        onOpenChange={(open) => {
+          if (open) return;
+          setConfirmDiscard(false);
+          if (blocker.state === "blocked") blocker.reset();
+        }}
+        title="Discard unsaved changes?"
+        description="Your edits to this profile haven't been saved."
+        confirmLabel="Discard"
+        onConfirm={() => {
+          setConfirmDiscard(false);
+          if (blocker.state === "blocked") {
+            setMode({ kind: "closed" });
+            blocker.proceed();
+          } else {
+            closeDrawer();
+          }
+        }}
       />
-    </SettingsShell>
+    </div>
   );
+}
+
+/* --------------------------------------------------------------- utils */
+
+function emptyForm(): ProfileForm {
+  return { name: "", mediaType: "movies", allowed: [], cutoff: "", customFormatIds: [], upgradeUntilCutoff: true, upgradeUnknownItems: false };
+}
+function formFrom(profile: QualityProfileItem): ProfileForm {
+  return {
+    name: profile.name,
+    mediaType: profile.mediaType === "tv" ? "tv" : "movies",
+    allowed: splitCsv(profile.allowedQualities),
+    cutoff: profile.cutoffQuality,
+    customFormatIds: splitCsv(profile.customFormatIds),
+    upgradeUntilCutoff: profile.upgradeUntilCutoff,
+    upgradeUnknownItems: profile.upgradeUnknownItems
+  };
+}
+function sameForm(a: ProfileForm, b: ProfileForm) {
+  return a.name === b.name && a.mediaType === b.mediaType && a.cutoff === b.cutoff && a.upgradeUntilCutoff === b.upgradeUntilCutoff && a.upgradeUnknownItems === b.upgradeUnknownItems && a.allowed.join("|") === b.allowed.join("|") && sameIds(a.customFormatIds, b.customFormatIds);
+}
+function sameIds(a: string[], b: string[]) {
+  if (a.length !== b.length) return false;
+  const set = new Set(a);
+  return b.every((id) => set.has(id));
+}
+function splitCsv(value: string | null | undefined) {
+  return (value ?? "").split(",").map((item) => item.trim()).filter(Boolean);
+}
+function recommendedFormatsFor(starterId: string) {
+  const trashPresetId = PROFILE_STARTERS.find((starter) => starter.id === starterId)?.trashPresetId;
+  if (!trashPresetId) return [];
+  return QUALITY_PRESETS.find((preset) => preset.id === trashPresetId)?.recommendedCFs ?? [];
+}
+
+/** Create any recommended TRaSH formats this starter needs, and return every id to attach. */
+async function ensureRecommendedFormats(starterId: string, mediaType: "movies" | "tv", existing: CustomFormatItem[]) {
+  const recommended = recommendedFormatsFor(starterId);
+  if (!recommended.length) return [];
+  const byTrashId = new Map(existing.filter((format) => format.trashId).map((format) => [format.trashId!, format]));
+  const ids: string[] = [];
+
+  for (const { trashId, score } of recommended) {
+    const match = byTrashId.get(trashId);
+    if (match) {
+      ids.push(match.id);
+      continue;
+    }
+    const bundled = findBundledCF(trashId);
+    if (!bundled) continue;
+    const response = await authedFetch("/api/custom-formats", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: bundled.name,
+        mediaType,
+        score,
+        trashId: bundled.trashId,
+        conditions: bundled.patterns.map((pattern) => `regex: ${pattern}`).join("\n"),
+        upgradeAllowed: true
+      })
+    });
+    if (!response.ok) throw new Error(`Could not create the “${bundled.name}” format.`);
+    const created = (await response.json()) as CustomFormatItem;
+    ids.push(created.id);
+    byTrashId.set(trashId, created);
+  }
+  return ids;
+}
+
+function rankOf(tiers: { name: string; rank: number }[], name: string) {
+  return tiers.find((tier) => tier.name === name)?.rank ?? 0;
 }
