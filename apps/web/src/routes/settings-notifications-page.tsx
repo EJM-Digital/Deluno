@@ -1,19 +1,53 @@
-import { useState } from "react";
+/**
+ * Notifications — list → drawer.
+ *
+ *   PageToolbar (New webhook)
+ *   ListCard  (name · url · events · last fired · status · on · ›)
+ *   Drawer    (Basics · Delivery · Delete)
+ *
+ * Contracts: GET/POST /api/notification-webhooks,
+ * PUT/DELETE /api/notification-webhooks/{id}, POST …/{id}/test, PUT /api/settings.
+ */
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
-import { Bell, CheckCircle2, LoaderCircle, Plus, Send, Trash2, X } from "lucide-react";
-import { SettingsShell } from "../components/app/settings-shell";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import { Loader2, Plus, Send } from "lucide-react";
 import { Button } from "../components/ui/button";
+import { Chip, type ChipProps } from "../components/ui/chip";
+import { ConfirmDialog } from "../components/ui/confirm-dialog";
+import { Drawer, DrawerDanger, DrawerFooter, DrawerSection, type DrawerSaveState } from "../components/ui/drawer";
+import { Field, FieldRow } from "../components/ui/field";
 import { Input } from "../components/ui/input";
+import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
+import { PageToolbar } from "../components/ui/page-toolbar";
+import { Select } from "../components/ui/select";
+import { Switch, SwitchRow } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
 import { fetchJson, type NotificationWebhookItem, type PlatformSettingsSnapshot } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
-import { RouteSkeleton } from "../components/shell/skeleton";
+import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
+
+const EVENT_OPTIONS = [
+  { value: "all", label: "All events" },
+  { value: "grab", label: "Grab — a download was sent to a client" },
+  { value: "import", label: "Import — a file was added to the library" },
+  { value: "upgrade", label: "Upgrade — a better release replaced a file" },
+  { value: "health", label: "Health alerts" },
+  { value: "test", label: "Test events only" }
+];
 
 interface LoaderData {
   settings: PlatformSettingsSnapshot;
   webhooks: NotificationWebhookItem[];
 }
+
+interface WebhookForm {
+  name: string;
+  url: string;
+  eventFilters: string;
+  isEnabled: boolean;
+}
+
+type DrawerMode = { kind: "closed" } | { kind: "create" } | { kind: "edit"; id: string };
 
 export async function settingsNotificationsLoader(): Promise<LoaderData> {
   const [settings, webhooks] = await Promise.all([
@@ -23,388 +57,280 @@ export async function settingsNotificationsLoader(): Promise<LoaderData> {
   return { settings, webhooks };
 }
 
-const EVENT_OPTIONS = [
-  { value: "all", label: "All events" },
-  { value: "grab", label: "Grab (download started)" },
-  { value: "import", label: "Import (file moved)" },
-  { value: "upgrade", label: "Upgrade (better quality found)" },
-  { value: "health", label: "Health alerts" },
-  { value: "test", label: "Test events" }
-];
-
-interface WebhookFormState {
-  name: string;
-  url: string;
-  eventFilters: string;
-  isEnabled: boolean;
-}
-
-function emptyForm(): WebhookFormState {
-  return { name: "", url: "", eventFilters: "all", isEnabled: true };
-}
-
 export function SettingsNotificationsPage() {
-  const loaderData = useLoaderData() as LoaderData | undefined;
-  if (!loaderData) return <RouteSkeleton />;
-  const { settings, webhooks } = loaderData;
+  const { settings, webhooks } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
+  const sorted = useMemo(() => [...webhooks].sort((a, b) => a.name.localeCompare(b.name)), [webhooks]);
 
-  const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState<WebhookFormState>(emptyForm);
-  const [busyKey, setBusyKey] = useState<string | null>(null);
-  const [notificationsEnabled, setNotificationsEnabled] = useState(settings.enableNotifications);
+  const [mode, setMode] = useState<DrawerMode>({ kind: "closed" });
+  const [form, setForm] = useState<WebhookForm>(emptyForm);
+  const [initialForm, setInitialForm] = useState<WebhookForm>(emptyForm);
+  const [saveState, setSaveState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [urlError, setUrlError] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
 
-  async function toggleNotifications() {
-    setBusyKey("global");
-    try {
-      const response = await authedFetch("/api/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...settings, enableNotifications: !notificationsEnabled })
-      });
-      if (!response.ok) throw new Error("Could not update notifications.");
-      setNotificationsEnabled((current) => !current);
-      toast.success(notificationsEnabled ? "Notifications paused." : "Notifications enabled.");
-      revalidator.revalidate();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not update notifications.");
-    } finally {
-      setBusyKey(null);
-    }
+  const isOpen = mode.kind !== "closed";
+  const editing = mode.kind === "edit" ? webhooks.find((webhook) => webhook.id === mode.id) ?? null : null;
+  const dirty = isOpen && (form.name !== initialForm.name || form.url !== initialForm.url || form.eventFilters !== initialForm.eventFilters || form.isEnabled !== initialForm.isEnabled);
+  const footerState: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
+  const blocker = useUnsavedChanges(dirty);
+  useEffect(() => {
+    if (dirty && (saveState === "saved" || saveState === "error")) setSaveState(undefined);
+  }, [dirty, saveState]);
+
+  function open(webhook: NotificationWebhookItem | null) {
+    const next = webhook ? { name: webhook.name, url: webhook.url, eventFilters: webhook.eventFilters || "all", isEnabled: webhook.isEnabled } : emptyForm();
+    setMode(webhook ? { kind: "edit", id: webhook.id } : { kind: "create" });
+    setForm(next);
+    setInitialForm(next);
+    setSaveState(undefined);
+    setUrlError(null);
+  }
+  function closeDrawer() {
+    setMode({ kind: "closed" });
+    setConfirmDiscard(false);
+  }
+  function requestClose() {
+    if (dirty) setConfirmDiscard(true);
+    else closeDrawer();
   }
 
-  async function handleCreate(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!isOpen || busy) return;
     if (!form.url.trim()) {
-      toast.error("Webhook URL is required.");
+      setUrlError("Paste the URL Deluno should POST to.");
       return;
     }
-    setBusyKey("create");
+    setBusy("save");
+    setSaveState("saving");
     try {
-      const res = await authedFetch("/api/notification-webhooks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: form.name.trim() || "Webhook",
-          url: form.url.trim(),
-          eventFilters: form.eventFilters,
-          isEnabled: form.isEnabled
-        })
-      });
-      if (!res.ok) throw new Error("Webhook could not be created.");
-      toast.success("Webhook added");
-      setForm(emptyForm());
-      setShowCreate(false);
+      const payload = { name: form.name.trim() || "Webhook", url: form.url.trim(), eventFilters: form.eventFilters, isEnabled: form.isEnabled };
+      const response = await authedFetch(mode.kind === "edit" ? `/api/notification-webhooks/${mode.id}` : "/api/notification-webhooks", { method: mode.kind === "edit" ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      if (!response.ok) throw new Error(mode.kind === "edit" ? "Webhook could not be saved." : "Webhook could not be added.");
+      if (mode.kind === "create") {
+        const created = (await response.json()) as NotificationWebhookItem;
+        setMode({ kind: "edit", id: created.id });
+        setSaveMessage("Webhook added");
+      } else {
+        setSaveMessage("Saved just now");
+      }
+      setForm(payload);
+      setInitialForm(payload);
+      setSaveState("saved");
       revalidator.revalidate();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Webhook could not be created.");
+    } catch (error) {
+      setSaveState("error");
+      setSaveMessage(error instanceof Error ? error.message : "Could not save");
     } finally {
-      setBusyKey(null);
+      setBusy(null);
     }
   }
 
-  async function handleToggle(webhook: NotificationWebhookItem) {
-    setBusyKey(`toggle:${webhook.id}`);
+  async function run(key: string, action: () => Promise<unknown>, success?: string) {
+    setBusy(key);
     try {
-      const res = await authedFetch(`/api/notification-webhooks/${webhook.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: webhook.name,
-          url: webhook.url,
-          eventFilters: webhook.eventFilters,
-          isEnabled: !webhook.isEnabled
-        })
-      });
-      if (!res.ok) throw new Error("Webhook could not be updated.");
-      toast.success(webhook.isEnabled ? `"${webhook.name}" disabled` : `"${webhook.name}" enabled`);
+      await action();
+      if (success) toast.success(success);
       revalidator.revalidate();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Update failed.");
+      return true;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Action failed.");
+      return false;
     } finally {
-      setBusyKey(null);
+      setBusy(null);
     }
   }
 
-  async function handleTest(webhook: NotificationWebhookItem) {
-    setBusyKey(`test:${webhook.id}`);
-    try {
-      const res = await authedFetch(`/api/notification-webhooks/${webhook.id}/test`, { method: "POST" });
-      if (!res.ok) throw new Error("Test notification could not be sent.");
-      toast.success(`Test sent to "${webhook.name}"`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Test failed.");
-    } finally {
-      setBusyKey(null);
+  async function handleRemove() {
+    if (mode.kind !== "edit") return;
+    const id = mode.id;
+    const ok = await run("remove", async () => {
+      const response = await authedFetch(`/api/notification-webhooks/${id}`, { method: "DELETE" });
+      if (!response.ok && response.status !== 204) throw new Error("Webhook could not be removed.");
+    }, `${editing?.name ?? "Webhook"} removed`);
+    if (!ok) return;
+    setConfirmRemove(false);
+    setInitialForm(form);
+    closeDrawer();
+  }
+
+  async function toggleWebhook(webhook: NotificationWebhookItem, isEnabled: boolean) {
+    await run(`toggle:${webhook.id}`, async () => {
+      const response = await authedFetch(`/api/notification-webhooks/${webhook.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: webhook.name, url: webhook.url, eventFilters: webhook.eventFilters, isEnabled }) });
+      if (!response.ok) throw new Error(`Could not ${isEnabled ? "enable" : "pause"} ${webhook.name}.`);
+    });
+    if (mode.kind === "edit" && mode.id === webhook.id && !dirty) {
+      const next = { ...form, isEnabled };
+      setForm(next);
+      setInitialForm(next);
     }
   }
 
-  async function handleDelete(webhook: NotificationWebhookItem) {
-    if (!window.confirm(`Remove webhook "${webhook.name}"? This cannot be undone.`)) return;
-    setBusyKey(`delete:${webhook.id}`);
-    try {
-      const res = await authedFetch(`/api/notification-webhooks/${webhook.id}`, { method: "DELETE" });
-      if (!res.ok && res.status !== 204) throw new Error("Webhook could not be removed.");
-      toast.success("Webhook removed");
-      revalidator.revalidate();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Remove failed.");
-    } finally {
-      setBusyKey(null);
-    }
+  async function sendTest() {
+    if (mode.kind !== "edit") return;
+    const id = mode.id;
+    await run("test", async () => {
+      const response = await authedFetch(`/api/notification-webhooks/${id}/test`, { method: "POST" });
+      if (!response.ok) throw new Error("Test notification could not be sent.");
+    }, `Test event sent to ${editing?.name ?? "the webhook"}`);
+  }
+
+  async function toggleGlobal(enabled: boolean) {
+    await run("global", async () => {
+      const response = await authedFetch("/api/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...settings, enableNotifications: enabled }) });
+      if (!response.ok) throw new Error("Could not update notifications.");
+    });
   }
 
   return (
-    <SettingsShell
-      title="Notifications"
-      description="Send outbound webhook events to Discord, Slack, Gotify, ntfy, or any HTTP endpoint when Deluno grabs, imports, upgrades, or detects a health issue."
-    >
-      <section className={`flex flex-wrap items-center justify-between gap-[var(--grid-gap)] rounded-2xl border p-4 ${notificationsEnabled ? "border-success/25 bg-success/[0.04]" : "border-warning/30 bg-warning/[0.05]"}`}>
-        <div>
-          <h2 className="font-semibold text-foreground">Notifications are {notificationsEnabled ? "enabled" : "paused"}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{notificationsEnabled ? "Enabled webhook endpoints can receive the events they are configured for." : "Webhook settings are kept, but Deluno will not send them until you resume notifications."}</p>
-        </div>
-        <Button type="button" variant={notificationsEnabled ? "outline" : "default"} disabled={busyKey === "global"} onClick={() => void toggleNotifications()}>{busyKey === "global" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}{notificationsEnabled ? "Pause notifications" : "Resume notifications"}</Button>
-      </section>
-      <div className="settings-split settings-split-config-heavy">
-        <div className="settings-panel space-y-[calc(var(--field-group-pad)*0.9)]">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="font-semibold text-foreground">Webhook endpoints</h3>
-              <p className="text-[12px] text-muted-foreground">
-                Deluno will POST a JSON payload to each enabled endpoint when the selected events fire.
-              </p>
-            </div>
-            {!showCreate && (
-              <Button size="sm" onClick={() => setShowCreate(true)} className="gap-2 shrink-0">
-                <Plus className="h-4 w-4" />
-                Add webhook
+    <div className="grid gap-[var(--page-gap)]">
+      <PageToolbar
+        actions={
+          <Button type="button" onClick={() => open(null)}>
+            <Plus className="h-4 w-4" />
+            New webhook
+          </Button>
+        }
+      />
+
+      <ListCard title="Webhooks" count={webhooks.length ? `${webhooks.length} ${webhooks.length === 1 ? "webhook" : "webhooks"} · ${webhooks.filter((webhook) => webhook.isEnabled).length} enabled` : undefined}>
+        {webhooks.length === 0 ? (
+          <ListEmpty
+            title="No webhooks yet"
+            description="Deluno can POST a JSON payload to any URL when it grabs, imports or upgrades a title, or when a health check fails."
+            actions={
+              <Button type="button" size="sm" onClick={() => open(null)}>
+                <Plus className="h-3.5 w-3.5" />
+                New webhook
               </Button>
-            )}
-          </div>
+            }
+          />
+        ) : (
+          <ListTable columns={[{ label: "Name" }, { label: "Sends to", width: "minmax(0,1.4fr)" }, { label: "Events" }, { label: "Last fired" }, { label: "Status", width: LIST_TRACK.status, mobile: true }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]}>
+            {sorted.map((webhook) => {
+              const chip = statusChip(webhook, settings.enableNotifications);
+              return (
+                <ListRow key={webhook.id} onClick={() => open(webhook)} selected={mode.kind === "edit" && mode.id === webhook.id}>
+                  <ListNameCell name={webhook.name} sub={webhook.lastError ? "Last delivery failed" : "Outbound webhook"} />
+                  <ListCell mono primary={webhook.url} />
+                  <ListCell primary={eventLabel(webhook.eventFilters)} secondary={webhook.eventFilters === "all" ? "Every event type" : "Filtered"} />
+                  <ListCell numeric primary={webhook.lastFiredUtc ? relative(webhook.lastFiredUtc) : <span className="text-muted-foreground">Never</span>} secondary={webhook.lastError ?? undefined} />
+                  <ListCell mobile>
+                    <Chip tone={chip.tone}>{chip.label}</Chip>
+                  </ListCell>
+                  <ListCell mobile>
+                    <Switch size="sm" aria-label={`${webhook.isEnabled ? "Pause" : "Enable"} ${webhook.name}`} checked={webhook.isEnabled} disabled={busy === `toggle:${webhook.id}`} onCheckedChange={(checked) => void toggleWebhook(webhook, checked)} />
+                  </ListCell>
+                </ListRow>
+              );
+            })}
+          </ListTable>
+        )}
+      </ListCard>
 
-          {showCreate && (
-            <div className="rounded-2xl border border-primary/25 bg-surface-1 p-5 shadow-[0_0_30px_hsl(var(--primary)/0.06)]">
-              <div className="mb-4 flex items-center justify-between">
-                <p className="font-semibold text-foreground">New webhook</p>
-                <button
-                  type="button"
-                  onClick={() => { setShowCreate(false); setForm(emptyForm()); }}
-                  className="rounded-xl p-1.5 text-muted-foreground hover:bg-muted/30 hover:text-foreground"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-              <form className="space-y-3" onSubmit={handleCreate}>
-                <FieldRow label="Name">
-                  <Input
-                    value={form.name}
-                    onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
-                    placeholder="Discord alerts"
-                  />
-                </FieldRow>
-                <FieldRow label="URL">
-                  <Input
-                    value={form.url}
-                    onChange={(e) => setForm((prev) => ({ ...prev, url: e.target.value }))}
-                    placeholder="https://discord.com/api/webhooks/..."
-                    required
-                    type="url"
-                  />
-                </FieldRow>
-                <FieldRow label="Events">
-                  <select
-                    value={form.eventFilters}
-                    onChange={(e) => setForm((prev) => ({ ...prev, eventFilters: e.target.value }))}
-                    className="density-control-text h-[var(--control-height)] w-full rounded-xl border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none"
-                  >
-                    {EVENT_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </select>
-                </FieldRow>
-                <label className="flex items-center gap-3 text-[13px] text-foreground">
-                  <input
-                    type="checkbox"
-                    checked={form.isEnabled}
-                    onChange={(e) => setForm((prev) => ({ ...prev, isEnabled: e.target.checked }))}
-                  />
-                  Enable immediately
-                </label>
-                <div className="flex gap-2 pt-1">
-                  <Button type="submit" size="sm" disabled={busyKey === "create"} className="gap-2">
-                    {busyKey === "create" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Bell className="h-4 w-4" />}
-                    Add webhook
-                  </Button>
-                  <Button type="button" size="sm" variant="ghost" onClick={() => { setShowCreate(false); setForm(emptyForm()); }}>
-                    Cancel
-                  </Button>
-                </div>
-              </form>
-            </div>
-          )}
+      <ListCard title="Delivery">
+        <ListTable columns={[{ label: "Setting" }, { label: "Applies to" }, { label: "Status", width: LIST_TRACK.status, mobile: true }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]} chevron={false}>
+          <ListRow>
+            <ListNameCell name="Send notifications" sub="Master switch. When off, no webhook fires — including tests." />
+            <ListCell primary="All webhooks" secondary={`${webhooks.length} configured`} />
+            <ListCell mobile>
+              <Chip tone={settings.enableNotifications ? "ok" : "muted"}>{settings.enableNotifications ? "Sending" : "Paused"}</Chip>
+            </ListCell>
+            <ListCell mobile>
+              <Switch size="sm" aria-label="Send notifications" checked={settings.enableNotifications} disabled={busy === "global"} onCheckedChange={(checked) => void toggleGlobal(checked)} />
+            </ListCell>
+          </ListRow>
+        </ListTable>
+      </ListCard>
 
-          {webhooks.length > 0 ? (
-            <div className="space-y-2.5">
-              {webhooks.map((webhook) => (
-                <div
-                  key={webhook.id}
-                  className={`group rounded-2xl border border-hairline bg-surface-1 p-4 transition-opacity ${!webhook.isEnabled ? "opacity-60" : ""}`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-medium text-foreground">{webhook.name}</p>
-                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-                          webhook.isEnabled
-                            ? "border-success/30 bg-success/10 text-success"
-                            : "border-hairline text-muted-foreground"
-                        }`}>
-                          {webhook.isEnabled ? "enabled" : "disabled"}
-                        </span>
-                        <span className="rounded-full border border-hairline px-2 py-0.5 text-[10px] text-muted-foreground">
-                          {webhook.eventFilters}
-                        </span>
-                      </div>
-                      <p className="mt-1 break-all font-mono text-[11px] text-muted-foreground">{webhook.url}</p>
-                      {webhook.lastFiredUtc && (
-                        <p className="mt-0.5 text-[11px] text-muted-foreground">
-                          Last fired: {new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(webhook.lastFiredUtc))}
-                        </p>
-                      )}
-                      {webhook.lastError && (
-                        <p className="mt-0.5 text-[11px] text-destructive">{webhook.lastError}</p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => void handleToggle(webhook)}
-                        disabled={busyKey === `toggle:${webhook.id}`}
-                        className="gap-1.5"
-                      >
-                        {busyKey === `toggle:${webhook.id}` ? (
-                          <LoaderCircle className="h-3 w-3 animate-spin" />
-                        ) : webhook.isEnabled ? (
-                          <X className="h-3 w-3" />
-                        ) : (
-                          <CheckCircle2 className="h-3 w-3" />
-                        )}
-                        {webhook.isEnabled ? "Disable" : "Enable"}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => void handleTest(webhook)}
-                        disabled={busyKey === `test:${webhook.id}` || !webhook.isEnabled}
-                        title={webhook.isEnabled ? "Send a test event to this webhook" : "Enable the webhook before testing"}
-                        className="gap-1.5"
-                      >
-                        {busyKey === `test:${webhook.id}` ? <LoaderCircle className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-                        Test
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => void handleDelete(webhook)}
-                        disabled={busyKey === `delete:${webhook.id}`}
-                        title="Remove webhook"
-                      >
-                        {busyKey === `delete:${webhook.id}` ? (
-                          <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : !showCreate ? (
-            <div className="flex flex-col items-center gap-[var(--grid-gap)] rounded-2xl border-2 border-dashed border-hairline py-12 text-center">
-              <Bell className="h-8 w-8 text-muted-foreground/30" />
-              <div>
-                <p className="font-medium text-foreground">No webhooks yet</p>
-                <p className="mt-1 text-[12px] text-muted-foreground">
-                  Add a webhook to notify Discord, Slack, or any HTTP endpoint when Deluno acts.
-                </p>
-              </div>
-              <Button size="sm" onClick={() => setShowCreate(true)} className="gap-2">
-                <Plus className="h-4 w-4" />
-                Add webhook
-              </Button>
-            </div>
-          ) : null}
-        </div>
+      <Drawer
+        open={isOpen}
+        onOpenChange={(open) => {
+          if (!open) requestClose();
+        }}
+        title={mode.kind === "create" ? "New webhook" : editing?.name ?? form.name}
+        description={mode.kind === "create" ? "Deluno POSTs a JSON payload to this URL." : `Webhook · ${eventLabel(form.eventFilters)}`}
+        onSubmit={handleSubmit}
+        footer={<DrawerFooter state={footerState} message={saveMessage} saveLabel={mode.kind === "create" ? "Add webhook" : "Save webhook"} onCancel={requestClose} disabled={busy !== null} />}
+      >
+        <DrawerSection title="Basics">
+          <FieldRow>
+            <Field label="Name">
+              <Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="Home Assistant" autoComplete="off" />
+            </Field>
+            <Field label="Events" help="Which events trigger a POST.">
+              <Select value={form.eventFilters} onChange={(event) => setForm((current) => ({ ...current, eventFilters: event.target.value }))} options={EVENT_OPTIONS} />
+            </Field>
+          </FieldRow>
+          <Field label="URL" error={urlError} help="Deluno sends a JSON body; no authentication headers are added.">
+            <Input value={form.url} onChange={(event) => { setUrlError(null); setForm((current) => ({ ...current, url: event.target.value })); }} placeholder="https://example.com/hooks/deluno" className="font-mono text-[length:var(--type-caption)]" autoComplete="off" spellCheck={false} />
+          </Field>
+          <SwitchRow label="Enabled" description="Paused webhooks stay configured but never fire." checked={form.isEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, isEnabled: checked }))} />
+        </DrawerSection>
 
-        <Card className="settings-panel">
-          <CardHeader>
-            <CardTitle>How webhooks work</CardTitle>
-            <CardDescription>
-              Deluno sends a JSON POST to every enabled webhook when a matching event fires.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-[var(--page-gap)] text-[13px] text-muted-foreground">
-            <div className="space-y-3">
-              {[
-                {
-                  event: "grab",
-                  desc: "Fires when Deluno dispatches a download to a client. Payload includes title, quality, indexer, and release name."
-                },
-                {
-                  event: "import",
-                  desc: "Fires after a file is moved to the library root. Payload includes final path, quality, and movie or episode details."
-                },
-                {
-                  event: "upgrade",
-                  desc: "Fires when an existing file is replaced with a better quality copy. Includes quality delta."
-                },
-                {
-                  event: "health",
-                  desc: "Fires when an indexer, download client, or metadata provider enters an unhealthy state."
-                }
-              ].map((item) => (
-                <div key={item.event} className="rounded-xl border border-hairline bg-surface-1 p-3">
-                  <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-primary">{item.event}</p>
-                  <p className="mt-1">{item.desc}</p>
-                </div>
-              ))}
-            </div>
+        {editing ? (
+          <DrawerSection title="Delivery" aside={editing.lastFiredUtc ? `last fired ${relative(editing.lastFiredUtc)}` : "never fired"}>
+            {editing.lastError ? <p className="text-[length:var(--type-caption)] text-destructive">{editing.lastError}</p> : null}
+            {!settings.enableNotifications ? <p className="text-[length:var(--type-caption)] text-warning">Notifications are paused for the whole install, so this webhook will not fire.</p> : null}
+            <Button type="button" variant="outline" size="sm" className="w-max" onClick={() => void sendTest()} disabled={busy !== null || dirty}>
+              {busy === "test" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+              Send a test event
+            </Button>
+            {dirty ? <p className="text-[length:var(--type-caption)] text-muted-foreground">Save your changes first.</p> : null}
+          </DrawerSection>
+        ) : null}
 
-            <div className="rounded-xl border border-hairline bg-surface-1 p-3">
-              <p className="font-semibold text-foreground">Compatible services</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {["Discord", "Slack", "Gotify", "ntfy", "Apprise", "Zapier", "n8n", "Any HTTP endpoint"].map((s) => (
-                  <span key={s} className="rounded-full border border-hairline px-2 py-0.5 text-[11px] text-muted-foreground">{s}</span>
-                ))}
-              </div>
-            </div>
+        {editing ? (
+          <DrawerSection>
+            <DrawerDanger title="Delete this webhook" description="Nothing else changes; Deluno just stops posting here." action={<Button type="button" variant="destructive" size="sm" onClick={() => setConfirmRemove(true)} disabled={busy !== null}>Delete</Button>} />
+          </DrawerSection>
+        ) : null}
+      </Drawer>
 
-            <div className="rounded-xl border border-hairline bg-surface-1 p-3">
-              <p className="font-semibold text-foreground">Payload shape</p>
-              <pre className="mt-2 overflow-x-auto text-[11px] text-muted-foreground">{`{
-  "event": "grab",
-  "title": "The Matrix",
-  "quality": "Bluray 1080p",
-  "releaseName": "The.Matrix.1999...",
-  "indexer": "NZBGeek",
-  "timestamp": "2026-01-01T00:00:00Z"
-}`}</pre>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </SettingsShell>
+      <ConfirmDialog open={confirmRemove} onOpenChange={setConfirmRemove} title={`Delete “${editing?.name ?? form.name}”?`} description="Deluno stops posting to this URL. This cannot be undone." confirmLabel="Delete webhook" busy={busy === "remove"} onConfirm={() => void handleRemove()} />
+      <ConfirmDialog
+        open={confirmDiscard || blocker.state === "blocked"}
+        onOpenChange={(open) => {
+          if (open) return;
+          setConfirmDiscard(false);
+          if (blocker.state === "blocked") blocker.reset();
+        }}
+        title="Discard unsaved changes?"
+        description="Your edits to this webhook haven't been saved."
+        confirmLabel="Discard"
+        onConfirm={() => {
+          setConfirmDiscard(false);
+          if (blocker.state === "blocked") {
+            setMode({ kind: "closed" });
+            blocker.proceed();
+          } else {
+            closeDrawer();
+          }
+        }}
+      />
+    </div>
   );
 }
 
-function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="density-field rounded-xl border border-hairline bg-surface-1">
-      <p className="density-label uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
-      <div style={{ marginTop: "var(--field-label-gap)" }}>{children}</div>
-    </div>
-  );
+/* --------------------------------------------------------------- utils */
+
+function emptyForm(): WebhookForm {
+  return { name: "", url: "", eventFilters: "all", isEnabled: true };
+}
+function eventLabel(value: string) {
+  return EVENT_OPTIONS.find((option) => option.value === value)?.label.split(" — ")[0] ?? value;
+}
+function statusChip(webhook: NotificationWebhookItem, globallyEnabled: boolean): { tone: NonNullable<ChipProps["tone"]>; label: string } {
+  if (!webhook.isEnabled) return { tone: "muted", label: "Off" };
+  if (!globallyEnabled) return { tone: "warn", label: "Paused" };
+  if (webhook.lastError) return { tone: "bad", label: "Failing" };
+  return webhook.lastFiredUtc ? { tone: "ok", label: "Delivering" } : { tone: "muted", label: "Untested" };
+}
+function relative(iso: string) {
+  const minutes = Math.round(Math.abs(Date.now() - new Date(iso).getTime()) / 60000);
+  return minutes < 1 ? "just now" : minutes < 60 ? `${minutes} min ago` : minutes < 60 * 48 ? `${Math.round(minutes / 60)} h ago` : `${Math.round(minutes / 1440)} d ago`;
 }

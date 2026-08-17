@@ -132,7 +132,8 @@ const settingsPageMeta = [
   {
     match: (path: string) => path.startsWith("/settings/quality"),
     title: "Size rules",
-    description: "File-size boundaries Media Plans use to reject releases that are too small or too large."
+    description: "File-size boundaries Media Plans use to reject releases that are too small or too large.",
+    chrome: "none"
   },
   {
     match: (path: string) => path.startsWith("/settings/custom-formats"),
@@ -174,7 +175,8 @@ const settingsPageMeta = [
   {
     match: (path: string) => path.startsWith("/settings/notifications"),
     title: "Notifications",
-    description: "Outbound webhook events for grabs, imports, upgrades, and health alerts."
+    description: "Outbound webhook events for grabs, imports, upgrades, and health alerts.",
+    chrome: "none"
   },
   {
     match: (path: string) => path.startsWith("/settings/ui"),

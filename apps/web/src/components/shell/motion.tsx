@@ -24,18 +24,21 @@ import { useLocation, useOutlet } from "react-router-dom";
    PAGE TRANSITION — wraps <Outlet /> in the layout
 ────────────────────────────────────────────────────── */
 
+/*
+  Opacity and translate only — deliberately no `filter`. A non-none filter (even
+  `blur(0px)`) makes this wrapper the containing block for every fixed and
+  sticky descendant, which silently breaks page-level sticky bars inside routes.
+*/
 const pageVariants: Variants = {
-  initial: { opacity: 0, y: 8, filter: "blur(6px)" },
+  initial: { opacity: 0, y: 8 },
   enter: {
     opacity: 1,
     y: 0,
-    filter: "blur(0px)",
     transition: { duration: 0.32, ease: [0.2, 0.9, 0.22, 1] }
   },
   exit: {
     opacity: 0,
     y: -6,
-    filter: "blur(4px)",
     transition: { duration: 0.16, ease: [0.4, 0, 0.2, 1] }
   }
 };
