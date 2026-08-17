@@ -15,6 +15,7 @@ import { Input } from "../components/ui/input";
 import { ListCard } from "../components/ui/list-card";
 import { PageFooter } from "../components/ui/page-footer";
 import { PageToolbar } from "../components/ui/page-toolbar";
+import { SegmentedControl } from "../components/ui/segmented-control";
 import { RangeSlider } from "../components/ui/range-slider";
 import { SwitchRow } from "../components/ui/switch";
 import { configurationNavAreas } from "../components/app/settings-shell";
@@ -40,6 +41,8 @@ export function SettingsQualityPage() {
   const [saveState, setSaveState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
   const [message, setMessage] = useState<string | null>(null);
 
+  // One table at a time: 26 tiers × two units is a page nobody can scan.
+  const [scope, setScope] = useState<"movie" | "episode">("movie");
   const dirty = useMemo(() => JSON.stringify(model) !== JSON.stringify(saved), [model, saved]);
   const state: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
   const blocker = useUnsavedChanges(dirty);
@@ -83,14 +86,31 @@ export function SettingsQualityPage() {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-[var(--page-gap)]" noValidate>
-      <PageToolbar tabs={TABS} />
+      <PageToolbar
+        tabs={TABS}
+        actions={
+          <SegmentedControl<"movie" | "episode">
+            aria-label="Show sizes for"
+            className="w-auto"
+            value={scope}
+            onValueChange={setScope}
+            options={[
+              { value: "movie", label: "Movies" },
+              { value: "episode", label: "TV shows" }
+            ]}
+          />
+        }
+      />
 
       <p className="max-w-[80ch] text-[length:var(--type-body-sm)] text-muted-foreground">
         Quality decides; size protects. A quality profile chooses the allowed release tiers and the upgrade target — these limits are the final sanity check that rejects files which are implausibly small or large. They apply across every library, so adjust them only when Deluno is accepting junk or turning down legitimate releases.
       </p>
 
-      <SizeCard title="Movie file sizes" scope="movie" unit="GB" caption="Whole-film size per quality tier." tiers={model.tiers} minKey="movieMinGb" maxKey="movieMaxGb" step={0.1} onChange={updateTier} />
-      <SizeCard title="Episode file sizes" scope="episode" unit="MB" caption="Per-episode size per quality tier." tiers={model.tiers} minKey="episodeMinMb" maxKey="episodeMaxMb" step={100} onChange={updateTier} />
+      {scope === "movie" ? (
+        <SizeCard title="Movie file sizes" scope="movie" unit="GB" caption="Whole-film size per quality tier." tiers={model.tiers} minKey="movieMinGb" maxKey="movieMaxGb" step={0.1} onChange={updateTier} />
+      ) : (
+        <SizeCard title="Episode file sizes" scope="episode" unit="MB" caption="Per-episode size per quality tier." tiers={model.tiers} minKey="episodeMinMb" maxKey="episodeMaxMb" step={100} onChange={updateTier} />
+      )}
 
       <ListCard title="Upgrade behaviour" count="What happens after a file is already in the library">
         <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
@@ -163,7 +183,13 @@ function SizeCard({
               </span>
             ))}
           </div>
-          {tiers.map((tier, index) => {
+          {groupTiers(tiers).map((band) => (
+            <div key={band.label}>
+              <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-hairline bg-surface-2/90 px-[var(--card-pad-x)] py-1.5 text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground backdrop-blur">
+                <span>{band.label}</span>
+                <span className="font-normal normal-case tracking-normal opacity-70">{band.tiers.length}</span>
+              </div>
+              {band.tiers.map(({ tier, index }) => {
             const low = Number(tier[minKey]);
             const high = Number(tier[maxKey]);
             return (
@@ -190,10 +216,28 @@ function SizeCard({
               </div>
             );
           })}
+            </div>
+          ))}
         </div>
       </div>
     </ListCard>
   );
+}
+
+/** Resolution bands, so a 26-row table can be scanned instead of scrolled. */
+function groupTiers(tiers: QualityTierDefinition[]) {
+  const bands: { label: string; test: (rank: number) => boolean }[] = [
+    { label: "Low-quality sources", test: (rank) => rank < 10 },
+    { label: "SD", test: (rank) => rank >= 10 && rank < 30 },
+    { label: "720p", test: (rank) => rank >= 30 && rank < 60 },
+    { label: "1080p", test: (rank) => rank >= 60 && rank < 95 },
+    { label: "2160p", test: (rank) => rank >= 95 && rank < 125 },
+    { label: "Disc and raw", test: (rank) => rank >= 125 }
+  ];
+  const indexed = tiers.map((tier, index) => ({ tier, index }));
+  return bands
+    .map((band) => ({ label: band.label, tiers: indexed.filter((entry) => band.test(entry.tier.rank)) }))
+    .filter((band) => band.tiers.length > 0);
 }
 
 function round(value: number, step: number) {
