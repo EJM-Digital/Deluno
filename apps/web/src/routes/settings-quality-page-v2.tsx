@@ -15,10 +15,12 @@ import { Input } from "../components/ui/input";
 import { ListCard } from "../components/ui/list-card";
 import { PageFooter } from "../components/ui/page-footer";
 import { PageToolbar } from "../components/ui/page-toolbar";
+import { RangeSlider } from "../components/ui/range-slider";
 import { SwitchRow } from "../components/ui/switch";
 import { configurationNavAreas } from "../components/app/settings-shell";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { fetchJson, type QualityModelSnapshot, type QualityTierDefinition } from "../lib/api";
+import { cn } from "../lib/utils";
 import type { DrawerSaveState } from "../components/ui/drawer";
 
 const TABS = configurationNavAreas.find((area) => area.label === "Media Plans")?.items ?? [];
@@ -87,8 +89,8 @@ export function SettingsQualityPage() {
         Quality decides; size protects. A quality profile chooses the allowed release tiers and the upgrade target — these limits are the final sanity check that rejects files which are implausibly small or large. They apply across every library, so adjust them only when Deluno is accepting junk or turning down legitimate releases.
       </p>
 
-      <SizeCard title="Movie file sizes" scope="movie" unit="GB" caption="Whole-film size per quality tier." tiers={model.tiers} minKey="movieMinGb" maxKey="movieMaxGb" minMax={50} maxMin={1} maxMax={200} step={0.1} maxStep={0.5} onChange={updateTier} />
-      <SizeCard title="Episode file sizes" scope="episode" unit="MB" caption="Per-episode size per quality tier." tiers={model.tiers} minKey="episodeMinMb" maxKey="episodeMaxMb" minMax={10000} maxMin={100} maxMax={50000} step={100} maxStep={100} onChange={updateTier} />
+      <SizeCard title="Movie file sizes" scope="movie" unit="GB" caption="Whole-film size per quality tier." tiers={model.tiers} minKey="movieMinGb" maxKey="movieMaxGb" step={0.1} onChange={updateTier} />
+      <SizeCard title="Episode file sizes" scope="episode" unit="MB" caption="Per-episode size per quality tier." tiers={model.tiers} minKey="episodeMinMb" maxKey="episodeMaxMb" step={100} onChange={updateTier} />
 
       <ListCard title="Upgrade behaviour" count="What happens after a file is already in the library">
         <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
@@ -114,6 +116,13 @@ export function SettingsQualityPage() {
 
 /* ---------------------------------------------------------------- card */
 
+/** Round a ceiling up to something readable so the shared scale ends on a tidy number. */
+function niceCeiling(value: number) {
+  if (value <= 0) return 1;
+  const magnitude = 10 ** Math.floor(Math.log10(value));
+  return Math.ceil(value / (magnitude / 2)) * (magnitude / 2);
+}
+
 function SizeCard({
   title,
   scope,
@@ -122,11 +131,7 @@ function SizeCard({
   tiers,
   minKey,
   maxKey,
-  minMax,
-  maxMin,
-  maxMax,
   step,
-  maxStep,
   onChange
 }: {
   title: string;
@@ -137,90 +142,66 @@ function SizeCard({
   tiers: QualityTierDefinition[];
   minKey: keyof QualityTierDefinition;
   maxKey: keyof QualityTierDefinition;
-  minMax: number;
-  maxMin: number;
-  maxMax: number;
   step: number;
-  maxStep: number;
   onChange: (index: number, key: keyof QualityTierDefinition, value: number) => void;
 }) {
+  // One scale for every row in this table: bands become comparable down the column,
+  // and the two thumbs of a row finally sit on the same ruler.
+  const scaleMax = useMemo(() => niceCeiling(Math.max(...tiers.map((tier) => Number(tier[maxKey])), 1)), [tiers, maxKey]);
+  const format = (value: number) => (unit === "GB" ? `${value} GB` : `${value.toLocaleString()} MB`);
+
   return (
-    <ListCard title={title} count={`${caption} Values in ${unit}.`}>
+    <ListCard title={title} count={`${caption} Values in ${unit}, on a shared 0–${scaleMax.toLocaleString()} scale.`}>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[36rem] border-collapse">
-          <thead>
-            <tr className="border-b border-hairline bg-surface-2/40">
-              <th scope="col" className="h-[var(--list-thead-height)] px-[var(--card-pad-x)] text-left text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                Quality tier
-              </th>
-              <th scope="col" className="h-[var(--list-thead-height)] px-[var(--card-pad-x)] text-left text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                Minimum ({unit})
-              </th>
-              <th scope="col" className="h-[var(--list-thead-height)] px-[var(--card-pad-x)] text-left text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                Maximum ({unit})
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {tiers.map((tier, index) => (
-              <tr key={tier.name} className="border-b border-hairline last:border-b-0">
-                <th scope="row" className="min-h-[var(--list-row-height)] px-[var(--card-pad-x)] py-2 text-left align-middle">
-                  <span className="block text-[length:var(--type-body-sm)] font-semibold text-foreground">{tier.name}</span>
-                  <span className="block text-[length:var(--type-caption)] text-muted-foreground">Rank {tier.rank}</span>
-                </th>
-                <td className="px-[var(--card-pad-x)] py-2 align-middle">
-                  <SizeInput label={`${tier.name} ${scope} minimum`} value={tier[minKey] as number} min={0} max={minMax} step={step} unit={unit} onChange={(value) => onChange(index, minKey, value)} />
-                </td>
-                <td className="px-[var(--card-pad-x)] py-2 align-middle">
-                  <SizeInput label={`${tier.name} ${scope} maximum`} value={tier[maxKey] as number} min={maxMin} max={maxMax} step={maxStep} unit={unit} onChange={(value) => onChange(index, maxKey, value)} />
-                </td>
-              </tr>
+        <div className="min-w-[44rem]">
+          <div className="grid grid-cols-[13rem_minmax(10rem,1fr)_7rem_7rem] items-center gap-[var(--grid-gap)] border-b border-hairline bg-surface-2/40 px-[var(--card-pad-x)]">
+            {["Quality tier", "Accepted range", `Min (${unit})`, `Max (${unit})`].map((label, index) => (
+              <span key={label} className={cn("h-[var(--list-thead-height)] leading-[var(--list-thead-height)] text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground", index >= 2 && "text-right")}>
+                {label}
+              </span>
             ))}
-          </tbody>
-        </table>
+          </div>
+          {tiers.map((tier, index) => {
+            const low = Number(tier[minKey]);
+            const high = Number(tier[maxKey]);
+            return (
+              <div key={tier.name} className="grid min-h-[var(--list-row-height)] grid-cols-[13rem_minmax(10rem,1fr)_7rem_7rem] items-center gap-[var(--grid-gap)] border-b border-hairline px-[var(--card-pad-x)] last:border-b-0">
+                <div className="min-w-0">
+                  <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{tier.name}</span>
+                  <span className="block text-[length:var(--type-caption)] text-muted-foreground">Rank {tier.rank} · {format(low)}–{format(high)}</span>
+                </div>
+                <RangeSlider
+                  min={low}
+                  max={high}
+                  step={step}
+                  scaleMax={scaleMax}
+                  minLabel={`${tier.name} ${scope} minimum`}
+                  maxLabel={`${tier.name} ${scope} maximum`}
+                  onChange={(next) => {
+                    if (next.min !== low) onChange(index, minKey, round(next.min, step));
+                    if (next.max !== high) onChange(index, maxKey, round(next.max, step));
+                  }}
+                />
+                <SizeInput label={`${tier.name} ${scope} minimum value`} value={low} max={scaleMax} step={step} onChange={(value) => onChange(index, minKey, value)} />
+                <SizeInput label={`${tier.name} ${scope} maximum value`} value={high} max={scaleMax} step={step} onChange={(value) => onChange(index, maxKey, value)} />
+              </div>
+            );
+          })}
+        </div>
       </div>
     </ListCard>
   );
 }
 
-function SizeInput({
-  label,
-  value,
-  min,
-  max,
-  step,
-  unit,
-  onChange
-}: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  unit: string;
-  onChange: (value: number) => void;
-}) {
-  const sliderValue = Math.max(min, Math.min(max, value));
+function round(value: number, step: number) {
+  const decimals = step < 1 ? 1 : 0;
+  return Number(value.toFixed(decimals));
+}
+
+function SizeInput({ label, value, max, step, onChange }: { label: string; value: number; max: number; step: number; onChange: (value: number) => void }) {
   return (
-    <div className="flex min-w-[13rem] items-center gap-3">
-      <input
-        aria-label={`${label} slider`}
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={sliderValue}
-        onChange={(event) => onChange(Number(event.target.value))}
-        className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-surface-3 accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      />
-      <Field label={label} hideLabel className="w-[6.5rem] shrink-0">
-        <span className="relative block">
-          <Input type="number" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value || 0))} className="pr-9 text-right tabular-nums" />
-          <span aria-hidden className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[length:var(--type-caption)] text-muted-foreground">
-            {unit}
-          </span>
-        </span>
-      </Field>
-    </div>
+    <Field label={label} hideLabel>
+      <Input type="number" min={0} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value || 0))} className="px-2 text-right tabular-nums" />
+    </Field>
   );
 }

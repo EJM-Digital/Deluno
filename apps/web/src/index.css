@@ -1669,3 +1669,88 @@ html .text-\[64px\] {
   from { transform: translateX(-120%) skewX(-12deg); }
   to   { transform: translateX(160%)  skewX(-12deg); }
 }
+
+/* ── DUAL-THUMB RANGE (components/ui/range-slider.tsx) ──────────────
+   Two range inputs stacked over one track. The inputs are transparent and
+   pointer-transparent; only their thumbs take pointer events, so whichever
+   thumb is under the cursor is the one that drags. */
+.deluno-range {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: var(--control-height);
+  width: 100%;
+  min-width: 8rem;
+}
+
+.deluno-range-track {
+  position: absolute;
+  inset-inline: 0;
+  height: 6px;
+  border-radius: 999px;
+  background: hsl(var(--surface-3));
+  overflow: hidden;
+}
+
+.deluno-range-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 999px;
+  background: hsl(var(--primary));
+}
+
+.deluno-range-input {
+  position: absolute;
+  inset-inline: 0;
+  width: 100%;
+  height: var(--control-height);
+  margin: 0;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  pointer-events: none;
+}
+
+.deluno-range-input:focus-visible {
+  outline: none;
+}
+
+.deluno-range-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  pointer-events: auto;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: hsl(var(--primary));
+  border: 2px solid hsl(var(--card));
+  box-shadow: 0 1px 2px hsl(222 44% 3% / 0.45);
+  cursor: grab;
+}
+
+.deluno-range-input:active::-webkit-slider-thumb {
+  cursor: grabbing;
+}
+
+.deluno-range-input:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px hsl(var(--ring) / 0.45);
+}
+
+.deluno-range-input::-moz-range-thumb {
+  pointer-events: auto;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: hsl(var(--primary));
+  border: 2px solid hsl(var(--card));
+  cursor: grab;
+}
+
+.deluno-range-input:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 3px hsl(var(--ring) / 0.45);
+}
+
+.deluno-range-input::-moz-range-track {
+  background: transparent;
+}
