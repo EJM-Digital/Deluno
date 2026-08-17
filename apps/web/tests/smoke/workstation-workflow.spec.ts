@@ -242,7 +242,7 @@ test.describe("dashboard workflow", () => {
     await page.keyboard.press("Enter");
 
     await expect(page).toHaveURL(/\/indexers/);
-    await expect(page.getByRole("heading", { name: "Connect Deluno" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Indexers", exact: true })).toBeVisible();
   });
 
   test("keeps failed-download handling together with automation and recovery", async ({ page }) => {
@@ -458,9 +458,12 @@ test.describe("dashboard workflow", () => {
   test("explains sources and downloads as connections", async ({ page }) => {
     await authenticateAndNavigate(page, "/indexers");
 
-    await expect(page.getByRole("heading", { name: "Connect Deluno" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Manage indexers" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Manage clients" })).toBeVisible();
+    // One toolbar for the whole area: Indexers · Download clients · Library routing.
+    const tabs = page.getByRole("navigation", { name: "Sections" });
+    await expect(tabs.getByRole("link", { name: "Indexers", exact: true })).toBeVisible();
+    await expect(tabs.getByRole("link", { name: "Download clients", exact: true })).toBeVisible();
+    await expect(tabs.getByRole("link", { name: "Library routing", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Indexers", exact: true })).toBeVisible();
   });
 
   test("gives downloads and imports a clear next step", async ({ page }) => {

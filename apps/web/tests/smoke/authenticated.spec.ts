@@ -117,11 +117,12 @@ test.describe("authenticated app smoke", () => {
 
     await page.getByRole("link", { name: "Connections", exact: true }).click();
     await expect(page).toHaveURL(/\/indexers$/);
-    const downloadClients = page.getByRole("link", { name: "Download clients", exact: true });
+    const downloadClients = sidebar.getByRole("link", { name: "Download clients", exact: true });
     await expect(downloadClients).toBeVisible();
     await downloadClients.click();
     await expect(page).toHaveURL(/\/indexers\/download-clients$/);
-    await expect(page.getByText("Queue removal permission", { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Download clients", exact: true })).toBeVisible();
+    await expect(page.getByText("Remove items from the client queue", { exact: true })).toBeVisible();
   });
 
 });
