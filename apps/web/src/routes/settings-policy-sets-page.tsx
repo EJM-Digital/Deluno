@@ -1,15 +1,33 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
-import { Link, useLoaderData, useRevalidator } from "react-router-dom";
-import { ArrowRight, CheckCircle2, ChevronDown, LoaderCircle } from "lucide-react";
-import { SettingsShell } from "../components/app/settings-shell";
+/**
+ * Media plans — reference implementation of the list → drawer grammar.
+ *
+ *   PageToolbar (tabs · New plan)
+ *   ListCard (rows: name · quality · releases · used by · status · on · ›)
+ *   Drawer  (Basics · Quality & size · Releases [Fine-tune] · Used by · Delete)
+ *
+ * API contracts are unchanged: POST/PUT/DELETE /api/policy-sets and
+ * PUT /api/libraries/{id}/media-plan.
+ */
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useLoaderData, useRevalidator } from "react-router-dom";
+import { Plus } from "lucide-react";
 import { Button } from "../components/ui/button";
+import { Chip } from "../components/ui/chip";
+import { ConfirmDialog } from "../components/ui/confirm-dialog";
+import { Disclosure } from "../components/ui/disclosure";
+import { Drawer, DrawerDanger, DrawerFooter, DrawerSection, type DrawerSaveState } from "../components/ui/drawer";
+import { Field, FieldRow } from "../components/ui/field";
 import { Input } from "../components/ui/input";
-import { InputDescription } from "../components/ui/input-description";
+import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
+import { PageToolbar } from "../components/ui/page-toolbar";
 import { PresetField } from "../components/ui/preset-field";
-import { Badge } from "../components/ui/badge";
+import { SegmentedControl } from "../components/ui/segmented-control";
+import { Select } from "../components/ui/select";
+import { Switch, SwitchRow } from "../components/ui/switch";
+import { Textarea } from "../components/ui/textarea";
 import { toast } from "../components/shell/toaster";
+import { configurationNavAreas } from "../components/app/settings-shell";
 import {
-  emptyPlatformSettingsSnapshot,
   fetchJson,
   type CustomFormatItem,
   type DestinationRuleItem,
@@ -20,10 +38,9 @@ import {
 } from "../lib/api";
 import { settingsOverviewLoader } from "./settings-overview-page";
 import { authedFetch } from "../lib/use-auth";
-import { RouteSkeleton } from "../components/shell/skeleton";
-import { MEDIA_PLAN_STARTERS, type MediaPlanStarter } from "../lib/media-plan-starters";
+import { MEDIA_PLAN_STARTERS } from "../lib/media-plan-starters";
+import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { cn } from "../lib/utils";
-import { DelunoNavGlyph, type DelunoNavGlyphKind } from "../components/shell/deluno-nav-glyph";
 
 const OVERRIDE_INTERVAL_OPTIONS = [
   { label: "Use library default", value: "" },
@@ -45,6 +62,8 @@ const OVERRIDE_RETRY_OPTIONS = [
   { label: "Daily", value: "24" }
 ];
 
+const PLAN_TABS = configurationNavAreas.find((area) => area.label === "Media Plans")?.items ?? [];
+
 interface SettingsPolicySetsLoaderData {
   libraries: LibraryItem[];
   qualityProfiles: QualityProfileItem[];
@@ -56,7 +75,7 @@ interface SettingsPolicySetsLoaderData {
 
 interface PolicySetFormState {
   name: string;
-  mediaType: string;
+  mediaType: "movies" | "tv";
   qualityProfileId: string;
   destinationRuleId: string;
   customFormatIds: string[];
@@ -66,6 +85,8 @@ interface PolicySetFormState {
   isEnabled: boolean;
   notes: string;
 }
+
+type DrawerMode = { kind: "closed" } | { kind: "create" } | { kind: "edit"; id: string };
 
 export async function settingsPolicySetsLoader(): Promise<SettingsPolicySetsLoaderData> {
   const [overview, customFormats, destinationRules, policySets] = await Promise.all([
@@ -86,519 +107,589 @@ export async function settingsPolicySetsLoader(): Promise<SettingsPolicySetsLoad
 }
 
 export function SettingsPolicySetsPage() {
-  const loaderData = useLoaderData() as SettingsPolicySetsLoaderData | undefined;
-  if (!loaderData) return <RouteSkeleton />;
-  const { libraries, qualityProfiles, customFormats, destinationRules, policySets } = loaderData;
+  const { libraries, qualityProfiles, customFormats, destinationRules, policySets } = useLoaderData() as SettingsPolicySetsLoaderData;
   const revalidator = useRevalidator();
-  const [busyKey, setBusyKey] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [formState, setFormState] = useState<PolicySetFormState>(createPolicySetForm);
-  const [selectedStarterId, setSelectedStarterId] = useState<string | null>(null);
-  const [showDetailedRules, setShowDetailedRules] = useState(false);
+
+  /* ------------------------------------------------------------ list */
+  const [filter, setFilter] = useState("");
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  const visiblePlans = useMemo(() => {
+    const needle = filter.trim().toLowerCase();
+    const sorted = [...policySets].sort((a, b) => a.name.localeCompare(b.name));
+    if (!needle) return sorted;
+    return sorted.filter((plan) =>
+      [plan.name, plan.qualityProfileName ?? "", plan.destinationRuleName ?? "", plan.notes ?? ""].some((value) =>
+        value.toLowerCase().includes(needle)
+      )
+    );
+  }, [policySets, filter]);
+
+  const librariesByPlan = useMemo(() => {
+    const map = new Map<string, LibraryItem[]>();
+    for (const library of libraries) {
+      if (!library.defaultPolicySetId) continue;
+      map.set(library.defaultPolicySetId, [...(map.get(library.defaultPolicySetId) ?? []), library]);
+    }
+    return map;
+  }, [libraries]);
+
+  /* ---------------------------------------------------------- drawer */
+  const [mode, setMode] = useState<DrawerMode>({ kind: "closed" });
+  const [form, setForm] = useState<PolicySetFormState>(emptyForm);
+  const [initialForm, setInitialForm] = useState<PolicySetFormState>(emptyForm);
   const [targetLibraryIds, setTargetLibraryIds] = useState<string[]>([]);
+  const [initialTargetIds, setInitialTargetIds] = useState<string[]>([]);
+  const [starterId, setStarterId] = useState("");
+  const [fineTuneOpen, setFineTuneOpen] = useState(false);
+  const [saveState, setSaveState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [busy, setBusy] = useState(false);
 
-  const availableProfiles = useMemo(
-    () => qualityProfiles.filter((profile) => profile.mediaType === formState.mediaType),
-    [qualityProfiles, formState.mediaType]
-  );
-  const availableDestinationRules = useMemo(
-    () => destinationRules.filter((rule) => rule.mediaType === formState.mediaType),
-    [destinationRules, formState.mediaType]
-  );
-  const availableCustomFormats = useMemo(
-    () => customFormats.filter((format) => format.mediaType === formState.mediaType),
-    [customFormats, formState.mediaType]
-  );
-  const matchingLibraries = useMemo(
-    () => libraries.filter((library) => library.mediaType === formState.mediaType),
-    [libraries, formState.mediaType]
-  );
-  const selectedLibraries = useMemo(
-    () => libraries.filter((library) => targetLibraryIds.includes(library.id)),
-    [libraries, targetLibraryIds]
-  );
-  const selectedStarter = MEDIA_PLAN_STARTERS.find((starter) => starter.id === selectedStarterId);
-  const selectedQualityProfile = availableProfiles.find((profile) => profile.id === formState.qualityProfileId);
-  const selectedDestinationRule = availableDestinationRules.find((rule) => rule.id === formState.destinationRuleId);
-  const selectedCustomFormats = availableCustomFormats.filter((format) => formState.customFormatIds.includes(format.id));
+  const isOpen = mode.kind !== "closed";
+  const editingPlan = mode.kind === "edit" ? policySets.find((plan) => plan.id === mode.id) ?? null : null;
 
-  function startCreate() {
-    setEditingId(null);
-    setFormState(createPolicySetForm());
-    setSelectedStarterId(null);
-    setShowDetailedRules(false);
+  const dirty = useMemo(
+    () => isOpen && (!sameForm(form, initialForm) || !sameIds(targetLibraryIds, initialTargetIds)),
+    [isOpen, form, initialForm, targetLibraryIds, initialTargetIds]
+  );
+  const footerState: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
+
+  const blocker = useUnsavedChanges(dirty);
+
+  // Any edit clears a stale saved/error status.
+  useEffect(() => {
+    if (dirty && (saveState === "saved" || saveState === "error")) setSaveState(undefined);
+  }, [dirty, saveState]);
+
+  const availableProfiles = useMemo(() => qualityProfiles.filter((profile) => profile.mediaType === form.mediaType), [qualityProfiles, form.mediaType]);
+  const availableDestinationRules = useMemo(() => destinationRules.filter((rule) => rule.mediaType === form.mediaType), [destinationRules, form.mediaType]);
+  const availableCustomFormats = useMemo(() => customFormats.filter((format) => format.mediaType === form.mediaType), [customFormats, form.mediaType]);
+  const matchingLibraries = useMemo(() => libraries.filter((library) => library.mediaType === form.mediaType), [libraries, form.mediaType]);
+  const selectedProfile = availableProfiles.find((profile) => profile.id === form.qualityProfileId);
+
+  function openCreate() {
+    const next = emptyForm();
+    setMode({ kind: "create" });
+    setForm(next);
+    setInitialForm(next);
     setTargetLibraryIds([]);
+    setInitialTargetIds([]);
+    setStarterId("");
+    setFineTuneOpen(false);
+    setSaveState(undefined);
+    setNameError(null);
   }
 
-  function applyStarter(starter: MediaPlanStarter) {
-    const matchingLibraries = libraries.filter((library) => library.mediaType === starter.values.mediaType);
-    setEditingId(null);
-    setFormState({
-      ...createPolicySetForm(),
-      ...starter.values
-    });
-    setSelectedStarterId(starter.id);
-    setShowDetailedRules(false);
-    setTargetLibraryIds(matchingLibraries.length === 1 && matchingLibraries[0] ? [matchingLibraries[0].id] : []);
+  function openEdit(plan: PolicySetItem) {
+    const next = formFromPlan(plan);
+    const assigned = (librariesByPlan.get(plan.id) ?? []).map((library) => library.id);
+    setMode({ kind: "edit", id: plan.id });
+    setForm(next);
+    setInitialForm(next);
+    setTargetLibraryIds(assigned);
+    setInitialTargetIds(assigned);
+    setStarterId("");
+    setFineTuneOpen(false);
+    setSaveState(undefined);
+    setNameError(null);
   }
 
-  function startEdit(policySet: PolicySetItem) {
-    setEditingId(policySet.id);
-    setSelectedStarterId(null);
-    setShowDetailedRules(false);
-    setTargetLibraryIds(libraries.filter((library) => library.defaultPolicySetId === policySet.id).map((library) => library.id));
-    setFormState({
-      name: policySet.name,
-      mediaType: policySet.mediaType,
-      qualityProfileId: policySet.qualityProfileId ?? "",
-      destinationRuleId: policySet.destinationRuleId ?? "",
-      customFormatIds: splitCsv(policySet.customFormatIds),
-      searchIntervalOverrideHours: policySet.searchIntervalOverrideHours?.toString() ?? "",
-      retryDelayOverrideHours: policySet.retryDelayOverrideHours?.toString() ?? "",
-      upgradeUntilCutoff: policySet.upgradeUntilCutoff,
-      isEnabled: policySet.isEnabled,
-      notes: policySet.notes ?? ""
-    });
+  function closeDrawer() {
+    setMode({ kind: "closed" });
+    setConfirmDiscard(false);
+  }
+
+  function requestClose() {
+    if (dirty) setConfirmDiscard(true);
+    else closeDrawer();
+  }
+
+  function applyStarter(id: string) {
+    setStarterId(id);
+    const starter = MEDIA_PLAN_STARTERS.find((item) => item.id === id);
+    if (!starter) {
+      setForm(emptyForm());
+      setTargetLibraryIds([]);
+      return;
+    }
+    setForm({ ...emptyForm(), ...starter.values });
+    const matches = libraries.filter((library) => library.mediaType === starter.values.mediaType);
+    setTargetLibraryIds(matches.length === 1 && matches[0] ? [matches[0].id] : []);
+  }
+
+  function setMediaType(mediaType: "movies" | "tv") {
+    if (mediaType === form.mediaType) return;
+    setTargetLibraryIds([]);
+    setForm((current) => ({ ...current, mediaType, qualityProfileId: "", destinationRuleId: "", customFormatIds: [] }));
   }
 
   function toggleCustomFormat(id: string) {
-    setFormState((current) => ({
+    setForm((current) => ({
       ...current,
-      customFormatIds: current.customFormatIds.includes(id)
-        ? current.customFormatIds.filter((item) => item !== id)
-        : [...current.customFormatIds, id]
+      customFormatIds: current.customFormatIds.includes(id) ? current.customFormatIds.filter((item) => item !== id) : [...current.customFormatIds, id]
     }));
   }
 
-  function toggleTargetLibrary(id: string) {
-    setTargetLibraryIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  function toggleTargetLibrary(id: string, on: boolean) {
+    setTargetLibraryIds((current) => (on ? [...new Set([...current, id])] : current.filter((item) => item !== id)));
   }
 
+  /* ---------------------------------------------------------- saving */
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const isEditing = editingId !== null;
-    const previouslyAssignedLibraryIds = isEditing
-      ? libraries.filter((library) => library.defaultPolicySetId === editingId).map((library) => library.id)
-      : [];
-    setBusyKey(isEditing ? `save:${editingId}` : "create");
+    if (!isOpen || busy) return;
+    if (!form.name.trim()) {
+      setNameError("Give the plan a name.");
+      return;
+    }
+    setNameError(null);
+    setBusy(true);
+    setSaveState("saving");
+
+    const isEditing = mode.kind === "edit";
+    const planId = mode.kind === "edit" ? mode.id : null;
 
     try {
-      const response = await authedFetch(isEditing ? `/api/policy-sets/${editingId}` : "/api/policy-sets", {
+      const response = await authedFetch(isEditing ? `/api/policy-sets/${planId}` : "/api/policy-sets", {
         method: isEditing ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...formState,
-          qualityProfileId: formState.qualityProfileId || null,
-          destinationRuleId: formState.destinationRuleId || null,
-          customFormatIds: formState.customFormatIds.join(", "),
-          searchIntervalOverrideHours: formState.searchIntervalOverrideHours ? Number(formState.searchIntervalOverrideHours) : null,
-          retryDelayOverrideHours: formState.retryDelayOverrideHours ? Number(formState.retryDelayOverrideHours) : null
-        })
+        body: JSON.stringify(toPayload(form))
       });
-
       if (!response.ok) {
         throw new Error(isEditing ? "Media plan could not be updated." : "Media plan could not be created.");
       }
+      const saved = (await response.json()) as PolicySetItem;
 
-      const savedPlan = await response.json() as PolicySetItem;
-      const assignments = await Promise.all([
-        ...previouslyAssignedLibraryIds
-          .filter((libraryId) => !targetLibraryIds.includes(libraryId))
-          .map(async (libraryId) => {
-            const assignment = await authedFetch(`/api/libraries/${libraryId}/media-plan`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ policySetId: null })
-            });
-            return assignment.ok;
-          }),
-        ...targetLibraryIds.map(async (libraryId) => {
-          const assignment = await authedFetch(`/api/libraries/${libraryId}/media-plan`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ policySetId: savedPlan.id })
-          });
-          return assignment.ok;
-        })
+      const toClear = initialTargetIds.filter((id) => !targetLibraryIds.includes(id));
+      const toAssign = targetLibraryIds.filter((id) => !initialTargetIds.includes(id));
+      const outcomes = await Promise.all([
+        ...toClear.map((id) => assignPlan(id, null).then((ok) => ({ id, ok }))),
+        ...toAssign.map((id) => assignPlan(id, saved.id).then((ok) => ({ id, ok })))
       ]);
-      if (assignments.some((assigned) => !assigned)) {
-        throw new Error("Media plan was saved, but could not be applied to every selected library.");
-      }
+      const failed = outcomes.filter((outcome) => !outcome.ok).map((outcome) => libraries.find((library) => library.id === outcome.id)?.name ?? outcome.id);
 
-      toast.success(isEditing ? "Media plan updated" : "Media plan created");
-      startCreate();
+      const savedForm = formFromPlan(saved);
+      setForm(savedForm);
+      setInitialForm(savedForm);
+      const settledTargets = targetLibraryIds.filter((id) => !failed.includes(libraries.find((library) => library.id === id)?.name ?? id));
+      setTargetLibraryIds(settledTargets);
+      setInitialTargetIds(settledTargets);
+      if (mode.kind === "create") setMode({ kind: "edit", id: saved.id });
+
+      // The footer status is the feedback here; toasts are reserved for
+      // outcomes that happen away from the drawer.
+      if (failed.length) {
+        setSaveState("error");
+        setSaveMessage(`Plan saved, but not applied to ${failed.join(", ")}`);
+      } else {
+        setSaveState("saved");
+        setSaveMessage(isEditing ? "Saved just now" : "Plan created");
+      }
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Media plan action failed.");
+      setSaveState("error");
+      setSaveMessage(error instanceof Error ? error.message : "Could not save");
     } finally {
-      setBusyKey(null);
+      setBusy(false);
     }
   }
 
-  async function handleDelete(policySetId: string) {
-    setBusyKey(`delete:${policySetId}`);
+  async function handleDelete() {
+    if (mode.kind !== "edit") return;
+    setBusy(true);
     try {
-      const response = await authedFetch(`/api/policy-sets/${policySetId}`, { method: "DELETE" });
-      if (!response.ok && response.status !== 204) {
-        throw new Error("Media plan could not be removed.");
-      }
-
+      const response = await authedFetch(`/api/policy-sets/${mode.id}`, { method: "DELETE" });
+      if (!response.ok && response.status !== 204) throw new Error("Media plan could not be removed.");
       toast.success("Media plan removed");
-      if (editingId === policySetId) {
-        startCreate();
-      }
+      setConfirmDelete(false);
+      setInitialForm(form);
+      setInitialTargetIds(targetLibraryIds);
+      closeDrawer();
       revalidator.revalidate();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Media plan could not be removed.");
     } finally {
-      setBusyKey(null);
+      setBusy(false);
     }
   }
 
+  async function toggleEnabled(plan: PolicySetItem, isEnabled: boolean) {
+    setTogglingId(plan.id);
+    try {
+      const response = await authedFetch(`/api/policy-sets/${plan.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(toPayload({ ...formFromPlan(plan), isEnabled }))
+      });
+      if (!response.ok) throw new Error(`Could not ${isEnabled ? "enable" : "pause"} ${plan.name}.`);
+      if (mode.kind === "edit" && mode.id === plan.id && !dirty) {
+        const next = { ...form, isEnabled };
+        setForm(next);
+        setInitialForm(next);
+      }
+      revalidator.revalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Media plan could not be updated.");
+    } finally {
+      setTogglingId(null);
+    }
+  }
+
+  /* ---------------------------------------------------------- render */
+  const usedByCount = (planId: string) => librariesByPlan.get(planId)?.length ?? 0;
+  const drawerTitle = mode.kind === "create" ? "New media plan" : editingPlan?.name ?? (form.name || "Media plan");
+  const drawerDescription =
+    mode.kind === "create"
+      ? "Pick a starter or begin blank, then save."
+      : `Media plan · ${form.mediaType === "tv" ? "TV" : "Movies"} · ${describeUsage(usedByCount(editingPlan?.id ?? ""))}`;
+
   return (
-    <SettingsShell
-      title="Media Plans"
-      description="Create the plan Deluno follows for quality, size, releases, and upgrades."
-    >
-      <div className="space-y-3">
-        <section className="overflow-hidden rounded-xl border border-hairline bg-card shadow-card dark:border-white/[0.07]">
-          <header className="flex min-h-[3.25rem] flex-wrap items-center justify-between gap-3 border-b border-hairline bg-surface-2/45 px-4 py-2.5">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="font-display text-[length:var(--type-card-title)] font-semibold text-foreground">
-                  {editingId ? "Edit media plan" : "Create media plan"}
-                </h2>
-                <Badge variant={formState.isEnabled ? "success" : "default"}>{formState.isEnabled ? "Enabled" : "Paused"}</Badge>
-                <Badge variant="info">{formState.mediaType === "tv" ? "TV" : "Movies"}</Badge>
-              </div>
-              <p className="mt-0.5 text-[length:var(--type-caption)] text-muted-foreground">
-                Pick a starter, set the normal path, then tune only the rules this plan needs.
-              </p>
-            </div>
-            {editingId ? (
-              <Button type="button" variant="outline" size="sm" onClick={startCreate}>
+    <div className="grid gap-[var(--page-gap)]">
+      <PageToolbar
+        tabs={PLAN_TABS}
+        actions={
+          <Button type="button" onClick={openCreate}>
+            <Plus className="h-4 w-4" />
+            New plan
+          </Button>
+        }
+      />
+
+      <ListCard
+        title="Media plans"
+        count={`${policySets.length} ${policySets.length === 1 ? "plan" : "plans"} · ${policySets.filter((plan) => plan.isEnabled).length} enabled`}
+        filter={policySets.length > 3 ? { value: filter, onChange: setFilter, placeholder: "Filter plans" } : undefined}
+      >
+        {policySets.length === 0 ? (
+          <ListEmpty
+            title="No media plans yet"
+            description="A plan is the single source of truth for quality, size, releases, upgrades and search timing. Each library follows one by default."
+            actions={
+              <Button type="button" size="sm" onClick={openCreate}>
+                <Plus className="h-3.5 w-3.5" />
                 New plan
               </Button>
-            ) : null}
-          </header>
-
-          <div className="grid xl:grid-cols-[280px_minmax(0,1fr)_320px]">
-            <aside className="border-b border-hairline bg-background/20 p-3 xl:border-b-0 xl:border-r">
-              <div className="mb-3">
-                <p className="text-[length:var(--type-body-sm)] font-semibold text-foreground">Plan starters</p>
-                <p className="mt-0.5 text-[length:var(--type-caption)] text-muted-foreground">Defaults are editable templates, not locked presets.</p>
-              </div>
-              <div className="space-y-2">
-                <PlanStarterChoice
-                  active={!editingId && selectedStarterId === null}
-                  title="Blank custom plan"
-                  description="Start empty when none of the defaults match."
-                  onClick={startCreate}
-                />
-                {MEDIA_PLAN_STARTERS.map((starter) => (
-                  <PlanStarterChoice
-                    key={starter.id}
-                    active={!editingId && selectedStarterId === starter.id}
-                    title={starter.title}
-                    description={starter.description}
-                    onClick={() => applyStarter(starter)}
-                  />
-                ))}
-              </div>
-            </aside>
-
-            <form onSubmit={handleSubmit} className="min-w-0">
-              <div className="space-y-[var(--page-gap)] p-4">
-                <FormSection title="Basics">
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <Field label="Plan name">
-                      <Input className="bg-surface-2" value={formState.name} onChange={(event) => setFormState((current) => ({ ...current, name: event.target.value }))} />
-                    </Field>
-                    <Field label="Media type">
-                      <select
-                        value={formState.mediaType}
-                        onChange={(event) => {
-                          setTargetLibraryIds([]);
-                          setFormState((current) => ({
-                            ...current,
-                            mediaType: event.target.value,
-                            qualityProfileId: "",
-                            destinationRuleId: "",
-                            customFormatIds: []
-                          }));
-                        }}
-                        className="density-control-text h-[var(--control-height)] w-full rounded-lg border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      >
-                        <option value="movies">Movies</option>
-                        <option value="tv">TV</option>
-                      </select>
-                    </Field>
-                    <Field label="Quality goal">
-                      <select
-                        value={formState.qualityProfileId}
-                        onChange={(event) => setFormState((current) => ({ ...current, qualityProfileId: event.target.value }))}
-                        className="density-control-text h-[var(--control-height)] w-full rounded-lg border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      >
-                        <option value="">Choose later</option>
-                        {availableProfiles.map((profile) => (
-                          <option key={profile.id} value={profile.id}>
-                            {profile.name}
-                          </option>
-                        ))}
-                      </select>
-                    </Field>
-                    <Field label="Destination exception" description="Leave on library default unless this plan needs another final folder.">
-                      <select
-                        value={formState.destinationRuleId}
-                        onChange={(event) => setFormState((current) => ({ ...current, destinationRuleId: event.target.value }))}
-                        className="density-control-text h-[var(--control-height)] w-full rounded-lg border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      >
-                        <option value="">Use library default folder</option>
-                        {availableDestinationRules.map((rule) => (
-                          <option key={rule.id} value={rule.id}>
-                            {rule.name}
-                          </option>
-                        ))}
-                      </select>
-                    </Field>
-                  </div>
-                </FormSection>
-
-                <FormSection title="Apply to libraries" description="For simple setups, choose your one library. Reuse a plan only where the same rules really fit.">
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {matchingLibraries.map((library) => {
-                      const active = targetLibraryIds.includes(library.id);
-                      return (
-                        <label
-                          key={library.id}
-                          className={cn(
-                            "group grid min-h-[4rem] cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-start gap-3 rounded-lg border px-3 py-2.5 text-sm transition-colors",
-                            active
-                              ? "border-primary/45 bg-primary/10 text-foreground"
-                              : "border-hairline bg-surface-2/60 text-foreground hover:border-primary/30 hover:bg-primary/[0.035]"
-                          )}
-                        >
-                          <input className="mt-1" type="checkbox" checked={active} onChange={() => toggleTargetLibrary(library.id)} />
-                          <span className="min-w-0">
-                            <span className="block font-semibold">{library.name}</span>
-                            <span className="mt-0.5 block truncate text-xs text-muted-foreground">{library.rootPath}</span>
-                          </span>
-                        </label>
-                      );
-                    })}
-                    {matchingLibraries.length === 0 ? (
-                      <EmptyPanel>Create a {formState.mediaType === "tv" ? "TV" : "Movies"} library first, or assign this plan later from Library folders.</EmptyPanel>
-                    ) : null}
-                  </div>
-                </FormSection>
-
-                <div className="rounded-lg border border-hairline bg-surface-1/70">
-                  <button
-                    type="button"
-                    onClick={() => setShowDetailedRules((current) => !current)}
-                    className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/25"
-                    aria-expanded={showDetailedRules}
-                  >
-                    <span>
-                      <span className="block text-sm font-semibold text-foreground">Fine-tune rules</span>
-                      <span className="mt-0.5 block text-sm text-muted-foreground">Search timing, release preferences, and notes.</span>
-                    </span>
-                    <ChevronDown className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform ${showDetailedRules ? "rotate-180" : ""}`} />
-                  </button>
-
-                  {showDetailedRules ? (
-                    <div className="space-y-[var(--page-gap)] border-t border-hairline p-4">
-                      <div className="grid gap-3 md:grid-cols-2">
-                        <Field label="Search schedule" description="How often Deluno should search for this plan instead of using the library default.">
-                          <PresetField
-                            inputType="number"
-                            value={formState.searchIntervalOverrideHours}
-                            onChange={(value) => setFormState((current) => ({ ...current, searchIntervalOverrideHours: value }))}
-                            options={OVERRIDE_INTERVAL_OPTIONS}
-                            customLabel="Custom interval"
-                            customPlaceholder="Hours"
-                          />
-                        </Field>
-                        <Field label="Try again after" description="How long Deluno should wait before retrying a failed search for this plan.">
-                          <PresetField
-                            inputType="number"
-                            value={formState.retryDelayOverrideHours}
-                            onChange={(value) => setFormState((current) => ({ ...current, retryDelayOverrideHours: value }))}
-                            options={OVERRIDE_RETRY_OPTIONS}
-                            customLabel="Custom retry delay"
-                            customPlaceholder="Hours"
-                          />
-                        </Field>
-                      </div>
-
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">Release preferences</p>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {availableCustomFormats.map((format) => {
-                            const active = formState.customFormatIds.includes(format.id);
-                            return (
-                              <button
-                                key={format.id}
-                                type="button"
-                                onClick={() => toggleCustomFormat(format.id)}
-                                className={cn(
-                                  "rounded-md border px-3 py-1.5 text-xs transition-colors",
-                                  active
-                                    ? "border-primary/40 bg-primary/10 text-primary"
-                                    : "border-hairline bg-surface-2 text-muted-foreground hover:border-primary/30 hover:text-foreground"
-                                )}
-                              >
-                                {format.name} - {format.score >= 0 ? `+${format.score}` : format.score}
-                              </button>
-                            );
-                          })}
-                          {availableCustomFormats.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">No release preferences available for this media type yet.</p>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      <Field label="Notes">
-                        <textarea
-                          value={formState.notes}
-                          onChange={(event) => setFormState((current) => ({ ...current, notes: event.target.value }))}
-                          className="density-control-text min-h-24 w-full rounded-lg border border-hairline bg-surface-2 px-3 py-2 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          placeholder="Kids 1080p, Anime Dual Audio, Premium 4K..."
-                        />
-                      </Field>
-                    </div>
-                  ) : null}
-                </div>
-
-                <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center">
-                  <ToggleField
-                    label="Upgrade until cutoff"
-                    checked={formState.upgradeUntilCutoff}
-                    onChange={(checked) => setFormState((current) => ({ ...current, upgradeUntilCutoff: checked }))}
-                  />
-                  <ToggleField
-                    label="Enabled"
-                    checked={formState.isEnabled}
-                    onChange={(checked) => setFormState((current) => ({ ...current, isEnabled: checked }))}
-                  />
-                  <div className="flex flex-wrap gap-2 md:justify-end">
-                    <Button type="submit" disabled={busyKey === "create" || (editingId !== null && busyKey === `save:${editingId}`)}>
-                      {busyKey === "create" || (editingId !== null && busyKey === `save:${editingId}`) ? (
-                        <LoaderCircle className="h-4 w-4 animate-spin" />
-                      ) : null}
-                      {editingId ? "Save media plan" : "Create media plan"}
-                    </Button>
-                    {editingId ? (
-                      <Button type="button" variant="outline" onClick={startCreate}>
-                        Cancel
-                      </Button>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            </form>
-
-            <aside className="border-t border-hairline bg-sidebar/30 p-3 xl:border-l xl:border-t-0">
-              <div className="rounded-lg border border-hairline bg-card/75">
-                <div className="border-b border-hairline px-3 py-2.5">
-                  <p className="text-sm font-semibold text-foreground">Plan summary</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">What this plan will do when saved.</p>
-                </div>
-                <div className="divide-y divide-hairline">
-                  <PlanSummaryRow label="Starter" value={selectedStarter?.title ?? (editingId ? "Saved plan" : "Blank custom plan")} />
-                  <PlanSummaryRow label="Quality" value={selectedQualityProfile?.name ?? "Choose later"} />
-                  <PlanSummaryRow label="Destination" value={selectedDestinationRule?.name ?? "Library default folder"} />
-                  <PlanSummaryRow label="Libraries" value={selectedLibraries.length ? selectedLibraries.map((library) => library.name).join(", ") : "Not assigned yet"} />
-                  <PlanSummaryRow label="Releases" value={selectedCustomFormats.length ? `${selectedCustomFormats.length} preference${selectedCustomFormats.length === 1 ? "" : "s"}` : "None selected"} />
-                </div>
-              </div>
-
-              <div className="mt-3 rounded-lg border border-hairline bg-card/75">
-                <div className="border-b border-hairline px-3 py-2.5">
-                  <p className="text-sm font-semibold text-foreground">Supporting rules</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">Open only when this plan needs more control.</p>
-                </div>
-                <div className="divide-y divide-hairline">
-                  <PlanConfigLink icon="quality" title="Quality profile" to="/settings/profiles" />
-                  <PlanConfigLink icon="size" title="Size rules" to="/settings/quality" />
-                  <PlanConfigLink icon="scoring" title="Release preferences" to="/settings/custom-formats" />
-                  <PlanConfigLink icon="destinations" title="Destination exceptions" to="/settings/destination-rules" />
-                </div>
-              </div>
-            </aside>
-          </div>
-        </section>
-
-        <section className="overflow-hidden rounded-xl border border-hairline bg-card shadow-card dark:border-white/[0.07]">
-          <header className="flex min-h-[3.05rem] flex-wrap items-center justify-between gap-3 border-b border-hairline bg-surface-2/45 px-4 py-2.5">
-            <div>
-              <h2 className="text-[length:var(--type-body-sm)] font-semibold text-foreground">Saved media plans</h2>
-              <p className="mt-0.5 text-[length:var(--type-caption)] text-muted-foreground">Edit plans and see where each one is used.</p>
-            </div>
-            <Badge variant={policySets.length ? "info" : "default"}>{policySets.length} saved</Badge>
-          </header>
-          {policySets.length ? (
-            <div className="divide-y divide-hairline">
-              {policySets.map((policySet) => {
-                const assignedLibraries = libraries.filter((library) => library.defaultPolicySetId === policySet.id);
+            }
+          />
+        ) : (
+          <ListTable
+            columns={[
+              { label: "Name" },
+              { label: "Quality" },
+              { label: "Releases" },
+              { label: "Used by" },
+              { label: "Status", width: LIST_TRACK.status, mobile: true },
+              { label: "On", width: LIST_TRACK.toggle, mobile: true }
+            ]}
+          >
+            {visiblePlans.length === 0 ? (
+              <ListEmpty title="No plans match" description={`Nothing matches “${filter}”.`} />
+            ) : (
+              visiblePlans.map((plan) => {
+                const used = librariesByPlan.get(plan.id) ?? [];
+                const rules = splitCsv(plan.customFormatIds);
+                const profile = qualityProfiles.find((item) => item.id === plan.qualityProfileId);
+                const tone = !plan.isEnabled ? "muted" : used.length ? "ok" : "muted";
+                const statusLabel = !plan.isEnabled ? "Off" : used.length ? "Active" : "Unused";
                 return (
-                  <div
-                    key={policySet.id}
-                    className="grid gap-3 px-4 py-3 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.9fr)_auto] lg:items-center"
+                  <ListRow key={plan.id} onClick={() => openEdit(plan)} selected={mode.kind === "edit" && mode.id === plan.id}>
+                    <ListNameCell
+                      name={plan.name}
+                      sub={[plan.mediaType === "tv" ? "TV" : "Movies", `upgrades ${plan.upgradeUntilCutoff ? "on" : "off"}`, plan.notes?.trim() || null].filter(Boolean).join(" · ")}
+                    />
+                    <ListCell
+                      primary={plan.qualityProfileName ?? <span className="text-muted-foreground">Choose later</span>}
+                      secondary={profile ? `Stops at ${profile.cutoffQuality}` : plan.destinationRuleName ? `Folder: ${plan.destinationRuleName}` : "Library default folder"}
+                    />
+                    <ListCell
+                      primary={rules.length ? `${rules.length} ${rules.length === 1 ? "rule" : "rules"}` : <span className="text-muted-foreground">None</span>}
+                      secondary={
+                        rules.length
+                          ? rules
+                              .map((id) => customFormats.find((format) => format.id === id)?.name)
+                              .filter(Boolean)
+                              .slice(0, 3)
+                              .join(", ")
+                          : "Quality profile decides"
+                      }
+                    />
+                    <ListCell
+                      numeric
+                      primary={used.length ? describeUsage(used.length) : <span className="text-muted-foreground">Not assigned</span>}
+                      secondary={used.length ? used.map((library) => library.name).join(", ") : undefined}
+                    />
+                    <ListCell mobile>
+                      <Chip tone={tone}>{statusLabel}</Chip>
+                    </ListCell>
+                    <ListCell mobile>
+                      <Switch
+                        size="sm"
+                        aria-label={`${plan.isEnabled ? "Pause" : "Enable"} ${plan.name}`}
+                        checked={plan.isEnabled}
+                        disabled={togglingId === plan.id}
+                        onCheckedChange={(checked) => void toggleEnabled(plan, checked)}
+                      />
+                    </ListCell>
+                  </ListRow>
+                );
+              })
+            )}
+          </ListTable>
+        )}
+      </ListCard>
+
+      <Drawer
+        open={isOpen}
+        onOpenChange={(open) => {
+          if (!open) requestClose();
+        }}
+        title={drawerTitle}
+        description={drawerDescription}
+        onSubmit={handleSubmit}
+        footer={
+          <DrawerFooter
+            state={footerState}
+            message={saveMessage}
+            saveLabel={mode.kind === "create" ? "Create plan" : "Save plan"}
+            onCancel={requestClose}
+            disabled={busy}
+          />
+        }
+      >
+        {mode.kind === "create" ? (
+          <DrawerSection title="Start from">
+            <Field label="Starter" help="Defaults are editable templates, not locked presets. Everything below can be changed.">
+              <Select
+                value={starterId}
+                onChange={(event) => applyStarter(event.target.value)}
+                options={[{ value: "", label: "Blank plan" }, ...MEDIA_PLAN_STARTERS.map((starter) => ({ value: starter.id, label: starter.title.replace(/^Default:\s*/, "") }))]}
+              />
+            </Field>
+          </DrawerSection>
+        ) : null}
+
+        <DrawerSection title="Basics">
+          <FieldRow>
+            <Field label="Plan name" error={nameError}>
+              <Input
+                value={form.name}
+                onChange={(event) => {
+                  setNameError(null);
+                  setForm((current) => ({ ...current, name: event.target.value }));
+                }}
+                placeholder="Everyday movies"
+                autoComplete="off"
+              />
+            </Field>
+            <Field label="Media type">
+              <SegmentedControl<"movies" | "tv">
+                value={form.mediaType}
+                onValueChange={setMediaType}
+                options={[
+                  { value: "movies", label: "Movies" },
+                  { value: "tv", label: "TV shows" }
+                ]}
+              />
+            </Field>
+          </FieldRow>
+          <SwitchRow
+            label="Enabled"
+            description="Libraries using this plan follow it for new searches and upgrades."
+            checked={form.isEnabled}
+            onCheckedChange={(checked) => setForm((current) => ({ ...current, isEnabled: checked }))}
+          />
+        </DrawerSection>
+
+        <DrawerSection title="Quality & size">
+          <FieldRow>
+            <Field
+              label="Quality profile"
+              help={
+                selectedProfile
+                  ? `${selectedProfile.allowedQualities.split(",").map((value) => value.trim()).filter(Boolean).join(" → ")} · stops at ${selectedProfile.cutoffQuality}`
+                  : availableProfiles.length
+                    ? "Which release tiers are allowed and where upgrades stop."
+                    : `No ${form.mediaType === "tv" ? "TV" : "movie"} quality profiles yet — create one under Quality profiles.`
+              }
+            >
+              <Select
+                value={form.qualityProfileId}
+                onChange={(event) => setForm((current) => ({ ...current, qualityProfileId: event.target.value }))}
+                placeholder="Choose later"
+                options={availableProfiles.map((profile) => ({ value: profile.id, label: profile.name }))}
+              />
+            </Field>
+            <Field label="Final folder" help="Only when this plan needs a different destination.">
+              <Select
+                value={form.destinationRuleId}
+                onChange={(event) => setForm((current) => ({ ...current, destinationRuleId: event.target.value }))}
+                placeholder="Library default"
+                options={availableDestinationRules.map((rule) => ({ value: rule.id, label: rule.name }))}
+              />
+            </Field>
+          </FieldRow>
+          <SwitchRow
+            label="Upgrade until cutoff"
+            description="Keep replacing files until the profile's target tier is reached."
+            checked={form.upgradeUntilCutoff}
+            onCheckedChange={(checked) => setForm((current) => ({ ...current, upgradeUntilCutoff: checked }))}
+          />
+        </DrawerSection>
+
+        <DrawerSection
+          title="Releases"
+          aside={form.customFormatIds.length ? `${form.customFormatIds.length} ${form.customFormatIds.length === 1 ? "rule" : "rules"} selected` : undefined}
+        >
+          {availableCustomFormats.length ? (
+            <div role="group" aria-label="Release preferences" className="flex flex-wrap gap-1.5">
+              {availableCustomFormats.map((format) => {
+                const active = form.customFormatIds.includes(format.id);
+                return (
+                  <button
+                    key={format.id}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => toggleCustomFormat(format.id)}
+                    className={cn(
+                      "inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[length:var(--type-caption)] font-medium transition-colors",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      active
+                        ? "border-primary/40 bg-primary/12 text-primary"
+                        : "border-hairline bg-surface-2 text-muted-foreground hover:border-primary/30 hover:text-foreground"
+                    )}
                   >
-                    <div className="min-w-0 space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-semibold text-foreground">{policySet.name}</p>
-                        <Badge variant={policySet.isEnabled ? "success" : "default"}>
-                          {policySet.isEnabled ? "Enabled" : "Paused"}
-                        </Badge>
-                        <Badge variant="info">{policySet.mediaType === "tv" ? "TV" : "Movies"}</Badge>
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        {policySet.qualityProfileName ?? "No quality goal"} - {policySet.destinationRuleName ?? "Library default"}
-                      </p>
-                    </div>
+                    {format.name}
+                    <span className={cn("tabular-nums", active ? "text-primary/80" : "text-muted-foreground/70")}>
+                      {format.score >= 0 ? `+${format.score}` : format.score}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-[length:var(--type-caption)] text-muted-foreground">
+              No release preferences for {form.mediaType === "tv" ? "TV" : "movies"} yet — the quality profile decides on its own.
+            </p>
+          )}
+          <Disclosure title="Fine-tune" summary="Search interval, retry delay, notes" open={fineTuneOpen} onOpenChange={setFineTuneOpen}>
+            <FieldRow>
+              <Field label="Search schedule" help="How often to search for this plan instead of the library default.">
+                <PresetField
+                  inputType="number"
+                  value={form.searchIntervalOverrideHours}
+                  onChange={(value) => setForm((current) => ({ ...current, searchIntervalOverrideHours: value }))}
+                  options={OVERRIDE_INTERVAL_OPTIONS}
+                  customLabel="Custom interval"
+                  customPlaceholder="Hours"
+                />
+              </Field>
+              <Field label="Try again after" help="How long to wait before retrying a failed search.">
+                <PresetField
+                  inputType="number"
+                  value={form.retryDelayOverrideHours}
+                  onChange={(value) => setForm((current) => ({ ...current, retryDelayOverrideHours: value }))}
+                  options={OVERRIDE_RETRY_OPTIONS}
+                  customLabel="Custom retry delay"
+                  customPlaceholder="Hours"
+                />
+              </Field>
+            </FieldRow>
+            <Field label="Notes" optional>
+              <Textarea
+                value={form.notes}
+                onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
+                placeholder="Why this plan exists, or what it's tuned for."
+                rows={3}
+              />
+            </Field>
+          </Disclosure>
+        </DrawerSection>
 
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Used by</p>
-                      {assignedLibraries.length ? (
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {assignedLibraries.map((library) => (
-                            <Badge key={library.id} variant="default">
-                              {library.name}
-                            </Badge>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="mt-1 text-sm text-muted-foreground">No libraries assigned.</p>
-                      )}
-                    </div>
-
-                    <div className="flex gap-2 lg:justify-end">
-                      <Button size="sm" variant="outline" onClick={() => startEdit(policySet)}>
-                        Edit
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => void handleDelete(policySet.id)} disabled={busyKey === `delete:${policySet.id}`}>
-                        {busyKey === `delete:${policySet.id}` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-                        Remove
-                      </Button>
-                    </div>
+        <DrawerSection title="Used by" aside={targetLibraryIds.length ? describeUsage(targetLibraryIds.length) : undefined}>
+          {matchingLibraries.length ? (
+            <div className="grid gap-2">
+              {matchingLibraries.map((library) => {
+                const on = targetLibraryIds.includes(library.id);
+                const otherPlan = !on && library.defaultPolicySetId && library.defaultPolicySetId !== editingPlan?.id
+                  ? policySets.find((plan) => plan.id === library.defaultPolicySetId)?.name
+                  : null;
+                return (
+                  <div key={library.id} className="flex min-h-10 items-center justify-between gap-[var(--grid-gap)] rounded-[10px] border border-hairline px-[var(--field-pad-x)]">
+                    <label htmlFor={`use-${library.id}`} className="min-w-0 cursor-pointer">
+                      <span className="block truncate text-[length:var(--type-body-sm)] font-medium text-foreground">{library.name}</span>
+                      <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">
+                        {library.rootPath}
+                        {otherPlan ? ` · currently uses ${otherPlan}` : ""}
+                      </span>
+                    </label>
+                    <Switch id={`use-${library.id}`} size="sm" checked={on} onCheckedChange={(checked) => toggleTargetLibrary(library.id, checked)} />
                   </div>
                 );
               })}
             </div>
           ) : (
-            <div className="p-4">
-              <EmptyPanel>No media plans yet. Create one above; selected libraries will appear in the saved plan row.</EmptyPanel>
-            </div>
+            <p className="text-[length:var(--type-caption)] text-muted-foreground">
+              No {form.mediaType === "tv" ? "TV" : "movie"} libraries yet. Create one under Library setup, then assign this plan there or here.
+            </p>
           )}
-        </section>
-      </div>
-    </SettingsShell>
+        </DrawerSection>
+
+        {mode.kind === "edit" ? (
+          <DrawerSection>
+            <DrawerDanger
+              title="Delete this plan"
+              description="Libraries using it fall back to their direct quality profile."
+              action={
+                <Button type="button" variant="destructive" size="sm" onClick={() => setConfirmDelete(true)} disabled={busy}>
+                  Delete
+                </Button>
+              }
+            />
+          </DrawerSection>
+        ) : null}
+      </Drawer>
+
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title={`Delete “${editingPlan?.name ?? form.name}”?`}
+        description={`${describeUsage(targetLibraryIds.length, "library uses", "libraries use")} this plan. They will fall back to their direct quality profile. This can't be undone.`}
+        confirmLabel="Delete plan"
+        busy={busy}
+        onConfirm={() => void handleDelete()}
+      />
+
+      <ConfirmDialog
+        open={confirmDiscard || blocker.state === "blocked"}
+        onOpenChange={(open) => {
+          if (open) return;
+          setConfirmDiscard(false);
+          if (blocker.state === "blocked") blocker.reset();
+        }}
+        title="Discard unsaved changes?"
+        description="Your edits to this plan haven't been saved."
+        confirmLabel="Discard"
+        onConfirm={() => {
+          setConfirmDiscard(false);
+          if (blocker.state === "blocked") {
+            setMode({ kind: "closed" });
+            blocker.proceed();
+          } else {
+            closeDrawer();
+          }
+        }}
+      />
+    </div>
   );
 }
 
-function createPolicySetForm(): PolicySetFormState {
+/* ---------------------------------------------------------------- utils */
+
+function emptyForm(): PolicySetFormState {
   return {
     name: "",
     mediaType: "movies",
@@ -613,6 +704,63 @@ function createPolicySetForm(): PolicySetFormState {
   };
 }
 
+function formFromPlan(plan: PolicySetItem): PolicySetFormState {
+  return {
+    name: plan.name,
+    mediaType: plan.mediaType === "tv" ? "tv" : "movies",
+    qualityProfileId: plan.qualityProfileId ?? "",
+    destinationRuleId: plan.destinationRuleId ?? "",
+    customFormatIds: splitCsv(plan.customFormatIds),
+    searchIntervalOverrideHours: plan.searchIntervalOverrideHours?.toString() ?? "",
+    retryDelayOverrideHours: plan.retryDelayOverrideHours?.toString() ?? "",
+    upgradeUntilCutoff: plan.upgradeUntilCutoff,
+    isEnabled: plan.isEnabled,
+    notes: plan.notes ?? ""
+  };
+}
+
+function toPayload(form: PolicySetFormState) {
+  return {
+    ...form,
+    name: form.name.trim(),
+    qualityProfileId: form.qualityProfileId || null,
+    destinationRuleId: form.destinationRuleId || null,
+    customFormatIds: form.customFormatIds.join(", "),
+    searchIntervalOverrideHours: form.searchIntervalOverrideHours ? Number(form.searchIntervalOverrideHours) : null,
+    retryDelayOverrideHours: form.retryDelayOverrideHours ? Number(form.retryDelayOverrideHours) : null
+  };
+}
+
+async function assignPlan(libraryId: string, policySetId: string | null) {
+  const response = await authedFetch(`/api/libraries/${libraryId}/media-plan`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ policySetId })
+  });
+  return response.ok;
+}
+
+function sameForm(a: PolicySetFormState, b: PolicySetFormState) {
+  return (
+    a.name === b.name &&
+    a.mediaType === b.mediaType &&
+    a.qualityProfileId === b.qualityProfileId &&
+    a.destinationRuleId === b.destinationRuleId &&
+    sameIds(a.customFormatIds, b.customFormatIds) &&
+    a.searchIntervalOverrideHours === b.searchIntervalOverrideHours &&
+    a.retryDelayOverrideHours === b.retryDelayOverrideHours &&
+    a.upgradeUntilCutoff === b.upgradeUntilCutoff &&
+    a.isEnabled === b.isEnabled &&
+    a.notes === b.notes
+  );
+}
+
+function sameIds(a: string[], b: string[]) {
+  if (a.length !== b.length) return false;
+  const set = new Set(a);
+  return b.every((id) => set.has(id));
+}
+
 function splitCsv(value: string) {
   return value
     .split(",")
@@ -620,126 +768,6 @@ function splitCsv(value: string) {
     .filter(Boolean);
 }
 
-function PlanStarterChoice({
-  active,
-  description,
-  onClick,
-  title
-}: {
-  active: boolean;
-  description: string;
-  onClick: () => void;
-  title: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "group grid w-full grid-cols-[auto_minmax(0,1fr)] gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors",
-        active
-          ? "border-primary/45 bg-primary/10 text-foreground"
-          : "border-hairline bg-surface-1/70 text-foreground hover:border-primary/30 hover:bg-primary/[0.035]"
-      )}
-    >
-      <span
-        className={cn(
-          "mt-0.5 flex h-5 w-5 items-center justify-center rounded-full border text-[10px] font-bold",
-          active ? "border-primary/40 bg-primary text-primary-foreground" : "border-hairline bg-surface-2 text-muted-foreground"
-        )}
-      >
-        {active ? <CheckCircle2 className="h-3.5 w-3.5" /> : null}
-      </span>
-      <span className="min-w-0">
-        <span className="block truncate text-sm font-semibold">{title}</span>
-        <span className="mt-0.5 line-clamp-2 block text-xs leading-relaxed text-muted-foreground">{description}</span>
-      </span>
-    </button>
-  );
-}
-
-function PlanSummaryRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="grid gap-1 px-3 py-2.5">
-      <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
-      <p className="text-sm font-semibold text-foreground">{value}</p>
-    </div>
-  );
-}
-
-function PlanConfigLink({ icon, title, to }: { icon: DelunoNavGlyphKind; title: string; to: string }) {
-  return (
-    <Link
-      to={to}
-      className="group flex min-h-10 items-center justify-between gap-3 px-3 py-2 text-sm font-medium text-foreground transition hover:bg-primary/5"
-    >
-      <span className="flex min-w-0 items-center gap-2">
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-          <DelunoNavGlyph kind={icon} className="h-4 w-4" />
-        </span>
-        <span className="truncate">{title}</span>
-      </span>
-      <ArrowRight className="h-4 w-4 text-muted-foreground transition group-hover:translate-x-0.5 group-hover:text-primary" />
-    </Link>
-  );
-}
-
-function FormSection({
-  children,
-  description,
-  title
-}: {
-  children: ReactNode;
-  description?: string;
-  title: string;
-}) {
-  return (
-    <section className="space-y-3">
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <p className="text-sm font-semibold text-foreground">{title}</p>
-          {description ? <p className="mt-0.5 text-sm text-muted-foreground">{description}</p> : null}
-        </div>
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function EmptyPanel({ children }: { children: ReactNode }) {
-  return (
-    <div className="rounded-xl border border-dashed border-hairline bg-surface-1/55 p-3 text-sm leading-relaxed text-muted-foreground">
-      {children}
-    </div>
-  );
-}
-
-function Field({ children, description, label }: { children: ReactNode; description?: string; label: string }) {
-  return (
-    <div className="grid min-w-0 gap-2">
-      <p className="density-label uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
-      {children}
-      {description && <InputDescription>{description}</InputDescription>}
-    </div>
-  );
-}
-
-function ToggleField({
-  checked,
-  label,
-  onChange
-}: {
-  checked: boolean;
-  label: string;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <label className="density-control-text flex min-h-10 items-center justify-between gap-3 rounded-xl border border-hairline bg-surface-1/70 px-3 py-2 text-foreground">
-      <span>{label}</span>
-      <input className="sr-only" type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
-      <span className={cn("relative h-5 w-9 rounded-full transition-colors", checked ? "bg-primary" : "bg-muted")}>
-        <span className={cn("absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-background shadow-sm transition-transform", checked ? "translate-x-4" : "translate-x-0")} />
-      </span>
-    </label>
-  );
+function describeUsage(count: number, singular = "library", plural = "libraries") {
+  return `${count} ${count === 1 ? singular : plural}`;
 }

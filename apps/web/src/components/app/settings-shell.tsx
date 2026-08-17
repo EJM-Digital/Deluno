@@ -117,7 +117,9 @@ const settingsPageMeta = [
   {
     match: (path: string) => path.startsWith("/settings/policy-sets"),
     title: "Media plans",
-    description: "Configure the quality, size, release, language, and upgrade rules Deluno follows."
+    description: "Configure the quality, size, release, language, and upgrade rules Deluno follows.",
+    // List → drawer pages carry their own toolbar; the topbar already names the page.
+    chrome: "none"
   },
   {
     match: (path: string) => path.startsWith("/settings/profiles"),
@@ -212,6 +214,15 @@ const systemPageMeta = [
 export function SettingsWorkspaceLayout() {
   const location = useLocation();
   const meta = settingsPageMeta.find((item) => item.match(location.pathname)) ?? settingsPageMeta[0];
+  const bare = "chrome" in meta && meta.chrome === "none";
+
+  if (bare) {
+    return (
+      <SettingsWorkspaceContext.Provider value>
+        <Outlet />
+      </SettingsWorkspaceContext.Provider>
+    );
+  }
 
   return (
     <SettingsShell title={meta.title} description={meta.description}>

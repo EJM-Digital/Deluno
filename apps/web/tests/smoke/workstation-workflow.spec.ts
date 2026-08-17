@@ -298,11 +298,20 @@ test.describe("dashboard workflow", () => {
   test("starts a media plan from an understandable scenario", async ({ page }) => {
     await authenticateAndNavigate(page, "/settings/policy-sets");
 
-    await expect(page.getByRole("heading", { name: "Create media plan" })).toBeVisible();
-    await page.getByLabel("Start from template").selectOption("everyday-movies");
+    // List → drawer: the page is a list of plans; "New plan" opens the editor drawer.
+    await expect(page.getByRole("heading", { name: "Media plans", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "New plan" }).first().click();
+    await expect(page.getByRole("dialog", { name: "New media plan" })).toBeVisible();
 
-    await expect(page.locator('input[value="Default: Movies 1080p"]')).toBeVisible();
-    await expect(page.getByRole("button", { name: "Create media plan" })).toBeVisible();
+    await page.getByLabel("Starter").selectOption("everyday-movies");
+    await expect(page.getByLabel("Plan name")).toHaveValue("Default: Movies 1080p");
+    await expect(page.getByRole("button", { name: "Create plan" })).toBeEnabled();
+
+    // Leaving with edits asks first.
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("button", { name: "Discard" })).toBeVisible();
+    await page.getByRole("button", { name: "Discard" }).click();
+    await expect(page.getByRole("dialog", { name: "New media plan" })).toHaveCount(0);
   });
 
   test("makes import lists a visible, understandable discovery option", async ({ page }, testInfo) => {

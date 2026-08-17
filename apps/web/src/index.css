@@ -1221,6 +1221,19 @@ html {
   --data-cell-px: calc(16px * var(--density-scale));
 
   /*
+    List → drawer grammar (see components/ui/list-card, drawer, toolbar).
+    One row height, one card-header height, one toolbar height, one drawer
+    width — every collection page and every editor composes these.
+  */
+  --list-row-height: calc(56px * var(--density-scale));
+  --list-header-height: calc(48px * var(--density-scale));
+  --list-thead-height: calc(36px * var(--density-scale));
+  --toolbar-height: calc(40px * var(--density-scale));
+  --drawer-width: 600px;
+  --drawer-header-height: 72px;
+  --drawer-footer-height: 64px;
+
+  /*
     Spatial rhythm: every view composes these four steps instead of inventing
     one-off margins.  The values deliberately keep the working surface dense:
     page sections are separated, related controls stay together, and cards do
