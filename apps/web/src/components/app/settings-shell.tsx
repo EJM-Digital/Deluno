@@ -91,7 +91,8 @@ const settingsPageMeta = [
   {
     match: (path: string) => path.startsWith("/settings/processing"),
     title: "Processing workflow",
-    description: "Optional: let an external processor finish a file before Deluno imports and renames it."
+    description: "Optional: let an external processor finish a file before Deluno imports and renames it.",
+    chrome: "none"
   },
   {
     match: (path: string) => path === "/settings",
@@ -102,7 +103,8 @@ const settingsPageMeta = [
   {
     match: (path: string) => path.startsWith("/settings/media-management"),
     title: "File handling & naming",
-    description: "Set how completed files are named, linked, cleaned up, and imported into your library."
+    description: "Set how completed files are named, linked, cleaned up, and imported into your library.",
+    chrome: "none"
   },
   {
     match: (path: string) => path.startsWith("/settings/libraries"),
