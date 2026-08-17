@@ -23,6 +23,7 @@ import { Field, FieldRow } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { PageToolbar } from "../components/ui/page-toolbar";
+import { ListGroupHeader, MediaTypeFilter, useMediaTypeSplit } from "../components/ui/media-type-split";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { Select } from "../components/ui/select";
 import { SwitchRow } from "../components/ui/switch";
@@ -94,6 +95,8 @@ export function SettingsProfilesPage() {
 
   const tiers = useMemo(() => [...qualityModel.tiers].sort((a, b) => b.rank - a.rank), [qualityModel.tiers]);
   const sorted = useMemo(() => [...qualityProfiles].sort((a, b) => a.mediaType.localeCompare(b.mediaType) || a.name.localeCompare(b.name)), [qualityProfiles]);
+  const split = useMediaTypeSplit(sorted, (profile) => profile.mediaType);
+
   const librariesByProfile = useMemo(() => {
     const map = new Map<string, LibraryItem[]>();
     for (const library of libraries) {
@@ -281,10 +284,13 @@ export function SettingsProfilesPage() {
       <PageToolbar
         tabs={TABS}
         actions={
-          <Button type="button" onClick={openCreate}>
-            <Plus className="h-4 w-4" />
-            New profile
-          </Button>
+          <>
+            <MediaTypeFilter value={split.scope} onValueChange={split.setScope} counts={split.counts} />
+            <Button type="button" onClick={openCreate}>
+              <Plus className="h-4 w-4" />
+              New profile
+            </Button>
+          </>
         }
       />
 
@@ -302,7 +308,9 @@ export function SettingsProfilesPage() {
           />
         ) : (
           <ListTable columns={[{ label: "Name" }, { label: "Allowed", width: "minmax(0,1.4fr)" }, { label: "Stops at" }, { label: "Used by" }, { label: "Formats", width: LIST_TRACK.status, mobile: true }]}>
-            {sorted.map((profile) => {
+            {split.groups.flatMap((group) => [
+              split.showGroups && split.scope === "all" ? <ListGroupHeader key={group.key} label={group.label} count={group.items.length} /> : null,
+              ...group.items.map((profile) => {
               const allowed = splitCsv(profile.allowedQualities);
               const formats = splitCsv(profile.customFormatIds);
               const used = librariesByProfile.get(profile.id) ?? [];
@@ -318,7 +326,8 @@ export function SettingsProfilesPage() {
                   </ListCell>
                 </ListRow>
               );
-            })}
+            })
+            ])}
           </ListTable>
         )}
       </ListCard>

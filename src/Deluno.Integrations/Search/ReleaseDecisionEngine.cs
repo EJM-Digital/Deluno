@@ -204,7 +204,8 @@ public static partial class ReleaseDecisionEngine
             return -180;
         }
 
-        if (sizeGb > max)
+        // max <= 0 is the "unlimited" convention from the quality model.
+        if (max > 0 && sizeGb > max)
         {
             risks.Add($"Size {sizeGb:0.0} GB is unusually large for {quality}.");
             return -80;

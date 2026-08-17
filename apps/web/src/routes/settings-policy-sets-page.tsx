@@ -20,6 +20,7 @@ import { Field, FieldRow } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { PageToolbar } from "../components/ui/page-toolbar";
+import { ListGroupHeader, MediaTypeFilter, useMediaTypeSplit } from "../components/ui/media-type-split";
 import { PresetField } from "../components/ui/preset-field";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { Select } from "../components/ui/select";
@@ -124,6 +125,8 @@ export function SettingsPolicySetsPage() {
       )
     );
   }, [policySets, filter]);
+
+  const split = useMediaTypeSplit(visiblePlans, (plan) => plan.mediaType);
 
   const librariesByPlan = useMemo(() => {
     const map = new Map<string, LibraryItem[]>();
@@ -352,10 +355,13 @@ export function SettingsPolicySetsPage() {
       <PageToolbar
         tabs={PLAN_TABS}
         actions={
-          <Button type="button" onClick={openCreate}>
-            <Plus className="h-4 w-4" />
-            New plan
-          </Button>
+          <>
+            <MediaTypeFilter value={split.scope} onValueChange={split.setScope} counts={split.counts} />
+            <Button type="button" onClick={openCreate}>
+              <Plus className="h-4 w-4" />
+              New plan
+            </Button>
+          </>
         }
       />
 
@@ -386,10 +392,12 @@ export function SettingsPolicySetsPage() {
               { label: "On", width: LIST_TRACK.toggle, mobile: true }
             ]}
           >
-            {visiblePlans.length === 0 ? (
-              <ListEmpty title="No plans match" description={`Nothing matches “${filter}”.`} />
+            {split.visibleCount === 0 ? (
+              <ListEmpty title="No plans match" description={filter ? `Nothing matches “${filter}”.` : "No plans for this media type yet."} />
             ) : (
-              visiblePlans.map((plan) => {
+              split.groups.flatMap((group) => [
+                split.showGroups && split.scope === "all" ? <ListGroupHeader key={group.key} label={group.label} count={group.items.length} /> : null,
+                ...group.items.map((plan) => {
                 const used = librariesByPlan.get(plan.id) ?? [];
                 const rules = splitCsv(plan.customFormatIds);
                 const profile = qualityProfiles.find((item) => item.id === plan.qualityProfileId);
@@ -437,6 +445,7 @@ export function SettingsPolicySetsPage() {
                   </ListRow>
                 );
               })
+              ])
             )}
           </ListTable>
         )}

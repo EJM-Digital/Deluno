@@ -148,10 +148,12 @@ function SizeCard({
   // One scale for every row in this table: bands become comparable down the column,
   // and the two thumbs of a row finally sit on the same ruler.
   const scaleMax = useMemo(() => niceCeiling(Math.max(...tiers.map((tier) => Number(tier[maxKey])), 1)), [tiers, maxKey]);
+  // 0 as a maximum means "no upper limit", matching the backend's convention.
   const format = (value: number) => (unit === "GB" ? `${value} GB` : `${value.toLocaleString()} MB`);
+  const formatMax = (value: number) => (value === 0 ? "Unlimited" : format(value));
 
   return (
-    <ListCard title={title} count={`${caption} Values in ${unit}, on a shared 0–${scaleMax.toLocaleString()} scale.`}>
+    <ListCard title={title} count={`${caption} Values in ${unit} on a shared 0–${scaleMax.toLocaleString()} scale; a maximum of 0 means unlimited.`}>
       <div className="overflow-x-auto">
         <div className="min-w-[44rem]">
           <div className="grid grid-cols-[13rem_minmax(10rem,1fr)_7rem_7rem] items-center gap-[var(--grid-gap)] border-b border-hairline bg-surface-2/40 px-[var(--card-pad-x)]">
@@ -168,13 +170,14 @@ function SizeCard({
               <div key={tier.name} className="grid min-h-[var(--list-row-height)] grid-cols-[13rem_minmax(10rem,1fr)_7rem_7rem] items-center gap-[var(--grid-gap)] border-b border-hairline px-[var(--card-pad-x)] last:border-b-0">
                 <div className="min-w-0">
                   <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{tier.name}</span>
-                  <span className="block text-[length:var(--type-caption)] text-muted-foreground">Rank {tier.rank} · {format(low)}–{format(high)}</span>
+                  <span className="block text-[length:var(--type-caption)] text-muted-foreground">Rank {tier.rank} · {format(low)}–{formatMax(high)}</span>
                 </div>
                 <RangeSlider
                   min={low}
                   max={high}
                   step={step}
                   scaleMax={scaleMax}
+                  zeroMaxIsUnlimited
                   minLabel={`${tier.name} ${scope} minimum`}
                   maxLabel={`${tier.name} ${scope} maximum`}
                   onChange={(next) => {

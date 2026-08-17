@@ -18,18 +18,22 @@ interface RangeSliderProps {
   step: number;
   /** Shared scale ceiling for every row in a table. */
   scaleMax: number;
+  /** Treat a max of 0 as "no upper limit": the band runs to the end of the track. */
+  zeroMaxIsUnlimited?: boolean;
   minLabel: string;
   maxLabel: string;
   onChange: (next: { min: number; max: number }) => void;
   className?: string;
 }
 
-export function RangeSlider({ min, max, step, scaleMax, minLabel, maxLabel, onChange, className }: RangeSliderProps) {
+export function RangeSlider({ min, max, step, scaleMax, minLabel, maxLabel, onChange, className, zeroMaxIsUnlimited = false }: RangeSliderProps) {
   const clamp = (value: number) => Math.min(Math.max(value, 0), scaleMax);
+  const unlimited = zeroMaxIsUnlimited && max === 0;
   const low = clamp(min);
-  const high = clamp(max);
+  const high = unlimited ? scaleMax : clamp(max);
   const toPercent = (value: number) => (scaleMax <= 0 ? 0 : (value / scaleMax) * 100);
   const leftPercent = toPercent(Math.min(low, high));
+  // A band of zero width still needs to be visible as a dot on the track.
   const widthPercent = Math.max(toPercent(Math.abs(high - low)), 0.75);
 
   return (
@@ -44,8 +48,8 @@ export function RangeSlider({ min, max, step, scaleMax, minLabel, maxLabel, onCh
         max={scaleMax}
         step={step}
         value={low}
-        // Keep the thumbs from crossing: the minimum stops one step below the maximum.
-        onChange={(event) => onChange({ min: Math.min(Number(event.target.value), high - step), max: high })}
+        // Thumbs may meet — 0/0 is a valid band ("accept anything") — they just never cross.
+        onChange={(event) => onChange({ min: Math.min(Number(event.target.value), high), max })}
         className="deluno-range-input"
       />
       <input
@@ -55,7 +59,7 @@ export function RangeSlider({ min, max, step, scaleMax, minLabel, maxLabel, onCh
         max={scaleMax}
         step={step}
         value={high}
-        onChange={(event) => onChange({ min: low, max: Math.max(Number(event.target.value), low + step) })}
+        onChange={(event) => onChange({ min: Math.min(low, Number(event.target.value)), max: Number(event.target.value) })}
         className="deluno-range-input"
       />
     </div>

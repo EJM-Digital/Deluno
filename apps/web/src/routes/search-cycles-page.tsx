@@ -1,622 +1,512 @@
-import { useEffect, useMemo, useState } from "react";
+/**
+ * Automation & recovery — list → drawer plus one page-level form.
+ *
+ *   PageToolbar (Resume/Pause automation)
+ *   Summary strip (5 cells)
+ *   ListCard  libraries (schedule · next search · last result · status · on · ›)
+ *             → drawer: Schedule · Budget · Search window · Run now / Skip
+ *   ListCard  failed-download handling (page form, saved by PageFooter)
+ *   ListCard  recent cycles
+ *
+ * Contracts: PUT /api/settings/automation, PUT /api/settings,
+ * PUT /api/libraries/{id}/automation, POST …/search-now, POST …/skip-cycle.
+ */
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
-import {
-  Activity as ActivityIcon,
-  Clock,
-  LoaderCircle,
-  Pause,
-  Play,
-  RotateCw,
-  Search,
-  SkipForward,
-  Zap
-} from "lucide-react";
+import { Loader2, Pause, Play, SkipForward, Zap } from "lucide-react";
+import { Button } from "../components/ui/button";
+import { Chip, type ChipProps } from "../components/ui/chip";
+import { Drawer, DrawerFooter, DrawerSection, type DrawerSaveState } from "../components/ui/drawer";
+import { Field, FieldRow } from "../components/ui/field";
+import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
+import { PageFooter } from "../components/ui/page-footer";
+import { PageToolbar } from "../components/ui/page-toolbar";
+import { ListGroupHeader, MediaTypeFilter, useMediaTypeSplit } from "../components/ui/media-type-split";
+import { PresetField } from "../components/ui/preset-field";
+import { Select } from "../components/ui/select";
+import { Switch, SwitchRow } from "../components/ui/switch";
+import { toast } from "../components/shell/toaster";
+import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import {
   fetchJson,
-  type LibraryItem,
   type LibraryAutomationStateItem,
+  type LibraryItem,
   type PlatformSettingsSnapshot,
   type SearchCycleRunItem
 } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
-import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
-import { PageHero } from "../components/shell/page-hero";
-import { EmptyState } from "../components/shell/empty-state";
-import { RouteSkeleton } from "../components/shell/skeleton";
-import { toast } from "../components/shell/toaster";
-import { cn } from "../lib/utils";
 
-interface SearchCyclesLoaderData {
+const INTERVAL_OPTIONS = [
+  { value: "1", label: "Every hour" },
+  { value: "3", label: "Every 3 hours" },
+  { value: "6", label: "Every 6 hours" },
+  { value: "12", label: "Every 12 hours" },
+  { value: "24", label: "Daily" }
+];
+const RETRY_OPTIONS = [
+  { value: "1", label: "1 hour" },
+  { value: "3", label: "3 hours" },
+  { value: "6", label: "6 hours" },
+  { value: "12", label: "12 hours" },
+  { value: "24", label: "Daily" }
+];
+const BATCH_OPTIONS = [
+  { value: "5", label: "5 titles" },
+  { value: "10", label: "10 titles" },
+  { value: "25", label: "25 titles" },
+  { value: "50", label: "50 titles" }
+];
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, hour) => ({ value: String(hour), label: `${String(hour).padStart(2, "0")}:00` }));
+
+interface LoaderData {
   automationStates: LibraryAutomationStateItem[];
   libraries: LibraryItem[];
   settings: PlatformSettingsSnapshot;
   searchCycles: SearchCycleRunItem[];
 }
 
-interface SearchCycleNotesSummary {
-  apiCallCount: number;
-  queuedReleaseBytes: number;
-}
-
-export async function searchCyclesLoader(): Promise<SearchCyclesLoaderData> {
+export async function searchCyclesLoader(): Promise<LoaderData> {
   const [automationStates, libraries, settings, searchCycles] = await Promise.all([
     fetchJson<LibraryAutomationStateItem[]>("/api/library-automation"),
     fetchJson<LibraryItem[]>("/api/libraries"),
     fetchJson<PlatformSettingsSnapshot>("/api/settings"),
     fetchJson<SearchCycleRunItem[]>("/api/search-cycles?take=50")
   ]);
-
-  return { automationStates, libraries, searchCycles, settings };
+  return { automationStates, libraries, settings, searchCycles };
 }
 
-function parseCycleNotes(notesJson: string | null): SearchCycleNotesSummary {
-  if (!notesJson) {
-    return { apiCallCount: 0, queuedReleaseBytes: 0 };
-  }
-
-  try {
-    const parsed = JSON.parse(notesJson) as Record<string, unknown>;
-    const apiCallCount = typeof parsed.apiCallCount === "number" ? parsed.apiCallCount : 0;
-    const queuedReleaseBytes = typeof parsed.queuedReleaseBytes === "number" ? parsed.queuedReleaseBytes : 0;
-    return { apiCallCount, queuedReleaseBytes };
-  } catch {
-    return { apiCallCount: 0, queuedReleaseBytes: 0 };
-  }
+interface AutomationForm {
+  autoSearchEnabled: boolean;
+  missingSearchEnabled: boolean;
+  upgradeSearchEnabled: boolean;
+  searchIntervalHours: string;
+  retryDelayHours: string;
+  maxItemsPerRun: string;
+  searchWindowStartHour: string;
+  searchWindowEndHour: string;
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes <= 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-  const value = bytes / 1024 ** exponent;
-  const rounded = exponent === 0 ? value.toFixed(0) : value.toFixed(1);
-  return `${rounded} ${units[exponent]}`;
+interface CleanupForm {
+  strikeThreshold: string;
+  blockRelease: boolean;
+  queueReplacement: boolean;
+  removeClientEntry: boolean;
+  purgePayload: boolean;
 }
 
 export function SearchCyclesPage() {
-  const loaderData = useLoaderData() as SearchCyclesLoaderData | undefined;
-  if (!loaderData) return <RouteSkeleton />;
-
-  const { automationStates, libraries, searchCycles, settings } = loaderData;
+  const { automationStates, libraries, settings, searchCycles } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
-  const [globalBusy, setGlobalBusy] = useState(false);
-  const [cleanupBusy, setCleanupBusy] = useState(false);
-  const [cleanupPolicy, setCleanupPolicy] = useState(() => ({
-    strikeThreshold: settings.downloadHealthStrikeThreshold,
-    blockRelease: settings.cleanupBlockReleaseAfterThreshold,
-    queueReplacement: settings.cleanupQueueReplacementAfterThreshold,
-    removeClientEntry: settings.cleanupRemoveClientEntryAfterThreshold,
-    purgePayload: settings.cleanupPurgePayloadAfterThreshold
-  }));
 
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      revalidator.revalidate();
-    }, 10000);
+    const timer = window.setInterval(() => revalidator.revalidate(), 10000);
     return () => window.clearInterval(timer);
   }, [revalidator]);
 
-  useEffect(() => {
-    setCleanupPolicy({
-      strikeThreshold: settings.downloadHealthStrikeThreshold,
-      blockRelease: settings.cleanupBlockReleaseAfterThreshold,
-      queueReplacement: settings.cleanupQueueReplacementAfterThreshold,
-      removeClientEntry: settings.cleanupRemoveClientEntryAfterThreshold,
-      purgePayload: settings.cleanupPurgePayloadAfterThreshold
-    });
-  }, [settings]);
-
-  const automationByType = useMemo(() => {
-    const grouped: Record<string, LibraryAutomationStateItem[]> = {
-      tv: [],
-      movies: []
-    };
-    automationStates.forEach((state) => {
-      const key = state.mediaType === "tv" ? "tv" : "movies";
-      grouped[key].push(state);
-    });
-    return grouped;
-  }, [automationStates]);
-
-  const dueForSearch = useMemo(
+  const split = useMediaTypeSplit(libraries, (library) => library.mediaType);
+  const stateByLibrary = useMemo(() => new Map(automationStates.map((state) => [state.libraryId, state])), [automationStates]);
+  const running = automationStates.filter((state) => state.status === "running").length;
+  const due = automationStates.filter((state) => state.status !== "paused" && (!state.nextSearchUtc || new Date(state.nextSearchUtc) <= new Date())).length;
+  const cycleCost = useMemo(
     () =>
-      automationStates.filter(
-        (state) =>
-          state.status !== "paused" &&
-          (!state.nextSearchUtc || new Date(state.nextSearchUtc) <= new Date())
-      ).length,
-    [automationStates]
+      searchCycles.reduce(
+        (summary, cycle) => {
+          const notes = parseNotes(cycle.notesJson);
+          summary.apiCalls += notes.apiCallCount;
+          summary.queuedBytes += notes.queuedReleaseBytes;
+          return summary;
+        },
+        { apiCalls: 0, queuedBytes: 0 }
+      ),
+    [searchCycles]
   );
 
-  const activeSearches = useMemo(
-    () => automationStates.filter((state) => state.status === "running").length,
-    [automationStates]
-  );
+  /* ------------------------------------------------------ global + rows */
+  const [busy, setBusy] = useState<string | null>(null);
 
-  const cycleCostSummary = useMemo(() => {
-    return searchCycles.reduce(
-      (summary, cycle) => {
-        const notes = parseCycleNotes(cycle.notesJson);
-        summary.apiCalls += notes.apiCallCount;
-        summary.queuedBytes += notes.queuedReleaseBytes;
-        return summary;
-      },
-      { apiCalls: 0, queuedBytes: 0 }
-    );
-  }, [searchCycles]);
-
-  const toggleGlobalAutomation = async () => {
-    setGlobalBusy(true);
-    const isEnabling = !settings.autoStartJobs;
+  async function run(key: string, action: () => Promise<unknown>, success?: string) {
+    setBusy(key);
     try {
-      const response = await authedFetch("/api/settings/automation", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isEnabled: isEnabling })
-      });
-      if (!response.ok) throw new Error("Could not update global automation.");
-      toast.success(isEnabling ? "Deluno automation resumed." : "Deluno automation paused. Existing external downloads are unchanged.");
+      await action();
+      if (success) toast.success(success);
+      revalidator.revalidate();
+      return true;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Action failed.");
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function toggleGlobal() {
+    const enabling = !settings.autoStartJobs;
+    await run("global", async () => {
+      const response = await authedFetch("/api/settings/automation", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ isEnabled: enabling }) });
+      if (!response.ok) throw new Error("Could not update automation.");
+    }, enabling ? "Automation resumed" : "Automation paused — external downloads are unchanged");
+  }
+
+  async function putAutomation(library: LibraryItem, form: AutomationForm) {
+    const response = await authedFetch(`/api/libraries/${library.id}/automation`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        autoSearchEnabled: form.autoSearchEnabled,
+        missingSearchEnabled: form.missingSearchEnabled,
+        upgradeSearchEnabled: form.upgradeSearchEnabled,
+        searchIntervalHours: Number(form.searchIntervalHours || 12),
+        retryDelayHours: Number(form.retryDelayHours || 6),
+        maxItemsPerRun: Number(form.maxItemsPerRun || 10),
+        searchWindowStartHour: form.searchWindowStartHour === "" ? null : Number(form.searchWindowStartHour),
+        searchWindowEndHour: form.searchWindowEndHour === "" ? null : Number(form.searchWindowEndHour)
+      })
+    });
+    if (!response.ok) throw new Error("Automation could not be saved.");
+  }
+
+  async function toggleLibrary(library: LibraryItem, enabled: boolean) {
+    await run(`toggle:${library.id}`, () => putAutomation(library, { ...automationFrom(library), autoSearchEnabled: enabled }));
+    if (drawerId === library.id && !drawerDirty) {
+      const next = { ...form, autoSearchEnabled: enabled };
+      setForm(next);
+      setInitialForm(next);
+    }
+  }
+
+  /* ---------------------------------------------------------- drawer */
+  const [drawerId, setDrawerId] = useState<string | null>(null);
+  const [form, setForm] = useState<AutomationForm>(() => emptyAutomation());
+  const [initialForm, setInitialForm] = useState<AutomationForm>(() => emptyAutomation());
+  const [drawerState, setDrawerState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
+  const [drawerMessage, setDrawerMessage] = useState<string | null>(null);
+
+  const editing = drawerId ? libraries.find((library) => library.id === drawerId) ?? null : null;
+  const drawerDirty = drawerId !== null && JSON.stringify(form) !== JSON.stringify(initialForm);
+  const drawerFooterState: DrawerSaveState = drawerState === "saving" ? "saving" : drawerDirty ? "dirty" : drawerState ?? "clean";
+  useEffect(() => {
+    if (drawerDirty && (drawerState === "saved" || drawerState === "error")) setDrawerState(undefined);
+  }, [drawerDirty, drawerState]);
+
+  function openLibrary(library: LibraryItem) {
+    const next = automationFrom(library);
+    setDrawerId(library.id);
+    setForm(next);
+    setInitialForm(next);
+    setDrawerState(undefined);
+  }
+
+  async function submitDrawer(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editing || busy) return;
+    setBusy("save");
+    setDrawerState("saving");
+    try {
+      await putAutomation(editing, form);
+      setInitialForm(form);
+      setDrawerState("saved");
+      setDrawerMessage("Saved just now");
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not update global automation.");
+      setDrawerState("error");
+      setDrawerMessage(error instanceof Error ? error.message : "Could not save");
     } finally {
-      setGlobalBusy(false);
+      setBusy(null);
     }
-  };
+  }
 
-  const saveCleanupPolicy = async () => {
-    setCleanupBusy(true);
+  /* ------------------------------------------------- failed downloads */
+  const savedCleanup = useMemo(() => cleanupFrom(settings), [settings]);
+  const [cleanup, setCleanup] = useState<CleanupForm>(savedCleanup);
+  const [cleanupState, setCleanupState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
+  const [cleanupMessage, setCleanupMessage] = useState<string | null>(null);
+  useEffect(() => setCleanup(savedCleanup), [savedCleanup]);
+
+  const cleanupDirty = JSON.stringify(cleanup) !== JSON.stringify(savedCleanup);
+  const cleanupFooter: DrawerSaveState = cleanupState === "saving" ? "saving" : cleanupDirty ? "dirty" : cleanupState ?? "clean";
+  useUnsavedChanges(cleanupDirty || drawerDirty);
+  useEffect(() => {
+    if (cleanupDirty && (cleanupState === "saved" || cleanupState === "error")) setCleanupState(undefined);
+  }, [cleanupDirty, cleanupState]);
+
+  async function submitCleanup(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (cleanupState === "saving") return;
+    setCleanupState("saving");
     try {
       const response = await authedFetch("/api/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...settings,
-          downloadHealthStrikeThreshold: Math.max(1, Math.min(20, Math.round(cleanupPolicy.strikeThreshold || 3))),
-          cleanupBlockReleaseAfterThreshold: cleanupPolicy.blockRelease,
-          cleanupQueueReplacementAfterThreshold: cleanupPolicy.queueReplacement,
-          cleanupRemoveClientEntryAfterThreshold: cleanupPolicy.removeClientEntry,
-          cleanupPurgePayloadAfterThreshold: cleanupPolicy.purgePayload
+          downloadHealthStrikeThreshold: Math.max(1, Math.min(20, Number(cleanup.strikeThreshold || 3))),
+          cleanupBlockReleaseAfterThreshold: cleanup.blockRelease,
+          cleanupQueueReplacementAfterThreshold: cleanup.queueReplacement,
+          cleanupRemoveClientEntryAfterThreshold: cleanup.removeClientEntry,
+          cleanupPurgePayloadAfterThreshold: cleanup.purgePayload
         })
       });
       if (!response.ok) throw new Error("Could not save failed-download handling.");
-      toast.success("Failed-download handling saved.");
+      setCleanupState("saved");
+      setCleanupMessage("Saved just now");
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not save failed-download handling.");
-    } finally {
-      setCleanupBusy(false);
+      setCleanupState("error");
+      setCleanupMessage(error instanceof Error ? error.message : "Could not save");
     }
-  };
+  }
+
+  /* ---------------------------------------------------------- render */
+  const paused = !settings.autoStartJobs;
 
   return (
-    <div className="space-y-[var(--page-gap)]">
-      {/* ═══════ HERO ═══════ */}
-      <PageHero
-        eyebrow="Deluno automation"
-        eyebrowIcon={<Search className="h-3 w-3 text-primary" />}
-        title="Choose what Deluno should do next"
-        subtitle={
+    <form onSubmit={submitCleanup} className="flex flex-col gap-[var(--page-gap)]" noValidate>
+      <PageToolbar
+        actions={
           <>
-            Deluno looks for missing releases and allowed upgrades, then sends approved matches to your download client. {" "}
-            <span className="font-semibold text-foreground">{activeSearches}</span> working now ·{" "}
-            <span className={cn("font-semibold", dueForSearch > 0 ? "text-warning" : "text-success")}>
-              {dueForSearch > 0 ? `${dueForSearch} due` : "all caught up"}
-            </span>
+            <MediaTypeFilter value={split.scope} onValueChange={split.setScope} counts={split.counts} />
+            <Button type="button" variant={paused ? "default" : "outline"} onClick={() => void toggleGlobal()} disabled={busy === "global"}>
+            {busy === "global" ? <Loader2 className="h-4 w-4 animate-spin" /> : paused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
+              {paused ? "Resume automation" : "Pause automation"}
+            </Button>
           </>
         }
       />
 
-      <div className={cn("flex flex-wrap items-center justify-between gap-[var(--grid-gap)] rounded-2xl border p-4", settings.autoStartJobs ? "border-success/25 bg-success/[0.04]" : "border-warning/30 bg-warning/[0.05]")}>
-        <div>
-          <p className="font-semibold text-foreground">Global automation is {settings.autoStartJobs ? "running" : "paused"}</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {settings.autoStartJobs
-              ? "Deluno can process scheduled searches, imports, and retries."
-              : "Deluno will keep queued work safe until you resume it. External download clients are unchanged."}
-          </p>
-        </div>
-        <Button type="button" variant={settings.autoStartJobs ? "outline" : "default"} className="gap-2" disabled={globalBusy} onClick={() => void toggleGlobalAutomation()}>
-          {globalBusy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : settings.autoStartJobs ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-          {settings.autoStartJobs ? "Pause all automation" : "Resume automation"}
-        </Button>
+      <div className="grid grid-cols-2 overflow-hidden rounded-2xl border border-hairline bg-card shadow-card md:grid-cols-5 dark:border-white/[0.07]">
+        <StripCell label="Automation" value={paused ? "Paused" : "Running"} help={paused ? "Queued work is held safely" : "Deluno searches on schedule"} tone={paused ? "warning" : undefined} />
+        <StripCell label="Searching now" value={String(running)} help={running ? "libraries mid-cycle" : "nothing running"} />
+        <StripCell label="Due" value={String(due)} help={due ? "libraries ready for a cycle" : "all caught up"} />
+        <StripCell label="Source checks" value={cycleCost.apiCalls.toLocaleString()} help="in the last 50 cycles" />
+        <StripCell label="Sent to downloads" value={formatBytes(cycleCost.queuedBytes)} help="in the last 50 cycles" />
       </div>
 
-      <section className="rounded-2xl border border-hairline bg-surface-1 p-4">
-        <div className="flex flex-col gap-[var(--grid-gap)] lg:flex-row lg:items-start lg:justify-between">
-          <div className="max-w-2xl">
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-primary">Automation & recovery</p>
-            <h2 className="mt-1 font-display text-lg font-semibold text-foreground">Failed download handling</h2>
-            <p className="mt-1 text-sm leading-relaxed text-muted-foreground">Choose what happens when the same release repeatedly fails health checks. Deluno records every strike and only removes a client item or payload when the configured path is proven to be Deluno-owned.</p>
-          </div>
-          <div className="w-full max-w-xs">
-            <label className="block text-sm font-semibold text-foreground">Act after this many strikes
-              <input type="number" min={1} max={20} value={cleanupPolicy.strikeThreshold} onChange={(event) => setCleanupPolicy((current) => ({ ...current, strikeThreshold: Number(event.target.value) }))} className="mt-2 h-10 w-full rounded-xl border border-hairline bg-background px-3 text-foreground outline-none focus:border-primary/50" />
-            </label>
-          </div>
-        </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <CleanupOption label="Block this release" copy="Do not select the same failed release again." checked={cleanupPolicy.blockRelease} onChange={(checked) => setCleanupPolicy((current) => ({ ...current, blockRelease: checked }))} />
-          <CleanupOption label="Search for a replacement" copy="Queue one bounded replacement search using normal budgets." checked={cleanupPolicy.queueReplacement} onChange={(checked) => setCleanupPolicy((current) => ({ ...current, queueReplacement: checked }))} />
-          <CleanupOption label="Remove client entry" copy="Remove the failed item from its download client when supported." checked={cleanupPolicy.removeClientEntry} onChange={(checked) => setCleanupPolicy((current) => ({ ...current, removeClientEntry: checked }))} />
-          <CleanupOption label="Purge residual files" copy="Delete the failed payload only in approved Deluno-owned paths." checked={cleanupPolicy.purgePayload} onChange={(checked) => setCleanupPolicy((current) => ({ ...current, purgePayload: checked }))} />
-        </div>
-        <div className="mt-4 flex justify-end"><Button type="button" disabled={cleanupBusy} onClick={() => void saveCleanupPolicy()}>{cleanupBusy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null} Save failed-download handling</Button></div>
-      </section>
-
-      <div className="rounded-2xl border border-hairline bg-surface-1 p-4">
-        <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-          <Clock className="h-4 w-4" />
-          Deluno shares searches fairly across your libraries so it does not overwhelm your sources.
-          <Badge variant="info" className="font-mono text-xs">
-            ~{cycleCostSummary.apiCalls} source checks
-          </Badge>
-          <Badge variant="success" className="font-mono text-xs">
-            {formatBytes(cycleCostSummary.queuedBytes)} sent to downloads
-          </Badge>
-        </div>
-      </div>
-
-      <div className="grid gap-[var(--page-gap)]">
-        {/* TV Shows */}
-        {automationByType.tv.length > 0 && (
-          <LibraryAutomationSection
-            title="TV automation"
-            libraries={automationByType.tv}
-            librarySettings={libraries}
-            onRevalidate={() => revalidator.revalidate()}
-          />
+      <ListCard title="Library schedules" count={libraries.length ? `${libraries.length} ${libraries.length === 1 ? "library" : "libraries"}` : undefined}>
+        {libraries.length === 0 ? (
+          <ListEmpty title="No libraries yet" description="Automation runs per library: create one and Deluno will search it for missing files and upgrades on a schedule." />
+        ) : (
+          <ListTable columns={[{ label: "Library" }, { label: "Searches for" }, { label: "Schedule" }, { label: "Next / last" }, { label: "Status", width: LIST_TRACK.status, mobile: true }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]}>
+            {split.groups.flatMap((group) => [
+              split.showGroups && split.scope === "all" ? <ListGroupHeader key={group.key} label={group.label} count={group.items.length} /> : null,
+              ...group.items.map((library) => {
+              const state = stateByLibrary.get(library.id);
+              const chip = automationChip(library, state, paused);
+              const kinds = [library.missingSearchEnabled ? "Missing" : null, library.upgradeSearchEnabled ? "Upgrades" : null].filter(Boolean).join(" · ") || "Nothing selected";
+              return (
+                <ListRow key={library.id} onClick={() => openLibrary(library)} selected={drawerId === library.id}>
+                  <ListNameCell name={library.name} sub={library.mediaType === "tv" ? "TV shows" : "Movies"} />
+                  <ListCell primary={kinds} secondary={`Up to ${library.maxItemsPerRun} per run`} />
+                  <ListCell primary={`Every ${library.searchIntervalHours} h`} secondary={library.searchWindowStartHour !== null && library.searchWindowEndHour !== null ? `Only ${pad(library.searchWindowStartHour)}:00–${pad(library.searchWindowEndHour)}:00` : "Any time of day"} />
+                  <ListCell numeric primary={state?.nextSearchUtc ? untilLabel(state.nextSearchUtc) : <span className="text-muted-foreground">—</span>} secondary={state?.lastError ? state.lastError : state?.lastCompletedUtc ? `Last ran ${agoLabel(state.lastCompletedUtc)}` : "Not run yet"} />
+                  <ListCell mobile>
+                    <Chip tone={chip.tone}>{chip.label}</Chip>
+                  </ListCell>
+                  <ListCell mobile>
+                    <Switch size="sm" aria-label={`${library.autoSearchEnabled ? "Pause" : "Resume"} automation for ${library.name}`} checked={library.autoSearchEnabled} disabled={busy === `toggle:${library.id}`} onCheckedChange={(checked) => void toggleLibrary(library, checked)} />
+                  </ListCell>
+                </ListRow>
+              );
+            })
+            ])}
+          </ListTable>
         )}
+      </ListCard>
 
-        {/* Movies */}
-        {automationByType.movies.length > 0 && (
-          <LibraryAutomationSection
-            title="Movie automation"
-            libraries={automationByType.movies}
-            librarySettings={libraries}
-            onRevalidate={() => revalidator.revalidate()}
-          />
-        )}
-
-        {automationStates.length === 0 && (
-          <EmptyState
-            icon={Search}
-            title="Nothing to automate yet"
-            description="Add a movie or TV library, then Deluno can keep missing and upgrade candidates moving for you."
-          />
-        )}
-      </div>
-
-      {/* Search History */}
-      {searchCycles.length > 0 && (
-        <SearchHistorySection cycles={searchCycles} />
-      )}
-    </div>
-  );
-}
-
-function LibraryAutomationSection({
-  title,
-  libraries,
-  librarySettings,
-  onRevalidate
-}: {
-  title: string;
-  libraries: LibraryAutomationStateItem[];
-  librarySettings: LibraryItem[];
-  onRevalidate: () => void;
-}) {
-  const [triggering, setTriggering] = useState<Set<string>>(new Set());
-  const [skipping, setSkipping] = useState<Set<string>>(new Set());
-  const [toggling, setToggling] = useState<Set<string>>(new Set());
-
-  const handleTriggerSearch = async (libraryId: string, libraryName: string) => {
-    setTriggering((prev) => new Set([...prev, libraryId]));
-    try {
-      const response = await authedFetch(`/api/libraries/${libraryId}/search-now`, {
-        method: "POST"
-      });
-
-      if (!response.ok) {
-        throw new Error("Could not trigger search");
-      }
-
-      toast.success(`Deluno will search ${libraryName} next.`);
-      onRevalidate();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Search trigger failed");
-    } finally {
-      setTriggering((prev) => {
-        const next = new Set(prev);
-        next.delete(libraryId);
-        return next;
-      });
-    }
-  };
-
-  const handleToggleAutomation = async (state: LibraryAutomationStateItem) => {
-    const library = librarySettings.find((item) => item.id === state.libraryId);
-    if (!library) {
-      toast.error("This library could not be found.");
-      return;
-    }
-
-    setToggling((prev) => new Set([...prev, library.id]));
-    const enabling = !library.autoSearchEnabled;
-    try {
-      const response = await authedFetch(`/api/libraries/${library.id}/automation`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          autoSearchEnabled: enabling,
-          missingSearchEnabled: library.missingSearchEnabled,
-          upgradeSearchEnabled: library.upgradeSearchEnabled,
-          searchIntervalHours: library.searchIntervalHours,
-          retryDelayHours: library.retryDelayHours,
-          maxItemsPerRun: library.maxItemsPerRun,
-          searchWindowStartHour: library.searchWindowStartHour,
-          searchWindowEndHour: library.searchWindowEndHour
-        })
-      });
-
-      if (!response.ok) throw new Error("Could not update automation.");
-      toast.success(enabling ? `Automation resumed for ${library.name}.` : `Automation paused for ${library.name}.`);
-      onRevalidate();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Automation update failed.");
-    } finally {
-      setToggling((prev) => {
-        const next = new Set(prev);
-        next.delete(library.id);
-        return next;
-      });
-    }
-  };
-
-  const handleSkipCycle = async (libraryId: string, libraryName: string) => {
-    setSkipping((prev) => new Set([...prev, libraryId]));
-    try {
-      const response = await authedFetch(`/api/libraries/${libraryId}/skip-cycle`, {
-        method: "POST"
-      });
-
-      if (!response.ok) {
-        throw new Error("Could not skip this search cycle");
-      }
-
-      toast.success(`Deluno will skip ${libraryName} this time.`);
-      onRevalidate();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Skip cycle failed");
-    } finally {
-      setSkipping((prev) => {
-        const next = new Set(prev);
-        next.delete(libraryId);
-        return next;
-      });
-    }
-  };
-
-  return (
-    <div className="rounded-2xl border border-hairline bg-surface-1 p-[var(--tile-pad)]">
-      <h2 className="mb-[var(--grid-gap)] font-display text-lg font-semibold text-foreground">{title}</h2>
-      <div className="space-y-3">
-        {libraries.map((library) => (
-          <LibraryAutomationCard
-            key={library.libraryId}
-            state={library}
-            onTrigger={() => handleTriggerSearch(library.libraryId, library.libraryName)}
-            isTriggering={triggering.has(library.libraryId)}
-            onSkip={() => handleSkipCycle(library.libraryId, library.libraryName)}
-            isSkipping={skipping.has(library.libraryId)}
-            onToggle={() => handleToggleAutomation(library)}
-            isToggling={toggling.has(library.libraryId)}
-            isAutomationEnabled={librarySettings.find((item) => item.id === library.libraryId)?.autoSearchEnabled ?? false}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function LibraryAutomationCard({
-  state,
-  onTrigger,
-  isTriggering,
-  onSkip,
-  isSkipping,
-  onToggle,
-  isToggling,
-  isAutomationEnabled
-}: {
-  state: LibraryAutomationStateItem;
-  onTrigger: () => Promise<void>;
-  isTriggering: boolean;
-  onSkip: () => Promise<void>;
-  isSkipping: boolean;
-  onToggle: () => Promise<void>;
-  isToggling: boolean;
-  isAutomationEnabled: boolean;
-}) {
-  const nextSearchIn = useMemo(() => {
-    if (!state.nextSearchUtc) return null;
-    const next = new Date(state.nextSearchUtc);
-    const now = new Date();
-    const diff = next.getTime() - now.getTime();
-    if (diff <= 0) return "now";
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    if (hours > 0) return `in ${hours}h ${minutes}m`;
-    return `in ${minutes}m`;
-  }, [state.nextSearchUtc]);
-
-  const statusColor = {
-    idle: "text-muted-foreground",
-    queued: "text-primary",
-    running: "text-primary",
-    paused: "text-warning"
-  }[state.status] || "text-muted-foreground";
-
-  const statusIcon: Record<string, any> = {
-    idle: Clock,
-    queued: Zap,
-    running: LoaderCircle,
-    paused: Pause
-  };
-
-  const StatusIcon = statusIcon[state.status] || Clock;
-  const explanation = describeAutomationState(state, nextSearchIn);
-
-  return (
-    <div className="flex flex-col justify-between gap-3 rounded-xl border border-hairline bg-background/30 p-4 xl:flex-row xl:items-center">
-      <div className="flex items-center gap-3">
-        <div className={cn("flex h-8 w-8 items-center justify-center rounded-lg", statusColor)}>
-          {state.status === "running" ? (
-            <LoaderCircle className="h-4 w-4 animate-spin" />
-          ) : (
-            <StatusIcon className="h-4 w-4" />
-          )}
+      <ListCard title="Failed downloads" count={`After ${cleanup.strikeThreshold || 3} strikes on the same release`}>
+        <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+          <Field label="Act after this many strikes" help="A strike is one failed health check on the same release." className="max-w-[16rem]">
+            <PresetField
+              inputType="number"
+              value={cleanup.strikeThreshold}
+              onChange={(value) => setCleanup((current) => ({ ...current, strikeThreshold: value }))}
+              options={[
+                { value: "2", label: "2 strikes" },
+                { value: "3", label: "3 strikes" },
+                { value: "5", label: "5 strikes" }
+              ]}
+              customLabel="Custom"
+              customPlaceholder="1–20"
+            />
+          </Field>
+          <SwitchRow label="Block this release" description="Do not select the same failed release again." checked={cleanup.blockRelease} onCheckedChange={(checked) => setCleanup((current) => ({ ...current, blockRelease: checked }))} />
+          <SwitchRow label="Search for a replacement" description="Queue one bounded replacement search using the normal budget." checked={cleanup.queueReplacement} onCheckedChange={(checked) => setCleanup((current) => ({ ...current, queueReplacement: checked }))} />
+          <SwitchRow label="Remove the client entry" description="Remove the failed item from its download client when the client supports it." checked={cleanup.removeClientEntry} onCheckedChange={(checked) => setCleanup((current) => ({ ...current, removeClientEntry: checked }))} />
+          <SwitchRow label="Purge residual files" description="Delete the failed payload, only inside paths Deluno can prove it owns." checked={cleanup.purgePayload} onCheckedChange={(checked) => setCleanup((current) => ({ ...current, purgePayload: checked }))} />
         </div>
-        <div className="min-w-0">
-          <p className="font-semibold text-foreground">{state.libraryName}</p>
-          <p className="density-help text-xs text-muted-foreground">
-            {explanation}
-          </p>
-          {state.lastError ? (
-            <p className="mt-1 max-w-2xl rounded-md border border-destructive/20 bg-destructive/5 px-2 py-1 text-xs text-destructive">
-              Last issue: {state.lastError}
-            </p>
-          ) : null}
-        </div>
-      </div>
+      </ListCard>
 
-      <div className="flex items-center gap-2">
-        <Badge variant="default" className="font-mono text-xs">
-          {formatAutomationStatus(state.status)}
-        </Badge>
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={state.status === "running" || isTriggering || isSkipping}
-          onClick={() => void onTrigger()}
-        >
-          {isTriggering ? (
-            <LoaderCircle className="h-4 w-4 animate-spin" />
-          ) : (
-            <RotateCw className="h-4 w-4" />
-          )}
-          <span className="ml-1">Search now</span>
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={state.status === "running" || isSkipping || isTriggering}
-          onClick={() => void onSkip()}
-        >
-          {isSkipping ? (
-            <LoaderCircle className="h-4 w-4 animate-spin" />
-          ) : (
-            <SkipForward className="h-4 w-4" />
-          )}
-          <span className="ml-1">Skip this time</span>
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={state.status === "running" || isToggling || isTriggering || isSkipping}
-          onClick={() => void onToggle()}
-        >
-          {isToggling ? (
-            <LoaderCircle className="h-4 w-4 animate-spin" />
-          ) : isAutomationEnabled ? (
-            <Pause className="h-4 w-4" />
-          ) : (
-            <Play className="h-4 w-4" />
-          )}
-          <span className="ml-1">{isAutomationEnabled ? "Pause" : "Resume"}</span>
-        </Button>
-      </div>
-    </div>
-  );
-}
+      <ListCard title="Recent cycles" count={searchCycles.length ? `${searchCycles.length} runs` : undefined}>
+        {searchCycles.length === 0 ? (
+          <ListEmpty title="No search cycles yet" description="Once a library runs a missing or upgrade search, each cycle and what it queued shows up here." />
+        ) : (
+          <ListTable columns={[{ label: "Library" }, { label: "Trigger" }, { label: "Result" }, { label: "Ran" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]} chevron={false}>
+            {searchCycles.slice(0, 12).map((cycle) => (
+              <ListRow key={cycle.id}>
+                <ListNameCell name={cycle.libraryName} sub={cycle.mediaType === "tv" ? "TV shows" : "Movies"} />
+                <ListCell primary={triggerLabel(cycle.triggerKind)} />
+                <ListCell numeric primary={`${cycle.queuedCount} queued`} secondary={`${cycle.plannedCount} planned · ${cycle.skippedCount} skipped`} />
+                <ListCell numeric primary={agoLabel(cycle.startedUtc)} secondary={cycle.completedUtc ? `Took ${durationLabel(cycle.startedUtc, cycle.completedUtc)}` : "Still running"} />
+                <ListCell mobile>
+                  <Chip tone={cycle.status === "completed" ? "ok" : cycle.status === "failed" ? "bad" : "info"}>{cycle.status}</Chip>
+                </ListCell>
+              </ListRow>
+            ))}
+          </ListTable>
+        )}
+      </ListCard>
 
-function SearchHistorySection({ cycles }: { cycles: SearchCycleRunItem[] }) {
-  const grouped = useMemo(() => {
-    const by: Record<string, SearchCycleRunItem[]> = {};
-    cycles.forEach((cycle) => {
-      const key = cycle.libraryId;
-      if (!by[key]) by[key] = [];
-      by[key].push(cycle);
-    });
-    return by;
-  }, [cycles]);
+      <PageFooter state={cleanupFooter} message={cleanupMessage} saveLabel="Save failed-download handling" onDiscard={() => setCleanup(savedCleanup)} />
 
-  return (
-    <div className="rounded-2xl border border-hairline bg-surface-1 p-[var(--tile-pad)]">
-      <h2 className="mb-[var(--grid-gap)] flex items-center gap-2 font-display text-lg font-semibold text-foreground">
-        <ActivityIcon className="h-5 w-5" />
-        What Deluno has done
-      </h2>
+      <Drawer
+        open={drawerId !== null}
+        onOpenChange={(open) => {
+          if (!open) setDrawerId(null);
+        }}
+        title={editing?.name ?? "Automation"}
+        description={`Search schedule · ${editing?.mediaType === "tv" ? "TV shows" : "Movies"}`}
+        onSubmit={submitDrawer}
+        footer={<DrawerFooter state={drawerFooterState} message={drawerMessage} saveLabel="Save schedule" onCancel={() => setDrawerId(null)} disabled={busy !== null} />}
+      >
+        <DrawerSection title="What to search for">
+          <SwitchRow label="Search automatically" description="Turn off to keep this library manual — you can still run a search from here." checked={form.autoSearchEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, autoSearchEnabled: checked }))} />
+          <SwitchRow label="Missing titles" description="Look for files this library does not have yet." checked={form.missingSearchEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, missingSearchEnabled: checked }))} />
+          <SwitchRow label="Upgrades" description="Look for better releases for files already imported, until the profile cutoff." checked={form.upgradeSearchEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, upgradeSearchEnabled: checked }))} />
+        </DrawerSection>
 
-      <div className="space-y-[var(--page-gap)]">
-        {Object.entries(grouped).map(([libraryId, runs]) => (
-          <div key={libraryId} className="space-y-2">
-            <p className="font-semibold text-foreground">{runs[0]?.libraryName}</p>
-            <div className="space-y-1">
-              {runs.slice(0, 5).map((run) => {
-                const notes = parseCycleNotes(run.notesJson);
-                return (
-                  <div key={run.id} className="flex items-center justify-between rounded-lg bg-background/30 px-3 py-2 text-sm">
-                    <div className="min-w-0">
-                      <p className="font-mono text-xs text-muted-foreground">
-                        {new Date(run.startedUtc).toLocaleString()}
-                      </p>
-                      <p className="text-muted-foreground">
-                        {formatTriggerKind(run.triggerKind)} · {run.plannedCount} considered · {run.queuedCount} sent to downloads · {run.skippedCount} held back
-                      </p>
-                    </div>
-                    <div className="flex flex-col items-end gap-1">
-                      <Badge variant={run.status === "completed" ? "default" : "info"}>
-                        {run.status}
-                      </Badge>
-                      <p className="font-mono text-[11px] text-muted-foreground">
-                        ~{notes.apiCallCount} calls · {formatBytes(notes.queuedReleaseBytes)}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
+        <DrawerSection title="Schedule">
+          <FieldRow>
+            <Field label="Search every" help="How often a cycle starts for this library.">
+              <PresetField inputType="number" value={form.searchIntervalHours} onChange={(value) => setForm((current) => ({ ...current, searchIntervalHours: value }))} options={INTERVAL_OPTIONS} customLabel="Custom interval" customPlaceholder="Hours" />
+            </Field>
+            <Field label="Retry after" help="Wait this long before retrying a title that found nothing.">
+              <PresetField inputType="number" value={form.retryDelayHours} onChange={(value) => setForm((current) => ({ ...current, retryDelayHours: value }))} options={RETRY_OPTIONS} customLabel="Custom delay" customPlaceholder="Hours" />
+            </Field>
+          </FieldRow>
+          <Field label="Titles per run" help="Keeps a single cycle from flooding your indexers.">
+            <PresetField inputType="number" value={form.maxItemsPerRun} onChange={(value) => setForm((current) => ({ ...current, maxItemsPerRun: value }))} options={BATCH_OPTIONS} customLabel="Custom batch" customPlaceholder="Titles" />
+          </Field>
+          <FieldRow>
+            <Field label="Only search after" optional help="Leave both blank to search at any hour.">
+              <Select value={form.searchWindowStartHour} onChange={(event) => setForm((current) => ({ ...current, searchWindowStartHour: event.target.value }))} placeholder="Any time" options={HOUR_OPTIONS} />
+            </Field>
+            <Field label="And before" optional>
+              <Select value={form.searchWindowEndHour} onChange={(event) => setForm((current) => ({ ...current, searchWindowEndHour: event.target.value }))} placeholder="Any time" options={HOUR_OPTIONS} />
+            </Field>
+          </FieldRow>
+        </DrawerSection>
+
+        {editing ? (
+          <DrawerSection title="Run now" aside={stateByLibrary.get(editing.id)?.nextSearchUtc ? `next ${untilLabel(stateByLibrary.get(editing.id)!.nextSearchUtc!)}` : undefined}>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" size="sm" disabled={busy !== null || drawerDirty} onClick={() => void run(`now:${editing.id}`, async () => {
+                const response = await authedFetch(`/api/libraries/${editing.id}/search-now`, { method: "POST" });
+                if (!response.ok) throw new Error("Search could not be queued.");
+              }, `Search queued for ${editing.name}`)}>
+                {busy === `now:${editing.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+                Search now
+              </Button>
+              <Button type="button" variant="outline" size="sm" disabled={busy !== null || drawerDirty} onClick={() => void run(`skip:${editing.id}`, async () => {
+                const response = await authedFetch(`/api/libraries/${editing.id}/skip-cycle`, { method: "POST" });
+                if (!response.ok) throw new Error("Cycle could not be skipped.");
+              }, `Next cycle skipped for ${editing.name}`)}>
+                {busy === `skip:${editing.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <SkipForward className="h-3.5 w-3.5" />}
+                Skip next cycle
+              </Button>
+              {drawerDirty ? <span className="self-center text-[length:var(--type-caption)] text-muted-foreground">Save your changes first.</span> : null}
             </div>
-          </div>
-        ))}
-      </div>
+            {stateByLibrary.get(editing.id)?.lastError ? <p className="text-[length:var(--type-caption)] text-destructive">{stateByLibrary.get(editing.id)!.lastError}</p> : null}
+          </DrawerSection>
+        ) : null}
+      </Drawer>
+    </form>
+  );
+}
+
+/* ---------------------------------------------------------------- bits */
+
+function StripCell({ label, value, help, tone }: { label: string; value: string; help: string; tone?: "warning" }) {
+  return (
+    <div className="border-b border-r border-hairline px-[var(--card-pad-x)] py-3 last:border-r-0 md:border-b-0">
+      <span className="block text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{label}</span>
+      <span className={`mt-1 block text-[length:var(--type-title-sm)] font-semibold tabular-nums leading-tight ${tone === "warning" ? "text-warning" : "text-foreground"}`}>{value}</span>
+      <span className="block text-[length:var(--type-caption)] text-muted-foreground">{help}</span>
     </div>
   );
 }
 
-function CleanupOption({ checked, copy, label, onChange }: { checked: boolean; copy: string; label: string; onChange: (checked: boolean) => void }) {
-  return <label className="flex min-h-28 cursor-pointer gap-3 rounded-xl border border-hairline bg-background/40 p-3 text-sm transition hover:border-primary/30"><input className="mt-1" type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /><span><span className="font-semibold text-foreground">{label}</span><span className="mt-1 block leading-relaxed text-muted-foreground">{copy}</span></span></label>;
+function emptyAutomation(): AutomationForm {
+  return { autoSearchEnabled: true, missingSearchEnabled: true, upgradeSearchEnabled: true, searchIntervalHours: "12", retryDelayHours: "6", maxItemsPerRun: "10", searchWindowStartHour: "", searchWindowEndHour: "" };
 }
-
-function formatAutomationStatus(status: string) {
+function automationFrom(library: LibraryItem): AutomationForm {
   return {
-    idle: "Ready",
-    queued: "Up next",
-    running: "Working",
-    paused: "Paused"
-  }[status] ?? status;
+    autoSearchEnabled: library.autoSearchEnabled,
+    missingSearchEnabled: library.missingSearchEnabled,
+    upgradeSearchEnabled: library.upgradeSearchEnabled,
+    searchIntervalHours: String(library.searchIntervalHours),
+    retryDelayHours: String(library.retryDelayHours),
+    maxItemsPerRun: String(library.maxItemsPerRun),
+    searchWindowStartHour: library.searchWindowStartHour === null ? "" : String(library.searchWindowStartHour),
+    searchWindowEndHour: library.searchWindowEndHour === null ? "" : String(library.searchWindowEndHour)
+  };
 }
-
-function describeAutomationState(state: LibraryAutomationStateItem, nextSearchIn: string | null) {
-  if (state.lastError) return "The last attempt needs attention. Deluno will wait for the library retry rules instead of repeatedly searching.";
-  if (state.status === "paused") return "This library is paused. Deluno will not start a background search until you resume it.";
-  if (state.status === "running") return "Deluno is evaluating this library now. Approved releases are sent only when they meet the current rules.";
-  if (state.searchRequested || state.status === "queued") return "A search has been requested and is waiting for its fair turn in the background queue.";
-  if (nextSearchIn) return `Nothing is blocked. The next scheduled search is ${nextSearchIn}.`;
-  return "This library is waiting for its first scheduled search.";
+function cleanupFrom(settings: PlatformSettingsSnapshot): CleanupForm {
+  return {
+    strikeThreshold: String(settings.downloadHealthStrikeThreshold ?? 3),
+    blockRelease: settings.cleanupBlockReleaseAfterThreshold,
+    queueReplacement: settings.cleanupQueueReplacementAfterThreshold,
+    removeClientEntry: settings.cleanupRemoveClientEntryAfterThreshold,
+    purgePayload: settings.cleanupPurgePayloadAfterThreshold
+  };
 }
-
-function formatTriggerKind(triggerKind: string) {
-  return triggerKind === "manual" ? "You started this search" : triggerKind === "scheduled" ? "Scheduled search" : "Automation search";
+function automationChip(library: LibraryItem, state: LibraryAutomationStateItem | undefined, globallyPaused: boolean): { tone: NonNullable<ChipProps["tone"]>; label: string } {
+  if (!library.autoSearchEnabled) return { tone: "muted", label: "Manual" };
+  if (globallyPaused) return { tone: "warn", label: "Paused" };
+  if (state?.lastError) return { tone: "bad", label: "Last run failed" };
+  if (state?.status === "running") return { tone: "info", label: "Searching" };
+  if (state?.status === "queued") return { tone: "info", label: "Queued" };
+  return { tone: "ok", label: "Scheduled" };
+}
+function parseNotes(notesJson: string | null): { apiCallCount: number; queuedReleaseBytes: number } {
+  if (!notesJson) return { apiCallCount: 0, queuedReleaseBytes: 0 };
+  try {
+    const parsed = JSON.parse(notesJson) as { apiCallCount?: number; queuedReleaseBytes?: number };
+    return { apiCallCount: Number(parsed.apiCallCount ?? 0), queuedReleaseBytes: Number(parsed.queuedReleaseBytes ?? 0) };
+  } catch {
+    return { apiCallCount: 0, queuedReleaseBytes: 0 };
+  }
+}
+function formatBytes(bytes: number) {
+  if (!bytes) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return `${(bytes / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+}
+function pad(hour: number) {
+  return String(hour).padStart(2, "0");
+}
+function untilLabel(iso: string) {
+  const diff = new Date(iso).getTime() - Date.now();
+  if (diff <= 0) return "Due now";
+  const minutes = Math.round(diff / 60000);
+  return minutes < 60 ? `in ${minutes} min` : minutes < 60 * 48 ? `in ${Math.round(minutes / 60)} h` : `in ${Math.round(minutes / 1440)} d`;
+}
+function agoLabel(iso: string) {
+  const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  return minutes < 1 ? "just now" : minutes < 60 ? `${minutes} min ago` : minutes < 60 * 48 ? `${Math.round(minutes / 60)} h ago` : `${Math.round(minutes / 1440)} d ago`;
+}
+function durationLabel(startIso: string, endIso: string) {
+  const seconds = Math.max(0, Math.round((new Date(endIso).getTime() - new Date(startIso).getTime()) / 1000));
+  return seconds < 60 ? `${seconds}s` : `${Math.round(seconds / 60)}m`;
+}
+function triggerLabel(triggerKind: string) {
+  switch (triggerKind) {
+    case "manual":
+      return "Manual";
+    case "scheduled":
+      return "Scheduled";
+    case "upgrade":
+      return "Upgrade sweep";
+    default:
+      return triggerKind;
+  }
 }
