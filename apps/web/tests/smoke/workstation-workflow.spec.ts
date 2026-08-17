@@ -332,11 +332,13 @@ test.describe("dashboard workflow", () => {
 
   test("uses a custom list URL for public MDbList lists without a separate provider", async ({ page }) => {
     await authenticateAndNavigate(page, "/settings/lists");
+    await page.getByRole("button", { name: "New list" }).first().click();
+    const drawer = page.getByRole("dialog", { name: "New import list" });
 
-    const listType = page.getByRole("combobox").first();
+    const listType = drawer.getByLabel("Provider");
     await expect(listType).toHaveValue("url-list");
     await expect(listType.locator('option[value="mdblist"]')).toHaveCount(0);
-    await expect(page.getByText(/Paste a public list URL/)).toBeVisible();
+    await expect(drawer.getByText(/Paste a public list URL/)).toBeVisible();
     await expect(page.getByText("MDbList access token", { exact: true })).toHaveCount(0);
     await expect(page.getByPlaceholder(/Paste MDbList access token/i)).toHaveCount(0);
   });
