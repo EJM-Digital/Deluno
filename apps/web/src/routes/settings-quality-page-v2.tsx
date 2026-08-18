@@ -3,7 +3,7 @@
  *
  *   PageToolbar (Media Plans tabs · Movies / TV)
  *   ListCard (one media type at a time, tiers grouped into collapsible
- *             resolution bands, each band on its own slider scale)
+ *             resolution bands on one square-root ruler with a drawn axis)
  *   ListCard (upgrade behaviour)
  *   PageFooter (pinned: status · Discard · Save)
  *
@@ -19,7 +19,7 @@ import { ListCard } from "../components/ui/list-card";
 import { PageFooter } from "../components/ui/page-footer";
 import { PageToolbar } from "../components/ui/page-toolbar";
 import { SegmentedControl } from "../components/ui/segmented-control";
-import { RangeSlider } from "../components/ui/range-slider";
+import { RangeAxis, RangeSlider } from "../components/ui/range-slider";
 import { SwitchRow } from "../components/ui/switch";
 import { configurationNavAreas } from "../components/app/settings-shell";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
@@ -107,9 +107,9 @@ export function SettingsQualityPage() {
       />
 
       {scope === "movie" ? (
-        <SizeCard title="Movie file sizes" scope="movie" unit="GB" caption="Whole-film size per quality tier." tiers={model.tiers} minKey="movieMinGb" maxKey="movieMaxGb" step={0.1} onChange={updateTier} />
+        <SizeCard scope="movie" unit="GB" tiers={model.tiers} minKey="movieMinGb" maxKey="movieMaxGb" step={0.1} onChange={updateTier} />
       ) : (
-        <SizeCard title="Episode file sizes" scope="episode" unit="MB" caption="Per-episode size per quality tier." tiers={model.tiers} minKey="episodeMinMb" maxKey="episodeMaxMb" step={100} onChange={updateTier} />
+        <SizeCard scope="episode" unit="MB" tiers={model.tiers} minKey="episodeMinMb" maxKey="episodeMaxMb" step={100} onChange={updateTier} />
       )}
 
       <ListCard title="Upgrade behaviour" count="What happens after a file is already in the library">
@@ -143,10 +143,15 @@ function niceCeiling(value: number) {
   return Math.ceil(value / (magnitude / 2)) * (magnitude / 2);
 }
 
+/**
+ * One template for the column header, the axis, the band rows and the tier rows,
+ * so every one of them lines up. `pr-2` on the numeric columns matches the number
+ * inputs' own padding, which is what keeps a header label over its own digits.
+ */
+const SIZE_GRID = "grid grid-cols-[minmax(11rem,1.3fr)_minmax(12rem,2.4fr)_5.5rem_5.5rem] items-center gap-[var(--grid-gap)] px-[var(--card-pad-x)]";
+
 function SizeCard({
-  title,
   scope,
-  caption,
   unit,
   tiers,
   minKey,
@@ -154,10 +159,8 @@ function SizeCard({
   step,
   onChange
 }: {
-  title: string;
   /** Disambiguates control labels between the movie and episode tables. */
   scope: "movie" | "episode";
-  caption: string;
   unit: string;
   tiers: QualityTierDefinition[];
   minKey: keyof QualityTierDefinition;
@@ -165,10 +168,16 @@ function SizeCard({
   step: number;
   onChange: (index: number, key: keyof QualityTierDefinition, value: number) => void;
 }) {
-  const format = (value: number) => (unit === "GB" ? `${value} GB` : `${value.toLocaleString()} MB`);
+  const format = (value: number) => (unit === "GB" ? `${value} ${unit}` : `${value.toLocaleString()} ${unit}`);
   // 0 as a maximum means "no upper limit", matching the backend's convention.
   const formatMax = (value: number) => (value === 0 ? "Unlimited" : format(value));
   const bands = useMemo(() => groupTiers(tiers, minKey, maxKey), [tiers, minKey, maxKey]);
+  // One ruler for the whole table. It is square-root scaled and drawn as an axis,
+  // because sizes run from 0.1 to 130 and a linear ruler buries everything small.
+  const scaleMax = useMemo(
+    () => niceCeiling(Math.max(...tiers.flatMap((tier) => [Number(tier[minKey]), Number(tier[maxKey])]), 1)),
+    [tiers, minKey, maxKey]
+  );
   const [open, setOpen] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(bands.map((band) => [band.label, DEFAULT_OPEN_BANDS.includes(band.label)]))
   );
@@ -176,29 +185,37 @@ function SizeCard({
 
   return (
     <ListCard
-      title={title}
-      count={`${caption} A maximum of 0 means unlimited.`}
+      title={scope === "movie" ? "Movie file sizes" : "Episode file sizes"}
+      count={`The final check that rejects a release as implausibly small or large. 0 and 0 means no limit.`}
       actions={
         <Button type="button" variant="outline" size="sm" onClick={() => setOpen(Object.fromEntries(bands.map((band) => [band.label, !allOpen])))}>
           {allOpen ? "Collapse all" : "Expand all"}
         </Button>
       }
     >
-      <p className="border-b border-hairline px-[var(--card-pad-x)] py-3 text-[length:var(--type-body-sm)] text-muted-foreground">
-        Quality decides; size protects. A quality profile chooses the allowed release tiers and the upgrade target — these limits are the
-        final sanity check that rejects files which are implausibly small or large. They apply across every library, so adjust them only when
-        Deluno is accepting junk or turning down legitimate releases.
-      </p>
-
       <div className="overflow-x-auto">
-        <div className="min-w-[44rem]">
-          <div className="grid grid-cols-[13rem_minmax(10rem,1fr)_7rem_7rem] items-center gap-[var(--grid-gap)] border-b border-hairline bg-surface-2/40 px-[var(--card-pad-x)]">
+        <div className="min-w-[52rem]">
+          <div className={cn(SIZE_GRID, "h-[var(--list-thead-height)] border-b border-hairline bg-surface-2/40")}>
             {["Quality tier", "Accepted range", `Min (${unit})`, `Max (${unit})`].map((label, index) => (
-              <span key={label} className={cn("h-[var(--list-thead-height)] leading-[var(--list-thead-height)] text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground", index >= 2 && "text-right")}>
+              <span
+                key={label}
+                className={cn(
+                  "truncate text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground",
+                  index >= 2 && "pr-2 text-right"
+                )}
+              >
                 {label}
               </span>
             ))}
           </div>
+
+          <div className={cn(SIZE_GRID, "border-b border-hairline bg-surface-2/40 pb-2")}>
+            <span />
+            <RangeAxis scaleMax={scaleMax} scale="sqrt" unit={unit} />
+            <span />
+            <span />
+          </div>
+
           {bands.map((band) => {
             const expanded = Boolean(open[band.label]);
             return (
@@ -208,35 +225,47 @@ function SizeCard({
                   aria-expanded={expanded}
                   onClick={() => setOpen((current) => ({ ...current, [band.label]: !current[band.label] }))}
                   className={cn(
-                    "sticky top-0 z-10 flex w-full items-center gap-2 border-b border-hairline bg-surface-2/90 px-[var(--card-pad-x)] py-1.5 text-left backdrop-blur",
-                    "text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground",
-                    "transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                    SIZE_GRID,
+                    "sticky top-0 z-10 h-9 w-full border-b border-hairline bg-surface-2/95 text-left backdrop-blur",
+                    "transition-colors hover:bg-surface-3/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                   )}
                 >
-                  <ChevronRight aria-hidden className={cn("h-3.5 w-3.5 shrink-0 transition-transform", expanded && "rotate-90")} />
-                  <span>{band.label}</span>
-                  <span className="font-normal normal-case tracking-normal opacity-70">{band.tiers.length}</span>
-                  <span className="flex-1" />
-                  <span className="font-normal normal-case tracking-normal tabular-nums opacity-70">
-                    {format(band.spanMin)}–{formatMax(band.spanMax)}
+                  <span className="flex min-w-0 items-center gap-1.5 text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-foreground/80">
+                    <ChevronRight aria-hidden className={cn("h-3.5 w-3.5 shrink-0 transition-transform", expanded && "rotate-90")} />
+                    <span className="truncate">{band.label}</span>
+                  </span>
+                  <span />
+                  {/* The band summary sits in the Min and Max columns, over the numbers it summarises. */}
+                  <span className="pr-2 text-right text-[length:var(--type-caption)] tabular-nums text-muted-foreground">
+                    {band.unruled ? "—" : format(band.spanMin)}
+                  </span>
+                  <span className="pr-2 text-right text-[length:var(--type-caption)] tabular-nums text-muted-foreground">
+                    {band.unruled ? "—" : formatMax(band.spanMax)}
                   </span>
                 </button>
+
                 {expanded
                   ? band.tiers.map(({ tier, index }) => {
                       const low = Number(tier[minKey]);
                       const high = Number(tier[maxKey]);
+                      const unset = low === 0 && high === 0;
                       return (
-                        <div key={tier.name} className="grid min-h-[var(--list-row-height)] grid-cols-[13rem_minmax(10rem,1fr)_7rem_7rem] items-center gap-[var(--grid-gap)] border-b border-hairline px-[var(--card-pad-x)] last:border-b-0">
+                        <div key={tier.name} className={cn(SIZE_GRID, "min-h-[var(--list-row-height)] border-b border-hairline last:border-b-0")}>
                           <div className="min-w-0">
-                            <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{tier.name}</span>
-                            <span className="block text-[length:var(--type-caption)] text-muted-foreground">Rank {tier.rank} · {format(low)}–{formatMax(high)}</span>
+                            <span className="block truncate text-[length:var(--type-body-sm)] font-medium text-foreground">{tier.name}</span>
+                            <span className="mt-0.5 block truncate text-[length:var(--type-caption)] text-muted-foreground">
+                              Rank {tier.rank}
+                              {unset ? " · any size" : ""}
+                            </span>
                           </div>
                           <RangeSlider
                             min={low}
                             max={high}
                             step={step}
-                            scaleMax={band.scaleMax}
+                            scaleMax={scaleMax}
+                            scale="sqrt"
                             zeroMaxIsUnlimited
+                            formatValue={format}
                             minLabel={`${tier.name} ${scope} minimum`}
                             maxLabel={`${tier.name} ${scope} maximum`}
                             onChange={(next) => {
@@ -244,8 +273,8 @@ function SizeCard({
                               if (next.max !== high) onChange(index, maxKey, round(next.max, step));
                             }}
                           />
-                          <SizeInput label={`${tier.name} ${scope} minimum value`} value={low} max={band.scaleMax} step={step} onChange={(value) => onChange(index, minKey, value)} />
-                          <SizeInput label={`${tier.name} ${scope} maximum value`} value={high} max={band.scaleMax} step={step} onChange={(value) => onChange(index, maxKey, value)} />
+                          <SizeInput label={`${tier.name} ${scope} minimum value`} value={low} max={scaleMax} step={step} onChange={(value) => onChange(index, minKey, value)} />
+                          <SizeInput label={`${tier.name} ${scope} maximum value`} value={high} max={scaleMax} step={step} onChange={(value) => onChange(index, maxKey, value)} />
                         </div>
                       );
                     })
@@ -262,17 +291,10 @@ function SizeCard({
 /** The two bands people actually tune; the rest open on demand. */
 const DEFAULT_OPEN_BANDS = ["1080p", "2160p"];
 
-/**
- * Resolution bands, so a 26-row table can be scanned instead of scrolled.
- *
- * Each band carries its own slider scale. One table-wide scale is correct
- * arithmetic but useless to look at: a 0–150 GB ruler draws every SD and
- * low-quality tier as a sliver at the far left. Sizes are only ever compared
- * within a resolution anyway — nobody weighs a CAM against a 2160p remux.
- */
+/** Resolution bands, so a 26-row table can be scanned instead of scrolled. */
 function groupTiers(tiers: QualityTierDefinition[], minKey: keyof QualityTierDefinition, maxKey: keyof QualityTierDefinition) {
   const bands: { label: string; test: (rank: number) => boolean }[] = [
-    { label: "Low-quality sources", test: (rank) => rank < 10 },
+    { label: "Low quality", test: (rank) => rank < 10 },
     { label: "SD", test: (rank) => rank >= 10 && rank < 30 },
     { label: "720p", test: (rank) => rank >= 30 && rank < 60 },
     { label: "1080p", test: (rank) => rank >= 60 && rank < 95 },
@@ -283,16 +305,17 @@ function groupTiers(tiers: QualityTierDefinition[], minKey: keyof QualityTierDef
   return bands
     .map((band) => {
       const entries = indexed.filter((entry) => band.test(entry.tier.rank));
-      const mins = entries.map((entry) => Number(entry.tier[minKey]));
-      const maxes = entries.map((entry) => Number(entry.tier[maxKey]));
+      // A tier set to 0/0 carries no rule, so it must not drag the band's summary to "Unlimited".
+      const ruled = entries.filter((entry) => Number(entry.tier[minKey]) !== 0 || Number(entry.tier[maxKey]) !== 0);
+      const mins = ruled.map((entry) => Number(entry.tier[minKey]));
+      const maxes = ruled.map((entry) => Number(entry.tier[maxKey]));
       return {
         label: band.label,
         tiers: entries,
-        // Minimums count too: with 0 meaning unlimited, a band's largest number can be a minimum.
-        scaleMax: niceCeiling(Math.max(...mins, ...maxes, 1)),
-        spanMin: entries.length ? Math.min(...mins) : 0,
-        // A 0 anywhere in the band means the band as a whole has no ceiling.
-        spanMax: maxes.includes(0) ? 0 : entries.length ? Math.max(...maxes) : 0
+        spanMin: ruled.length ? Math.min(...mins) : 0,
+        // A 0 maximum on a ruled tier means that tier, and so the band, has no ceiling.
+        spanMax: maxes.includes(0) ? 0 : ruled.length ? Math.max(...maxes) : 0,
+        unruled: ruled.length === 0
       };
     })
     .filter((band) => band.tiers.length > 0);
