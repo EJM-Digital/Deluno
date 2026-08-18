@@ -63,7 +63,10 @@
     --shell-icon-size-sm: 0.875rem;
     --topbar-height: calc(74px * var(--density-scale));
     --topbar-height-mobile: calc(74px * var(--density-scale));
-    --sidebar-width: 280px;
+    /* Sized by the widest group heading, not by the links. The rail stopped
+       needing room for expanded child labels when sub-navigation moved into
+       the page toolbar, so the headings became the only thing holding it open. */
+    --sidebar-width: 240px;
     --sidebar-rail: 58px;
     --mobile-tabbar-height: 56px;
     --glass-bg: hsl(0 0% 100% / 0.82);
@@ -827,7 +830,7 @@
   --type-title-xl: 2.5rem;
   --type-display: 3rem;
   --content-max-width: 1920px;
-  --sidebar-width: 280px;
+  --sidebar-width: 240px;
   --content-outer-gap: clamp(0.75rem, 1.4vw, 1.5rem);
   --content-pad-inline: clamp(0.75rem, 1.4vw, 1.75rem);
   --content-pad-block: clamp(1rem, 1.6vw, 1.75rem);
@@ -906,7 +909,7 @@
   --type-title-xl: 2.15rem;
   --type-display: 2.55rem;
   --content-max-width: 1760px;
-  --sidebar-width: 256px;
+  --sidebar-width: 214px;
   --content-outer-gap: clamp(0.5rem, 1vw, 1rem);
   --content-pad-inline: clamp(0.65rem, 1.1vw, 1.25rem);
   --content-pad-block: clamp(0.9rem, 1.2vw, 1.35rem);
@@ -991,7 +994,7 @@
   --type-title-xl: 2.5rem;
   --type-display: 3rem;
   --content-max-width: 1920px;
-  --sidebar-width: 280px;
+  --sidebar-width: 240px;
   --content-outer-gap: clamp(0.75rem, 1.4vw, 1.5rem);
   --content-pad-inline: clamp(0.75rem, 1.4vw, 1.75rem);
   --content-pad-block: clamp(1rem, 1.6vw, 1.75rem);
@@ -1076,7 +1079,7 @@
     --type-title-xl: 3rem;
     --type-display: 3.5rem;
     --content-max-width: 2400px;
-    --sidebar-width: 300px;
+    --sidebar-width: 258px;
     --content-outer-gap: clamp(0.7rem, 1vw, 1.4rem);
     --content-pad-inline: clamp(0.95rem, 1.35vw, 1.9rem);
     --content-pad-block: clamp(1.25rem, 1.75vw, 2.25rem);
@@ -1161,7 +1164,7 @@
     --type-title-xl: 3.45rem;
     --type-display: 4rem;
     --content-max-width: 2880px;
-    --sidebar-width: 320px;
+    --sidebar-width: 276px;
     --content-outer-gap: clamp(0.65rem, 0.85vw, 1.5rem);
     --content-pad-inline: clamp(1rem, 1.35vw, 2.15rem);
     --content-pad-block: clamp(1.35rem, 1.9vw, 2.75rem);
@@ -1329,9 +1332,9 @@ html {
   --shell-icon-size: calc(15px * var(--density-scale));
   --shell-icon-size-sm: calc(14px * var(--density-scale));
   --sidebar-width: clamp(
-    calc(218px * var(--density-scale)),
+    calc(200px * var(--density-scale)),
     calc((var(--tile-pad) * 1.15) + (var(--shell-nav-pad-x) * 2) + var(--shell-icon-col) + var(--shell-nav-text-min) + (28px * var(--density-scale))),
-    calc(256px * var(--density-scale))
+    calc(240px * var(--density-scale))
   );
 
   --settings-nav-size: calc(14px * var(--font-scale));

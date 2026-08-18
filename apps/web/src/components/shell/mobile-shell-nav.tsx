@@ -27,8 +27,8 @@ const PRIMARY = [
 
 const DRAWER_LINKS = [
   { to: "/calendar", label: "Schedule", icon: "schedule", group: "Your media" as const },
-  { to: "/search-cycles", label: "Automation", icon: "automation", group: "What Deluno is doing" as const },
-  { to: "/activity", label: "Activity", icon: "activity", group: "What Deluno is doing" as const }
+  { to: "/search-cycles", label: "Automation", icon: "automation", group: "Happening now" as const },
+  { to: "/activity", label: "Activity", icon: "activity", group: "Happening now" as const }
 ] as const;
 
 function moreTabActive(pathname: string): boolean {
@@ -176,14 +176,14 @@ export function MobileShellNav({ attention, user, onLogout }: MobileShellNavProp
           aria-label="Additional destinations"
           className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-2 py-2"
         >
-          {(["Your media", "What Deluno is doing", "How Deluno is set up", "Deluno itself"] as const).map((group) => (
+          {(["Your media", "Happening now", "Setup", "Deluno"] as const).map((group) => (
             <div key={group} className="mb-3 last:mb-0">
               <p className="px-3 pb-1.5 pt-2 text-[length:var(--shell-subtle-size)] font-semibold uppercase tracking-wider text-muted-foreground/70">
                 {group}
               </p>
               <ul className="space-y-0.5">
-                {group === "How Deluno is set up" ? <MobileConfigurationTree pathname={pathname} /> : null}
-                {group === "Deluno itself" ? <MobileMaintenanceTree pathname={pathname} /> : null}
+                {group === "Setup" ? <MobileConfigurationTree pathname={pathname} /> : null}
+                {group === "Deluno" ? <MobileMaintenanceTree pathname={pathname} /> : null}
                 {DRAWER_LINKS.filter((l) => l.group === group).map((item) => {
                   const isActive = pathname === item.to || pathname.startsWith(`${item.to}/`);
                   return (
