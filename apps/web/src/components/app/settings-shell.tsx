@@ -122,7 +122,15 @@ const systemNavItems = [
   { to: "/system/updates", label: "Updates", end: false, tip: "Version status, update mode, download progress, and restart flow" }
 ] as const;
 
-const settingsPageMeta = [
+/**
+ * The name of every settings page, and the one place it is defined.
+ *
+ * The topbar renders this as the page's h1 (see routeMeta in app-layout). The
+ * page body deliberately does not repeat it — a page is named once. Before this
+ * was consolidated there were two independent maps, which drifted: "/settings"
+ * was "Files & folders" in the topbar and "Setup overview" in the body.
+ */
+export const settingsPageMeta = [
   {
     match: (path: string) => path.startsWith("/settings/processing"),
     title: "Processing workflow",
@@ -321,18 +329,15 @@ export function SettingsShell({
       <GlossaryModal open={glossaryOpen} onOpenChange={setGlossaryOpen} />
       <div className="max-w-4xl">
         <div className="min-w-0">
-          {/* Both of these are real headings, not styled paragraphs. They look
-              like titles, so they have to behave like titles: a screen-reader
-              user navigates by jumping between headings, and while these were
-              <p> there was nothing in the settings body to jump to at all. The
-              topbar keeps the h1, so these sit at h2. */}
+          {/* A real heading, not a styled paragraph: a screen-reader user
+              navigates by jumping between headings, and while this was a <p>
+              there was nothing in the settings body to jump to at all. The page
+              name itself is the topbar's h1 and is not repeated here, so this
+              sits at h2. */}
           <h2 className="text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-muted-foreground">
             {eyebrow}
           </h2>
           <div className="mt-2 flex items-center gap-3">
-            <h2 className="font-display text-[length:var(--type-title-lg)] font-semibold tracking-tight text-foreground">
-              {title}
-            </h2>
             <button
               onClick={() => setGlossaryOpen(true)}
               className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
