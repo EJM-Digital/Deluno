@@ -245,7 +245,7 @@ function DesktopSidebar({
       </NavLink>
 
       <div className="mt-5 min-h-0 flex-1 overflow-x-hidden overflow-y-auto pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div className="mb-2 mt-5 border-t border-hairline/70 px-[calc(var(--shell-nav-pad-x)*0.55)] pt-4 text-[length:var(--shell-subtle-size)] font-semibold uppercase tracking-[0.13em] text-muted-foreground first:mt-0 first:border-t-0 first:pt-0">
+        <div className="mb-2 mt-5 border-t border-hairline/70 px-[var(--shell-nav-inset)] pt-4 text-[length:var(--shell-subtle-size)] font-semibold uppercase tracking-[0.13em] text-muted-foreground first:mt-0 first:border-t-0 first:pt-0">
           Your media
         </div>
         <nav aria-label="Media dashboard" className="space-y-[calc(var(--shell-nav-gap)*0.7)]">
@@ -258,7 +258,7 @@ function DesktopSidebar({
           ))}
         </nav>
 
-        <div className="mb-2 mt-5 border-t border-hairline/70 px-[calc(var(--shell-nav-pad-x)*0.55)] pt-4 text-[length:var(--shell-subtle-size)] font-semibold uppercase tracking-[0.13em] text-muted-foreground first:mt-0 first:border-t-0 first:pt-0">
+        <div className="mb-2 mt-5 border-t border-hairline/70 px-[var(--shell-nav-inset)] pt-4 text-[length:var(--shell-subtle-size)] font-semibold uppercase tracking-[0.13em] text-muted-foreground first:mt-0 first:border-t-0 first:pt-0">
           Happening now
         </div>
         <nav aria-label="Automation and transfer status" className="space-y-[calc(var(--shell-nav-gap)*0.7)]">
@@ -271,14 +271,14 @@ function DesktopSidebar({
           ))}
         </nav>
 
-        <div className="mb-2 mt-5 border-t border-hairline/70 px-[calc(var(--shell-nav-pad-x)*0.55)] pt-4 text-[length:var(--shell-subtle-size)] font-semibold uppercase tracking-[0.13em] text-muted-foreground first:mt-0 first:border-t-0 first:pt-0">
+        <div className="mb-2 mt-5 border-t border-hairline/70 px-[var(--shell-nav-inset)] pt-4 text-[length:var(--shell-subtle-size)] font-semibold uppercase tracking-[0.13em] text-muted-foreground first:mt-0 first:border-t-0 first:pt-0">
           Setup
         </div>
         <nav aria-label="Library setup" className="space-y-[calc(var(--shell-nav-gap)*0.7)]">
           <ConfigurationSidebarTree pathname={pathname} />
         </nav>
 
-        <div className="mb-2 mt-5 border-t border-hairline/70 px-[calc(var(--shell-nav-pad-x)*0.55)] pt-4 text-[length:var(--shell-subtle-size)] font-semibold uppercase tracking-[0.13em] text-muted-foreground first:mt-0 first:border-t-0 first:pt-0">
+        <div className="mb-2 mt-5 border-t border-hairline/70 px-[var(--shell-nav-inset)] pt-4 text-[length:var(--shell-subtle-size)] font-semibold uppercase tracking-[0.13em] text-muted-foreground first:mt-0 first:border-t-0 first:pt-0">
           Deluno
         </div>
         <nav aria-label="System controls" className="space-y-[calc(var(--shell-nav-gap)*0.7)]">
@@ -452,7 +452,7 @@ function AreaRow({
         <NavLink
           to={area.to}
           className={({ isActive }) => cn(
-            "group relative flex min-h-[var(--shell-pill-height)] min-w-0 flex-1 items-center gap-2.5 rounded-lg px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-nav-size)] font-semibold transition-colors duration-150",
+            "group relative flex min-h-[var(--shell-pill-height)] min-w-0 flex-1 items-center gap-2.5 rounded-lg px-[var(--shell-nav-inset)] text-[length:var(--shell-nav-size)] font-semibold transition-colors duration-150",
             isActive || areaIsActive ? "bg-primary/14 text-foreground" : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
           )}
         >
@@ -563,7 +563,7 @@ function SidebarItem({
       end={item.end}
       className={({ isActive }) =>
         cn(
-          "group relative flex min-h-[var(--shell-pill-height)] items-center gap-2.5 rounded-lg px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-nav-size)] font-semibold transition-colors duration-150",
+          "group relative flex min-h-[var(--shell-pill-height)] items-center gap-2.5 rounded-lg px-[var(--shell-nav-inset)] text-[length:var(--shell-nav-size)] font-semibold transition-colors duration-150",
           isActive ? "bg-primary/14 text-foreground" : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
         )
       }
