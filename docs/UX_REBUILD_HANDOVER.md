@@ -1,6 +1,6 @@
 # Deluno UX rebuild — handover
 
-Branch `ux/list-drawer-media-plans`, 24 commits, not pushed. Nothing here is merged; all of it is reviewable in one place.
+Branch `ux/list-drawer-media-plans`, 26 commits, not pushed. Nothing here is merged; all of it is reviewable in one place.
 
 ## The decision this implements
 
@@ -85,7 +85,13 @@ Six more pages, one per commit, each verified live before committing.
 
 The operational pages: **Transfers, Dashboard, System** (#111 — condense each to one `SummaryStrip` plus the live list; Transfers is ~2,600px tall with nothing in flight). `SummaryStrip` exists for exactly this now.
 
-**Then, and only then:** collapse the sidebar sub-items in favour of the toolbar tabs. Doing it earlier strands any page that does not yet carry a `PageToolbar` — there would be no way to reach it. Every page in an area must be converted first.
+### Navigation — done for five areas
+
+The sidebar used to list an area's children *and* the page toolbar listed the same children as tabs. Areas now carry `tabsInToolbar`: when every page in an area has a `PageToolbar` with those items as its tabs, the sidebar shows one row and the toolbar is the only way between siblings.
+
+Collapsed today: Library setup, Connections, Media Plans, Discover media, Automation & recovery, Preferences. **System is the only row still holding an expander** — `/system/*` has no toolbar yet, so collapsing it would leave no way in. It loses the expander the moment #111 lands; add `systemHealthNavItems` as the toolbar tabs on those pages and flip `tabsInToolbar` to `true`.
+
+"System & settings" is split: **Preferences** (General · Interface · Notifications · Migration) and **System** (`/system/*` plus Guided setup). Eleven destinations under one heading was a scrolling tab bar.
 
 ## Working rules
 
