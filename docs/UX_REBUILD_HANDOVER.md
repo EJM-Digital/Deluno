@@ -1,6 +1,6 @@
 # Deluno UX rebuild — handover
 
-Branch `ux/list-drawer-media-plans`, 17 commits, not pushed. Nothing here is merged; all of it is reviewable in one place.
+Branch `ux/list-drawer-media-plans`, 24 commits, not pushed. Nothing here is merged; all of it is reviewable in one place.
 
 ## The decision this implements
 
@@ -31,9 +31,11 @@ James's read of the old UI: the icons, logo and colour scheme are right, the **i
 
 Hook: `hooks/use-unsaved-changes.ts`. Tokens: `--list-row-height`, `--list-header-height`, `--list-thead-height`, `--toolbar-height`, `--drawer-width`, `--drawer-header-height`, `--drawer-footer-height` in `index.css`.
 
-## Converted (13)
+## Converted (19)
 
-Media plans · Libraries · Connections (indexers, download clients, library routing — `connections-screen.tsx` replaced the 2,180-line `indexers-screen.tsx`) · Import lists · Tags · Final destinations · Quality profiles · Notifications · Size rules · File handling · Processing workflow · Automation & recovery.
+Media plans · Libraries · Connections (indexers, download clients, library routing — `connections-screen.tsx` replaced the 2,180-line `indexers-screen.tsx`) · Import lists · Tags · Final destinations · Quality profiles · Notifications · Size rules · File handling · Processing workflow · Automation & recovery · **Release preferences · Metadata · General · Interface · Migration · Setup guide**.
+
+Every `/settings/*` route now carries a `PageToolbar` and `chrome: "none"`.
 
 Things fixed along the way that were not cosmetic:
 
@@ -42,6 +44,7 @@ Things fixed along the way that were not cosmetic:
 - **Quality profiles wrote TRaSH tier ids** (`webdl-1080p`) into `allowedQualities`, which match no tier name in `/api/quality-model`. The page now writes real tier names and flags stored values that resolve to nothing. Repair of existing rows is #128.
 - **Quality model had 12 tiers against Radarr's ~30.** Expanded to 26, additive: every existing tier keeps its name and rank so saved profiles still resolve, and installs that already saved a model get the new tiers merged in at defaults.
 - **A size maximum of 0 was rejected** (validation required `max > min`, the save 400'd). 0 now means unlimited, the Radarr convention; the decision engine skips the too-large penalty and the row reads "0 GB–Unlimited".
+- **Release rules were create-and-delete-only.** `PUT /api/custom-formats/{id}` had existed all along; the page never called it, so changing a score or a condition meant deleting the rule and rebuilding it. Same defect class as indexers, clients, profiles and webhooks.
 - Duplicate accessible names in the two size tables; `window.confirm` on webhook delete; duplicate `8080` React keys in the client port presets.
 
 ## Quality pass over the 13 converted pages — done
@@ -66,9 +69,21 @@ Import lists, Notifications and Automation carry a `PageToolbar` with actions bu
 
 **Caveat:** the dev database is empty of indexers, download clients, import lists and destination rules, so those four drawers were not re-exercised in this pass — they were verified when they were built. Libraries, tags and a webhook were seeded to walk Libraries, Media plans, Library routing, Processing workflow, Tags, Notifications and Automation, then removed again.
 
+## Second batch — the rest of the settings area
+
+Six more pages, one per commit, each verified live before committing.
+
+- **Release preferences** (837 → ~700 lines) — had seven container shapes: preset cards with their own progress bars, a bespoke four-tab pill bar, a `<details>` block, two flavours of media-type pill. Now one toolbar, three cards, three drawers. The TRaSH catalogue became "Start from" inside the rule drawer instead of a browsable tab that could only add at a default score, and `cf-creator.tsx` + `cf-library-browser.tsx` (660 lines of one-off UI) are deleted.
+- **Metadata** — per-field boxes and raw checkboxes gone; the title-matching check and the refresh jobs now report **in the row that asked**, not through a toast that vanishes.
+- **General** and **Interface** — both were "form left, read-only stat cards right" splits; the stat cards are what `SummaryStrip` is for. Interface's 2×2 grid of density cards plus a whole card explaining what each density does collapsed into one segmented control whose help line describes the selected option. General now says out loud that a bind-address or port change needs a restart.
+- **Migration** — the change report was a stack of full-width cards with raw checkboxes and a 4-column key/value grid each. Now one row per operation with an action chip and an Apply switch; the row opens a drawer with the reason, every field that would be written, and the warnings. Safety notes moved behind one `Disclosure`.
+- **Setup guide** — the wizard shape is deliberately **left alone**: a linear first-run flow with a step rail and a Back/Continue footer is the right surface. What was replaced were its three private "label over value" block types (all now `SummaryStrip`) and the readiness checklist (now a `ListCard` with standard rows and Chips).
+
+`systemSettingsNavItems` (General · Interface · Notifications · Migration) gives those four a shared tab bar. The "System & settings" sidebar area covers eleven destinations and `/system/*` already has its own bar, so splitting the two keeps either one scannable. Notifications had no tabs at all before.
+
 ## Remaining queue
 
-Release preferences (`settings-custom-formats-page`, 837 lines) · Metadata · General · Interface · Migration · Setup guide · then the operational pages: Transfers, Dashboard, System (#111 — condense to one summary strip + the live list; Transfers is ~2,600px tall with nothing in flight).
+The operational pages: **Transfers, Dashboard, System** (#111 — condense each to one `SummaryStrip` plus the live list; Transfers is ~2,600px tall with nothing in flight). `SummaryStrip` exists for exactly this now.
 
 **Then, and only then:** collapse the sidebar sub-items in favour of the toolbar tabs. Doing it earlier strands any page that does not yet carry a `PageToolbar` — there would be no way to reach it. Every page in an area must be converted first.
 
