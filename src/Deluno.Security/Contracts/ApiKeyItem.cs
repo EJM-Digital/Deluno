@@ -1,4 +1,4 @@
-namespace Deluno.Platform.Contracts;
+namespace Deluno.Security.Contracts;
 
 public sealed record ApiKeyItem(
     string Id,

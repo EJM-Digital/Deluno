@@ -13,6 +13,7 @@
     <Project Path="src/Deluno.Movies/Deluno.Movies.csproj" />
     <Project Path="src/Deluno.Platform/Deluno.Platform.csproj" />
     <Project Path="src/Deluno.Realtime/Deluno.Realtime.csproj" />
+    <Project Path="src/Deluno.Security/Deluno.Security.csproj" />
     <Project Path="src/Deluno.Series/Deluno.Series.csproj" />
     <Project Path="src/Deluno.Worker/Deluno.Worker.csproj" />
   </Folder>

@@ -4,6 +4,7 @@ using Deluno.Persistence.Tests.Support;
 using Deluno.Platform;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
+using Deluno.Security.Contracts;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;

@@ -1,9 +1,9 @@
-using Deluno.Platform.Security.Hardening.Backends;
+using Deluno.Security.Hardening.Backends;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
-namespace Deluno.Platform.Security.Hardening;
+namespace Deluno.Security.Hardening;
 
 /// <summary>
 /// Selects which <see cref="ISecretProtector"/> backend to wire up at

@@ -1,4 +1,4 @@
-namespace Deluno.Platform.Security.Hardening;
+namespace Deluno.Security.Hardening;
 
 /// <summary>
 /// DI-friendly accessor for the active <see cref="SecretsBackendInfo"/>.

@@ -1,4 +1,5 @@
 using Deluno.Platform.Contracts;
+using Deluno.Security.Contracts;
 
 namespace Deluno.Platform.Data;
 

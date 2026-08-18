@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
+using Deluno.Security.Contracts;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;

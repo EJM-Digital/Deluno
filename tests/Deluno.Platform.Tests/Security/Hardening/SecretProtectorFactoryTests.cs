@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
-using Deluno.Platform.Security.Hardening;
-using Deluno.Platform.Security.Hardening.Backends;
+using Deluno.Security.Hardening;
+using Deluno.Security.Hardening.Backends;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -158,7 +158,7 @@ public class SecretProtectorFactoryTests
         Environment.SetEnvironmentVariable(FileBackedSecretProtector.EnvVarName, null);
         var (dir, key) = FreshKeyPath();
         var dpp = new EphemeralDataProtectionProvider();
-        var legacyProtector = new Deluno.Platform.Security.DataProtectionSecretProtector(dpp);
+        var legacyProtector = new Deluno.Security.DataProtectionSecretProtector(dpp);
         var legacyValue = legacyProtector.Protect("p", "old-value");
 
         try

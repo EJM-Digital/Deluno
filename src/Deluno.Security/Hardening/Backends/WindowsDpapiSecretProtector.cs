@@ -2,7 +2,7 @@ using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace Deluno.Platform.Security.Hardening.Backends;
+namespace Deluno.Security.Hardening.Backends;
 
 /// <summary>
 /// Windows-only <see cref="ISecretProtector"/> backed by DPAPI via
