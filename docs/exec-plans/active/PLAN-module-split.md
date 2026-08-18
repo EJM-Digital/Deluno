@@ -67,6 +67,39 @@ The target split, and what moves into each:
 `Deluno.Platform` keeps only genuinely shared plumbing (settings snapshot,
 processing, migration) — and should end well under 4,000 LOC.
 
+### Progress
+
+| Context | State | Commit |
+|---|---|---|
+| `Deluno.Security` | ✅ done | `061d2a1`, `d4247ca`, `2c243de` |
+| `Deluno.Notifications` | ✅ done | `4c8bd2a` |
+| `Deluno.Intake` | ✅ done | `1335705` |
+| `Deluno.Quality` | not started | |
+| `Deluno.Connections` | not started | |
+| `Deluno.Libraries` | not started | |
+
+`Deluno.Platform` is down from 16,017 LOC to 11,864.
+
+Two enabling commits landed alongside these, both pure lifts with
+unchanged bodies, because every context needed them:
+
+- `5f94687` — `SqliteRecordHelpers` (AddParameter, ParseTimestamp,
+  NormalizeName, NormalizeCsv) into `Deluno.Infrastructure.Storage`
+- `12e1d30` — `DelunoValueNormalizers` (media type, audience, year,
+  rating, sync interval) into `Deluno.Contracts`
+
+Both are consumed through `using static`, so existing call sites are
+untouched.
+
+**Deviation worth knowing about.** The runbook expected moving
+`UserAuthorization` to be "a wide but mechanical diff" adding a
+parameter to every endpoint. Instead `RequireAuthenticatedAsync` gained
+a two-argument overload that resolves `ISecurityRepository` from the
+request scope — the same thing the class already did for
+`IDataProtectionProvider` and `TimeProvider`. 166 call sites *lost* an
+argument rather than gaining one, and a follow-up commit deleted the 62
+endpoint injections that existed only to feed the auth check.
+
 ### Order
 
 Do **Security first**. It is the most self-contained and every other context
