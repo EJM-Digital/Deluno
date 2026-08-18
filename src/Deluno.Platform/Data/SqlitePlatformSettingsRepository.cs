@@ -415,10 +415,12 @@ public sealed class SqlitePlatformSettingsRepository(
             DelunoDatabaseNames.Platform,
             cancellationToken);
 
-        // A greenfield installation must always have a sensible quality baseline.
-        // Advanced profiles remain optional, but a new library can immediately use
-        // the standard profile for its media type without a circular setup step.
-        await EnsureSeedQualityProfilesAsync(connection, cancellationToken);
+        // Listing profiles used to create four of them when the table was empty,
+        // so a fresh install "had" profiles nobody chose — which is exactly what
+        // migration V0013 exists to delete and what
+        // Fresh_install_does_not_invent_libraries_or_quality_profiles asserts
+        // against. Reading is a read: the setup guide and the Media plans page
+        // are where profiles come from.
 
         var items = new List<QualityProfileItem>();
 
