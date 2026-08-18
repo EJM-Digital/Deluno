@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { HelpCircle } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { GlossaryModal } from "../ui/glossary-modal";
+import { PageToolbar } from "../ui/page-toolbar";
 
 export const librarySetupNavItems = [
   { to: "/settings/libraries", label: "Library folders", end: false },
@@ -112,9 +113,8 @@ export const maintenanceNavItems = [
     label: "System",
     icon: "system",
     to: "/system",
-    // /system/* is not converted yet, so its children stay in the sidebar.
-    tabsInToolbar: false,
-    items: [...systemHealthNavItems, { to: "/setup-guide", label: "Guided setup", end: false }]
+    tabsInToolbar: true,
+    items: systemHealthNavItems
   }
 ] as const;
 
@@ -241,8 +241,6 @@ const systemPageMeta = [
     match: (path: string) => path === "/system",
     title: "System Health",
     description: "Provider health, background jobs, and current system state."
-  ,
-    chrome: "none"
   },
   {
     match: (path: string) => path.startsWith("/system/audit"),
@@ -293,16 +291,19 @@ export function SettingsWorkspaceLayout() {
   );
 }
 
+/**
+ * Every /system route hangs off this, so the toolbar lives here rather than
+ * being repeated on six pages. The topbar already names the area, so there is
+ * no page heading — same rule as every other converted page.
+ */
 export function SystemWorkspaceLayout() {
-  const location = useLocation();
-  const meta = systemPageMeta.find((item) => item.match(location.pathname)) ?? systemPageMeta[0];
-
   return (
-    <SystemShell title={meta.title} description={meta.description}>
+    <div className="flex flex-col gap-[var(--page-gap)]">
+      <PageToolbar tabs={systemHealthNavItems} />
       <SystemWorkspaceContext.Provider value>
         <Outlet />
       </SystemWorkspaceContext.Provider>
-    </SystemShell>
+    </div>
   );
 }
 
@@ -422,38 +423,10 @@ function SectionSubnav({
   );
 }
 
-export function SystemShell({
-  title,
-  description,
-  children
-}: {
-  title: string;
-  description: string;
-  children: ReactNode;
-}) {
-  if (useContext(SystemWorkspaceContext)) {
-    return <>{children}</>;
-  }
-
-  return (
-    <div className="space-y-[var(--page-gap)]">
-      <div className="max-w-4xl">
-        <div>
-          <p className="text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-            System
-          </p>
-          <h1 className="mt-2 font-display text-[length:var(--type-title-lg)] font-semibold tracking-tight text-foreground">
-            {title}
-          </h1>
-        </div>
-        <p className="mt-3 max-w-3xl text-[length:var(--section-subtitle-size)] leading-relaxed text-muted-foreground">
-          {description}
-        </p>
-      </div>
-
-      <SectionSubnav groups={[{ label: "System", items: systemNavItems }]} />
-
-      {children}
-    </div>
-  );
+/**
+ * Kept as a passthrough so the /system pages need no edit at their call site.
+ * SystemWorkspaceLayout owns the toolbar; the page supplies only its content.
+ */
+export function SystemShell({ children }: { title?: string; description?: string; children: ReactNode }) {
+  return <div className="flex flex-col gap-[var(--page-gap)]">{children}</div>;
 }

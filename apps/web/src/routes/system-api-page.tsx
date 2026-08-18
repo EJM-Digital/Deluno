@@ -6,7 +6,7 @@ import { SaveStatus, useSaveStatus } from "../components/shell/save-status";
 import { toast } from "../components/shell/toaster";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable } from "../components/ui/list-card";
 import { Input } from "../components/ui/input";
 import { PresetField } from "../components/ui/preset-field";
 import { authedFetch } from "../lib/use-auth";
@@ -95,18 +95,13 @@ export function SystemApiPage() {
   }
 
   return (
-    <div className="settings-split settings-split-config-heavy">
-      <Card className="settings-panel">
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between gap-3">
-            Generate an API key
-            <SaveStatus state={save.state} message={save.message} />
-          </CardTitle>
-          <CardDescription>
-            API keys are shown once. Deluno stores only a hash, so copy the generated value before leaving this page.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-[var(--field-group-pad)]">
+    <div className="flex flex-col gap-[var(--page-gap)]">
+      <ListCard
+        title="Generate an API key"
+        count="Shown once — Deluno stores only a hash, so copy it before you leave"
+        actions={<SaveStatus state={save.state} message={save.message} />}
+      >
+        <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
           {createdKey ? (
             <div className="rounded-2xl border border-primary/35 bg-primary/10 p-[var(--tile-pad)]">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -243,57 +238,43 @@ curl -H "Authorization: Bearer deluno_..." http://127.0.0.1:5099/api/integration
                 Generate API key
               </Button>
             </form>
-        </CardContent>
-      </Card>
+        </div>
+      </ListCard>
 
-      <Card className="settings-panel">
-        <CardHeader>
-          <CardTitle>Active keys</CardTitle>
-          <CardDescription>Revoke keys that are no longer needed. Revocation takes effect immediately.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {apiKeys.length === 0 ? (
-            <div className="rounded-xl border border-hairline bg-surface-1 p-[var(--tile-pad)]">
-              <p className="font-display text-[length:var(--type-card-title)] font-semibold tracking-tight text-foreground">
-                No API keys yet
-              </p>
-              <p className="mt-2 density-help leading-relaxed text-muted-foreground">
-                Generate one when another app or script needs to consume Deluno without a browser session.
-              </p>
-            </div>
-          ) : (
-            apiKeys.map((item) => (
-              <div key={item.id} className="rounded-xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.75)]">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate font-display text-[length:var(--type-card-title)] font-semibold tracking-tight text-foreground">
-                      {item.name}
-                    </p>
-                    <p className="mt-1 font-mono text-[length:var(--type-caption)] text-muted-foreground">
-                      {item.prefix}
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={deletingId === item.id}
-                    onClick={() => void handleDelete(item)}
-                  >
-                    {deletingId === item.id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+      <ListCard title="Active keys" count={apiKeys.length ? `${apiKeys.length} ${apiKeys.length === 1 ? "key" : "keys"}` : undefined}>
+        {apiKeys.length === 0 ? (
+          <ListEmpty
+            title="No API keys yet"
+            description="Generate one when another app or script needs to reach Deluno without a browser session."
+          />
+        ) : (
+          <ListTable
+            columns={[
+              { label: "Key" },
+              { label: "Scopes", width: "minmax(0,1.2fr)" },
+              { label: "Created" },
+              { label: "Last used" },
+              { label: "Revoke", width: "120px", mobile: true, srOnly: true }
+            ]}
+            chevron={false}
+          >
+            {apiKeys.map((item) => (
+              <ListRow key={item.id}>
+                <ListNameCell name={item.name} sub={item.prefix} />
+                <ListCell primary={item.scopes} />
+                <ListCell numeric primary={formatWhen(item.createdUtc)} />
+                <ListCell numeric primary={item.lastUsedUtc ? formatWhen(item.lastUsedUtc) : "Never"} secondary={item.lastUsedUtc ? undefined : "unused"} />
+                <ListCell mobile align="end">
+                  <Button type="button" size="sm" variant="outline" disabled={deletingId === item.id} onClick={() => void handleDelete(item)}>
+                    {deletingId === item.id ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                     Revoke
                   </Button>
-                </div>
-                <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                  <ApiKeyStat label="Scopes" value={item.scopes} />
-                  <ApiKeyStat label="Created" value={formatWhen(item.createdUtc)} />
-                  <ApiKeyStat label="Last used" value={item.lastUsedUtc ? formatWhen(item.lastUsedUtc) : "Never"} />
-                </div>
-              </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
+                </ListCell>
+              </ListRow>
+            ))}
+          </ListTable>
+        )}
+      </ListCard>
 
       <ConfirmDialog
         open={revokeTarget !== null}
