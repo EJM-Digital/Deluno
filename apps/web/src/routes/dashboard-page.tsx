@@ -4,11 +4,9 @@ import {
   ArrowUpRight,
   Calendar,
   Download,
-  Film,
   HardDrive,
   RadioTower,
-  Sparkles,
-  Tv
+  Sparkles
 } from "lucide-react";
 import type { ActiveDownload, IndexerHealthItem, MediaItem } from "../lib/media-types";
 import { MEDIA_STATUS_PRESENTATION, mediaStatusIsActive } from "../lib/media-status-presentation";
@@ -41,7 +39,6 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Chip } from "../components/ui/chip";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
-import { PageToolbar } from "../components/ui/page-toolbar";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { RouteSkeleton } from "../components/shell/skeleton";
 
@@ -219,25 +216,10 @@ export function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-[var(--page-gap)]">
-      <PageToolbar
-        actions={
-          <>
-            <Button asChild type="button" variant="outline">
-              <Link to="/tv?add=true">
-                <Tv className="h-4 w-4" />
-                Add a show
-              </Link>
-            </Button>
-            <Button asChild type="button">
-              <Link to="/movies?add=true">
-                <Film className="h-4 w-4" />
-                Add a movie
-              </Link>
-            </Button>
-          </>
-        }
-      />
-
+      {/* No toolbar. "Add a movie" / "Add a show" lived here and gave the dashboard
+          a 40px row holding two buttons that belong to Movies and TV — adding a title
+          is a library job, not a "what needs me now" job. The onboarding checklist
+          still links to it while a first title is the next step. */}
       <OnboardingBanner
         state={data.onboarding}
         isSetupSuppressed={setupProgress.isSkipped || setupProgress.isCompleted}
