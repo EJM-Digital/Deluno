@@ -63,7 +63,7 @@ const OVERRIDE_RETRY_OPTIONS = [
   { label: "Daily", value: "24" }
 ];
 
-const PLAN_TABS = configurationNavAreas.find((area) => area.label === "Media Plans")?.items ?? [];
+const PLAN_TABS = configurationNavAreas.find((area) => area.label === "Media plans")?.items ?? [];
 
 interface SettingsPolicySetsLoaderData {
   libraries: LibraryItem[];

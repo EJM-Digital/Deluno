@@ -37,7 +37,7 @@ export function PageToolbar({ tabs, actions, className }: PageToolbarProps) {
                 cn(
                   "flex h-full shrink-0 items-center rounded-[8px] px-3 text-[length:var(--type-body-sm)] font-medium transition-colors",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  isActive ? "bg-card text-foreground shadow-card" : "text-muted-foreground hover:text-foreground"
+                  isActive ? "bg-card font-semibold text-foreground shadow-card" : "text-muted-foreground hover:bg-card/50 hover:text-foreground"
                 )
               }
             >

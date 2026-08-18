@@ -26,7 +26,7 @@ export const librarySetupNavItems = [
 export const configurationNavAreas = [
   {
     match: (path: string) => path === "/settings" || librarySetupNavItems.some((item) => path.startsWith(item.to)),
-    label: "Library setup",
+    label: "Files & folders",
     icon: "library",
     to: "/settings/libraries",
     tabsInToolbar: true,
@@ -46,7 +46,7 @@ export const configurationNavAreas = [
   },
   {
     match: (path: string) => path.startsWith("/settings/policy-sets") || path.startsWith("/settings/profiles") || path.startsWith("/settings/quality") || path.startsWith("/settings/custom-formats"),
-    label: "Media Plans",
+    label: "Media plans",
     icon: "plans",
     to: "/settings/policy-sets",
     tabsInToolbar: true,
@@ -59,19 +59,11 @@ export const configurationNavAreas = [
   },
   {
     match: (path: string) => path.startsWith("/settings/lists"),
-    label: "Discover media",
+    label: "Import lists",
     icon: "discover",
     to: "/settings/lists",
     tabsInToolbar: true,
     items: [{ to: "/settings/lists", label: "Import lists", end: false }]
-  },
-  {
-    match: (path: string) => path.startsWith("/settings/automation"),
-    label: "Automation & recovery",
-    icon: "recovery",
-    to: "/settings/automation",
-    tabsInToolbar: true,
-    items: [{ to: "/settings/automation", label: "Search, retries & failed downloads", end: false }]
   }
 ] as const;
 
