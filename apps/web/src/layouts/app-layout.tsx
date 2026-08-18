@@ -29,7 +29,7 @@ import { useAuth, type UserProfile } from "../lib/use-auth";
 import { DENSITY_LABELS, DensityProvider, useDensity, type Density } from "../lib/use-density";
 import { SignalRProvider } from "../lib/use-signalr";
 import { cn } from "../lib/utils";
-import { configurationNavAreas, maintenanceNavItems } from "../components/app/settings-shell";
+import { configurationNavAreas, maintenanceNavItems, settingsPageMeta } from "../components/app/settings-shell";
 import { DelunoNavGlyph, type DelunoNavGlyphKind } from "../components/shell/deluno-nav-glyph";
 
 /** The shape both sidebar area lists share. */
@@ -76,11 +76,15 @@ const routeMeta = [
   { match: (path: string) => path.startsWith("/settings/policy-sets") || path.startsWith("/settings/profiles") || path.startsWith("/settings/quality") || path.startsWith("/settings/custom-formats"), title: "Media plans", subtitle: "The plan Deluno follows for quality, size, releases, and upgrades" },
   { match: (path: string) => path.startsWith("/settings/lists"), title: "Import lists", subtitle: "Bring movies and shows in from watchlists and curated feeds" },
   { match: (path: string) => path.startsWith("/settings/general") || path.startsWith("/settings/notifications") || path.startsWith("/settings/ui") || path.startsWith("/settings/migration"), title: "Preferences", subtitle: "How you want Deluno to behave, look, and tell you things" },
-  // Exact "/settings" is the setup overview, not a settings page. Without
-  // this it fell through to the "Files & folders" catch-all below and the
-  // topbar named a different page than the one being shown.
-  { match: (path: string) => path === "/settings", title: "Setup overview", subtitle: "Set up Deluno once, in order" },
-  { match: (path: string) => path.startsWith("/settings"), title: "Files & folders", subtitle: "Where your media lives, and how Deluno names and files it" },
+  // Every /settings route is named by settingsPageMeta, which is the single
+  // source of truth for settings page names. This used to be a handful of
+  // coarse prefix matches ending in a "Files & folders" catch-all, which is
+  // why /settings itself was titled after a different page entirely.
+  {
+    match: (path: string) => settingsPageMeta.some((item) => item.match(path)),
+    title: (path: string) => settingsPageMeta.find((item) => item.match(path))?.title ?? "Settings",
+    subtitle: (path: string) => settingsPageMeta.find((item) => item.match(path))?.description ?? ""
+  },
   { match: (path: string) => path.startsWith("/system") || path.startsWith("/setup-guide"), title: "System", subtitle: "How this installation is doing — health, backups, updates, and audit" }
 ];
 
@@ -120,10 +124,14 @@ function AppLayoutContent() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
 
-  const meta = useMemo(
-    () => routeMeta.find((item) => item.match(location.pathname)) ?? routeMeta[0],
-    [location.pathname]
-  );
+  // Most entries name a fixed page. The settings entry resolves its name per
+  // path from settingsPageMeta, so title and subtitle may be functions.
+  const meta = useMemo(() => {
+    const found = routeMeta.find((item) => item.match(location.pathname)) ?? routeMeta[0];
+    const resolve = (value: string | ((path: string) => string)) =>
+      typeof value === "function" ? value(location.pathname) : value;
+    return { title: resolve(found.title), subtitle: resolve(found.subtitle) };
+  }, [location.pathname]);
 
   useHotkeys("mod+k", (e) => { e.preventDefault(); setCommandOpen(true); }, { enableOnFormTags: true }, []);
   useHotkeys("shift+/", (e) => { if (isEditableTarget(e.target)) return; e.preventDefault(); setHelpOpen(true); }, [], []);
