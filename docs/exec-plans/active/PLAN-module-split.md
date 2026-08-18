@@ -134,6 +134,31 @@ established).
   for the auth check. Once Security owns auth, most of those injections can go —
   but do that as a separate commit after the move, not during it.
 
+### Carry these through the remaining three contexts
+
+Realtime (`ADR-002`) and de-capping (`tech-debt-tracker.md`) both land on the
+same endpoint and repository files this step is still carving up. Doing them
+after would mean editing every file twice. Where a remaining context owns one of
+these, fold it into that context's commit series rather than deferring it:
+
+| Context | Also carries |
+|---|---|
+| `Deluno.Quality` | `QualityProfileChanged` / `PolicySetChanged` change events |
+| `Deluno.Connections` | `IndexerChanged` / `DownloadClientChanged`; **remove the `.Take(4)` indexer cap and parallelise the search fan-out** (`FeedMediaSearchPlanner.cs:41`) |
+| `Deluno.Libraries` | `LibraryChanged` / `AutomationStateChanged`; keyset pagination on library list endpoints |
+
+Rules that still apply: the change event and the move are **separate commits**
+— move the files first, add the event second. A behaviour change hidden inside a
+relocation diff is exactly what ground rule 3 forbids.
+
+Two things stay out of this step because they are not per-context:
+
+- the sequenced envelope and resume window (`ADR-002`) — one change to
+  `Deluno.Realtime`, do it once, before the per-context events
+- the shared pagination contract — generalise the `nextPageToken` / `hasMore`
+  shape that `SqliteDownloadDispatchesRepository` already uses, once, then adopt
+  it per context
+
 ### Done when
 
 `Deluno.Platform` no longer contains indexers, download clients, libraries,
