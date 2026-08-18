@@ -131,6 +131,37 @@ no metadata, so verification needs real ones: Breaking Bad, The Simpsons and Bla
 Runner, plus two "UX fixture" libraries pointing at scratch folders. The seed
 script lives in the session scratchpad; `clean` removes all of it.
 
+## Platform audit — 31 routes
+
+An automated sweep visits every route and measures it: one `h1`, 48px card
+headers, 36px column headers, 56px rows, no horizontal overflow, no console
+error, no page error, no 4xx/5xx. **31 of 31 clean.**
+
+It found four things, all now fixed: `PageHero` rendered its own `h1` on top of
+the topbar's (Movies, TV, setup guide each had two), `settings-shell` did the
+same for Files & folders, `isDetailRoute` matched `/tv/episodes` so that route
+had *zero* headings, and Show detail rendered 886 rows at 52,109px for a
+39-season show — seasons collapse now, 97 rows and 7,925px.
+
+Suites: gateway 10/10, Movies 18/18, Integrations 52/52, Platform 86/86,
+Tray 3/3, Persistence 234/235 (`Fresh_install_does_not_invent_libraries_or_quality_profiles`
+fails on this branch without any of this work).
+
+### The background job queue does not drain
+
+**Nothing scheduled runs.** A freshly enqueued `series.metadata.refresh` — a
+type the worker explicitly declares in its `maintenance` lane at startup — sits
+at `queued`, `attempts=0`, for over two minutes. The oldest queued job is
+`movies.catalog.refresh` scheduled three days before this session, still at
+`attempts=0`. The worker logs all three lanes starting, so it is running and not
+leasing.
+
+This predates the branch and **the cause has not been traced.** Everything in
+this rebuild was verified through the manual paths, which do work; anything that
+depends on the scheduler — recurring searches, automatic catalogue refresh,
+quality recalculation — is inert until this is fixed. It is the single most
+important thing to look at next.
+
 ## Remaining queue
 
 Everything left is media-side — roughly 5,400 lines across nine files. No settings or operational page remains.
@@ -139,10 +170,10 @@ Everything left is media-side — roughly 5,400 lines across nine files. No sett
 |---|---|---|
 | `show-detail-page` | 1,822 → 1,140 | **done** — three sections, episode drawer, per-row monitor switch |
 | `movie-detail-page` | 1,375 → ~1,090 | **done** — shares the metadata drawer and decision trail; four dead controls wired |
-| `activity-page` | 764 | untouched |
+| `activity-page` | 764 → ~430 | **done** — jobs, dispatches, events, imports; drawers carry the full error and payload |
 | `calendar-page` | 380 → ~400 | **done** — windowed query, real air and release dates |
-| `media-import-page` | 334 | untouched |
-| wanted ×2, upgrades ×2, episode search | ~1,050 | untouched, share one shell |
+| `media-import-page`, wanted ×2, upgrades ×2 | 1,105 | **deleted** — unreachable, no route, zero references |
+| `episode-search-page` | 280 | **done** — one query instead of a fetch per series |
 
 **Do not regex-transform these files.** A `Card` → `ListCard` regex over `movie-detail-page` produced mismatched closing tags across four blocks and had to be reverted; the nesting varies too much. Convert block by block with the file open.
 
