@@ -12,6 +12,7 @@ import { useMemo, useState } from "react";
 import { useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { fetchJson } from "../lib/api";
+import { cn } from "../lib/utils";
 import { Button } from "../components/ui/button";
 import { Chip } from "../components/ui/chip";
 import { ListGroupHeader } from "../components/ui/media-type-split";
@@ -82,6 +83,7 @@ export async function calendarLoader(): Promise<CalendarLoaderData> {
 }
 
 type Scope = "week" | "month";
+type View = "grid" | "list";
 
 interface CalendarEntry {
   id: string;
@@ -99,6 +101,7 @@ export function CalendarPage() {
   const navigate = useNavigate();
   const revalidator = useRevalidator();
   const [scope, setScope] = useState<Scope>("month");
+  const [view, setView] = useState<View>("grid");
   const [offset, setOffset] = useState(0);
 
   if (!loaderData) return <RouteSkeleton />;
@@ -119,6 +122,10 @@ export function CalendarPage() {
     }
     return [...groups.entries()].sort(([left], [right]) => left.localeCompare(right));
   }, [visible]);
+
+  // A calendar wants whole weeks, so the grid runs Monday-to-Sunday across the
+  // range's edges and dims the days that belong to the neighbouring month.
+  const weeks = useMemo(() => buildWeeks(range, byDay), [range, byDay]);
 
   const now = new Date();
   const stillToCome = visible.filter((entry) => entry.date >= now).length;
@@ -146,6 +153,16 @@ export function CalendarPage() {
         }
         actions={
           <>
+            <SegmentedControl<View>
+              aria-label="View"
+              className="mr-1 w-auto"
+              value={view}
+              onValueChange={setView}
+              options={[
+                { value: "grid", label: "Calendar" },
+                { value: "list", label: "List" }
+              ]}
+            />
             <span className="mr-1 text-[length:var(--type-body-sm)] font-medium text-foreground">{range.label}</span>
             <Button type="button" variant="outline" size="icon" aria-label={`Previous ${scope}`} onClick={() => setOffset((value) => value - 1)}>
               <ChevronLeft className="h-4 w-4" />
@@ -170,6 +187,77 @@ export function CalendarPage() {
         ]}
       />
 
+      {view === "grid" ? (
+        <section className="overflow-hidden rounded-2xl border border-hairline bg-card shadow-card dark:border-white/[0.07]">
+          <header className="flex min-h-[var(--list-header-height)] items-center gap-3 border-b border-hairline px-[var(--card-pad-x)]">
+            <h2 className="text-[length:var(--type-card-title)] font-semibold leading-none text-foreground">{range.label}</h2>
+            <span className="text-[length:var(--type-caption)] text-muted-foreground">
+              {visible.length} {visible.length === 1 ? "thing" : "things"}
+            </span>
+          </header>
+
+          <div className="grid grid-cols-7 border-b border-hairline bg-surface-2/40">
+            {WEEKDAYS.map((day) => (
+              <span
+                key={day}
+                className="px-2 py-2 text-center text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground"
+              >
+                {day}
+              </span>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-7">
+            {weeks.flat().map((cell) => (
+              <div
+                key={cell.key}
+                className={cn(
+                  "min-h-[112px] border-b border-r border-hairline p-1.5 last:border-r-0 [&:nth-child(7n)]:border-r-0",
+                  !cell.inRange && "bg-surface-2/30",
+                  cell.isToday && "bg-primary/[0.06]"
+                )}
+              >
+                <div className="flex items-baseline justify-between gap-1 px-1">
+                  <span
+                    className={cn(
+                      "text-[length:var(--type-caption)] tabular-nums",
+                      cell.isToday ? "font-semibold text-primary" : cell.inRange ? "text-foreground" : "text-muted-foreground/50"
+                    )}
+                  >
+                    {cell.date.getDate()}
+                  </span>
+                  {cell.entries.length > 2 ? (
+                    <span className="text-[length:var(--type-micro)] text-muted-foreground">{cell.entries.length}</span>
+                  ) : null}
+                </div>
+
+                <div className="mt-1 grid gap-1">
+                  {cell.entries.slice(0, 3).map((entry) => (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      onClick={() => navigate(entry.href)}
+                      title={`${entry.name} · ${entry.detail}`}
+                      className={cn(
+                        "w-full truncate rounded-[6px] border px-1.5 py-1 text-left text-[length:var(--type-micro)] leading-tight transition-colors",
+                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        entryChipClass(entry)
+                      )}
+                    >
+                      <span className="font-semibold">{entry.sub}</span> {entry.name}
+                    </button>
+                  ))}
+                  {cell.entries.length > 3 ? (
+                    <span className="px-1.5 text-[length:var(--type-micro)] text-muted-foreground">
+                      +{cell.entries.length - 3} more
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : (
       <ListCard
         title="Schedule"
         count={visible.length ? `${byDay.length} ${byDay.length === 1 ? "day" : "days"} with something on` : undefined}
@@ -220,11 +308,77 @@ export function CalendarPage() {
           </ListTable>
         )}
       </ListCard>
+      )}
     </div>
   );
 }
 
 /* -------------------------------------------------------------- helpers */
+
+const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+interface GridCell {
+  key: string;
+  date: Date;
+  inRange: boolean;
+  isToday: boolean;
+  entries: CalendarEntry[];
+}
+
+/**
+ * Whole Monday-to-Sunday weeks covering the range. A month rarely starts on a
+ * Monday, so the grid spills into the neighbouring months and dims those days
+ * rather than leaving holes.
+ */
+function buildWeeks(
+  range: { start: Date; end: Date },
+  byDay: Array<[string, CalendarEntry[]]>
+): GridCell[][] {
+  const lookup = new Map(byDay);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const first = new Date(range.start);
+  first.setDate(first.getDate() - ((first.getDay() + 6) % 7));
+
+  const last = new Date(range.end);
+  last.setDate(last.getDate() - 1);
+  last.setDate(last.getDate() + (7 - ((last.getDay() + 6) % 7)) - 1);
+
+  const weeks: GridCell[][] = [];
+  const cursor = new Date(first);
+  while (cursor <= last) {
+    const week: GridCell[] = [];
+    for (let day = 0; day < 7; day += 1) {
+      const key = isoDate(cursor);
+      week.push({
+        key,
+        date: new Date(cursor),
+        inRange: cursor >= range.start && cursor < range.end,
+        isToday: cursor.getTime() === today.getTime(),
+        entries: lookup.get(key) ?? []
+      });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    weeks.push(week);
+  }
+
+  return weeks;
+}
+
+/** The chip carries the status colour, so a month reads at a glance. */
+function entryChipClass(entry: CalendarEntry) {
+  switch (entry.status.tone) {
+    case "ok":
+      return "border-success/30 bg-success/10 text-success hover:bg-success/15";
+    case "warn":
+      return "border-warning/30 bg-warning/10 text-warning hover:bg-warning/15";
+    case "info":
+      return "border-info/30 bg-info/10 text-info hover:bg-info/15";
+    default:
+      return "border-hairline bg-surface-2 text-muted-foreground hover:bg-surface-3";
+  }
+}
 
 function buildEntries(data: CalendarLoaderData): CalendarEntry[] {
   const episodes = data.episodes.map<CalendarEntry>((episode) => {
