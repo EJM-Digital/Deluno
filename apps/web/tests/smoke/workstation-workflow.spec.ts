@@ -134,11 +134,15 @@ test.describe("dashboard workflow", () => {
       return;
     }
 
+    // Every configuration area sets `tabsInToolbar`, so the sidebar shows one
+    // row per area and the page's own toolbar is how you move between siblings.
+    // See the comment on configurationNavAreas: the two must not do the same job
+    // twice. Assert the area rows here, and the sibling tabs on the page below.
     const tree = page.locator("aside").getByRole("navigation", { name: "Library setup" });
-    await expect(tree.getByRole("button", { name: "Collapse Library setup" })).toHaveAttribute("aria-expanded", "true");
-    for (const destination of ["/settings/media-management", "/indexers", "/settings/policy-sets", "/settings/lists"]) {
+    for (const destination of ["/settings/libraries", "/indexers", "/settings/policy-sets", "/settings/lists"]) {
       await expect(tree.locator(`a[href="${destination}"]`).first()).toHaveCount(1);
     }
+    await expect(tree.getByRole("button", { name: /Collapse|Expand/ })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Set up Deluno in order" })).toBeVisible();
     await expect(page.getByText("Other configuration", { exact: true })).toHaveCount(0);
   });
