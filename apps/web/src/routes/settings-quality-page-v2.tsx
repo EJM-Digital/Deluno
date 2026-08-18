@@ -27,7 +27,7 @@ import { fetchJson, type QualityModelSnapshot, type QualityTierDefinition } from
 import { cn } from "../lib/utils";
 import type { DrawerSaveState } from "../components/ui/drawer";
 
-const TABS = configurationNavAreas.find((area) => area.label === "Media Plans")?.items ?? [];
+const TABS = configurationNavAreas.find((area) => area.label === "Media plans")?.items ?? [];
 
 interface LoaderData {
   qualityModel: QualityModelSnapshot;

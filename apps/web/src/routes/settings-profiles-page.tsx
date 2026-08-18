@@ -43,7 +43,7 @@ import { authedFetch } from "../lib/use-auth";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { cn } from "../lib/utils";
 
-const TABS = configurationNavAreas.find((area) => area.label === "Media Plans")?.items ?? [];
+const TABS = configurationNavAreas.find((area) => area.label === "Media plans")?.items ?? [];
 
 /**
  * Starters expressed in the backend's own tier names, each linked to the TRaSH

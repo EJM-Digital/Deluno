@@ -71,13 +71,12 @@ const routeMeta = [
   { match: (path: string) => path.startsWith("/calendar"), title: "Schedule", subtitle: "Upcoming releases and retry windows" },
   { match: (path: string) => path.startsWith("/queue"), title: "Transfers", subtitle: "Follow downloads through processing and safe import" },
   { match: (path: string) => path.startsWith("/indexers"), title: "Connections", subtitle: "Search sources and download clients Deluno uses" },
-  { match: (path: string) => path.startsWith("/search-cycles"), title: "Automation", subtitle: "Choose what Deluno should search for, retry, and upgrade next" },
+  { match: (path: string) => path.startsWith("/search-cycles") || path.startsWith("/settings/automation"), title: "Automation", subtitle: "What Deluno searches for on a schedule, and what it does when a download fails" },
   { match: (path: string) => path.startsWith("/activity"), title: "Activity", subtitle: "The permanent record of what happened and why" },
-  { match: (path: string) => path.startsWith("/settings/policy-sets") || path.startsWith("/settings/profiles") || path.startsWith("/settings/quality") || path.startsWith("/settings/custom-formats"), title: "Media Plans", subtitle: "Configure the plan Deluno follows for quality, size, releases, and upgrades" },
-  { match: (path: string) => path.startsWith("/settings/lists"), title: "Discover media", subtitle: "Bring movies and shows in from import lists and feeds" },
-  { match: (path: string) => path.startsWith("/settings/automation"), title: "Automation & recovery", subtitle: "Control searches, retries, upgrades, and failed-download recovery" },
+  { match: (path: string) => path.startsWith("/settings/policy-sets") || path.startsWith("/settings/profiles") || path.startsWith("/settings/quality") || path.startsWith("/settings/custom-formats"), title: "Media plans", subtitle: "The plan Deluno follows for quality, size, releases, and upgrades" },
+  { match: (path: string) => path.startsWith("/settings/lists"), title: "Import lists", subtitle: "Bring movies and shows in from watchlists and curated feeds" },
   { match: (path: string) => path.startsWith("/settings/general") || path.startsWith("/settings/notifications") || path.startsWith("/settings/ui") || path.startsWith("/settings/migration"), title: "Preferences", subtitle: "How you want Deluno to behave, look, and tell you things" },
-  { match: (path: string) => path.startsWith("/settings"), title: "Library setup", subtitle: "How Deluno manages your media" },
+  { match: (path: string) => path.startsWith("/settings"), title: "Files & folders", subtitle: "Where your media lives, and how Deluno names and files it" },
   { match: (path: string) => path.startsWith("/system") || path.startsWith("/setup-guide"), title: "System", subtitle: "How this installation is doing — health, backups, updates, and audit" }
 ];
 
@@ -246,7 +245,7 @@ function DesktopSidebar({
       </NavLink>
 
       <div className="mt-5 min-h-0 flex-1 overflow-x-hidden overflow-y-auto pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div className="mb-2 px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-subtle-size)] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">
+        <div className="mb-1.5 mt-6 px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-subtle-size)] font-semibold uppercase tracking-[0.13em] text-muted-foreground/80 first:mt-0">
           Your media
         </div>
         <nav aria-label="Media dashboard" className="space-y-[calc(var(--shell-nav-gap)*0.7)]">
@@ -259,9 +258,7 @@ function DesktopSidebar({
           ))}
         </nav>
 
-        <div className="my-5 h-px bg-hairline/80" />
-
-        <div className="mb-2 px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-subtle-size)] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">
+        <div className="mb-1.5 mt-6 px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-subtle-size)] font-semibold uppercase tracking-[0.13em] text-muted-foreground/80 first:mt-0">
           What Deluno is doing
         </div>
         <nav aria-label="Automation and transfer status" className="space-y-[calc(var(--shell-nav-gap)*0.7)]">
@@ -274,19 +271,15 @@ function DesktopSidebar({
           ))}
         </nav>
 
-        <div className="my-5 h-px bg-hairline/80" />
-
-        <div className="mb-2 px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-subtle-size)] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">
-          Set up your library
+        <div className="mb-1.5 mt-6 px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-subtle-size)] font-semibold uppercase tracking-[0.13em] text-muted-foreground/80 first:mt-0">
+          How Deluno is set up
         </div>
         <nav aria-label="Library setup" className="space-y-[calc(var(--shell-nav-gap)*0.7)]">
           <ConfigurationSidebarTree pathname={pathname} />
         </nav>
 
-        <div className="my-5 h-px bg-hairline/80" />
-
-        <div className="mb-2 px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-subtle-size)] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">
-          Maintain Deluno
+        <div className="mb-1.5 mt-6 px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-subtle-size)] font-semibold uppercase tracking-[0.13em] text-muted-foreground/80 first:mt-0">
+          Deluno itself
         </div>
         <nav aria-label="System controls" className="space-y-[calc(var(--shell-nav-gap)*0.7)]">
           <MaintenanceSidebarTree pathname={pathname} />
@@ -443,16 +436,14 @@ function AreaRow({
         <NavLink
           to={area.to}
           className={({ isActive }) => cn(
-            "group relative flex min-h-[var(--shell-pill-height)] min-w-0 flex-1 items-center gap-3 rounded-lg px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-nav-size)] font-semibold transition-all duration-200",
-            isActive || areaIsActive
-              ? "bg-primary/12 text-foreground shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.08)]"
-              : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+            "group relative flex min-h-[var(--shell-pill-height)] min-w-0 flex-1 items-center gap-2.5 rounded-lg px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-nav-size)] transition-colors duration-150",
+            isActive || areaIsActive ? "bg-primary/12 font-semibold text-foreground" : "font-medium text-muted-foreground hover:bg-muted/35 hover:text-foreground"
           )}
         >
           {({ isActive }) => <>
-            <span aria-hidden className={cn("absolute left-0 h-[calc(var(--shell-pill-height)*0.58)] w-[3px] rounded-full", isActive || areaIsActive ? "bg-primary" : "bg-transparent")} />
-            <span className={cn("flex h-[calc(var(--shell-pill-height)*0.68)] w-[calc(var(--shell-pill-height)*0.68)] shrink-0 items-center justify-center rounded-md transition", isActive || areaIsActive ? "bg-primary/18 text-primary" : "bg-muted/30 text-muted-foreground group-hover:text-foreground")}>
-              <DelunoNavGlyph kind={area.icon} className="h-[calc(var(--shell-icon-size)*0.9)] w-[calc(var(--shell-icon-size)*0.9)]" />
+            <span aria-hidden className={cn("absolute left-0 h-[calc(var(--shell-pill-height)*0.55)] w-[3px] rounded-r-full transition-colors", isActive || areaIsActive ? "bg-primary" : "bg-transparent")} />
+            <span className={cn("flex w-[var(--shell-icon-size)] shrink-0 items-center justify-center transition-colors", isActive || areaIsActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground")}>
+              <DelunoNavGlyph kind={area.icon} className="h-[var(--shell-icon-size)] w-[var(--shell-icon-size)]" />
             </span>
             <span className="min-w-0 flex-1 truncate">{area.label}</span>
           </>}
@@ -549,17 +540,15 @@ function SidebarItem({
       end={item.end}
       className={({ isActive }) =>
         cn(
-          "group relative flex min-h-[var(--shell-pill-height)] items-center gap-3 rounded-lg px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-nav-size)] font-semibold transition-all duration-200",
-          isActive
-            ? "bg-primary/14 text-foreground shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.18)]"
-            : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+          "group relative flex min-h-[var(--shell-pill-height)] items-center gap-2.5 rounded-lg px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-nav-size)] transition-colors duration-150",
+          isActive ? "bg-primary/12 font-semibold text-foreground" : "font-medium text-muted-foreground hover:bg-muted/35 hover:text-foreground"
         )
       }
     >
       {({ isActive }) => (
         <>
-          <span className={cn("absolute left-0 h-[calc(var(--shell-pill-height)*0.58)] w-[3px] rounded-full", isActive ? "bg-primary" : "bg-transparent")} />
-          <span className={cn("flex h-[calc(var(--shell-pill-height)*0.68)] w-[calc(var(--shell-pill-height)*0.68)] shrink-0 items-center justify-center rounded-md transition", isActive ? "bg-primary/18 text-primary" : "bg-muted/30 text-muted-foreground group-hover:text-foreground")}>
+          <span aria-hidden className={cn("absolute left-0 h-[calc(var(--shell-pill-height)*0.55)] w-[3px] rounded-r-full transition-colors", isActive ? "bg-primary" : "bg-transparent")} />
+          <span className={cn("flex w-[var(--shell-icon-size)] shrink-0 items-center justify-center transition-colors", isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground")}>
             <DelunoNavGlyph kind={item.icon} className="h-[var(--shell-icon-size)] w-[var(--shell-icon-size)]" />
           </span>
           <span className="min-w-0 flex-1 whitespace-nowrap">{item.label}</span>

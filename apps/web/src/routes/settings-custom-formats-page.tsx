@@ -51,7 +51,7 @@ import {
 import { settingsOverviewLoader } from "./settings-overview-page";
 import { authedFetch } from "../lib/use-auth";
 
-const TABS = configurationNavAreas.find((area) => area.label === "Media Plans")?.items ?? [];
+const TABS = configurationNavAreas.find((area) => area.label === "Media plans")?.items ?? [];
 
 /** Scores users actually reach for. Anything at or under -10000 blocks a release outright. */
 const SCORE_OPTIONS = [
