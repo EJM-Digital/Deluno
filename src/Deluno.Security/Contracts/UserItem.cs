@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace Deluno.Platform.Contracts;
+namespace Deluno.Security.Contracts;
 
 public sealed record UserItem(
     string Id,

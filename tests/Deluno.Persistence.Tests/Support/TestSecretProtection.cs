@@ -1,4 +1,4 @@
-using Deluno.Platform.Security;
+using Deluno.Security;
 using Microsoft.AspNetCore.DataProtection;
 
 namespace Deluno.Persistence.Tests.Support;

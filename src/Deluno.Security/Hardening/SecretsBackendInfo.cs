@@ -1,4 +1,4 @@
-namespace Deluno.Platform.Security.Hardening;
+namespace Deluno.Security.Hardening;
 
 /// <summary>
 /// Describes the secrets backend that was selected at startup, surfaced to

@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
-using Deluno.Platform.Security;
-using Deluno.Platform.Security.Hardening;
-using Deluno.Platform.Security.Hardening.Backends;
+using Deluno.Security;
+using Deluno.Security.Hardening;
+using Deluno.Security.Hardening.Backends;
 using Microsoft.AspNetCore.DataProtection;
 
 namespace Deluno.Platform.Tests.Security.Hardening;

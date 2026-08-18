@@ -1,4 +1,4 @@
-namespace Deluno.Platform.Security.Hardening;
+namespace Deluno.Security.Hardening;
 
 /// <summary>
 /// Read-and-migrate helper for callers that persist protected values

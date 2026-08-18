@@ -4,7 +4,8 @@ using System.Text;
 using System.Text.Json;
 using Deluno.Infrastructure.Storage;
 using Deluno.Platform.Contracts;
-using Deluno.Platform.Security;
+using Deluno.Security;
+using Deluno.Security.Contracts;
 
 namespace Deluno.Platform.Data;
 

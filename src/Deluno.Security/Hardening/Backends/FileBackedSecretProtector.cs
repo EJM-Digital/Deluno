@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 
-namespace Deluno.Platform.Security.Hardening.Backends;
+namespace Deluno.Security.Hardening.Backends;
 
 /// <summary>
 /// Cross-platform <see cref="ISecretProtector"/> using AES-256-GCM with a

@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.DataProtection;
 
-namespace Deluno.Platform.Security;
+namespace Deluno.Security;
 
 public sealed class DataProtectionSecretProtector(IDataProtectionProvider dataProtectionProvider)
     : ISecretProtector

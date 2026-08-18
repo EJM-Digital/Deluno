@@ -20,6 +20,7 @@ using Deluno.Platform.Quality;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Realtime;
+using Deluno.Security.Contracts;
 using System.Net.Http;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Builder;

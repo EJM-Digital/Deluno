@@ -6,12 +6,6 @@
     <ProjectReference Include="..\Deluno.Contracts\Deluno.Contracts.csproj" />
     <ProjectReference Include="..\Deluno.Infrastructure\Deluno.Infrastructure.csproj" />
     <ProjectReference Include="..\Deluno.Jobs\Deluno.Jobs.csproj" />
-  </ItemGroup>
-  <ItemGroup>
-    <!-- Windows DPAPI backing for ISecretProtector. The package is multi-
-         targeted; on non-Windows it throws PlatformNotSupportedException
-         from ProtectedData. The factory only selects this backend on
-         Windows so non-Windows hosts never touch it. -->
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.0" />
+    <ProjectReference Include="..\Deluno.Security\Deluno.Security.csproj" />
   </ItemGroup>
 </Project>

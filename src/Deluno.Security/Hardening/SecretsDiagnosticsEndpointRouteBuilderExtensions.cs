@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 
-namespace Deluno.Platform.Security.Hardening;
+namespace Deluno.Security.Hardening;
 
 /// <summary>
 /// Endpoint extension exposing the active <see cref="SecretsBackendInfo"/>

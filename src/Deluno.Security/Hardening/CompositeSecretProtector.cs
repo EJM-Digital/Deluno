@@ -1,4 +1,4 @@
-namespace Deluno.Platform.Security.Hardening;
+namespace Deluno.Security.Hardening;
 
 /// <summary>
 /// Wraps an "active" <see cref="ISecretProtector"/> for new writes plus a

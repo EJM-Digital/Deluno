@@ -2,8 +2,8 @@ using Deluno.Platform.Data;
 using Deluno.Platform.Migration;
 using Deluno.Platform.Notifications;
 using Deluno.Platform.Quality;
-using Deluno.Platform.Security;
-using Deluno.Platform.Security.Hardening;
+using Deluno.Security;
+using Deluno.Security.Hardening;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Deluno.Platform;

@@ -1,4 +1,4 @@
-namespace Deluno.Platform.Security;
+namespace Deluno.Security;
 
 public interface ISecretProtector
 {

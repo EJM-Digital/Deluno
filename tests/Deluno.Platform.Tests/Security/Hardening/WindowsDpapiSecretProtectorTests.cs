@@ -1,5 +1,5 @@
 using System.Runtime.InteropServices;
-using Deluno.Platform.Security.Hardening.Backends;
+using Deluno.Security.Hardening.Backends;
 
 namespace Deluno.Platform.Tests.Security.Hardening;
 

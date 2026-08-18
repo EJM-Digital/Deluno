@@ -10,7 +10,7 @@ using Deluno.Integrations.Search;
 using Deluno.Jobs;
 using Deluno.Movies;
 using Deluno.Platform;
-using Deluno.Platform.Security.Hardening;
+using Deluno.Security.Hardening;
 using Deluno.Realtime;
 using Deluno.Series;
 using Deluno.Worker;

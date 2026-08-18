@@ -1,4 +1,4 @@
-namespace Deluno.Platform.Security.Hardening;
+namespace Deluno.Security.Hardening;
 
 /// <summary>
 /// Identifies which backend an <see cref="ISecretProtector"/> instance is
