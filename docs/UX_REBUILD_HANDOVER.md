@@ -1,6 +1,6 @@
 # Deluno UX rebuild — handover
 
-Branch `ux/list-drawer-media-plans`, 13 commits, not pushed. Nothing here is merged; all of it is reviewable in one place.
+Branch `ux/list-drawer-media-plans`, 17 commits, not pushed. Nothing here is merged; all of it is reviewable in one place.
 
 ## The decision this implements
 
@@ -27,7 +27,7 @@ James's read of the old UI: the icons, logo and colour scheme are right, the **i
 
 ## Primitives (`apps/web/src/components/ui/`)
 
-`field` (Field/FieldRow, owns the control id so `<label htmlFor>` is always wired) · `select` · `switch` (Switch/SwitchRow) · `segmented-control` (real radiogroup, arrow keys) · `textarea` · `chip` · `disclosure` · `page-toolbar` · `list-card` (ListCard/ListTable/ListRow/ListCell/ListNameCell/ListEmpty/LIST_TRACK) · `drawer` (Drawer/DrawerSection/DrawerDanger/DrawerFooter, `saveEnabled` for tool-style drawers) · `page-footer` · `range-slider` (dual thumb, shared scale) · `media-type-split` · `preset-field` (rewritten: real placeholder, uses Select) · `button` (gained `destructive` / `destructive-solid`).
+`field` (Field/FieldRow, owns the control id so `<label htmlFor>` is always wired) · `select` · `switch` (Switch/SwitchRow) · `segmented-control` (real radiogroup, arrow keys) · `textarea` · `chip` · `disclosure` · `page-toolbar` · `summary-strip` · `list-card` (ListCard/ListTable/ListRow/ListCell/ListNameCell/ListEmpty/LIST_TRACK) · `drawer` (Drawer/DrawerSection/DrawerDanger/DrawerFooter, `saveEnabled` for tool-style drawers) · `page-footer` · `range-slider` (dual thumb, shared scale) · `media-type-split` · `preset-field` (rewritten: real placeholder, uses Select) · `button` (gained `destructive` / `destructive-solid`).
 
 Hook: `hooks/use-unsaved-changes.ts`. Tokens: `--list-row-height`, `--list-header-height`, `--list-thead-height`, `--toolbar-height`, `--drawer-width`, `--drawer-header-height`, `--drawer-footer-height` in `index.css`.
 
@@ -44,15 +44,25 @@ Things fixed along the way that were not cosmetic:
 - **A size maximum of 0 was rejected** (validation required `max > min`, the save 400'd). 0 now means unlimited, the Radarr convention; the decision engine skips the too-large penalty and the row reads "0 GB–Unlimited".
 - Duplicate accessible names in the two size tables; `window.confirm` on webhook delete; duplicate `8080` React keys in the client port presets.
 
-## Known nits to review before the visual pass
+## Quality pass over the 13 converted pages — done
 
-James said quality "started to regress a little" on the later pages. Specifically worth a look:
+All five nits are closed, and the pass turned up one real bug that was not cosmetic.
 
-1. **Automation & recovery** was written fast and only lightly exercised live — the drawer, the strip and the failed-download form need a proper walkthrough.
-2. **"TV shows" wraps to two lines** in the Size rules toolbar segment at 1440px. Either shorten to "TV" or widen the control.
-3. Size rules is still a long page even split: 26 rows for one media type. The resolution bands help; collapsing bands by default might help more.
-4. The summary strip on Automation is a second block type that only that page uses — either promote it to a primitive or drop it.
-5. Low-quality tiers (Unknown/CAM/…) render as near-zero bands at the left of a 0–150 scale. Correct, but visually cramped.
+**A drawer's Save was submitting the page form underneath it.** The `Drawer` is portaled to `<body>`, but React bubbles synthetic events up the *component* tree, not the DOM tree. On the three pages that wrap their own `<form>` around the list, the drawer's submit therefore reached that form too: one click on "Save schedule" fired both `PUT /api/libraries/{id}/automation` and `PUT /api/settings`, silently writing failed-download settings the user never touched. Fixed in the primitive, so it cannot come back on a future page.
+
+1. **Automation & recovery** — walked live end to end. It was the only converted page missing `chrome: "none"`, so the shell drew an H1 over a page that carries its own toolbar. Its failed-download form also never showed "Saved just now": the baseline was derived from loader `settings`, so between the save landing and the 10s revalidation returning it still compared dirty, and the effect that clears a stale status wiped the confirmation. The baseline is state now. "Recent cycles" counted 50 runs while rendering 12; it says "Latest 12 of 50 runs".
+2. **"TV shows" wrapping** — fixed in `SegmentedControl`: `flex-1` gives each segment a 0 basis, so any two-word label wrapped. Segments are `whitespace-nowrap`, and the label is "TV" to match the vocabulary `MediaTypeFilter` already uses.
+3. **Size rules length** — resolution bands collapse, with only 1080p and 2160p open by default and "Expand all" in the card header. A collapsed band still states its own span. 2292px → 1247px.
+4. **The summary strip** — promoted to `summary-strip.tsx` (`SummaryStrip`, 2–5 read-only cells). Nothing in it is a row and nothing opens a drawer, which is why it is not a `ListCard`. #111 puts Transfers, Dashboard and System on the same shape.
+5. **Cramped low-quality bands** — each band now carries its own slider scale. One table-wide 0–150 GB ruler was correct arithmetic but useless to look at. Bands are only compared within a resolution anyway, and both thumbs of a row still share one ruler, which is what the shared scale was for. The first low-quality band went from a 2.9% sliver to a 54% fill.
+
+### Grammar audit
+
+An automated pass over all 14 converted routes measured every page against the grammar table. Uniform everywhere: toolbars 40px, card headers 48px, list rows 56px, column headers 36px, drawers 600 / 72 / 64. No console errors, no 4xx/5xx, no horizontal overflow, Escape closes a clean drawer. The only loose prose outside a card anywhere was the Size rules intro paragraph, now inside the card.
+
+Import lists, Notifications and Automation carry a `PageToolbar` with actions but no tabs, because their nav area has a single item. That is correct today and resolves itself when the sidebar sub-items collapse into toolbar tabs.
+
+**Caveat:** the dev database is empty of indexers, download clients, import lists and destination rules, so those four drawers were not re-exercised in this pass — they were verified when they were built. Libraries, tags and a webhook were seeded to walk Libraries, Media plans, Library routing, Processing workflow, Tags, Notifications and Automation, then removed again.
 
 ## Remaining queue
 
