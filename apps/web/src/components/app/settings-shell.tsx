@@ -140,7 +140,8 @@ const settingsPageMeta = [
   {
     match: (path: string) => path.startsWith("/settings/custom-formats"),
     title: "Release preferences",
-    description: "Preference rules for source, codec, HDR, language, group, and custom-format scoring used by Media Plans."
+    description: "Preference rules for source, codec, HDR, language, group, and custom-format scoring used by Media Plans.",
+    chrome: "none"
   },
   {
     match: (path: string) => path.startsWith("/settings/lists"),
