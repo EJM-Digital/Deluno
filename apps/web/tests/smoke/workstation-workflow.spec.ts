@@ -465,7 +465,7 @@ test.describe("dashboard workflow", () => {
     await expect(page.getByRole("dialog", { name: "Approved movies" })).toBeVisible();
     await page.getByTitle("Preview without adding titles").click();
 
-    await page.getByRole("checkbox", { name: "Dune (2021)" }).uncheck();
+    await page.getByRole("switch", { name: "Dune (2021)" }).uncheck();
     await page.getByRole("button", { name: "Add selected", exact: true }).click();
     await expect(page.getByText(/1 title added from 1 approved preview entry/)).toBeVisible();
   });

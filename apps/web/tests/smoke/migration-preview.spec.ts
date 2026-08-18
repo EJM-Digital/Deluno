@@ -28,11 +28,15 @@ test.describe("migration assistant", () => {
     });
 
     await authenticateAndNavigate(page, "/settings/migration");
-    await page.getByLabel("Export JSON").fill('{"indexers":[]}');
+    await page.getByLabel("Exported JSON").fill('{"indexers":[]}');
     await page.getByRole("button", { name: "Preview import" }).click();
 
-    await expect(page.getByText("Preview ready. Review every create, skip, and warning before applying.")).toBeVisible();
+    await expect(page.getByText("Preview ready. Review every create, skip and warning before applying.")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Change report" })).toBeVisible();
+    // Field values live in the row drawer now, not on the list — the change
+    // report is a list -> drawer surface. Open the row to check the secret
+    // came back redacted.
+    await page.getByText("Migrated source", { exact: true }).click();
     await expect(page.getByText("[redacted]", { exact: true })).toBeVisible();
     await expect(page.getByText("Quality rules need review before they become a Media Plan.")).toBeVisible();
     await expect(page.getByText("secret", { exact: true })).not.toBeVisible();
@@ -59,7 +63,7 @@ test.describe("migration assistant", () => {
     }));
 
     await authenticateAndNavigate(page, "/settings/migration");
-    await page.getByLabel("Export JSON").fill('{"indexers":[]}');
+    await page.getByLabel("Exported JSON").fill('{"indexers":[]}');
     await page.getByRole("button", { name: "Preview import" }).click();
     await page.getByRole("button", { name: /Apply selected changes \(1\)/ }).click();
 
