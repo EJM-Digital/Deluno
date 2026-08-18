@@ -82,7 +82,17 @@ export function Drawer({ open, onOpenChange, title, description, children, foote
           }}
         >
           {onSubmit ? (
-            <form className={bodyClassName} onSubmit={onSubmit} noValidate>
+            // The drawer is portaled to <body>, but React bubbles synthetic events
+            // up the component tree, not the DOM tree — so on a page that wraps its
+            // own <form> around the list, saving here would submit that form too.
+            <form
+              className={bodyClassName}
+              onSubmit={(event) => {
+                event.stopPropagation();
+                onSubmit(event);
+              }}
+              noValidate
+            >
               {body}
             </form>
           ) : (
