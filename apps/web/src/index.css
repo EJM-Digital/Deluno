@@ -1318,6 +1318,12 @@ html {
   --shell-nav-text-min: calc(148px * var(--font-scale));
   --shell-pill-height: calc(42px * var(--density-scale));
   --shell-nav-pad-x: calc(15px * var(--density-scale));
+  /* Centres the icon+label column in the rail rather than pinning it left.
+     Sub-navigation moving into page toolbars left the rail much wider than its
+     content; this spends that slack evenly instead of all on the right.
+     Deliberately not density-scaled: the labels already grow with density, so
+     scaling the inset too would push the column back off-centre at the top tiers. */
+  --shell-nav-inset: 32px;
   --shell-nav-gap: calc(8px * var(--density-scale));
   --shell-action-gap: calc(4px * var(--density-scale));
   --shell-avatar-size: calc(26px * var(--density-scale));
