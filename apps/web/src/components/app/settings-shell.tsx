@@ -13,12 +13,30 @@ export const librarySetupNavItems = [
   { to: "/settings/tags", label: "Tags", end: false }
 ] as const;
 
+/**
+ * Sidebar areas.
+ *
+ * `tabsInToolbar` is the rule that stops the sidebar and the page toolbar doing
+ * the same job twice: when every page in an area carries a `PageToolbar` with
+ * these items as its tabs, the sidebar shows the area as a single row and the
+ * toolbar is the only way between siblings. Areas still holding an unconverted
+ * page keep their children, because collapsing them would leave no way in.
+ */
 export const configurationNavAreas = [
+  {
+    match: (path: string) => path === "/settings" || librarySetupNavItems.some((item) => path.startsWith(item.to)),
+    label: "Library setup",
+    icon: "library",
+    to: "/settings/libraries",
+    tabsInToolbar: true,
+    items: librarySetupNavItems
+  },
   {
     match: (path: string) => path.startsWith("/indexers"),
     label: "Connections",
     icon: "connections",
     to: "/indexers",
+    tabsInToolbar: true,
     items: [
       { to: "/indexers/indexers", label: "Indexers", end: false },
       { to: "/indexers/download-clients", label: "Download clients", end: false },
@@ -30,6 +48,7 @@ export const configurationNavAreas = [
     label: "Media Plans",
     icon: "plans",
     to: "/settings/policy-sets",
+    tabsInToolbar: true,
     items: [
       { to: "/settings/policy-sets", label: "Plans", end: false },
       { to: "/settings/profiles", label: "Quality profiles", end: false },
@@ -42,6 +61,7 @@ export const configurationNavAreas = [
     label: "Discover media",
     icon: "discover",
     to: "/settings/lists",
+    tabsInToolbar: true,
     items: [{ to: "/settings/lists", label: "Import lists", end: false }]
   },
   {
@@ -49,15 +69,12 @@ export const configurationNavAreas = [
     label: "Automation & recovery",
     icon: "recovery",
     to: "/settings/automation",
+    tabsInToolbar: true,
     items: [{ to: "/settings/automation", label: "Search, retries & failed downloads", end: false }]
-  },
+  }
 ] as const;
 
-/**
- * The installation-preference pages, as toolbar tabs. The wider "System &
- * settings" sidebar area also covers /system/*, which carries its own tab bar;
- * splitting them keeps either bar down to a scannable four to six tabs.
- */
+/** Installation preferences, as toolbar tabs. Four is a bar; eleven was a scroller. */
 export const systemSettingsNavItems = [
   { to: "/settings/general", label: "General", end: false },
   { to: "/settings/ui", label: "Interface", end: false },
@@ -65,25 +82,39 @@ export const systemSettingsNavItems = [
   { to: "/settings/migration", label: "Migration", end: false }
 ] as const;
 
-/** Installation-wide controls belong under Maintain Deluno, never under library setup. */
+/** The running installation itself, as toolbar tabs. */
+export const systemHealthNavItems = [
+  { to: "/system", label: "Health", end: true },
+  { to: "/system/audit", label: "Activity", end: false },
+  { to: "/system/backups", label: "Backups", end: false },
+  { to: "/system/updates", label: "Updates", end: false },
+  { to: "/system/api", label: "API access", end: false },
+  { to: "/system/docs", label: "Help & guides", end: false }
+] as const;
+
+/**
+ * Installation-wide controls, never under library setup. Split in two: eleven
+ * destinations under one heading is a scrolling tab bar, and the two halves
+ * answer different questions — "how do I want Deluno to behave" versus "how is
+ * this installation doing".
+ */
 export const maintenanceNavItems = [
   {
-    match: (path: string) => path.startsWith("/settings/migration") || path.startsWith("/settings/general") || path.startsWith("/settings/notifications") || path.startsWith("/settings/ui") || path.startsWith("/system") || path.startsWith("/setup-guide"),
-    label: "System & settings",
+    match: (path: string) => systemSettingsNavItems.some((item) => path.startsWith(item.to)),
+    label: "Preferences",
+    icon: "setup",
+    to: "/settings/general",
+    tabsInToolbar: true,
+    items: systemSettingsNavItems
+  },
+  {
+    match: (path: string) => path.startsWith("/system") || path.startsWith("/setup-guide"),
+    label: "System",
+    icon: "system",
     to: "/system",
-    items: [
-      { to: "/system", label: "System health", end: true },
-      { to: "/system/audit", label: "System activity", end: false },
-      { to: "/system/backups", label: "Backups", end: false },
-      { to: "/system/updates", label: "Updates", end: false },
-      { to: "/system/api", label: "API access", end: false },
-      { to: "/system/docs", label: "Help & guides", end: false },
-      { to: "/settings/general", label: "General", end: false },
-      { to: "/settings/notifications", label: "Notifications", end: false },
-      { to: "/settings/ui", label: "Interface", end: false },
-      { to: "/settings/migration", label: "Migration", end: false },
-      { to: "/setup-guide", label: "Guided setup", end: false }
-    ]
+    // /system/* is not converted yet, so its children stay in the sidebar.
+    tabsInToolbar: false,
+    items: [...systemHealthNavItems, { to: "/setup-guide", label: "Guided setup", end: false }]
   }
 ] as const;
 
