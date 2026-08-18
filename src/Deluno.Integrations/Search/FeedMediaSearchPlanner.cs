@@ -16,6 +16,13 @@ public sealed class FeedMediaSearchPlanner(
     IReleaseRankingModelService rankingModelService)
     : IMediaSearchPlanner
 {
+    /// <summary>
+    /// How many indexers are queried at once. This bounds outbound sockets,
+    /// not how many indexers are searched — every matching indexer is always
+    /// searched, this only decides how many are in flight together.
+    /// </summary>
+    private const int MaxConcurrentIndexerSearches = 16;
+
     public async Task<MediaSearchPlan> BuildPlanAsync(
         string title,
         int? year,
@@ -38,7 +45,6 @@ public sealed class FeedMediaSearchPlanner(
                 StringComparer.OrdinalIgnoreCase)
             .OrderBy(pair => pair.source.Priority)
             .ThenBy(pair => pair.indexer.Priority)
-            .Take(4)
             .ToArray();
 
         var settings = await platformRepository.GetAsync(cancellationToken);
@@ -47,11 +53,39 @@ public sealed class FeedMediaSearchPlanner(
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
         var scoringMode = settings.SearchScoringMode;
+        // Every configured indexer is queried, and they are queried at the
+        // same time. Searching them one after another made the wait the sum
+        // of every indexer's latency instead of the slowest one, and a
+        // previous .Take(4) meant a user with more than four matching
+        // indexers silently never searched the rest.
+        //
+        // Concurrency is bounded so a large indexer list cannot open an
+        // unbounded number of outbound connections at once. Per-indexer
+        // failures are already contained inside TrySearchIndexerAsync, so one
+        // slow or broken indexer cannot fail the whole plan.
+        var searchResults = new IReadOnlyList<MediaSearchCandidate>[sourceIndexers.Length];
+        await Parallel.ForAsync(
+            0,
+            sourceIndexers.Length,
+            new ParallelOptions
+            {
+                MaxDegreeOfParallelism = MaxConcurrentIndexerSearches,
+                CancellationToken = cancellationToken
+            },
+            async (index, token) =>
+            {
+                var (source, indexer) = sourceIndexers[index];
+                searchResults[index] = await TrySearchIndexerAsync(
+                    indexer, source, title, year, mediaType, currentQuality, targetQuality,
+                    customFormats, neverGrabPatterns, scoringMode, seasonNumber, episodeNumber, token);
+            });
+
+        // Indexed writes above, flattened in order here, so results stay in
+        // source-then-indexer priority order regardless of who answered first.
         var liveCandidates = new List<MediaSearchCandidate>();
-        foreach (var (source, indexer) in sourceIndexers)
+        foreach (var result in searchResults)
         {
-            var candidates = await TrySearchIndexerAsync(indexer, source, title, year, mediaType, currentQuality, targetQuality, customFormats, neverGrabPatterns, scoringMode, seasonNumber, episodeNumber, cancellationToken);
-            liveCandidates.AddRange(candidates);
+            liveCandidates.AddRange(result);
         }
 
         if (sourceIndexers.Length == 0)
