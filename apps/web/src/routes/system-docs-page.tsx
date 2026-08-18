@@ -1,5 +1,7 @@
 import { BookOpenText, Brain, DownloadCloud, FolderTree, KeyRound, Route, ShieldCheck, Sparkles, WandSparkles } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import { Link } from "react-router-dom";
+import { Button } from "../components/ui/button";
+import { ListCard, ListCell, ListNameCell, ListRow, ListTable } from "../components/ui/list-card";
 import { Badge } from "../components/ui/badge";
 
 const workflowSections = [
@@ -74,17 +76,9 @@ const lifecycle = [
 export function SystemDocsPage() {
   return (
     <div className="space-y-[var(--page-gap)]">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <BookOpenText className="h-5 w-5 text-primary" />
-            Deluno operating model
-          </CardTitle>
-          <CardDescription>
-            This is the plain-English guide for how Deluno should work once a user has moved past first setup.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-[var(--grid-gap)] md:grid-cols-2 xl:grid-cols-4">
+      <ListCard title={<span className="flex items-center gap-2"><BookOpenText className="h-5 w-5 text-primary" />
+            Deluno operating model</span>} count={<>This is the plain-English guide for how Deluno should work once a user has moved past first setup.</>}>
+        <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)] md:grid-cols-2 xl:grid-cols-4">
           {workflowSections.map((section) => {
             const Icon = section.icon;
             return (
@@ -102,15 +96,25 @@ export function SystemDocsPage() {
               </div>
             );
           })}
-        </CardContent>
-      </Card>
+        </div>
+      </ListCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Media lifecycle</CardTitle>
-          <CardDescription>Every major screen and automation should support this sequence without making the user guess.</CardDescription>
-        </CardHeader>
-        <CardContent>
+      <ListCard title="Start over from the beginning" count="The guided setup walks the whole first run again — it never overwrites what you already have">
+        <ListTable columns={[{ label: "Guide" }, { label: "What it covers", width: "minmax(0,2fr)" }, { label: "Open", width: "140px", mobile: true, srOnly: true }]} chevron={false}>
+          <ListRow>
+            <ListNameCell name="Guided setup" sub="First run" />
+            <ListCell primary="Libraries, folders, a quality target, release scoring, and optionally a search source and download client." />
+            <ListCell mobile align="end">
+              <Button asChild type="button" variant="outline" size="sm">
+                <Link to="/setup-guide">Open</Link>
+              </Button>
+            </ListCell>
+          </ListRow>
+        </ListTable>
+      </ListCard>
+
+      <ListCard title={<span className="flex items-center gap-2">Media lifecycle</span>} count={<>Every major screen and automation should support this sequence without making the user guess.</>}>
+        <div className="p-[var(--card-pad-x)]">
           <div className="grid gap-3 lg:grid-cols-7">
             {lifecycle.map((item, index) => (
               <div key={item} className="rounded-2xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.75)]">
@@ -119,8 +123,8 @@ export function SystemDocsPage() {
               </div>
             ))}
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </ListCard>
     </div>
   );
 }
