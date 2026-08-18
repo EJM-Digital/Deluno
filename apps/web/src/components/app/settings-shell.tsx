@@ -321,14 +321,18 @@ export function SettingsShell({
       <GlossaryModal open={glossaryOpen} onOpenChange={setGlossaryOpen} />
       <div className="max-w-4xl">
         <div className="min-w-0">
-          <p className="text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+          {/* Both of these are real headings, not styled paragraphs. They look
+              like titles, so they have to behave like titles: a screen-reader
+              user navigates by jumping between headings, and while these were
+              <p> there was nothing in the settings body to jump to at all. The
+              topbar keeps the h1, so these sit at h2. */}
+          <h2 className="text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-muted-foreground">
             {eyebrow}
-          </p>
+          </h2>
           <div className="mt-2 flex items-center gap-3">
-            {/* The topbar already names the page; this is the section label. */}
-            <p className="font-display text-[length:var(--type-title-lg)] font-semibold tracking-tight text-foreground">
+            <h2 className="font-display text-[length:var(--type-title-lg)] font-semibold tracking-tight text-foreground">
               {title}
-            </p>
+            </h2>
             <button
               onClick={() => setGlossaryOpen(true)}
               className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
