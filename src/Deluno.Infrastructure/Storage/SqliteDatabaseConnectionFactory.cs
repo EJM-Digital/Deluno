@@ -43,10 +43,20 @@ public sealed class SqliteDatabaseConnectionFactory(IOptions<StoragePathOptions>
         {
             DataSource = databasePath,
             Mode = SqliteOpenMode.ReadWriteCreate,
-            Cache = SqliteCacheMode.Shared,
+
+            // Private cache, deliberately. Shared cache serialises connections
+            // inside the process behind table-level locks and raises
+            // SQLITE_LOCKED, which busy_timeout does NOT retry — it only covers
+            // SQLITE_BUSY. With WAL, private cache is what actually lets readers
+            // and the writer run at the same time.
+            Cache = SqliteCacheMode.Private,
             ForeignKeys = true,
             Pooling = true,
-            DefaultTimeout = 5
+
+            // Command timeout. Must exceed busy_timeout below, or a command
+            // waiting legitimately for a lock times out on its own deadline
+            // before SQLite has finished waiting.
+            DefaultTimeout = 30
         };
 
         try
@@ -57,17 +67,42 @@ public sealed class SqliteDatabaseConnectionFactory(IOptions<StoragePathOptions>
             try
             {
                 using var command = connection.CreateCommand();
+
+                // Per-connection pragmas. These do not persist in the file, so
+                // every connection has to set them:
+                //   busy_timeout  wait rather than fail when another connection
+                //                 holds the write lock
+                //   synchronous   NORMAL is the correct pairing for WAL: durable
+                //                 across process crash, and only at risk from a
+                //                 power cut mid-checkpoint
+                //   temp_store    sorts and temp b-trees in RAM, not on disk
+                //   cache_size    negative means KiB, so this is 16 MiB per
+                //                 connection instead of SQLite's 2 MiB default
+                //   mmap_size     256 MiB of memory-mapped reads. Backed by the
+                //                 OS page cache, so it is shared between every
+                //                 connection to the same file rather than costing
+                //                 this much per connection.
+                //
+                // journal_mode and wal_autocheckpoint persist in the database
+                // file, so they are only worth setting the first time we open it.
+                // A larger autocheckpoint trades WAL size for far fewer
+                // checkpoint stalls on the writer.
                 command.CommandText = requiresInitialization
                     ? """
                       PRAGMA busy_timeout = 5000;
                       PRAGMA journal_mode = WAL;
+                      PRAGMA wal_autocheckpoint = 2000;
                       PRAGMA synchronous = NORMAL;
                       PRAGMA temp_store = MEMORY;
+                      PRAGMA cache_size = -16000;
+                      PRAGMA mmap_size = 268435456;
                       """
                     : """
                       PRAGMA busy_timeout = 5000;
                       PRAGMA synchronous = NORMAL;
                       PRAGMA temp_store = MEMORY;
+                      PRAGMA cache_size = -16000;
+                      PRAGMA mmap_size = 268435456;
                       """;
                 await command.ExecuteNonQueryAsync(cancellationToken);
                 if (requiresInitialization)
