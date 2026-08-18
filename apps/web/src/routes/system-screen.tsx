@@ -17,7 +17,6 @@ import {
 import { JOB_STATUS, type JobStatus, isJobActive } from "../lib/job-status-constants";
 import { SystemShell } from "../components/app/settings-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
-import { KpiCard } from "../components/app/kpi-card";
 import { AuditTimeline, type TimelineEvent } from "../components/shell/audit-timeline";
 import { WsStatusBadge } from "../components/shell/ws-status-badge";
 import { useSignalREvent } from "../lib/use-signalr";
