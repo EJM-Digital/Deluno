@@ -202,4 +202,11 @@ public interface ISeriesCatalogRepository
         IReadOnlyList<CatalogueEpisodeItem> episodes,
         string source,
         CancellationToken cancellationToken);
+
+    /// <summary>Episodes airing inside a window, ordered by air date.</summary>
+    Task<IReadOnlyList<SeriesCalendarEpisodeItem>> ListCalendarEpisodesAsync(
+        DateTimeOffset fromUtc,
+        DateTimeOffset toUtc,
+        int take,
+        CancellationToken cancellationToken);
 }

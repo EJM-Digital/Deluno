@@ -43,6 +43,36 @@ public static class MoviesEndpointRouteBuilderExtensions
             return Results.Ok(summary);
         });
 
+        movies.MapGet("/calendar", async (
+            DateOnly? from,
+            DateOnly? to,
+            int? take,
+            IMovieCatalogRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var start = from ?? DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-7);
+            var end = to ?? start.AddDays(35);
+            if (end <= start)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["to"] = ["The end of the window must be after the start."]
+                });
+            }
+
+            if (end.DayNumber - start.DayNumber > 400)
+            {
+                end = start.AddDays(400);
+            }
+
+            var items = await repository.ListCalendarMoviesAsync(
+                start,
+                end,
+                Math.Clamp(take ?? 500, 1, 2000),
+                cancellationToken);
+            return Results.Ok(items);
+        });
+
         movies.MapGet("/search-history", async (IMovieCatalogRepository repository, CancellationToken cancellationToken) =>
         {
             var items = await repository.ListSearchHistoryAsync(cancellationToken);

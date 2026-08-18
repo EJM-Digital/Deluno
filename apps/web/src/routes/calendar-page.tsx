@@ -1,380 +1,338 @@
+/**
+ * Schedule — what lands when.
+ *
+ * TV air dates and film release dates come from the provider catalogue, so this
+ * page is a window query rather than a scan: it asks the API for the visible
+ * range instead of pulling every episode of every show and slicing. Before the
+ * catalogue existed nothing had a date and this page could only ever be empty.
+ *
+ * Contracts: GET /api/series/calendar?from&to, GET /api/movies/calendar?from&to.
+ */
 import { useMemo, useState } from "react";
-import { Link, useLoaderData } from "react-router-dom";
-import { CalendarDays, Clock3, Radar, RefreshCcw, Tv2 } from "lucide-react";
-import {
-  fetchJson,
-  type MovieWantedSummary,
-  type SeriesInventoryDetail,
-  type SeriesListItem,
-  type SeriesWantedSummary
-} from "../lib/api";
-import { KpiCard } from "../components/app/kpi-card";
-import { Badge } from "../components/ui/badge";
+import { useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { fetchJson } from "../lib/api";
 import { Button } from "../components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
-import { EmptyState } from "../components/shell/empty-state";
-import { Stagger, StaggerItem } from "../components/shell/motion";
+import { Chip } from "../components/ui/chip";
+import { ListGroupHeader } from "../components/ui/media-type-split";
+import {
+  LIST_TRACK,
+  ListCard,
+  ListCell,
+  ListEmpty,
+  ListNameCell,
+  ListRow,
+  ListTable
+} from "../components/ui/list-card";
+import { PageToolbar } from "../components/ui/page-toolbar";
 import { RouteSkeleton } from "../components/shell/skeleton";
+import { SegmentedControl } from "../components/ui/segmented-control";
+import { SummaryStrip } from "../components/ui/summary-strip";
+import { wantedStatusPresentation } from "../lib/media-status-presentation";
 
-interface CalendarItem {
-  id: string;
-  kind: "episode" | "retry";
+interface SeriesCalendarEpisode {
+  episodeId: string;
+  seriesId: string;
+  seriesTitle: string;
+  posterUrl: string | null;
+  seasonNumber: number;
+  episodeNumber: number;
+  title: string | null;
+  airDateUtc: string;
+  hasFile: boolean;
+  monitored: boolean;
+  wantedStatus: string;
+}
+
+interface MovieCalendarEntry {
+  movieId: string;
   title: string;
-  subtitle: string;
-  detail: string;
-  startsAt: string;
-  tone: "primary" | "warning" | "info";
-  href: string;
+  releaseYear: number | null;
+  posterUrl: string | null;
+  kind: "inCinemas" | "digital" | "physical";
+  date: string;
+  hasFile: boolean;
+  monitored: boolean;
 }
 
 interface CalendarLoaderData {
-  items: CalendarItem[];
+  episodes: SeriesCalendarEpisode[];
+  movies: MovieCalendarEntry[];
 }
 
+/** The page loads a generous window once, then filters it as you page around. */
+const WINDOW_DAYS_BACK = 45;
+const WINDOW_DAYS_FORWARD = 120;
+
 export async function calendarLoader(): Promise<CalendarLoaderData> {
-  const [series, seriesWanted, movieWanted] = await Promise.all([
-    fetchJson<SeriesListItem[]>("/api/series"),
-    fetchJson<SeriesWantedSummary>("/api/series/wanted"),
-    fetchJson<MovieWantedSummary>("/api/movies/wanted")
+  const from = new Date();
+  from.setDate(from.getDate() - WINDOW_DAYS_BACK);
+  const to = new Date();
+  to.setDate(to.getDate() + WINDOW_DAYS_FORWARD);
+
+  const range = `from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`;
+  const movieRange = `from=${isoDate(from)}&to=${isoDate(to)}`;
+
+  const [episodes, movies] = await Promise.all([
+    fetchJson<SeriesCalendarEpisode[]>(`/api/series/calendar?${range}`).catch(() => []),
+    fetchJson<MovieCalendarEntry[]>(`/api/movies/calendar?${movieRange}`).catch(() => [])
   ]);
 
-    const inventory = await Promise.all(
-      series.map((item) =>
-        fetchJson<SeriesInventoryDetail>(`/api/series/${item.id}/inventory`).catch(() => null)
-      )
-    );
+  return { episodes, movies };
+}
 
-    const episodeItems: CalendarItem[] = inventory
-      .filter((item): item is SeriesInventoryDetail => item !== null)
-      .flatMap((detail) =>
-        detail.episodes
-          .filter((episode) => episode.airDateUtc)
-          .map((episode) => ({
-            id: episode.episodeId,
-            kind: "episode" as const,
-            title: detail.title,
-            subtitle: `S${String(episode.seasonNumber).padStart(2, "0")}E${String(episode.episodeNumber).padStart(2, "0")}`,
-            detail: episode.title ?? "Upcoming episode",
-            startsAt: episode.airDateUtc!,
-            tone: episode.hasFile ? "info" : episode.wantedStatus === "missing" ? "warning" : "primary",
-            href: `/tv/${detail.seriesId}`
-          }))
-      );
+type Scope = "week" | "month";
 
-    const retryItems: CalendarItem[] = [
-      ...seriesWanted.recentItems
-        .filter((item) => item.nextEligibleSearchUtc)
-        .map((item) => ({
-          id: `series-retry-${item.seriesId}`,
-          kind: "retry" as const,
-          title: item.title,
-          subtitle: "TV search retry",
-          detail: item.wantedReason,
-          startsAt: item.nextEligibleSearchUtc!,
-          tone: "warning" as const,
-          href: `/tv/${item.seriesId}`
-        })),
-      ...movieWanted.recentItems
-        .filter((item) => item.nextEligibleSearchUtc)
-        .map((item) => ({
-          id: `movie-retry-${item.movieId}`,
-          kind: "retry" as const,
-          title: item.title,
-          subtitle: "Movie search retry",
-          detail: item.wantedReason,
-          startsAt: item.nextEligibleSearchUtc!,
-          tone: "info" as const,
-          href: `/movies/${item.movieId}`
-        }))
-    ];
-
-    const items = [...episodeItems, ...retryItems]
-      .sort((left, right) => new Date(left.startsAt).getTime() - new Date(right.startsAt).getTime())
-      .slice(0, 48);
-
-  return { items };
+interface CalendarEntry {
+  id: string;
+  date: Date;
+  name: string;
+  sub: string;
+  kindLabel: string;
+  detail: string;
+  status: { label: string; tone: "ok" | "warn" | "info" | "muted" };
+  href: string;
 }
 
 export function CalendarPage() {
   const loaderData = useLoaderData() as CalendarLoaderData | undefined;
+  const navigate = useNavigate();
+  const revalidator = useRevalidator();
+  const [scope, setScope] = useState<Scope>("month");
+  const [offset, setOffset] = useState(0);
+
   if (!loaderData) return <RouteSkeleton />;
-  const items = loaderData.items;
-  const [weekOffset, setWeekOffset] = useState(0);
-  const week = useMemo(() => buildWeek(weekOffset), [weekOffset]);
 
-  const itemsThisWeek = useMemo(() => {
-    return items.filter((item) => {
-      const time = new Date(item.startsAt).getTime();
-      return time >= week.start.getTime() && time < week.end.getTime();
-    });
-  }, [items, week]);
+  const entries = useMemo(() => buildEntries(loaderData), [loaderData]);
+  const range = useMemo(() => buildRange(scope, offset), [scope, offset]);
 
-  const grouped = useMemo(() => {
-    return week.days.map((day) => ({
-      ...day,
-      items: itemsThisWeek.filter((item) => isSameDay(new Date(item.startsAt), day.date))
-    }));
-  }, [itemsThisWeek, week.days]);
+  const visible = useMemo(
+    () => entries.filter((entry) => entry.date >= range.start && entry.date < range.end),
+    [entries, range]
+  );
 
-  const nextSevenDays = items.filter((item) => {
-    const time = new Date(item.startsAt).getTime();
-    const now = Date.now();
-    return time >= now && time < now + 1000 * 60 * 60 * 24 * 7;
-  });
+  const byDay = useMemo(() => {
+    const groups = new Map<string, CalendarEntry[]>();
+    for (const entry of visible) {
+      const key = isoDate(entry.date);
+      groups.set(key, [...(groups.get(key) ?? []), entry]);
+    }
+    return [...groups.entries()].sort(([left], [right]) => left.localeCompare(right));
+  }, [visible]);
 
-  const episodeCount = itemsThisWeek.filter((item) => item.kind === "episode").length;
-  const retryCount = itemsThisWeek.filter((item) => item.kind === "retry").length;
+  const now = new Date();
+  const stillToCome = visible.filter((entry) => entry.date >= now).length;
+  const alreadyHere = visible.filter((entry) => entry.date < now).length;
+  const episodeCount = visible.filter((entry) => entry.id.startsWith("episode:")).length;
+  const movieCount = visible.length - episodeCount;
 
   return (
-    <div className="space-y-[var(--page-gap)]">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <p className="text-sm text-muted-foreground">Release planning</p>
-          <h1 className="font-display text-3xl font-semibold text-foreground sm:text-4xl">
-            Calendar
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Upcoming episodes and retry windows in one schedule view.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setWeekOffset((value) => value - 1)}>
-            Previous
-          </Button>
-          <Button variant="outline" onClick={() => setWeekOffset(0)}>
-            Today
-          </Button>
-          <Button variant="outline" onClick={() => setWeekOffset((value) => value + 1)}>
-            Next
-          </Button>
-        </div>
-      </div>
+    <div className="grid gap-[var(--page-gap)]">
+      <PageToolbar
+        left={
+          <SegmentedControl<Scope>
+            aria-label="Range"
+            className="w-auto"
+            value={scope}
+            onValueChange={(next) => {
+              setScope(next);
+              setOffset(0);
+            }}
+            options={[
+              { value: "week", label: "Week" },
+              { value: "month", label: "Month" }
+            ]}
+          />
+        }
+        actions={
+          <>
+            <span className="mr-1 text-[length:var(--type-body-sm)] font-medium text-foreground">{range.label}</span>
+            <Button type="button" variant="outline" size="icon" aria-label={`Previous ${scope}`} onClick={() => setOffset((value) => value - 1)}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setOffset(0)}>
+              Today
+            </Button>
+            <Button type="button" variant="outline" size="icon" aria-label={`Next ${scope}`} onClick={() => setOffset((value) => value + 1)}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </>
+        }
+      />
 
-      <Stagger className="fluid-kpi-grid">
-        <StaggerItem>
-          <KpiCard
-            label="This week"
-            value={String(itemsThisWeek.length)}
-            icon={CalendarDays}
-            meta="Episodes and retry windows inside the visible week."
-            sparkline={[4, 6, 5, 8, 7, 9, 8, 10, 11, 9, 8, 7, 9, 10, 12]}
-          />
-        </StaggerItem>
-        <StaggerItem>
-          <KpiCard
-            label="Episodes"
-            value={String(episodeCount)}
-            icon={Tv2}
-            meta="Upcoming or recently aired TV inventory with air dates."
-            sparkline={[1, 2, 3, 2, 4, 3, 5, 6, 5, 7, 6, 5, 6, 7, 8]}
-          />
-        </StaggerItem>
-        <StaggerItem>
-          <KpiCard
-            label="Retries"
-            value={String(retryCount)}
-            icon={RefreshCcw}
-            meta="Search retry windows scheduled from wanted-state timing."
-            sparkline={[2, 2, 1, 3, 2, 4, 3, 4, 5, 4, 3, 2, 3, 4, 4]}
-          />
-        </StaggerItem>
-        <StaggerItem>
-          <KpiCard
-            label="Next 7 days"
-            value={String(nextSevenDays.length)}
-            icon={Radar}
-            meta="Everything Deluno expects to care about in the next week."
-            sparkline={[5, 5, 6, 7, 7, 8, 9, 10, 9, 11, 10, 12, 11, 12, 13]}
-          />
-        </StaggerItem>
-      </Stagger>
+      <SummaryStrip
+        cells={[
+          { label: "In this range", value: visible.length, help: range.label },
+          { label: "Still to come", value: stillToCome, help: "has not happened yet" },
+          { label: "Already here", value: alreadyHere, help: "aired or released" },
+          { label: "Episodes", value: episodeCount, help: "TV air dates" },
+          { label: "Films", value: movieCount, help: "cinema, digital and disc" }
+        ]}
+      />
 
-      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.3fr)_minmax(360px,0.92fr)] 2xl:grid-cols-[minmax(0,1.55fr)_minmax(420px,0.72fr)]">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-[var(--grid-gap)]">
-            <div>
-              <CardTitle>{week.label}</CardTitle>
-              <CardDescription>
-                Week-at-a-glance scheduling for TV air dates and Deluno retry windows.
-              </CardDescription>
-            </div>
-            <Badge variant="info">{itemsThisWeek.length} scheduled</Badge>
-          </CardHeader>
-          <CardContent className="grid gap-[var(--grid-gap)] lg:grid-cols-7">
-            {grouped.map((day) => (
-              <div key={day.key} className="rounded-xl border border-hairline bg-surface-1 p-3">
-                <div className="border-b border-hairline pb-3">
-                  <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                    {day.weekday}
-                  </p>
-                  <p className="mt-1 tabular text-lg font-semibold text-foreground">
-                    {day.dayNumber}
-                  </p>
-                </div>
-                <div className="mt-3 space-y-3">
-                  {day.items.length ? (
-                    day.items.map((item) => (
-                      <Link
-                        key={item.id}
-                        to={item.href}
-                        className="block rounded-xl border border-hairline bg-card p-3 transition hover:bg-surface-2"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <Badge variant={badgeForTone(item.tone)}>{item.subtitle}</Badge>
-                          <span className="tabular text-[11px] text-muted-foreground">
-                            {formatTime(item.startsAt)}
-                          </span>
-                        </div>
-                        <p className="mt-2 text-sm font-medium text-foreground">{item.title}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">{item.detail}</p>
-                      </Link>
-                    ))
-                  ) : (
-                    <p className="text-sm text-muted-foreground">Nothing scheduled.</p>
-                  )}
-                </div>
+      <ListCard
+        title="Schedule"
+        count={visible.length ? `${byDay.length} ${byDay.length === 1 ? "day" : "days"} with something on` : undefined}
+        actions={
+          <Button type="button" size="sm" variant="outline" onClick={() => revalidator.revalidate()} disabled={revalidator.state !== "idle"}>
+            Refresh
+          </Button>
+        }
+      >
+        {visible.length === 0 ? (
+          <ListEmpty
+            title={entries.length ? `Nothing scheduled in ${range.label}` : "Nothing has a date yet"}
+            description={
+              entries.length
+                ? "Move to another week or month, or widen the range."
+                : "Air dates and release dates come from the metadata provider. Link a show or film to its provider record and its schedule appears here."
+            }
+          />
+        ) : (
+          <ListTable
+            columns={[
+              { label: "What" },
+              { label: "Kind", mobile: true },
+              { label: "When" },
+              { label: "Detail", width: "minmax(0,1.4fr)" },
+              { label: "Status", width: LIST_TRACK.status }
+            ]}
+          >
+            {byDay.map(([day, dayEntries]) => (
+              <div key={day}>
+                <ListGroupHeader
+                  label={formatDayLabel(new Date(`${day}T00:00:00`))}
+                  detail={`${dayEntries.length} ${dayEntries.length === 1 ? "thing" : "things"}`}
+                />
+                {dayEntries.map((entry) => (
+                  <ListRow key={entry.id} onClick={() => navigate(entry.href)}>
+                    <ListNameCell name={entry.name} sub={entry.sub} />
+                    <ListCell primary={entry.kindLabel} mobile />
+                    <ListCell primary={formatTime(entry.date)} />
+                    <ListCell primary={entry.detail} />
+                    <ListCell>
+                      <Chip tone={entry.status.tone}>{entry.status.label}</Chip>
+                    </ListCell>
+                  </ListRow>
+                ))}
               </div>
             ))}
-          </CardContent>
-        </Card>
-
-        <div className="space-y-[var(--page-gap)]">
-          <Card>
-            <CardHeader>
-              <CardTitle>Upcoming agenda</CardTitle>
-              <CardDescription>
-                Chronological list of the next dated events Deluno knows about.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {items.slice(0, 12).map((item) => (
-                <Link
-                  key={item.id}
-                  to={item.href}
-                  className="flex items-start gap-3 rounded-xl border border-hairline bg-surface-1 px-3 py-3 transition hover:bg-surface-2"
-                >
-                  <span className={toneDot(item.tone)} />
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-sm font-medium text-foreground">{item.title}</p>
-                      <Badge variant={badgeForTone(item.tone)}>{item.subtitle}</Badge>
-                    </div>
-                    <p className="mt-1 text-sm text-muted-foreground">{item.detail}</p>
-                    <p className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground">
-                      <Clock3 className="h-3.5 w-3.5" />
-                      {formatDateTime(item.startsAt)}
-                    </p>
-                  </div>
-                </Link>
-              ))}
-              {!items.length ? (
-                <EmptyState
-                  size="sm"
-                  variant="custom"
-                  title="Nothing on the agenda"
-                  description="Upcoming air dates and retry windows will surface here as soon as Deluno has them."
-                />
-              ) : null}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Planning notes</CardTitle>
-              <CardDescription>
-                What this calendar is currently driven by inside Deluno.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm text-muted-foreground">
-              <p>Episode cards come from TV inventory entries with real `airDateUtc` values.</p>
-              <p>Retry entries come from movie and TV wanted-state `nextEligibleSearchUtc` timing.</p>
-              <p>
-                As Deluno gets richer release metadata and movie availability dates, this page can expand into a fuller planner without changing the shell.
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+          </ListTable>
+        )}
+      </ListCard>
     </div>
   );
 }
 
-function buildWeek(offset: number) {
-  const today = new Date();
-  const dayIndex = today.getDay();
-  const mondayOffset = (dayIndex + 6) % 7;
-  const start = new Date(today);
-  start.setHours(0, 0, 0, 0);
-  start.setDate(start.getDate() - mondayOffset + offset * 7);
+/* -------------------------------------------------------------- helpers */
 
-  const days = Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(start);
-    date.setDate(start.getDate() + index);
+function buildEntries(data: CalendarLoaderData): CalendarEntry[] {
+  const episodes = data.episodes.map<CalendarEntry>((episode) => {
+    const status = wantedStatusPresentation(episode.wantedStatus);
     return {
-      key: date.toISOString(),
-      date,
-      weekday: new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(date),
-      dayNumber: new Intl.DateTimeFormat(undefined, { day: "numeric" }).format(date)
+      id: `episode:${episode.episodeId}`,
+      date: new Date(episode.airDateUtc),
+      name: episode.seriesTitle,
+      sub: `S${String(episode.seasonNumber).padStart(2, "0")}E${String(episode.episodeNumber).padStart(2, "0")}`,
+      kindLabel: "Episode",
+      detail: episode.title ?? "Episode title pending",
+      status: episode.hasFile
+        ? { label: "On disk", tone: "ok" as const }
+        : { label: status.label, tone: status.tone },
+      href: `/tv/${episode.seriesId}`
     };
   });
 
-  const end = new Date(start);
-  end.setDate(start.getDate() + 7);
+  const movies = data.movies.map<CalendarEntry>((movie) => ({
+    id: `movie:${movie.movieId}:${movie.kind}:${movie.date}`,
+    date: new Date(`${movie.date}T00:00:00`),
+    name: movie.title,
+    sub: movie.releaseYear ? String(movie.releaseYear) : "Film",
+    kindLabel: movieKindLabel(movie.kind),
+    detail: movieKindDetail(movie.kind),
+    status: movie.hasFile
+      ? { label: "On disk", tone: "ok" as const }
+      : movie.monitored
+        ? { label: "Watching for it", tone: "info" as const }
+        : { label: "Not monitored", tone: "muted" as const },
+    href: `/movies/${movie.movieId}`
+  }));
 
+  return [...episodes, ...movies].sort((left, right) => left.date.getTime() - right.date.getTime());
+}
+
+function movieKindLabel(kind: MovieCalendarEntry["kind"]) {
+  switch (kind) {
+    case "inCinemas":
+      return "In cinemas";
+    case "digital":
+      return "Digital";
+    default:
+      return "Disc";
+  }
+}
+
+function movieKindDetail(kind: MovieCalendarEntry["kind"]) {
+  switch (kind) {
+    case "inCinemas":
+      return "Reaches cinemas — not obtainable yet";
+    case "digital":
+      return "Digital release";
+    default:
+      return "Physical release";
+  }
+}
+
+function buildRange(scope: Scope, offset: number) {
+  const anchor = new Date();
+  anchor.setHours(0, 0, 0, 0);
+
+  if (scope === "week") {
+    // Monday-first, which is how a week reads for scheduling.
+    const weekday = (anchor.getDay() + 6) % 7;
+    const start = new Date(anchor);
+    start.setDate(anchor.getDate() - weekday + offset * 7);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 7);
+    return { start, end, label: formatWeekLabel(start, end) };
+  }
+
+  const start = new Date(anchor.getFullYear(), anchor.getMonth() + offset, 1);
+  const end = new Date(start.getFullYear(), start.getMonth() + 1, 1);
   return {
     start,
     end,
-    days,
-    label: `${formatMonthDay(start)} – ${formatMonthDay(new Date(end.getTime() - 86400000))}`
+    label: new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" }).format(start)
   };
 }
 
-function formatMonthDay(date: Date) {
-  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date);
+function formatWeekLabel(start: Date, end: Date) {
+  const last = new Date(end);
+  last.setDate(end.getDate() - 1);
+  const sameMonth = start.getMonth() === last.getMonth();
+  const startPart = new Intl.DateTimeFormat(undefined, { day: "numeric", month: sameMonth ? undefined : "short" }).format(start);
+  const endPart = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" }).format(last);
+  return `${startPart} – ${endPart}`;
 }
 
-function isSameDay(left: Date, right: Date) {
-  return (
-    left.getFullYear() === right.getFullYear() &&
-    left.getMonth() === right.getMonth() &&
-    left.getDate() === right.getDate()
-  );
+function formatDayLabel(date: Date) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diff = Math.round((date.getTime() - today.getTime()) / 86_400_000);
+  if (diff === 0) return "Today";
+  if (diff === 1) return "Tomorrow";
+  if (diff === -1) return "Yesterday";
+  return new Intl.DateTimeFormat(undefined, { weekday: "long", day: "numeric", month: "long" }).format(date);
 }
 
-function formatTime(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    hour: "numeric",
-    minute: "2-digit"
-  }).format(new Date(value));
+function formatTime(date: Date) {
+  // Air dates are date-only, stored at midnight UTC. Read the UTC components:
+  // reading local ones turns "no time known" into a confident "10:00" outside UTC.
+  return date.getUTCHours() === 0 && date.getUTCMinutes() === 0
+    ? "All day"
+    : new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(date);
 }
 
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit"
-  }).format(new Date(value));
-}
-
-function badgeForTone(tone: CalendarItem["tone"]): "default" | "success" | "warning" | "destructive" | "info" {
-  switch (tone) {
-    case "primary":
-      return "info";
-    case "warning":
-      return "warning";
-    default:
-      return "default";
-  }
-}
-
-function toneDot(tone: CalendarItem["tone"]) {
-  switch (tone) {
-    case "primary":
-      return "mt-1.5 h-2.5 w-2.5 rounded-full bg-primary shadow-[0_0_8px_hsl(var(--primary)/0.45)]";
-    case "warning":
-      return "mt-1.5 h-2.5 w-2.5 rounded-full bg-warning shadow-[0_0_8px_hsl(var(--warning)/0.35)]";
-    default:
-      return "mt-1.5 h-2.5 w-2.5 rounded-full bg-info shadow-[0_0_8px_hsl(var(--info)/0.35)]";
-  }
+function isoDate(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }

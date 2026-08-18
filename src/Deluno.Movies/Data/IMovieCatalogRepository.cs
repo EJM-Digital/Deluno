@@ -170,4 +170,11 @@ public interface IMovieCatalogRepository
         string movieId,
         string minimumAvailability,
         CancellationToken cancellationToken);
+
+    /// <summary>Films with a cinema, digital or physical release inside a window.</summary>
+    Task<IReadOnlyList<MovieCalendarItem>> ListCalendarMoviesAsync(
+        DateOnly fromDate,
+        DateOnly toDate,
+        int take,
+        CancellationToken cancellationToken);
 }
