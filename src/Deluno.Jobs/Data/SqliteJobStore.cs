@@ -1950,6 +1950,16 @@ public sealed class SqliteJobStore(
         return ids;
     }
 
+    /// <summary>
+    /// Makes sure a row exists and its denormalised name and media type track
+    /// the library.
+    ///
+    /// The DO UPDATE is guarded because this runs for every library on every
+    /// search-lane tick. Without the guard it rewrote every row every five
+    /// seconds — measured at 15 rewrites a minute of byte-identical data apart
+    /// from updated_utc, which no caller uses as a liveness signal.
+    /// "IS NOT" rather than "&lt;&gt;" so a NULL on either side compares correctly.
+    /// </summary>
     private static async Task UpsertLibraryAutomationStateAsync(
         System.Data.Common.DbConnection connection,
         System.Data.Common.DbTransaction transaction,
@@ -1971,7 +1981,9 @@ public sealed class SqliteJobStore(
             ON CONFLICT(library_id) DO UPDATE SET
                 library_name = excluded.library_name,
                 media_type = excluded.media_type,
-                updated_utc = excluded.updated_utc;
+                updated_utc = excluded.updated_utc
+            WHERE library_automation_state.library_name IS NOT excluded.library_name
+               OR library_automation_state.media_type IS NOT excluded.media_type;
             """;
 
         AddParameter(command, "@libraryId", library.LibraryId);
@@ -1981,6 +1993,16 @@ public sealed class SqliteJobStore(
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Writes a library's automation state, but only when some part of it
+    /// actually differs.
+    ///
+    /// This runs for every idle or auto-search-off library on every search-lane
+    /// tick. Unguarded it rewrote the same rows every five seconds — measured at
+    /// 15 writes a minute carrying no new information. updated_utc is excluded
+    /// from the comparison on purpose: it is the field that always differs, and
+    /// nothing treats it as a liveness signal.
+    /// </summary>
     private static async Task UpdateAutomationIdleAsync(
         System.Data.Common.DbConnection connection,
         System.Data.Common.DbTransaction transaction,
@@ -2005,7 +2027,14 @@ public sealed class SqliteJobStore(
                 next_search_utc = @nextSearchUtc,
                 search_requested = @searchRequested,
                 updated_utc = @updatedUtc
-            WHERE library_id = @libraryId;
+            WHERE library_id = @libraryId
+              AND (
+                     library_name IS NOT @libraryName
+                  OR media_type IS NOT @mediaType
+                  OR status IS NOT @status
+                  OR next_search_utc IS NOT @nextSearchUtc
+                  OR search_requested IS NOT @searchRequested
+              );
             """;
 
         AddParameter(command, "@libraryId", libraryId);
