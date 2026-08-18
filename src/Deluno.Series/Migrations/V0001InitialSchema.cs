@@ -11,7 +11,8 @@ public static class SeriesDatabaseMigrations
         new V0003SeriesTrackedFiles(),
         new V0004SeriesEpisodeQualityTracking(),
         new V0005SeriesImportRecoveryStatus(),
-        new V0006SeriesSkipNextAutomationSearch()
+        new V0006SeriesSkipNextAutomationSearch(),
+        new V0007SeriesEpisodeCatalogue()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

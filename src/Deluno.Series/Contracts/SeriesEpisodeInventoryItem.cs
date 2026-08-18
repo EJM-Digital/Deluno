@@ -5,6 +5,7 @@ public sealed record SeriesEpisodeInventoryItem(
     int SeasonNumber,
     int EpisodeNumber,
     string? Title,
+    string? Overview,
     DateTimeOffset? AirDateUtc,
     bool Monitored,
     bool HasFile,

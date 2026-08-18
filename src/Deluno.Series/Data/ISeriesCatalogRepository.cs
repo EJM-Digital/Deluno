@@ -191,4 +191,15 @@ public interface ISeriesCatalogRepository
     Task<string?> GetEpisodeCurrentQualityAsync(
         string episodeId,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Write the provider's season/episode catalogue over the series' inventory.
+    /// Adds episodes nobody has a file for, fills in titles and air dates, and
+    /// leaves every file-derived column alone.
+    /// </summary>
+    Task<SeriesCatalogueSyncResult> SyncEpisodeCatalogueAsync(
+        string seriesId,
+        IReadOnlyList<CatalogueEpisodeItem> episodes,
+        string source,
+        CancellationToken cancellationToken);
 }

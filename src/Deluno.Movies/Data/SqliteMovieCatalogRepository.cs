@@ -157,7 +157,11 @@ public sealed class SqliteMovieCatalogRepository(
                 m.metadata_json,
                 m.metadata_updated_utc,
                 m.created_utc,
-                m.updated_utc
+                m.updated_utc,
+                m.in_cinemas_date,
+                m.digital_release_date,
+                m.physical_release_date,
+                m.minimum_availability
             FROM movie_entries m
             LEFT JOIN movie_wanted_state w ON w.movie_id = m.id
             WHERE m.id = @id
@@ -200,7 +204,11 @@ public sealed class SqliteMovieCatalogRepository(
                 m.metadata_json,
                 m.metadata_updated_utc,
                 m.created_utc,
-                m.updated_utc
+                m.updated_utc,
+                m.in_cinemas_date,
+                m.digital_release_date,
+                m.physical_release_date,
+                m.minimum_availability
             FROM movie_entries m
             LEFT JOIN movie_wanted_state w ON w.movie_id = m.id
             WHERE
@@ -259,7 +267,11 @@ public sealed class SqliteMovieCatalogRepository(
                 m.metadata_json,
                 m.metadata_updated_utc,
                 m.created_utc,
-                m.updated_utc
+                m.updated_utc,
+                m.in_cinemas_date,
+                m.digital_release_date,
+                m.physical_release_date,
+                m.minimum_availability
             FROM movie_entries m
             LEFT JOIN movie_wanted_state w ON w.movie_id = m.id
             GROUP BY m.id
@@ -517,6 +529,17 @@ public sealed class SqliteMovieCatalogRepository(
                     AND w.wanted_status IN ('missing', 'upgrade')
                     AND m.monitored = 1
                     AND (w.next_eligible_search_utc IS NULL OR w.next_eligible_search_utc <= @now)
+                    -- Nothing to find before a film is obtainable, so do not spend
+                    -- a search cycle on one. 'announced' opts out of the wait.
+                    AND (
+                        m.minimum_availability = 'announced'
+                        OR (m.minimum_availability = 'inCinemas' AND (
+                            m.in_cinemas_date IS NULL AND m.digital_release_date IS NULL AND m.physical_release_date IS NULL
+                            OR COALESCE(m.in_cinemas_date, m.digital_release_date, m.physical_release_date) <= @today))
+                        OR (m.minimum_availability NOT IN ('announced', 'inCinemas') AND (
+                            m.digital_release_date IS NULL AND m.physical_release_date IS NULL
+                            OR MIN(COALESCE(m.digital_release_date, m.physical_release_date), COALESCE(m.physical_release_date, m.digital_release_date)) <= @today))
+                    )
                   ORDER BY
                       CASE w.wanted_status WHEN 'missing' THEN 0 ELSE 1 END,
                       COALESCE(w.last_search_utc, w.missing_since_utc, w.updated_utc) ASC,
@@ -526,6 +549,7 @@ public sealed class SqliteMovieCatalogRepository(
 
         AddParameter(command, "@libraryId", libraryId);
         AddParameter(command, "@now", now.ToString("O"));
+        AddParameter(command, "@today", DateOnly.FromDateTime(now.UtcDateTime).ToString("yyyy-MM-dd"));
         AddParameter(command, "@take", take);
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -1378,6 +1402,58 @@ public sealed class SqliteMovieCatalogRepository(
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
+    public async Task<bool> UpdateReleaseDatesAsync(
+        string movieId,
+        DateOnly? inCinemas,
+        DateOnly? digital,
+        DateOnly? physical,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE movie_entries
+            SET in_cinemas_date = @inCinemas,
+                digital_release_date = @digital,
+                physical_release_date = @physical,
+                updated_utc = @updatedUtc
+            WHERE id = @id;
+            """;
+        AddParameter(command, "@id", movieId);
+        AddParameter(command, "@inCinemas", inCinemas?.ToString("yyyy-MM-dd"));
+        AddParameter(command, "@digital", digital?.ToString("yyyy-MM-dd"));
+        AddParameter(command, "@physical", physical?.ToString("yyyy-MM-dd"));
+        AddParameter(command, "@updatedUtc", timeProvider.GetUtcNow().ToString("O"));
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
+    public async Task<bool> UpdateMinimumAvailabilityAsync(
+        string movieId,
+        string minimumAvailability,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE movie_entries
+            SET minimum_availability = @minimumAvailability,
+                updated_utc = @updatedUtc
+            WHERE id = @id;
+            """;
+        AddParameter(command, "@id", movieId);
+        AddParameter(command, "@minimumAvailability", MovieAvailability.Normalize(minimumAvailability));
+        AddParameter(command, "@updatedUtc", timeProvider.GetUtcNow().ToString("O"));
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
     private static MovieListItem ReadMovie(System.Data.Common.DbDataReader reader)
     {
         return new MovieListItem(
@@ -1400,8 +1476,21 @@ public sealed class SqliteMovieCatalogRepository(
             MetadataJson: reader.IsDBNull(15) ? null : reader.GetString(15),
             MetadataUpdatedUtc: reader.IsDBNull(16) ? null : ParseTimestamp(reader.GetString(16)),
             CreatedUtc: ParseTimestamp(reader.GetString(17)),
-            UpdatedUtc: ParseTimestamp(reader.GetString(18)));
+            UpdatedUtc: ParseTimestamp(reader.GetString(18)),
+            InCinemasDate: ReadDate(reader, 19),
+            DigitalReleaseDate: ReadDate(reader, 20),
+            PhysicalReleaseDate: ReadDate(reader, 21),
+            MinimumAvailability: MovieAvailability.Normalize(reader.IsDBNull(22) ? null : reader.GetString(22)),
+            IsAvailable: MovieAvailability.IsAvailable(
+                reader.IsDBNull(22) ? null : reader.GetString(22),
+                ReadDate(reader, 19),
+                ReadDate(reader, 20),
+                ReadDate(reader, 21),
+                DateOnly.FromDateTime(DateTime.UtcNow)));
     }
+
+    private static DateOnly? ReadDate(System.Data.Common.DbDataReader reader, int ordinal)
+        => reader.IsDBNull(ordinal) || !DateOnly.TryParse(reader.GetString(ordinal), out var parsed) ? null : parsed;
 
     private static MovieWantedItem ReadWantedMovie(System.Data.Common.DbDataReader reader)
     {

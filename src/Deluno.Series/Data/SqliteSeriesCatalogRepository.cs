@@ -538,6 +538,7 @@ public sealed class SqliteSeriesCatalogRepository(
                     e.episode_number,
                     e.title,
                     e.air_date_utc,
+                    e.overview,
                     e.monitored,
                     e.has_file,
                     COALESCE(w.wanted_status, CASE WHEN e.has_file = 1 THEN 'covered' ELSE 'missing' END),
@@ -566,18 +567,19 @@ public sealed class SqliteSeriesCatalogRepository(
                     EpisodeNumber: episodeReader.GetInt32(2),
                     Title: episodeReader.IsDBNull(3) ? null : episodeReader.GetString(3),
                     AirDateUtc: episodeReader.IsDBNull(4) ? null : ParseTimestamp(episodeReader.GetString(4)),
-                    Monitored: episodeReader.GetInt64(5) == 1,
-                    HasFile: episodeReader.GetInt64(6) == 1,
-                    WantedStatus: episodeReader.GetString(7),
-                    WantedReason: episodeReader.GetString(8),
-                    QualityCutoffMet: episodeReader.GetInt64(9) == 1,
-                    CurrentQuality: episodeReader.IsDBNull(10) ? null : episodeReader.GetString(10),
-                    TargetQuality: episodeReader.IsDBNull(11) ? null : episodeReader.GetString(11),
-                    PreventLowerQualityReplacements: episodeReader.GetInt64(12) == 1,
-                    LastQualityDeltaDecision: episodeReader.IsDBNull(13) ? null : episodeReader.GetInt32(13),
-                    LastSearchUtc: episodeReader.IsDBNull(14) ? null : ParseTimestamp(episodeReader.GetString(14)),
-                    NextEligibleSearchUtc: episodeReader.IsDBNull(15) ? null : ParseTimestamp(episodeReader.GetString(15)),
-                    UpdatedUtc: ParseTimestamp(episodeReader.GetString(16))));
+                    Overview: episodeReader.IsDBNull(5) ? null : episodeReader.GetString(5),
+                    Monitored: episodeReader.GetInt64(6) == 1,
+                    HasFile: episodeReader.GetInt64(7) == 1,
+                    WantedStatus: episodeReader.GetString(8),
+                    WantedReason: episodeReader.GetString(9),
+                    QualityCutoffMet: episodeReader.GetInt64(10) == 1,
+                    CurrentQuality: episodeReader.IsDBNull(11) ? null : episodeReader.GetString(11),
+                    TargetQuality: episodeReader.IsDBNull(12) ? null : episodeReader.GetString(12),
+                    PreventLowerQualityReplacements: episodeReader.GetInt64(13) == 1,
+                    LastQualityDeltaDecision: episodeReader.IsDBNull(14) ? null : episodeReader.GetInt32(14),
+                    LastSearchUtc: episodeReader.IsDBNull(15) ? null : ParseTimestamp(episodeReader.GetString(15)),
+                    NextEligibleSearchUtc: episodeReader.IsDBNull(16) ? null : ParseTimestamp(episodeReader.GetString(16)),
+                    UpdatedUtc: ParseTimestamp(episodeReader.GetString(17))));
             }
         }
 
@@ -1980,6 +1982,204 @@ public sealed class SqliteSeriesCatalogRepository(
             UpdatedUtc: ParseTimestamp(reader.GetString(17)));
     }
 
+    /// <summary>
+    /// Apply the provider's catalogue to this series.
+    ///
+    /// The rule is that the provider owns what exists and the disk owns what you
+    /// have. So this writes title, overview and air date, inserts episodes that
+    /// were never downloaded, and never touches has_file, quality_cutoff_met,
+    /// file_path, imported_utc or monitored — a user who unmonitored an episode
+    /// keeps that decision through every future refresh.
+    /// </summary>
+    public async Task<SeriesCatalogueSyncResult> SyncEpisodeCatalogueAsync(
+        string seriesId,
+        IReadOnlyList<CatalogueEpisodeItem> episodes,
+        string source,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(seriesId) || episodes.Count == 0)
+        {
+            return SeriesCatalogueSyncResult.None;
+        }
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        var now = timeProvider.GetUtcNow();
+        var stamp = now.ToString("O");
+        var added = 0;
+        var updated = 0;
+
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        foreach (var seasonNumber in episodes.Select(item => item.SeasonNumber).Distinct().OrderBy(item => item))
+        {
+            var seasonId = await EnsureSeasonAsync(connection, transaction, seriesId, seasonNumber, stamp, cancellationToken);
+
+            foreach (var episode in episodes.Where(item => item.SeasonNumber == seasonNumber).OrderBy(item => item.EpisodeNumber))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                using var upsert = connection.CreateCommand();
+                upsert.Transaction = transaction;
+                upsert.CommandText =
+                    """
+                    INSERT INTO episode_entries (
+                        id, series_id, season_id, season_number, episode_number, title, overview, air_date_utc,
+                        monitored, has_file, quality_cutoff_met, catalogue_source, catalogue_synced_utc,
+                        created_utc, updated_utc
+                    )
+                    VALUES (
+                        @id, @seriesId, @seasonId, @seasonNumber, @episodeNumber, @title, @overview, @airDateUtc,
+                        1, 0, 0, @source, @syncedUtc,
+                        @createdUtc, @updatedUtc
+                    )
+                    ON CONFLICT(series_id, season_number, episode_number) DO UPDATE SET
+                        season_id = COALESCE(episode_entries.season_id, excluded.season_id),
+                        title = excluded.title,
+                        overview = excluded.overview,
+                        air_date_utc = excluded.air_date_utc,
+                        catalogue_source = excluded.catalogue_source,
+                        catalogue_synced_utc = excluded.catalogue_synced_utc,
+                        updated_utc = excluded.updated_utc;
+                    """;
+                AddParameter(upsert, "@id", Guid.CreateVersion7().ToString("N"));
+                AddParameter(upsert, "@seriesId", seriesId);
+                AddParameter(upsert, "@seasonId", seasonId);
+                AddParameter(upsert, "@seasonNumber", episode.SeasonNumber);
+                AddParameter(upsert, "@episodeNumber", episode.EpisodeNumber);
+                AddParameter(upsert, "@title", NormalizeText(episode.Title));
+                AddParameter(upsert, "@overview", NormalizeText(episode.Overview));
+                AddParameter(upsert, "@airDateUtc", episode.AirDateUtc?.ToString("O"));
+                AddParameter(upsert, "@source", source);
+                AddParameter(upsert, "@syncedUtc", stamp);
+                AddParameter(upsert, "@createdUtc", stamp);
+                AddParameter(upsert, "@updatedUtc", stamp);
+
+                // SQLite reports 1 for both an insert and an ON CONFLICT update, so
+                // ask which happened rather than inferring it from the row count.
+                var existedBefore = await EpisodeExistsAsync(connection, transaction, seriesId, episode, cancellationToken);
+                await upsert.ExecuteNonQueryAsync(cancellationToken);
+                if (existedBefore)
+                {
+                    updated++;
+                }
+                else
+                {
+                    added++;
+                }
+            }
+        }
+
+        // Episodes nobody has a file for still need a wanted state, or the search
+        // engine has nothing to act on — this is what makes a missing episode
+        // findable rather than merely visible.
+        using (var backfill = connection.CreateCommand())
+        {
+            backfill.Transaction = transaction;
+            backfill.CommandText =
+                """
+                INSERT INTO episode_wanted_state (
+                    episode_id, series_id, library_id, wanted_status, wanted_reason, updated_utc
+                )
+                SELECT
+                    episode.id,
+                    episode.series_id,
+                    series_state.library_id,
+                    CASE WHEN episode.has_file = 1 THEN 'covered' ELSE 'missing' END,
+                    CASE
+                        WHEN episode.has_file = 1 THEN 'Imported from your existing library.'
+                        WHEN episode.air_date_utc IS NULL THEN 'Not announced yet.'
+                        WHEN episode.air_date_utc > @now THEN 'Has not aired yet.'
+                        ELSE 'Deluno is looking for this episode.'
+                    END,
+                    @updatedUtc
+                FROM episode_entries AS episode
+                JOIN series_wanted_state AS series_state ON series_state.series_id = episode.series_id
+                WHERE episode.series_id = @seriesId
+                  AND NOT EXISTS (
+                      SELECT 1 FROM episode_wanted_state AS existing WHERE existing.episode_id = episode.id
+                  );
+                """;
+            AddParameter(backfill, "@seriesId", seriesId);
+            AddParameter(backfill, "@now", stamp);
+            AddParameter(backfill, "@updatedUtc", stamp);
+            await backfill.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+
+        return new SeriesCatalogueSyncResult(
+            episodes.Select(item => item.SeasonNumber).Distinct().Count(),
+            episodes.Count,
+            added,
+            updated);
+    }
+
+    private static async Task<bool> EpisodeExistsAsync(
+        System.Data.Common.DbConnection connection,
+        System.Data.Common.DbTransaction transaction,
+        string seriesId,
+        CatalogueEpisodeItem episode,
+        CancellationToken cancellationToken)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            """
+            SELECT 1 FROM episode_entries
+            WHERE series_id = @seriesId AND season_number = @seasonNumber AND episode_number = @episodeNumber
+            LIMIT 1;
+            """;
+        AddParameter(command, "@seriesId", seriesId);
+        AddParameter(command, "@seasonNumber", episode.SeasonNumber);
+        AddParameter(command, "@episodeNumber", episode.EpisodeNumber);
+        return await command.ExecuteScalarAsync(cancellationToken) is not null;
+    }
+
+    private static async Task<string> EnsureSeasonAsync(
+        System.Data.Common.DbConnection connection,
+        System.Data.Common.DbTransaction transaction,
+        string seriesId,
+        int seasonNumber,
+        string stamp,
+        CancellationToken cancellationToken)
+    {
+        using (var find = connection.CreateCommand())
+        {
+            find.Transaction = transaction;
+            find.CommandText =
+                """
+                SELECT id FROM season_entries
+                WHERE series_id = @seriesId AND season_number = @seasonNumber
+                LIMIT 1;
+                """;
+            AddParameter(find, "@seriesId", seriesId);
+            AddParameter(find, "@seasonNumber", seasonNumber);
+            if (await find.ExecuteScalarAsync(cancellationToken) is string existing && !string.IsNullOrWhiteSpace(existing))
+            {
+                return existing;
+            }
+        }
+
+        var seasonId = Guid.CreateVersion7().ToString("N");
+        using var insert = connection.CreateCommand();
+        insert.Transaction = transaction;
+        insert.CommandText =
+            """
+            INSERT INTO season_entries (id, series_id, season_number, monitored, created_utc, updated_utc)
+            VALUES (@id, @seriesId, @seasonNumber, 1, @createdUtc, @updatedUtc);
+            """;
+        AddParameter(insert, "@id", seasonId);
+        AddParameter(insert, "@seriesId", seriesId);
+        AddParameter(insert, "@seasonNumber", seasonNumber);
+        AddParameter(insert, "@createdUtc", stamp);
+        AddParameter(insert, "@updatedUtc", stamp);
+        await insert.ExecuteNonQueryAsync(cancellationToken);
+        return seasonId;
+    }
+
     private static void AddParameter(System.Data.Common.DbCommand command, string name, object? value)
     {
         var parameter = command.CreateParameter();
@@ -2265,6 +2465,7 @@ public sealed class SqliteSeriesCatalogRepository(
                 EpisodeNumber: reader.GetInt32(2),
                 Title: reader.IsDBNull(3) ? null : reader.GetString(3),
                 AirDateUtc: reader.IsDBNull(4) ? null : ParseTimestamp(reader.GetString(4)),
+                Overview: null,
                 Monitored: reader.GetInt64(5) == 1,
                 HasFile: reader.GetInt64(6) == 1,
                 WantedStatus: reader.GetString(7),

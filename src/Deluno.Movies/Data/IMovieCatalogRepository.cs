@@ -156,4 +156,18 @@ public interface IMovieCatalogRepository
 
     /// <summary>Update quality profile for a movie</summary>
     Task<bool> UpdateQualityProfileAsync(string movieId, string qualityProfileId, CancellationToken cancellationToken);
+
+    /// <summary>Store the provider's cinema, digital and physical release dates.</summary>
+    Task<bool> UpdateReleaseDatesAsync(
+        string movieId,
+        DateOnly? inCinemas,
+        DateOnly? digital,
+        DateOnly? physical,
+        CancellationToken cancellationToken);
+
+    /// <summary>Set when Deluno may start searching: announced, inCinemas or released.</summary>
+    Task<bool> UpdateMinimumAvailabilityAsync(
+        string movieId,
+        string minimumAvailability,
+        CancellationToken cancellationToken);
 }
