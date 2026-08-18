@@ -190,7 +190,8 @@ export function DrawerFooter({
   saveEnabled?: boolean;
 }) {
   const statuses: Record<DrawerSaveState, FooterStatus | null> = {
-    clean: null,
+    // A tool-style surface has no dirty state but still has something to say.
+    clean: message ? { icon: CircleDot, tone: "text-muted-foreground", label: message } : null,
     dirty: { icon: CircleDot, tone: "text-warning", label: "Unsaved changes" },
     saving: { icon: Loader2, tone: "text-muted-foreground", label: "Saving…", spin: true },
     saved: { icon: Check, tone: "text-success", label: message ?? "Saved just now" },
