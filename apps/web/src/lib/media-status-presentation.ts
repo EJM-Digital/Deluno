@@ -43,3 +43,44 @@ export function librarySummaryTone(kind: keyof typeof LIBRARY_SUMMARY_PRESENTATI
 export function mediaStatusIsActive(status: MediaStatus) {
   return status === "downloading" || status === "processing" || status === "waitingForProcessor" || status === "importQueued";
 }
+
+/**
+ * What Deluno wants for a title, in the user's words rather than the engine's.
+ *
+ * The stored values are `covered` / `missing` / `upgrade` / `waiting`. "Covered"
+ * is engine vocabulary — it means Deluno has a file that already satisfies the
+ * media plan, so it has stopped looking. The label says that; the hint says why,
+ * because a status word on its own is only ever half an explanation.
+ */
+export const WANTED_STATUS_PRESENTATION: Record<string, { label: string; tone: "ok" | "warn" | "info" | "muted"; hint: string }> = {
+  covered: {
+    label: "Complete",
+    tone: "ok",
+    hint: "Deluno has a file that meets your media plan, so it has stopped looking."
+  },
+  missing: {
+    label: "Missing",
+    tone: "warn",
+    hint: "Nothing has been imported yet. Deluno searches for this on its schedule."
+  },
+  upgrade: {
+    label: "Upgrade wanted",
+    tone: "info",
+    hint: "There is a file, but it is below the quality your media plan asks for."
+  },
+  waiting: {
+    label: "Waiting",
+    tone: "muted",
+    hint: "Not searchable yet — it has not been released, or a retry window is still open."
+  }
+};
+
+export function wantedStatusPresentation(value: string) {
+  return (
+    WANTED_STATUS_PRESENTATION[value] ?? {
+      label: "Tracked",
+      tone: "muted" as const,
+      hint: "Deluno is keeping an eye on this title."
+    }
+  );
+}

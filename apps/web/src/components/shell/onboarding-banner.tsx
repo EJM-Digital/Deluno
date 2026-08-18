@@ -84,6 +84,8 @@ export function OnboardingBanner({
         aria-hidden
         className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-primary/15 blur-[80px]"
       />
+      {/* The content block below is `relative`, so it painted over this button and
+          swallowed the clicks — the X read as misaligned when it was simply covered. */}
       <button
         type="button"
         onClick={() => {
@@ -91,9 +93,9 @@ export function OnboardingBanner({
           onDismiss();
         }}
         aria-label="Dismiss onboarding"
-        className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted/40 hover:text-foreground"
+        className="absolute right-2 top-2 z-10 flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-muted/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <X className="h-3.5 w-3.5" />
+        <X className="h-4 w-4" />
       </button>
 
       <div className="relative flex items-start gap-[var(--grid-gap)]">

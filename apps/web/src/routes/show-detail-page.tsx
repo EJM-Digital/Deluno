@@ -55,6 +55,7 @@ import { Select } from "../components/ui/select";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { Switch } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
+import { wantedStatusPresentation } from "../lib/media-status-presentation";
 
 interface ShowDetailLoaderData {
   activity: ActivityEventItem[];
@@ -136,6 +137,9 @@ export function ShowDetailPage() {
   const monitoredCount = inventory.episodes.filter((item) => item.monitored).length;
   const openEpisode = inventory.episodes.find((item) => item.episodeId === openEpisodeId) ?? null;
   const openSearch = seriesSearches.find((item) => item.id === openSearchId) ?? null;
+  // Deferring only touches a wanted state that is actually being searched for, so
+  // offering it on a settled title produced an enabled button and a 404.
+  const isBeingSearchedFor = wantedItem?.wantedStatus === "missing" || wantedItem?.wantedStatus === "upgrade";
 
   const nextStep = importCases.length
     ? {
@@ -490,7 +494,7 @@ export function ShowDetailPage() {
               {series.originalTitle && series.originalTitle !== series.title ? <p className="mt-1 text-sm text-muted-foreground">Also known as {series.originalTitle}</p> : null}
               <div className="mt-4 flex flex-wrap gap-2">
                 <Badge variant="default">{series.monitored ? "Monitored" : "Not monitored"}</Badge>
-                {wantedItem ? <Badge variant={wantedItem.wantedStatus === "missing" || wantedItem.wantedStatus === "upgrade" ? "warning" : "info"}>{formatWantedStatus(wantedItem.wantedStatus)}</Badge> : null}
+                {wantedItem ? <Badge variant={wantedItem.wantedStatus === "missing" || wantedItem.wantedStatus === "upgrade" ? "warning" : "info"}>{wantedStatusPresentation(wantedItem.wantedStatus).label}</Badge> : null}
                 {importCases.length ? <Badge variant="warning">{importCases.length} import issue{importCases.length === 1 ? "" : "s"}</Badge> : null}
                 {series.genres?.split(",").map((genre) => <span key={genre} className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">{genre.trim()}</span>)}
               </div>
@@ -684,7 +688,12 @@ export function ShowDetailPage() {
                         <ListCell primary={episode.hasFile ? "On disk" : "Not imported"} />
                         <ListCell primary={episode.lastSearchUtc ? formatDateTime(episode.lastSearchUtc) : "Never"} />
                         <ListCell>
-                          <Chip tone={wantedTone(episode.wantedStatus)}>{formatWantedStatus(episode.wantedStatus)}</Chip>
+                          <Chip
+                            tone={wantedStatusPresentation(episode.wantedStatus).tone}
+                            title={wantedStatusPresentation(episode.wantedStatus).hint}
+                          >
+                            {wantedStatusPresentation(episode.wantedStatus).label}
+                          </Chip>
                         </ListCell>
                         <div role="cell" className="flex justify-start">
                           <Switch
@@ -744,13 +753,13 @@ export function ShowDetailPage() {
                 <ListNameCell
                   name="Defer for 24 hours"
                   sub={
-                    wantedItem
+                    isBeingSearchedFor
                       ? "Pause scheduled searches for a day. Manual searches still work."
-                      : "Available once this show belongs to a library."
+                      : "Nothing to defer — Deluno is not searching for this show."
                   }
                 />
                 <div role="cell" className="flex justify-end">
-                  <Button type="button" size="sm" variant="outline" onClick={() => void handleDeferAutomation()} disabled={busyAction !== null || !wantedItem}>
+                  <Button type="button" size="sm" variant="outline" onClick={() => void handleDeferAutomation()} disabled={busyAction !== null || !isBeingSearchedFor}>
                     {busyAction === "defer" ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : null}
                     Defer
                   </Button>
@@ -760,13 +769,13 @@ export function ShowDetailPage() {
                 <ListNameCell
                   name="Skip the next search"
                   sub={
-                    wantedItem
+                    isBeingSearchedFor
                       ? "Let one scheduled cycle pass without searching this show."
-                      : "Available once this show belongs to a library."
+                      : "Nothing to skip — Deluno is not searching for this show."
                   }
                 />
                 <div role="cell" className="flex justify-end">
-                  <Button type="button" size="sm" variant="outline" onClick={() => void handleSkipNextAutomationSearch()} disabled={busyAction !== null || !wantedItem}>
+                  <Button type="button" size="sm" variant="outline" onClick={() => void handleSkipNextAutomationSearch()} disabled={busyAction !== null || !isBeingSearchedFor}>
                     {busyAction === "skip-once" ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : null}
                     Skip once
                   </Button>
@@ -929,7 +938,7 @@ export function ShowDetailPage() {
               />
             </DrawerSection>
 
-            <DrawerSection title="Automation" aside={formatWantedStatus(openEpisode.wantedStatus)}>
+            <DrawerSection title="Automation" aside={wantedStatusPresentation(openEpisode.wantedStatus).label}>
               <div className="flex min-h-[var(--control-height)] items-center justify-between gap-[var(--grid-gap)]">
                 <span className="min-w-0">
                   <span className="block text-[length:var(--type-body-sm)] font-medium text-foreground">Monitor this episode</span>
@@ -1212,34 +1221,6 @@ function formatEpisodeCode(episode: SeriesEpisodeInventoryItem) {
 
 function formatSeasonLabel(seasonNumber: number) {
   return seasonNumber === 0 ? "Specials" : `Season ${seasonNumber}`;
-}
-
-function formatWantedStatus(value: string) {
-  switch (value) {
-    case "missing":
-      return "Missing";
-    case "upgrade":
-      return "Upgrade";
-    case "waiting":
-      return "Waiting";
-    case "covered":
-      return "Covered";
-    default:
-      return "Tracked";
-  }
-}
-
-function wantedTone(value: string): "ok" | "warn" | "info" | "muted" {
-  switch (value) {
-    case "covered":
-      return "ok";
-    case "missing":
-      return "warn";
-    case "upgrade":
-      return "info";
-    default:
-      return "muted";
-  }
 }
 
 interface SearchPlanCandidate {

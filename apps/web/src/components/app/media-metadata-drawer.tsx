@@ -384,12 +384,18 @@ function validate(form: MediaMetadataValue): string | null {
     ["Backdrop URL", form.backdropUrl],
     ["External URL", form.externalUrl]
   ] as const) {
-    if (url.trim() && !isValidHttpUrl(url.trim())) return `${label} must be a valid http or https URL`;
+    if (url.trim() && !isAllowedUrl(url.trim())) return `${label} must be an http or https URL, or a Deluno artwork path`;
   }
   return null;
 }
 
-function isValidHttpUrl(value: string) {
+/**
+ * Provider artwork is stored as a relative path through Deluno's own proxy
+ * (`/api/metadata/artwork/<hash>`), so demanding an absolute http(s) URL refused
+ * every save on a title that had metadata — for a field the user never typed in.
+ */
+function isAllowedUrl(value: string) {
+  if (value.startsWith("/")) return !value.startsWith("//");
   try {
     const url = new URL(value);
     return url.protocol === "http:" || url.protocol === "https:";
