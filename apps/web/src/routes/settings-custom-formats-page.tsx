@@ -1,45 +1,89 @@
 /**
- * Custom Formats page — Deluno's simplified replacement for the
- * Radarr/Sonarr custom format editor.
+ * Release preferences — list → drawer plus one page-level form.
  *
- * Three sections:
- *   1. Format library — 80+ TRaSH pre-built formats, organised by category
- *   2. My formats — user-created custom formats
- *   3. Active in profiles — overview of which profiles use which formats
+ *   PageToolbar (Media Plans tabs · All/Movies/TV · Test a release · New rule)
+ *   ListCard  presets      (row → drawer: what it contains · Apply)
+ *   ListCard  release rules (row → drawer: Basics · Conditions · Remove)
+ *   ListCard  safeguards   (page form, saved by PageFooter)
+ *
+ * Rules score a release by its traits: Radarr and Sonarr call these Custom
+ * Formats. A rule is either written here or started from the bundled TRaSH
+ * guide catalogue, which is offered as "Start from" inside the rule drawer
+ * rather than as a separate browsable tab.
+ *
+ * Contracts: GET/POST /api/custom-formats, PUT/DELETE /api/custom-formats/{id},
+ * POST /api/custom-formats/dry-run, PUT /api/settings.
  */
-
-import { useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
-import { BookOpen, CheckCircle2, FlaskConical, LoaderCircle, PackagePlus, Plus, RotateCcw, ShieldCheck, Sparkles, Trash2, X } from "lucide-react";
-import { SettingsShell } from "../components/app/settings-shell";
+import { FlaskConical, Loader2, Plus, RotateCcw, X } from "lucide-react";
 import { Button } from "../components/ui/button";
+import { Chip } from "../components/ui/chip";
+import { Drawer, DrawerDanger, DrawerFooter, DrawerSection, type DrawerSaveState } from "../components/ui/drawer";
+import { Field, FieldRow } from "../components/ui/field";
 import { Input } from "../components/ui/input";
-import { EmptyState } from "../components/shell/empty-state";
-import { CFLibraryBrowser } from "../components/app/cf-library-browser";
-import { CFCreator, type CFDraft } from "../components/app/cf-creator";
+import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
+import { ListGroupHeader, MediaTypeFilter, mediaTypeLabel, useMediaTypeSplit } from "../components/ui/media-type-split";
+import { PageFooter } from "../components/ui/page-footer";
+import { PageToolbar } from "../components/ui/page-toolbar";
+import { PresetField } from "../components/ui/preset-field";
+import { SegmentedControl } from "../components/ui/segmented-control";
+import { Select } from "../components/ui/select";
+import { configurationNavAreas } from "../components/app/settings-shell";
 import { toast } from "../components/shell/toaster";
+import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import {
+  BUNDLED_CUSTOM_FORMATS,
+  CF_CATEGORY_META,
+  CF_CATEGORY_ORDER,
   CUSTOM_FORMAT_BUNDLES,
   findBundledCF,
   type BundledCF,
-  type CustomFormatBundle,
+  type CFCategory,
+  type CustomFormatBundle
 } from "../lib/trash-guide-data";
 import {
-  emptyPlatformSettingsSnapshot,
   fetchJson,
   type CustomFormatItem,
-  type LibraryItem,
   type PlatformSettingsSnapshot,
-  type QualityProfileItem,
+  type QualityProfileItem
 } from "../lib/api";
 import { settingsOverviewLoader } from "./settings-overview-page";
-import { cn } from "../lib/utils";
 import { authedFetch } from "../lib/use-auth";
-import { RouteSkeleton } from "../components/shell/skeleton";
 
-/* ── Loader ──────────────────────────────────────────────────────── */
+const TABS = configurationNavAreas.find((area) => area.label === "Media Plans")?.items ?? [];
+
+/** Scores users actually reach for. Anything at or under -10000 blocks a release outright. */
+const SCORE_OPTIONS = [
+  { value: "-10000", label: "Block this release" },
+  { value: "-100", label: "Strongly avoid (−100)" },
+  { value: "-25", label: "Avoid (−25)" },
+  { value: "25", label: "Mild preference (+25)" },
+  { value: "100", label: "Prefer (+100)" },
+  { value: "500", label: "Strongly prefer (+500)" }
+];
+
+const CONDITION_TYPES = [
+  { value: "releaseTitle", label: "Release title" },
+  { value: "source", label: "Source" },
+  { value: "resolution", label: "Resolution" },
+  { value: "hdr", label: "HDR format" },
+  { value: "codec", label: "Video codec" },
+  { value: "releaseGroup", label: "Release group" },
+  { value: "language", label: "Language" }
+] as const;
+
+type ConditionType = (typeof CONDITION_TYPES)[number]["value"];
+interface Condition {
+  type: ConditionType;
+  value: string;
+  negate: boolean;
+  required: boolean;
+}
+
+const DEFAULT_NEVER_GRAB_RULES = ["cam", "camrip", "telesync", "telecine", "workprint", "screener", "sample", "trailer", "extras"];
+
 interface LoaderData {
-  libraries: LibraryItem[];
   qualityProfiles: QualityProfileItem[];
   customFormats: CustomFormatItem[];
   settings: PlatformSettingsSnapshot;
@@ -48,32 +92,698 @@ interface LoaderData {
 export async function settingsCustomFormatsLoader(): Promise<LoaderData> {
   const [overview, customFormats] = await Promise.all([
     settingsOverviewLoader(),
-    fetchJson<CustomFormatItem[]>("/api/custom-formats"),
+    fetchJson<CustomFormatItem[]>("/api/custom-formats")
   ]);
   return { ...overview, customFormats };
 }
 
-/* ── Condition helpers ───────────────────────────────────────────── */
-type ConditionType = "releaseTitle" | "source" | "resolution" | "hdr" | "codec" | "releaseGroup" | "language";
-interface ConditionObj { type: ConditionType; value: string; negate?: boolean; required?: boolean }
-
-function serializeConditions(conditions: ConditionObj[]): string {
-  return JSON.stringify(conditions);
+interface RuleForm {
+  name: string;
+  mediaType: "movies" | "tv";
+  score: string;
+  conditions: Condition[];
+  trashId: string | null;
 }
 
-function conditionSummary(rawConditions: string | null | undefined): string {
-  if (!rawConditions) return "No conditions";
-  const trimmed = rawConditions.trim();
-  if (trimmed.startsWith("[")) {
-    try {
-      const arr = JSON.parse(trimmed) as ConditionObj[];
-      return `${arr.length} condition${arr.length !== 1 ? "s" : ""}`;
-    } catch { /* fall through */ }
+interface SafeguardForm {
+  scoringMode: string;
+  neverGrab: string[];
+}
+
+type DrawerMode =
+  | { kind: "rule"; id: string | null }
+  | { kind: "preset"; id: string }
+  | { kind: "test" }
+  | null;
+
+export function SettingsCustomFormatsPage() {
+  const { customFormats, settings } = useLoaderData() as LoaderData;
+  const revalidator = useRevalidator();
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const split = useMediaTypeSplit(customFormats, (format) => format.mediaType);
+  const [drawer, setDrawer] = useState<DrawerMode>(null);
+
+  /* ------------------------------------------------------------- rules */
+  const [form, setForm] = useState<RuleForm>(() => emptyRule());
+  const [initialForm, setInitialForm] = useState<RuleForm>(() => emptyRule());
+  const [ruleState, setRuleState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
+  const [ruleMessage, setRuleMessage] = useState<string | null>(null);
+
+  const editing = drawer?.kind === "rule" && drawer.id ? customFormats.find((format) => format.id === drawer.id) ?? null : null;
+  const ruleDirty = drawer?.kind === "rule" && !same(form, initialForm);
+  const ruleFooter: DrawerSaveState = ruleState === "saving" ? "saving" : ruleDirty ? "dirty" : ruleState ?? "clean";
+  useEffect(() => {
+    if (ruleDirty && (ruleState === "saved" || ruleState === "error")) setRuleState(undefined);
+  }, [ruleDirty, ruleState]);
+
+  function openRule(format: CustomFormatItem | null) {
+    const next = format ? ruleFrom(format) : emptyRule();
+    setForm(next);
+    setInitialForm(next);
+    setRuleState(undefined);
+    setRuleMessage(null);
+    setDrawer({ kind: "rule", id: format?.id ?? null });
   }
-  return trimmed.split("\n").filter(Boolean).length + " rules";
+
+  /** Choosing a guide format fills the whole rule in — name, score and conditions. */
+  function startFrom(trashId: string) {
+    const bundled = findBundledCF(trashId);
+    if (!bundled) {
+      setForm((current) => ({ ...current, trashId: null }));
+      return;
+    }
+    setForm((current) => ({
+      ...current,
+      trashId,
+      name: bundled.name,
+      score: String(bundled.defaultScore),
+      conditions: bundled.patterns.map((pattern) => ({ type: "releaseTitle" as ConditionType, value: pattern, negate: false, required: true }))
+    }));
+  }
+
+  async function submitRule(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (ruleState === "saving") return;
+    if (!form.name.trim()) {
+      setRuleState("error");
+      setRuleMessage("Give this rule a name.");
+      return;
+    }
+    setRuleState("saving");
+    try {
+      const body = JSON.stringify({
+        name: form.name.trim(),
+        mediaType: form.mediaType,
+        score: Number(form.score || 0),
+        trashId: form.trashId,
+        conditions: JSON.stringify(form.conditions.filter((condition) => condition.value.trim())),
+        upgradeAllowed: true
+      });
+      const response = editing
+        ? await authedFetch(`/api/custom-formats/${editing.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body })
+        : await authedFetch("/api/custom-formats", { method: "POST", headers: { "Content-Type": "application/json" }, body });
+      if (!response.ok) throw new Error(editing ? "Rule could not be saved." : "Rule could not be created.");
+      const saved = (await response.json()) as CustomFormatItem;
+      setInitialForm(form);
+      setRuleState("saved");
+      setRuleMessage("Saved just now");
+      setDrawer({ kind: "rule", id: saved.id });
+      revalidator.revalidate();
+    } catch (error) {
+      setRuleState("error");
+      setRuleMessage(error instanceof Error ? error.message : "Could not save");
+    }
+  }
+
+  async function removeRule(format: CustomFormatItem) {
+    setBusy(`remove:${format.id}`);
+    try {
+      const response = await authedFetch(`/api/custom-formats/${format.id}`, { method: "DELETE" });
+      if (!response.ok && response.status !== 204) throw new Error("Rule could not be removed.");
+      setDrawer(null);
+      toast.success(`${format.name} removed`);
+      revalidator.revalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Rule could not be removed.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /* ----------------------------------------------------------- presets */
+  const appliedTrashIds = useMemo(
+    () => new Set(customFormats.filter((format) => format.trashId).map((format) => `${format.mediaType}:${format.trashId}`)),
+    [customFormats]
+  );
+  const presetDetail = drawer?.kind === "preset" ? CUSTOM_FORMAT_BUNDLES.find((bundle) => bundle.id === drawer.id) ?? null : null;
+  const [presetMessage, setPresetMessage] = useState<string | null>(null);
+  const [presetState, setPresetState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
+
+  function presetProgress(bundle: CustomFormatBundle) {
+    const target = bundle.mediaType === "tv" ? "tv" : "movies";
+    const resolved = bundle.includes.map((entry) => findBundledCF(entry.trashId)).filter((cf): cf is BundledCF => Boolean(cf));
+    const applied = resolved.filter((cf) => appliedTrashIds.has(`${target}:${cf.trashId}`));
+    return { target, resolved, applied: applied.length, total: resolved.length };
+  }
+
+  async function applyPreset(bundle: CustomFormatBundle) {
+    const { target, resolved, applied } = presetProgress(bundle);
+    const missing = resolved.filter((cf) => !appliedTrashIds.has(`${target}:${cf.trashId}`));
+    if (missing.length === 0) {
+      setPresetState("saved");
+      setPresetMessage("Every rule in this preset is already applied.");
+      return;
+    }
+    setBusy(`preset:${bundle.id}`);
+    setPresetState("saving");
+    setPresetMessage(null);
+    try {
+      for (const cf of missing) {
+        const score = bundle.includes.find((entry) => entry.trashId === cf.trashId)?.score ?? cf.defaultScore;
+        const response = await authedFetch("/api/custom-formats", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: cf.name,
+            mediaType: target,
+            score,
+            trashId: cf.trashId,
+            conditions: JSON.stringify(cf.patterns.map((pattern) => ({ type: "releaseTitle", value: pattern, negate: false, required: true }))),
+            upgradeAllowed: true
+          })
+        });
+        if (!response.ok) throw new Error(`${cf.name} could not be added.`);
+      }
+      setPresetState("saved");
+      setPresetMessage(`Added ${missing.length} ${missing.length === 1 ? "rule" : "rules"}${applied ? ` — ${applied} were already here` : ""}.`);
+      revalidator.revalidate();
+    } catch (error) {
+      setPresetState("error");
+      setPresetMessage(error instanceof Error ? error.message : "Preset could not be applied.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /* -------------------------------------------------- test a release */
+  const [releaseName, setReleaseName] = useState("");
+  const [testScope, setTestScope] = useState<"all" | "movies" | "tv">("all");
+  const [results, setResults] = useState<DryRunResult[] | null>(null);
+
+  async function runTest() {
+    if (!releaseName.trim()) return;
+    setBusy("test");
+    setResults(null);
+    try {
+      setResults(
+        await fetchJson<DryRunResult[]>("/api/custom-formats/dry-run", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ releaseName: releaseName.trim(), mediaType: testScope === "all" ? null : testScope })
+        })
+      );
+    } catch {
+      setResults([]);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /* -------------------------------------------------------- safeguards */
+  const [savedSafeguards, setSavedSafeguards] = useState<SafeguardForm>(() => safeguardsFrom(settings));
+  const [safeguards, setSafeguards] = useState<SafeguardForm>(savedSafeguards);
+  const [newRule, setNewRule] = useState("");
+  const [safeguardState, setSafeguardState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
+  const [safeguardMessage, setSafeguardMessage] = useState<string | null>(null);
+
+  const safeguardsDirty = !same(safeguards, savedSafeguards);
+  const settingsSafeguards = useMemo(() => safeguardsFrom(settings), [settings]);
+  useEffect(() => {
+    if (safeguardsDirty || same(savedSafeguards, settingsSafeguards)) return;
+    setSavedSafeguards(settingsSafeguards);
+    setSafeguards(settingsSafeguards);
+  }, [safeguardsDirty, savedSafeguards, settingsSafeguards]);
+
+  const safeguardFooter: DrawerSaveState = safeguardState === "saving" ? "saving" : safeguardsDirty ? "dirty" : safeguardState ?? "clean";
+  useUnsavedChanges(safeguardsDirty || Boolean(ruleDirty));
+  useEffect(() => {
+    if (safeguardsDirty && (safeguardState === "saved" || safeguardState === "error")) setSafeguardState(undefined);
+  }, [safeguardsDirty, safeguardState]);
+
+  function addNeverGrab() {
+    const value = newRule.trim();
+    if (!value || safeguards.neverGrab.some((rule) => rule.toLowerCase() === value.toLowerCase())) return;
+    setSafeguards((current) => ({ ...current, neverGrab: [...current.neverGrab, value] }));
+    setNewRule("");
+  }
+
+  async function submitSafeguards(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (safeguardState === "saving") return;
+    setSafeguardState("saving");
+    try {
+      const response = await authedFetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...settings,
+          searchScoringMode: safeguards.scoringMode,
+          releaseNeverGrabPatterns: safeguards.neverGrab.join("\n")
+        })
+      });
+      if (!response.ok) throw new Error("Could not save safeguards.");
+      setSavedSafeguards(safeguards);
+      setSafeguardState("saved");
+      setSafeguardMessage("Saved just now");
+      revalidator.revalidate();
+    } catch (error) {
+      setSafeguardState("error");
+      setSafeguardMessage(error instanceof Error ? error.message : "Could not save");
+    }
+  }
+
+  /* ------------------------------------------------------------ render */
+  return (
+    <form onSubmit={submitSafeguards} className="flex flex-col gap-[var(--page-gap)]" noValidate>
+      <PageToolbar
+        tabs={TABS}
+        actions={
+          <>
+            <MediaTypeFilter value={split.scope} onValueChange={split.setScope} counts={split.counts} />
+            <Button type="button" variant="outline" onClick={() => setDrawer({ kind: "test" })}>
+              <FlaskConical className="h-4 w-4" />
+              Test a release
+            </Button>
+            <Button type="button" onClick={() => openRule(null)}>
+              <Plus className="h-4 w-4" />
+              New rule
+            </Button>
+          </>
+        }
+      />
+
+      <ListCard title="Presets" count="Start with a goal rather than a rules list">
+        <ListTable columns={[{ label: "Preset" }, { label: "Best for", width: "minmax(0,1.6fr)" }, { label: "Rules" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]}>
+          {CUSTOM_FORMAT_BUNDLES.map((bundle) => {
+            const progress = presetProgress(bundle);
+            const complete = progress.total > 0 && progress.applied === progress.total;
+            return (
+              <ListRow key={bundle.id} onClick={() => { setPresetMessage(null); setDrawer({ kind: "preset", id: bundle.id }); }} selected={drawer?.kind === "preset" && drawer.id === bundle.id}>
+                <ListNameCell name={bundle.name} sub={`${bundle.level} · ${bundle.mediaType === "all" ? "Movies and TV" : mediaTypeLabel(bundle.mediaType)}`} />
+                <ListCell primary={bundle.bestFor} secondary={bundle.description} />
+                <ListCell numeric primary={`${progress.applied} of ${progress.total}`} secondary="applied" />
+                <ListCell mobile>
+                  <Chip tone={complete ? "ok" : progress.applied ? "info" : "muted"}>{complete ? "Applied" : progress.applied ? "Partly applied" : "Not applied"}</Chip>
+                </ListCell>
+              </ListRow>
+            );
+          })}
+        </ListTable>
+      </ListCard>
+
+      <ListCard title="Release rules" count={customFormats.length ? `${customFormats.length} ${customFormats.length === 1 ? "rule" : "rules"}` : undefined}>
+        {customFormats.length === 0 ? (
+          <ListEmpty
+            title="No release rules yet"
+            description="Apply a preset above, or write a rule of your own. Rules add or subtract points from a release based on its traits, and the highest-scoring release wins."
+            actions={<Button type="button" variant="outline" onClick={() => openRule(null)}><Plus className="h-4 w-4" />New rule</Button>}
+          />
+        ) : (
+          <ListTable columns={[{ label: "Rule" }, { label: "Matches on", width: "minmax(0,1.4fr)" }, { label: "Score" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]}>
+            {split.groups.flatMap((group) => [
+              split.showGroups && split.scope === "all" ? <ListGroupHeader key={group.key} label={group.label} count={group.items.length} /> : null,
+              ...group.items.map((format) => {
+                const conditions = parseConditions(format.conditions);
+                const guide = format.trashId ? findBundledCF(format.trashId) : undefined;
+                return (
+                  <ListRow key={format.id} onClick={() => openRule(format)} selected={drawer?.kind === "rule" && drawer.id === format.id}>
+                    <ListNameCell name={format.name} sub={guide ? "From the guide catalogue" : "Written here"} />
+                    {/* Guide rules are raw regex — lead with what they mean, not the pattern. */}
+                    <ListCell
+                      primary={guide?.description ?? (conditions.length ? conditionSummary(conditions) : "No conditions")}
+                      secondary={conditions.length ? `${conditions.length} ${conditions.length === 1 ? "condition" : "conditions"}` : "never matches anything"}
+                    />
+                    <ListCell numeric primary={scoreLabel(format.score)} secondary={format.score <= -10000 ? "never grabbed" : "points"} />
+                    <ListCell mobile>
+                      <Chip tone={format.score <= -10000 ? "bad" : format.score > 0 ? "ok" : "warn"}>
+                        {format.score <= -10000 ? "Blocked" : format.score > 0 ? "Preferred" : "Avoided"}
+                      </Chip>
+                    </ListCell>
+                  </ListRow>
+                );
+              })
+            ])}
+          </ListTable>
+        )}
+      </ListCard>
+
+      <ListCard title="Safeguards" count="The final guardrails applied after quality and score are worked out">
+        <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+          <Field
+            label="How Deluno picks a release"
+            help="Hybrid is the normal choice. Rules only makes your configured policy the sole decision-maker."
+            className="max-w-[28rem]"
+          >
+            <Select
+              value={safeguards.scoringMode}
+              onChange={(event) => setSafeguards((current) => ({ ...current, scoringMode: event.target.value }))}
+              options={[
+                { value: "hybrid", label: "Rules and ranking together" },
+                { value: "rules-only", label: "Rules only" },
+                { value: "ml-only", label: "Ranking only" }
+              ]}
+            />
+          </Field>
+
+          <Field label="Never grab" help="Reject any release containing these words or release groups. Plain text — no regex needed.">
+            <div className="grid gap-2">
+              {safeguards.neverGrab.length ? (
+                <div className="flex flex-wrap gap-2">
+                  {safeguards.neverGrab.map((rule) => (
+                    <Chip key={rule} tone="muted">
+                      {rule}
+                      <button
+                        type="button"
+                        aria-label={`Remove ${rule}`}
+                        className="ml-1 text-muted-foreground transition-colors hover:text-destructive"
+                        onClick={() => setSafeguards((current) => ({ ...current, neverGrab: current.neverGrab.filter((item) => item !== rule) }))}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Chip>
+                  ))}
+                </div>
+              ) : null}
+              <div className="flex flex-wrap gap-2">
+                <Input
+                  value={newRule}
+                  onChange={(event) => setNewRule(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      addNeverGrab();
+                    }
+                  }}
+                  placeholder="Word, phrase, or release group"
+                  aria-label="Add a never-grab word"
+                  className="w-56"
+                />
+                <Button type="button" variant="outline" onClick={addNeverGrab}>
+                  <Plus className="h-4 w-4" />
+                  Add
+                </Button>
+                <Button type="button" variant="outline" onClick={() => setSafeguards((current) => ({ ...current, neverGrab: DEFAULT_NEVER_GRAB_RULES }))}>
+                  <RotateCcw className="h-4 w-4" />
+                  Restore defaults
+                </Button>
+              </div>
+            </div>
+          </Field>
+        </div>
+      </ListCard>
+
+      <PageFooter state={safeguardFooter} message={safeguardMessage} saveLabel="Save safeguards" onDiscard={() => setSafeguards(savedSafeguards)} />
+
+      {/* --------------------------------------------------- rule drawer */}
+      <Drawer
+        open={drawer?.kind === "rule"}
+        onOpenChange={(open) => {
+          if (!open) setDrawer(null);
+        }}
+        title={editing ? editing.name : "New release rule"}
+        description={editing ? `${mediaTypeLabel(editing.mediaType)} · ${scoreLabel(editing.score)}` : "Score a release by the traits in its name"}
+        onSubmit={submitRule}
+        footer={
+          <DrawerFooter
+            state={ruleFooter}
+            message={ruleMessage}
+            saveLabel={editing ? "Save rule" : "Create rule"}
+            onCancel={() => setDrawer(null)}
+            disabled={busy !== null}
+          />
+        }
+      >
+        <DrawerSection title="Basics">
+          {!editing ? (
+            <Field label="Start from" optional help="Pick a rule from the bundled guide catalogue to fill this in, or leave it blank and write your own.">
+              <Select value={form.trashId ?? ""} onChange={(event) => startFrom(event.target.value)} placeholder="Write my own">
+                {CF_CATEGORY_ORDER.map((category) => {
+                  const entries = BUNDLED_CUSTOM_FORMATS.filter((cf) => cf.category === category && !cf.bundleOnly);
+                  if (!entries.length) return null;
+                  return (
+                    <optgroup key={category} label={CF_CATEGORY_META[category as CFCategory]?.label ?? category}>
+                      {entries.map((cf) => (
+                        <option key={cf.trashId} value={cf.trashId}>
+                          {cf.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  );
+                })}
+              </Select>
+            </Field>
+          ) : null}
+          <Field label="Name" help="What this rule is looking for, in your own words.">
+            <Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="e.g. Dolby Vision" />
+          </Field>
+          <FieldRow>
+            <Field label="Applies to">
+              <SegmentedControl<"movies" | "tv">
+                aria-label="Applies to"
+                value={form.mediaType}
+                onValueChange={(value) => setForm((current) => ({ ...current, mediaType: value }))}
+                options={[
+                  { value: "movies", label: "Movies" },
+                  { value: "tv", label: "TV" }
+                ]}
+              />
+            </Field>
+            <Field label="Score" help="Positive prefers, negative avoids, −10000 never grabs.">
+              <PresetField
+                inputType="number"
+                value={form.score}
+                onChange={(value) => setForm((current) => ({ ...current, score: value }))}
+                options={SCORE_OPTIONS}
+                customLabel="Custom score"
+                customPlaceholder="Points"
+              />
+            </Field>
+          </FieldRow>
+        </DrawerSection>
+
+        <DrawerSection title="Conditions" aside={form.conditions.length ? `${form.conditions.length} · all must match` : "none yet"}>
+          {form.conditions.length === 0 ? (
+            <p className="text-[length:var(--type-caption)] text-muted-foreground">
+              Without a condition this rule never matches anything. Add at least one.
+            </p>
+          ) : null}
+          {form.conditions.map((condition, index) => (
+            <div key={index} className="grid gap-2 rounded-[10px] border border-hairline p-3">
+              <FieldRow>
+                <Field label="Look at" hideLabel={false}>
+                  <Select
+                    value={condition.type}
+                    onChange={(event) => updateCondition(setForm, index, { type: event.target.value as ConditionType })}
+                    options={CONDITION_TYPES.map((type) => ({ value: type.value, label: type.label }))}
+                  />
+                </Field>
+                <Field label="Match">
+                  <Select
+                    value={condition.negate ? "not" : "is"}
+                    onChange={(event) => updateCondition(setForm, index, { negate: event.target.value === "not" })}
+                    options={[
+                      { value: "is", label: "Contains" },
+                      { value: "not", label: "Does not contain" }
+                    ]}
+                  />
+                </Field>
+              </FieldRow>
+              <Field label="Text or pattern" help="Plain text is matched anywhere in the release name.">
+                <Input
+                  value={condition.value}
+                  onChange={(event) => updateCondition(setForm, index, { value: event.target.value })}
+                  placeholder="e.g. DV, DoVi, Dolby.?Vision"
+                  className="font-mono"
+                />
+              </Field>
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setForm((current) => ({ ...current, conditions: current.conditions.filter((_, i) => i !== index) }))}
+                >
+                  Remove condition
+                </Button>
+              </div>
+            </div>
+          ))}
+          <div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setForm((current) => ({ ...current, conditions: [...current.conditions, { type: "releaseTitle", value: "", negate: false, required: true }] }))}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add a condition
+            </Button>
+          </div>
+        </DrawerSection>
+
+        {editing ? (
+          <DrawerSection>
+            <DrawerDanger
+              title="Remove this rule"
+              description="Releases stop being scored by it immediately. Media already imported is untouched."
+              action={
+                <Button type="button" variant="destructive" size="sm" onClick={() => void removeRule(editing)} disabled={busy !== null}>
+                  {busy === `remove:${editing.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                  Remove
+                </Button>
+              }
+            />
+          </DrawerSection>
+        ) : null}
+      </Drawer>
+
+      {/* ------------------------------------------------- preset drawer */}
+      <Drawer
+        open={drawer?.kind === "preset"}
+        onOpenChange={(open) => {
+          if (!open) setDrawer(null);
+        }}
+        title={presetDetail?.name ?? "Preset"}
+        description={presetDetail ? `${presetDetail.level} · ${presetDetail.mediaType === "all" ? "Movies and TV" : mediaTypeLabel(presetDetail.mediaType)}` : undefined}
+        footer={
+          <DrawerFooter
+            state={presetState ?? "clean"}
+            message={presetMessage}
+            saveLabel="Apply preset"
+            // Tool-style drawer: no form to submit, the button calls the handler directly.
+            saveType="button"
+            saveEnabled={presetDetail ? presetProgress(presetDetail).applied < presetProgress(presetDetail).total : false}
+            onSave={() => presetDetail && void applyPreset(presetDetail)}
+            onCancel={() => setDrawer(null)}
+            disabled={busy !== null}
+          />
+        }
+      >
+        {presetDetail ? (
+          <>
+            <DrawerSection title="What this is for">
+              <p className="text-[length:var(--type-body-sm)] text-muted-foreground">{presetDetail.description}</p>
+              <p className="text-[length:var(--type-body-sm)] text-foreground">
+                <span className="font-medium">Best for:</span> {presetDetail.bestFor}
+              </p>
+              {presetDetail.warnings?.length ? (
+                <div className="grid gap-1">
+                  {presetDetail.warnings.map((warning) => (
+                    <p key={warning} className="text-[length:var(--type-caption)] text-warning">
+                      {warning}
+                    </p>
+                  ))}
+                </div>
+              ) : null}
+            </DrawerSection>
+            <DrawerSection
+              title="Rules it adds"
+              aside={`${presetProgress(presetDetail).applied} of ${presetProgress(presetDetail).total} already here`}
+            >
+              <div className="grid gap-1.5">
+                {presetProgress(presetDetail).resolved.map((cf) => {
+                  const target = presetDetail.mediaType === "tv" ? "tv" : "movies";
+                  const already = appliedTrashIds.has(`${target}:${cf.trashId}`);
+                  const score = presetDetail.includes.find((entry) => entry.trashId === cf.trashId)?.score ?? cf.defaultScore;
+                  return (
+                    <div key={cf.trashId} className="flex items-center justify-between gap-3 border-b border-hairline py-1.5 last:border-b-0">
+                      <span className="min-w-0">
+                        <span className="block truncate text-[length:var(--type-body-sm)] text-foreground">{cf.name}</span>
+                        <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{cf.description}</span>
+                      </span>
+                      <span className="flex shrink-0 items-center gap-2">
+                        <span className="text-[length:var(--type-caption)] tabular-nums text-muted-foreground">{scoreLabel(score)}</span>
+                        {already ? <Chip tone="ok">Added</Chip> : null}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </DrawerSection>
+          </>
+        ) : null}
+      </Drawer>
+
+      {/* --------------------------------------------------- test drawer */}
+      <Drawer
+        open={drawer?.kind === "test"}
+        onOpenChange={(open) => {
+          if (!open) setDrawer(null);
+        }}
+        title="Test a release"
+        description="See which rules would match a release name, and why"
+        footer={<DrawerFooter state="clean" saveType="button" saveLabel="Close" saveEnabled={false} onCancel={() => setDrawer(null)} />}
+      >
+        <DrawerSection title="Release name">
+          <Field label="Paste a release name" hideLabel>
+            <Input
+              value={releaseName}
+              onChange={(event) => setReleaseName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void runTest();
+                }
+              }}
+              placeholder="Movie.Title.2024.2160p.UHD.BluRay.DV.HDR.x265-GROUP"
+              aria-label="Release name to test"
+              className="font-mono"
+            />
+          </Field>
+          <FieldRow>
+            <Field label="Rules to test">
+              <SegmentedControl<"all" | "movies" | "tv">
+                aria-label="Rules to test"
+                value={testScope}
+                onValueChange={setTestScope}
+                options={[
+                  { value: "all", label: "All" },
+                  { value: "movies", label: "Movies" },
+                  { value: "tv", label: "TV" }
+                ]}
+              />
+            </Field>
+            <Field label="Run" hideLabel>
+              <Button type="button" onClick={() => void runTest()} disabled={busy === "test" || !releaseName.trim()}>
+                {busy === "test" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}
+                Test
+              </Button>
+            </Field>
+          </FieldRow>
+          {customFormats.length === 0 ? (
+            <p className="text-[length:var(--type-caption)] text-warning">You have no rules yet, so nothing can match. Apply a preset first.</p>
+          ) : null}
+        </DrawerSection>
+
+        {results ? (
+          <DrawerSection
+            title="Result"
+            aside={`${results.filter((result) => result.isMatch).length} of ${results.length} matched · ${scoreLabel(results.filter((result) => result.isMatch).reduce((total, result) => total + result.score, 0))}`}
+          >
+            {results.length === 0 ? (
+              <p className="text-[length:var(--type-caption)] text-muted-foreground">Nothing to report — the test could not be run.</p>
+            ) : (
+              <div className="grid gap-1.5">
+                {[...results].sort((a, b) => Number(b.isMatch) - Number(a.isMatch)).map((result) => (
+                  <div key={result.formatId} className="grid gap-1 border-b border-hairline py-2 last:border-b-0">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className={`min-w-0 truncate text-[length:var(--type-body-sm)] ${result.isMatch ? "text-foreground" : "text-muted-foreground"}`}>
+                        {result.formatName}
+                      </span>
+                      <span className="flex shrink-0 items-center gap-2">
+                        <span className="text-[length:var(--type-caption)] tabular-nums text-muted-foreground">{scoreLabel(result.score)}</span>
+                        <Chip tone={result.isMatch ? "ok" : "muted"}>{result.isMatch ? "Matched" : "No match"}</Chip>
+                      </span>
+                    </div>
+                    {result.isMatch && result.matchedConditions.length ? (
+                      <span className="block truncate font-mono text-[length:var(--type-caption)] text-muted-foreground">
+                        {result.matchedConditions.join(" · ")}
+                      </span>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            )}
+          </DrawerSection>
+        ) : null}
+      </Drawer>
+    </form>
+  );
 }
 
-/* ── Dry-run types ───────────────────────────────────────────────── */
+/* ---------------------------------------------------------------- bits */
+
 interface DryRunResult {
   formatId: string;
   formatName: string;
@@ -84,754 +794,75 @@ interface DryRunResult {
   missedConditions: string[];
 }
 
-/* ── Tab ─────────────────────────────────────────────────────────── */
-type Tab = "library" | "mine" | "create" | "test";
-
-const TABS: { id: Tab; label: string; description: string }[] = [
-  {
-    id: "library",
-    label: "Rule library",
-    description: "Pre-built format rules organised by category. Use this when presets do not cover your target.",
-  },
-  {
-    id: "mine",
-    label: "My formats",
-    description: "Custom formats you've created yourself.",
-  },
-  {
-    id: "create",
-    label: "Create format",
-    description: "Build a new custom format — no regex required for basic use.",
-  },
-  {
-    id: "test",
-    label: "Test a release",
-    description: "Paste a release name and see which of your formats would match it and why.",
-  },
-];
-
-/* ── Score badge ─────────────────────────────────────────────────── */
-function ScoreBadge({ score }: { score: number }) {
-  if (score <= -10000)
-    return (
-      <span className="rounded-full border border-destructive/20 bg-destructive/10 px-2 py-0.5 font-mono text-[10px] font-bold text-destructive">
-        BLOCKED
-      </span>
-    );
-  return (
-    <span
-      className={cn(
-        "rounded-full border px-2 py-0.5 font-mono text-[10px] font-bold",
-        score > 0
-          ? "border-primary/20 bg-primary/10 text-primary"
-          : "border-hairline text-muted-foreground"
-      )}
-    >
-      {score > 0 ? "+" : ""}
-      {score.toLocaleString()}
-    </span>
-  );
+function same<T>(a: T, b: T) {
+  return JSON.stringify(a) === JSON.stringify(b);
 }
 
-/* ── Page ────────────────────────────────────────────────────────── */
-export function SettingsCustomFormatsPage() {
-  const loaderData = useLoaderData() as LoaderData | undefined;
-  if (!loaderData) return <RouteSkeleton />;
-  const { customFormats, settings } = loaderData;
-  const revalidator = useRevalidator();
-
-  const [tab, setTab] = useState<Tab>("library");
-  const [busyKey, setBusyKey] = useState<string | null>(null);
-  const [libraryMediaType, setLibraryMediaType] = useState<"movies" | "tv">("movies");
-
-  /**
-   * Library selections — maps trashId → score. In real implementation,
-   * these would be synced to the quality profile API.
-   */
-  const [librarySelections, setLibrarySelections] = useState<Map<string, number>>(() => {
-    const m = new Map<string, number>();
-    for (const cf of customFormats) {
-      if (cf.trashId) m.set(customFormatSelectionKey(cf.mediaType, cf.trashId), cf.score);
-    }
-    return m;
-  });
-
-  const visibleLibrarySelections = new Map(
-    customFormats
-      .filter((cf) => cf.trashId && cf.mediaType === libraryMediaType)
-      .map((cf) => [cf.trashId as string, cf.score])
-  );
-
-  /* ── Library selection handlers ── */
-  async function handleLibraryAdd(cf: BundledCF, score: number) {
-    const selectionKey = customFormatSelectionKey(libraryMediaType, cf.trashId);
-    setLibrarySelections((prev) => new Map(prev).set(selectionKey, score));
-    try {
-      // Serialize patterns as structured JSON conditions (releaseTitle type)
-      const conditions = serializeConditions(
-        cf.patterns.map((p) => ({ type: "releaseTitle" as ConditionType, value: p, negate: false, required: true }))
-      );
-      const res = await authedFetch("/api/custom-formats", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: cf.name,
-          mediaType: libraryMediaType,
-          score,
-          trashId: cf.trashId,
-          conditions,
-          upgradeAllowed: true,
-        }),
-      });
-      if (!res.ok) throw new Error("Could not add format.");
-      toast.success(`Added "${cf.name}" to your formats`);
-      revalidator.revalidate();
-    } catch (e) {
-      setLibrarySelections((prev) => { const m = new Map(prev); m.delete(selectionKey); return m; });
-      toast.error(e instanceof Error ? e.message : "Could not add format.");
-    }
-  }
-
-  async function handleBundleApply(bundle: CustomFormatBundle) {
-    const formats = bundle.includes
-      .map((entry) => {
-        const cf = findBundledCF(entry.trashId);
-        return cf ? { cf, score: entry.score ?? cf.defaultScore } : null;
-      })
-      .filter((entry): entry is { cf: BundledCF; score: number } => Boolean(entry));
-
-    const targetMediaType = bundle.mediaType === "tv" ? "tv" : "movies";
-    const missing = formats.filter(({ cf }) => !librarySelections.has(customFormatSelectionKey(targetMediaType, cf.trashId)));
-    if (missing.length === 0) {
-      toast.info(`"${bundle.name}" is already applied.`);
-      return;
-    }
-
-    setBusyKey(`bundle:${bundle.id}`);
-    setLibrarySelections((prev) => {
-      const next = new Map(prev);
-      for (const { cf, score } of missing) next.set(customFormatSelectionKey(targetMediaType, cf.trashId), score);
-      return next;
-    });
-
-    try {
-      for (const { cf, score } of missing) {
-        const conditions = serializeConditions(
-          cf.patterns.map((p) => ({ type: "releaseTitle" as ConditionType, value: p, negate: false, required: true }))
-        );
-        const res = await authedFetch("/api/custom-formats", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: cf.name,
-            mediaType: targetMediaType,
-            score,
-            trashId: cf.trashId,
-            conditions,
-            upgradeAllowed: true,
-          }),
-        });
-        if (!res.ok) throw new Error(`Could not add ${cf.name}.`);
-      }
-
-      toast.success(`Applied "${bundle.name}" (${missing.length} formats)`);
-      revalidator.revalidate();
-    } catch (error) {
-      setLibrarySelections((prev) => {
-        const next = new Map(prev);
-        for (const { cf } of missing) next.delete(customFormatSelectionKey(targetMediaType, cf.trashId));
-        return next;
-      });
-      toast.error(error instanceof Error ? error.message : "Preset could not be applied.");
-    } finally {
-      setBusyKey(null);
-    }
-  }
-
-  function handleLibraryRemove(trashId: string) {
-    const cf = customFormats.find((c) => c.trashId === trashId && c.mediaType === libraryMediaType);
-    if (cf) void handleDelete(cf.id, trashId);
-    else setLibrarySelections((prev) => {
-      const m = new Map(prev);
-      m.delete(customFormatSelectionKey(libraryMediaType, trashId));
-      return m;
-    });
-  }
-
-  function handleLibraryScoreChange(trashId: string, score: number) {
-    setLibrarySelections((prev) => new Map(prev).set(customFormatSelectionKey(libraryMediaType, trashId), score));
-  }
-
-  /* ── User CF handlers ── */
-  async function handleDelete(id: string, trashId?: string) {
-    setBusyKey(`delete:${id}`);
-    try {
-      const res = await authedFetch(`/api/custom-formats/${id}`, { method: "DELETE" });
-      if (!res.ok && res.status !== 204) throw new Error("Could not remove format.");
-      if (trashId) {
-        setLibrarySelections((prev) => {
-          const m = new Map(prev);
-          m.delete(customFormatSelectionKey("movies", trashId));
-          m.delete(customFormatSelectionKey("tv", trashId));
-          return m;
-        });
-      }
-      toast.success("Custom format removed");
-      revalidator.revalidate();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not remove format.");
-    } finally {
-      setBusyKey(null);
-    }
-  }
-
-  async function handleCreatorSave(draft: CFDraft) {
-    // Serialize conditions as structured JSON array for the new matcher
-    const conditions = serializeConditions(
-      draft.conditions.map((c) => {
-        const type: ConditionType = (c as { conditionType?: ConditionType }).conditionType ?? "releaseTitle";
-        const value =
-          c.mode === "regex"
-            ? c.value
-            : c.mode === "contains"
-            ? c.value
-            : c.mode === "starts-with"
-            ? `^${c.value}`
-            : c.mode === "ends-with"
-            ? `${c.value}$`
-            : c.value;
-        return { type, value, negate: c.negate ?? false, required: true };
-      })
-    );
-
-    const res = await authedFetch("/api/custom-formats", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: draft.name,
-        mediaType: draft.mediaType,
-        score: 100,
-        trashId: null,
-        conditions,
-        upgradeAllowed: true,
-      }),
-    });
-    if (!res.ok) throw new Error("Could not create format.");
-    toast.success(`Format "${draft.name}" created`);
-    revalidator.revalidate();
-    setTab("mine");
-  }
-
-  const activeTab = TABS.find((t) => t.id === tab)!;
-
-  return (
-    <SettingsShell
-      title="Release preferences"
-      description="Prefer or avoid releases by their traits. Deluno calls these scoring rules Custom Formats for Radarr and Sonarr users; presets and custom rules are both available."
-    >
-      <PresetBundles
-        selections={librarySelections}
-        busyKey={busyKey}
-        onApply={handleBundleApply}
-      />
-
-      {/* Tab bar */}
-      <div className="flex gap-1 rounded-2xl border border-hairline bg-surface-1 p-1">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setTab(t.id)}
-            className={cn(
-              "flex-1 rounded-xl px-4 py-2.5 text-[13px] font-medium transition-all",
-              tab === t.id
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Tab description */}
-      <p className="text-[13px] text-muted-foreground">{activeTab.description}</p>
-
-      {/* ── Library tab ── */}
-      {tab === "library" && (
-        <div className="space-y-[var(--page-gap)]">
-          <MediaTypePills
-            value={libraryMediaType}
-            onChange={(value) => setLibraryMediaType(value as "movies" | "tv")}
-            description="Choose which library type these included guide formats should be created for."
-          />
-          <CFLibraryBrowser
-            selections={visibleLibrarySelections}
-            onAdd={handleLibraryAdd}
-            onRemove={handleLibraryRemove}
-            onScoreChange={handleLibraryScoreChange}
-          />
-        </div>
-      )}
-
-      {/* ── My formats tab ── */}
-      {tab === "mine" && (
-        <div className="space-y-[calc(var(--field-group-pad)*0.9)]">
-          {customFormats.length > 0 ? (
-            <div className="space-y-2.5">
-              {customFormats.map((cf) => {
-                const bundled = cf.trashId ? findBundledCF(cf.trashId) : undefined;
-                return (
-                  <div
-                    key={cf.id}
-                    className="group flex items-start gap-3 rounded-2xl border border-hairline bg-surface-1 p-4"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="font-medium text-foreground">{cf.name}</p>
-                        <ScoreBadge score={cf.score} />
-                        {bundled && (
-                          <span className="flex items-center gap-1 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-wide text-emerald-400">
-                            <BookOpen className="h-2.5 w-2.5" />
-                            TRaSH Guide
-                          </span>
-                        )}
-                      </div>
-                      {bundled && (
-                        <p className="mt-0.5 text-[11.5px] text-muted-foreground">{bundled.description}</p>
-                      )}
-                      <p className="mt-1 text-[11px] text-muted-foreground/70">
-                        {cf.mediaType === "tv" ? "TV" : "Movies"} · {conditionSummary(cf.conditions)}
-                      </p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => void handleDelete(cf.id, cf.trashId ?? undefined)}
-                      disabled={busyKey === `delete:${cf.id}`}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      {busyKey === `delete:${cf.id}` ? (
-                        <LoaderCircle className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="h-4 w-4 text-muted-foreground" />
-                      )}
-                    </Button>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <EmptyState
-              size="sm"
-              variant="custom"
-              title="No formats yet"
-              description="Browse the library to add TRaSH pre-built formats, or create your own."
-              action={
-                <button
-                  type="button"
-                  onClick={() => setTab("library")}
-                  className="rounded-xl border border-primary/30 bg-primary/10 px-4 py-2 text-[13px] font-medium text-foreground hover:bg-primary/20 transition-colors"
-                >
-                  Browse library
-                </button>
-              }
-              secondaryAction={
-                <button
-                  type="button"
-                  onClick={() => setTab("create")}
-                  className="text-[12.5px] text-muted-foreground hover:text-foreground underline underline-offset-2"
-                >
-                  Create format
-                </button>
-              }
-            />
-          )}
-        </div>
-      )}
-
-      {/* ── Create tab ── */}
-      {tab === "create" && (
-        <div className="rounded-2xl border border-hairline bg-surface-1 p-[var(--tile-pad)]">
-          <CFCreator
-            onSave={handleCreatorSave}
-            onCancel={() => setTab("mine")}
-          />
-        </div>
-      )}
-
-      {/* ── Test tab ── */}
-      {tab === "test" && (
-        <DryRunPanel formats={customFormats} />
-      )}
-
-      <ReleaseSafeguards settings={settings} />
-    </SettingsShell>
-  );
+function updateCondition(setForm: React.Dispatch<React.SetStateAction<RuleForm>>, index: number, patch: Partial<Condition>) {
+  setForm((current) => ({
+    ...current,
+    conditions: current.conditions.map((condition, i) => (i === index ? { ...condition, ...patch } : condition))
+  }));
 }
 
-function ReleaseSafeguards({ settings }: { settings: PlatformSettingsSnapshot }) {
-  const [scoringMode, setScoringMode] = useState(settings.searchScoringMode);
-  const [rules, setRules] = useState(() => splitRules(settings.releaseNeverGrabPatterns));
-  const [newRule, setNewRule] = useState("");
-  const [saving, setSaving] = useState(false);
+function emptyRule(): RuleForm {
+  return { name: "", mediaType: "movies", score: "100", conditions: [], trashId: null };
+}
 
-  const addRule = () => {
-    const value = newRule.trim();
-    if (!value || rules.some((rule) => rule.toLowerCase() === value.toLowerCase())) return;
-    setRules((current) => [...current, value]);
-    setNewRule("");
+function ruleFrom(format: CustomFormatItem): RuleForm {
+  return {
+    name: format.name,
+    mediaType: format.mediaType === "tv" ? "tv" : "movies",
+    score: String(format.score),
+    conditions: parseConditions(format.conditions),
+    trashId: format.trashId ?? null
   };
+}
 
-  const save = async () => {
-    setSaving(true);
-    try {
-      const response = await authedFetch("/api/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...settings,
-          searchScoringMode: scoringMode,
-          releaseNeverGrabPatterns: rules.join("\n")
-        })
-      });
-      if (!response.ok) throw new Error("Could not save release safeguards.");
-      toast.success("Release safeguards saved.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not save release safeguards.");
-    } finally {
-      setSaving(false);
-    }
+function safeguardsFrom(settings: PlatformSettingsSnapshot): SafeguardForm {
+  return {
+    scoringMode: settings.searchScoringMode,
+    neverGrab: settings.releaseNeverGrabPatterns.split(/\r?\n|,/).map((item) => item.trim()).filter(Boolean)
   };
-
-  return (
-    <details className="rounded-2xl border border-hairline bg-surface-1 p-[var(--tile-pad)]">
-      <summary className="cursor-pointer font-semibold text-foreground">Release safeguards</summary>
-      <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">Set the final guardrails applied to every release after its quality and format score are evaluated.</p>
-      <div className="mt-4 grid gap-[var(--grid-gap)] lg:grid-cols-2">
-        <label className="block text-sm font-semibold text-foreground">
-          Search selection style
-          <select value={scoringMode} onChange={(event) => setScoringMode(event.target.value)} className="mt-2 h-[var(--control-height)] w-full rounded-xl border border-hairline bg-background px-3 text-sm text-foreground">
-            <option value="hybrid">Hybrid (rules + ranking)</option>
-            <option value="rules-only">Rules only</option>
-            <option value="ml-only">Ranking only</option>
-          </select>
-          <span className="mt-2 block text-sm font-normal leading-relaxed text-muted-foreground">Hybrid is the normal choice. Use Rules only when you want your configured policy to be the sole decision-maker.</span>
-        </label>
-        <div>
-          <p className="text-sm font-semibold text-foreground">Never grab</p>
-          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">Reject releases containing these words or release groups. This is plain text matching; no regex is required.</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {rules.map((rule) => <span key={rule} className="inline-flex items-center gap-2 rounded-full border border-hairline bg-background px-3 py-1 text-sm text-foreground">{rule}<button type="button" aria-label={`Remove ${rule}`} className="text-muted-foreground hover:text-destructive" onClick={() => setRules((current) => current.filter((item) => item !== rule))}><X className="h-3.5 w-3.5" /></button></span>)}
-          </div>
-          <div className="mt-3 flex gap-2">
-            <Input value={newRule} onChange={(event) => setNewRule(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addRule(); } }} placeholder="Word, phrase, or release group" />
-            <Button type="button" variant="outline" onClick={addRule}><Plus className="h-4 w-4" />Add</Button>
-            <Button type="button" variant="ghost" onClick={() => setRules(DEFAULT_NEVER_GRAB_RULES)} title="Restore common unsafe-release rules"><RotateCcw className="h-4 w-4" />Defaults</Button>
-          </div>
-        </div>
-      </div>
-      <Button type="button" className="mt-4" disabled={saving} onClick={() => void save()}>{saving ? "Saving…" : "Save release safeguards"}</Button>
-    </details>
-  );
 }
 
-function splitRules(value: string) {
-  return value.split(/\r?\n|,/).map((item) => item.trim()).filter(Boolean);
-}
-
-const DEFAULT_NEVER_GRAB_RULES = ["cam", "camrip", "telesync", "telecine", "workprint", "screener", "sample", "trailer", "extras"];
-
-/* ── Dry-run panel ───────────────────────────────────────────────── */
-function DryRunPanel({ formats }: { formats: CustomFormatItem[] }) {
-  const [releaseName, setReleaseName] = useState("");
-  const [mediaType, setMediaType] = useState<"all" | "movies" | "tv">("all");
-  const [results, setResults] = useState<DryRunResult[] | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  async function handleTest() {
-    if (!releaseName.trim()) return;
-    setLoading(true);
+/**
+ * Conditions are stored as a JSON array. Rows written before that format used
+ * newline-separated patterns, so those are read as release-title matches rather
+ * than shown as broken.
+ */
+function parseConditions(raw: string | null | undefined): Condition[] {
+  if (!raw?.trim()) return [];
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("[")) {
     try {
-      const data = await fetchJson<DryRunResult[]>("/api/custom-formats/dry-run", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ releaseName: releaseName.trim(), mediaType: mediaType === "all" ? null : mediaType }),
-      });
-      setResults(data);
+      const parsed = JSON.parse(trimmed) as Partial<Condition>[];
+      return parsed.map((condition) => ({
+        type: (condition.type ?? "releaseTitle") as ConditionType,
+        value: String(condition.value ?? ""),
+        negate: Boolean(condition.negate),
+        required: condition.required !== false
+      }));
     } catch {
-      toast.error("Dry-run failed.");
-    } finally {
-      setLoading(false);
+      /* fall through to the legacy shape */
     }
   }
-
-  const matched = results?.filter((r) => r.isMatch) ?? [];
-  const missed = results?.filter((r) => !r.isMatch) ?? [];
-
-  return (
-    <div className="space-y-[var(--page-gap)]">
-      {/* Input */}
-      <div className="rounded-2xl border border-hairline bg-surface-1 p-[var(--tile-pad)]">
-        <p className="mb-2 text-[12px] font-semibold uppercase tracking-widest text-muted-foreground">Release name</p>
-        <MediaTypePills
-          value={mediaType}
-          onChange={(value) => setMediaType(value as "all" | "movies" | "tv")}
-          options={[
-            { value: "all", label: "All formats" },
-            { value: "movies", label: "Movies" },
-            { value: "tv", label: "TV" }
-          ]}
-          description="Limit the dry-run to movie formats, TV formats, or both."
-        />
-        <div className="flex gap-3">
-          <input
-            type="text"
-            value={releaseName}
-            onChange={(e) => setReleaseName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && void handleTest()}
-            placeholder="e.g. Movie.Title.2024.2160p.UHD.BluRay.DV.HDR.x265-GROUP"
-            className="flex-1 rounded-xl border border-hairline bg-background px-3 py-2 font-mono text-[12.5px] text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary/50"
-          />
-          <Button onClick={() => void handleTest()} disabled={loading || !releaseName.trim()} className="gap-2">
-            {loading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}
-            Test
-          </Button>
-        </div>
-        {formats.length === 0 && (
-          <p className="mt-2 text-[11.5px] text-amber-400">You have no formats yet — add some from the Library tab first.</p>
-        )}
-      </div>
-
-      {results && (
-        <div className="space-y-[var(--page-gap)]">
-          {/* Summary row */}
-          <div className="flex items-center gap-[var(--grid-gap)] rounded-2xl border border-hairline bg-surface-1 px-4 py-3">
-            <span className="text-[13px] font-medium text-foreground">{results.length} format{results.length !== 1 ? "s" : ""} evaluated</span>
-            <span className="rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 font-mono text-[11px] font-bold text-primary">
-              {matched.length} matched · {matched.reduce((s, r) => s + r.score, 0) > 0 ? "+" : ""}{matched.reduce((s, r) => s + r.score, 0)} pts
-            </span>
-            {missed.length > 0 && (
-              <span className="rounded-full border border-hairline px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
-                {missed.length} missed
-              </span>
-            )}
-          </div>
-
-          {/* Matched formats */}
-          {matched.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-[11px] font-bold uppercase tracking-widest text-primary">Matched</p>
-              {matched.map((r) => (
-                <div key={r.formatId} className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-primary" />
-                    <span className="font-medium text-foreground">{r.formatName}</span>
-                    <FormatMediaTypeBadge mediaType={r.mediaType} />
-                    <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 font-mono text-[10px] font-bold text-primary">
-                      {r.score > 0 ? "+" : ""}{r.score}
-                    </span>
-                  </div>
-                  {r.matchedConditions.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {r.matchedConditions.map((c) => (
-                        <span key={c} className="rounded-lg border border-primary/15 bg-primary/5 px-2 py-0.5 font-mono text-[10px] text-primary">
-                          ✓ {c}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Missed formats */}
-          {missed.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Did not match</p>
-              {missed.map((r) => (
-                <div key={r.formatId} className="rounded-2xl border border-hairline bg-surface-1 p-3">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-muted-foreground">{r.formatName}</span>
-                    <FormatMediaTypeBadge mediaType={r.mediaType} />
-                    <span className="rounded-full border border-hairline px-2 py-0.5 font-mono text-[10px] text-muted-foreground">{r.score > 0 ? "+" : ""}{r.score}</span>
-                  </div>
-                  {r.missedConditions.length > 0 && (
-                    <div className="mt-1.5 flex flex-wrap gap-1.5">
-                      {r.missedConditions.map((c) => (
-                        <span key={c} className="rounded-lg border border-hairline px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
-                          ✗ {c}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
+  return trimmed
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((value) => ({ type: "releaseTitle" as ConditionType, value, negate: false, required: true }));
 }
 
-function customFormatSelectionKey(mediaType: string, trashId: string): string {
-  return `${mediaType}:${trashId}`;
+function conditionSummary(conditions: Condition[]) {
+  const first = conditions[0]!;
+  const label = CONDITION_TYPES.find((type) => type.value === first.type)?.label ?? first.type;
+  // Patterns can be long regex; the drawer shows them in full.
+  const value = first.value.length > 32 ? `${first.value.slice(0, 32)}…` : first.value;
+  return `${label} ${first.negate ? "without" : "with"} “${value}”`;
 }
 
-function MediaTypePills({
-  value,
-  onChange,
-  description,
-  options = [
-    { value: "movies", label: "Movies" },
-    { value: "tv", label: "TV" }
-  ]
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  description?: string;
-  options?: Array<{ value: string; label: string }>;
-}) {
-  return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap gap-2">
-        {options.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            onClick={() => onChange(option.value)}
-            className={cn(
-              "rounded-full border px-3 py-1.5 text-[11.5px] font-medium transition-all",
-              value === option.value
-                ? "border-primary/40 bg-primary/10 text-foreground"
-                : "border-hairline text-muted-foreground hover:border-primary/20"
-            )}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
-      {description ? <p className="text-[12px] text-muted-foreground">{description}</p> : null}
-    </div>
-  );
-}
-
-function FormatMediaTypeBadge({ mediaType }: { mediaType: string }) {
-  return (
-    <span className="rounded-full border border-hairline px-2 py-0.5 text-[9.5px] font-semibold uppercase tracking-wide text-muted-foreground">
-      {mediaType === "tv" ? "TV" : "Movies"}
-    </span>
-  );
-}
-
-function PresetBundles({
-  selections,
-  busyKey,
-  onApply,
-}: {
-  selections: Map<string, number>;
-  busyKey: string | null;
-  onApply: (bundle: CustomFormatBundle) => Promise<void>;
-}) {
-  return (
-    <section className="rounded-2xl border border-hairline bg-card shadow-sm">
-      <div className="border-b border-hairline px-[var(--tile-pad)] py-[calc(var(--tile-pad)*0.85)]">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
-              <Sparkles className="h-3.5 w-3.5" />
-              Recommended presets
-            </p>
-            <h2 className="mt-1 font-display text-xl font-semibold tracking-tight text-foreground">Start with a goal, not a rules list</h2>
-            <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-              These presets bundle the common release rules users normally copy from guides. Apply one now, then fine-tune individual formats only if needed.
-            </p>
-          </div>
-          <div className="rounded-xl border border-hairline bg-surface-1 px-3 py-2 text-xs text-muted-foreground">
-            <span className="font-semibold text-foreground">{selections.size}</span> active format rules
-          </div>
-        </div>
-      </div>
-
-      <div className="grid gap-3 p-[var(--tile-pad)] md:grid-cols-2 xl:grid-cols-3">
-        {CUSTOM_FORMAT_BUNDLES.map((bundle) => {
-          const resolved = bundle.includes
-            .map((entry) => findBundledCF(entry.trashId))
-            .filter((cf): cf is BundledCF => Boolean(cf));
-          const bundleMediaType = bundle.mediaType === "tv" ? "tv" : "movies";
-          const appliedCount = resolved.filter((cf) => selections.has(customFormatSelectionKey(bundleMediaType, cf.trashId))).length;
-          const totalCount = resolved.length;
-          const isComplete = totalCount > 0 && appliedCount === totalCount;
-          const isBusy = busyKey === `bundle:${bundle.id}`;
-
-          return (
-            <article
-              key={bundle.id}
-              className={cn(
-                "flex min-h-[230px] flex-col rounded-2xl border bg-surface-1 p-[calc(var(--tile-pad)*0.8)] transition-all",
-                isComplete ? "border-primary/30 bg-primary/5" : "border-hairline hover:border-primary/25"
-              )}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full border border-hairline bg-background/60 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      {bundle.level}
-                    </span>
-                    <span className="rounded-full border border-hairline bg-background/60 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      {bundle.mediaType === "all" ? "Movies + TV" : bundle.mediaType}
-                    </span>
-                  </div>
-                  <h3 className="mt-3 font-display text-lg font-semibold tracking-tight text-foreground">{bundle.name}</h3>
-                </div>
-                {isComplete ? (
-                  <CheckCircle2 className="h-5 w-5 shrink-0 text-primary" />
-                ) : (
-                  <PackagePlus className="h-5 w-5 shrink-0 text-muted-foreground" />
-                )}
-              </div>
-
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{bundle.description}</p>
-              <p className="mt-3 rounded-xl border border-hairline bg-background/40 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
-                <span className="font-semibold text-foreground">Best for:</span> {bundle.bestFor}
-              </p>
-
-              {bundle.warnings?.length ? (
-                <div className="mt-3 space-y-1">
-                  {bundle.warnings.map((warning) => (
-                    <p key={warning} className="text-xs leading-relaxed text-warning">{warning}</p>
-                  ))}
-                </div>
-              ) : null}
-
-              <div className="mt-auto pt-4">
-                <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
-                  <span>{appliedCount}/{totalCount} applied</span>
-                  <span>{Math.max(totalCount - appliedCount, 0)} remaining</span>
-                </div>
-                <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-surface-2">
-                  <div
-                    className="h-full rounded-full bg-primary transition-all"
-                    style={{ width: `${totalCount ? (appliedCount / totalCount) * 100 : 0}%` }}
-                  />
-                </div>
-                <Button
-                  type="button"
-                  className="w-full"
-                  variant={isComplete ? "outline" : "default"}
-                  disabled={isBusy}
-                  onClick={() => void onApply(bundle)}
-                >
-                  {isBusy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : isComplete ? <ShieldCheck className="h-4 w-4" /> : <PackagePlus className="h-4 w-4" />}
-                  {isComplete ? "Applied" : "Apply preset"}
-                </Button>
-              </div>
-            </article>
-          );
-        })}
-      </div>
-    </section>
-  );
+function scoreLabel(score: number) {
+  if (score <= -10000) return "Blocked";
+  return `${score > 0 ? "+" : ""}${score.toLocaleString()}`;
 }
