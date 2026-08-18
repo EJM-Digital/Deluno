@@ -144,7 +144,6 @@ app.Use(async (context, next) =>
         return;
     }
 
-    var repository = context.RequestServices.GetRequiredService<Deluno.Platform.Data.IPlatformSettingsRepository>();
     var denied = await UserAuthorization.RequireAuthenticatedAsync(context, context.RequestAborted);
     if (denied is not null)
     {
