@@ -132,6 +132,34 @@ export function DrawerSection({
   );
 }
 
+/* -------------------------------------------------------------- facts */
+
+/**
+ * Read-only label/value lines inside a DrawerSection — what a drawer shows when
+ * it is explaining rather than editing (a provider record, the file on disk, the
+ * inputs behind a decision). `Field` is for controls; this is its counterpart.
+ */
+export function DrawerFacts({ items }: { items: Array<{ label: React.ReactNode; value: React.ReactNode; mono?: boolean }> }) {
+  return (
+    <dl className="grid gap-1.5">
+      {items.map((item, index) => (
+        <div key={index} className="flex items-baseline justify-between gap-3 border-b border-hairline py-1.5 last:border-b-0">
+          <dt className="shrink-0 text-[length:var(--type-caption)] text-muted-foreground">{item.label}</dt>
+          <dd
+            className={cn(
+              "min-w-0 truncate text-right text-[length:var(--type-body-sm)] text-foreground",
+              item.mono && "font-mono text-[length:var(--type-caption)]"
+            )}
+            title={typeof item.value === "string" ? item.value : undefined}
+          >
+            {item.value}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 /* ------------------------------------------------------------- danger */
 
 export function DrawerDanger({
@@ -177,7 +205,8 @@ export function DrawerFooter({
   onSave,
   saveType = "submit",
   disabled,
-  saveEnabled
+  saveEnabled,
+  readOnly = false
 }: {
   state: DrawerSaveState;
   message?: string | null;
@@ -188,6 +217,11 @@ export function DrawerFooter({
   disabled?: boolean;
   /** Tool-style drawers (previews, tests) can keep the primary action enabled regardless of dirty state. */
   saveEnabled?: boolean;
+  /**
+   * This drawer explains rather than edits: one "Close" button, no Cancel.
+   * Cancel and a disabled Save mean the same thing on a read-only surface.
+   */
+  readOnly?: boolean;
 }) {
   const statuses: Record<DrawerSaveState, FooterStatus | null> = {
     // A tool-style surface has no dirty state but still has something to say.
@@ -213,13 +247,21 @@ export function DrawerFooter({
         ) : null}
       </span>
       <div className="flex shrink-0 items-center gap-2">
-        <Button type="button" variant="outline" onClick={onCancel} disabled={saving}>
-          Cancel
-        </Button>
-        <Button type={saveType} onClick={saveType === "button" ? onSave : undefined} disabled={disabled || !canSave || saving}>
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-          {saveLabel}
-        </Button>
+        {readOnly ? (
+          <Button type="button" onClick={onCancel}>
+            {saveLabel}
+          </Button>
+        ) : (
+          <>
+            <Button type="button" variant="outline" onClick={onCancel} disabled={saving}>
+              Cancel
+            </Button>
+            <Button type={saveType} onClick={saveType === "button" ? onSave : undefined} disabled={disabled || !canSave || saving}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {saveLabel}
+            </Button>
+          </>
+        )}
       </div>
     </>
   );
