@@ -1,6 +1,6 @@
 # Deluno UX rebuild — handover
 
-Branch `ux/list-drawer-media-plans`, 26 commits, not pushed. Nothing here is merged; all of it is reviewable in one place.
+Branch `ux/list-drawer-media-plans`, 37 commits, not pushed. Nothing here is merged; all of it is reviewable in one place.
 
 ## The decision this implements
 
@@ -81,9 +81,35 @@ Six more pages, one per commit, each verified live before committing.
 
 `systemSettingsNavItems` (General · Interface · Notifications · Migration) gives those four a shared tab bar. The "System & settings" sidebar area covers eleven destinations and `/system/*` already has its own bar, so splitting the two keeps either one scannable. Notifications had no tabs at all before.
 
+## Operational pages and navigation — done
+
+**#111 closed.** Transfers ~2,600px → 620px (a six-stat hero, a path banner, seven metric tiles, a "next up" panel and nine panels → a strip and three cards). System Health 3,748px → 1,783px (five KPI cards carrying *hardcoded fake sparkline data*, plus a duplicate of the whole audit timeline the Activity tab already owns). Dashboard: cards with nothing in them are no longer rendered at all.
+
+**Navigation.** Areas carry `tabsInToolbar`: when every page in an area has a toolbar with those items as tabs, the sidebar shows one row and the toolbar is the only way between siblings. The sidebar has **no expanders left**. "System & settings" split into **Preferences** (General · Interface · Notifications · Migration) and **System** (`/system/*`).
+
+**A duplicate page.** "Automation" (`/search-cycles`) and "Automation & recovery" (`/settings/automation`) loaded the *same component* under two names in two groups. One entry now; the old URL still resolves.
+
+**Menus.** Rail 280px → 240px — it was sized by its group headings, not its links. Headings shortened (`Happening now` · `Setup` · `Deluno`), icon chips kept (stripping them made rows read as plain text), content column inset 32px so it sits centred with items left-aligned. The status headline was hardcoded to "All systems normal" in every state, directly above a line reporting failed jobs; it follows the real signal now.
+
 ## Remaining queue
 
-The operational pages: **Transfers, Dashboard, System** (#111 — condense each to one `SummaryStrip` plus the live list; Transfers is ~2,600px tall with nothing in flight). `SummaryStrip` exists for exactly this now.
+Everything left is media-side — roughly 5,400 lines across nine files. No settings or operational page remains.
+
+| Page | Lines | State |
+|---|---|---|
+| `show-detail-page` | 1,822 | untouched — own `h1`, 39 `Card` uses |
+| `movie-detail-page` | ~1,380 | **toolbar done**; body panels still `Card`, metadata editor still a bespoke Radix dialog rather than a `Drawer` |
+| `activity-page` | 764 | untouched |
+| `calendar-page` | 380 | untouched — own `h1` |
+| `media-import-page` | 334 | untouched |
+| wanted ×2, upgrades ×2, episode search | ~1,050 | untouched, share one shell |
+
+**Do not regex-transform these files.** A `Card` → `ListCard` regex over `movie-detail-page` produced mismatched closing tags across four blocks and had to be reverted; the nesting varies too much. Convert block by block with the file open.
+
+### Verification gaps
+
+- **Transfers' Downloads table and its drawer have never been seen with real data** — no download client is configured on this machine, so the queue is always empty.
+- Indexer, download-client, import-list and destination-rule drawers were verified when built but not re-exercised in the later sweeps, for the same reason.
 
 ### Navigation — done for five areas
 
