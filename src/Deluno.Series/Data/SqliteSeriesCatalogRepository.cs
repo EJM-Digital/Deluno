@@ -2117,6 +2117,65 @@ public sealed class SqliteSeriesCatalogRepository(
             updated);
     }
 
+    /// <summary>
+    /// Episodes airing inside a window, for the calendar.
+    ///
+    /// A full-catalogue series can hold hundreds of episodes, so the window is
+    /// applied in SQL. The page used to pull every episode of every show and take
+    /// the first 48 by date, which after a catalogue sync means 1989.
+    /// </summary>
+    public async Task<IReadOnlyList<SeriesCalendarEpisodeItem>> ListCalendarEpisodesAsync(
+        DateTimeOffset fromUtc,
+        DateTimeOffset toUtc,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT
+                e.id, e.series_id, s.title, s.poster_url,
+                e.season_number, e.episode_number, e.title, e.air_date_utc,
+                e.has_file, e.monitored,
+                COALESCE(w.wanted_status, CASE WHEN e.has_file = 1 THEN 'covered' ELSE 'missing' END)
+            FROM episode_entries e
+            INNER JOIN series_entries s ON s.id = e.series_id
+            LEFT JOIN episode_wanted_state w ON w.episode_id = e.id
+            WHERE e.air_date_utc IS NOT NULL
+              AND e.air_date_utc >= @fromUtc
+              AND e.air_date_utc < @toUtc
+            ORDER BY e.air_date_utc ASC, s.title ASC, e.season_number ASC, e.episode_number ASC
+            LIMIT @take;
+            """;
+        AddParameter(command, "@fromUtc", fromUtc.ToString("O"));
+        AddParameter(command, "@toUtc", toUtc.ToString("O"));
+        AddParameter(command, "@take", take);
+
+        var items = new List<SeriesCalendarEpisodeItem>();
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            items.Add(new SeriesCalendarEpisodeItem(
+                EpisodeId: reader.GetString(0),
+                SeriesId: reader.GetString(1),
+                SeriesTitle: reader.GetString(2),
+                PosterUrl: reader.IsDBNull(3) ? null : reader.GetString(3),
+                SeasonNumber: reader.GetInt32(4),
+                EpisodeNumber: reader.GetInt32(5),
+                Title: reader.IsDBNull(6) ? null : reader.GetString(6),
+                AirDateUtc: ParseTimestamp(reader.GetString(7)),
+                HasFile: reader.GetInt64(8) == 1,
+                Monitored: reader.GetInt64(9) == 1,
+                WantedStatus: reader.GetString(10)));
+        }
+
+        return items;
+    }
+
     private static async Task<bool> EpisodeExistsAsync(
         System.Data.Common.DbConnection connection,
         System.Data.Common.DbTransaction transaction,

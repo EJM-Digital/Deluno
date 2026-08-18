@@ -75,6 +75,38 @@ public static class SeriesEndpointRouteBuilderExtensions
             return Results.Ok(items);
         });
 
+        series.MapGet("/calendar", async (
+            DateTimeOffset? from,
+            DateTimeOffset? to,
+            int? take,
+            ISeriesCatalogRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var start = from ?? DateTimeOffset.UtcNow.AddDays(-7);
+            var end = to ?? start.AddDays(35);
+            if (end <= start)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["to"] = ["The end of the window must be after the start."]
+                });
+            }
+
+            // A wide window over a full catalogue is a lot of rows; cap it so a
+            // calendar request can never turn into a table scan of every episode.
+            if ((end - start).TotalDays > 400)
+            {
+                end = start.AddDays(400);
+            }
+
+            var items = await repository.ListCalendarEpisodesAsync(
+                start,
+                end,
+                Math.Clamp(take ?? 500, 1, 2000),
+                cancellationToken);
+            return Results.Ok(items);
+        });
+
         series.MapGet("/search-history", async (ISeriesCatalogRepository repository, CancellationToken cancellationToken) =>
         {
             var items = await repository.ListSearchHistoryAsync(cancellationToken);

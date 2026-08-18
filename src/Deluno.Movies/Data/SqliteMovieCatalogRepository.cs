@@ -1454,6 +1454,67 @@ public sealed class SqliteMovieCatalogRepository(
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
+    /// <summary>
+    /// Films whose cinema, digital or physical release falls inside a window.
+    /// Each date is its own row so the calendar can show a film twice when it
+    /// reaches cinemas in one month and streaming in another.
+    /// </summary>
+    public async Task<IReadOnlyList<MovieCalendarItem>> ListCalendarMoviesAsync(
+        DateOnly fromDate,
+        DateOnly toDate,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT id, title, release_year, poster_url, monitored, kind, date,
+                   EXISTS (SELECT 1 FROM movie_wanted_state w WHERE w.movie_id = m.id AND w.has_file = 1)
+            FROM (
+                SELECT id, title, release_year, poster_url, monitored, 'inCinemas' AS kind, in_cinemas_date AS date
+                FROM movie_entries WHERE in_cinemas_date IS NOT NULL
+                UNION ALL
+                SELECT id, title, release_year, poster_url, monitored, 'digital', digital_release_date
+                FROM movie_entries WHERE digital_release_date IS NOT NULL
+                UNION ALL
+                SELECT id, title, release_year, poster_url, monitored, 'physical', physical_release_date
+                FROM movie_entries WHERE physical_release_date IS NOT NULL
+            ) AS m
+            WHERE date >= @fromDate AND date < @toDate
+            ORDER BY date ASC, title ASC
+            LIMIT @take;
+            """;
+        AddParameter(command, "@fromDate", fromDate.ToString("yyyy-MM-dd"));
+        AddParameter(command, "@toDate", toDate.ToString("yyyy-MM-dd"));
+        AddParameter(command, "@take", take);
+
+        var items = new List<MovieCalendarItem>();
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            if (!DateOnly.TryParse(reader.GetString(6), out var date))
+            {
+                continue;
+            }
+
+            items.Add(new MovieCalendarItem(
+                MovieId: reader.GetString(0),
+                Title: reader.GetString(1),
+                ReleaseYear: reader.IsDBNull(2) ? null : reader.GetInt32(2),
+                PosterUrl: reader.IsDBNull(3) ? null : reader.GetString(3),
+                Kind: reader.GetString(5),
+                Date: date,
+                HasFile: reader.GetInt64(7) == 1,
+                Monitored: reader.GetInt32(4) == 1));
+        }
+
+        return items;
+    }
+
     private static MovieListItem ReadMovie(System.Data.Common.DbDataReader reader)
     {
         return new MovieListItem(
