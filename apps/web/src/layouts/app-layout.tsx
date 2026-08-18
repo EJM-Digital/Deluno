@@ -245,7 +245,7 @@ function DesktopSidebar({
       </NavLink>
 
       <div className="mt-5 min-h-0 flex-1 overflow-x-hidden overflow-y-auto pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div className="mb-1.5 mt-6 px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-subtle-size)] font-semibold uppercase tracking-[0.13em] text-muted-foreground/80 first:mt-0">
+        <div className="mb-2 mt-5 border-t border-hairline/70 px-[calc(var(--shell-nav-pad-x)*0.55)] pt-4 text-[length:var(--shell-subtle-size)] font-semibold uppercase tracking-[0.13em] text-muted-foreground first:mt-0 first:border-t-0 first:pt-0">
           Your media
         </div>
         <nav aria-label="Media dashboard" className="space-y-[calc(var(--shell-nav-gap)*0.7)]">
@@ -258,8 +258,8 @@ function DesktopSidebar({
           ))}
         </nav>
 
-        <div className="mb-1.5 mt-6 px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-subtle-size)] font-semibold uppercase tracking-[0.13em] text-muted-foreground/80 first:mt-0">
-          What Deluno is doing
+        <div className="mb-2 mt-5 border-t border-hairline/70 px-[calc(var(--shell-nav-pad-x)*0.55)] pt-4 text-[length:var(--shell-subtle-size)] font-semibold uppercase tracking-[0.13em] text-muted-foreground first:mt-0 first:border-t-0 first:pt-0">
+          Happening now
         </div>
         <nav aria-label="Automation and transfer status" className="space-y-[calc(var(--shell-nav-gap)*0.7)]">
           {operationsNav.map((item) => (
@@ -271,28 +271,44 @@ function DesktopSidebar({
           ))}
         </nav>
 
-        <div className="mb-1.5 mt-6 px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-subtle-size)] font-semibold uppercase tracking-[0.13em] text-muted-foreground/80 first:mt-0">
-          How Deluno is set up
+        <div className="mb-2 mt-5 border-t border-hairline/70 px-[calc(var(--shell-nav-pad-x)*0.55)] pt-4 text-[length:var(--shell-subtle-size)] font-semibold uppercase tracking-[0.13em] text-muted-foreground first:mt-0 first:border-t-0 first:pt-0">
+          Setup
         </div>
         <nav aria-label="Library setup" className="space-y-[calc(var(--shell-nav-gap)*0.7)]">
           <ConfigurationSidebarTree pathname={pathname} />
         </nav>
 
-        <div className="mb-1.5 mt-6 px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-subtle-size)] font-semibold uppercase tracking-[0.13em] text-muted-foreground/80 first:mt-0">
-          Deluno itself
+        <div className="mb-2 mt-5 border-t border-hairline/70 px-[calc(var(--shell-nav-pad-x)*0.55)] pt-4 text-[length:var(--shell-subtle-size)] font-semibold uppercase tracking-[0.13em] text-muted-foreground first:mt-0 first:border-t-0 first:pt-0">
+          Deluno
         </div>
         <nav aria-label="System controls" className="space-y-[calc(var(--shell-nav-gap)*0.7)]">
           <MaintenanceSidebarTree pathname={pathname} />
         </nav>
       </div>
 
+      {/*
+        The headline used to be hardcoded to "All systems normal" and sat directly
+        above a line reporting failed jobs — it claimed health while showing the
+        opposite. It now follows the same signal the line below it reads.
+      */}
       <div className="mt-3 rounded-lg border border-sidebar-border bg-sidebar-accent/45 p-3">
         <div className="flex items-center gap-2">
-          <span className="h-2 w-2 rounded-full bg-success shadow-[0_0_12px_hsl(var(--success)/0.8)]" />
-          <span className="density-nowrap text-[length:var(--type-body-sm)] font-semibold text-foreground">All systems normal</span>
+          <span
+            className={cn(
+              "h-2 w-2 shrink-0 rounded-full",
+              attention.failedJobs > 0
+                ? "bg-warning shadow-[0_0_12px_hsl(var(--warning)/0.8)]"
+                : "bg-success shadow-[0_0_12px_hsl(var(--success)/0.8)]"
+            )}
+          />
+          <span className="density-nowrap text-[length:var(--type-body-sm)] font-semibold text-foreground">
+            {attention.failedJobs > 0 ? "Needs a look" : "All good"}
+          </span>
         </div>
         <p className="mt-2 text-[length:var(--shell-subtle-size)] text-muted-foreground">
-          {attention.failedJobs > 0 ? `${attention.failedJobs} failed job${attention.failedJobs !== 1 ? "s" : ""}` : "No active issues"}
+          {attention.failedJobs > 0
+            ? `${attention.failedJobs} failed job${attention.failedJobs !== 1 ? "s" : ""}`
+            : "Nothing needs you"}
         </p>
       </div>
 
@@ -436,13 +452,20 @@ function AreaRow({
         <NavLink
           to={area.to}
           className={({ isActive }) => cn(
-            "group relative flex min-h-[var(--shell-pill-height)] min-w-0 flex-1 items-center gap-2.5 rounded-lg px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-nav-size)] transition-colors duration-150",
-            isActive || areaIsActive ? "bg-primary/12 font-semibold text-foreground" : "font-medium text-muted-foreground hover:bg-muted/35 hover:text-foreground"
+            "group relative flex min-h-[var(--shell-pill-height)] min-w-0 flex-1 items-center gap-2.5 rounded-lg px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-nav-size)] font-semibold transition-colors duration-150",
+            isActive || areaIsActive ? "bg-primary/14 text-foreground" : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
           )}
         >
           {({ isActive }) => <>
             <span aria-hidden className={cn("absolute left-0 h-[calc(var(--shell-pill-height)*0.55)] w-[3px] rounded-r-full transition-colors", isActive || areaIsActive ? "bg-primary" : "bg-transparent")} />
-            <span className={cn("flex w-[var(--shell-icon-size)] shrink-0 items-center justify-center transition-colors", isActive || areaIsActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground")}>
+            <span
+              className={cn(
+                "flex h-[var(--shell-icon-col)] w-[var(--shell-icon-col)] shrink-0 items-center justify-center rounded-[8px] border transition-colors",
+                isActive || areaIsActive
+                  ? "border-primary/25 bg-primary/15 text-primary"
+                  : "border-hairline/70 bg-surface-2/70 text-muted-foreground group-hover:border-primary/20 group-hover:text-foreground"
+              )}
+            >
               <DelunoNavGlyph kind={area.icon} className="h-[var(--shell-icon-size)] w-[var(--shell-icon-size)]" />
             </span>
             <span className="min-w-0 flex-1 truncate">{area.label}</span>
@@ -540,15 +563,22 @@ function SidebarItem({
       end={item.end}
       className={({ isActive }) =>
         cn(
-          "group relative flex min-h-[var(--shell-pill-height)] items-center gap-2.5 rounded-lg px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-nav-size)] transition-colors duration-150",
-          isActive ? "bg-primary/12 font-semibold text-foreground" : "font-medium text-muted-foreground hover:bg-muted/35 hover:text-foreground"
+          "group relative flex min-h-[var(--shell-pill-height)] items-center gap-2.5 rounded-lg px-[calc(var(--shell-nav-pad-x)*0.55)] text-[length:var(--shell-nav-size)] font-semibold transition-colors duration-150",
+          isActive ? "bg-primary/14 text-foreground" : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
         )
       }
     >
       {({ isActive }) => (
         <>
           <span aria-hidden className={cn("absolute left-0 h-[calc(var(--shell-pill-height)*0.55)] w-[3px] rounded-r-full transition-colors", isActive ? "bg-primary" : "bg-transparent")} />
-          <span className={cn("flex w-[var(--shell-icon-size)] shrink-0 items-center justify-center transition-colors", isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground")}>
+          <span
+            className={cn(
+              "flex h-[var(--shell-icon-col)] w-[var(--shell-icon-col)] shrink-0 items-center justify-center rounded-[8px] border transition-colors",
+              isActive
+                ? "border-primary/25 bg-primary/15 text-primary"
+                : "border-hairline/70 bg-surface-2/70 text-muted-foreground group-hover:border-primary/20 group-hover:text-foreground"
+            )}
+          >
             <DelunoNavGlyph kind={item.icon} className="h-[var(--shell-icon-size)] w-[var(--shell-icon-size)]" />
           </span>
           <span className="min-w-0 flex-1 whitespace-nowrap">{item.label}</span>
