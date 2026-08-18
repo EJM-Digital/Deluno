@@ -79,7 +79,9 @@ export function SegmentedControl<T extends string>({
               }
             }}
             className={cn(
-              "density-control-text flex flex-1 items-center justify-center gap-1.5 border-r border-hairline px-3 font-medium transition-colors last:border-r-0",
+              // whitespace-nowrap: flex-1 gives every segment a 0 basis, so a two-word
+              // label like "TV shows" wraps to two lines and breaks the 36px control.
+              "density-control-text flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap border-r border-hairline px-3 font-medium transition-colors last:border-r-0",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
               "disabled:cursor-not-allowed",
               active ? "bg-primary/12 text-primary" : "text-muted-foreground hover:bg-surface-2 hover:text-foreground"
