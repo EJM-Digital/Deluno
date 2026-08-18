@@ -151,7 +151,8 @@ const settingsPageMeta = [
   {
     match: (path: string) => path.startsWith("/settings/automation"),
     title: "Automation & recovery",
-    description: "Control scheduled searches, retries, upgrades, and what happens after a failed download."
+    description: "Control scheduled searches, retries, upgrades, and what happens after a failed download.",
+    chrome: "none"
   },
   {
     match: (path: string) => path.startsWith("/settings/migration"),
