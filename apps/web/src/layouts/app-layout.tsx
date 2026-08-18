@@ -80,6 +80,11 @@ const routeMeta = [
   { match: (path: string) => path.startsWith("/system") || path.startsWith("/setup-guide"), title: "System", subtitle: "How this installation is doing — health, backups, updates, and audit" }
 ];
 
+/** `/movies/{id}` and `/tv/{id}` render their own `h1`: the title of the thing. */
+function isDetailRoute(pathname: string) {
+  return /^\/(movies|tv)\/[^/]+$/.test(pathname);
+}
+
 export function AppLayout() {
   return <AppLayoutInner />;
 }
@@ -157,6 +162,7 @@ function AppLayoutContent() {
             <ContentTopbar
               title={meta.title}
               subtitle={meta.subtitle}
+              ownsHeading={!isDetailRoute(location.pathname)}
               attention={attention}
               resolvedTheme={resolvedTheme}
               setTheme={setTheme}
@@ -593,9 +599,18 @@ function SidebarItem({
   );
 }
 
+function TopbarTitle({ as: Tag, children }: { as: "h1" | "p"; children: React.ReactNode }) {
+  return (
+    <Tag className="mt-0.5 font-display text-[length:var(--type-title-sm)] font-semibold leading-tight tracking-tight text-foreground sm:mt-1 sm:text-[length:var(--type-title-md)]">
+      {children}
+    </Tag>
+  );
+}
+
 function ContentTopbar({
   title,
   subtitle,
+  ownsHeading,
   attention,
   resolvedTheme,
   setTheme,
@@ -617,6 +632,7 @@ function ContentTopbar({
   setSearchOpen: (v: boolean) => void;
   user: UserProfile | null;
   onLogout: () => void;
+  ownsHeading: boolean;
 }) {
   const searchRef = useRef<HTMLInputElement>(null);
   const { density, setDensity } = useDensity();
@@ -648,9 +664,10 @@ function ContentTopbar({
 
         <div className="min-w-0 flex-1">
           <p className="text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.14em] text-muted-foreground">{subtitle}</p>
-          <h1 className="mt-0.5 font-display text-[length:var(--type-title-sm)] font-semibold leading-tight tracking-tight text-foreground sm:mt-1 sm:text-[length:var(--type-title-md)]">
-            {title}
-          </h1>
+          {/* The topbar is the page heading everywhere except a detail route, where
+              it names the section and the page's own title is the h1. Two h1s on one
+              document is what this avoids. */}
+          <TopbarTitle as={ownsHeading ? "h1" : "p"}>{title}</TopbarTitle>
         </div>
 
         <button

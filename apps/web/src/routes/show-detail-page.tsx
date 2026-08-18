@@ -1,17 +1,18 @@
-import { useMemo, useState } from "react";
+/**
+ * TV show detail — hero → toolbar sections → list cards → drawers.
+ *
+ * A detail page keeps its `h1`: the topbar names the section ("TV Shows"), not
+ * the title, and the artwork is content rather than chrome. Everything below the
+ * hero obeys the list → drawer grammar the rest of the app uses.
+ *
+ * Contracts: GET /api/series/{id}, /inventory, /removal-preview; PUT
+ * /api/series/monitoring, /api/series/episodes/monitoring; POST
+ * /api/series/{id}/search, /grab, /episodes/search, /seasons/{n}/search,
+ * /automation/defer, /automation/skip-once, /api/series/bulk.
+ */
+import { Fragment, useMemo, useState } from "react";
 import { Link, useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
-import {
-  ArrowRight,
-  ArrowLeft,
-  CheckSquare2,
-  LoaderCircle,
-  RefreshCw,
-  RotateCw,
-  Search,
-  ShieldCheck,
-  Square,
-  Trash2
-} from "lucide-react";
+import { ArrowLeft, LoaderCircle, Search, Trash2 } from "lucide-react";
 import {
   fetchJson,
   type ActivityEventItem,
@@ -20,7 +21,6 @@ import {
   type LibraryItem,
   type MetadataCastMember,
   type IntakeTitleOriginItem,
-  type MetadataSearchResult,
   type SeriesEpisodeInventoryItem,
   type SeriesImportRecoverySummary,
   type SeriesInventoryDetail,
@@ -31,14 +31,30 @@ import {
 import { authedFetch } from "../lib/use-auth";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import { Card, CardContent } from "../components/ui/card";
 import { RemoveMediaDialog, type MediaRemovalPreview, type RemoveMediaOptions } from "../components/app/remove-media-dialog";
 import { DecisionExplanationList } from "../components/app/decision-explanation-list";
+import { MediaMetadataDrawer } from "../components/app/media-metadata-drawer";
 import { RatingStrip } from "../components/app/rating-strip";
-import { EpisodeSearchHistory } from "../components/app/episode-search-history";
-import { EpisodeMonitoringWidget } from "../components/app/episode-monitoring-widget";
-import { EmptyState } from "../components/shell/empty-state";
+import { Chip } from "../components/ui/chip";
+import { Drawer, DrawerFacts, DrawerFooter, DrawerSection } from "../components/ui/drawer";
+import { ListGroupHeader } from "../components/ui/media-type-split";
+import {
+  LIST_TRACK,
+  ListCard,
+  ListCell,
+  ListEmpty,
+  ListNameCell,
+  ListRow,
+  ListTable
+} from "../components/ui/list-card";
+import { PageToolbar } from "../components/ui/page-toolbar";
 import { RouteSkeleton } from "../components/shell/skeleton";
+import { SegmentedControl } from "../components/ui/segmented-control";
+import { Select } from "../components/ui/select";
+import { SummaryStrip } from "../components/ui/summary-strip";
+import { Switch } from "../components/ui/switch";
+import { toast } from "../components/shell/toaster";
 
 interface ShowDetailLoaderData {
   activity: ActivityEventItem[];
@@ -54,18 +70,8 @@ interface ShowDetailLoaderData {
   wanted: SeriesWantedSummary;
 }
 
+type DetailSection = "episodes" | "destination" | "history";
 type EpisodeFilter = "all" | "missing" | "upgrade" | "monitored" | "imported";
-
-interface MetadataOverridePayload {
-  originalTitle: string;
-  overview: string;
-  posterUrl: string;
-  backdropUrl: string;
-  rating: string;
-  genres: string;
-  externalUrl: string;
-  imdbId: string;
-}
 
 export async function showDetailLoader({
   params
@@ -99,27 +105,17 @@ export function ShowDetailPage() {
   const { activity, decisions, dispatches, importRecovery, inventory, libraries, origins, removalPreview, searchHistory, series, wanted } = loaderData;
   const navigate = useNavigate();
   const revalidator = useRevalidator();
-  const [selectedEpisodeIds, setSelectedEpisodeIds] = useState<string[]>([]);
+
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [isRemoveConfirmationOpen, setIsRemoveConfirmationOpen] = useState(false);
-  const [actionMessage, setActionMessage] = useState<string | null>(null);
-  const [metadataQuery, setMetadataQuery] = useState(series.title);
-  const [metadataMatches, setMetadataMatches] = useState<MetadataSearchResult[]>([]);
-  const [metadataSearchAttempted, setMetadataSearchAttempted] = useState(false);
-  const [metadataOverride, setMetadataOverride] = useState<MetadataOverridePayload>({
-    originalTitle: series.originalTitle ?? "",
-    overview: series.overview ?? "",
-    posterUrl: series.posterUrl ?? "",
-    backdropUrl: series.backdropUrl ?? "",
-    rating: series.rating !== null && series.rating !== undefined ? String(series.rating) : "",
-    genres: series.genres ?? "",
-    externalUrl: series.externalUrl ?? "",
-    imdbId: series.imdbId ?? ""
-  });
+  const [isMetadataOpen, setIsMetadataOpen] = useState(false);
   const [releaseCandidates, setReleaseCandidates] = useState<SearchPlanCandidate[]>([]);
+  const [openCandidate, setOpenCandidate] = useState<SearchPlanCandidate | null>(null);
+  const [openEpisodeId, setOpenEpisodeId] = useState<string | null>(null);
+  const [openSearchId, setOpenSearchId] = useState<string | null>(null);
   const [episodeFilter, setEpisodeFilter] = useState<EpisodeFilter>("all");
   const [query, setQuery] = useState("");
-  const [activeDetailSection, setActiveDetailSection] = useState<"episodes" | "details" | "automation" | "history">("episodes");
+  const [section, setSection] = useState<DetailSection>("episodes");
 
   const wantedItem = wanted.recentItems.find((item) => item.seriesId === series.id) ?? null;
   const library = wantedItem ? libraries.find((item) => item.id === wantedItem.libraryId) ?? null : null;
@@ -135,79 +131,67 @@ export function ShowDetailPage() {
     [episodeFilter, inventory.episodes, query]
   );
   const visibleSeasons = useMemo(() => buildSeasonGroups(visibleEpisodes), [visibleEpisodes]);
-  const allVisibleSelected =
-    visibleEpisodes.length > 0 &&
-    visibleEpisodes.every((episode) => selectedEpisodeIds.includes(episode.episodeId));
-  const missingCount = inventory.episodes.filter(
-    (item) => item.wantedStatus === "missing" || !item.hasFile
-  ).length;
+  const missingCount = inventory.episodes.filter((item) => item.wantedStatus === "missing" || !item.hasFile).length;
+  const upgradeCount = inventory.episodes.filter((item) => item.wantedStatus === "upgrade").length;
+  const monitoredCount = inventory.episodes.filter((item) => item.monitored).length;
+  const openEpisode = inventory.episodes.find((item) => item.episodeId === openEpisodeId) ?? null;
+  const openSearch = seriesSearches.find((item) => item.id === openSearchId) ?? null;
+
   const nextStep = importCases.length
     ? {
         eyebrow: "Needs attention",
-        title: "Review the import issue",
-        description: `${importCases.length} import issue${importCases.length === 1 ? "" : "s"} need${importCases.length === 1 ? "s" : ""} a decision before this show is fully settled.`,
-        action: "Review import",
-        href: "#import-activity"
+        title: `Review ${importCases.length} import issue${importCases.length === 1 ? "" : "s"}`,
+        description: "Something Deluno brought in could not be filed. It needs a decision before this show is settled.",
+        action: "Open import issues",
+        onAction: () => setSection("history")
       }
     : releaseCandidates.length
       ? {
           eyebrow: "Release ready",
           title: "Choose a release",
-          description: "Deluno found matching releases. Review the choices below and send the one you want to downloads.",
-          action: "Choose release",
-          href: "#release-choices"
+          description: "Deluno scored the candidates it found. Pick the one to send to your download client.",
+          action: "Review candidates",
+          onAction: () => setSection("episodes")
         }
       : !series.monitored
         ? {
             eyebrow: "Monitoring paused",
             title: "Resume automatic care",
             description: "This show is not being watched for missing episodes or quality improvements.",
-            action: "Monitor show",
+            action: "Resume automation",
             onAction: () => void handleSeriesMonitoring(true)
           }
         : missingCount > 0
           ? {
               eyebrow: "Episodes missing",
-              title: "Find missing episodes",
-              description: `${missingCount} episode${missingCount === 1 ? " is" : "s are"} missing from your library.`,
-              action: "Find episodes",
+              title: `Find ${missingCount} missing episode${missingCount === 1 ? "" : "s"}`,
+              description: "Deluno can search every indexer you have connected using this show's media plan.",
+              action: "Search now",
               onAction: () => void handleSearchNow("automatic")
             }
           : null;
-  const upgradeCount = inventory.episodes.filter((item) => item.wantedStatus === "upgrade").length;
 
-  async function handleEpisodeMonitoring(monitored: boolean) {
-    if (!selectedEpisodeIds.length) {
-      return;
-    }
-
-    setBusyAction(monitored ? "episode-monitor" : "episode-unmonitor");
-    setActionMessage(null);
+  async function handleEpisodeMonitoring(episodeIds: string[], monitored: boolean) {
+    if (!episodeIds.length) return;
+    setBusyAction(`episode-monitor:${episodeIds[0]}`);
 
     try {
       const response = await authedFetch("/api/series/episodes/monitoring", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ episodeIds: selectedEpisodeIds, monitored })
+        body: JSON.stringify({ episodeIds, monitored })
       });
-
-      if (!response.ok) {
-        throw new Error("episode-monitoring-failed");
-      }
-
-      setActionMessage(monitored ? "Episodes monitored." : "Episodes unmonitored.");
-      setSelectedEpisodeIds([]);
+      if (!response.ok) throw new Error("episode-monitoring-failed");
       revalidator.revalidate();
     } catch {
-      setActionMessage("Episode update failed.");
+      toast.error("Those episodes could not be updated.");
     } finally {
       setBusyAction(null);
     }
   }
 
   async function handleSeriesMonitoring(monitored: boolean) {
-    setBusyAction(monitored ? "series-monitor" : "series-unmonitor");
-    setActionMessage(null);
+    setBusyAction("series-monitor");
 
     try {
       const response = await authedFetch("/api/series/monitoring", {
@@ -215,15 +199,10 @@ export function ShowDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ seriesIds: [series.id], monitored })
       });
-
-      if (!response.ok) {
-        throw new Error("series-monitoring-failed");
-      }
-
-      setActionMessage(monitored ? "Background automation resumed for this series." : "Background automation paused for this series.");
+      if (!response.ok) throw new Error("series-monitoring-failed");
       revalidator.revalidate();
     } catch {
-      setActionMessage("Series update failed.");
+      toast.error("This show's monitoring could not be changed.");
     } finally {
       setBusyAction(null);
     }
@@ -231,7 +210,6 @@ export function ShowDetailPage() {
 
   async function handleRemoveFromDeluno(options: RemoveMediaOptions) {
     setBusyAction("remove");
-    setActionMessage(null);
     try {
       const response = await authedFetch("/api/series/bulk", {
         method: "POST",
@@ -240,11 +218,12 @@ export function ShowDetailPage() {
       });
       if (!response.ok) throw new Error("series-remove-failed");
 
-      const result = await response.json() as { successCount?: number };
+      const result = (await response.json()) as { successCount?: number };
       if ((result.successCount ?? 0) !== 1) throw new Error("series-remove-failed");
+      toast.success(`${series.title} removed from Deluno`);
       navigate("/tv", { replace: true });
     } catch {
-      setActionMessage("Could not remove this TV show from Deluno.");
+      toast.error("This TV show could not be removed.");
     } finally {
       setBusyAction(null);
       setIsRemoveConfirmationOpen(false);
@@ -254,7 +233,6 @@ export function ShowDetailPage() {
   async function handleDeferAutomation() {
     if (!wantedItem) return;
     setBusyAction("defer");
-    setActionMessage(null);
     try {
       const response = await authedFetch(`/api/series/${series.id}/automation/defer`, {
         method: "POST",
@@ -262,10 +240,10 @@ export function ShowDetailPage() {
         body: JSON.stringify({ libraryId: wantedItem.libraryId, hours: 24 })
       });
       if (!response.ok) throw new Error("series-defer-failed");
-      setActionMessage("Background automation deferred for 24 hours. You can still search manually.");
+      toast.success("Deferred for 24 hours. Manual searches still work.");
       revalidator.revalidate();
     } catch {
-      setActionMessage("Could not defer background automation for this series.");
+      toast.error("Background automation could not be deferred.");
     } finally {
       setBusyAction(null);
     }
@@ -274,7 +252,6 @@ export function ShowDetailPage() {
   async function handleSkipNextAutomationSearch() {
     if (!wantedItem) return;
     setBusyAction("skip-once");
-    setActionMessage(null);
     try {
       const response = await authedFetch(`/api/series/${series.id}/automation/skip-once`, {
         method: "POST",
@@ -282,10 +259,10 @@ export function ShowDetailPage() {
         body: JSON.stringify({ libraryId: wantedItem.libraryId })
       });
       if (!response.ok) throw new Error("series-skip-once-failed");
-      setActionMessage("The next scheduled search will be skipped. You can still search manually.");
+      toast.success("The next scheduled search will be skipped.");
       revalidator.revalidate();
     } catch {
-      setActionMessage("Could not skip the next scheduled search for this series.");
+      toast.error("The next scheduled search could not be skipped.");
     } finally {
       setBusyAction(null);
     }
@@ -293,13 +270,10 @@ export function ShowDetailPage() {
 
   async function handleSearchNow(mode: "automatic" | "interactive") {
     setBusyAction(`${mode}-search`);
-    setActionMessage(null);
 
     try {
       const response = await authedFetch(`/api/series/${series.id}/search${mode === "interactive" ? "?mode=preview" : ""}`, { method: "POST" });
-      if (!response.ok) {
-        throw new Error("series-search-failed");
-      }
+      if (!response.ok) throw new Error("series-search-failed");
 
       const payload = (await response.json()) as {
         outcome?: string;
@@ -312,18 +286,25 @@ export function ShowDetailPage() {
       };
       const best = payload.releaseName ? `${payload.releaseName}${payload.indexerName ? ` via ${payload.indexerName}` : ""}` : null;
       setReleaseCandidates(mode === "interactive" ? payload.candidates ?? [] : []);
-      setActionMessage(mode === "interactive" ? formatSearchActionMessage("series", best, payload) : (best ? `Deluno selected ${best} using this series’ Media Plan.` : "Deluno searched using this series’ Media Plan."));
+
+      if (mode === "interactive") {
+        const found = payload.candidates?.length ?? 0;
+        setSection("episodes");
+        if (found) toast.success(`${found} release${found === 1 ? "" : "s"} scored. Choose one below.`);
+        else toast.info(payload.summary ?? "No releases matched this show's media plan.");
+      } else {
+        toast.success(best ? `Deluno selected ${best} using this show's media plan.` : "Search finished with no accepted release.");
+      }
       revalidator.revalidate();
     } catch {
-      setActionMessage("Search request failed.");
+      toast.error("The search request failed.");
     } finally {
       setBusyAction(null);
     }
   }
 
   async function handleGrabCandidate(candidate: SearchPlanCandidate, force = false, overrideReason?: string) {
-    setBusyAction(`${force ? "force-grab" : "grab"}:${candidate.indexerName}:${candidate.releaseName}`);
-    setActionMessage(null);
+    setBusyAction(force ? "force-grab" : "grab");
 
     try {
       const response = await authedFetch(`/api/series/${series.id}/grab`, {
@@ -341,10 +322,7 @@ export function ShowDetailPage() {
           overrideReason: force ? overrideReason || `User forced this release despite scorer result: ${candidate.summary}` : null
         })
       });
-
-      if (!response.ok) {
-        throw new Error("series-grab-failed");
-      }
+      if (!response.ok) throw new Error("series-grab-failed");
 
       const payload = (await response.json()) as {
         releaseName?: string;
@@ -356,138 +334,20 @@ export function ShowDetailPage() {
       const best = payload.releaseName
         ? `${payload.releaseName}${payload.indexerName ? ` via ${payload.indexerName}` : ""}`
         : candidate.releaseName;
-      setActionMessage(formatSearchActionMessage("series", best, { ...payload, candidates: [candidate] }));
+      toast.success(formatGrabMessage(best, payload));
+      setOpenCandidate(null);
       setReleaseCandidates([]);
       revalidator.revalidate();
     } catch {
-      setActionMessage("Release could not be sent to the download client.");
-    } finally {
-      setBusyAction(null);
-    }
-  }
-
-  async function handleRefreshMetadata() {
-    setBusyAction("metadata");
-    setActionMessage(null);
-
-    try {
-      const response = await authedFetch(`/api/series/${series.id}/metadata/refresh`, { method: "POST" });
-      if (!response.ok) {
-        throw new Error("series-metadata-refresh-failed");
-      }
-
-      setActionMessage("TV metadata refreshed.");
-      revalidator.revalidate();
-    } catch {
-      setActionMessage("Metadata refresh failed.");
-    } finally {
-      setBusyAction(null);
-    }
-  }
-
-  async function handleMetadataSearch() {
-    setBusyAction("metadata-search");
-    setActionMessage(null);
-    setMetadataSearchAttempted(true);
-    try {
-      const params = new URLSearchParams({
-        query: metadataQuery.trim() || series.title,
-        mediaType: "tv"
-      });
-      if (series.startYear) params.set("year", String(series.startYear));
-      const results = await fetchJson<MetadataSearchResult[]>(`/api/metadata/search?${params.toString()}`);
-      setMetadataMatches(results.slice(0, 6));
-      setActionMessage(results.length ? `${results.length} metadata match${results.length === 1 ? "" : "es"} found.` : "No metadata matches found.");
-    } catch {
-      setActionMessage("Metadata search failed.");
-    } finally {
-      setBusyAction(null);
-    }
-  }
-
-  async function handleMetadataLink(result: MetadataSearchResult) {
-    setBusyAction(`metadata-link:${result.providerId}`);
-    setActionMessage(null);
-    try {
-      const response = await authedFetch(`/api/series/${series.id}/metadata/link`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ providerId: result.providerId })
-      });
-      if (!response.ok) throw new Error("metadata-link-failed");
-      setMetadataMatches([]);
-      setActionMessage(`Linked metadata to ${result.title}${result.year ? ` (${result.year})` : ""}.`);
-      revalidator.revalidate();
-    } catch {
-      setActionMessage("Metadata match could not be linked.");
-    } finally {
-      setBusyAction(null);
-    }
-  }
-
-  async function handleMetadataOverrideSave() {
-    setBusyAction("metadata-override");
-    setActionMessage(null);
-    try {
-      if (metadataOverride.rating.trim()) {
-        const rating = Number(metadataOverride.rating);
-        if (!Number.isFinite(rating) || rating < 0 || rating > 10) {
-          setActionMessage("Rating must be a number between 0 and 10.");
-          return;
-        }
-      }
-
-      if (metadataOverride.posterUrl.trim() && !isValidHttpUrl(metadataOverride.posterUrl.trim())) {
-        setActionMessage("Poster URL must be a valid http/https URL.");
-        return;
-      }
-
-      if (metadataOverride.backdropUrl.trim() && !isValidHttpUrl(metadataOverride.backdropUrl.trim())) {
-        setActionMessage("Backdrop URL must be a valid http/https URL.");
-        return;
-      }
-
-      if (metadataOverride.externalUrl.trim() && !isValidHttpUrl(metadataOverride.externalUrl.trim())) {
-        setActionMessage("External URL must be a valid http/https URL.");
-        return;
-      }
-
-      const payload = {
-        originalTitle: metadataOverride.originalTitle.trim() || null,
-        overview: metadataOverride.overview.trim() || null,
-        posterUrl: metadataOverride.posterUrl.trim() || null,
-        backdropUrl: metadataOverride.backdropUrl.trim() || null,
-        rating: metadataOverride.rating.trim() ? Number(metadataOverride.rating) : null,
-        genres: metadataOverride.genres.trim() || null,
-        externalUrl: metadataOverride.externalUrl.trim() || null,
-        imdbId: metadataOverride.imdbId.trim() || null
-      };
-
-      const response = await authedFetch(`/api/series/${series.id}/metadata/override`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      if (!response.ok) {
-        throw new Error("metadata-override-failed");
-      }
-
-      setActionMessage("Manual metadata overrides saved.");
-      revalidator.revalidate();
-    } catch {
-      setActionMessage("Manual metadata override failed.");
+      toast.error("That release could not be sent to the download client.");
     } finally {
       setBusyAction(null);
     }
   }
 
   async function handleEpisodeSearch(episodeIds: string[]) {
-    if (!episodeIds.length) {
-      return;
-    }
-
+    if (!episodeIds.length) return;
     setBusyAction("episode-search");
-    setActionMessage(null);
 
     try {
       const response = await authedFetch(`/api/series/${series.id}/episodes/search`, {
@@ -495,10 +355,7 @@ export function ShowDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ episodeIds })
       });
-
-      if (!response.ok) {
-        throw new Error("episode-search-failed");
-      }
+      if (!response.ok) throw new Error("episode-search-failed");
 
       const payload = (await response.json()) as {
         searchedEpisodes?: number;
@@ -507,17 +364,16 @@ export function ShowDetailPage() {
         plannedCount?: number;
         failedCount?: number;
       };
-      const searchedEpisodes = payload.searchedEpisodes ?? episodeIds.length;
-      const matchedCount = payload.matchedCount ?? 0;
-      setActionMessage(
-        matchedCount > 0
-          ? `Searched ${searchedEpisodes} episode${searchedEpisodes === 1 ? "" : "s"} and matched ${matchedCount}. ${formatDispatchSummary(payload)}`
-          : `Searched ${searchedEpisodes} episode${searchedEpisodes === 1 ? "" : "s"}.`
+      const searched = payload.searchedEpisodes ?? episodeIds.length;
+      const matched = payload.matchedCount ?? 0;
+      toast.success(
+        matched > 0
+          ? `Searched ${searched} episode${searched === 1 ? "" : "s"}, matched ${matched}. ${formatDispatchSummary(payload)}`
+          : `Searched ${searched} episode${searched === 1 ? "" : "s"}. Nothing matched yet.`
       );
-      setSelectedEpisodeIds([]);
       revalidator.revalidate();
     } catch {
-      setActionMessage("Episode search failed.");
+      toast.error("The episode search failed.");
     } finally {
       setBusyAction(null);
     }
@@ -525,15 +381,10 @@ export function ShowDetailPage() {
 
   async function handleSeasonSearch(seasonNumber: number) {
     setBusyAction(`season-search-${seasonNumber}`);
-    setActionMessage(null);
 
     try {
-      const response = await authedFetch(`/api/series/${series.id}/seasons/${seasonNumber}/search`, {
-        method: "POST"
-      });
-      if (!response.ok) {
-        throw new Error("season-search-failed");
-      }
+      const response = await authedFetch(`/api/series/${series.id}/seasons/${seasonNumber}/search`, { method: "POST" });
+      if (!response.ok) throw new Error("season-search-failed");
 
       const payload = (await response.json()) as {
         matchedCount?: number;
@@ -541,16 +392,16 @@ export function ShowDetailPage() {
         dispatchStatus?: string | null;
         dispatchMessage?: string | null;
       };
-      const resolvedSeasonNumber = payload.seasonNumber ?? seasonNumber;
-      const matchedCount = payload.matchedCount ?? 0;
-      setActionMessage(
-        matchedCount > 0
-          ? `Season ${resolvedSeasonNumber} search completed with ${matchedCount} episode matches. ${formatDispatchSummary(payload)}`
-          : `Season ${resolvedSeasonNumber} search completed.`
+      const resolved = payload.seasonNumber ?? seasonNumber;
+      const matched = payload.matchedCount ?? 0;
+      toast.success(
+        matched > 0
+          ? `${formatSeasonLabel(resolved)}: ${matched} episode match${matched === 1 ? "" : "es"}. ${formatDispatchSummary(payload)}`
+          : `${formatSeasonLabel(resolved)}: search finished with no matches.`
       );
       revalidator.revalidate();
     } catch {
-      setActionMessage("Season search failed.");
+      toast.error("The season search failed.");
     } finally {
       setBusyAction(null);
     }
@@ -558,31 +409,66 @@ export function ShowDetailPage() {
 
   async function handleDismissImportCase(id: string) {
     setBusyAction(`import-${id}`);
-    setActionMessage(null);
-
     try {
       const response = await authedFetch(`/api/series/import-recovery/${id}`, { method: "DELETE" });
-      if (!response.ok && response.status !== 204) {
-        throw new Error("Import case could not be dismissed.");
-      }
-      setActionMessage("Import issue dismissed.");
+      if (!response.ok && response.status !== 204) throw new Error("dismiss-failed");
+      toast.success("Import issue dismissed.");
       revalidator.revalidate();
-    } catch (error) {
-      setActionMessage(error instanceof Error ? error.message : "Import case could not be dismissed.");
+    } catch {
+      toast.error("That import issue could not be dismissed.");
     } finally {
       setBusyAction(null);
     }
   }
 
   return (
-    <div className="space-y-[var(--page-gap)]">
-      <Link
-        to="/tv"
-        className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to TV
-      </Link>
+    <div className="grid gap-[var(--page-gap)]">
+      {/* One toolbar: which part of the show you want, where you came from, and
+          the two searches. The topbar names the section, the hero names the show. */}
+      <PageToolbar
+        left={
+          <SegmentedControl<DetailSection>
+            aria-label="Section"
+            className="w-auto"
+            value={section}
+            onValueChange={setSection}
+            options={[
+              { value: "episodes", label: "Episodes" },
+              { value: "destination", label: "Destination" },
+              { value: "history", label: "History" }
+            ]}
+          />
+        }
+        actions={
+          <>
+            <Button asChild type="button" variant="outline">
+              <Link to="/tv">
+                <ArrowLeft className="h-4 w-4" />
+                All TV
+              </Link>
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void handleSearchNow("interactive")}
+              disabled={busyAction !== null}
+              title="Review every candidate and choose the release yourself."
+            >
+              {busyAction === "interactive-search" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              Choose a release
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void handleSearchNow("automatic")}
+              disabled={busyAction !== null}
+              title="Deluno applies the active media plan and sends the best acceptable release."
+            >
+              {busyAction === "automatic-search" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              Search now
+            </Button>
+          </>
+        }
+      />
 
       <Card className="relative isolate min-h-[19rem] overflow-hidden border-primary/25 bg-card">
         {series.backdropUrl ? <img src={series.backdropUrl} alt="" className="pointer-events-none absolute inset-0 h-full w-full scale-105 object-cover opacity-[0.34] saturate-[0.8]" /> : null}
@@ -633,493 +519,615 @@ export function ShowDetailPage() {
                 <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Source</span><span className="font-medium text-foreground">{series.metadataProvider?.toUpperCase() ?? "Not linked"}</span></div>
                 <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">IMDb</span><span className="font-medium text-foreground">{series.imdbId ?? "—"}</span></div>
               </div>
-              {series.externalUrl ? <Button asChild variant="outline" className="mt-4 w-full"><a href={series.externalUrl} target="_blank" rel="noreferrer">Open provider page</a></Button> : null}
+              <Button variant="outline" className="mt-4 w-full" onClick={() => setIsMetadataOpen(true)}>Edit metadata</Button>
+              {/* Destructive, so it sits with the other "manage this title" controls
+                  rather than beside the two searches in the toolbar. */}
+              <Button
+                variant="ghost"
+                className="mt-2 w-full text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => setIsRemoveConfirmationOpen(true)}
+                disabled={busyAction !== null}
+              >
+                <Trash2 className="h-4 w-4" />
+                Remove from Deluno
+              </Button>
             </aside>
           </div>
         </CardContent>
       </Card>
 
-      <details className="rounded-xl border border-hairline bg-card px-4 py-3">
-        <summary className="cursor-pointer text-sm font-medium text-muted-foreground">Metadata tools and provider record</summary>
-        <div className="mt-4 space-y-[var(--page-gap)]">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <MetadataStat label="Provider" value={series.metadataProvider ?? "Not linked"} />
-            <MetadataStat label="Provider ID" value={series.metadataProviderId ?? "None"} />
-            <MetadataStat label="IMDb" value={series.imdbId ?? "Not linked"} />
-          </div>
-          <MetadataCorrectionPanel busyAction={busyAction} mediaLabel="series" query={metadataQuery} matches={metadataMatches} searchAttempted={metadataSearchAttempted} onQueryChange={setMetadataQuery} onSearch={handleMetadataSearch} onLink={handleMetadataLink} />
-          <ManualMetadataOverridePanel busyAction={busyAction} value={metadataOverride} onChange={setMetadataOverride} onSave={handleMetadataOverrideSave} />
-        </div>
-      </details>
-
-      <div className="flex flex-wrap gap-2">
-        <Button onClick={() => void handleSearchNow("automatic")} disabled={busyAction !== null} title="Deluno applies the active Media Plan and automatically sends the best acceptable release.">
-          {busyAction === "automatic-search" ? (
-            <LoaderCircle className="h-4 w-4 animate-spin" />
-          ) : (
-            <Search className="h-4 w-4" />
-          )}
-          Automatic search
-        </Button>
-        <Button variant="outline" onClick={() => void handleSearchNow("interactive")} disabled={busyAction !== null} title="Review every candidate and choose the release yourself.">
-          {busyAction === "interactive-search" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-          Interactive search
-        </Button>
-        <Button
-          variant="outline"
-          onClick={() =>
-            void handleEpisodeSearch(
-              selectedEpisodeIds.length
-                ? selectedEpisodeIds
-                : visibleEpisodes.map((item) => item.episodeId)
-            )
-          }
-          disabled={busyAction !== null || (!selectedEpisodeIds.length && !visibleEpisodes.length)}
-        >
-          {busyAction === "episode-search" ? (
-            <LoaderCircle className="h-4 w-4 animate-spin" />
-          ) : (
-            <Search className="h-4 w-4" />
-          )}
-          Search current slice
-        </Button>
-        <Button
-          variant="outline"
-          onClick={() => void handleSeriesMonitoring(!series.monitored)}
-          disabled={busyAction !== null}
-          title={series.monitored ? "Pause background searching for this series without removing it from your library." : "Resume background searching for this series."}
-        >
-          {busyAction === "series-monitor" || busyAction === "series-unmonitor" ? (
-            <LoaderCircle className="h-4 w-4 animate-spin" />
-          ) : (
-            <ShieldCheck className="h-4 w-4" />
-          )}
-          {series.monitored ? "Pause automation" : "Resume automation"}
-        </Button>
-        <Button
-          variant="ghost"
-          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-          onClick={() => setIsRemoveConfirmationOpen(true)}
-          disabled={busyAction !== null}
-        >
-          <Trash2 className="h-4 w-4" />
-          Remove from Deluno
-        </Button>
-      </div>
-
-      <nav className="flex flex-wrap gap-1 rounded-xl border border-hairline bg-surface-1 p-1" aria-label="TV series detail sections">
-        {[
-          ["episodes", "Episodes"],
-          ["details", "Files & destination"],
-          ["automation", "Automation"],
-          ["history", "History & activity"]
-        ].map(([section, label]) => (
-          <button key={section} type="button" onClick={() => setActiveDetailSection(section as "episodes" | "details" | "automation" | "history")} className={activeDetailSection === section ? "rounded-lg bg-card px-4 py-2 text-sm font-semibold text-foreground shadow-sm" : "rounded-lg px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground"}>{label}</button>
-        ))}
-      </nav>
-
-      {activeDetailSection === "automation" ? (
-        <div className="space-y-[var(--page-gap)]">
-          {nextStep ? (
-            <Card className="overflow-hidden border-primary/20 bg-gradient-to-r from-primary/[0.08] via-primary/[0.03] to-transparent"><CardContent className="flex flex-col gap-[var(--grid-gap)] p-5 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><p className="text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-primary">{nextStep.eyebrow}</p><h2 className="mt-1 font-display text-lg font-semibold tracking-tight text-foreground">{nextStep.title}</h2><p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">{nextStep.description}</p></div>{nextStep.href ? <Button asChild className="shrink-0"><a href={nextStep.href}>{nextStep.action}<ArrowRight className="h-4 w-4" /></a></Button> : <Button onClick={nextStep.onAction} disabled={busyAction !== null} className="shrink-0">{nextStep.action}</Button>}</CardContent></Card>
-          ) : null}
-          <Card><CardHeader><CardTitle>Automation controls</CardTitle><CardDescription>Fine-tune how Deluno looks after this series without changing its episode inventory.</CardDescription></CardHeader><CardContent className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => void handleDeferAutomation()} disabled={busyAction !== null || !wantedItem}><RotateCw className="h-4 w-4" /> Defer 24h</Button><Button variant="outline" onClick={() => void handleSkipNextAutomationSearch()} disabled={busyAction !== null || !wantedItem}><RotateCw className="h-4 w-4" /> Skip next search</Button><Button variant="outline" onClick={() => void handleRefreshMetadata()} disabled={busyAction !== null}><RefreshCw className="h-4 w-4" /> Refresh metadata</Button></CardContent></Card>
-        </div>
+      {nextStep ? (
+        <ListCard title="Next step" count={nextStep.eyebrow}>
+          <ListTable
+            chevron={false}
+            columns={[{ label: "What Deluno suggests" }, { label: "Action", width: "auto", align: "end", mobile: true }]}
+          >
+            <ListRow>
+              <ListNameCell name={nextStep.title} sub={nextStep.description} />
+              <div role="cell" className="flex justify-end">
+                <Button type="button" size="sm" onClick={nextStep.onAction} disabled={busyAction !== null}>
+                  {nextStep.action}
+                </Button>
+              </div>
+            </ListRow>
+          </ListTable>
+        </ListCard>
       ) : null}
 
-      {actionMessage ? (
-        <div className="rounded-xl border border-hairline bg-surface-1 px-4 py-3 text-sm text-muted-foreground" role="status" aria-live="polite">
-          {actionMessage}
-        </div>
-      ) : null}
-
-      {releaseCandidates.length ? (
-        <div id="release-choices">
-        <ReleaseCandidatePicker
-          candidates={releaseCandidates}
-          busyAction={busyAction}
-          onGrab={handleGrabCandidate}
-        />
-        </div>
-      ) : null}
-
-      {activeDetailSection === "details" ? (
-        <div className="space-y-[var(--page-gap)]">
-          <RoutingCard
-            library={library}
-            currentQuality={wantedItem?.currentQuality ?? null}
-            targetQuality={wantedItem?.targetQuality ?? "WEB 1080p"}
-            workflow={library?.importWorkflow ?? "standard"}
+      {section === "episodes" ? (
+        <>
+          <SummaryStrip
+            cells={[
+              { label: "Episodes", value: inventory.episodeCount, help: `${inventory.seasonCount} season${inventory.seasonCount === 1 ? "" : "s"}` },
+              { label: "On disk", value: inventory.importedEpisodeCount, help: "imported and verified" },
+              { label: "Missing", value: missingCount, tone: missingCount > 0 ? "warning" : undefined, help: "no file yet" },
+              { label: "Upgrades", value: upgradeCount, tone: upgradeCount > 0 ? "warning" : undefined, help: "better release wanted" },
+              { label: "Monitored", value: monitoredCount, help: `of ${inventory.episodeCount} watched` }
+            ]}
           />
-          <IntakeOriginsCard origins={origins} mediaLabel="series" />
-        </div>
-      ) : null}
 
-      {activeDetailSection === "episodes" || activeDetailSection === "history" ? (
-      <div className={activeDetailSection === "history" ? "space-y-[var(--page-gap)]" : "grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.28fr)_minmax(380px,0.82fr)] 2xl:grid-cols-[minmax(0,1.5fr)_minmax(440px,0.65fr)]"}>
-        <div className={activeDetailSection === "episodes" ? "space-y-[var(--page-gap)]" : "hidden"}>
-          <Card>
-            <CardHeader>
-              <CardTitle>Episode operations</CardTitle>
-              <CardDescription>
-                Filter, inspect, and bulk-manage real episode inventory rows.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-[calc(var(--field-group-pad)*0.9)]">
-              <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
-                <div className="flex flex-col gap-3">
-                  <input
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    placeholder="Filter by episode code or title"
-                  className="density-control-text h-[var(--control-height)] rounded-xl border border-hairline bg-surface-1 px-[var(--field-pad-x)] text-foreground outline-none ring-0 placeholder:text-muted-foreground"
-                  />
-                  <div className="flex flex-wrap gap-2">
-                    {episodeFilterOptions.map((option) => (
-                      <button
-                        key={option.key}
-                        type="button"
-                        onClick={() => setEpisodeFilter(option.key)}
-                        className={
-                          episodeFilter === option.key
-                            ? "rounded-full border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs text-primary"
-                            : "rounded-full border border-hairline bg-card px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
-                        }
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-2 lg:justify-end">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() =>
-                      setSelectedEpisodeIds(
-                        allVisibleSelected ? [] : visibleEpisodes.map((item) => item.episodeId)
-                      )
-                    }
+          {releaseCandidates.length ? (
+            <ListCard title="Choose a release" count={`${releaseCandidates.length} scored`}>
+              <ListTable
+                columns={[
+                  { label: "Release" },
+                  { label: "Quality", mobile: true },
+                  { label: "Size" },
+                  { label: "Score", align: "end" },
+                  { label: "Decision", width: LIST_TRACK.status }
+                ]}
+              >
+                {releaseCandidates.map((candidate, index) => (
+                  <ListRow
+                    key={`${candidate.indexerName}:${candidate.releaseName}`}
+                    onClick={() => setOpenCandidate(candidate)}
+                    selected={openCandidate?.releaseName === candidate.releaseName}
                   >
-                    {allVisibleSelected ? (
-                      <CheckSquare2 className="h-4 w-4" />
-                    ) : (
-                      <Square className="h-4 w-4" />
-                    )}
-                    {selectedEpisodeIds.length ? `${selectedEpisodeIds.length} selected` : "Select visible"}
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={() => void handleEpisodeMonitoring(true)}
-                    disabled={!selectedEpisodeIds.length || busyAction !== null}
-                  >
-                    {busyAction === "episode-monitor" ? (
-                      <LoaderCircle className="h-4 w-4 animate-spin" />
-                    ) : null}
-                    Monitor selected
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => void handleEpisodeMonitoring(false)}
-                    disabled={!selectedEpisodeIds.length || busyAction !== null}
-                  >
-                    {busyAction === "episode-unmonitor" ? (
-                      <LoaderCircle className="h-4 w-4 animate-spin" />
-                    ) : null}
-                    Unmonitor selected
-                  </Button>
-                </div>
-              </div>
+                    <ListNameCell
+                      name={candidate.releaseName}
+                      sub={`${index === 0 && candidate.decisionStatus !== "rejected" ? "Best match · " : ""}${candidate.indexerName}`}
+                    />
+                    <ListCell primary={candidate.quality} mobile />
+                    <ListCell primary={candidate.sizeBytes ? formatBytes(candidate.sizeBytes) : "—"} />
+                    <ListCell primary={candidate.score} align="end" numeric />
+                    <ListCell>
+                      <Chip tone={candidateTone(candidate)}>{candidateLabel(candidate)}</Chip>
+                    </ListCell>
+                  </ListRow>
+                ))}
+              </ListTable>
+            </ListCard>
+          ) : null}
 
-              <div className="rounded-xl border border-hairline bg-surface-1 px-3 py-3 text-sm text-muted-foreground">
-                Showing {visibleEpisodes.length} of {inventory.episodeCount} episodes in this series.
-              </div>
-
-              {visibleSeasons.length ? (
-                visibleSeasons.map((season) => (
-                  <div key={season.seasonNumber} className="rounded-xl border border-hairline bg-card">
-                    <div className="border-b border-hairline px-4 py-3">
-                      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                        <div>
-                          <p className="font-display text-base font-semibold text-foreground">
-                            {formatSeasonLabel(season.seasonNumber)}
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            {season.importedCount}/{season.episodes.length} imported · {season.missingCount} missing ·{" "}
-                            {season.monitoredCount} monitored
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => void handleSeasonSearch(season.seasonNumber)}
-                            disabled={busyAction !== null}
-                          >
-                            {busyAction === `season-search-${season.seasonNumber}` ? (
-                              <LoaderCircle className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Search className="h-4 w-4" />
-                            )}
-                            Search season
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() =>
-                              setSelectedEpisodeIds((current) => {
-                                const seasonIds = season.episodes.map((item) => item.episodeId);
-                                const allSelected = seasonIds.every((id) => current.includes(id));
-                                return allSelected
-                                  ? current.filter((id) => !seasonIds.includes(id))
-                                  : [...new Set([...current, ...seasonIds])];
-                              })
-                            }
-                          >
-                            {season.episodes.every((item) =>
-                              selectedEpisodeIds.includes(item.episodeId)
-                            ) ? (
-                              <CheckSquare2 className="h-4 w-4" />
-                            ) : (
-                              <Square className="h-4 w-4" />
-                            )}
-                            Select season
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="divide-y divide-hairline">
-                      {season.episodes.map((episode) => {
-                        const checked = selectedEpisodeIds.includes(episode.episodeId);
-                        return (
-                          <button
-                            key={episode.episodeId}
-                            type="button"
-                            className={
-                              checked
-                                ? "grid w-full grid-cols-[auto_minmax(0,1fr)_auto] gap-3 bg-surface-1 px-4 py-3 text-left"
-                                : "grid w-full grid-cols-[auto_minmax(0,1fr)_auto] gap-3 px-4 py-3 text-left hover:bg-surface-1"
-                            }
-                            onClick={() =>
-                              setSelectedEpisodeIds((current) =>
-                                checked
-                                  ? current.filter((id) => id !== episode.episodeId)
-                                  : [...current, episode.episodeId]
-                              )
-                            }
-                          >
-                            <span className="pt-0.5">
-                              {checked ? (
-                                <CheckSquare2 className="h-4 w-4 text-primary" />
-                              ) : (
-                                <Square className="h-4 w-4 text-muted-foreground" />
-                              )}
-                            </span>
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <p className="text-sm font-medium text-foreground">
-                                  {formatEpisodeCode(episode)}
-                                </p>
-                                <Badge
-                                  variant={
-                                    episode.wantedStatus === "missing" || episode.wantedStatus === "upgrade"
-                                      ? "warning"
-                                      : "info"
-                                  }
-                                >
-                                  {formatWantedStatus(episode.wantedStatus)}
-                                </Badge>
-                                <Badge variant="default">
-                                  {episode.monitored ? "Monitored" : "Not monitored"}
-                                </Badge>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-7 px-2 text-xs"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    void handleEpisodeSearch([episode.episodeId]);
-                                  }}
-                                  disabled={busyAction !== null}
-                                >
-                                  {busyAction === "episode-search" ? (
-                                    <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                                  ) : (
-                                    <Search className="h-3.5 w-3.5" />
-                                  )}
-                                  Search
-                                </Button>
-                              </div>
-                              <p className="mt-1 text-sm text-foreground">
-                                {episode.title ?? "Episode title pending"}
-                              </p>
-                              <p className="mt-1 text-xs text-muted-foreground">
-                                {episode.airDateUtc ? `Airs ${formatDateTime(episode.airDateUtc)} · ` : ""}
-                                {episode.wantedReason}
-                              </p>
-                            </div>
-                            <div className="text-right text-xs text-muted-foreground">
-                              <p>{episode.hasFile ? "Imported" : "Missing file"}</p>
-                              <p className="mt-1">{formatDateTime(episode.updatedUtc)}</p>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <EmptyState
-                  size="sm"
-                  variant="search"
-                  title="No matching episodes"
-                  description="Try a different filter — monitored, missing, or upgrade targets."
+          <ListCard
+            title="Episodes"
+            count={`${visibleEpisodes.length} of ${inventory.episodeCount} shown`}
+            filter={{ value: query, onChange: setQuery, placeholder: "Filter by code or title" }}
+            actions={
+              <>
+                <Select
+                  aria-label="Filter episodes"
+                  className="h-[var(--control-height-sm)] w-40 py-0 text-[length:var(--type-caption)]"
+                  value={episodeFilter}
+                  onChange={(event) => setEpisodeFilter(event.target.value as EpisodeFilter)}
+                  options={[
+                    { value: "all", label: "All episodes" },
+                    { value: "missing", label: "Missing" },
+                    { value: "upgrade", label: "Upgrade" },
+                    { value: "monitored", label: "Monitored" },
+                    { value: "imported", label: "On disk" }
+                  ]}
                 />
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="space-y-[var(--page-gap)]">
-          {activeDetailSection === "episodes" ? <EpisodeMonitoringWidget
-            episodes={inventory.episodes}
-            selectedCount={selectedEpisodeIds.length}
-            onMonitor={handleEpisodeMonitoring}
-            isBusy={busyAction?.startsWith("episode-monitor") ?? false}
-          /> : null}
-
-          {activeDetailSection === "history" ? <>
-          <Card id="decision-trail">
-            <CardHeader>
-              <CardTitle>Decision trail</CardTitle>
-              <CardDescription>
-                Search, grab, import, and retry decisions recorded for this series.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <DecisionExplanationList decisions={decisions} />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Search and dispatch</CardTitle>
-              <CardDescription>
-                Recent search outcomes and releases sent to download clients.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-[calc(var(--field-group-pad)*0.9)]">
-              {seriesSearches.length ? (
-                seriesSearches.slice(0, 8).map((item) => (
-                  <div key={item.id} className="rounded-xl border border-hairline bg-surface-1 p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-medium text-foreground">
-                        {item.releaseName ?? "No release selected"}
-                      </p>
-                      <Badge variant={item.outcome === "matched" ? "success" : "warning"}>
-                        {item.outcome}
-                      </Badge>
-                    </div>
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      {formatSearchHistoryContext(item)} · {formatTriggerKind(item.triggerKind)}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">{formatDateTime(item.createdUtc)}</p>
-                    <SearchCandidateBreakdown detailsJson={item.detailsJson} />
-                  </div>
-                ))
-              ) : (
-                <EmptyState
+                <Button
+                  type="button"
                   size="sm"
-                  variant="custom"
-                  title="No search history"
-                  description="Manual and scheduled searches for this series will appear here once they run."
-                />
-              )}
-
-              {seriesDispatches.length ? (
-                <div className="space-y-3 pt-2">
-                  {seriesDispatches.slice(0, 6).map((item) => (
-                    <div key={item.id} className="rounded-xl border border-hairline bg-surface-1 p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-medium text-foreground">{item.releaseName}</p>
-                        <Badge variant={getDispatchBadgeVariant(item.status)}>
-                          {formatDispatchStatus(item.status)}
-                        </Badge>
-                      </div>
-                      <p className="mt-2 text-sm text-muted-foreground">
-                        {item.indexerName} · {item.downloadClientName}
-                      </p>
-                    </div>
-                  ))}
-                  <Link to="/queue" className="inline-flex text-sm font-medium text-amber-400 hover:text-amber-300">
-                    Open Transfers to manage download-client work →
-                  </Link>
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
-
-          <EpisodeSearchHistory searches={seriesSearches} />
-
-          <Card id="import-activity">
-            <CardHeader>
-              <CardTitle>Import and activity</CardTitle>
-              <CardDescription>
-                Import pressure and entity-scoped activity for this title.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-[calc(var(--field-group-pad)*0.9)]">
-              {importCases.length ? (
-                importCases.map((item) => (
-                  <div key={item.id} className="rounded-xl border border-hairline bg-surface-1 p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-medium text-foreground">
-                        {formatFailureKind(item.failureKind)}
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="warning">Import</Badge>
+                  variant="outline"
+                  disabled={busyAction !== null || !visibleEpisodes.length}
+                  onClick={() => void handleEpisodeSearch(visibleEpisodes.map((item) => item.episodeId))}
+                >
+                  {busyAction === "episode-search" ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+                  Search these
+                </Button>
+              </>
+            }
+          >
+            {visibleSeasons.length === 0 ? (
+              <ListEmpty
+                title={inventory.episodeCount ? "No episodes match" : "No episodes tracked yet"}
+                description={
+                  inventory.episodeCount
+                    ? "Try a different filter — missing, upgrade, monitored, or on disk."
+                    : "Episodes appear once Deluno has scanned your library or pulled the season list from the metadata provider."
+                }
+              />
+            ) : (
+              <ListTable
+                columns={[
+                  { label: "Episode" },
+                  { label: "Aired" },
+                  { label: "File" },
+                  { label: "Last search" },
+                  { label: "Status", width: LIST_TRACK.status },
+                  { label: "On", width: LIST_TRACK.toggle, mobile: true }
+                ]}
+              >
+                {visibleSeasons.map((season) => (
+                  <Fragment key={season.seasonNumber}>
+                    <ListGroupHeader
+                      label={formatSeasonLabel(season.seasonNumber)}
+                      detail={`${season.episodes.length} episodes · ${season.importedCount} on disk · ${season.missingCount} missing`}
+                      actions={
                         <Button
+                          type="button"
                           size="sm"
                           variant="ghost"
-                          onClick={() => void handleDismissImportCase(item.id)}
-                          disabled={busyAction === `import-${item.id}`}
+                          onClick={() => void handleSeasonSearch(season.seasonNumber)}
+                          disabled={busyAction !== null}
                         >
-                          {busyAction === `import-${item.id}` ? (
-                            <LoaderCircle className="h-4 w-4 animate-spin" />
-                          ) : null}
-                          Dismiss
+                          {busyAction === `season-search-${season.seasonNumber}` ? (
+                            <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Search className="h-3.5 w-3.5" />
+                          )}
+                          Search season
                         </Button>
-                      </div>
-                    </div>
-                    <p className="mt-2 text-sm text-muted-foreground">{item.summary}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{item.recommendedAction}</p>
-                  </div>
-                ))
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  No import issues recorded for this series.
-                </p>
-              )}
-
-              {activity.length ? (
-                <div className="space-y-3 pt-2">
-                  {activity.slice(0, 8).map((item) => (
-                    <div key={item.id} className="rounded-xl border border-hairline bg-surface-1 p-4">
-                      <p className="text-sm font-medium text-foreground">{item.message}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {item.category} · {formatDateTime(item.createdUtc)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
-          </> : null}
-        </div>
-      </div>
+                      }
+                    />
+                    {season.episodes.map((episode) => (
+                      <ListRow
+                        key={episode.episodeId}
+                        onClick={() => setOpenEpisodeId(episode.episodeId)}
+                        selected={openEpisodeId === episode.episodeId}
+                      >
+                        <ListNameCell name={formatEpisodeCode(episode)} sub={episode.title ?? "Episode title pending"} />
+                        <ListCell primary={episode.airDateUtc ? formatDate(episode.airDateUtc) : "—"} />
+                        <ListCell primary={episode.hasFile ? "On disk" : "Not imported"} />
+                        <ListCell primary={episode.lastSearchUtc ? formatDateTime(episode.lastSearchUtc) : "Never"} />
+                        <ListCell>
+                          <Chip tone={wantedTone(episode.wantedStatus)}>{formatWantedStatus(episode.wantedStatus)}</Chip>
+                        </ListCell>
+                        <div role="cell" className="flex justify-start">
+                          <Switch
+                            aria-label={`Monitor ${formatEpisodeCode(episode)}`}
+                            checked={episode.monitored}
+                            disabled={busyAction !== null}
+                            onCheckedChange={(checked) => void handleEpisodeMonitoring([episode.episodeId], checked)}
+                          />
+                        </div>
+                      </ListRow>
+                    ))}
+                  </Fragment>
+                ))}
+              </ListTable>
+            )}
+          </ListCard>
+        </>
       ) : null}
+
+      {section === "destination" ? (
+        <>
+          <ListCard title="Routing and destination" count={library?.name ?? "No library linked"}>
+            <ListTable chevron={false} columns={[{ label: "Setting" }, { label: "Value", width: "minmax(0,2fr)", mobile: true }]}>
+              {[
+                ["Library", library?.name ?? "Not linked"],
+                ["Root folder", library?.rootPath || "No root configured"],
+                ["Downloads folder", library?.downloadsPath || "Download client default"],
+                ["Import workflow", library?.importWorkflow === "refine-before-import" ? "Refine before import" : "Standard import"],
+                ["Current quality", wantedItem?.currentQuality ?? "Unknown"],
+                ["Target quality", wantedItem?.targetQuality ?? "WEB 1080p"]
+              ].map(([label, value]) => (
+                <ListRow key={label}>
+                  <ListNameCell name={label} />
+                  <ListCell primary={value} mobile />
+                </ListRow>
+              ))}
+            </ListTable>
+          </ListCard>
+
+          <ListCard title="Automation" count={series.monitored ? "Watching this show" : "Paused"}>
+            <ListTable chevron={false} columns={[{ label: "Control" }, { label: "Action", width: "auto", align: "end", mobile: true }]}>
+              <ListRow>
+                <ListNameCell
+                  name="Background automation"
+                  sub="Deluno searches for missing episodes and quality upgrades on its own schedule."
+                />
+                <div role="cell" className="flex justify-end">
+                  <Switch
+                    aria-label="Background automation"
+                    checked={series.monitored}
+                    disabled={busyAction !== null}
+                    onCheckedChange={(checked) => void handleSeriesMonitoring(checked)}
+                  />
+                </div>
+              </ListRow>
+              <ListRow>
+                <ListNameCell
+                  name="Defer for 24 hours"
+                  sub={
+                    wantedItem
+                      ? "Pause scheduled searches for a day. Manual searches still work."
+                      : "Available once this show belongs to a library."
+                  }
+                />
+                <div role="cell" className="flex justify-end">
+                  <Button type="button" size="sm" variant="outline" onClick={() => void handleDeferAutomation()} disabled={busyAction !== null || !wantedItem}>
+                    {busyAction === "defer" ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : null}
+                    Defer
+                  </Button>
+                </div>
+              </ListRow>
+              <ListRow>
+                <ListNameCell
+                  name="Skip the next search"
+                  sub={
+                    wantedItem
+                      ? "Let one scheduled cycle pass without searching this show."
+                      : "Available once this show belongs to a library."
+                  }
+                />
+                <div role="cell" className="flex justify-end">
+                  <Button type="button" size="sm" variant="outline" onClick={() => void handleSkipNextAutomationSearch()} disabled={busyAction !== null || !wantedItem}>
+                    {busyAction === "skip-once" ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : null}
+                    Skip once
+                  </Button>
+                </div>
+              </ListRow>
+            </ListTable>
+          </ListCard>
+
+          {origins.length ? (
+            <ListCard title="How this show was added" count={`${origins.length} import list${origins.length === 1 ? "" : "s"}`}>
+              <ListTable chevron={false} columns={[{ label: "Source" }, { label: "Provider", mobile: true }, { label: "First seen" }]}>
+                {origins.map((origin) => (
+                  <ListRow key={origin.id}>
+                    <ListNameCell name={origin.sourceName} sub="Removing the list never removes this show or its files." />
+                    <ListCell primary={origin.provider} mobile />
+                    <ListCell primary={formatDateTime(origin.firstSeenUtc)} />
+                  </ListRow>
+                ))}
+              </ListTable>
+            </ListCard>
+          ) : null}
+        </>
+      ) : null}
+
+      {section === "history" ? (
+        <>
+          {importCases.length ? (
+            <ListCard title="Import issues" count={`${importCases.length} open`}>
+              <ListTable chevron={false} columns={[{ label: "Issue" }, { label: "What to do", width: "minmax(0,1.4fr)" }, { label: "Action", width: "auto", align: "end", mobile: true }]}>
+                {importCases.map((item) => (
+                  <ListRow key={item.id}>
+                    <ListNameCell name={formatFailureKind(item.failureKind)} sub={item.summary} />
+                    <ListCell primary={item.recommendedAction} />
+                    <div role="cell" className="flex justify-end">
+                      <Button type="button" size="sm" variant="outline" onClick={() => void handleDismissImportCase(item.id)} disabled={busyAction === `import-${item.id}`}>
+                        {busyAction === `import-${item.id}` ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : null}
+                        Dismiss
+                      </Button>
+                    </div>
+                  </ListRow>
+                ))}
+              </ListTable>
+            </ListCard>
+          ) : null}
+
+          <DecisionExplanationList decisions={decisions} />
+
+          <ListCard title="Searches" count={seriesSearches.length ? `Latest ${Math.min(seriesSearches.length, 12)} of ${seriesSearches.length}` : undefined}>
+            {seriesSearches.length === 0 ? (
+              <ListEmpty
+                title="No searches yet"
+                description="Manual and scheduled searches for this show — series, season and episode alike — appear here with what they scored."
+              />
+            ) : (
+              <ListTable
+                columns={[
+                  { label: "Release" },
+                  { label: "Scope", mobile: true },
+                  { label: "Trigger" },
+                  { label: "When" },
+                  { label: "Outcome", width: LIST_TRACK.status }
+                ]}
+              >
+                {seriesSearches.slice(0, 12).map((item) => (
+                  <ListRow key={item.id} onClick={() => setOpenSearchId(item.id)} selected={openSearchId === item.id}>
+                    <ListNameCell name={item.releaseName ?? "No release selected"} sub={item.indexerName ?? "No source yet"} />
+                    <ListCell primary={formatSearchScope(item)} mobile />
+                    <ListCell primary={formatTriggerKind(item.triggerKind)} />
+                    <ListCell primary={formatDateTime(item.createdUtc)} />
+                    <ListCell>
+                      <Chip tone={searchOutcomeTone(item.outcome)}>
+                        {formatSearchOutcome(item.outcome)}
+                      </Chip>
+                    </ListCell>
+                  </ListRow>
+                ))}
+              </ListTable>
+            )}
+          </ListCard>
+
+          <ListCard
+            title="Sent to downloads"
+            count={seriesDispatches.length ? `${seriesDispatches.length} dispatch${seriesDispatches.length === 1 ? "" : "es"}` : undefined}
+            actions={
+              seriesDispatches.length ? (
+                <Button asChild type="button" size="sm" variant="outline">
+                  <Link to="/queue">Open Transfers</Link>
+                </Button>
+              ) : null
+            }
+          >
+            {seriesDispatches.length === 0 ? (
+              <ListEmpty
+                title="Nothing sent yet"
+                description="Releases Deluno hands to a download client are listed here, with what the client said back."
+              />
+            ) : (
+              <ListTable chevron={false} columns={[{ label: "Release" }, { label: "Client", mobile: true }, { label: "When" }, { label: "Status", width: LIST_TRACK.status }]}>
+                {seriesDispatches.slice(0, 8).map((item) => (
+                  <ListRow key={item.id}>
+                    <ListNameCell name={item.releaseName} sub={item.indexerName} />
+                    <ListCell primary={item.downloadClientName} mobile />
+                    <ListCell primary={formatDateTime(item.createdUtc)} />
+                    <ListCell>
+                      <Chip tone={dispatchTone(item.status)}>{formatDispatchStatus(item.status)}</Chip>
+                    </ListCell>
+                  </ListRow>
+                ))}
+              </ListTable>
+            )}
+          </ListCard>
+
+          <ListCard title="Activity" count={activity.length ? `Latest ${Math.min(activity.length, 10)} of ${activity.length}` : undefined}>
+            {activity.length === 0 ? (
+              <ListEmpty title="Nothing has happened yet" description="Every event Deluno records against this show shows up here." />
+            ) : (
+              <ListTable chevron={false} columns={[{ label: "Event" }, { label: "Category", mobile: true }, { label: "When" }]}>
+                {activity.slice(0, 10).map((item) => (
+                  <ListRow key={item.id}>
+                    <ListNameCell name={item.message} />
+                    <ListCell primary={item.category} mobile />
+                    <ListCell primary={formatDateTime(item.createdUtc)} />
+                  </ListRow>
+                ))}
+              </ListTable>
+            )}
+          </ListCard>
+        </>
+      ) : null}
+
+      {/* ------------------------------------------------------------ drawers */}
+
+      <Drawer
+        open={openEpisode !== null}
+        onOpenChange={(next) => {
+          if (!next) setOpenEpisodeId(null);
+        }}
+        title={openEpisode ? `${formatEpisodeCode(openEpisode)} · ${openEpisode.title ?? "Episode title pending"}` : "Episode"}
+        description={openEpisode ? formatSeasonLabel(openEpisode.seasonNumber) : undefined}
+        footer={
+          <DrawerFooter
+            state="clean"
+            message={openEpisode?.wantedReason}
+            readOnly
+            saveLabel="Close"
+            onCancel={() => setOpenEpisodeId(null)}
+          />
+        }
+      >
+        {openEpisode ? (
+          <>
+            <DrawerSection title="Basics">
+              <DrawerFacts
+                items={[
+                  { label: "Season", value: formatSeasonLabel(openEpisode.seasonNumber) },
+                  { label: "Episode", value: `#${openEpisode.episodeNumber}` },
+                  { label: "First aired", value: openEpisode.airDateUtc ? formatDate(openEpisode.airDateUtc) : "Not announced" },
+                  { label: "File", value: openEpisode.hasFile ? "On disk" : "Not imported" }
+                ]}
+              />
+            </DrawerSection>
+
+            <DrawerSection title="Automation" aside={formatWantedStatus(openEpisode.wantedStatus)}>
+              <div className="flex min-h-[var(--control-height)] items-center justify-between gap-[var(--grid-gap)]">
+                <span className="min-w-0">
+                  <span className="block text-[length:var(--type-body-sm)] font-medium text-foreground">Monitor this episode</span>
+                  <span className="mt-0.5 block text-[length:var(--type-caption)] text-muted-foreground">{openEpisode.wantedReason}</span>
+                </span>
+                <Switch
+                  aria-label="Monitor this episode"
+                  checked={openEpisode.monitored}
+                  disabled={busyAction !== null}
+                  onCheckedChange={(checked) => void handleEpisodeMonitoring([openEpisode.episodeId], checked)}
+                />
+              </div>
+              <DrawerFacts
+                items={[
+                  { label: "Quality cutoff met", value: openEpisode.qualityCutoffMet ? "Yes" : "No" },
+                  { label: "Last searched", value: openEpisode.lastSearchUtc ? formatDateTime(openEpisode.lastSearchUtc) : "Never" },
+                  {
+                    label: "Next eligible search",
+                    value: openEpisode.nextEligibleSearchUtc ? formatDateTime(openEpisode.nextEligibleSearchUtc) : "As soon as a cycle runs"
+                  }
+                ]}
+              />
+            </DrawerSection>
+
+            <DrawerSection title="Search">
+              <div>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void handleEpisodeSearch([openEpisode.episodeId])}
+                disabled={busyAction !== null}
+              >
+                {busyAction === "episode-search" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                Search for this episode
+              </Button>
+              </div>
+            </DrawerSection>
+          </>
+        ) : null}
+      </Drawer>
+
+      <Drawer
+        open={openCandidate !== null}
+        onOpenChange={(next) => {
+          if (!next) setOpenCandidate(null);
+        }}
+        title={openCandidate?.releaseName ?? "Release"}
+        description={openCandidate ? `${openCandidate.indexerName} · score ${openCandidate.score}` : undefined}
+        footer={
+          <DrawerFooter
+            state={openCandidate?.downloadUrl ? "clean" : "error"}
+            message={openCandidate?.downloadUrl ? openCandidate.summary : "This candidate has no downloadable URL yet"}
+            saveType="button"
+            saveLabel="Send to downloads"
+            saveEnabled={Boolean(openCandidate?.downloadUrl) && busyAction === null}
+            onSave={() => openCandidate && void handleGrabCandidate(openCandidate, false)}
+            onCancel={() => setOpenCandidate(null)}
+          />
+        }
+      >
+        {openCandidate ? (
+          <>
+            <DrawerSection title="What Deluno scored" aside={candidateLabel(openCandidate)}>
+              <DrawerFacts
+                items={[
+                  { label: "Quality", value: openCandidate.quality },
+                  { label: "Score", value: String(openCandidate.score) },
+                  { label: "Meets cutoff", value: openCandidate.meetsCutoff ? "Yes" : "No" },
+                  { label: "Size", value: openCandidate.sizeBytes ? formatBytes(openCandidate.sizeBytes) : "Unknown" },
+                  { label: "Seeders", value: openCandidate.seeders ?? "—" },
+                  ...(openCandidate.estimatedBitrateMbps ? [{ label: "Estimated bitrate", value: `${openCandidate.estimatedBitrateMbps} Mbps` }] : []),
+                  ...(openCandidate.releaseGroup ? [{ label: "Release group", value: openCandidate.releaseGroup }] : [])
+                ]}
+              />
+              <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">{openCandidate.summary}</p>
+            </DrawerSection>
+
+            {openCandidate.decisionReasons?.length ? (
+              <DrawerSection title="Why Deluno likes it">
+                <ul className="grid gap-1">
+                  {openCandidate.decisionReasons.slice(0, 6).map((reason) => (
+                    <li key={reason} className="text-[length:var(--type-body-sm)] text-muted-foreground">
+                      {reason}
+                    </li>
+                  ))}
+                </ul>
+              </DrawerSection>
+            ) : null}
+
+            {openCandidate.riskFlags?.length ? (
+              <DrawerSection title="Risks">
+                <ul className="grid gap-1">
+                  {openCandidate.riskFlags.slice(0, 6).map((risk) => (
+                    <li key={risk} className="text-[length:var(--type-body-sm)] text-destructive">
+                      {risk}
+                    </li>
+                  ))}
+                </ul>
+              </DrawerSection>
+            ) : null}
+
+            <DrawerSection>
+              <div className="flex min-h-[52px] items-center justify-between gap-[var(--grid-gap)] rounded-[10px] border border-warning/30 px-[var(--field-pad-x)] py-2">
+                <div className="min-w-0">
+                  <p className="text-[length:var(--type-body-sm)] font-medium text-foreground">Send it anyway</p>
+                  <p className="mt-0.5 text-[length:var(--type-caption)] text-muted-foreground">
+                    Overrides the scorer. Your reason is stored in activity and search history.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={busyAction !== null || !openCandidate.downloadUrl}
+                  onClick={() => {
+                    const reason = window.prompt("Why force this release?", openCandidate.summary);
+                    if (reason !== null && reason.trim()) void handleGrabCandidate(openCandidate, true, reason.trim());
+                  }}
+                >
+                  {busyAction === "force-grab" ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : null}
+                  Force
+                </Button>
+              </div>
+            </DrawerSection>
+          </>
+        ) : null}
+      </Drawer>
+
+      <Drawer
+        open={openSearch !== null}
+        onOpenChange={(next) => {
+          if (!next) setOpenSearchId(null);
+        }}
+        title={openSearch?.releaseName ?? "Search"}
+        description={openSearch ? `${formatSearchScope(openSearch)} · ${formatDateTime(openSearch.createdUtc)}` : undefined}
+        footer={
+          <DrawerFooter
+            state="clean"
+            readOnly
+            saveLabel="Close"
+            onCancel={() => setOpenSearchId(null)}
+          />
+        }
+      >
+        {openSearch ? (
+          <>
+            <DrawerSection title="Outcome" aside={formatSearchOutcome(openSearch.outcome)}>
+              <DrawerFacts
+                items={[
+                  { label: "Trigger", value: formatTriggerKind(openSearch.triggerKind) },
+                  { label: "Scope", value: formatSearchScope(openSearch) },
+                  { label: "Source", value: openSearch.indexerName ?? "No source yet" },
+                  { label: "Release", value: openSearch.releaseName ?? "None selected" }
+                ]}
+              />
+            </DrawerSection>
+
+            {parseSearchCandidates(openSearch.detailsJson).length ? (
+              <DrawerSection title="Release scoring" aside={`${parseSearchCandidates(openSearch.detailsJson).length} scored`}>
+                <DrawerFacts
+                  items={parseSearchCandidates(openSearch.detailsJson)
+                    .slice(0, 6)
+                    .map((candidate) => ({
+                      label: candidate.releaseName,
+                      value: `${candidate.quality} · ${candidate.score}`
+                    }))}
+                />
+              </DrawerSection>
+            ) : null}
+          </>
+        ) : null}
+      </Drawer>
+
+      <MediaMetadataDrawer
+        open={isMetadataOpen}
+        onOpenChange={setIsMetadataOpen}
+        endpointBase={`/api/series/${series.id}`}
+        mediaType="tv"
+        mediaLabel="series"
+        title={series.title}
+        year={series.startYear}
+        provider={series.metadataProvider}
+        providerId={series.metadataProviderId}
+        posterUrl={series.posterUrl}
+        externalUrl={series.externalUrl}
+        value={{
+          originalTitle: series.originalTitle ?? "",
+          overview: series.overview ?? "",
+          posterUrl: series.posterUrl ?? "",
+          backdropUrl: series.backdropUrl ?? "",
+          rating: series.rating !== null && series.rating !== undefined ? String(series.rating) : "",
+          genres: series.genres ?? "",
+          externalUrl: series.externalUrl ?? "",
+          imdbId: series.imdbId ?? ""
+        }}
+        onChanged={() => revalidator.revalidate()}
+      />
+
       <RemoveMediaDialog
         open={isRemoveConfirmationOpen}
         onOpenChange={setIsRemoveConfirmationOpen}
@@ -1134,39 +1142,7 @@ export function ShowDetailPage() {
   );
 }
 
-function IntakeOriginsCard({ origins, mediaLabel }: { origins: IntakeTitleOriginItem[]; mediaLabel: string }) {
-  if (!origins.length) return null;
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>How this {mediaLabel} was added</CardTitle>
-        <CardDescription>
-          Import-list origin is kept for context. Removing a list never removes this {mediaLabel} or its files.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        {origins.map((origin) => (
-          <div key={origin.id} className="rounded-xl border border-hairline bg-surface-1 p-3">
-            <p className="text-sm font-medium text-foreground">{origin.sourceName}</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Import list · {origin.provider} · first seen {formatDateTime(origin.firstSeenUtc)}
-            </p>
-          </div>
-        ))}
-      </CardContent>
-    </Card>
-  );
-}
-
-function MetadataStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-hairline bg-surface-1 p-3">
-      <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
-      <p className="mt-1 truncate text-sm font-medium text-foreground">{value}</p>
-    </div>
-  );
-}
+/* -------------------------------------------------------------- helpers */
 
 function readStoredCast(metadataJson: string | null): MetadataCastMember[] {
   if (!metadataJson) return [];
@@ -1193,198 +1169,8 @@ function readStoredCast(metadataJson: string | null): MetadataCastMember[] {
   }
 }
 
-function RoutingCard({
-  currentQuality,
-  library,
-  targetQuality,
-  workflow
-}: {
-  currentQuality: string | null;
-  library: LibraryItem | null;
-  targetQuality: string | null;
-  workflow: string;
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Routing and destination</CardTitle>
-        <CardDescription>
-          Final episode filenames are previewed once Deluno has a source file. This shows the active series route now.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-3 sm:grid-cols-2">
-        <MetadataStat label="Library" value={library?.name ?? "Not linked"} />
-        <MetadataStat label="Root folder" value={library?.rootPath || "No root configured"} />
-        <MetadataStat label="Downloads folder" value={library?.downloadsPath || "Client default"} />
-        <MetadataStat label="Workflow" value={workflow === "refine-before-import" ? "Refine before import" : "Standard import"} />
-        <MetadataStat label="Current quality" value={currentQuality ?? "Unknown"} />
-        <MetadataStat label="Target quality" value={targetQuality ?? "WEB 1080p"} />
-      </CardContent>
-    </Card>
-  );
-}
-
-function MetadataCorrectionPanel({
-  busyAction,
-  matches,
-  mediaLabel,
-  searchAttempted,
-  onLink,
-  onQueryChange,
-  onSearch,
-  query
-}: {
-  busyAction: string | null;
-  matches: MetadataSearchResult[];
-  mediaLabel: string;
-  searchAttempted: boolean;
-  onLink: (result: MetadataSearchResult) => Promise<void>;
-  onQueryChange: (value: string) => void;
-  onSearch: () => Promise<void>;
-  query: string;
-}) {
-  return (
-    <div className="rounded-xl border border-hairline bg-surface-1 p-4">
-      <p className="font-display text-sm font-semibold tracking-tight text-foreground">Correct metadata match</p>
-      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-        Search the provider, choose the right {mediaLabel}, then Deluno refreshes artwork, IDs, genres, ratings, and overview from that match.
-      </p>
-      <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-        <input
-          value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
-          className="h-10 rounded-lg border border-hairline bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
-          placeholder={`Search ${mediaLabel} metadata`}
-        />
-        <Button type="button" variant="outline" onClick={() => void onSearch()} disabled={busyAction === "metadata-search"}>
-          {busyAction === "metadata-search" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-          Find match
-        </Button>
-      </div>
-      {matches.length ? (
-        <div className="mt-3 space-y-2">
-          {matches.map((match) => (
-            <div key={`${match.provider}:${match.providerId}`} className="flex items-center justify-between gap-3 rounded-lg border border-hairline bg-background/40 p-3">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-foreground">
-                  {match.title} {match.year ? <span className="text-muted-foreground">({match.year})</span> : null}
-                </p>
-                <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{match.overview ?? `${match.provider.toUpperCase()} ${match.providerId}`}</p>
-              </div>
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => void onLink(match)}
-                disabled={busyAction === `metadata-link:${match.providerId}`}
-              >
-                {busyAction === `metadata-link:${match.providerId}` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-                Use
-              </Button>
-            </div>
-          ))}
-        </div>
-      ) : null}
-      {searchAttempted && matches.length === 0 ? (
-        <p className="mt-3 text-xs text-muted-foreground">No matches found. Try adding year, original title, or IMDb ID keywords.</p>
-      ) : null}
-    </div>
-  );
-}
-
-function ManualMetadataOverridePanel({
-  busyAction,
-  value,
-  onChange,
-  onSave
-}: {
-  busyAction: string | null;
-  value: MetadataOverridePayload;
-  onChange: (value: MetadataOverridePayload) => void;
-  onSave: () => Promise<void>;
-}) {
-  return (
-    <div className="rounded-xl border border-hairline bg-surface-1 p-4">
-      <p className="font-display text-sm font-semibold tracking-tight text-foreground">Manual override</p>
-      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-        Use this when provider metadata is incomplete. Saved values are persisted as local overrides.
-      </p>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-        <input
-          value={value.originalTitle}
-          onChange={(event) => onChange({ ...value, originalTitle: event.target.value })}
-          className="h-10 rounded-lg border border-hairline bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
-          placeholder="Original title"
-        />
-        <input
-          value={value.imdbId}
-          onChange={(event) => onChange({ ...value, imdbId: event.target.value })}
-          className="h-10 rounded-lg border border-hairline bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
-          placeholder="IMDb ID"
-        />
-        <input
-          value={value.posterUrl}
-          onChange={(event) => onChange({ ...value, posterUrl: event.target.value })}
-          className="h-10 rounded-lg border border-hairline bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
-          placeholder="Poster URL"
-        />
-        <input
-          value={value.backdropUrl}
-          onChange={(event) => onChange({ ...value, backdropUrl: event.target.value })}
-          className="h-10 rounded-lg border border-hairline bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
-          placeholder="Backdrop URL"
-        />
-        <input
-          value={value.rating}
-          onChange={(event) => onChange({ ...value, rating: event.target.value })}
-          className="h-10 rounded-lg border border-hairline bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
-          placeholder="Rating (0-10)"
-        />
-        <input
-          value={value.genres}
-          onChange={(event) => onChange({ ...value, genres: event.target.value })}
-          className="h-10 rounded-lg border border-hairline bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
-          placeholder="Genres (comma separated)"
-        />
-        <input
-          value={value.externalUrl}
-          onChange={(event) => onChange({ ...value, externalUrl: event.target.value })}
-          className="h-10 rounded-lg border border-hairline bg-background px-3 text-sm text-foreground outline-none focus:border-primary sm:col-span-2"
-          placeholder="External URL"
-        />
-      </div>
-      <div className="mt-3">
-        <textarea
-          value={value.overview}
-          onChange={(event) => onChange({ ...value, overview: event.target.value })}
-          className="min-h-24 w-full rounded-lg border border-hairline bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
-          placeholder="Overview"
-        />
-      </div>
-      <div className="mt-3">
-        <Button type="button" variant="outline" size="sm" onClick={() => void onSave()} disabled={busyAction === "metadata-override"}>
-          {busyAction === "metadata-override" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-          Save manual metadata
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-const episodeFilterOptions: Array<{ key: EpisodeFilter; label: string }> = [
-  { key: "all", label: "All" },
-  { key: "missing", label: "Missing" },
-  { key: "upgrade", label: "Upgrade" },
-  { key: "monitored", label: "Monitored" },
-  { key: "imported", label: "Imported" }
-];
-
-function matchesEpisodeFilter(
-  episode: SeriesEpisodeInventoryItem,
-  filter: EpisodeFilter,
-  query: string
-) {
-  const episodeCode = formatEpisodeCode(episode).toLowerCase();
-  const haystack = `${episodeCode} ${episode.title ?? ""}`.toLowerCase();
+function matchesEpisodeFilter(episode: SeriesEpisodeInventoryItem, filter: EpisodeFilter, query: string) {
+  const haystack = `${formatEpisodeCode(episode)} ${episode.title ?? ""}`.toLowerCase();
   const matchesQuery = !query.trim() || haystack.includes(query.trim().toLowerCase());
 
   const matchesFilter =
@@ -1398,34 +1184,30 @@ function matchesEpisodeFilter(
 }
 
 function buildSeasonGroups(episodes: SeriesEpisodeInventoryItem[]) {
-  const groups = new Map<number, SeriesEpisodeInventoryItem[]>();
+  const seasons = new Map<number, SeriesEpisodeInventoryItem[]>();
+
   for (const episode of episodes) {
-    const current = groups.get(episode.seasonNumber) ?? [];
+    const current = seasons.get(episode.seasonNumber) ?? [];
     current.push(episode);
-    groups.set(episode.seasonNumber, current);
+    seasons.set(episode.seasonNumber, current);
   }
 
-  return [...groups.entries()]
-    .sort((left, right) => left[0] - right[0])
+  return [...seasons.entries()]
+    .sort(([left], [right]) => left - right)
     .map(([seasonNumber, seasonEpisodes]) => {
-      const sortedEpisodes = [...seasonEpisodes].sort(
-        (left, right) => left.episodeNumber - right.episodeNumber
-      );
+      const sorted = [...seasonEpisodes].sort((left, right) => left.episodeNumber - right.episodeNumber);
       return {
         seasonNumber,
-        episodes: sortedEpisodes,
-        importedCount: sortedEpisodes.filter((item) => item.hasFile).length,
-        monitoredCount: sortedEpisodes.filter((item) => item.monitored).length,
-        missingCount: sortedEpisodes.filter((item) => item.wantedStatus === "missing" || !item.hasFile)
-          .length
+        episodes: sorted,
+        importedCount: sorted.filter((item) => item.hasFile).length,
+        missingCount: sorted.filter((item) => item.wantedStatus === "missing" || !item.hasFile).length,
+        monitoredCount: sorted.filter((item) => item.monitored).length
       };
     });
 }
 
 function formatEpisodeCode(episode: SeriesEpisodeInventoryItem) {
-  return `S${String(episode.seasonNumber).padStart(2, "0")}E${String(
-    episode.episodeNumber
-  ).padStart(2, "0")}`;
+  return `S${String(episode.seasonNumber).padStart(2, "0")}E${String(episode.episodeNumber).padStart(2, "0")}`;
 }
 
 function formatSeasonLabel(seasonNumber: number) {
@@ -1444,6 +1226,19 @@ function formatWantedStatus(value: string) {
       return "Covered";
     default:
       return "Tracked";
+  }
+}
+
+function wantedTone(value: string): "ok" | "warn" | "info" | "muted" {
+  switch (value) {
+    case "covered":
+      return "ok";
+    case "missing":
+      return "warn";
+    case "upgrade":
+      return "info";
+    default:
+      return "muted";
   }
 }
 
@@ -1469,194 +1264,49 @@ interface SearchPlanCandidate {
   estimatedBitrateMbps?: number | null;
 }
 
-function ReleaseCandidatePicker({
-  candidates,
-  busyAction,
-  onGrab
-}: {
-  candidates: SearchPlanCandidate[];
-  busyAction: string | null;
-  onGrab: (candidate: SearchPlanCandidate, force?: boolean, overrideReason?: string) => Promise<void>;
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Choose a release</CardTitle>
-        <CardDescription>
-          Deluno scored these releases. Pick the one you want to send to the linked download client.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {candidates.map((candidate, index) => {
-          const busyKey = `grab:${candidate.indexerName}:${candidate.releaseName}`;
-          const forceBusyKey = `force-grab:${candidate.indexerName}:${candidate.releaseName}`;
-          const isRejected = candidate.decisionStatus === "rejected";
-          const shouldNudgeForce = isRejected || !candidate.meetsCutoff || index > 0;
-          return (
-            <div key={`${candidate.indexerName}:${candidate.releaseName}`} className="rounded-xl border border-hairline bg-surface-1 p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant={index === 0 && !isRejected ? "success" : "default"}>{index === 0 && !isRejected ? "Best match" : `#${index + 1}`}</Badge>
-                    <Badge variant={candidateGroupVariant(candidate)}>{candidateGroupLabel(candidate)}</Badge>
-                    <Badge variant={isRejected ? "destructive" : candidate.meetsCutoff ? "success" : "warning"}>{candidate.decisionStatus || (candidate.meetsCutoff ? "eligible" : "below cutoff")}</Badge>
-                    <Badge variant={candidate.meetsCutoff ? "success" : "warning"}>{candidate.quality}</Badge>
-                    <span className="font-mono text-[11px] text-muted-foreground">score {candidate.score}</span>
-                    {candidate.qualityDelta !== undefined ? (
-                      <span className="font-mono text-[11px] text-muted-foreground">qΔ {candidate.qualityDelta > 0 ? "+" : ""}{candidate.qualityDelta}</span>
-                    ) : null}
-                    {candidate.estimatedBitrateMbps ? (
-                      <span className="font-mono text-[11px] text-muted-foreground">{candidate.estimatedBitrateMbps} Mbps est.</span>
-                    ) : null}
-                    {candidate.seeders !== null && candidate.seeders !== undefined ? (
-                      <span className="font-mono text-[11px] text-muted-foreground">{candidate.seeders} seeders</span>
-                    ) : null}
-                    {candidate.sizeBytes ? (
-                      <span className="font-mono text-[11px] text-muted-foreground">{formatBytes(candidate.sizeBytes)}</span>
-                    ) : null}
-                  </div>
-                  <p className="mt-2 truncate text-sm font-semibold text-foreground">{candidate.releaseName}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{candidate.indexerName} · {candidate.summary}</p>
-                  <DecisionReasonList candidate={candidate} />
-                </div>
-                <div className="flex flex-wrap justify-end gap-2">
-                  <Button
-                    size="sm"
-                    disabled={busyAction !== null || !candidate.downloadUrl}
-                    onClick={() => void onGrab(candidate, false)}
-                  >
-                    {busyAction === busyKey ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-                    {candidate.downloadUrl ? "Grab" : "No URL"}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className={shouldNudgeForce ? "border-destructive/35 bg-destructive/10 text-destructive hover:bg-destructive/15" : undefined}
-                    disabled={busyAction !== null || !candidate.downloadUrl}
-                    title="Force sends this release even if Deluno would normally prefer or reject something else."
-                    onClick={() => {
-                      const reason = window.prompt("Why force this release? This reason is stored in activity and search history.", candidate.summary);
-                      if (reason !== null && reason.trim()) {
-                        void onGrab(candidate, true, reason.trim());
-                      }
-                    }}
-                  >
-                    {busyAction === forceBusyKey ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-                    Force
-                  </Button>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </CardContent>
-    </Card>
-  );
-}
-
-function candidateGroupLabel(candidate: SearchPlanCandidate) {
+function candidateLabel(candidate: SearchPlanCandidate) {
   if (candidate.decisionStatus === "rejected") return "Rejected";
   if (["preferred", "eligible"].includes(candidate.decisionStatus || "") && candidate.meetsCutoff) return "Recommended";
   return "Needs review";
 }
 
-function candidateGroupVariant(candidate: SearchPlanCandidate) {
-  if (candidate.decisionStatus === "rejected") return "destructive" as const;
-  if (["preferred", "eligible"].includes(candidate.decisionStatus || "") && candidate.meetsCutoff) return "success" as const;
-  return "warning" as const;
-}
-
-function SearchCandidateBreakdown({ detailsJson }: { detailsJson: string | null }) {
-  const candidates = parseSearchCandidates(detailsJson);
-  if (!candidates.length) return null;
-
-  return (
-    <div className="mt-3 rounded-xl border border-hairline bg-background/40 p-3">
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Release scoring</p>
-        <span className="font-mono text-[10px] text-muted-foreground">{candidates.length} candidates</span>
-      </div>
-      <div className="space-y-2">
-        {candidates.slice(0, 3).map((candidate) => (
-          <div key={`${candidate.indexerName}:${candidate.releaseName}`} className="rounded-lg border border-hairline bg-surface-1 p-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">{candidate.releaseName}</p>
-              <Badge variant={candidate.meetsCutoff ? "success" : "default"}>{candidate.quality}</Badge>
-              <span className="font-mono text-[10px] text-muted-foreground">{candidate.score}</span>
-            </div>
-            <p className="mt-1 text-[11px] text-muted-foreground">{candidate.summary}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function DecisionReasonList({ candidate }: { candidate: SearchPlanCandidate }) {
-  const reasons = candidate.decisionReasons?.slice(0, 3) ?? [];
-  const risks = candidate.riskFlags?.slice(0, 3) ?? [];
-  if (!reasons.length && !risks.length) return null;
-
-  return (
-    <div className="mt-3 grid gap-2 md:grid-cols-2">
-      {reasons.length ? (
-        <div className="rounded-lg border border-hairline bg-background/35 p-2">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Why Deluno likes it</p>
-          <ul className="mt-1 space-y-1 text-[11px] text-muted-foreground">
-            {reasons.map((reason) => <li key={reason}>{reason}</li>)}
-          </ul>
-        </div>
-      ) : null}
-      {risks.length ? (
-        <div className="rounded-lg border border-destructive/25 bg-destructive/5 p-2">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-destructive">Risks</p>
-          <ul className="mt-1 space-y-1 text-[11px] text-destructive/85">
-            {risks.map((risk) => <li key={risk}>{risk}</li>)}
-          </ul>
-        </div>
-      ) : null}
-    </div>
-  );
+function candidateTone(candidate: SearchPlanCandidate): "ok" | "warn" | "bad" {
+  if (candidate.decisionStatus === "rejected") return "bad";
+  if (["preferred", "eligible"].includes(candidate.decisionStatus || "") && candidate.meetsCutoff) return "ok";
+  return "warn";
 }
 
 function parseSearchCandidates(detailsJson: string | null): SearchPlanCandidate[] {
   if (!detailsJson) return [];
 
   try {
-    const parsed = JSON.parse(detailsJson) as {
-      Candidates?: SearchPlanCandidate[];
-      candidates?: SearchPlanCandidate[];
-      searchPlan?: { Candidates?: SearchPlanCandidate[]; candidates?: SearchPlanCandidate[] };
-    };
-    const candidates = parsed.Candidates ?? parsed.candidates ?? parsed.searchPlan?.Candidates ?? parsed.searchPlan?.candidates ?? [];
-    return candidates.map(normalizeSearchCandidate).filter((candidate) => candidate.releaseName && candidate.indexerName);
+    const parsed = JSON.parse(detailsJson) as { candidates?: unknown };
+    if (!Array.isArray(parsed.candidates)) return [];
+    return parsed.candidates
+      .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
+      .map((item) => normalizeSearchCandidate(item));
   } catch {
     return [];
   }
 }
 
-function normalizeSearchCandidate(value: SearchPlanCandidate | Record<string, unknown>): SearchPlanCandidate {
-  const item = value as Record<string, unknown>;
+function normalizeSearchCandidate(value: Record<string, unknown>): SearchPlanCandidate {
   return {
-    releaseName: String(item.releaseName ?? item.ReleaseName ?? ""),
-    indexerId: (item.indexerId ?? item.IndexerId ?? null) as string | null,
-    indexerName: String(item.indexerName ?? item.IndexerName ?? ""),
-    quality: String(item.quality ?? item.Quality ?? ""),
-    score: Number(item.score ?? item.Score ?? 0),
-    meetsCutoff: Boolean(item.meetsCutoff ?? item.MeetsCutoff ?? false),
-    summary: String(item.summary ?? item.Summary ?? ""),
-    downloadUrl: (item.downloadUrl ?? item.DownloadUrl ?? null) as string | null,
-    sizeBytes: (item.sizeBytes ?? item.SizeBytes ?? null) as number | null,
-    seeders: (item.seeders ?? item.Seeders ?? null) as number | null,
-    decisionStatus: String(item.decisionStatus ?? item.DecisionStatus ?? ""),
-    decisionReasons: normalizeStringArray(item.decisionReasons ?? item.DecisionReasons),
-    riskFlags: normalizeStringArray(item.riskFlags ?? item.RiskFlags),
-    qualityDelta: Number(item.qualityDelta ?? item.QualityDelta ?? 0),
-    customFormatScore: Number(item.customFormatScore ?? item.CustomFormatScore ?? 0),
-    seederScore: Number(item.seederScore ?? item.SeederScore ?? 0),
-    sizeScore: Number(item.sizeScore ?? item.SizeScore ?? 0),
-    releaseGroup: (item.releaseGroup ?? item.ReleaseGroup ?? null) as string | null,
-    estimatedBitrateMbps: (item.estimatedBitrateMbps ?? item.EstimatedBitrateMbps ?? null) as number | null
+    releaseName: String(value.releaseName ?? value.ReleaseName ?? "Unknown release"),
+    indexerId: (value.indexerId ?? value.IndexerId ?? null) as string | null,
+    indexerName: String(value.indexerName ?? value.IndexerName ?? "Unknown source"),
+    quality: String(value.quality ?? value.Quality ?? "Unknown"),
+    score: Number(value.score ?? value.Score ?? 0),
+    meetsCutoff: Boolean(value.meetsCutoff ?? value.MeetsCutoff ?? false),
+    summary: String(value.summary ?? value.Summary ?? ""),
+    downloadUrl: (value.downloadUrl ?? value.DownloadUrl ?? null) as string | null,
+    sizeBytes: (value.sizeBytes ?? value.SizeBytes ?? null) as number | null,
+    seeders: (value.seeders ?? value.Seeders ?? null) as number | null,
+    decisionStatus: (value.decisionStatus ?? value.DecisionStatus) as string | undefined,
+    decisionReasons: normalizeStringArray(value.decisionReasons ?? value.DecisionReasons),
+    riskFlags: normalizeStringArray(value.riskFlags ?? value.RiskFlags),
+    releaseGroup: (value.releaseGroup ?? value.ReleaseGroup ?? null) as string | null,
+    estimatedBitrateMbps: (value.estimatedBitrateMbps ?? value.EstimatedBitrateMbps ?? null) as number | null
   };
 }
 
@@ -1681,34 +1331,20 @@ function formatFailureKind(value: string) {
   }
 }
 
-function formatSearchActionMessage(
-  mediaLabel: string,
-  best: string | null,
-  payload: {
-    summary?: string;
-    dispatchStatus?: string | null;
-    dispatchMessage?: string | null;
-    forceOverride?: boolean;
-    candidates?: unknown[];
-  }
+function formatGrabMessage(
+  best: string,
+  payload: { forceOverride?: boolean; dispatchStatus?: string; dispatchMessage?: string }
 ) {
-  if (!best) {
-    return payload.summary ?? `Manual ${mediaLabel} search completed with no accepted release.`;
-  }
-
-  const candidateCount = payload.candidates?.length ?? 0;
-  const candidateLabel = `${candidateCount} candidate${candidateCount === 1 ? "" : "s"} scored`;
-  const prefix = payload.forceOverride ? `Force grabbed ${mediaLabel}` : `Manual ${mediaLabel} search`;
-
+  const prefix = payload.forceOverride ? "Forced" : "Sent";
   switch (payload.dispatchStatus) {
     case "sent":
-      return `${prefix} sent ${best} to the download client. ${candidateLabel}.`;
+      return `${prefix} ${best} to the download client.`;
     case "planned":
-      return `${prefix} matched ${best}, but no downloadable URL was available yet. ${candidateLabel}.`;
+      return `Matched ${best}, but no downloadable URL was available yet.`;
     case "failed":
-      return `${prefix} matched ${best}, but the download client rejected the grab${payload.dispatchMessage ? `: ${payload.dispatchMessage}` : "."}`;
+      return `Matched ${best}, but the download client rejected it${payload.dispatchMessage ? `: ${payload.dispatchMessage}` : "."}`;
     default:
-      return `${prefix} matched ${best}. ${candidateLabel}.`;
+      return `Matched ${best}.`;
   }
 }
 
@@ -1726,29 +1362,29 @@ function formatDispatchSummary(payload: {
       payload.failedCount ? `${payload.failedCount} failed` : null
     ].filter(Boolean);
 
-    return parts.length ? `Dispatch: ${parts.join(", ")}.` : "No releases were dispatched.";
+    return parts.length ? `Dispatch: ${parts.join(", ")}.` : "Nothing was dispatched.";
   }
 
   switch (payload.dispatchStatus) {
     case "sent":
-      return "Release sent to the download client.";
+      return "Sent to the download client.";
     case "planned":
-      return "Release matched, but no downloadable URL was available yet.";
+      return "Matched, but no downloadable URL was available yet.";
     case "failed":
-      return `Download client rejected the grab${payload.dispatchMessage ? `: ${payload.dispatchMessage}` : "."}`;
+      return `The download client rejected it${payload.dispatchMessage ? `: ${payload.dispatchMessage}` : "."}`;
     default:
       return "Dispatch recorded.";
   }
 }
 
-function getDispatchBadgeVariant(status: string) {
+function dispatchTone(status: string): "ok" | "warn" | "bad" | "info" {
   switch (status) {
     case "sent":
-      return "success";
+      return "ok";
     case "failed":
-      return "destructive";
+      return "bad";
     case "planned":
-      return "warning";
+      return "warn";
     default:
       return "info";
   }
@@ -1767,20 +1403,44 @@ function formatDispatchStatus(status: string) {
   }
 }
 
-function formatSearchHistoryContext(item: SeriesSearchHistoryItem) {
-  const parts: string[] = [];
-
+function formatSearchScope(item: SeriesSearchHistoryItem) {
   if (item.seasonNumber !== null && item.episodeNumber !== null) {
-    parts.push(
-      `S${String(item.seasonNumber).padStart(2, "0")}E${String(item.episodeNumber).padStart(2, "0")}`
-    );
+    return `S${String(item.seasonNumber).padStart(2, "0")}E${String(item.episodeNumber).padStart(2, "0")}`;
   }
+  if (item.seasonNumber !== null) return formatSeasonLabel(item.seasonNumber);
+  return "Whole show";
+}
 
-  if (item.indexerName) {
-    parts.push(item.indexerName);
+function searchOutcomeTone(outcome: string): "ok" | "warn" | "bad" | "muted" {
+  switch (outcome) {
+    case "matched":
+      return "ok";
+    case "error":
+      return "bad";
+    case "blocked":
+      return "warn";
+    default:
+      return "muted";
   }
+}
 
-  return parts.length ? parts.join(" · ") : "No source yet";
+function formatSearchOutcome(outcome: string) {
+  switch (outcome) {
+    case "matched":
+      return "Matched";
+    case "no_match":
+      return "No match";
+    case "error":
+      return "Error";
+    case "skipped":
+      return "Skipped";
+    case "pending":
+      return "Pending";
+    case "blocked":
+      return "Blocked";
+    default:
+      return outcome.charAt(0).toUpperCase() + outcome.slice(1).replace(/[-_]/g, " ");
+  }
 }
 
 function formatTriggerKind(value: string) {
@@ -1794,6 +1454,10 @@ function formatTriggerKind(value: string) {
     default:
       return "Scheduled";
   }
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", year: "numeric" }).format(new Date(value));
 }
 
 function formatDateTime(value: string) {
@@ -1810,13 +1474,4 @@ function formatBytes(value: number) {
   const units = ["B", "KB", "MB", "GB", "TB"];
   const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
   return `${(value / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
-}
-
-function isValidHttpUrl(value: string) {
-  try {
-    const parsed = new URL(value);
-    return parsed.protocol === "http:" || parsed.protocol === "https:";
-  } catch {
-    return false;
-  }
 }

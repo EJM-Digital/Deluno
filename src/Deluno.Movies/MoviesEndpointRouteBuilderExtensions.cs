@@ -1008,14 +1008,17 @@ public static class MoviesEndpointRouteBuilderExtensions
                 movie.Id,
                 movie.MetadataProvider ?? "manual",
                 movie.MetadataProviderId ?? movie.ImdbId ?? movie.Id,
-                string.IsNullOrWhiteSpace(request.OriginalTitle) ? movie.OriginalTitle : request.OriginalTitle.Trim(),
-                string.IsNullOrWhiteSpace(request.Overview) ? movie.Overview : request.Overview.Trim(),
-                string.IsNullOrWhiteSpace(request.PosterUrl) ? movie.PosterUrl : request.PosterUrl.Trim(),
-                string.IsNullOrWhiteSpace(request.BackdropUrl) ? movie.BackdropUrl : request.BackdropUrl.Trim(),
-                request.Rating ?? movie.Rating,
-                string.IsNullOrWhiteSpace(request.Genres) ? movie.Genres : request.Genres.Trim(),
-                string.IsNullOrWhiteSpace(request.ExternalUrl) ? movie.ExternalUrl : request.ExternalUrl.Trim(),
-                string.IsNullOrWhiteSpace(request.ImdbId) ? movie.ImdbId : request.ImdbId.Trim(),
+                // PUT replaces the override set: a field that arrives blank clears the
+                // stored value. Treating blank as "keep" made a manual override
+                // impossible to undo — you could only replace it with other text.
+                NormalizeOverride(request.OriginalTitle),
+                NormalizeOverride(request.Overview),
+                NormalizeOverride(request.PosterUrl),
+                NormalizeOverride(request.BackdropUrl),
+                request.Rating,
+                NormalizeOverride(request.Genres),
+                NormalizeOverride(request.ExternalUrl),
+                NormalizeOverride(request.ImdbId),
                 JsonSerializer.Serialize(new
                 {
                     kind = "manual-metadata-override",
@@ -1380,6 +1383,10 @@ public static class MoviesEndpointRouteBuilderExtensions
 
         return endpoints;
     }
+
+    /// <summary>Blank means "no override", so it is stored as null rather than kept.</summary>
+    private static string? NormalizeOverride(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static Dictionary<string, string[]> Validate(CreateMovieRequest request)
     {

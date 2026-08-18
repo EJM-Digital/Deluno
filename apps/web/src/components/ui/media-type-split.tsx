@@ -11,7 +11,7 @@
  *
  * Use `useMediaTypeSplit` to get both from one piece of state.
  */
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { cn } from "../../lib/utils";
 import { SegmentedControl } from "./segmented-control";
 
@@ -57,8 +57,23 @@ export function MediaTypeFilter({
  * Deliberately heavier than a column header: it is a heading for the rows beneath
  * it, so it takes a full surface, both borders and foreground-strength type. A
  * group divider that reads as a hairline gets skipped over.
+ *
+ * Media type is the usual grouping, but the shape is general — a season on a TV
+ * show is the same idea. `actions` is for something that acts on the whole
+ * group ("Search season"), never for a row-level control.
  */
-export function ListGroupHeader({ label, count }: { label: string; count?: number }) {
+export function ListGroupHeader({
+  label,
+  count,
+  detail,
+  actions
+}: {
+  label: string;
+  count?: number;
+  /** Short muted line after the count, e.g. "6 of 6 imported". */
+  detail?: ReactNode;
+  actions?: ReactNode;
+}) {
   return (
     <div
       role="row"
@@ -71,6 +86,10 @@ export function ListGroupHeader({ label, count }: { label: string; count?: numbe
       {count !== undefined ? (
         <span className="font-normal normal-case tracking-normal text-muted-foreground">{count}</span>
       ) : null}
+      {detail !== undefined ? (
+        <span className="truncate font-normal normal-case tracking-normal text-muted-foreground">{detail}</span>
+      ) : null}
+      {actions ? <span className="ml-auto flex shrink-0 items-center gap-2">{actions}</span> : null}
     </div>
   );
 }

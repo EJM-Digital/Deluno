@@ -38,7 +38,6 @@ export function ConfirmDialog({
           )}
           aria-describedby="confirm-description"
         >
-          <Dialog.Title className="sr-only">{title}</Dialog.Title>
           <div className="p-6">
             <div className="mb-4 flex items-start gap-[var(--grid-gap)]">
               {confirmVariant === "destructive" && (
@@ -47,7 +46,9 @@ export function ConfirmDialog({
                 </span>
               )}
               <div>
-                <p className="font-semibold text-foreground">{title}</p>
+                {/* The visible heading is the dialog's accessible name. A separate
+                    sr-only Dialog.Title made screen readers announce it twice. */}
+                <Dialog.Title className="font-semibold text-foreground">{title}</Dialog.Title>
                 <p id="confirm-description" className="mt-1 text-sm text-muted-foreground leading-relaxed">
                   {description}
                 </p>

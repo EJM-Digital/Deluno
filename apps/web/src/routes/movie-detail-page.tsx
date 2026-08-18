@@ -686,17 +686,10 @@ export function MovieDetailPage() {
 
         {activeDetailSection === "history" ? <div className="space-y-[var(--page-gap)]">
 
-          <Card id="decision-trail">
-            <CardHeader>
-              <CardTitle>Decision trail</CardTitle>
-              <CardDescription>
-                Search, grab, import, and retry decisions recorded for this movie.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <DecisionExplanationList decisions={decisions} />
-            </CardContent>
-          </Card>
+          {/* The list is its own ListCard now — it carries the title and the drawer. */}
+          <div id="decision-trail">
+            <DecisionExplanationList decisions={decisions} />
+          </div>
 
           <Card id="import-activity">
             <CardHeader>

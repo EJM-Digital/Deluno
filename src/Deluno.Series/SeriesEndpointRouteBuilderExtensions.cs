@@ -614,14 +614,17 @@ public static class SeriesEndpointRouteBuilderExtensions
                 item.Id,
                 item.MetadataProvider ?? "manual",
                 item.MetadataProviderId ?? item.ImdbId ?? item.Id,
-                string.IsNullOrWhiteSpace(request.OriginalTitle) ? item.OriginalTitle : request.OriginalTitle.Trim(),
-                string.IsNullOrWhiteSpace(request.Overview) ? item.Overview : request.Overview.Trim(),
-                string.IsNullOrWhiteSpace(request.PosterUrl) ? item.PosterUrl : request.PosterUrl.Trim(),
-                string.IsNullOrWhiteSpace(request.BackdropUrl) ? item.BackdropUrl : request.BackdropUrl.Trim(),
-                request.Rating ?? item.Rating,
-                string.IsNullOrWhiteSpace(request.Genres) ? item.Genres : request.Genres.Trim(),
-                string.IsNullOrWhiteSpace(request.ExternalUrl) ? item.ExternalUrl : request.ExternalUrl.Trim(),
-                string.IsNullOrWhiteSpace(request.ImdbId) ? item.ImdbId : request.ImdbId.Trim(),
+                // PUT replaces the override set: a field that arrives blank clears the
+                // stored value. Treating blank as "keep" made a manual override
+                // impossible to undo — you could only replace it with other text.
+                NormalizeOverride(request.OriginalTitle),
+                NormalizeOverride(request.Overview),
+                NormalizeOverride(request.PosterUrl),
+                NormalizeOverride(request.BackdropUrl),
+                request.Rating,
+                NormalizeOverride(request.Genres),
+                NormalizeOverride(request.ExternalUrl),
+                NormalizeOverride(request.ImdbId),
                 JsonSerializer.Serialize(new
                 {
                     kind = "manual-metadata-override",
@@ -1953,6 +1956,10 @@ public static class SeriesEndpointRouteBuilderExtensions
 
         return endpoints;
     }
+
+    /// <summary>Blank means "no override", so it is stored as null rather than kept.</summary>
+    private static string? NormalizeOverride(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static Dictionary<string, string[]> Validate(CreateSeriesRequest request)
     {
