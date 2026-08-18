@@ -493,6 +493,14 @@ public static class SeriesEndpointRouteBuilderExtensions
             }
 
             var updated = await ApplyMetadataAsync(repository, item.Id, match, cancellationToken);
+            await SyncCatalogueAsync(
+                repository,
+                metadataProvider,
+                activityFeedRepository,
+                item.Id,
+                item.Title,
+                match.ProviderId,
+                cancellationToken);
             await activityFeedRepository.RecordActivityAsync(
                 "metadata.series.refreshed",
                 $"{item.Title} metadata was refreshed from {match.Provider.ToUpperInvariant()}.",
@@ -545,6 +553,14 @@ public static class SeriesEndpointRouteBuilderExtensions
             }
 
             var updated = await ApplyMetadataAsync(repository, item.Id, match, cancellationToken);
+            await SyncCatalogueAsync(
+                repository,
+                metadataProvider,
+                activityFeedRepository,
+                item.Id,
+                item.Title,
+                match.ProviderId,
+                cancellationToken);
             await activityFeedRepository.RecordActivityAsync(
                 "metadata.series.linked",
                 $"{item.Title} metadata was linked to {match.Provider.ToUpperInvariant()} item {match.ProviderId}.",
@@ -1960,6 +1976,72 @@ public static class SeriesEndpointRouteBuilderExtensions
     /// <summary>Blank means "no override", so it is stored as null rather than kept.</summary>
     private static string? NormalizeOverride(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    /// <summary>
+    /// Pull the provider's season/episode list in after a match is applied.
+    ///
+    /// This is what makes the library a model of the show rather than a mirror of
+    /// the folder: episodes exist, and carry their title and air date, before any
+    /// file for them does. A provider that cannot answer leaves the inventory
+    /// exactly as it was.
+    /// </summary>
+    private static async Task<SeriesCatalogueSyncResult> SyncCatalogueAsync(
+        ISeriesCatalogRepository repository,
+        IMetadataProvider metadataProvider,
+        IActivityFeedRepository activityFeedRepository,
+        string seriesId,
+        string seriesTitle,
+        string? providerId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(providerId))
+        {
+            return SeriesCatalogueSyncResult.None;
+        }
+
+        IReadOnlyList<MetadataSeason> seasons;
+        try
+        {
+            seasons = await metadataProvider.GetSeriesCatalogueAsync(providerId, cancellationToken);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            // A catalogue that cannot be fetched must never fail the metadata
+            // request that triggered it — the title itself linked fine.
+            return SeriesCatalogueSyncResult.None;
+        }
+
+        var episodes = seasons
+            .SelectMany(season => season.Episodes)
+            .Select(episode => new CatalogueEpisodeItem(
+                episode.SeasonNumber,
+                episode.EpisodeNumber,
+                episode.Title,
+                episode.Overview,
+                episode.AirDateUtc))
+            .ToArray();
+
+        if (episodes.Length == 0)
+        {
+            return SeriesCatalogueSyncResult.None;
+        }
+
+        var result = await repository.SyncEpisodeCatalogueAsync(seriesId, episodes, "tmdb", cancellationToken);
+
+        if (result.AddedCount > 0)
+        {
+            await activityFeedRepository.RecordActivityAsync(
+                "metadata.series.catalogue",
+                $"Deluno learned {result.AddedCount} more episode{(result.AddedCount == 1 ? "" : "s")} of {seriesTitle} from the metadata provider.",
+                JsonSerializer.Serialize(result),
+                null,
+                "series",
+                seriesId,
+                cancellationToken);
+        }
+
+        return result;
+    }
 
     private static Dictionary<string, string[]> Validate(CreateSeriesRequest request)
     {

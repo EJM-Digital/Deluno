@@ -15,7 +15,46 @@ public sealed record MetadataSearchResult(
     IReadOnlyList<string> Genres,
     string? ImdbId,
     string? ExternalUrl,
-    IReadOnlyList<MetadataCastMember>? Cast = null);
+    IReadOnlyList<MetadataCastMember>? Cast = null,
+    // Movies carry several dates and they mean different things: a film can be
+    // in cinemas months before it is obtainable. `Year` alone cannot express
+    // "not out yet", which is what an availability rule needs to decide.
+    DateOnly? InCinemasDate = null,
+    DateOnly? DigitalReleaseDate = null,
+    DateOnly? PhysicalReleaseDate = null);
+
+/// <summary>
+/// When a film can actually be obtained. A cinema date is not an availability
+/// date — searching on it wastes every cycle until a digital release exists.
+/// </summary>
+public sealed record MetadataReleaseDates(
+    DateOnly? InCinemas,
+    DateOnly? Digital,
+    DateOnly? Physical)
+{
+    public static readonly MetadataReleaseDates None = new(null, null, null);
+
+    public bool HasAny => InCinemas is not null || Digital is not null || Physical is not null;
+}
+
+/// <summary>One season of a series as the provider describes it.</summary>
+public sealed record MetadataSeason(
+    int SeasonNumber,
+    string? Name,
+    int EpisodeCount,
+    DateOnly? AirDate,
+    IReadOnlyList<MetadataEpisode> Episodes);
+
+/// <summary>
+/// One episode as the provider describes it — whether or not a file for it
+/// exists. The catalogue is the provider's; what is on disk is an overlay.
+/// </summary>
+public sealed record MetadataEpisode(
+    int SeasonNumber,
+    int EpisodeNumber,
+    string? Title,
+    string? Overview,
+    DateTimeOffset? AirDateUtc);
 
 public sealed record MetadataCastMember(
     string Name,

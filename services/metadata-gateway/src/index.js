@@ -1,7 +1,15 @@
 const CACHE_TTL_SECONDS = 60 * 60 * 12;
+// A catalogue changes when a broadcaster announces an episode, so it expires
+// sooner than a search result. Six hours means a new episode shows up the same
+// day without asking TMDb for a season list on every refresh.
+const CATALOGUE_TTL_SECONDS = 60 * 60 * 6;
 const RATE_WINDOW_SECONDS = 60;
 const RATE_LIMIT_PER_WINDOW = 30;
 const MAX_RESULTS = 6;
+// A series with 10 seasons is 11 upstream calls. Doing that fan-out here rather
+// than in the app is the whole point of the gateway: one client request, one
+// cached answer, and TMDb sees a single origin it can rate-limit sensibly.
+const MAX_SEASONS = 50;
 const ARTWORK_CACHE_TTL_SECONDS = 60 * 60 * 24 * 30;
 const ARTWORK_SIZES = new Set(["w92", "w185", "w342", "w500", "w780", "w1280", "original"]);
 
@@ -21,11 +29,12 @@ export default {
       return serveArtwork(request, url);
     }
 
-    if (url.pathname !== "/metadata/search") {
+    const route = matchRoute(url.pathname);
+    if (!route) {
       return json({ error: "not_found" }, 404);
     }
 
-    const lookup = parseLookup(url.searchParams);
+    const lookup = route.kind === "search" ? parseLookup(url.searchParams) : { value: null };
     if (lookup.error) {
       return json({ error: "invalid_request", message: lookup.error }, 400);
     }
@@ -41,6 +50,10 @@ export default {
         { error: "rate_limited", message: "Please try title matching again shortly." },
         429,
         { "Retry-After": String(rate.retryAfterSeconds) });
+    }
+
+    if (route.kind !== "search") {
+      return serveCatalogueRoute(route, env);
     }
 
     const key = buildCacheKey(lookup.value);
@@ -74,6 +87,163 @@ export default {
     }
   }
 };
+
+/**
+ * The gateway serves three things: title search, a series' season/episode
+ * catalogue, and a movie's release dates. The last two are what let Deluno know
+ * an episode exists before a file for it does, and when a film is obtainable.
+ */
+export function matchRoute(pathname) {
+  if (pathname === "/metadata/search") {
+    return { kind: "search" };
+  }
+
+  const catalogue = /^\/metadata\/tv\/(\d{1,12})\/catalogue$/.exec(pathname);
+  if (catalogue) {
+    return { kind: "catalogue", id: catalogue[1] };
+  }
+
+  const releaseDates = /^\/metadata\/movie\/(\d{1,12})\/release-dates$/.exec(pathname);
+  if (releaseDates) {
+    return { kind: "release-dates", id: releaseDates[1] };
+  }
+
+  return null;
+}
+
+async function serveCatalogueRoute(route, env) {
+  const key = route.kind === "catalogue" ? `catalogue:v1:${route.id}` : `release-dates:v1:${route.id}`;
+  const cached = await env.METADATA_CACHE.get(key, "json");
+  if (cached) {
+    return json(cached, 200, { "Cache-Control": "public, max-age=600" });
+  }
+
+  try {
+    const payload = route.kind === "catalogue"
+      ? await lookupSeriesCatalogue(route.id, env.TMDB_API_KEY)
+      : await lookupMovieReleaseDates(route.id, env.TMDB_API_KEY);
+
+    await env.METADATA_CACHE.put(key, JSON.stringify(payload), { expirationTtl: CATALOGUE_TTL_SECONDS });
+    return json(payload, 200, { "Cache-Control": "public, max-age=600" });
+  } catch (error) {
+    const providerStatus = error instanceof TmdbRequestError ? error.status : 502;
+    if (providerStatus === 404) {
+      return json({ error: "not_found" }, 404);
+    }
+    if (providerStatus === 429) {
+      return json(
+        { error: "provider_busy", message: "Metadata is busy. Please try again shortly." },
+        503,
+        { "Retry-After": "60" });
+    }
+
+    return json({ error: "provider_unavailable", message: "Metadata is temporarily unavailable." }, 503);
+  }
+}
+
+export async function lookupSeriesCatalogue(providerId, apiKey, request = fetch) {
+  const detailUrl = new URL(`https://api.themoviedb.org/3/tv/${providerId}`);
+  detailUrl.searchParams.set("api_key", apiKey);
+  const detail = await getJson(detailUrl, request);
+
+  const seasonNumbers = Array.isArray(detail?.seasons)
+    ? detail.seasons
+      .map((season) => season?.season_number)
+      .filter((value) => Number.isInteger(value) && value >= 0)
+      .sort((left, right) => left - right)
+      .slice(0, MAX_SEASONS)
+    : [];
+
+  const seasons = [];
+  for (const seasonNumber of seasonNumbers) {
+    const seasonUrl = new URL(`https://api.themoviedb.org/3/tv/${providerId}/season/${seasonNumber}`);
+    seasonUrl.searchParams.set("api_key", apiKey);
+
+    let season;
+    try {
+      season = await getJson(seasonUrl, request);
+    } catch (error) {
+      // One unavailable season must not lose the rest of the catalogue.
+      if (error instanceof TmdbRequestError && error.status === 404) {
+        continue;
+      }
+      throw error;
+    }
+
+    const episodes = Array.isArray(season?.episodes)
+      ? season.episodes
+        .filter((episode) => Number.isInteger(episode?.episode_number) && episode.episode_number > 0)
+        .map((episode) => ({
+          episodeNumber: episode.episode_number,
+          title: typeof episode.name === "string" ? episode.name.trim() || null : null,
+          overview: typeof episode.overview === "string" ? episode.overview.trim() || null : null,
+          airDate: normalizeDate(episode.air_date)
+        }))
+      : [];
+
+    seasons.push({
+      seasonNumber,
+      name: typeof season?.name === "string" ? season.name.trim() || null : null,
+      airDate: normalizeDate(season?.air_date),
+      episodeCount: episodes.length,
+      episodes
+    });
+  }
+
+  return {
+    provider: "deluno-broker",
+    mode: "broker",
+    providerId: String(providerId),
+    seasonCount: seasons.length,
+    episodeCount: seasons.reduce((total, season) => total + season.episodes.length, 0),
+    seasons
+  };
+}
+
+export async function lookupMovieReleaseDates(providerId, apiKey, request = fetch) {
+  const url = new URL(`https://api.themoviedb.org/3/movie/${providerId}/release_dates`);
+  url.searchParams.set("api_key", apiKey);
+  const payload = await getJson(url, request);
+
+  // TMDb reports dates per country and per type. Deluno wants three answers, so
+  // take the earliest of each across every region rather than guessing one.
+  // 2 limited, 3 theatrical, 4 digital, 5 physical. A premiere (1) is a festival
+  // screening, not something anyone can obtain, so it is ignored.
+  let inCinemas = null;
+  let digital = null;
+  let physical = null;
+
+  const entries = Array.isArray(payload?.results) ? payload.results : [];
+  for (const country of entries) {
+    for (const entry of Array.isArray(country?.release_dates) ? country.release_dates : []) {
+      const date = normalizeDate(entry?.release_date);
+      if (!date) {
+        continue;
+      }
+
+      if ((entry.type === 2 || entry.type === 3) && (!inCinemas || date < inCinemas)) {
+        inCinemas = date;
+      } else if (entry.type === 4 && (!digital || date < digital)) {
+        digital = date;
+      } else if (entry.type === 5 && (!physical || date < physical)) {
+        physical = date;
+      }
+    }
+  }
+
+  return {
+    provider: "deluno-broker",
+    mode: "broker",
+    providerId: String(providerId),
+    inCinemas,
+    digital,
+    physical
+  };
+}
+
+function normalizeDate(value) {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : null;
+}
 
 export function parseLookup(params) {
   const query = params.get("query")?.trim() ?? "";

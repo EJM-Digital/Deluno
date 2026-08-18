@@ -20,4 +20,12 @@ public sealed record MovieListItem(
     string? MetadataJson,
     DateTimeOffset? MetadataUpdatedUtc,
     DateTimeOffset CreatedUtc,
-    DateTimeOffset UpdatedUtc);
+    DateTimeOffset UpdatedUtc,
+    // A release year cannot say "in cinemas but not yet obtainable", which is
+    // exactly the state that makes searching pointless. These do.
+    DateOnly? InCinemasDate = null,
+    DateOnly? DigitalReleaseDate = null,
+    DateOnly? PhysicalReleaseDate = null,
+    /// <summary>announced | inCinemas | released — when Deluno may start looking.</summary>
+    string MinimumAvailability = "released",
+    bool IsAvailable = true);

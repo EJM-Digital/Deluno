@@ -887,6 +887,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             }
 
             var updated = await ApplyMetadataAsync(repository, movie.Id, match, cancellationToken);
+            await SyncReleaseDatesAsync(repository, metadataProvider, movie.Id, match.ProviderId, cancellationToken);
             await activityFeedRepository.RecordActivityAsync(
                 "metadata.movie.refreshed",
                 $"{movie.Title} metadata was refreshed from {match.Provider.ToUpperInvariant()}.",
@@ -939,6 +940,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             }
 
             var updated = await ApplyMetadataAsync(repository, movie.Id, match, cancellationToken);
+            await SyncReleaseDatesAsync(repository, metadataProvider, movie.Id, match.ProviderId, cancellationToken);
             await activityFeedRepository.RecordActivityAsync(
                 "metadata.movie.linked",
                 $"{movie.Title} metadata was linked to {match.Provider.ToUpperInvariant()} item {match.ProviderId}.",
@@ -1382,6 +1384,39 @@ public static class MoviesEndpointRouteBuilderExtensions
         });
 
         return endpoints;
+    }
+
+    /// <summary>
+    /// Pull the provider's release dates in after a match is applied, so Deluno
+    /// knows when the film is actually obtainable rather than only what year it
+    /// came out. A provider that cannot answer leaves the stored dates alone.
+    /// </summary>
+    private static async Task SyncReleaseDatesAsync(
+        IMovieCatalogRepository repository,
+        IMetadataProvider metadataProvider,
+        string movieId,
+        string? providerId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(providerId))
+        {
+            return;
+        }
+
+        MetadataReleaseDates dates;
+        try
+        {
+            dates = await metadataProvider.GetMovieReleaseDatesAsync(providerId, cancellationToken);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        if (dates.HasAny)
+        {
+            await repository.UpdateReleaseDatesAsync(movieId, dates.InCinemas, dates.Digital, dates.Physical, cancellationToken);
+        }
     }
 
     /// <summary>Blank means "no override", so it is stored as null rather than kept.</summary>
