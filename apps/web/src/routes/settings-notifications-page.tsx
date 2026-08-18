@@ -1,7 +1,7 @@
 /**
  * Notifications — list → drawer.
  *
- *   PageToolbar (New webhook)
+ *   PageToolbar (System settings tabs · New webhook)
  *   ListCard  (name · url · events · last fired · status · on · ›)
  *   Drawer    (Basics · Delivery · Delete)
  *
@@ -19,6 +19,7 @@ import { Field, FieldRow } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { PageToolbar } from "../components/ui/page-toolbar";
+import { systemSettingsNavItems } from "../components/app/settings-shell";
 import { Select } from "../components/ui/select";
 import { Switch, SwitchRow } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
@@ -189,6 +190,7 @@ export function SettingsNotificationsPage() {
   return (
     <div className="grid gap-[var(--page-gap)]">
       <PageToolbar
+        tabs={systemSettingsNavItems}
         actions={
           <Button type="button" onClick={() => open(null)}>
             <Plus className="h-4 w-4" />

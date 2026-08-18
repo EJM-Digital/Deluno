@@ -53,6 +53,18 @@ export const configurationNavAreas = [
   },
 ] as const;
 
+/**
+ * The installation-preference pages, as toolbar tabs. The wider "System &
+ * settings" sidebar area also covers /system/*, which carries its own tab bar;
+ * splitting them keeps either bar down to a scannable four to six tabs.
+ */
+export const systemSettingsNavItems = [
+  { to: "/settings/general", label: "General", end: false },
+  { to: "/settings/ui", label: "Interface", end: false },
+  { to: "/settings/notifications", label: "Notifications", end: false },
+  { to: "/settings/migration", label: "Migration", end: false }
+] as const;
+
 /** Installation-wide controls belong under Maintain Deluno, never under library setup. */
 export const maintenanceNavItems = [
   {
@@ -175,7 +187,8 @@ const settingsPageMeta = [
   {
     match: (path: string) => path.startsWith("/settings/general"),
     title: "General",
-    description: "Instance name, network address, port, and reverse-proxy routing."
+    description: "Instance name, network address, port, and reverse-proxy routing.",
+    chrome: "none"
   },
   {
     match: (path: string) => path.startsWith("/settings/notifications"),
@@ -186,7 +199,8 @@ const settingsPageMeta = [
   {
     match: (path: string) => path.startsWith("/settings/ui"),
     title: "Interface",
-    description: "Theme, density, default views, and how Deluno should feel on your display."
+    description: "Theme, density, default views, and how Deluno should feel on your display.",
+    chrome: "none"
   }
 ] as const;
 
@@ -195,6 +209,8 @@ const systemPageMeta = [
     match: (path: string) => path === "/system",
     title: "System Health",
     description: "Provider health, background jobs, and current system state."
+  ,
+    chrome: "none"
   },
   {
     match: (path: string) => path.startsWith("/system/audit"),
