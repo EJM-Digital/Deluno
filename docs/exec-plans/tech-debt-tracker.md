@@ -4,8 +4,12 @@ Updated: 2026-08-18
 
 Use this file for cleanup work that should not depend on chat handover context.
 
-Items marked with a doc reference have measured evidence and a design behind
-them; the doc is the source of truth and this list is the index.
+**The open items below now live as GitHub issues #130–#143.** Track work there;
+this file stays as the index, and the referenced docs hold the evidence and the
+design.
+
+Also closed since: batch job leasing and the lane split (#1/#2 of the contention
+work) — see `628fa52`.
 
 ## Open — realtime (`ADR-002-realtime-architecture.md`)
 
@@ -171,6 +175,13 @@ that hardened into limits.
 
 ## Closed — fixed this session
 
+- **Jobs were leased one per tick, capping import throughput at 30/min.**
+  `LeaseBatchAsync` claims a batch in one transaction (now explicitly IMMEDIATE);
+  the worker runs each batch with per-lane concurrency. `628fa52`
+- **Three fixed lanes grouped unrelated work.** Split by contended resource —
+  planning / import / search / intake / metadata / catalog — so a local catalogue
+  recalculation no longer waits behind a metadata refresh blocked on a remote
+  provider. `628fa52`
 - **SQLite connections were serialised behind `Cache=Shared`.** Shared cache
   imposes table-level locks inside the process and raises `SQLITE_LOCKED`, which
   `busy_timeout` does not retry; nothing here used an in-memory database, the one
