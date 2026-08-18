@@ -1,13 +1,9 @@
 using Deluno.Platform.Contracts;
-using Deluno.Security.Contracts;
 
 namespace Deluno.Platform.Data;
 
 public interface IPlatformSettingsRepository
 {
-    Task<bool> HasUsersAsync(CancellationToken cancellationToken);
-    Task<bool> RequiresBootstrapAsync(CancellationToken cancellationToken);
-
     Task<PlatformSettingsSnapshot> GetAsync(CancellationToken cancellationToken);
 
     Task<SetupProgressItem> GetSetupProgressAsync(CancellationToken cancellationToken);
@@ -73,41 +69,6 @@ public interface IPlatformSettingsRepository
     Task<IReadOnlyList<DestinationRuleItem>> ListDestinationRulesAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<PolicySetItem>> ListPolicySetsAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<LibraryViewItem>> ListLibraryViewsAsync(string userId, string variant, CancellationToken cancellationToken);
-
-    Task<UserItem?> ValidateUserCredentialsAsync(
-        string username,
-        string password,
-        CancellationToken cancellationToken);
-
-    Task<UserItem?> GetUserByIdAsync(
-        string id,
-        CancellationToken cancellationToken);
-
-    Task<bool> ChangeUserPasswordAsync(
-        string userId,
-        string currentPassword,
-        string newPassword,
-        CancellationToken cancellationToken);
-
-    Task<bool> RevokeUserAccessTokensAsync(
-        string userId,
-        CancellationToken cancellationToken);
-
-    Task<IReadOnlyList<ApiKeyItem>> ListApiKeysAsync(CancellationToken cancellationToken);
-
-    Task<CreatedApiKeyResponse> CreateApiKeyAsync(
-        CreateApiKeyRequest request,
-        CancellationToken cancellationToken);
-
-    Task<ApiKeyItem?> ValidateApiKeyAsync(
-        string apiKey,
-        CancellationToken cancellationToken);
-
-    Task<bool> DeleteApiKeyAsync(string id, CancellationToken cancellationToken);
-
-    Task<UserItem> BootstrapUserAsync(
-        BootstrapUserRequest request,
-        CancellationToken cancellationToken);
 
     Task<QualityProfileItem> CreateQualityProfileAsync(
         CreateQualityProfileRequest request,

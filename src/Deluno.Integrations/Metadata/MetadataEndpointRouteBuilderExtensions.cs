@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Deluno.Platform;
 using Deluno.Platform.Data;
+using Deluno.Security;
 
 namespace Deluno.Integrations.Metadata;
 
@@ -19,7 +20,7 @@ public static class MetadataEndpointRouteBuilderExtensions
             IPlatformSettingsRepository platformRepository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -38,7 +39,7 @@ public static class MetadataEndpointRouteBuilderExtensions
             IPlatformSettingsRepository platformRepository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -56,7 +57,7 @@ public static class MetadataEndpointRouteBuilderExtensions
             IPlatformSettingsRepository platformRepository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -88,7 +89,7 @@ public static class MetadataEndpointRouteBuilderExtensions
             IPlatformSettingsRepository platformRepository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -126,7 +127,7 @@ public static class MetadataEndpointRouteBuilderExtensions
             IPlatformSettingsRepository platformRepository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -152,7 +153,7 @@ public static class MetadataEndpointRouteBuilderExtensions
             IPlatformSettingsRepository platformRepository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;

@@ -13,6 +13,7 @@ using Deluno.Platform.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform;
 using Deluno.Platform.Quality;
+using Deluno.Security;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -86,7 +87,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null) return denied;
             if (await repository.GetByIdAsync(id, cancellationToken) is null) return Results.NotFound();
 
@@ -109,7 +110,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -132,7 +133,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -155,7 +156,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -178,7 +179,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -201,7 +202,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -232,7 +233,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             TimeProvider timeProvider,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null) return denied;
             if (string.IsNullOrWhiteSpace(request.LibraryId))
             {
@@ -252,7 +253,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null) return denied;
             if (string.IsNullOrWhiteSpace(request.LibraryId))
             {
@@ -276,7 +277,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             TimeProvider timeProvider,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -441,7 +442,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IActivityFeedRepository activityFeedRepository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -571,7 +572,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             TimeProvider timeProvider,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -805,7 +806,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -895,7 +896,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IActivityFeedRepository activityFeedRepository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -940,7 +941,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IActivityFeedRepository activityFeedRepository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -991,7 +992,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IJobScheduler jobScheduler,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1024,7 +1025,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IActivityFeedRepository activityFeedRepository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1079,7 +1080,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IJobScheduler jobScheduler,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1119,7 +1120,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IJobScheduler jobScheduler,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1186,7 +1187,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1228,7 +1229,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IJobQueueRepository jobQueueRepository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1284,7 +1285,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1319,7 +1320,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1372,7 +1373,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;

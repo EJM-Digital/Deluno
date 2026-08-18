@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Deluno.Platform;
 using Deluno.Platform.Data;
+using Deluno.Security;
 
 namespace Deluno.Integrations.DownloadClients;
 
@@ -17,7 +18,7 @@ public static class DownloadClientEndpointRouteBuilderExtensions
             int? take,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             return denied ?? Results.Ok(await platformRepository.ListDownloadHealthRecordsAsync(take ?? 30, cancellationToken));
         });
 
@@ -37,7 +38,7 @@ public static class DownloadClientEndpointRouteBuilderExtensions
             IDownloadClientTelemetryService telemetryService,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -55,7 +56,7 @@ public static class DownloadClientEndpointRouteBuilderExtensions
             IDownloadClientTelemetryService telemetryService,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null) return denied;
 
             var preview = await telemetryService.PreviewCleanupAsync(clientId, queueItemId, cancellationToken);
@@ -71,7 +72,7 @@ public static class DownloadClientEndpointRouteBuilderExtensions
             IPlatformSettingsRepository platformRepository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null) return denied;
 
             var record = await platformRepository.IgnoreDownloadHealthFindingAsync(clientId, queueItemId, kind, request.DurationDays, cancellationToken);
@@ -86,7 +87,7 @@ public static class DownloadClientEndpointRouteBuilderExtensions
             IDownloadClientGrabService grabService,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
