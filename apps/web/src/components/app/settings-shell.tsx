@@ -163,7 +163,8 @@ const settingsPageMeta = [
   {
     match: (path: string) => path.startsWith("/settings/metadata"),
     title: "Metadata & sidecars",
-    description: "Language, ratings region, artwork, and optional files saved beside your media."
+    description: "Language, ratings region, artwork, and optional files saved beside your media.",
+    chrome: "none"
   },
   {
     match: (path: string) => path.startsWith("/settings/tags"),
