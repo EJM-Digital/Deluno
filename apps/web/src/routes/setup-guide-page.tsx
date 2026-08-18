@@ -510,9 +510,10 @@ export function SetupGuidePage() {
               <Sparkles className="h-4 w-4" />
               Guided setup
             </p>
-            <h1 className="mt-2 max-w-5xl font-display text-[clamp(2rem,2.4vw,3.15rem)] font-semibold leading-[0.98] tracking-tight text-foreground">
+            {/* The topbar already names this page; a second h1 made two. */}
+            <p className="mt-2 max-w-5xl font-display text-[clamp(2rem,2.4vw,3.15rem)] font-semibold leading-[0.98] tracking-tight text-foreground">
               Get Deluno working first. Tune it later.
-            </h1>
+            </p>
             <p className="mt-3 max-w-4xl text-[length:var(--type-body)] leading-relaxed text-muted-foreground">
               This sets up everything you need to get started: media folders, quality settings, and optional search providers and download clients.
               Advanced users can skip this and configure everything manually.

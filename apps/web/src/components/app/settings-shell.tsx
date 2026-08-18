@@ -325,9 +325,10 @@ export function SettingsShell({
             {eyebrow}
           </p>
           <div className="mt-2 flex items-center gap-3">
-            <h1 className="font-display text-[length:var(--type-title-lg)] font-semibold tracking-tight text-foreground">
+            {/* The topbar already names the page; this is the section label. */}
+            <p className="font-display text-[length:var(--type-title-lg)] font-semibold tracking-tight text-foreground">
               {title}
-            </h1>
+            </p>
             <button
               onClick={() => setGlossaryOpen(true)}
               className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"

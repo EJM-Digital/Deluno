@@ -80,9 +80,16 @@ const routeMeta = [
   { match: (path: string) => path.startsWith("/system") || path.startsWith("/setup-guide"), title: "System", subtitle: "How this installation is doing — health, backups, updates, and audit" }
 ];
 
-/** `/movies/{id}` and `/tv/{id}` render their own `h1`: the title of the thing. */
+/**
+ * `/movies/{id}` and `/tv/{id}` render their own `h1`: the title of the thing.
+ * The named sub-routes under those prefixes are ordinary pages and must not be
+ * mistaken for one, or the topbar yields its heading to a page without one.
+ */
+const MEDIA_SUB_ROUTES = new Set(["episodes", "wanted", "upgrades", "import", "library"]);
+
 function isDetailRoute(pathname: string) {
-  return /^\/(movies|tv)\/[^/]+$/.test(pathname);
+  const match = /^\/(?:movies|tv)\/([^/]+)$/.exec(pathname);
+  return match !== null && !MEDIA_SUB_ROUTES.has(match[1]);
 }
 
 export function AppLayout() {

@@ -115,6 +115,7 @@ export function ShowDetailPage() {
   const [openEpisodeId, setOpenEpisodeId] = useState<string | null>(null);
   const [openSearchId, setOpenSearchId] = useState<string | null>(null);
   const [episodeFilter, setEpisodeFilter] = useState<EpisodeFilter>("all");
+  const [openSeasons, setOpenSeasons] = useState<number[] | null>(null);
   const [query, setQuery] = useState("");
   const [section, setSection] = useState<DetailSection>("episodes");
 
@@ -136,6 +137,18 @@ export function ShowDetailPage() {
   const upgradeCount = inventory.episodes.filter((item) => item.wantedStatus === "upgrade").length;
   const monitoredCount = inventory.episodes.filter((item) => item.monitored).length;
   const openEpisode = inventory.episodes.find((item) => item.episodeId === openEpisodeId) ?? null;
+
+  // A full catalogue can be hundreds of episodes — The Simpsons is 885 — so
+  // seasons collapse. The ones with something missing open by default, capped,
+  // because those are the ones worth looking at. A collapsed season still
+  // states its own span in its header.
+  const defaultOpenSeasons = useMemo(() => {
+    const withMissing = visibleSeasons.filter((season) => season.missingCount > 0).map((season) => season.seasonNumber);
+    const chosen = withMissing.length ? withMissing : visibleSeasons.map((season) => season.seasonNumber);
+    return chosen.slice(0, 2);
+  }, [visibleSeasons]);
+  const expanded = openSeasons ?? defaultOpenSeasons;
+  const allExpanded = visibleSeasons.length > 0 && expanded.length === visibleSeasons.length;
   const openSearch = seriesSearches.find((item) => item.id === openSearchId) ?? null;
   // Deferring only touches a wanted state that is actually being searched for, so
   // offering it on a settled title produced an enabled button and a 404.
@@ -605,7 +618,7 @@ export function ShowDetailPage() {
 
           <ListCard
             title="Episodes"
-            count={`${visibleEpisodes.length} of ${inventory.episodeCount} shown`}
+            count={`${visibleSeasons.filter((season) => expanded.includes(season.seasonNumber)).reduce((total, season) => total + season.episodes.length, 0)} of ${inventory.episodeCount} shown`}
             filter={{ value: query, onChange: setQuery, placeholder: "Filter by code or title" }}
             actions={
               <>
@@ -622,6 +635,17 @@ export function ShowDetailPage() {
                     { value: "imported", label: "On disk" }
                   ]}
                 />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={!visibleSeasons.length}
+                  onClick={() =>
+                    setOpenSeasons(allExpanded ? [] : visibleSeasons.map((season) => season.seasonNumber))
+                  }
+                >
+                  {allExpanded ? "Collapse all" : "Expand all"}
+                </Button>
                 <Button
                   type="button"
                   size="sm"
@@ -661,6 +685,22 @@ export function ShowDetailPage() {
                       label={formatSeasonLabel(season.seasonNumber)}
                       detail={`${season.episodes.length} episodes · ${season.importedCount} on disk · ${season.missingCount} missing`}
                       actions={
+                        <>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          aria-expanded={expanded.includes(season.seasonNumber)}
+                          onClick={() =>
+                            setOpenSeasons(
+                              expanded.includes(season.seasonNumber)
+                                ? expanded.filter((value) => value !== season.seasonNumber)
+                                : [...expanded, season.seasonNumber]
+                            )
+                          }
+                        >
+                          {expanded.includes(season.seasonNumber) ? "Hide" : "Show"}
+                        </Button>
                         <Button
                           type="button"
                           size="sm"
@@ -675,9 +715,10 @@ export function ShowDetailPage() {
                           )}
                           Search season
                         </Button>
+                        </>
                       }
                     />
-                    {season.episodes.map((episode) => (
+                    {(expanded.includes(season.seasonNumber) ? season.episodes : []).map((episode) => (
                       <ListRow
                         key={episode.episodeId}
                         onClick={() => setOpenEpisodeId(episode.episodeId)}

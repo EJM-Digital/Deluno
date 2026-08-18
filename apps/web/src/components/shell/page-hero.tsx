@@ -103,7 +103,9 @@ export function PageHero({
               </div>
             ) : null}
 
-            <h1
+            {/* The topbar owns the page heading everywhere. A hero that renders
+                its own h1 gave Movies, TV and the setup guide two apiece. */}
+            <p
               className={cn(
                 "mt-4 text-balance font-display font-bold leading-[0.98] tracking-display text-foreground",
                 size === "sm"
@@ -112,7 +114,7 @@ export function PageHero({
               )}
             >
               {title}
-            </h1>
+            </p>
 
             {subtitle ? (
               <p
