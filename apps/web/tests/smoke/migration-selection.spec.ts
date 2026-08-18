@@ -9,7 +9,7 @@ test.describe("migration selection", () => {
     await page.getByRole("button", { name: "Preview import" }).click();
 
     await expect(page.getByRole("heading", { name: "Change report" })).toBeVisible();
-    const indexerSelection = page.getByRole("checkbox", { name: "Apply Existing Indexer" });
+    const indexerSelection = page.getByRole("switch", { name: "Apply Existing Indexer" });
     await expect(indexerSelection).toBeChecked();
 
     await indexerSelection.click();
