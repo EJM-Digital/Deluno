@@ -30,6 +30,13 @@ public sealed class DelunoHeartbeatWorker(
     };
 
     private readonly string _workerId = $"worker-{Environment.MachineName.ToLowerInvariant()}";
+    private static readonly TimeSpan SettingsCacheWindow = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(15);
+    private readonly object _settingsSync = new();
+    private readonly object _heartbeatSync = new();
+    private PlatformSettingsSnapshot? _cachedSettings;
+    private DateTimeOffset _cachedSettingsUtc = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastHeartbeatUtc = DateTimeOffset.MinValue;
     private DateTimeOffset _lastImportAutomationUtc = DateTimeOffset.MinValue;
     private DateTimeOffset _lastDispatchCleanupUtc = DateTimeOffset.MinValue;
     private DateTimeOffset _lastDispatchRetryPassUtc = DateTimeOffset.MinValue;
@@ -57,6 +64,63 @@ public sealed class DelunoHeartbeatWorker(
         await Task.WhenAll(_lanes.Select(lane => RunLaneAsync(lane, stoppingToken)));
     }
 
+    /// <summary>
+    /// The settings snapshot, shared by all three lanes and refreshed at most
+    /// once a second.
+    ///
+    /// Every lane used to read this from SQLite on every tick purely to check
+    /// AutoStartJobs — roughly 50 reads a minute between them, of a row that
+    /// changes when a human edits a setting. A one-second window keeps the gate
+    /// responsive while removing effectively all of that traffic.
+    /// </summary>
+    private async Task<PlatformSettingsSnapshot> ReadSettingsAsync(
+        IPlatformSettingsRepository repository,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        lock (_settingsSync)
+        {
+            if (_cachedSettings is not null && now - _cachedSettingsUtc < SettingsCacheWindow)
+            {
+                return _cachedSettings;
+            }
+        }
+
+        var settings = await repository.GetAsync(cancellationToken);
+
+        lock (_settingsSync)
+        {
+            _cachedSettings = settings;
+            _cachedSettingsUtc = now;
+        }
+
+        return settings;
+    }
+
+    /// <summary>
+    /// Liveness, not a per-tick obligation. Three lanes writing this row every
+    /// 2, 5 and 8 seconds produced ~39 writes a minute to say the same thing;
+    /// the lease recovery window is measured in minutes, so once every 15
+    /// seconds is ample.
+    /// </summary>
+    private async Task HeartbeatIfDueAsync(
+        IJobQueueRepository jobQueueRepository,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        lock (_heartbeatSync)
+        {
+            if (now - _lastHeartbeatUtc < HeartbeatInterval)
+            {
+                return;
+            }
+
+            _lastHeartbeatUtc = now;
+        }
+
+        await jobQueueRepository.HeartbeatAsync(_workerId, cancellationToken);
+    }
+
     private async Task RunLaneAsync(JobLane lane, CancellationToken stoppingToken)
     {
         using var timer = new PeriodicTimer(lane.Interval);
@@ -69,28 +133,34 @@ public sealed class DelunoHeartbeatWorker(
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
             using var scope = scopeFactory.CreateScope();
-            var jobQueueRepository = scope.ServiceProvider.GetRequiredService<IJobQueueRepository>();
-            var jobScheduler = scope.ServiceProvider.GetRequiredService<IJobScheduler>();
-            var platformSettingsRepository = scope.ServiceProvider.GetRequiredService<IPlatformSettingsRepository>();
-            var acquisitionPipeline = scope.ServiceProvider.GetRequiredService<IAcquisitionDecisionPipeline>();
-            var downloadClientGrabService = scope.ServiceProvider.GetRequiredService<IDownloadClientGrabService>();
-            var downloadClientTelemetryService = scope.ServiceProvider.GetRequiredService<IDownloadClientTelemetryService>();
-            var processorConnectionService = scope.ServiceProvider.GetRequiredService<IProcessorConnectionService>();
-            var metadataProvider = scope.ServiceProvider.GetRequiredService<IMetadataProvider>();
-            var importPipelineService = scope.ServiceProvider.GetRequiredService<IImportPipelineService>();
-            var movieCatalogRepository = scope.ServiceProvider.GetRequiredService<IMovieCatalogRepository>();
-            var seriesCatalogRepository = scope.ServiceProvider.GetRequiredService<ISeriesCatalogRepository>();
-            var activityFeedRepository = scope.ServiceProvider.GetRequiredService<IActivityFeedRepository>();
-            var intakeSyncService = scope.ServiceProvider.GetRequiredService<IIntakeSyncService>();
+            var services = scope.ServiceProvider;
 
-            await jobQueueRepository.HeartbeatAsync(_workerId, stoppingToken);
+            // Resolve only what the gate needs. The rest of the graph is
+            // resolved further down, once there is actually work to do — most
+            // ticks on an idle install get no further than the next few lines.
+            var jobQueueRepository = services.GetRequiredService<IJobQueueRepository>();
+            var platformSettingsRepository = services.GetRequiredService<IPlatformSettingsRepository>();
 
-            var settings = await platformSettingsRepository.GetAsync(stoppingToken);
+            // The gate goes first. It used to be the fourth thing that
+            // happened, after a heartbeat write and a settings read, so an
+            // install with automation switched off still paid for two database
+            // round trips per lane tick, forever.
+            var settings = await ReadSettingsAsync(platformSettingsRepository, stoppingToken);
             if (!settings.AutoStartJobs)
             {
                 logger.LogDebug("Worker {WorkerId} lane {LaneName} tick with auto-start disabled.", _workerId, lane.Name);
                 continue;
             }
+
+            await HeartbeatIfDueAsync(jobQueueRepository, stoppingToken);
+
+            var jobScheduler = services.GetRequiredService<IJobScheduler>();
+            var downloadClientTelemetryService = services.GetRequiredService<IDownloadClientTelemetryService>();
+            var processorConnectionService = services.GetRequiredService<IProcessorConnectionService>();
+            var movieCatalogRepository = services.GetRequiredService<IMovieCatalogRepository>();
+            var seriesCatalogRepository = services.GetRequiredService<ISeriesCatalogRepository>();
+            var activityFeedRepository = services.GetRequiredService<IActivityFeedRepository>();
+            var intakeSyncService = services.GetRequiredService<IIntakeSyncService>();
 
             if (lane.PlanAutomation)
             {
@@ -156,6 +226,13 @@ public sealed class DelunoHeartbeatWorker(
                 logger.LogDebug("Worker {WorkerId} lane {LaneName} tick with no pending jobs.", _workerId, lane.Name);
                 continue;
             }
+
+            // Only reached when there is a job, so these never cost anything on
+            // an idle tick.
+            var acquisitionPipeline = services.GetRequiredService<IAcquisitionDecisionPipeline>();
+            var downloadClientGrabService = services.GetRequiredService<IDownloadClientGrabService>();
+            var metadataProvider = services.GetRequiredService<IMetadataProvider>();
+            var importPipelineService = services.GetRequiredService<IImportPipelineService>();
 
             try
             {
