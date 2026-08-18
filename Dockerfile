@@ -22,11 +22,14 @@ COPY src/Deluno.Contracts/Deluno.Contracts.csproj ./src/Deluno.Contracts/
 COPY src/Deluno.Filesystem/Deluno.Filesystem.csproj ./src/Deluno.Filesystem/
 COPY src/Deluno.Host/Deluno.Host.csproj ./src/Deluno.Host/
 COPY src/Deluno.Infrastructure/Deluno.Infrastructure.csproj ./src/Deluno.Infrastructure/
+COPY src/Deluno.Intake/Deluno.Intake.csproj ./src/Deluno.Intake/
 COPY src/Deluno.Integrations/Deluno.Integrations.csproj ./src/Deluno.Integrations/
 COPY src/Deluno.Jobs/Deluno.Jobs.csproj ./src/Deluno.Jobs/
 COPY src/Deluno.Movies/Deluno.Movies.csproj ./src/Deluno.Movies/
+COPY src/Deluno.Notifications/Deluno.Notifications.csproj ./src/Deluno.Notifications/
 COPY src/Deluno.Platform/Deluno.Platform.csproj ./src/Deluno.Platform/
 COPY src/Deluno.Realtime/Deluno.Realtime.csproj ./src/Deluno.Realtime/
+COPY src/Deluno.Security/Deluno.Security.csproj ./src/Deluno.Security/
 COPY src/Deluno.Series/Deluno.Series.csproj ./src/Deluno.Series/
 COPY src/Deluno.Worker/Deluno.Worker.csproj ./src/Deluno.Worker/
 
