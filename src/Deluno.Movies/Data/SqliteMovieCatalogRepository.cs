@@ -1,3 +1,6 @@
+using Deluno.Contracts;
+using Deluno.Platform.Contracts;
+using Deluno.Platform.Data;
 using System.Globalization;
 using System.Text.Json;
 using Deluno.Infrastructure.Storage;
@@ -1513,6 +1516,84 @@ public sealed class SqliteMovieCatalogRepository(
         }
 
         return items;
+    }
+
+    public async Task<MediaDailyMetrics> GetDailyMetricsAsync(
+        DateOnly fromDate,
+        DateOnly toDate,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        var from = fromDate.ToString("yyyy-MM-dd");
+        var toExclusive = toDate.AddDays(1).ToString("yyyy-MM-dd");
+
+        var added = await ReadDailyAsync(
+            connection,
+            $"SELECT {DailyCounts.GroupBy("created_utc")} AS day, COUNT(*) FROM movie_entries WHERE created_utc >= @from AND created_utc < @to GROUP BY day;",
+            from, toExclusive, cancellationToken);
+
+        var before = await ReadScalarAsync(
+            connection,
+            "SELECT COUNT(*) FROM movie_entries WHERE created_utc < @from;",
+            from, cancellationToken);
+
+        var matched = await ReadDailyAsync(
+            connection,
+            $"SELECT {DailyCounts.GroupBy("created_utc")} AS day, COUNT(*) FROM movie_search_history WHERE outcome = 'matched' AND created_utc >= @from AND created_utc < @to GROUP BY day;",
+            from, toExclusive, cancellationToken);
+
+        var unmatched = await ReadDailyAsync(
+            connection,
+            $"SELECT {DailyCounts.GroupBy("created_utc")} AS day, COUNT(*) FROM movie_search_history WHERE outcome <> 'matched' AND created_utc >= @from AND created_utc < @to GROUP BY day;",
+            from, toExclusive, cancellationToken);
+
+        var importFailures = await ReadDailyAsync(
+            connection,
+            $"SELECT {DailyCounts.GroupBy("detected_utc")} AS day, COUNT(*) FROM movie_import_recovery_cases WHERE detected_utc >= @from AND detected_utc < @to GROUP BY day;",
+            from, toExclusive, cancellationToken);
+
+        return new MediaDailyMetrics(before, added, matched, unmatched, importFailures);
+    }
+
+    private static async Task<IReadOnlyDictionary<string, int>> ReadDailyAsync(
+        System.Data.Common.DbConnection connection,
+        string sql,
+        string from,
+        string toExclusive,
+        CancellationToken cancellationToken)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        AddParameter(command, "@from", from);
+        AddParameter(command, "@to", toExclusive);
+
+        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            if (!reader.IsDBNull(0))
+            {
+                counts[reader.GetString(0)] = reader.GetInt32(1);
+            }
+        }
+
+        return counts;
+    }
+
+    private static async Task<int> ReadScalarAsync(
+        System.Data.Common.DbConnection connection,
+        string sql,
+        string from,
+        CancellationToken cancellationToken)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        AddParameter(command, "@from", from);
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return value is null or DBNull ? 0 : Convert.ToInt32(value, System.Globalization.CultureInfo.InvariantCulture);
     }
 
     private static MovieListItem ReadMovie(System.Data.Common.DbDataReader reader)

@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Deluno.Movies.Contracts;
 
 namespace Deluno.Movies.Data;
@@ -176,5 +177,11 @@ public interface IMovieCatalogRepository
         DateOnly fromDate,
         DateOnly toDate,
         int take,
+        CancellationToken cancellationToken);
+
+    /// <summary>Per-day counts for the dashboard, straight from stored timestamps.</summary>
+    Task<MediaDailyMetrics> GetDailyMetricsAsync(
+        DateOnly fromDate,
+        DateOnly toDate,
         CancellationToken cancellationToken);
 }

@@ -40,9 +40,29 @@ import { Button } from "../components/ui/button";
 import { Chip } from "../components/ui/chip";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { SummaryStrip } from "../components/ui/summary-strip";
+import { MetricChart, type MetricPoint } from "../components/ui/metric-chart";
 import { RouteSkeleton } from "../components/shell/skeleton";
 
+interface OutcomeSeries {
+  succeeded: MetricPoint[];
+  failed: MetricPoint[];
+}
+
+/** `/api/dashboard/metrics` — counts of stored rows grouped by day. */
+interface DashboardMetrics {
+  days: number;
+  from: string;
+  to: string;
+  librarySize: MetricPoint[];
+  titlesAdded: MetricPoint[];
+  searches: OutcomeSeries;
+  jobs: OutcomeSeries;
+  importFailures: MetricPoint[];
+  grabs: MetricPoint[];
+}
+
 interface DashboardLoaderData {
+  metrics: DashboardMetrics | null;
   activeDownloads: ActiveDownload[];
   activeDownloadCount: number;
   indexerHealth: IndexerHealthItem[];
@@ -83,6 +103,8 @@ interface DashboardUpcomingItem {
   href: string;
   startsAt: string;
 }
+
+const EMPTY_SERIES: MetricPoint[] = [];
 
 export async function dashboardLoader(): Promise<DashboardLoaderData> {
   const emptyMovieWanted: MovieWantedSummary = { totalWanted: 0, missingCount: 0, upgradeCount: 0, waitingCount: 0, recentItems: [] };
@@ -126,7 +148,12 @@ export async function dashboardLoader(): Promise<DashboardLoaderData> {
   const monitoredCount = allItems.filter((item) => item.monitored).length;
   const healthyCount = indexerHealth.filter((item) => item.status === "healthy").length;
 
+  // A dashboard that cannot draw its charts still has to render, so a failed
+  // metrics call degrades to no charts rather than an error page.
+  const metrics = await fetchJson<DashboardMetrics>("/api/dashboard/metrics?days=30").catch(() => null);
+
   return {
+    metrics,
     activeDownloads,
     activeDownloadCount: telemetry.summary.activeCount + telemetry.summary.queuedCount + telemetry.summary.importReadyCount,
     indexerHealth,
@@ -253,6 +280,42 @@ export function DashboardPage() {
           }
         ]}
       />
+
+      {data.metrics ? (
+        <div className="grid gap-[var(--grid-gap)] md:grid-cols-2 xl:grid-cols-4">
+          <MetricChart
+            label="Library"
+            value={String(data.metrics.librarySize.at(-1)?.value ?? 0)}
+            help={`${sumSeries(data.metrics.titlesAdded)} added in ${data.metrics.days} days`}
+            series={data.metrics.librarySize}
+            tone="primary"
+            zeroBased={false}
+          />
+          <MetricChart
+            label="Searches"
+            value={formatRate(data.metrics.searches)}
+            help={`${sumSeries(data.metrics.searches.succeeded)} matched a release`}
+            series={data.metrics.searches.succeeded}
+            compare={{ series: data.metrics.searches.failed, label: "no match", tone: "warning" }}
+            tone="success"
+          />
+          <MetricChart
+            label="Automation"
+            value={String(sumSeries(data.metrics.jobs.succeeded))}
+            help={`jobs finished · ${sumSeries(data.metrics.jobs.failed)} failed`}
+            series={data.metrics.jobs.succeeded}
+            compare={{ series: data.metrics.jobs.failed, label: "failed", tone: "danger" }}
+            tone="primary"
+          />
+          <MetricChart
+            label="Stuck imports"
+            value={String(sumSeries(data.metrics.importFailures))}
+            help={`${sumSeries(data.metrics.grabs)} releases grabbed`}
+            series={data.metrics.importFailures}
+            tone={sumSeries(data.metrics.importFailures) > 0 ? "danger" : "success"}
+          />
+        </div>
+      ) : null}
 
       {attention.length > 0 ? (
         <ListCard title="Worth a look" count={`${attention.length} ${attention.length === 1 ? "thing needs" : "things need"} a decision from you`}>
@@ -754,6 +817,7 @@ function formatDashboardTime(date: Date) {
 
 function emptyDashboardData(): DashboardLoaderData {
   return {
+    metrics: null,
     activeDownloads: [],
     activeDownloadCount: 0,
     indexerHealth: [],
@@ -794,4 +858,19 @@ function emptyDashboardData(): DashboardLoaderData {
       settings: emptyPlatformSettingsSnapshot
     })
   };
+}
+
+/** Totals a day series. */
+function sumSeries(points: MetricPoint[]) {
+  return points.reduce((total, point) => total + point.value, 0);
+}
+
+/**
+ * A hit rate only means something once something was tried, so with no searches
+ * this says so rather than printing a confident 0%.
+ */
+function formatRate(outcome: { succeeded: MetricPoint[]; failed: MetricPoint[] }) {
+  const matched = sumSeries(outcome.succeeded);
+  const attempts = matched + sumSeries(outcome.failed);
+  return attempts === 0 ? "None yet" : `${Math.round((matched / attempts) * 100)}%`;
 }

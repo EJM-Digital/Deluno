@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Deluno.Jobs.Contracts;
 
 namespace Deluno.Jobs.Data;
@@ -96,5 +97,11 @@ public interface IJobQueueRepository
     Task<string?> FindRecentDispatchIdAsync(
         string downloadClientId,
         string releaseName,
+        CancellationToken cancellationToken);
+
+    /// <summary>Per-day job and dispatch counts for the dashboard.</summary>
+    Task<JobDailyMetrics> GetDailyMetricsAsync(
+        DateOnly fromDate,
+        DateOnly toDate,
         CancellationToken cancellationToken);
 }
