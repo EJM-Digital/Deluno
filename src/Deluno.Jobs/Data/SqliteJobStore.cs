@@ -368,6 +368,33 @@ public sealed class SqliteJobStore(
         IReadOnlyList<string>? jobTypes,
         CancellationToken cancellationToken)
     {
+        var leased = await LeaseBatchAsync(workerId, leaseDuration, jobTypes, 1, cancellationToken);
+        return leased.Count == 0 ? null : leased[0];
+    }
+
+    /// <summary>
+    /// Leases up to <paramref name="maxJobs"/> jobs in a single transaction.
+    ///
+    /// A worker lane used to lease exactly one job per timer tick, which made
+    /// sustained throughput a function of the tick interval rather than of the
+    /// machine — the 2-second import lane could not exceed 30 jobs a minute no
+    /// matter how much work was queued or how fast the host was.
+    ///
+    /// Leasing a batch also amortises the write lock: one transaction claims N
+    /// jobs instead of N transactions claiming one each.
+    /// </summary>
+    public async Task<IReadOnlyList<JobQueueItem>> LeaseBatchAsync(
+        string workerId,
+        TimeSpan leaseDuration,
+        IReadOnlyList<string>? jobTypes,
+        int maxJobs,
+        CancellationToken cancellationToken)
+    {
+        if (maxJobs <= 0)
+        {
+            return [];
+        }
+
         var now = timeProvider.GetUtcNow();
         var leasedUntil = now.Add(leaseDuration);
 
@@ -375,10 +402,19 @@ public sealed class SqliteJobStore(
             DelunoDatabaseNames.Jobs,
             cancellationToken);
 
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        // IMMEDIATE, explicitly. This transaction reads candidates and then
+        // writes them, and a DEFERRED transaction that upgrades a read lock to
+        // a write lock gets SQLITE_BUSY straight away — busy_timeout does not
+        // cover lock upgrades, because waiting could deadlock. Taking the write
+        // lock up front is what makes concurrent lanes queue politely instead
+        // of failing.
+        await using var transaction = await connection.BeginTransactionAsync(
+            System.Data.IsolationLevel.Serializable,
+            cancellationToken);
+
         await RecoverExpiredLeasesAsync(connection, transaction, now, cancellationToken);
 
-        JobQueueItem? candidate = null;
+        var candidates = new List<JobQueueItem>();
 
         using (var select = connection.CreateCommand())
         {
@@ -396,77 +432,85 @@ public sealed class SqliteJobStore(
                   AND attempts < max_attempts
                   {jobTypeFilter}
                 ORDER BY scheduled_utc ASC, created_utc ASC
-                LIMIT 1;
+                LIMIT @maxJobs;
                 """;
 
             AddParameter(select, "@now", now.ToString("O"));
+            AddParameter(select, "@maxJobs", maxJobs);
 
             using var reader = await select.ExecuteReaderAsync(cancellationToken);
-            if (await reader.ReadAsync(cancellationToken))
+            while (await reader.ReadAsync(cancellationToken))
             {
-                candidate = ReadJob(reader);
+                candidates.Add(ReadJob(reader));
             }
         }
 
-        if (candidate is null)
+        if (candidates.Count == 0)
         {
             await transaction.CommitAsync(cancellationToken);
-            return null;
+            return [];
         }
 
-        var leasedJob = candidate with
-        {
-            Status = "running",
-            Attempts = candidate.Attempts + 1,
-            StartedUtc = candidate.StartedUtc ?? now,
-            LeasedUntilUtc = leasedUntil,
-            WorkerId = workerId,
-            LastAttemptUtc = now,
-            NextAttemptUtc = null
-        };
+        var leasedJobs = new List<JobQueueItem>(candidates.Count);
 
-        using (var update = connection.CreateCommand())
+        foreach (var candidate in candidates)
         {
-            update.Transaction = transaction;
-            update.CommandText =
-                """
-                UPDATE job_queue
-                SET
-                    status = 'running',
-                    attempts = attempts + 1,
-                    started_utc = COALESCE(started_utc, @startedUtc),
-                    leased_until_utc = @leasedUntilUtc,
-                    worker_id = @workerId,
-                    last_attempt_utc = @lastAttemptUtc,
-                    next_attempt_utc = NULL,
-                    last_error = NULL
-                WHERE id = @id;
-                """;
+            var leasedJob = candidate with
+            {
+                Status = "running",
+                Attempts = candidate.Attempts + 1,
+                StartedUtc = candidate.StartedUtc ?? now,
+                LeasedUntilUtc = leasedUntil,
+                WorkerId = workerId,
+                LastAttemptUtc = now,
+                NextAttemptUtc = null
+            };
 
-            AddParameter(update, "@id", leasedJob.Id);
-            AddParameter(update, "@startedUtc", leasedJob.StartedUtc?.ToString("O"));
-            AddParameter(update, "@leasedUntilUtc", leasedUntil.ToString("O"));
-            AddParameter(update, "@workerId", workerId);
-            AddParameter(update, "@lastAttemptUtc", now.ToString("O"));
-            await update.ExecuteNonQueryAsync(cancellationToken);
+            using (var update = connection.CreateCommand())
+            {
+                update.Transaction = transaction;
+                update.CommandText =
+                    """
+                    UPDATE job_queue
+                    SET
+                        status = 'running',
+                        attempts = attempts + 1,
+                        started_utc = COALESCE(started_utc, @startedUtc),
+                        leased_until_utc = @leasedUntilUtc,
+                        worker_id = @workerId,
+                        last_attempt_utc = @lastAttemptUtc,
+                        next_attempt_utc = NULL,
+                        last_error = NULL
+                    WHERE id = @id;
+                    """;
+
+                AddParameter(update, "@id", leasedJob.Id);
+                AddParameter(update, "@startedUtc", leasedJob.StartedUtc?.ToString("O"));
+                AddParameter(update, "@leasedUntilUtc", leasedUntil.ToString("O"));
+                AddParameter(update, "@workerId", workerId);
+                AddParameter(update, "@lastAttemptUtc", now.ToString("O"));
+                await update.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await MarkAutomationStateRunningAsync(connection, transaction, leasedJob, now, cancellationToken);
+
+            await InsertActivityAsync(
+                connection,
+                transaction,
+                category: "job.started",
+                message: FormatStartedMessage(leasedJob.JobType, leasedJob.PayloadJson),
+                detailsJson: leasedJob.PayloadJson,
+                relatedJobId: leasedJob.Id,
+                relatedEntityType: leasedJob.RelatedEntityType,
+                relatedEntityId: leasedJob.RelatedEntityId,
+                createdUtc: now,
+                cancellationToken: cancellationToken);
+
+            leasedJobs.Add(leasedJob);
         }
-
-        await MarkAutomationStateRunningAsync(connection, transaction, leasedJob, now, cancellationToken);
-
-        await InsertActivityAsync(
-            connection,
-            transaction,
-            category: "job.started",
-            message: FormatStartedMessage(leasedJob.JobType, leasedJob.PayloadJson),
-            detailsJson: leasedJob.PayloadJson,
-            relatedJobId: leasedJob.Id,
-            relatedEntityType: leasedJob.RelatedEntityType,
-            relatedEntityId: leasedJob.RelatedEntityId,
-            createdUtc: now,
-            cancellationToken: cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
-        return leasedJob;
+        return leasedJobs;
     }
 
     private static string BuildJobTypeFilter(System.Data.Common.DbCommand command, IReadOnlyList<string>? jobTypes)
