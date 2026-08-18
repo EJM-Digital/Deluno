@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Deluno.Series.Contracts;
 
 namespace Deluno.Series.Data;
@@ -213,5 +214,11 @@ public interface ISeriesCatalogRepository
     /// <summary>Episodes still wanted across every series.</summary>
     Task<IReadOnlyList<WantedEpisodeItem>> ListWantedEpisodesAsync(
         int take,
+        CancellationToken cancellationToken);
+
+    /// <summary>Per-day counts for the dashboard, straight from stored timestamps.</summary>
+    Task<MediaDailyMetrics> GetDailyMetricsAsync(
+        DateOnly fromDate,
+        DateOnly toDate,
         CancellationToken cancellationToken);
 }
