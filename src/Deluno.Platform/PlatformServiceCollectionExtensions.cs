@@ -1,6 +1,5 @@
 using Deluno.Platform.Data;
 using Deluno.Platform.Migration;
-using Deluno.Platform.Notifications;
 using Deluno.Platform.Quality;
 using Deluno.Security;
 using Deluno.Security.Hardening;
@@ -17,11 +16,7 @@ public static class PlatformServiceCollectionExtensions
         services.AddSingleton<IQualityModelService, QualityModelService>();
         services.AddSingleton<IMediaDecisionService, MediaDecisionService>();
         services.AddSingleton<IMigrationAssistantService, MigrationAssistantService>();
-        services.AddSingleton<IOutboundNotificationService, OutboundNotificationService>();
-        services.AddSingleton<INotificationService, InMemoryNotificationService>();
-        services.AddHttpClient("notifications");
         services.AddHostedService<PlatformSchemaInitializer>();
-        services.AddHostedService<NotificationEventPublisher>();
         return services;
     }
 

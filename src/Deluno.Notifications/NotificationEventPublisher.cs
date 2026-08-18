@@ -1,8 +1,8 @@
-using Deluno.Platform.Contracts;
+using Deluno.Notifications.Contracts;
 using Deluno.Realtime;
 using Microsoft.Extensions.Hosting;
 
-namespace Deluno.Platform.Data;
+namespace Deluno.Notifications;
 
 /// <summary>
 /// Publishes notifications to clients when significant events occur in the system.

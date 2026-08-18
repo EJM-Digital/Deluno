@@ -9,7 +9,7 @@ using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
-using Deluno.Platform.Notifications;
+using Deluno.Notifications;
 using Deluno.Platform.Quality;
 using Deluno.Series.Contracts;
 using Deluno.Series.Data;

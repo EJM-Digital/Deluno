@@ -17,6 +17,7 @@ using Deluno.Platform.Intake;
 using Deluno.Platform.Migration;
 using Deluno.Platform.Processing;
 using Deluno.Platform.Quality;
+using Deluno.Notifications;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Realtime;
@@ -85,7 +86,6 @@ public static class PlatformEndpointRouteBuilderExtensions
         var destinationRules = endpoints.MapGroup("/api/destination-rules");
         var policySets = endpoints.MapGroup("/api/policy-sets");
         var libraryViews = endpoints.MapGroup("/api/library-views");
-        var notificationWebhooks = endpoints.MapGroup("/api/notification-webhooks");
         var migration = endpoints.MapGroup("/api/migration");
 
         migration.MapPost("/preview", async (
@@ -396,92 +396,6 @@ public static class PlatformEndpointRouteBuilderExtensions
             return Results.Ok(item);
         });
 
-        notificationWebhooks.MapGet(string.Empty, async (
-            IPlatformSettingsRepository repository,
-            CancellationToken cancellationToken) =>
-        {
-            var items = await repository.ListNotificationWebhooksAsync(cancellationToken);
-            return Results.Ok(items);
-        });
-
-        notificationWebhooks.MapPost(string.Empty, async (
-            HttpContext httpContext,
-            [FromBody] CreateNotificationWebhookRequest request,
-            IPlatformSettingsRepository repository,
-            CancellationToken cancellationToken) =>
-        {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
-            if (denied is not null)
-            {
-                return denied;
-            }
-
-            if (string.IsNullOrWhiteSpace(request.Url))
-            {
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["url"] = ["Webhook URL is required."]
-                });
-            }
-
-            var item = await repository.CreateNotificationWebhookAsync(request, cancellationToken);
-            return Results.Ok(item);
-        });
-
-        notificationWebhooks.MapPut("{id}", async (
-            string id,
-            HttpContext httpContext,
-            [FromBody] UpdateNotificationWebhookRequest request,
-            IPlatformSettingsRepository repository,
-            CancellationToken cancellationToken) =>
-        {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
-            if (denied is not null)
-            {
-                return denied;
-            }
-
-            var item = await repository.UpdateNotificationWebhookAsync(id, request, cancellationToken);
-            return item is null ? Results.NotFound() : Results.Ok(item);
-        });
-
-        notificationWebhooks.MapDelete("{id}", async (
-            string id,
-            HttpContext httpContext,
-            IPlatformSettingsRepository repository,
-            CancellationToken cancellationToken) =>
-        {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
-            if (denied is not null)
-            {
-                return denied;
-            }
-
-            var removed = await repository.DeleteNotificationWebhookAsync(id, cancellationToken);
-            return removed ? Results.NoContent() : Results.NotFound();
-        });
-
-        notificationWebhooks.MapPost("{id}/test", async (
-            string id,
-            HttpContext httpContext,
-            Deluno.Platform.Notifications.IOutboundNotificationService notificationService,
-            CancellationToken cancellationToken) =>
-        {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
-            if (denied is not null)
-            {
-                return denied;
-            }
-
-            await notificationService.DispatchAsync(
-                "test",
-                "Deluno Webhook Test",
-                "This is a test notification from Deluno. Your webhook is configured correctly.",
-                null,
-                cancellationToken);
-
-            return Results.Ok(new { sent = true });
-        });
 
         tags.MapGet(string.Empty, async (IPlatformSettingsRepository repository, CancellationToken cancellationToken) =>
         {
@@ -1606,7 +1520,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             IRealtimeEventPublisher realtimeEventPublisher,
             IIntegrationResiliencePolicy resiliencePolicy,
-            Deluno.Platform.Notifications.IOutboundNotificationService notificationService,
+            IOutboundNotificationService notificationService,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -2577,134 +2491,6 @@ public static class PlatformEndpointRouteBuilderExtensions
             return Results.Json(new { status, handoffId = handoff.Id, activityId = activity.Id, importJobId = importJob?.Id }, statusCode: StatusCodes.Status202Accepted);
         });
 
-        // Notification endpoints
-        var notifications = endpoints.MapGroup("/api/notifications");
-
-        notifications.MapGet(string.Empty, async (
-            HttpContext httpContext,
-            INotificationService notificationService,
-            CancellationToken cancellationToken) =>
-        {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
-            if (denied is not null)
-            {
-                return denied;
-            }
-
-            var items = await notificationService.GetNotificationsAsync(50, 0, cancellationToken);
-            return Results.Ok(items);
-        });
-
-        notifications.MapGet("/unread-count", async (
-            HttpContext httpContext,
-            INotificationService notificationService,
-            CancellationToken cancellationToken) =>
-        {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
-            if (denied is not null)
-            {
-                return denied;
-            }
-
-            var count = await notificationService.GetUnreadCountAsync(cancellationToken);
-            return Results.Ok(new { unreadCount = count });
-        });
-
-        notifications.MapPost("/{notificationId}/read", async (
-            HttpContext httpContext,
-            string notificationId,
-            INotificationService notificationService,
-            CancellationToken cancellationToken) =>
-        {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
-            if (denied is not null)
-            {
-                return denied;
-            }
-
-            await notificationService.MarkAsReadAsync(notificationId, cancellationToken);
-            return Results.Ok();
-        });
-
-        notifications.MapPost("/read-all", async (
-            HttpContext httpContext,
-            INotificationService notificationService,
-            CancellationToken cancellationToken) =>
-        {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
-            if (denied is not null)
-            {
-                return denied;
-            }
-
-            await notificationService.MarkAllAsReadAsync(cancellationToken);
-            return Results.Ok();
-        });
-
-        notifications.MapDelete("/{notificationId}", async (
-            HttpContext httpContext,
-            string notificationId,
-            INotificationService notificationService,
-            CancellationToken cancellationToken) =>
-        {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
-            if (denied is not null)
-            {
-                return denied;
-            }
-
-            await notificationService.DeleteNotificationAsync(notificationId, cancellationToken);
-            return Results.Ok();
-        });
-
-        notifications.MapDelete(string.Empty, async (
-            HttpContext httpContext,
-            INotificationService notificationService,
-            CancellationToken cancellationToken) =>
-        {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
-            if (denied is not null)
-            {
-                return denied;
-            }
-
-            await notificationService.ClearAllNotificationsAsync(cancellationToken);
-            return Results.Ok();
-        });
-
-        // Notification preferences endpoints
-        var preferences = endpoints.MapGroup("/api/notification-preferences");
-
-        preferences.MapGet(string.Empty, async (
-            HttpContext httpContext,
-            INotificationService notificationService,
-            CancellationToken cancellationToken) =>
-        {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
-            if (denied is not null)
-            {
-                return denied;
-            }
-
-            var prefs = await notificationService.GetPreferencesAsync(cancellationToken);
-            return Results.Ok(prefs);
-        });
-
-        preferences.MapPut(string.Empty, async (
-            HttpContext httpContext,
-            NotificationPreferences request,
-            INotificationService notificationService,
-            CancellationToken cancellationToken) =>
-        {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
-            if (denied is not null)
-            {
-                return denied;
-            }
-
-            await notificationService.UpdatePreferencesAsync(request, cancellationToken);
-            return Results.Ok();
-        });
 
         return endpoints;
     }

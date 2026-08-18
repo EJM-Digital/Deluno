@@ -260,16 +260,6 @@ public interface IPlatformSettingsRepository
     Task<bool> DeletePolicySetAsync(string id, CancellationToken cancellationToken);
     Task<bool> DeleteLibraryViewAsync(string userId, string id, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<NotificationWebhookItem>> ListNotificationWebhooksAsync(CancellationToken cancellationToken);
-
-    Task<NotificationWebhookItem> CreateNotificationWebhookAsync(CreateNotificationWebhookRequest request, CancellationToken cancellationToken);
-
-    Task<NotificationWebhookItem?> UpdateNotificationWebhookAsync(string id, UpdateNotificationWebhookRequest request, CancellationToken cancellationToken);
-
-    Task<bool> DeleteNotificationWebhookAsync(string id, CancellationToken cancellationToken);
-
-    Task RecordNotificationWebhookFiredAsync(string id, string? error, CancellationToken cancellationToken);
-
     Task<MigrationAuditReport> RecordMigrationAuditReportAsync(
         MigrationAuditReport report,
         CancellationToken cancellationToken);
