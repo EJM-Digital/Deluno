@@ -87,7 +87,9 @@ function LibraryLoadingShell({ title }: { title: string }) {
         <p className="text-[length:var(--type-caption)] font-bold uppercase tracking-[0.22em] text-muted-foreground">
           Browse, filter, and route media
         </p>
-        <h1 className="font-display text-[length:var(--type-title-lg)] font-semibold tracking-display text-foreground">{title}</h1>
+        {/* The topbar is the page heading. A second h1 here made every library
+            view carry two, which is what a screen reader reads out. */}
+        <p className="font-display text-[length:var(--type-title-lg)] font-semibold tracking-display text-foreground">{title}</p>
       </div>
       <div className="rounded-2xl border border-hairline bg-card p-[var(--tile-pad)]">
         <LibraryGridSkeleton count={20} />

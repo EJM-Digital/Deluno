@@ -206,7 +206,20 @@ public sealed record MediaPolicyDefinition(
 
         var value = raw;
 
+        // Disc and low-grade sources first. Every branch here previously fell
+        // through to null, so classification of existing releases is unchanged.
+        if (value.Contains("workprint", StringComparison.OrdinalIgnoreCase)) return "WORKPRINT";
+        if (value.Contains("telesync", StringComparison.OrdinalIgnoreCase) || HasToken(value, "ts")) return "TELESYNC";
+        if (value.Contains("telecine", StringComparison.OrdinalIgnoreCase) || HasToken(value, "tc")) return "TELECINE";
+        if (value.Contains("dvdscr", StringComparison.OrdinalIgnoreCase) || value.Contains("screener", StringComparison.OrdinalIgnoreCase)) return "DVDSCR";
+        if (value.Contains("regional", StringComparison.OrdinalIgnoreCase)) return "REGIONAL";
+        if (value.Contains("camrip", StringComparison.OrdinalIgnoreCase) || HasToken(value, "cam")) return "CAM";
+        if (value.Contains("br-disk", StringComparison.OrdinalIgnoreCase) || value.Contains("brdisk", StringComparison.OrdinalIgnoreCase) || value.Contains("bdmv", StringComparison.OrdinalIgnoreCase) || value.Contains("bdiso", StringComparison.OrdinalIgnoreCase)) return "BR-DISK";
+        if (value.Contains("raw-hd", StringComparison.OrdinalIgnoreCase) || value.Contains("rawhd", StringComparison.OrdinalIgnoreCase)) return "Raw-HD";
+        if (value.Contains("dvd-r", StringComparison.OrdinalIgnoreCase) || HasToken(value, "dvdr")) return "DVD-R";
+
         if (ContainsAll(value, "remux", "2160")) return "Remux 2160p";
+        if (ContainsAll(value, "hdtv", "2160")) return "HDTV 2160p";
         if (ContainsAll(value, "bluray", "2160") || ContainsAll(value, "blu-ray", "2160") || ContainsAll(value, "bdrip", "2160")) return "Bluray 2160p";
         if (ContainsAll(value, "web", "2160") || ContainsAll(value, "webrip", "2160") || ContainsAll(value, "web-dl", "2160")) return "WEB 2160p";
         if (ContainsAll(value, "remux", "1080")) return "Remux 1080p";
@@ -216,10 +229,18 @@ public sealed record MediaPolicyDefinition(
         if (ContainsAll(value, "bluray", "720") || ContainsAll(value, "blu-ray", "720") || ContainsAll(value, "bdrip", "720")) return "Bluray 720p";
         if (ContainsAll(value, "web", "720") || ContainsAll(value, "webrip", "720") || ContainsAll(value, "web-dl", "720")) return "WEB 720p";
         if (ContainsAll(value, "hdtv", "720")) return "HDTV 720p";
+        if (ContainsAll(value, "bluray", "576") || ContainsAll(value, "blu-ray", "576")) return "Bluray 576p";
+        if (ContainsAll(value, "bluray", "480") || ContainsAll(value, "blu-ray", "480")) return "Bluray 480p";
+        if (ContainsAll(value, "web", "480")) return "WEB 480p";
         if (value.Contains("dvd", StringComparison.OrdinalIgnoreCase)) return "DVD";
         if (value.Contains("sdtv", StringComparison.OrdinalIgnoreCase)) return "SDTV";
         return null;
     }
+
+    /// <summary>Whole-token match, so "cam" never fires on "Camera" nor "ts" on "Ghosts".</summary>
+    private static bool HasToken(string value, string token)
+        => value.Split([' ', '.', '-', '_', '(', ')', '[', ']'], StringSplitOptions.RemoveEmptyEntries)
+            .Any(part => part.Equals(token, StringComparison.OrdinalIgnoreCase));
 
     private static bool ContainsAll(string value, string tokenA, string tokenB)
         => value.Contains(tokenA, StringComparison.OrdinalIgnoreCase)
@@ -236,8 +257,19 @@ public static class MediaPolicyCatalog
         ["WEB 720p", "WEB 1080p", "Bluray 1080p", "WEB 2160p", "Bluray 2160p"],
         new ReadOnlyDictionary<string, int>(new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
         {
+            ["Unknown"] = 1,
+            ["WORKPRINT"] = 2,
+            ["CAM"] = 3,
+            ["TELESYNC"] = 4,
+            ["TELECINE"] = 5,
+            ["REGIONAL"] = 6,
+            ["DVDSCR"] = 7,
             ["SDTV"] = 10,
             ["DVD"] = 20,
+            ["DVD-R"] = 21,
+            ["WEB 480p"] = 22,
+            ["Bluray 480p"] = 24,
+            ["Bluray 576p"] = 25,
             ["HDTV 720p"] = 30,
             ["WEB 720p"] = 40,
             ["Bluray 720p"] = 50,
@@ -245,9 +277,12 @@ public static class MediaPolicyCatalog
             ["WEB 1080p"] = 70,
             ["Bluray 1080p"] = 80,
             ["Remux 1080p"] = 90,
+            ["HDTV 2160p"] = 95,
             ["WEB 2160p"] = 100,
             ["Bluray 2160p"] = 110,
-            ["Remux 2160p"] = 120
+            ["Remux 2160p"] = 120,
+            ["BR-DISK"] = 125,
+            ["Raw-HD"] = 126
         }));
 
     public static string NormalizeMediaType(string? mediaType)

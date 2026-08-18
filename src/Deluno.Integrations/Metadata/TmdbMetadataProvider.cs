@@ -902,6 +902,319 @@ public sealed class TmdbMetadataProvider(
                 .ToArray() ?? []);
     }
 
+    /// <summary>
+    /// The season/episode catalogue for a series.
+    ///
+    /// The gateway is asked first — it does the per-season fan-out and caches the
+    /// answer, so the app makes one request instead of one per season. TMDb is the
+    /// backup when the gateway cannot answer: a catalogue is the difference
+    /// between a library that mirrors your disk and one that knows what episodes
+    /// exist, so it is worth a direct call rather than nothing.
+    /// </summary>
+    public async Task<IReadOnlyList<MetadataSeason>> GetSeriesCatalogueAsync(
+        string providerId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(providerId)
+            || !int.TryParse(providerId, NumberStyles.Integer, CultureInfo.InvariantCulture, out var id))
+        {
+            return [];
+        }
+
+        var config = await GetMetadataConfigurationAsync(cancellationToken);
+
+        if (!string.IsNullOrWhiteSpace(config.BrokerUrl))
+        {
+            var fromBroker = await TryBrokerCatalogueAsync(config.BrokerUrl, id, cancellationToken);
+            if (fromBroker is { Count: > 0 })
+            {
+                return fromBroker;
+            }
+
+            logger.LogInformation(
+                "Metadata gateway returned no catalogue for series {ProviderId}; falling back to a direct provider call.",
+                providerId);
+        }
+
+        var apiKey = config.TmdbApiKey ?? await GetApiKeyAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            logger.LogWarning(
+                "No episode catalogue for series {ProviderId}: the gateway could not serve one and no direct key is available.",
+                providerId);
+            return [];
+        }
+
+        return await GetTmdbCatalogueAsync(id, apiKey, cancellationToken);
+    }
+
+    /// <summary>Release dates for a movie: in cinemas, digital, physical.</summary>
+    public async Task<MetadataReleaseDates> GetMovieReleaseDatesAsync(
+        string providerId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(providerId)
+            || !int.TryParse(providerId, NumberStyles.Integer, CultureInfo.InvariantCulture, out var id))
+        {
+            return MetadataReleaseDates.None;
+        }
+
+        var config = await GetMetadataConfigurationAsync(cancellationToken);
+
+        if (!string.IsNullOrWhiteSpace(config.BrokerUrl))
+        {
+            var fromBroker = await TryBrokerReleaseDatesAsync(config.BrokerUrl, id, cancellationToken);
+            if (fromBroker is not null)
+            {
+                return fromBroker;
+            }
+        }
+
+        var apiKey = config.TmdbApiKey ?? await GetApiKeyAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return MetadataReleaseDates.None;
+        }
+
+        return await GetTmdbReleaseDatesAsync(id, apiKey, cancellationToken);
+    }
+
+    private string BuildGatewayBaseUrl(string brokerUrl)
+    {
+        var trimmed = brokerUrl.TrimEnd('/');
+        return trimmed.EndsWith("/metadata/broker", StringComparison.OrdinalIgnoreCase) ||
+               trimmed.EndsWith("/api/metadata/broker", StringComparison.OrdinalIgnoreCase)
+            ? trimmed
+            : $"{trimmed}/metadata";
+    }
+
+    private async Task<IReadOnlyList<MetadataSeason>?> TryBrokerCatalogueAsync(
+        string brokerUrl,
+        int id,
+        CancellationToken cancellationToken)
+    {
+        var url = $"{BuildGatewayBaseUrl(brokerUrl)}/tv/{id.ToString(CultureInfo.InvariantCulture)}/catalogue";
+        var response = await GetJsonWithResilienceAsync<BrokerCatalogueResponse>(
+            url,
+            $"metadata:broker:catalogue:{BuildHostKey(brokerUrl)}",
+            "metadata.broker.catalogue",
+            cancellationToken);
+
+        if (response?.Seasons is not { Count: > 0 })
+        {
+            return null;
+        }
+
+        return response.Seasons
+            .Select(season => new MetadataSeason(
+                season.SeasonNumber,
+                NullIfBlank(season.Name),
+                season.Episodes?.Count ?? 0,
+                ParseDateOnly(season.AirDate),
+                (season.Episodes ?? [])
+                    .Select(episode => new MetadataEpisode(
+                        season.SeasonNumber,
+                        episode.EpisodeNumber,
+                        NullIfBlank(episode.Title),
+                        NullIfBlank(episode.Overview),
+                        ParseAirDate(episode.AirDate)))
+                    .ToArray()))
+            .ToArray();
+    }
+
+    private async Task<MetadataReleaseDates?> TryBrokerReleaseDatesAsync(
+        string brokerUrl,
+        int id,
+        CancellationToken cancellationToken)
+    {
+        var url = $"{BuildGatewayBaseUrl(brokerUrl)}/movie/{id.ToString(CultureInfo.InvariantCulture)}/release-dates";
+        var response = await GetJsonWithResilienceAsync<BrokerReleaseDatesResponse>(
+            url,
+            $"metadata:broker:release-dates:{BuildHostKey(brokerUrl)}",
+            "metadata.broker.release-dates",
+            cancellationToken);
+
+        if (response is null)
+        {
+            return null;
+        }
+
+        return new MetadataReleaseDates(
+            ParseDateOnly(response.InCinemas),
+            ParseDateOnly(response.Digital),
+            ParseDateOnly(response.Physical));
+    }
+
+    private async Task<IReadOnlyList<MetadataSeason>> GetTmdbCatalogueAsync(
+        int id,
+        string apiKey,
+        CancellationToken cancellationToken)
+    {
+        var detail = await GetJsonWithResilienceAsync<TmdbSeriesSeasons>(
+            $"https://api.themoviedb.org/3/tv/{id}?api_key={Uri.EscapeDataString(apiKey)}",
+            "metadata:tmdb:catalogue",
+            "metadata.tmdb.catalogue",
+            cancellationToken);
+
+        if (detail?.Seasons is not { Count: > 0 })
+        {
+            return [];
+        }
+
+        var seasons = new List<MetadataSeason>();
+        foreach (var season in detail.Seasons.Where(item => item.SeasonNumber >= 0).OrderBy(item => item.SeasonNumber).Take(50))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var seasonDetail = await GetJsonWithResilienceAsync<TmdbSeasonDetail>(
+                $"https://api.themoviedb.org/3/tv/{id}/season/{season.SeasonNumber.ToString(CultureInfo.InvariantCulture)}?api_key={Uri.EscapeDataString(apiKey)}",
+                "metadata:tmdb:catalogue:season",
+                "metadata.tmdb.catalogue.season",
+                cancellationToken);
+
+            // One unavailable season must not lose the rest of the catalogue.
+            if (seasonDetail?.Episodes is null)
+            {
+                continue;
+            }
+
+            var episodes = seasonDetail.Episodes
+                .Where(episode => episode.EpisodeNumber > 0)
+                .Select(episode => new MetadataEpisode(
+                    season.SeasonNumber,
+                    episode.EpisodeNumber,
+                    NullIfBlank(episode.Name),
+                    NullIfBlank(episode.Overview),
+                    ParseAirDate(episode.AirDate)))
+                .ToArray();
+
+            seasons.Add(new MetadataSeason(
+                season.SeasonNumber,
+                NullIfBlank(season.Name),
+                episodes.Length,
+                ParseDateOnly(season.AirDate),
+                episodes));
+        }
+
+        return seasons;
+    }
+
+    /// <summary>
+    /// TMDb reports release dates per country and per type, so this takes the
+    /// earliest of each across every region rather than guessing one. Types:
+    /// 2 limited, 3 theatrical, 4 digital, 5 physical. A premiere (1) is a
+    /// festival screening, not something anyone can obtain, so it is ignored.
+    /// </summary>
+    private async Task<MetadataReleaseDates> GetTmdbReleaseDatesAsync(
+        int id,
+        string apiKey,
+        CancellationToken cancellationToken)
+    {
+        var response = await GetJsonWithResilienceAsync<TmdbReleaseDatesResponse>(
+            $"https://api.themoviedb.org/3/movie/{id}/release_dates?api_key={Uri.EscapeDataString(apiKey)}",
+            "metadata:tmdb:release-dates",
+            "metadata.tmdb.release-dates",
+            cancellationToken);
+
+        if (response?.Results is not { Count: > 0 })
+        {
+            return MetadataReleaseDates.None;
+        }
+
+        DateOnly? cinemas = null;
+        DateOnly? digital = null;
+        DateOnly? physical = null;
+
+        foreach (var entry in response.Results.SelectMany(country => country.ReleaseDates ?? []))
+        {
+            var date = ParseDateOnly(entry.ReleaseDate);
+            if (date is null)
+            {
+                continue;
+            }
+
+            if (entry.Type is 2 or 3)
+            {
+                if (cinemas is null || date < cinemas) cinemas = date;
+            }
+            else if (entry.Type is 4)
+            {
+                if (digital is null || date < digital) digital = date;
+            }
+            else if (entry.Type is 5)
+            {
+                if (physical is null || date < physical) physical = date;
+            }
+        }
+
+        return new MetadataReleaseDates(cinemas, digital, physical);
+    }
+
+    private static string? NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static DateOnly? ParseDateOnly(string? value)
+        => value is not null && DateOnly.TryParse(
+            value.Length >= 10 ? value[..10] : value,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out var parsed)
+            ? parsed
+            : null;
+
+    private static DateTimeOffset? ParseAirDate(string? value)
+        => ParseDateOnly(value) is { } date
+            ? new DateTimeOffset(date.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero)
+            : null;
+
+    private sealed record BrokerCatalogueResponse(
+        [property: JsonPropertyName("seasons")] IReadOnlyList<BrokerSeason>? Seasons);
+
+    private sealed record BrokerSeason(
+        [property: JsonPropertyName("seasonNumber")] int SeasonNumber,
+        [property: JsonPropertyName("name")] string? Name,
+        [property: JsonPropertyName("airDate")] string? AirDate,
+        [property: JsonPropertyName("episodes")] IReadOnlyList<BrokerEpisode>? Episodes);
+
+    private sealed record BrokerEpisode(
+        [property: JsonPropertyName("episodeNumber")] int EpisodeNumber,
+        [property: JsonPropertyName("title")] string? Title,
+        [property: JsonPropertyName("overview")] string? Overview,
+        [property: JsonPropertyName("airDate")] string? AirDate);
+
+    private sealed record BrokerReleaseDatesResponse(
+        [property: JsonPropertyName("inCinemas")] string? InCinemas,
+        [property: JsonPropertyName("digital")] string? Digital,
+        [property: JsonPropertyName("physical")] string? Physical);
+
+    private sealed record TmdbSeriesSeasons(
+        [property: JsonPropertyName("seasons")] IReadOnlyList<TmdbSeasonSummary>? Seasons);
+
+    private sealed record TmdbSeasonSummary(
+        [property: JsonPropertyName("season_number")] int SeasonNumber,
+        [property: JsonPropertyName("name")] string? Name,
+        [property: JsonPropertyName("air_date")] string? AirDate,
+        [property: JsonPropertyName("episode_count")] int EpisodeCount);
+
+    private sealed record TmdbSeasonDetail(
+        [property: JsonPropertyName("episodes")] IReadOnlyList<TmdbSeasonEpisode>? Episodes);
+
+    private sealed record TmdbSeasonEpisode(
+        [property: JsonPropertyName("episode_number")] int EpisodeNumber,
+        [property: JsonPropertyName("name")] string? Name,
+        [property: JsonPropertyName("overview")] string? Overview,
+        [property: JsonPropertyName("air_date")] string? AirDate);
+
+    private sealed record TmdbReleaseDatesResponse(
+        [property: JsonPropertyName("results")] IReadOnlyList<TmdbCountryReleaseDates>? Results);
+
+    private sealed record TmdbCountryReleaseDates(
+        [property: JsonPropertyName("iso_3166_1")] string? Country,
+        [property: JsonPropertyName("release_dates")] IReadOnlyList<TmdbReleaseDateEntry>? ReleaseDates);
+
+    private sealed record TmdbReleaseDateEntry(
+        [property: JsonPropertyName("type")] int Type,
+        [property: JsonPropertyName("release_date")] string? ReleaseDate);
+
     private async Task<TmdbExternalIds> GetExternalIdsAsync(
         int id,
         string mediaType,

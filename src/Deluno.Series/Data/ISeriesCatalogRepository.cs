@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Deluno.Series.Contracts;
 
 namespace Deluno.Series.Data;
@@ -190,5 +191,34 @@ public interface ISeriesCatalogRepository
     /// <summary>Get current quality for a specific episode</summary>
     Task<string?> GetEpisodeCurrentQualityAsync(
         string episodeId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Write the provider's season/episode catalogue over the series' inventory.
+    /// Adds episodes nobody has a file for, fills in titles and air dates, and
+    /// leaves every file-derived column alone.
+    /// </summary>
+    Task<SeriesCatalogueSyncResult> SyncEpisodeCatalogueAsync(
+        string seriesId,
+        IReadOnlyList<CatalogueEpisodeItem> episodes,
+        string source,
+        CancellationToken cancellationToken);
+
+    /// <summary>Episodes airing inside a window, ordered by air date.</summary>
+    Task<IReadOnlyList<SeriesCalendarEpisodeItem>> ListCalendarEpisodesAsync(
+        DateTimeOffset fromUtc,
+        DateTimeOffset toUtc,
+        int take,
+        CancellationToken cancellationToken);
+
+    /// <summary>Episodes still wanted across every series.</summary>
+    Task<IReadOnlyList<WantedEpisodeItem>> ListWantedEpisodesAsync(
+        int take,
+        CancellationToken cancellationToken);
+
+    /// <summary>Per-day counts for the dashboard, straight from stored timestamps.</summary>
+    Task<MediaDailyMetrics> GetDailyMetricsAsync(
+        DateOnly fromDate,
+        DateOnly toDate,
         CancellationToken cancellationToken);
 }

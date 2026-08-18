@@ -130,28 +130,29 @@ test.describe("indexer and download client CRUD", () => {
     await expect(page.getByText(uniqueName)).toHaveCount(0);
   });
 
-  test("sources page explains and opens the search-source connection flow", async ({ page }) => {
+  test("sources page opens the indexer drawer with every protocol available", async ({ page }) => {
     await page.goto("/indexers/indexers");
-    const addButton = page.getByRole("button", { name: "Add indexer" });
+    const addButton = page.getByRole("button", { name: "New indexer" }).first();
     await expect(addButton).toBeVisible();
 
     await addButton.click();
-    // The guided connection panel appears.
-    await expect(page.getByText("Connect an indexer", { exact: true })).toBeVisible();
-    // Protocol options are visible
-    await expect(page.getByRole("button", { name: /Torznab/i })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Newznab/i })).toBeVisible();
-    await expect(page.getByRole("button", { name: /RSS Feed/i })).toBeVisible();
+    const drawer = page.getByRole("dialog", { name: "New indexer" });
+    await expect(drawer).toBeVisible();
+    const protocol = drawer.getByLabel("Protocol");
+    await expect(protocol.locator("option", { hasText: "Torznab" })).toHaveCount(1);
+    await expect(protocol.locator("option", { hasText: "Newznab" })).toHaveCount(1);
+    await expect(protocol.locator("option", { hasText: "RSS feed" })).toHaveCount(1);
   });
 
-  test("indexer add form shows URL and scope fields after selecting protocol", async ({ page }) => {
+  test("indexer drawer shows URL and scope fields for the chosen protocol", async ({ page }) => {
     await page.goto("/indexers/indexers");
-    await page.getByRole("button", { name: "Add indexer" }).click();
-    await page.getByRole("button", { name: /Torznab/i }).click();
+    await page.getByRole("button", { name: "New indexer" }).first().click();
+    const drawer = page.getByRole("dialog", { name: "New indexer" });
+    await drawer.getByLabel("Protocol").selectOption("torznab");
 
-    // After selecting protocol, media scope and URL field should be visible
-    await expect(page.getByText(/Movies \+ TV/i)).toBeVisible();
-    await expect(page.getByPlaceholder(/localhost:9117/i)).toBeVisible();
+    await expect(drawer.getByRole("radiogroup", { name: "Used for" })).toBeVisible();
+    await expect(drawer.getByPlaceholder(/localhost:9117/i)).toBeVisible();
+    await page.keyboard.press("Escape");
   });
 
   test("updated indexer fields are returned correctly by the API", async ({ page }) => {
@@ -269,7 +270,7 @@ test.describe("indexer and download client CRUD", () => {
 
   test("sources page provides the download connection flow", async ({ page }) => {
     await page.goto("/indexers/download-clients");
-    await expect(page.getByRole("button", { name: "Connect downloads" }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "New client" }).first()).toBeVisible();
   });
 
   test("updated download client fields are returned correctly by the API", async ({ page }) => {

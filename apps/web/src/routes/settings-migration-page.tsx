@@ -1,12 +1,41 @@
+/**
+ * Migration Assistant — list → drawer over one page-level form.
+ *
+ *   PageToolbar (System settings tabs · Load example · Preview import)
+ *   ListCard     import source (source, name, JSON; safety notes behind a Disclosure)
+ *   SummaryStrip preview result (create · skip · unsupported · titles)
+ *   ListCard     change report  (row → drawer: what it is · fields · warnings)
+ *   ListCard     imported connections (test each one, result lands in its row)
+ *   ListCard     applied history (row reopens that record)
+ *
+ * Nothing here overwrites: a preview and an apply run the same mapping code,
+ * and anything already present is reported as skipped rather than replaced.
+ *
+ * Contracts: POST /api/migration/preview, POST /api/migration/apply,
+ * GET /api/migration/reports, POST /api/{indexers|download-clients}/{id}/test.
+ */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { ArrowRight, CheckCircle2, FileJson, LoaderCircle, ShieldCheck, TriangleAlert } from "lucide-react";
-import { SettingsShell } from "../components/app/settings-shell";
-import { Badge } from "../components/ui/badge";
+import { ArrowRight, Loader2, ShieldCheck } from "lucide-react";
 import { Button } from "../components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import { Chip, type ChipProps } from "../components/ui/chip";
+import { Disclosure } from "../components/ui/disclosure";
+import { Drawer, DrawerFooter, DrawerSection } from "../components/ui/drawer";
+import { Field, FieldRow } from "../components/ui/field";
 import { Input } from "../components/ui/input";
-import { InputDescription } from "../components/ui/input-description";
-import { fetchJson, type MigrationApplyResponse, type MigrationAuditReport, type MigrationReport, type MigrationReportOperation } from "../lib/api";
+import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
+import { PageToolbar } from "../components/ui/page-toolbar";
+import { Select } from "../components/ui/select";
+import { SummaryStrip } from "../components/ui/summary-strip";
+import { Switch } from "../components/ui/switch";
+import { Textarea } from "../components/ui/textarea";
+import { systemSettingsNavItems } from "../components/app/settings-shell";
+import {
+  fetchJson,
+  type MigrationApplyResponse,
+  type MigrationAuditReport,
+  type MigrationReport,
+  type MigrationReportOperation
+} from "../lib/api";
 
 const SOURCE_OPTIONS = [
   { label: "Radarr", value: "radarr" },
@@ -14,6 +43,13 @@ const SOURCE_OPTIONS = [
   { label: "Prowlarr", value: "prowlarr" },
   { label: "Recyclarr", value: "recyclarr" },
   { label: "Compatible JSON", value: "custom" }
+];
+
+const SAFETY_NOTES = [
+  "A preview and an apply run the same mapping code, so what you see is what runs.",
+  "Existing libraries, profiles, sources and clients are skipped, never overwritten.",
+  "Missing host, URL or feed data is reported as unsupported rather than guessed.",
+  "Monitored and wanted titles are reported for reconciliation, not imported blind."
 ];
 
 const SAMPLE_PAYLOAD = `{
@@ -49,23 +85,22 @@ export function SettingsMigrationPage() {
   const [sourceKind, setSourceKind] = useState("radarr");
   const [sourceName, setSourceName] = useState("Radarr");
   const [payloadJson, setPayloadJson] = useState("");
+  const [safetyOpen, setSafetyOpen] = useState(false);
+
   const [report, setReport] = useState<MigrationReport | null>(null);
-  const [selectedOperationIds, setSelectedOperationIds] = useState<Set<string>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [applied, setApplied] = useState<MigrationApplyResponse | null>(null);
   const [auditReports, setAuditReports] = useState<MigrationAuditReport[]>([]);
   const [busy, setBusy] = useState<"preview" | "apply" | "validate" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [connectionValidation, setConnectionValidation] = useState<Record<string, ConnectionValidationResult>>({});
+  const [openOperationId, setOpenOperationId] = useState<string | null>(null);
 
-  const canApply = useMemo(
-    () => report?.valid === true && selectedOperationIds.size > 0,
-    [report, selectedOperationIds]
-  );
+  const canApply = report?.valid === true && selectedIds.size > 0;
+  const openOperation = openOperationId ? report?.operations.find((operation) => operation.id === openOperationId) ?? null : null;
 
   useEffect(() => {
-    void fetchJson<MigrationAuditReport[]>("/api/migration/reports")
-      .then(setAuditReports)
-      .catch(() => setAuditReports([]));
+    void fetchJson<MigrationAuditReport[]>("/api/migration/reports").then(setAuditReports).catch(() => setAuditReports([]));
   }, []);
 
   async function handlePreview(event?: FormEvent<HTMLFormElement>) {
@@ -74,16 +109,15 @@ export function SettingsMigrationPage() {
     setMessage(null);
     setApplied(null);
     setConnectionValidation({});
-
     try {
-      const nextReport = await fetchJson<MigrationReport>("/api/migration/preview", {
+      const next = await fetchJson<MigrationReport>("/api/migration/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sourceKind, sourceName, payloadJson })
       });
-      setReport(nextReport);
-      setSelectedOperationIds(new Set(nextReport.operations.filter(isSelectableOperation).map((operation) => operation.id)));
-      setMessage(nextReport.valid ? "Preview ready. Review every create, skip, and warning before applying." : "Preview found issues.");
+      setReport(next);
+      setSelectedIds(new Set(next.operations.filter(isSelectable).map((operation) => operation.id)));
+      setMessage(next.valid ? "Preview ready. Review every create, skip and warning before applying." : "Preview found issues — see the change report.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Migration preview failed.");
     } finally {
@@ -94,22 +128,22 @@ export function SettingsMigrationPage() {
   async function handleApply() {
     setBusy("apply");
     setMessage(null);
-
     try {
       const result = await fetchJson<MigrationApplyResponse>("/api/migration/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sourceKind, sourceName, payloadJson, selectedOperationIds: [...selectedOperationIds] })
+        body: JSON.stringify({ sourceKind, sourceName, payloadJson, selectedOperationIds: [...selectedIds] })
       });
       setApplied(result);
       setReport(result.report);
       setConnectionValidation({});
-      const reports = await fetchJson<MigrationAuditReport[]>("/api/migration/reports").catch(() => []);
-      setAuditReports(reports);
-      const createdCount = result.applied.filter((item) => item.result === "created").length;
-      setMessage(result.report.errors.length > 0
-        ? "Migration paused safely. Review the report and audit, then retry when you are ready."
-        : `${createdCount} selected item${createdCount === 1 ? "" : "s"} imported. Deluno skipped anything already present.`);
+      setAuditReports(await fetchJson<MigrationAuditReport[]>("/api/migration/reports").catch(() => []));
+      const created = result.applied.filter((item) => item.result === "created").length;
+      setMessage(
+        result.report.errors.length > 0
+          ? "Migration paused safely. Review the report, then retry — anything already saved is skipped."
+          : `${created} selected ${created === 1 ? "item" : "items"} imported. Anything already present was skipped.`
+      );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Migration apply failed.");
     } finally {
@@ -118,365 +152,281 @@ export function SettingsMigrationPage() {
   }
 
   const importedConnections = useMemo(
-    () => (applied?.applied ?? []).filter(
-      (item) => item.result === "created" && item.createdId && (item.targetType === "indexer" || item.targetType === "download-client")
-    ),
+    () =>
+      (applied?.applied ?? []).filter(
+        (item) => item.result === "created" && item.createdId && (item.targetType === "indexer" || item.targetType === "download-client")
+      ),
     [applied]
   );
 
-  async function handleValidateImportedConnections() {
-    if (importedConnections.length === 0) return;
+  async function validateImportedConnections() {
+    if (!importedConnections.length) return;
     setBusy("validate");
-    setMessage(null);
-
     const results: Record<string, ConnectionValidationResult> = {};
-    await Promise.all(importedConnections.map(async (item) => {
-      const collection = item.targetType === "indexer" ? "indexers" : "download-clients";
-      try {
-        results[item.operationId] = await fetchJson<ConnectionValidationResult>(`/api/${collection}/${item.createdId}/test`, {
-          method: "POST"
-        });
-      } catch (error) {
-        results[item.operationId] = {
-          healthStatus: "needs review",
-          message: error instanceof Error ? error.message : "Connection test could not run."
-        };
-      }
-    }));
-
-    setConnectionValidation(results);
-    const healthyCount = Object.values(results).filter((result) => result.healthStatus === "healthy").length;
-    setMessage(
-      healthyCount === importedConnections.length
-        ? "Every imported connection responded successfully."
-        : `${healthyCount} of ${importedConnections.length} imported connection${importedConnections.length === 1 ? "" : "s"} passed. Review anything marked for attention.`
+    await Promise.all(
+      importedConnections.map(async (item) => {
+        const collection = item.targetType === "indexer" ? "indexers" : "download-clients";
+        try {
+          results[item.operationId] = await fetchJson<ConnectionValidationResult>(`/api/${collection}/${item.createdId}/test`, { method: "POST" });
+        } catch (error) {
+          results[item.operationId] = { healthStatus: "needs review", message: error instanceof Error ? error.message : "The test could not run." };
+        }
+      })
     );
+    setConnectionValidation(results);
     setBusy(null);
   }
 
+  function toggleOperation(operation: MigrationReportOperation, on: boolean) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (on) next.add(operation.id);
+      else next.delete(operation.id);
+      return next;
+    });
+  }
+
   return (
-    <SettingsShell
-      title="Migration Assistant"
-      description="Move from Radarr, Sonarr, Prowlarr, Recyclarr, or compatible exports without overwriting existing Deluno configuration."
-    >
-      <div className="settings-split settings-split-config-heavy">
-        <Card className="settings-panel">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileJson className="h-5 w-5 text-primary" />
-              Import source
-            </CardTitle>
-            <CardDescription>
-              Paste an exported JSON snapshot. Deluno previews the changes first and never overwrites matching configuration silently.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form className="space-y-[var(--field-group-pad)]" onSubmit={(event) => void handlePreview(event)}>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="Source type" description="The application you're exporting configuration from: Radarr, Sonarr, Prowlarr, Recyclarr, or a compatible JSON format.">
-                  <select
-                    value={sourceKind}
-                    onChange={(event) => {
-                      setSourceKind(event.target.value);
-                      setSourceName(SOURCE_OPTIONS.find((item) => item.value === event.target.value)?.label ?? "External stack");
-                    }}
-                    className="density-control-text h-[var(--control-height)] w-full rounded-xl border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none"
-                  >
-                    {SOURCE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Source name" description="A friendly label for this import (e.g., 'Home Radarr', 'Work Sonarr'). Used to identify this import in your history.">
-                  <Input value={sourceName} onChange={(event) => setSourceName(event.target.value)} />
-                </Field>
-              </div>
+    <form onSubmit={(event) => void handlePreview(event)} className="flex flex-col gap-[var(--page-gap)]" noValidate>
+      <PageToolbar
+        tabs={systemSettingsNavItems}
+        actions={
+          <>
+            <Button type="button" variant="outline" onClick={() => setPayloadJson(SAMPLE_PAYLOAD)}>
+              Load example
+            </Button>
+            <Button type="submit" disabled={busy !== null || !payloadJson.trim()}>
+              {busy === "preview" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+              Preview import
+            </Button>
+          </>
+        }
+      />
 
-              <Field label="Export JSON" description="Paste the exported configuration JSON from your source application. Deluno will preview all changes before importing.">
-                <textarea
-                  value={payloadJson}
-                  onChange={(event) => setPayloadJson(event.target.value)}
-                  spellCheck={false}
-                  placeholder={SAMPLE_PAYLOAD}
-                  className="density-control-text min-h-[34rem] w-full resize-y rounded-xl border border-hairline bg-surface-2 px-[var(--field-pad-x)] py-4 font-mono text-foreground outline-none placeholder:text-muted-foreground/45"
-                />
-              </Field>
-
-              <div className="flex flex-wrap gap-2">
-                <Button type="submit" disabled={busy !== null}>
-                  {busy === "preview" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-                  Preview import
-                </Button>
-                <Button type="button" variant="secondary" onClick={() => setPayloadJson(SAMPLE_PAYLOAD)}>
-                  Load example
-                </Button>
-                <Button type="button" variant="outline" onClick={() => void handleApply()} disabled={!canApply || busy !== null}>
-                  {busy === "apply" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
-                  Apply selected changes ({selectedOperationIds.size})
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-
-        <div className="settings-side-stack">
-          <Card>
-            <CardHeader>
-              <CardTitle>Safety model</CardTitle>
-              <CardDescription>Migration is deliberately non-destructive.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3 density-help text-muted-foreground">
-              <SafetyRow>Preview and apply run the same mapping code.</SafetyRow>
-              <SafetyRow>Existing libraries, profiles, sources, and clients are skipped, not overwritten.</SafetyRow>
-              <SafetyRow>Missing host, URL, or feed data is reported as unsupported instead of guessed.</SafetyRow>
-              <SafetyRow>Detected monitored/wanted titles are reported for metadata reconciliation.</SafetyRow>
-            </CardContent>
-          </Card>
-
-          {message ? (
-            <Card>
-              <CardContent className="pt-[var(--tile-pad)] density-help text-muted-foreground">{message}</CardContent>
-            </Card>
-          ) : null}
-
-          {report ? <MigrationSummary report={report} /> : null}
-
-          {applied ? (
-            <Card>
-              <CardHeader>
-                <CardTitle>Applied changes</CardTitle>
-                <CardDescription>Each saved or failed stage returned by the backend. A failed stage stops the migration safely; retrying skips matching saved items.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {applied.applied.length === 0 ? (
-                  <p className="density-help text-muted-foreground">No new items were created.</p>
-                ) : (
-                  applied.applied.map((item) => (
-                    <div key={item.operationId} className="rounded-xl border border-hairline bg-surface-1 p-3">
-                      <p className="font-semibold text-foreground">{item.name}</p>
-                      <p className="mt-1 font-mono text-[length:var(--type-caption)] text-muted-foreground">
-                        {item.targetType} · {item.result}{item.createdId ? ` · ${item.createdId}` : ""}
-                      </p>
-                    </div>
-                  ))
-                )}
-                {importedConnections.length > 0 ? (
-                  <div className="mt-4 rounded-xl border border-primary/20 bg-primary/5 p-3">
-                    <p className="font-semibold text-foreground">Validate imported connections</p>
-                    <p className="mt-1 density-help text-muted-foreground">
-                      Deluno tests the saved search sources and download clients using their protected credentials. Secrets never appear in this screen or the migration audit.
-                    </p>
-                    <Button type="button" size="sm" className="mt-3" disabled={busy !== null} onClick={() => void handleValidateImportedConnections()}>
-                      {busy === "validate" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-                      Validate imported connections ({importedConnections.length})
-                    </Button>
-                    {importedConnections.map((item) => {
-                      const result = connectionValidation[item.operationId];
-                      if (!result) return null;
-                      return (
-                        <div key={item.operationId} className="mt-3 rounded-lg border border-hairline bg-background/40 p-2.5">
-                          <p className="text-sm font-semibold text-foreground">{item.name} · {result.healthStatus}</p>
-                          <p className="mt-1 density-help text-muted-foreground">{result.message}</p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : null}
-              </CardContent>
-            </Card>
-          ) : null}
-
-          {auditReports.length > 0 ? (
-            <Card>
-              <CardHeader>
-                <CardTitle>Applied migration history</CardTitle>
-                <CardDescription>Immutable, redacted records. Preview-only runs are never stored.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {auditReports.map((audit) => (
-                  <button
-                    key={audit.id}
-                    type="button"
-                    onClick={() => {
-                      setReport(audit.preflightReport);
-                      setApplied({ report: audit.resultReport, applied: audit.applied, auditReportId: audit.id });
-                      setMessage(`Showing applied migration record from ${new Date(audit.appliedUtc).toLocaleString()}.`);
-                    }}
-                    className="w-full rounded-xl border border-hairline bg-surface-1 p-3 text-left transition hover:border-primary/35"
-                  >
-                    <p className="font-semibold text-foreground">{audit.sourceName}</p>
-                    <p className="mt-1 font-mono text-[length:var(--type-caption)] text-muted-foreground">
-                      {new Date(audit.appliedUtc).toLocaleString()} · {audit.applied.filter((item) => item.result === "created").length} created · {audit.applied.filter((item) => item.result === "failed").length} failed
-                    </p>
-                  </button>
-                ))}
-              </CardContent>
-            </Card>
-          ) : null}
+      <ListCard title="Import source" count="Nothing existing is overwritten — a preview always comes first">
+        <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+          <FieldRow>
+            <Field label="Exported from" help="The application this snapshot came out of.">
+              <Select
+                value={sourceKind}
+                onChange={(event) => {
+                  setSourceKind(event.target.value);
+                  setSourceName(SOURCE_OPTIONS.find((option) => option.value === event.target.value)?.label ?? "External stack");
+                }}
+                options={SOURCE_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+              />
+            </Field>
+            <Field label="Call this import" help="Used to label this run in the history below.">
+              <Input value={sourceName} onChange={(event) => setSourceName(event.target.value)} placeholder="Home Radarr" />
+            </Field>
+          </FieldRow>
+          <Field label="Exported JSON" help="Paste the snapshot. Deluno maps it and shows you every change before anything is written.">
+            <Textarea
+              value={payloadJson}
+              onChange={(event) => setPayloadJson(event.target.value)}
+              spellCheck={false}
+              placeholder={SAMPLE_PAYLOAD}
+              className="min-h-[18rem] font-mono"
+            />
+          </Field>
+          <Disclosure title="What migration will and will not do" summary="Four rules that make this safe to run twice" open={safetyOpen} onOpenChange={setSafetyOpen}>
+            <ul className="grid gap-2">
+              {SAFETY_NOTES.map((note) => (
+                <li key={note} className="text-[length:var(--type-body-sm)] text-muted-foreground">
+                  {note}
+                </li>
+              ))}
+            </ul>
+          </Disclosure>
         </div>
-      </div>
+      </ListCard>
 
-      {report ? <MigrationOperations operations={report.operations} selectedOperationIds={selectedOperationIds} onSelectionChange={setSelectedOperationIds} /> : null}
-    </SettingsShell>
-  );
-}
+      {report ? (
+        <SummaryStrip
+          cells={[
+            { label: "To create", value: String(report.summary.createCount), help: "new in Deluno", tone: report.summary.createCount ? "success" : undefined },
+            { label: "Already here", value: String(report.summary.skipCount), help: "skipped, not touched" },
+            { label: "Unsupported", value: String(report.summary.unsupportedCount), help: "reported, not guessed", tone: report.summary.unsupportedCount ? "warning" : undefined },
+            { label: "Titles seen", value: String(report.summary.titleCount), help: "for reconciliation" },
+            { label: "Selected", value: String(selectedIds.size), help: message ?? "ready to apply" }
+          ]}
+        />
+      ) : null}
 
-function MigrationSummary({ report }: { report: MigrationReport }) {
-  const stats = [
-    { label: "Create", value: report.summary.createCount, variant: "success" as const },
-    { label: "Skip", value: report.summary.skipCount, variant: "default" as const },
-    { label: "Unsupported", value: report.summary.unsupportedCount, variant: "warning" as const },
-    { label: "Titles", value: report.summary.titleCount, variant: "info" as const }
-  ];
+      {report ? (
+        <ListCard
+          title="Change report"
+          count={`${report.sourceName} · ${report.sourceKind}`}
+          actions={
+            <Button type="button" onClick={() => void handleApply()} disabled={!canApply || busy !== null}>
+              {busy === "apply" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+              Apply {selectedIds.size} selected
+            </Button>
+          }
+        >
+          {report.operations.length === 0 ? (
+            <ListEmpty title="Nothing to import" description="No configuration Deluno recognises was found in this payload. Check that you exported the whole snapshot." />
+          ) : (
+            <ListTable
+              columns={[
+                { label: "Item" },
+                { label: "Why", width: "minmax(0,1.8fr)" },
+                { label: "Action", width: LIST_TRACK.status, mobile: true },
+                { label: "Apply", width: LIST_TRACK.toggle, mobile: true }
+              ]}
+            >
+              {report.operations.map((operation) => (
+                <ListRow key={operation.id} onClick={() => setOpenOperationId(operation.id)} selected={openOperationId === operation.id}>
+                  <ListNameCell name={operation.name} sub={operation.targetType} />
+                  <ListCell primary={operation.reason} secondary={operation.warnings.length ? `${operation.warnings.length} ${operation.warnings.length === 1 ? "warning" : "warnings"}` : undefined} />
+                  <ListCell mobile>
+                    <Chip tone={actionTone(operation.action)}>{operation.action}</Chip>
+                  </ListCell>
+                  <ListCell mobile>
+                    {isSelectable(operation) ? (
+                      <Switch
+                        size="sm"
+                        aria-label={`Apply ${operation.name}`}
+                        checked={selectedIds.has(operation.id)}
+                        onCheckedChange={(checked) => toggleOperation(operation, checked)}
+                      />
+                    ) : (
+                      <span className="text-[length:var(--type-caption)] text-muted-foreground">—</span>
+                    )}
+                  </ListCell>
+                </ListRow>
+              ))}
+            </ListTable>
+          )}
+        </ListCard>
+      ) : null}
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Preview summary</CardTitle>
-        <CardDescription>{report.sourceName} · {report.sourceKind}</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-[var(--page-gap)]">
-        <div className="grid grid-cols-2 gap-3">
-          {stats.map((stat) => (
-            <div key={stat.label} className="rounded-xl border border-hairline bg-surface-1 p-3">
-              <p className="text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                {stat.label}
-              </p>
-              <p className="tabular mt-2 font-display text-[length:var(--type-title-sm)] font-semibold text-foreground">
-                {stat.value}
-              </p>
-            </div>
-          ))}
-        </div>
-        {report.errors.map((error) => (
-          <Notice key={error} variant="destructive">{error}</Notice>
-        ))}
-        {report.warnings.map((warning) => (
-          <Notice key={warning} variant="warning">{warning}</Notice>
-        ))}
-      </CardContent>
-    </Card>
-  );
-}
+      {importedConnections.length ? (
+        <ListCard
+          title="Imported connections"
+          count="Test what came across before you rely on it"
+          actions={
+            <Button type="button" variant="outline" size="sm" onClick={() => void validateImportedConnections()} disabled={busy !== null}>
+              {busy === "validate" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+              Test all
+            </Button>
+          }
+        >
+          <ListTable columns={[{ label: "Connection" }, { label: "Result", width: "minmax(0,1.8fr)" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]} chevron={false}>
+            {importedConnections.map((item) => {
+              const result = connectionValidation[item.operationId];
+              return (
+                <ListRow key={item.operationId}>
+                  <ListNameCell name={item.name} sub={item.targetType === "indexer" ? "Indexer" : "Download client"} />
+                  <ListCell primary={result?.message ?? "Not tested yet"} secondary={result?.latencyMs != null ? `${result.latencyMs} ms` : undefined} />
+                  <ListCell mobile>
+                    <Chip tone={result ? (result.healthStatus === "healthy" ? "ok" : "warn") : "muted"}>{result?.healthStatus ?? "Untested"}</Chip>
+                  </ListCell>
+                </ListRow>
+              );
+            })}
+          </ListTable>
+        </ListCard>
+      ) : null}
 
-function isSelectableOperation(operation: MigrationReportOperation) {
-  return operation.canApply || (operation.category === "catalog" && operation.targetType === "monitored-state");
-}
+      {auditReports.length ? (
+        <ListCard title="Applied history" count="Redacted records of real imports — previews are never stored">
+          <ListTable columns={[{ label: "Import" }, { label: "Outcome", width: "minmax(0,1.4fr)" }, { label: "When", width: "160px", mobile: true }]}>
+            {auditReports.map((audit) => {
+              const created = audit.applied.filter((item) => item.result === "created").length;
+              const failed = audit.applied.filter((item) => item.result === "failed").length;
+              return (
+                <ListRow
+                  key={audit.id}
+                  onClick={() => {
+                    setReport(audit.preflightReport);
+                    setApplied({ report: audit.resultReport, applied: audit.applied, auditReportId: audit.id });
+                    setSelectedIds(new Set());
+                    setMessage(`Showing the record from ${new Date(audit.appliedUtc).toLocaleString()}.`);
+                  }}
+                >
+                  <ListNameCell name={audit.sourceName} sub={audit.preflightReport.sourceKind} />
+                  <ListCell primary={`${created} created`} secondary={failed ? `${failed} failed` : "no failures"} />
+                  <ListCell numeric mobile primary={new Date(audit.appliedUtc).toLocaleDateString()} secondary={new Date(audit.appliedUtc).toLocaleTimeString()} />
+                </ListRow>
+              );
+            })}
+          </ListTable>
+        </ListCard>
+      ) : null}
 
-function MigrationOperations({
-  operations,
-  selectedOperationIds,
-  onSelectionChange
-}: {
-  operations: MigrationReportOperation[];
-  selectedOperationIds: Set<string>;
-  onSelectionChange: (next: Set<string>) => void;
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Change report</CardTitle>
-        <CardDescription>Select only the safe changes you want to apply. Skipped, unsupported, and conflicting items remain review-only.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {operations.length === 0 ? (
-          <p className="density-help text-muted-foreground">No supported configuration was found in this payload yet.</p>
-        ) : (
-          operations.map((operation) => {
-            const selectable = isSelectableOperation(operation);
-            const selected = selectedOperationIds.has(operation.id);
-            return (
-            <div key={operation.id} className="rounded-2xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.75)]">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant={getActionVariant(operation.action)}>{operation.action}</Badge>
-                    <Badge variant="default">{operation.targetType}</Badge>
-                  </div>
-                  <p className="mt-3 font-display text-[length:var(--type-card-title)] font-semibold tracking-tight text-foreground">
-                    {operation.name}
-                  </p>
-                  <p className="mt-1 density-help text-muted-foreground">{operation.reason}</p>
+      <Drawer
+        open={openOperation !== null}
+        onOpenChange={(open) => {
+          if (!open) setOpenOperationId(null);
+        }}
+        title={openOperation?.name ?? "Change"}
+        description={openOperation ? `${openOperation.action} · ${openOperation.targetType}` : undefined}
+        footer={<DrawerFooter state="clean" saveType="button" saveLabel="Close" saveEnabled={false} onCancel={() => setOpenOperationId(null)} />}
+      >
+        {openOperation ? (
+          <>
+            <DrawerSection title="Why">
+              <p className="text-[length:var(--type-body-sm)] text-muted-foreground">{openOperation.reason}</p>
+              {isSelectable(openOperation) ? (
+                <div className="flex items-center justify-between gap-[var(--grid-gap)]">
+                  <span className="text-[length:var(--type-body-sm)] text-foreground">Apply this change</span>
+                  <Switch
+                    aria-label={`Apply ${openOperation.name}`}
+                    checked={selectedIds.has(openOperation.id)}
+                    onCheckedChange={(checked) => toggleOperation(openOperation, checked)}
+                  />
                 </div>
-                {selectable ? (
-                  <label className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                    <input
-                      type="checkbox"
-                      aria-label={`Apply ${operation.name}`}
-                      checked={selected}
-                      onChange={(event) => {
-                        const next = new Set(selectedOperationIds);
-                        if (event.target.checked) next.add(operation.id);
-                        else next.delete(operation.id);
-                        onSelectionChange(next);
-                      }}
-                    />
-                    Apply
-                  </label>
-                ) : (
-                  <TriangleAlert className="h-5 w-5 text-muted-foreground" />
-                )}
-              </div>
-              {operation.warnings.length > 0 ? (
-                <div className="mt-3 space-y-2">
-                  {operation.warnings.map((warning) => (
-                    <Notice key={warning} variant="warning">{warning}</Notice>
-                  ))}
-                </div>
-              ) : null}
-              {Object.keys(operation.data).length > 0 ? (
-                <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
-                  {Object.entries(operation.data)
+              ) : (
+                <p className="text-[length:var(--type-caption)] text-muted-foreground">This one is review-only — Deluno will not write it.</p>
+              )}
+            </DrawerSection>
+
+            {Object.entries(openOperation.data).filter(([, value]) => value).length ? (
+              <DrawerSection title="What would be created">
+                <div className="grid gap-1.5">
+                  {Object.entries(openOperation.data)
                     .filter(([, value]) => value)
                     .map(([key, value]) => (
-                      <div key={key} className="rounded-xl border border-hairline bg-card px-3 py-2">
-                        <p className="text-[length:var(--type-caption)] font-bold uppercase tracking-[0.16em] text-muted-foreground">{key}</p>
-                        <p className="mt-1 truncate font-mono text-[length:var(--type-caption)] text-foreground" title={value ?? undefined}>{value}</p>
+                      <div key={key} className="flex items-baseline justify-between gap-3 border-b border-hairline py-1.5 last:border-b-0">
+                        <span className="shrink-0 text-[length:var(--type-caption)] text-muted-foreground">{key}</span>
+                        <span className="min-w-0 truncate text-right font-mono text-[length:var(--type-caption)] text-foreground" title={value ?? undefined}>
+                          {value}
+                        </span>
                       </div>
                     ))}
                 </div>
-              ) : null}
-            </div>
-            );
-          })
-        )}
-      </CardContent>
-    </Card>
+              </DrawerSection>
+            ) : null}
+
+            {openOperation.warnings.length ? (
+              <DrawerSection title="Warnings">
+                <div className="grid gap-1.5">
+                  {openOperation.warnings.map((warning) => (
+                    <p key={warning} className="text-[length:var(--type-body-sm)] text-warning">
+                      {warning}
+                    </p>
+                  ))}
+                </div>
+              </DrawerSection>
+            ) : null}
+          </>
+        ) : null}
+      </Drawer>
+    </form>
   );
 }
 
-function Field({ children, description, label }: { children: React.ReactNode; description?: string; label: string }) {
-  return (
-    <label className="block space-y-2">
-      <span className="text-[length:var(--type-caption)] font-bold uppercase tracking-[0.16em] text-muted-foreground">{label}</span>
-      {children}
-      {description && <InputDescription>{description}</InputDescription>}
-    </label>
-  );
+/* ---------------------------------------------------------------- bits */
+
+/** Catalog monitored-state rows are applyable even though they create nothing. */
+function isSelectable(operation: MigrationReportOperation) {
+  return operation.canApply || (operation.category === "catalog" && operation.targetType === "monitored-state");
 }
 
-function SafetyRow({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex gap-3 rounded-xl border border-hairline bg-surface-1 p-3">
-      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-      <p>{children}</p>
-    </div>
-  );
-}
-
-function Notice({ children, variant }: { children: React.ReactNode; variant: "warning" | "destructive" }) {
-  return (
-    <div className={`rounded-xl border px-3 py-2 density-help ${variant === "warning" ? "border-warning/30 bg-warning/10 text-warning" : "border-destructive/30 bg-destructive/10 text-destructive"}`}>
-      {children}
-    </div>
-  );
-}
-
-function getActionVariant(action: string) {
-  if (action === "create") return "success";
-  if (action === "unsupported" || action === "conflict") return "warning";
+function actionTone(action: string): NonNullable<ChipProps["tone"]> {
+  if (action === "create") return "ok";
+  if (action === "unsupported" || action === "conflict") return "warn";
   if (action === "report") return "info";
-  return "default";
+  return "muted";
 }

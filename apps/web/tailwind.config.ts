@@ -165,6 +165,14 @@ const config: Config = {
         "mobile-nav-sheet-out": {
           from: { opacity: "1", transform: "translate3d(-50%, 0, 0) scale(1)" },
           to: { opacity: "0", transform: "translate3d(-50%, 16px, 0) scale(0.98)" }
+        },
+        "drawer-in": {
+          from: { opacity: "0", transform: "translate3d(24px, 0, 0)" },
+          to: { opacity: "1", transform: "translate3d(0, 0, 0)" }
+        },
+        "drawer-out": {
+          from: { opacity: "1", transform: "translate3d(0, 0, 0)" },
+          to: { opacity: "0", transform: "translate3d(16px, 0, 0)" }
         }
       },
       animation: {
@@ -174,7 +182,9 @@ const config: Config = {
         "slide-up": "slide-up 180ms ease-out",
         "slide-down": "slide-down 160ms ease-out",
         "mobile-nav-sheet-in": "mobile-nav-sheet-in 0.32s cubic-bezier(0.2, 0.9, 0.22, 1) both",
-        "mobile-nav-sheet-out": "mobile-nav-sheet-out 0.2s ease-in forwards"
+        "mobile-nav-sheet-out": "mobile-nav-sheet-out 0.2s ease-in forwards",
+        "drawer-in": "drawer-in 0.26s cubic-bezier(0.2, 0.9, 0.22, 1) both",
+        "drawer-out": "drawer-out 0.18s ease-in forwards"
       }
     }
   },

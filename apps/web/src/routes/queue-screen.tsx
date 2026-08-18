@@ -1,33 +1,33 @@
+/**
+ * Transfers — the live hand-off view, on the shared grammar.
+ *
+ *   PageToolbar  (Refresh · Manual import)
+ *   SummaryStrip (downloading · speed · ready to import · needs action · clients)
+ *   ListCard     downloads        → drawer: progress · health · import · actions
+ *   ListCard     needs attention  → only when something does (recovery, failed jobs)
+ *   ListCard     recent activity  → one merged timeline, filtered by kind
+ *
+ * This replaced a page carrying a six-stat hero, a path banner, seven metric
+ * tiles, a "next up" panel and nine separate panels — thirteen numbers and a
+ * screen and a half of chrome before the first download. The client capability
+ * matrix moved to Connections → Download clients, where the clients are set up.
+ *
+ * Contracts: GET /api/download-clients/telemetry, /api/download-dispatches,
+ * /api/{movies,series}/import-recovery, /api/jobs, /api/download-health,
+ * /api/integrations/processors/handoffs; POST …/queue/actions, …/jobs/retry-failed,
+ * …/handoffs/{id}/retry, /api/filesystem/import/{preview,jobs,execute}.
+ */
 import { useMemo, useState } from "react";
-import { Link, useLoaderData, useRevalidator } from "react-router-dom";
-import {
-  AlertTriangle,
-  ArrowDownToLine,
-  CheckCircle2,
-  Download,
-  FileSearch,
-  GitBranch,
-  HardDriveDownload,
-  Loader2,
-  Pause,
-  Play,
-  RefreshCw,
-  RotateCw,
-  Trash2,
-  Wand2
-} from "lucide-react";
+import { useLoaderData, useRevalidator } from "react-router-dom";
+import { Loader2, Pause, Play, RefreshCw, RotateCw, Trash2, Upload } from "lucide-react";
 import {
   ApiRequestError,
   fetchJson,
-  type DownloadClientHistoryItem,
   type DownloadCleanupPreview,
   type DownloadHealthRecord,
-  type DownloadClientTelemetrySnapshot,
   type DownloadDispatchItem,
   type DownloadQueueItem,
   type DownloadTelemetryOverview,
-  type ImportExecuteResponse,
-  type ImportExecuteRequest,
   type ImportJobResponse,
   type ImportPreviewRequest,
   type ImportPreviewResponse,
@@ -41,19 +41,20 @@ import {
 } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
 import { JOB_STATUS, isJobActive } from "../lib/job-status-constants";
-import { downloadQueueStatuses, isImportReadyStatus, isProcessingStatus, queueStatusLabel, telemetryCapabilityChips } from "../lib/download-telemetry";
-import { cn } from "../lib/utils";
-import { Badge } from "../components/ui/badge";
+import { downloadQueueStatuses, isImportReadyStatus, isProcessingStatus, queueStatusLabel } from "../lib/download-telemetry";
 import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
-import { PathInput } from "../components/ui/path-input";
-import { OperationPathBanner } from "../components/app/operations-guide";
-import { EmptyState } from "../components/shell/empty-state";
-import { GlassTile, PageHero } from "../components/shell/page-hero";
-import { Stagger, StaggerItem } from "../components/shell/motion";
-import { RouteSkeleton } from "../components/shell/skeleton";
-import { toast } from "../components/shell/toaster";
+import { Chip, type ChipProps } from "../components/ui/chip";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
+import { Drawer, DrawerFooter, DrawerSection } from "../components/ui/drawer";
+import { Field, FieldRow } from "../components/ui/field";
+import { Input } from "../components/ui/input";
+import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
+import { PageToolbar } from "../components/ui/page-toolbar";
+import { PathInput } from "../components/ui/path-input";
+import { SegmentedControl } from "../components/ui/segmented-control";
+import { Select } from "../components/ui/select";
+import { SummaryStrip } from "../components/ui/summary-strip";
+import { toast } from "../components/shell/toaster";
 
 type QueueAction = "pause" | "resume" | "delete" | "recheck";
 
@@ -95,16 +96,35 @@ export async function queueLoader(): Promise<QueueLoaderData> {
       throw error;
     })
   ]);
-
   return { telemetry, dispatches, movieRecovery, seriesRecovery, settings, jobs, healthRecords, processorHandoffs };
 }
 
+/** One row shape for every kind of thing that has already happened. */
+interface ActivityEntry {
+  id: string;
+  kind: "import" | "processor" | "sent" | "client" | "health";
+  name: string;
+  sub: string;
+  detail: string;
+  extra?: string;
+  tone: NonNullable<ChipProps["tone"]>;
+  status: string;
+  whenUtc: string;
+}
+
+type DrawerMode = { kind: "queue"; id: string } | { kind: "manual" } | { kind: "activity"; id: string } | null;
+
 export function QueuePage() {
-  const loaderData = useLoaderData() as QueueLoaderData | undefined;
-  if (!loaderData) return <RouteSkeleton />;
+  const { telemetry, dispatches, movieRecovery, seriesRecovery, settings, jobs, healthRecords, processorHandoffs } =
+    useLoaderData() as QueueLoaderData;
   const revalidator = useRevalidator();
+
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [drawer, setDrawer] = useState<DrawerMode>(null);
   const [importPreviews, setImportPreviews] = useState<Record<string, ImportPreviewResponse>>({});
+  const [cleanupPreviews, setCleanupPreviews] = useState<Record<string, DownloadCleanupPreview>>({});
+  const [pendingRemoval, setPendingRemoval] = useState<DownloadQueueItem | null>(null);
+  const [activityKind, setActivityKind] = useState<"all" | ActivityEntry["kind"]>("all");
   const [manualImport, setManualImport] = useState<ManualImportForm>(() => ({
     sourcePath: "",
     fileName: "",
@@ -116,250 +136,163 @@ export function QueuePage() {
     transferMode: "auto"
   }));
   const [manualPreview, setManualPreview] = useState<ImportPreviewResponse | null>(null);
-  const [pendingRemoval, setPendingRemoval] = useState<DownloadQueueItem | null>(null);
+  const [manualMessage, setManualMessage] = useState<string | null>(null);
+  // DrawerFooter only renders a message for a non-clean state, so the outcome of a
+  // preview or a queue has to move the state, not just the text.
+  const [manualState, setManualState] = useState<"clean" | "saving" | "saved" | "error">("clean");
 
-  const telemetry = loaderData.telemetry;
-  const dispatches = loaderData.dispatches;
-  const movieRecovery = loaderData.movieRecovery;
-  const seriesRecovery = loaderData.seriesRecovery;
-  const settings = loaderData.settings;
-  const jobs = loaderData.jobs;
-  const healthRecords = loaderData.healthRecords;
-  const processorHandoffs = loaderData.processorHandoffs;
-  const [cleanupPreviews, setCleanupPreviews] = useState<Record<string, DownloadCleanupPreview>>({});
-
-  const allQueue = useMemo(
+  /* ------------------------------------------------------------- derived */
+  const queue = useMemo(
     () => telemetry.clients.flatMap((client) => client.queue.map((item) => ({ ...item, clientProtocol: client.protocol }))),
     [telemetry.clients]
   );
-  const clientHistory = useMemo(
-    () =>
-      telemetry.clients
-        .flatMap((client) => client.history.map((item) => ({ ...item, clientHealth: client.healthStatus })))
-        .sort((a, b) => new Date(b.completedUtc).getTime() - new Date(a.completedUtc).getTime()),
-    [telemetry.clients]
-  );
   const importJobs = useMemo(() => jobs.filter((job) => job.jobType === "filesystem.import.execute"), [jobs]);
-  const importReady = allQueue.filter((item) => isImportReadyStatus(item.status));
-  const processing = allQueue.filter((item) => isProcessingStatus(item.status));
-  const queueAttention = allQueue.filter((item) =>
-    item.status === downloadQueueStatuses.stalled || Boolean(item.errorMessage) || Boolean(item.healthFindings?.length)
+  const importReady = queue.filter((item) => isImportReadyStatus(item.status));
+  const processing = queue.filter((item) => isProcessingStatus(item.status));
+  const queueAttention = queue.filter(
+    (item) => item.status === downloadQueueStatuses.stalled || Boolean(item.errorMessage) || Boolean(item.healthFindings?.length)
+  );
+  const failedImportJobs = importJobs.filter((job) => job.status === JOB_STATUS.FAILED);
+  const activeImportJobs = importJobs.filter((job) => isJobActive(job.status as never)).length;
+  const healthyClients = telemetry.clients.filter((client) => isHealthyClient(client.healthStatus)).length;
+  const recoveryCases = useMemo(
+    () => [
+      ...movieRecovery.recentCases.map((item) => ({ ...item, mediaType: "movie" as const })),
+      ...seriesRecovery.recentCases.map((item) => ({ ...item, mediaType: "series" as const }))
+    ],
+    [movieRecovery.recentCases, seriesRecovery.recentCases]
   );
   const openRecovery = movieRecovery.openCount + seriesRecovery.openCount;
-  const activeImportJobs = importJobs.filter((job) => isJobActive(job.status as any)).length;
-  const failedImportJobs = importJobs.filter((job) => job.status === JOB_STATUS.FAILED).length;
-  const activeClients = telemetry.clients.filter((client) => isHealthyClient(client.healthStatus)).length;
-  const activeProcessorHandoffs = processorHandoffs.filter((handoff) => ["waiting", "accepted", "started"].includes(handoff.status));
+  const needsAction = openRecovery + queueAttention.length + failedImportJobs.length;
 
-  async function handleQueueAction(clientId: string, item: DownloadQueueItem, action: QueueAction) {
-    const key = `queue:${clientId}:${item.id}:${action}`;
+  const activity = useMemo(
+    () => buildActivity({ importJobs, processorHandoffs, dispatches, telemetry, healthRecords }),
+    [importJobs, processorHandoffs, dispatches, telemetry, healthRecords]
+  );
+  const visibleActivity = activityKind === "all" ? activity : activity.filter((entry) => entry.kind === activityKind);
+  const openQueueItem = drawer?.kind === "queue" ? queue.find((item) => item.id === drawer.id) ?? null : null;
+  const openActivity = drawer?.kind === "activity" ? activity.find((entry) => entry.id === drawer.id) ?? null : null;
+
+  /* ------------------------------------------------------------- actions */
+  async function run(key: string, action: () => Promise<unknown>, success?: string) {
     setBusyKey(key);
     try {
-      const res = await authedFetch(`/api/download-clients/${clientId}/queue/actions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, queueItemId: item.id })
-      });
-      if (!res.ok) {
-        const message = await res.text().catch(() => "");
-        throw new Error(message || "Download action failed.");
-      }
-      toast.success(`${actionLabel(action)} sent to ${item.clientName}`);
+      await action();
+      if (success) toast.success(success);
       revalidator.revalidate();
+      return true;
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Download action failed.");
+      toast.error(error instanceof Error ? error.message : "That action could not be completed.");
+      return false;
     } finally {
       setBusyKey(null);
     }
   }
 
-  async function confirmRemoval() {
-    if (!pendingRemoval) return;
-    const item = pendingRemoval;
-    await handleQueueAction(item.clientId, item, "delete");
-    setPendingRemoval(null);
+  async function queueAction(item: DownloadQueueItem, action: QueueAction) {
+    return run(
+      `queue:${item.clientId}:${item.id}:${action}`,
+      async () => {
+        const response = await authedFetch(`/api/download-clients/${item.clientId}/queue/actions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action, queueItemId: item.id })
+        });
+        if (!response.ok) throw new Error((await response.text().catch(() => "")) || "The download action failed.");
+      },
+      `${actionLabel(action)} sent to ${item.clientName}`
+    );
   }
 
-  async function ignoreHealthFinding(item: DownloadQueueItem, kind: string) {
-    const key = `health-ignore:${item.clientId}:${item.id}:${kind}`;
-    setBusyKey(key);
-    try {
-      const response = await authedFetch(`/api/download-clients/${item.clientId}/queue/${item.id}/health/${encodeURIComponent(kind)}/ignore`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ durationDays: 7 })
-      });
-      if (!response.ok) throw new Error("Could not pause this health finding.");
-      toast.success("Health finding ignored for seven days. No data was removed.");
-      revalidator.revalidate();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not pause this health finding.");
-    } finally {
-      setBusyKey(null);
-    }
-  }
-
-  async function previewCleanup(item: DownloadQueueItem) {
-    const key = `cleanup-preview:${item.clientId}:${item.id}`;
-    setBusyKey(key);
-    try {
-      const response = await authedFetch(`/api/download-clients/${item.clientId}/queue/${item.id}/cleanup-preview`);
-      if (!response.ok) throw new Error("Could not prepare a cleanup preview for this queue item.");
-      const preview = (await response.json()) as DownloadCleanupPreview;
-      setCleanupPreviews((current) => ({ ...current, [`${item.clientId}:${item.id}`]: preview }));
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not prepare a cleanup preview.");
-    } finally {
-      setBusyKey(null);
-    }
-  }
-
-  async function handlePreviewImport(item: DownloadQueueItem) {
-    const key = `import-preview:${item.clientId}:${item.id}`;
-    setBusyKey(key);
-    try {
-      const request = buildImportRequest(item, settings?.downloadsPath ?? null);
+  async function previewImport(item: DownloadQueueItem) {
+    await run(`preview:${item.id}`, async () => {
       const preview = await fetchJson<ImportPreviewResponse>("/api/filesystem/import/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(request)
+        body: JSON.stringify(buildImportRequest(item, settings.downloadsPath))
       });
       setImportPreviews((current) => ({ ...current, [item.id]: preview }));
-      toast.success("Import destination resolved");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Import preview failed.");
-    } finally {
-      setBusyKey(null);
-    }
+    });
   }
 
-  async function handleImportNow(item: DownloadQueueItem) {
-    const key = `import-now:${item.clientId}:${item.id}`;
-    setBusyKey(key);
-    try {
-      const request = buildImportRequest(item, settings?.downloadsPath ?? null);
-      const result = await fetchJson<ImportExecuteResponse>("/api/filesystem/import/execute", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          preview: request,
-          transferMode: "auto",
-          overwrite: false,
-          allowCopyFallback: true,
-          forceReplacement: false
-        })
-      });
-      setImportPreviews((current) => ({ ...current, [item.id]: result.preview }));
-      toast.success(result.message);
-      revalidator.revalidate();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Import failed.");
-    } finally {
-      setBusyKey(null);
-    }
+  async function queueImport(item: DownloadQueueItem) {
+    await run(
+      `import:${item.id}`,
+      async () => {
+        const result = await fetchJson<ImportJobResponse>("/api/filesystem/import/jobs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            preview: buildImportRequest(item, settings.downloadsPath),
+            transferMode: "auto",
+            overwrite: false,
+            allowCopyFallback: true,
+            forceReplacement: false
+          })
+        });
+        setImportPreviews((current) => ({ ...current, [item.id]: result.preview }));
+      },
+      `${item.title} queued for import`
+    );
   }
 
-  async function handleQueueImport(item: DownloadQueueItem) {
-    const key = `import-queue:${item.clientId}:${item.id}`;
-    setBusyKey(key);
-    try {
-      const request = buildImportRequest(item, settings?.downloadsPath ?? null);
-      const result = await fetchJson<ImportJobResponse>("/api/filesystem/import/jobs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          preview: request,
-          transferMode: "auto",
-          overwrite: false,
-          allowCopyFallback: true,
-          forceReplacement: false
-        })
-      });
-      setImportPreviews((current) => ({ ...current, [item.id]: result.preview }));
-      toast.success(`Import queued as job ${result.jobId.slice(0, 8)}`);
-      revalidator.revalidate();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Import job could not be queued.");
-    } finally {
-      setBusyKey(null);
-    }
+  async function previewCleanup(item: DownloadQueueItem) {
+    await run(`cleanup:${item.id}`, async () => {
+      const preview = await fetchJson<DownloadCleanupPreview>(`/api/download-clients/${item.clientId}/queue/${item.id}/cleanup-preview`);
+      setCleanupPreviews((current) => ({ ...current, [`${item.clientId}:${item.id}`]: preview }));
+    });
   }
 
-  async function handleDismissRecovery(mediaType: "movie" | "series", id: string) {
-    const key = `recovery:${mediaType}:${id}`;
-    setBusyKey(key);
-    try {
-      const path = mediaType === "movie" ? `/api/movies/import-recovery/${id}` : `/api/series/import-recovery/${id}`;
-      const res = await authedFetch(path, { method: "DELETE" });
-      if (!res.ok) throw new Error("Recovery case could not be dismissed.");
-      toast.success("Recovery case dismissed");
-      revalidator.revalidate();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Recovery action failed.");
-    } finally {
-      setBusyKey(null);
-    }
+  async function retryFailedJobs() {
+    await run(
+      "jobs:retry-failed",
+      async () => {
+        const response = await authedFetch("/api/jobs/retry-failed", { method: "POST" });
+        if (!response.ok) throw new Error("The failed jobs could not be requeued.");
+      },
+      `${failedImportJobs.length} failed ${failedImportJobs.length === 1 ? "job" : "jobs"} requeued`
+    );
   }
 
-  async function handleRetryRecovery(mediaType: "movie" | "series", item: MovieImportRecoveryCase | SeriesImportRecoveryCase) {
-    const key = `recovery-retry:${mediaType}:${item.id}`;
-    setBusyKey(key);
-    try {
-      const retryRequest = parseRecoveryRetryRequest(item.detailsJson);
-      if (!retryRequest) {
-        throw new Error("This recovery case was created before retry details were stored. Queue a fresh import from the download row.");
-      }
-
-      const result = await fetchJson<ImportJobResponse>("/api/filesystem/import/jobs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(retryRequest)
-      });
-      toast.success(`Recovery retry queued as job ${result.jobId.slice(0, 8)}`);
-      revalidator.revalidate();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Recovery retry could not be queued.");
-    } finally {
-      setBusyKey(null);
-    }
+  async function retryRecovery(item: (typeof recoveryCases)[number]) {
+    const collection = item.mediaType === "movie" ? "movies" : "series";
+    await run(
+      `recovery:retry:${item.id}`,
+      async () => {
+        const response = await authedFetch(`/api/${collection}/import-recovery/${item.id}/retry`, { method: "POST" });
+        if (!response.ok) throw new Error("That import could not be tried again.");
+      },
+      `${item.title} queued to try again`
+    );
   }
 
-  async function handleRetryFailedJobs() {
-    setBusyKey("jobs:retry-failed");
-    try {
-      const res = await authedFetch("/api/jobs/retry-failed", { method: "POST" });
-      if (!res.ok) {
-        throw new Error("Failed jobs could not be requeued.");
-      }
-      const result = (await res.json().catch(() => ({ retried: 0 }))) as { retried: number };
-      toast.success(`${result.retried} failed job${result.retried === 1 ? "" : "s"} requeued`);
-      revalidator.revalidate();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed jobs could not be requeued.");
-    } finally {
-      setBusyKey(null);
-    }
+  async function dismissRecovery(item: (typeof recoveryCases)[number]) {
+    const collection = item.mediaType === "movie" ? "movies" : "series";
+    await run(
+      `recovery:dismiss:${item.id}`,
+      async () => {
+        const response = await authedFetch(`/api/${collection}/import-recovery/${item.id}/dismiss`, { method: "POST" });
+        if (!response.ok) throw new Error("That case could not be dismissed.");
+      },
+      `${item.title} dismissed`
+    );
   }
 
-  async function handleRetryProcessorHandoff(handoff: ProcessorHandoffItem) {
-    const key = `processor-handoff-retry:${handoff.id}`;
-    setBusyKey(key);
-    try {
-      const res = await authedFetch(`/api/integrations/processors/handoffs/${handoff.id}/retry`, { method: "POST" });
-      if (!res.ok) {
-        const body = await res.json().catch(() => null) as { message?: string } | null;
-        throw new Error(body?.message || "The processor hand-off could not be tried again.");
-      }
-      toast.success("Processor hand-off queued to try again. Deluno will use the same hand-off ID and still wait for a confirmed output.");
-      revalidator.revalidate();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "The processor hand-off could not be tried again.");
-    } finally {
-      setBusyKey(null);
-    }
+  async function retryHandoff(handoff: ProcessorHandoffItem) {
+    await run(
+      `handoff:${handoff.id}`,
+      async () => {
+        const response = await authedFetch(`/api/integrations/processors/handoffs/${handoff.id}/retry`, { method: "POST" });
+        if (!response.ok) {
+          const body = (await response.json().catch(() => null)) as { message?: string } | null;
+          throw new Error(body?.message || "The processor hand-off could not be tried again.");
+        }
+      },
+      "Hand-off queued to try again with the same ID"
+    );
   }
 
-  function buildManualImportRequest(): ImportPreviewRequest {
+  function manualRequest(): ImportPreviewRequest {
     return {
       sourcePath: manualImport.sourcePath.trim(),
       fileName: manualImport.fileName.trim() || null,
@@ -373,1274 +306,641 @@ export function QueuePage() {
     };
   }
 
-  async function handleManualPreview() {
+  /** Preview and queue both report into the drawer that asked, not a toast. */
+  async function manualRun(mode: "preview" | "queue") {
     if (!manualImport.sourcePath.trim()) {
-      toast.info("Choose a source file or folder first.");
+      setManualState("error");
+      setManualMessage("Choose a source file or folder first.");
       return;
     }
-
-    setBusyKey("manual-import:preview");
+    setBusyKey(`manual:${mode}`);
+    setManualState("saving");
+    setManualMessage(null);
     try {
-      const preview = await fetchJson<ImportPreviewResponse>("/api/filesystem/import/preview", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(buildManualImportRequest())
-      });
-      setManualPreview(preview);
-      toast.success("Manual import preview generated");
+      if (mode === "preview") {
+        setManualPreview(await fetchJson<ImportPreviewResponse>("/api/filesystem/import/preview", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(manualRequest())
+        }));
+        setManualState("saved");
+        setManualMessage("Preview ready — check the destination before queueing.");
+      } else {
+        const result = await fetchJson<ImportJobResponse>("/api/filesystem/import/jobs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ preview: manualRequest(), transferMode: manualImport.transferMode, overwrite: false, allowCopyFallback: true, forceReplacement: false })
+        });
+        setManualPreview(result.preview);
+        setManualState("saved");
+        setManualMessage(`Queued as job ${result.jobId.slice(0, 8)}.`);
+        revalidator.revalidate();
+      }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Manual import preview failed.");
+      setManualState("error");
+      setManualMessage(error instanceof Error ? error.message : "That could not be completed.");
     } finally {
       setBusyKey(null);
     }
   }
 
-  async function handleManualQueue() {
-    if (!manualImport.sourcePath.trim()) {
-      toast.info("Choose a source file or folder first.");
-      return;
-    }
-
-    setBusyKey("manual-import:queue");
-    try {
-      const result = await fetchJson<ImportJobResponse>("/api/filesystem/import/jobs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          preview: buildManualImportRequest(),
-          transferMode: manualImport.transferMode,
-          overwrite: false,
-          allowCopyFallback: true,
-          forceReplacement: false
-        })
-      });
-      setManualPreview(result.preview);
-      toast.success(`Manual import queued as job ${result.jobId.slice(0, 8)}`);
-      revalidator.revalidate();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Manual import could not be queued.");
-    } finally {
-      setBusyKey(null);
-    }
-  }
-
+  /* -------------------------------------------------------------- render */
   return (
-    <div className="space-y-[var(--page-gap)]">
-      <PageHero
-        eyebrow="Downloads & imports"
-        eyebrowIcon={<HardDriveDownload className="h-3 w-3 text-primary" />}
-        title={
-          <>
-            Your downloads, ready for your library.
-          </>
-        }
-        subtitle={
-          <>
-            This is the hand-off view: external client download, optional processing, then safe import. Step in only when a transfer needs attention.
-          </>
-        }
-        stats={[
-          { label: "Active", value: telemetry.summary.activeCount.toString(), tone: "primary" },
-          { label: "Processing", value: (telemetry.summary.processingCount ?? processing.length).toString(), tone: processing.length ? "primary" : "neutral" },
-          { label: "Import ready", value: telemetry.summary.importReadyCount.toString(), tone: "success" },
-          { label: "Import jobs", value: activeImportJobs.toString(), tone: activeImportJobs ? "primary" : "neutral" },
-          { label: "External processing", value: activeProcessorHandoffs.length.toString(), tone: activeProcessorHandoffs.length ? "primary" : "neutral" },
-          { label: "Recovery", value: openRecovery.toString(), tone: openRecovery ? "danger" : "neutral" }
-        ]}
+    <div className="flex flex-col gap-[var(--page-gap)]">
+      <PageToolbar
         actions={
           <>
-            <Button size="lg" className="gap-2" onClick={() => revalidator.revalidate()}>
-              <RefreshCw className="h-4 w-4" />
+            <Button type="button" variant="outline" onClick={() => revalidator.revalidate()} disabled={revalidator.state !== "idle"}>
+              {revalidator.state !== "idle" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
               Refresh
             </Button>
-            <Button asChild size="lg" variant="secondary" className="gap-2">
-              <Link to="/indexers">
-                <Wand2 className="h-4 w-4" />
-                Configure downloads
-              </Link>
+            <Button type="button" onClick={() => { setManualMessage(null); setManualState("clean"); setDrawer({ kind: "manual" }); }}>
+              <Upload className="h-4 w-4" />
+              Manual import
             </Button>
           </>
         }
       />
 
-      <OperationPathBanner
-        pathId="queue"
-        actionTo="/indexers"
-        actionLabel="Configure downloads"
+      <SummaryStrip
+        cells={[
+          { label: "Downloading", value: String(telemetry.summary.activeCount), help: processing.length ? `${processing.length} being processed` : "in your clients" },
+          { label: "Speed", value: telemetry.summary.totalSpeedMbps.toFixed(1), help: "MB/s combined" },
+          { label: "Ready to import", value: String(importReady.length), help: importReady.length ? "waiting on you" : "nothing waiting", tone: importReady.length ? "success" : undefined },
+          { label: "Needs action", value: String(needsAction), help: needsAction ? "see below" : "all clear", tone: needsAction ? "warning" : undefined },
+          { label: "Clients", value: `${healthyClients}/${telemetry.clients.length}`, help: healthyClients === telemetry.clients.length ? "all responding" : "one is not responding", tone: healthyClients < telemetry.clients.length ? "danger" : undefined }
+        ]}
       />
 
-      <Stagger className="fluid-kpi-grid">
-        <StaggerItem>
-          <MetricTile icon={Download} label="Download clients" value={`${activeClients}/${telemetry.clients.length}`} sub="connected and ready" tone="primary" />
-        </StaggerItem>
-        <StaggerItem>
-          <MetricTile icon={ArrowDownToLine} label="Total speed" value={`${telemetry.summary.totalSpeedMbps.toFixed(1)}`} unit="MB/s" sub="combined speed" tone="success" />
-        </StaggerItem>
-        <StaggerItem>
-          <MetricTile icon={FileSearch} label="Import ready" value={importReady.length} sub="safe to preview" tone="success" />
-        </StaggerItem>
-        <StaggerItem>
-          <MetricTile icon={Wand2} label="Processing" value={processing.length} sub="being checked" tone={processing.length ? "primary" : "neutral"} />
-        </StaggerItem>
-        <StaggerItem>
-          <MetricTile icon={GitBranch} label="Import jobs" value={activeImportJobs} sub="queued or running" tone={activeImportJobs ? "primary" : "neutral"} />
-        </StaggerItem>
-        <StaggerItem>
-          <MetricTile icon={Wand2} label="External processing" value={activeProcessorHandoffs.length} sub="waiting on your processor" tone={activeProcessorHandoffs.length ? "primary" : "neutral"} />
-        </StaggerItem>
-        <StaggerItem>
-          <MetricTile icon={AlertTriangle} label="Needs action" value={openRecovery + queueAttention.length} sub="download health or recovery" tone={openRecovery + queueAttention.length ? "warn" : "neutral"} />
-        </StaggerItem>
-      </Stagger>
-
-      <GlassTile className="p-[var(--tile-pad)]">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">Next up</p>
-            <h2 className="mt-1 text-[17px] font-semibold text-foreground">What to do next</h2>
-          </div>
-          {openRecovery + queueAttention.length + failedImportJobs > 0 ? (
-            <Badge variant="warning">{openRecovery + queueAttention.length + failedImportJobs} need attention</Badge>
-          ) : importReady.length > 0 ? (
-            <Badge variant="success">{importReady.length} ready to review</Badge>
-          ) : (
-            <Badge variant="success">All clear</Badge>
-          )}
-        </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          {queueAttention.length > 0 ? (
-            <NextStep href="#download-queue" icon={AlertTriangle} tone="warning" title="Review download health" description={`${queueAttention.length} download${queueAttention.length === 1 ? " needs" : "s need"} a safe next action.`} />
-          ) : null}
-          {failedImportJobs > 0 ? (
-            <NextStep href="#import-jobs" icon={RotateCw} tone="warning" title="Retry failed imports" description={`${failedImportJobs} import job${failedImportJobs === 1 ? " is" : "s are"} ready to retry.`} />
-          ) : null}
-          {openRecovery > 0 ? (
-            <NextStep href="#recovery" icon={FileSearch} tone="warning" title="Resolve import issues" description={`${openRecovery} file handoff${openRecovery === 1 ? " needs" : "s need"} your decision.`} />
-          ) : null}
-          {importReady.length > 0 ? (
-            <NextStep href="#download-queue" icon={CheckCircle2} tone="success" title="Add completed downloads" description={`${importReady.length} completed download${importReady.length === 1 ? " is" : "s are"} ready to review.`} />
-          ) : null}
-          {openRecovery + queueAttention.length + failedImportJobs + importReady.length === 0 ? (
-            <NextStep icon={CheckCircle2} tone="success" title="Nothing for you to do" description="Deluno is tracking the active downloads and imports." />
-          ) : null}
-        </div>
-      </GlassTile>
-
-      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.45fr)_minmax(360px,0.8fr)]">
-        <div className="space-y-[var(--page-gap)]">
-          <GlassTile>
-            <PanelHeader
-              title="Download progress"
-              subtitle="Everything currently being downloaded or prepared for import."
-              meta={`${allQueue.length} queue items`}
-            />
-            {allQueue.length ? (
-              <div className="divide-y divide-hairline">
-                {allQueue.map((item) => (
-                  <QueueRow
-                    key={`${item.clientId}:${item.id}`}
-                    item={item}
-                    busyKey={busyKey}
-                    preview={importPreviews[item.id]}
-                    cleanupPreview={cleanupPreviews[`${item.clientId}:${item.id}`]}
-                    allowExternalClientRemoval={settings.removeCompletedDownloads}
-                    onAction={handleQueueAction}
-                    onIgnoreHealthFinding={ignoreHealthFinding}
-                    onPreviewCleanup={previewCleanup}
-                    onRequestRemove={setPendingRemoval}
-                    onPreview={handlePreviewImport}
-                    onImport={handleImportNow}
-                    onQueueImport={handleQueueImport}
+      <ListCard
+        title="Downloads"
+        count={queue.length ? `${queue.length} in flight · ${activeImportJobs} importing` : undefined}
+      >
+        {queue.length === 0 ? (
+          <ListEmpty
+            title="Nothing downloading"
+            description="Releases Deluno sends to a download client show up here with progress, speed and import status. You only need to step in when one needs attention."
+          />
+        ) : (
+          <ListTable
+            columns={[
+              { label: "Release" },
+              { label: "Progress", width: "minmax(0,1.2fr)" },
+              { label: "Speed / left" },
+              { label: "Client" },
+              { label: "Status", width: LIST_TRACK.status, mobile: true }
+            ]}
+          >
+            {queue.map((item) => {
+              const chip = queueChip(item);
+              return (
+                <ListRow key={`${item.clientId}:${item.id}`} onClick={() => setDrawer({ kind: "queue", id: item.id })} selected={openQueueItem?.id === item.id}>
+                  <ListNameCell name={item.title || item.releaseName} sub={item.mediaType === "tv" ? "TV" : "Movies"} />
+                  <ListCell>
+                    <ProgressBar value={item.progress} />
+                    <span className="mt-1 block truncate text-[length:var(--type-caption)] tabular-nums text-muted-foreground">
+                      {Math.round(item.progress)}% of {formatBytes(item.sizeBytes)}
+                    </span>
+                  </ListCell>
+                  <ListCell
+                    numeric
+                    primary={item.speedMbps > 0 ? `${item.speedMbps.toFixed(1)} MB/s` : "—"}
+                    secondary={item.etaSeconds > 0 ? formatEta(item.etaSeconds) : undefined}
                   />
+                  <ListCell primary={item.clientName} secondary={item.indexerName || undefined} />
+                  <ListCell mobile>
+                    <Chip tone={chip.tone}>{chip.label}</Chip>
+                  </ListCell>
+                </ListRow>
+              );
+            })}
+          </ListTable>
+        )}
+      </ListCard>
+
+      {needsAction > 0 ? (
+        <ListCard
+          title="Needs attention"
+          count={`${needsAction} ${needsAction === 1 ? "thing" : "things"} Deluno could not finish on its own`}
+          actions={
+            failedImportJobs.length ? (
+              <Button type="button" variant="outline" size="sm" onClick={() => void retryFailedJobs()} disabled={busyKey !== null}>
+                {busyKey === "jobs:retry-failed" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCw className="h-3.5 w-3.5" />}
+                Retry {failedImportJobs.length} failed
+              </Button>
+            ) : undefined
+          }
+        >
+          <ListTable
+            columns={[{ label: "Item" }, { label: "What happened", width: "minmax(0,1.8fr)" }, { label: "Fix", width: "180px", mobile: true, srOnly: true }]}
+            chevron={false}
+          >
+            {recoveryCases.map((item) => (
+              <ListRow key={`${item.mediaType}:${item.id}`}>
+                <ListNameCell name={item.title} sub={item.mediaType === "movie" ? "Movies" : "TV"} />
+                <ListCell primary={item.summary} secondary={item.recommendedAction} />
+                <ListCell mobile align="end">
+                  <span className="flex justify-end gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={() => void retryRecovery(item)} disabled={busyKey !== null}>
+                      {busyKey === `recovery:retry:${item.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                      Try again
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => void dismissRecovery(item)} disabled={busyKey !== null}>
+                      Dismiss
+                    </Button>
+                  </span>
+                </ListCell>
+              </ListRow>
+            ))}
+            {queueAttention.map((item) => (
+              <ListRow key={`attention:${item.clientId}:${item.id}`} onClick={() => setDrawer({ kind: "queue", id: item.id })}>
+                <ListNameCell name={item.title || item.releaseName} sub={item.clientName} />
+                <ListCell
+                  primary={item.errorMessage ?? item.healthFindings?.[0]?.summary ?? "This download has stalled."}
+                  secondary={item.healthFindings?.length ? `${item.healthFindings.length} health ${item.healthFindings.length === 1 ? "finding" : "findings"}` : undefined}
+                />
+                <ListCell mobile align="end">
+                  <span className="text-[length:var(--type-caption)] text-muted-foreground">Open to fix</span>
+                </ListCell>
+              </ListRow>
+            ))}
+            {failedImportJobs.map((job) => (
+              <ListRow key={`job:${job.id}`}>
+                <ListNameCell name={jobTitle(job)} sub="Import job" />
+                <ListCell primary={job.lastError ?? "The import failed."} secondary={`Attempt ${job.attempts}`} />
+                <ListCell mobile align="end">
+                  <span className="text-[length:var(--type-caption)] text-muted-foreground">Use Retry above</span>
+                </ListCell>
+              </ListRow>
+            ))}
+          </ListTable>
+        </ListCard>
+      ) : null}
+
+      <ListCard
+        title="Recent activity"
+        count={activity.length ? `latest ${Math.min(visibleActivity.length, 25)} of ${activity.length}` : undefined}
+        actions={
+          activity.length ? (
+            <SegmentedControl<"all" | ActivityEntry["kind"]>
+              aria-label="Filter activity"
+              className="w-auto"
+              value={activityKind}
+              onValueChange={setActivityKind}
+              options={[
+                { value: "all", label: "All" },
+                { value: "import", label: "Imports" },
+                { value: "processor", label: "Processing" },
+                { value: "sent", label: "Sent" },
+                { value: "client", label: "Clients" }
+              ]}
+            />
+          ) : undefined
+        }
+      >
+        {visibleActivity.length === 0 ? (
+          <ListEmpty title="Nothing has happened yet" description="Imports, processor hand-offs, releases Deluno sent to a client, and what those clients reported back all land here." />
+        ) : (
+          <ListTable
+            columns={[{ label: "Item" }, { label: "What happened", width: "minmax(0,1.6fr)" }, { label: "When", width: "150px" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]}
+          >
+            {visibleActivity.slice(0, 25).map((entry) => (
+              <ListRow key={entry.id} onClick={() => setDrawer({ kind: "activity", id: entry.id })} selected={openActivity?.id === entry.id}>
+                <ListNameCell name={entry.name} sub={entry.sub} />
+                <ListCell primary={entry.detail} secondary={entry.extra} />
+                <ListCell numeric primary={formatAgo(entry.whenUtc)} secondary={formatDateTime(entry.whenUtc)} />
+                <ListCell mobile>
+                  <Chip tone={entry.tone}>{entry.status}</Chip>
+                </ListCell>
+              </ListRow>
+            ))}
+          </ListTable>
+        )}
+      </ListCard>
+
+      {/* -------------------------------------------------- download drawer */}
+      <Drawer
+        open={drawer?.kind === "queue"}
+        onOpenChange={(open) => {
+          if (!open) setDrawer(null);
+        }}
+        title={openQueueItem?.title || openQueueItem?.releaseName || "Download"}
+        description={openQueueItem ? `${openQueueItem.clientName} · ${queueStatusLabel(openQueueItem.status)}` : undefined}
+        footer={<DrawerFooter state="clean" saveType="button" saveLabel="Close" saveEnabled={false} onCancel={() => setDrawer(null)} />}
+      >
+        {openQueueItem ? (
+          <>
+            <DrawerSection title="Progress">
+              <ProgressBar value={openQueueItem.progress} />
+              <div className="grid gap-1.5">
+                <Fact label="Done" value={`${Math.round(openQueueItem.progress)}% — ${formatBytes(openQueueItem.downloadedBytes)} of ${formatBytes(openQueueItem.sizeBytes)}`} />
+                <Fact label="Speed" value={openQueueItem.speedMbps > 0 ? `${openQueueItem.speedMbps.toFixed(1)} MB/s` : "Not moving"} />
+                <Fact label="Time left" value={openQueueItem.etaSeconds > 0 ? formatEta(openQueueItem.etaSeconds) : "Unknown"} />
+                <Fact label="Peers" value={String(openQueueItem.peers)} />
+                <Fact label="From" value={openQueueItem.indexerName || "Unknown source"} />
+                <Fact label="Release" value={openQueueItem.releaseName} mono />
+              </div>
+            </DrawerSection>
+
+            {openQueueItem.errorMessage || openQueueItem.healthFindings?.length ? (
+              <DrawerSection title="Health">
+                {openQueueItem.errorMessage ? <p className="text-[length:var(--type-body-sm)] text-destructive">{openQueueItem.errorMessage}</p> : null}
+                {(openQueueItem.healthFindings ?? []).map((finding, index) => (
+                  <div key={index} className="grid gap-0.5 border-b border-hairline py-2 last:border-b-0">
+                    <span className="text-[length:var(--type-body-sm)] text-foreground">{finding.summary}</span>
+                    {finding.recommendedAction ? (
+                      <span className="text-[length:var(--type-caption)] text-muted-foreground">{finding.recommendedAction}</span>
+                    ) : null}
+                  </div>
                 ))}
-              </div>
-            ) : (
-              <EmptyState
-                size="sm"
-                variant="custom"
-                title="No active queue items"
-                description="Downloads dispatched from search will appear here with progress, speed, ETA, and import status."
-              />
-            )}
-          </GlassTile>
+              </DrawerSection>
+            ) : null}
 
-          <GlassTile id="download-health-history">
-            <PanelHeader
-              title="Download health history"
-              subtitle="Recent evidence is retained after an item leaves the live queue. Persisted import paths are redacted."
-              meta={`${healthRecords.length} recent`}
-            />
-            {healthRecords.length ? (
-              <div className="divide-y divide-hairline">
-                {healthRecords.slice(0, 12).map((record) => <DownloadHealthHistoryRow key={`${record.clientId}:${record.queueItemId}:${record.kind}`} record={record} />)}
-              </div>
-            ) : (
-              <EmptyState size="sm" variant="custom" title="No health history yet" description="Deluno will retain explainable health evidence when a download needs attention." />
-            )}
-          </GlassTile>
-
-          <GlassTile id="external-processing">
-            <PanelHeader
-              title="External processing handoffs"
-              subtitle="Items Deluno has handed to FileFlows, Weir, or another configured processor before safe import."
-              meta={activeProcessorHandoffs.length ? `${activeProcessorHandoffs.length} active` : `${processorHandoffs.length} recent`}
-            />
-            {processorHandoffs.length ? (
-              <div className="divide-y divide-hairline">
-                {processorHandoffs.slice(0, 12).map((handoff) => (
-                  <ProcessorHandoffRow
-                    key={handoff.id}
-                    handoff={handoff}
-                    isRetrying={busyKey === `processor-handoff-retry:${handoff.id}`}
-                    onRetry={() => void handleRetryProcessorHandoff(handoff)}
-                  />
-                ))}
-              </div>
-            ) : (
-              <EmptyState size="sm" variant="custom" title="No external handoffs yet" description="When a library is configured to refine completed downloads first, the safe handoff and its import result will appear here." />
-            )}
-          </GlassTile>
-
-          <GlassTile id="download-queue">
-            <PanelHeader
-              title="Imports in progress"
-              subtitle="Files Deluno is moving, linking, and adding to your library."
-              meta={failedImportJobs ? `${failedImportJobs} failed` : `${importJobs.length} recent`}
-            />
-            {failedImportJobs ? (
-              <div className="border-b border-hairline px-[calc(var(--tile-pad)*0.85)] py-3">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="gap-2"
-                  disabled={busyKey !== null}
-                  onClick={() => void handleRetryFailedJobs()}
-                >
-                  {busyKey === "jobs:retry-failed" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCw className="h-3.5 w-3.5" />}
-                  Retry failed jobs
+            <DrawerSection
+              title="Import"
+              aside={isImportReadyStatus(openQueueItem.status) ? "ready" : queueStatusLabel(openQueueItem.status)}
+            >
+              {importPreviews[openQueueItem.id] ? (
+                <ImportPreviewFacts preview={importPreviews[openQueueItem.id]!} />
+              ) : (
+                <p className="text-[length:var(--type-caption)] text-muted-foreground">
+                  Preview shows exactly where the file would land and what it would be renamed to, before anything moves.
+                </p>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={() => void previewImport(openQueueItem)} disabled={busyKey !== null}>
+                  {busyKey === `preview:${openQueueItem.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                  Preview import
+                </Button>
+                <Button type="button" size="sm" onClick={() => void queueImport(openQueueItem)} disabled={busyKey !== null || !isImportReadyStatus(openQueueItem.status)}>
+                  {busyKey === `import:${openQueueItem.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                  Queue import
                 </Button>
               </div>
-            ) : null}
-            {importJobs.length ? (
-              <div className="divide-y divide-hairline">
-                {importJobs.slice(0, 8).map((job) => (
-                  <ImportJobRow key={job.id} job={job} />
-                ))}
+            </DrawerSection>
+
+            <DrawerSection title="In the client">
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={() => void queueAction(openQueueItem, "pause")} disabled={busyKey !== null}>
+                  <Pause className="h-3.5 w-3.5" />
+                  Pause
+                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => void queueAction(openQueueItem, "resume")} disabled={busyKey !== null}>
+                  <Play className="h-3.5 w-3.5" />
+                  Resume
+                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => void queueAction(openQueueItem, "recheck")} disabled={busyKey !== null}>
+                  <RotateCw className="h-3.5 w-3.5" />
+                  Re-check
+                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => void previewCleanup(openQueueItem)} disabled={busyKey !== null}>
+                  What would removing do?
+                </Button>
+                <Button type="button" variant="destructive" size="sm" onClick={() => setPendingRemoval(openQueueItem)} disabled={busyKey !== null}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Remove from client
+                </Button>
               </div>
-            ) : (
-              <EmptyState
-                size="sm"
-                variant="custom"
-                title="No import jobs yet"
-                description="Use Queue import on an import-ready download to hand it to the background pipeline."
-              />
-            )}
-          </GlassTile>
-
-          <GlassTile id="import-jobs">
-            <PanelHeader
-              title="Download client history"
-              subtitle="Completed, failed, and ready-to-import items reported by your download clients."
-              meta={`${clientHistory.length} normalized`}
-            />
-            {clientHistory.length ? (
-              <div className="divide-y divide-hairline">
-                {clientHistory.slice(0, 16).map((item) => (
-                  <ClientHistoryRow key={`${item.clientId}:${item.id}`} item={item} />
-                ))}
-              </div>
-            ) : (
-              <EmptyState size="sm" variant="custom" title="No client history yet" description="Completed downloads and failed client-side jobs will appear here once external clients report them." />
-            )}
-          </GlassTile>
-
-          <GlassTile id="recovery">
-            <PanelHeader
-              title="What Deluno sent"
-              subtitle="The releases Deluno approved and sent to a download client."
-              meta={`${dispatches.length} recent`}
-            />
-            {dispatches.length ? (
-              <div className="divide-y divide-hairline">
-                {dispatches.slice(0, 12).map((dispatch) => (
-                  <div key={dispatch.id} className="grid gap-3 px-[calc(var(--tile-pad)*0.85)] py-[calc(var(--tile-pad)*0.65)] md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="truncate font-medium text-foreground">{dispatch.releaseName}</p>
-                        <Badge variant={dispatch.status === "sent" ? "success" : dispatch.status === "failed" ? "destructive" : "default"} className="text-[9.5px]">
-                          {dispatch.status}
-                        </Badge>
-                        <span className="rounded-full border border-hairline px-1.5 py-0.5 text-[10px] font-semibold uppercase text-muted-foreground">
-                          {dispatch.mediaType}
-                        </span>
-                      </div>
-                      <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
-                        {dispatch.indexerName || "unknown indexer"} to {dispatch.downloadClientName || "unassigned client"}
-                      </p>
-                    </div>
-                    <span className="font-mono text-[11px] text-muted-foreground">{formatDateTime(dispatch.createdUtc)}</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <EmptyState size="sm" variant="custom" title="No dispatches yet" description="Manual grabs and scheduled searches will populate this history." />
-            )}
-          </GlassTile>
-        </div>
-
-        <aside className="space-y-[var(--page-gap)]">
-          <ManualImportPanel
-            form={manualImport}
-            preview={manualPreview}
-            busyKey={busyKey}
-            onChange={setManualImport}
-            onPreview={handleManualPreview}
-            onQueue={handleManualQueue}
-          />
-
-          <GlassTile>
-            <PanelHeader title="Needs attention" subtitle="Imports that could not be completed automatically." meta={`${openRecovery} open`} />
-            <div className="space-y-3 p-[calc(var(--tile-pad)*0.85)]">
-              <RecoveryGroup
-                title="Movies"
-                mediaType="movie"
-                cases={movieRecovery.recentCases}
-                busyKey={busyKey}
-                onDismiss={handleDismissRecovery}
-                onRetry={handleRetryRecovery}
-              />
-              <RecoveryGroup
-                title="TV"
-                mediaType="series"
-                cases={seriesRecovery.recentCases}
-                busyKey={busyKey}
-                onDismiss={handleDismissRecovery}
-                onRetry={handleRetryRecovery}
-              />
-              {!movieRecovery.recentCases.length && !seriesRecovery.recentCases.length ? (
-                <div className="rounded-xl border border-success/20 bg-success/5 p-4">
-                  <div className="flex items-center gap-2 text-success">
-                    <CheckCircle2 className="h-4 w-4" />
-                    <p className="font-semibold">No recovery cases</p>
-                  </div>
-                  <p className="mt-1 text-[12px] text-muted-foreground">
-                    Imports that fail because of missing sources, permission issues, or destination conflicts will appear here.
-                  </p>
+              {cleanupPreviews[`${openQueueItem.clientId}:${openQueueItem.id}`] ? (
+                <div className="grid gap-1.5">
+                  <Fact label="Would do" value={cleanupPreviews[`${openQueueItem.clientId}:${openQueueItem.id}`]!.proposedAction} />
+                  <Fact label="Because" value={cleanupPreviews[`${openQueueItem.clientId}:${openQueueItem.id}`]!.reason} />
+                  <Fact label="Files affected" value={cleanupPreviews[`${openQueueItem.clientId}:${openQueueItem.id}`]!.affectedFiles} mono />
+                  <Fact label="Allowed" value={cleanupPreviews[`${openQueueItem.clientId}:${openQueueItem.id}`]!.removalAllowed ? "Yes" : "Needs review first"} />
                 </div>
               ) : null}
-            </div>
-          </GlassTile>
+              <p className="text-[length:var(--type-caption)] text-muted-foreground">
+                Deluno asks the client to act. The client owns its own payload — nothing in your media library is touched from here.
+              </p>
+            </DrawerSection>
+          </>
+        ) : null}
+      </Drawer>
 
-          <GlassTile>
-            <PanelHeader title="Client capability matrix" subtitle="What Deluno can safely do through each protocol." />
-            <div className="space-y-2 p-[calc(var(--tile-pad)*0.85)]">
-              {telemetry.clients.length ? telemetry.clients.map((client) => (
-                <CapabilityCard key={client.clientId} client={client} />
-              )) : (
-                <EmptyState size="sm" variant="custom" title="No clients configured" description="Add qBittorrent, SABnzbd, NZBGet, Deluge, Transmission, or uTorrent in Library setup → Connections → Download clients." />
-              )}
+      {/* ---------------------------------------------------- manual import */}
+      <Drawer
+        open={drawer?.kind === "manual"}
+        onOpenChange={(open) => {
+          if (!open) setDrawer(null);
+        }}
+        title="Manual import"
+        description="Bring in a file Deluno did not download itself"
+        footer={
+          <DrawerFooter
+            state={manualState}
+            message={manualMessage}
+            saveType="button"
+            saveLabel="Queue import"
+            saveEnabled={Boolean(manualImport.sourcePath.trim()) && busyKey === null}
+            onSave={() => void manualRun("queue")}
+            onCancel={() => setDrawer(null)}
+          />
+        }
+      >
+        <DrawerSection title="Source">
+          <Field label="File or folder" help="Anything Deluno can read — it is copied or linked, never moved out from under you without a preview.">
+            <PathInput value={manualImport.sourcePath} onChange={(value) => setManualImport((current) => ({ ...current, sourcePath: value }))} placeholder="D:/Downloads/Some.Release.2024" />
+          </Field>
+          <FieldRow>
+            <Field label="Media type">
+              <SegmentedControl<string>
+                aria-label="Media type"
+                value={manualImport.mediaType}
+                onValueChange={(value) => setManualImport((current) => ({ ...current, mediaType: value }))}
+                options={[
+                  { value: "movies", label: "Movies" },
+                  { value: "tv", label: "TV" }
+                ]}
+              />
+            </Field>
+            <Field label="Transfer" help="Auto picks a hardlink when it can and a copy when it cannot.">
+              <Select
+                value={manualImport.transferMode}
+                onChange={(event) => setManualImport((current) => ({ ...current, transferMode: event.target.value }))}
+                options={[
+                  { value: "auto", label: "Automatic" },
+                  { value: "hardlink", label: "Hardlink" },
+                  { value: "copy", label: "Copy" },
+                  { value: "move", label: "Move" }
+                ]}
+              />
+            </Field>
+          </FieldRow>
+        </DrawerSection>
+
+        <DrawerSection title="Help Deluno match it" aside="optional">
+          <FieldRow>
+            <Field label="Title" optional help="Only needed when the file name does not say.">
+              <Input value={manualImport.title} onChange={(event) => setManualImport((current) => ({ ...current, title: event.target.value }))} />
+            </Field>
+            <Field label="Year" optional>
+              <Input type="number" value={manualImport.year} onChange={(event) => setManualImport((current) => ({ ...current, year: event.target.value }))} />
+            </Field>
+          </FieldRow>
+          <Field label="File name" optional help="Override the file inside the folder to import.">
+            <Input value={manualImport.fileName} onChange={(event) => setManualImport((current) => ({ ...current, fileName: event.target.value }))} className="font-mono" />
+          </Field>
+        </DrawerSection>
+
+        <DrawerSection title="Where it would land" aside={manualPreview ? undefined : "run a preview"}>
+          {manualPreview ? (
+            <ImportPreviewFacts preview={manualPreview} />
+          ) : (
+            <p className="text-[length:var(--type-caption)] text-muted-foreground">Preview first — it shows the destination path and the new name without writing anything.</p>
+          )}
+          <div>
+            <Button type="button" variant="outline" size="sm" onClick={() => void manualRun("preview")} disabled={busyKey !== null || !manualImport.sourcePath.trim()}>
+              {busyKey === "manual:preview" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+              Preview
+            </Button>
+          </div>
+        </DrawerSection>
+      </Drawer>
+
+      {/* ------------------------------------------------- activity drawer */}
+      <Drawer
+        open={drawer?.kind === "activity"}
+        onOpenChange={(open) => {
+          if (!open) setDrawer(null);
+        }}
+        title={openActivity?.name ?? "Activity"}
+        description={openActivity ? `${openActivity.sub} · ${openActivity.status}` : undefined}
+        footer={
+          <DrawerFooter
+            state="clean"
+            saveType="button"
+            saveLabel={openActivity?.kind === "processor" ? "Try again" : "Close"}
+            saveEnabled={openActivity?.kind === "processor" && busyKey === null}
+            onSave={() => {
+              const handoff = processorHandoffs.find((entry) => `processor:${entry.id}` === openActivity?.id);
+              if (handoff) void retryHandoff(handoff);
+            }}
+            onCancel={() => setDrawer(null)}
+          />
+        }
+      >
+        {openActivity ? (
+          <DrawerSection title="What happened">
+            <div className="grid gap-1.5">
+              <Fact label="Outcome" value={openActivity.detail} />
+              {openActivity.extra ? <Fact label="Detail" value={openActivity.extra} mono /> : null}
+              <Fact label="When" value={formatDateTime(openActivity.whenUtc)} />
+              <Fact label="Kind" value={activityKindLabel(openActivity.kind)} />
             </div>
-          </GlassTile>
-        </aside>
-      </div>
+          </DrawerSection>
+        ) : null}
+      </Drawer>
 
       <ConfirmDialog
         open={pendingRemoval !== null}
         onOpenChange={(open) => {
           if (!open && busyKey === null) setPendingRemoval(null);
         }}
-        title="Remove this client queue entry?"
-        description={pendingRemoval
-          ? `Deluno will ask ${pendingRemoval.clientName} to remove “${pendingRemoval.title}” from its queue. The client controls its own payload behaviour; Deluno never removes media-library files from this action.`
-          : ""}
-        confirmLabel="Remove queue entry"
+        title="Remove this from the client's queue?"
+        description={
+          pendingRemoval
+            ? `Deluno will ask ${pendingRemoval.clientName} to drop “${pendingRemoval.title}”. The client decides what happens to the files it downloaded; Deluno never removes anything from your media library through this.`
+            : ""
+        }
+        confirmLabel="Remove from client"
         busy={pendingRemoval !== null && busyKey === `queue:${pendingRemoval.clientId}:${pendingRemoval.id}:delete`}
-        onConfirm={() => void confirmRemoval()}
+        onConfirm={async () => {
+          if (!pendingRemoval) return;
+          await queueAction(pendingRemoval, "delete");
+          setPendingRemoval(null);
+          setDrawer(null);
+        }}
       />
     </div>
   );
 }
 
-function DownloadHealthHistoryRow({ record }: { record: DownloadHealthRecord }) {
-  const ignored = record.ignoredUntilUtc && new Date(record.ignoredUntilUtc).getTime() > Date.now();
+/* ---------------------------------------------------------------- bits */
+
+function ProgressBar({ value }: { value: number }) {
+  const clamped = Math.min(100, Math.max(0, value));
   return (
-    <div className="px-[calc(var(--tile-pad)*0.85)] py-[calc(var(--tile-pad)*0.65)]">
-      <div className="flex flex-wrap items-center gap-2">
-        <p className="truncate font-medium text-foreground">{record.releaseName}</p>
-        <Badge variant={record.severity === "critical" ? "destructive" : "warning"} className="text-[9.5px]">{record.kind.replaceAll("-", " ")}</Badge>
-        <span className="text-[10.5px] text-muted-foreground">{record.strikeCount} {record.strikeCount === 1 ? "strike" : "strikes"}</span>
-        {ignored ? <span className="text-[10.5px] text-muted-foreground">temporarily ignored</span> : null}
-      </div>
-      <p className="mt-1 text-[11px] text-muted-foreground">{record.evidence}</p>
-      <p className="mt-1 text-[10.5px] text-muted-foreground">Last observed {new Date(record.lastObservedUtc).toLocaleString()}.</p>
+    <span aria-hidden className="block h-1.5 w-full overflow-hidden rounded-full bg-surface-3">
+      <span className="block h-full rounded-full bg-primary transition-[width] duration-300" style={{ width: `${clamped}%` }} />
+    </span>
+  );
+}
+
+function Fact({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 border-b border-hairline py-1.5 last:border-b-0">
+      <span className="shrink-0 text-[length:var(--type-caption)] text-muted-foreground">{label}</span>
+      <span className={`min-w-0 truncate text-right text-[length:var(--type-caption)] text-foreground ${mono ? "font-mono" : ""}`} title={value}>
+        {value}
+      </span>
     </div>
   );
 }
 
-function ProcessorHandoffRow({
-  handoff,
-  isRetrying,
-  onRetry
+function ImportPreviewFacts({ preview }: { preview: ImportPreviewResponse }) {
+  return (
+    <div className="grid gap-1.5">
+      <Fact label="Would land at" value={preview.destinationPath || "Not resolved"} mono />
+      <Fact label="In folder" value={preview.destinationFolder || "Not resolved"} mono />
+      <Fact label="Matched rule" value={preview.matchedRuleName ?? "No destination rule matched"} />
+      <Fact label="How" value={preview.transferExplanation || preview.preferredTransferMode} />
+      <Fact label="Source" value={preview.sourceExists ? formatBytes(preview.sourceSizeBytes) : "Not found on disk"} />
+      {preview.destinationExists ? <Fact label="Careful" value="Something already exists at the destination" /> : null}
+      {preview.warnings.length ? <Fact label="Warnings" value={preview.warnings.join(" · ")} /> : null}
+    </div>
+  );
+}
+
+function queueChip(item: DownloadQueueItem): { tone: NonNullable<ChipProps["tone"]>; label: string } {
+  if (item.errorMessage || item.status === downloadQueueStatuses.stalled) return { tone: "bad", label: queueStatusLabel(item.status) };
+  if (item.healthFindings?.length) return { tone: "warn", label: "Needs a look" };
+  if (isImportReadyStatus(item.status)) return { tone: "ok", label: "Ready to import" };
+  if (isProcessingStatus(item.status)) return { tone: "info", label: queueStatusLabel(item.status) };
+  return { tone: "info", label: queueStatusLabel(item.status) };
+}
+
+/** Every finished thing, in one row shape, newest first. */
+function buildActivity({
+  importJobs,
+  processorHandoffs,
+  dispatches,
+  telemetry,
+  healthRecords
 }: {
-  handoff: ProcessorHandoffItem;
-  isRetrying: boolean;
-  onRetry: () => void;
-}) {
-  const statusVariant = handoff.status === "completed"
-    ? "success"
-    : handoff.status === "failed" || handoff.status === "timed-out"
-      ? "destructive"
-      : handoff.status === "accepted" || handoff.status === "started"
-        ? "default"
-        : "info";
-  const statusLabel = handoff.status === "waiting"
-    ? "Waiting for processor"
-    : handoff.status === "accepted"
-      ? "Accepted by processor"
-      : handoff.status === "started"
-        ? "Processing"
-    : handoff.status === "timed-out"
-      ? "Processor timed out"
-      : handoff.status.replace(/([a-z])([A-Z])/g, "$1 $2");
+  importJobs: JobQueueItem[];
+  processorHandoffs: ProcessorHandoffItem[];
+  dispatches: DownloadDispatchItem[];
+  telemetry: DownloadTelemetryOverview;
+  healthRecords: DownloadHealthRecord[];
+}): ActivityEntry[] {
+  const entries: ActivityEntry[] = [];
 
-  return (
-    <div className="px-[calc(var(--tile-pad)*0.85)] py-[calc(var(--tile-pad)*0.65)]">
-      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="truncate font-medium text-foreground">{handoff.releaseName}</p>
-            <Badge variant={statusVariant} className="text-[9.5px]">{statusLabel}</Badge>
-            <span className="rounded-full border border-hairline px-1.5 py-0.5 text-[10px] font-semibold uppercase text-muted-foreground">
-              {handoff.mediaType || "media"}
-            </span>
-            {handoff.processorName ? (
-              <span className="rounded-full border border-hairline px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
-                {handoff.processorName}
-              </span>
-            ) : null}
-          </div>
-          <p className="mt-1 truncate font-mono text-[10.5px] text-muted-foreground">from {handoff.sourcePath}</p>
-          {handoff.outputPath ? <p className="mt-1 truncate font-mono text-[10.5px] text-muted-foreground">output {handoff.outputPath}</p> : null}
-          {handoff.failureMessage ? (
-            <p className="mt-2 rounded-lg border border-destructive/20 bg-destructive/5 px-2.5 py-1.5 text-[12px] text-destructive">
-              {handoff.failureMessage}
-            </p>
-          ) : null}
-        </div>
-        <div className="grid gap-1 text-left md:text-right">
-          <span className="font-mono text-[11px] text-muted-foreground">updated {formatDateTime(handoff.updatedUtc)}</span>
-          {handoff.importJobId ? <span className="font-mono text-[11px] text-muted-foreground">import {handoff.importJobId.slice(0, 8)}</span> : null}
-          {handoff.status === "failed" || handoff.status === "timed-out" ? (
-            <Button type="button" variant="outline" size="sm" className="mt-1.5" disabled={isRetrying} onClick={onRetry}>
-              {isRetrying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCw className="h-3.5 w-3.5" />}
-              Try processor again
-            </Button>
-          ) : null}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ClientHistoryRow({ item }: { item: DownloadClientHistoryItem & { clientHealth?: string } }) {
-  const outcomeVariant =
-    item.outcome === "completed" || item.outcome === "success"
-      ? "success"
-      : item.outcome === "failed"
-        ? "destructive"
-        : item.outcome === "importReady"
-          ? "info"
-          : "default";
-
-  return (
-    <div className="grid gap-3 px-[calc(var(--tile-pad)*0.85)] py-[calc(var(--tile-pad)*0.65)] md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="truncate font-medium text-foreground">{item.title}</p>
-          <Badge variant={outcomeVariant} className="text-[9.5px]">
-            {item.outcome}
-          </Badge>
-          <span className="rounded-full border border-hairline px-1.5 py-0.5 text-[10px] font-semibold uppercase text-muted-foreground">
-            {item.protocol}
-          </span>
-          <span className="rounded-full border border-hairline px-1.5 py-0.5 text-[10px] font-semibold uppercase text-muted-foreground">
-            {item.mediaType || "media"}
-          </span>
-        </div>
-        <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
-          {item.releaseName} · {item.clientName} · {item.indexerName || "unknown source"}
-        </p>
-        {item.sourcePath ? (
-          <p className="mt-1 truncate font-mono text-[10.5px] text-muted-foreground">source {item.sourcePath}</p>
-        ) : null}
-        {item.errorMessage ? (
-          <p className="mt-2 rounded-lg border border-destructive/20 bg-destructive/5 px-2.5 py-1.5 text-[12px] text-destructive">
-            {item.errorMessage}
-          </p>
-        ) : null}
-      </div>
-      <div className="grid gap-1 text-left md:text-right">
-        <span className="font-mono text-[11px] text-muted-foreground">{formatDateTime(item.completedUtc)}</span>
-        <span className="font-mono text-[11px] text-muted-foreground">{formatBytes(item.sizeBytes)}</span>
-      </div>
-    </div>
-  );
-}
-
-function QueueRow({
-  item,
-  busyKey,
-  preview,
-  cleanupPreview,
-  allowExternalClientRemoval,
-  onAction,
-  onIgnoreHealthFinding,
-  onPreviewCleanup,
-  onRequestRemove,
-  onPreview,
-  onImport,
-  onQueueImport
-}: {
-  item: DownloadQueueItem;
-  busyKey: string | null;
-  preview?: ImportPreviewResponse;
-  cleanupPreview?: DownloadCleanupPreview;
-  allowExternalClientRemoval: boolean;
-  onAction: (clientId: string, item: DownloadQueueItem, action: QueueAction) => Promise<void>;
-  onIgnoreHealthFinding: (item: DownloadQueueItem, kind: string) => Promise<void>;
-  onPreviewCleanup: (item: DownloadQueueItem) => Promise<void>;
-  onRequestRemove: (item: DownloadQueueItem) => void;
-  onPreview: (item: DownloadQueueItem) => Promise<void>;
-  onImport: (item: DownloadQueueItem) => Promise<void>;
-  onQueueImport: (item: DownloadQueueItem) => Promise<void>;
-}) {
-  const isReady = isImportReadyStatus(item.status);
-  const isProcessing = isProcessingStatus(item.status) && item.status !== downloadQueueStatuses.importQueued;
-  const isQueuedImport = item.status === downloadQueueStatuses.importQueued;
-  const isImported = item.status === downloadQueueStatuses.imported;
-  const isImportFailed = item.status === downloadQueueStatuses.importFailed;
-  const isBusy = busyKey !== null;
-  const healthFindings = item.healthFindings ?? [];
-  const statusTone = item.status === downloadQueueStatuses.stalled || item.errorMessage || isImportFailed
-    ? "destructive"
-    : isReady || isImported
-      ? "success"
-      : item.status === downloadQueueStatuses.waitingForProcessor
-        ? "warning"
-        : item.status === downloadQueueStatuses.downloading || isProcessing || isQueuedImport
-          ? "info"
-          : "default";
-
-  return (
-    <div className="px-[calc(var(--tile-pad)*0.85)] py-[calc(var(--tile-pad)*0.75)]">
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="truncate font-medium text-foreground">{item.title}</p>
-            <Badge variant={statusTone} className="text-[9.5px]">{queueStatusLabel(item.status)}</Badge>
-            <span className="rounded-full border border-hairline px-1.5 py-0.5 text-[10px] font-semibold uppercase text-muted-foreground">
-              {item.protocol}
-            </span>
-            <span className="rounded-full border border-hairline px-1.5 py-0.5 text-[10px] font-semibold uppercase text-muted-foreground">
-              {item.mediaType || "media"}
-            </span>
-          </div>
-          <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
-            {item.releaseName}
-          </p>
-          {item.sourcePath ? (
-            <p className="mt-1 truncate font-mono text-[10.5px] text-muted-foreground">
-              source {item.sourcePath}
-            </p>
-          ) : null}
-          <div className="mt-3">
-            <div className="h-2 overflow-hidden rounded-full bg-muted/60">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-primary to-[hsl(var(--primary-2))]"
-                style={{ width: `${Math.max(0, Math.min(100, item.progress))}%` }}
-              />
-            </div>
-            <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-muted-foreground">
-              <span>{item.progress.toFixed(1)}%</span>
-              <span>{item.speedMbps.toFixed(1)} MB/s</span>
-              <span>{formatEta(item.etaSeconds)}</span>
-              <span>{formatBytes(item.downloadedBytes)} / {formatBytes(item.sizeBytes)}</span>
-              <span>{item.peers} peers</span>
-              <span>{item.category || "uncategorised"}</span>
-            </div>
-          </div>
-          {item.errorMessage ? (
-            <p className="mt-2 rounded-lg border border-destructive/20 bg-destructive/5 px-2.5 py-1.5 text-[12px] text-destructive">
-              {item.errorMessage}
-            </p>
-          ) : null}
-          {healthFindings.map((finding) => (
-            <div
-              key={finding.kind}
-              className={cn(
-                "mt-2 rounded-xl border px-3 py-2.5",
-                finding.severity === "critical" ? "border-destructive/20 bg-destructive/5" : "border-warning/25 bg-warning/5"
-              )}
-            >
-              <p className={cn("text-[10px] font-semibold uppercase tracking-[0.14em]", finding.severity === "critical" ? "text-destructive" : "text-warning")}>
-                Download health · {finding.kind.replaceAll("-", " ")}
-              </p>
-              <p className="mt-1 text-[12px] font-medium text-foreground">{finding.summary}</p>
-              <p className="mt-1 text-[11px] text-muted-foreground">{finding.evidence} {finding.recommendedAction}</p>
-              {finding.strikeCount > 0 ? (
-                <p className="mt-1 text-[10.5px] text-muted-foreground">
-                  {finding.strikeCount} health {finding.strikeCount === 1 ? "strike" : "strikes"}{finding.candidateBlocked ? "; this exact release is blocked from new grabs." : "."}
-                </p>
-              ) : null}
-              {finding.ignoredUntilUtc ? (
-                <p className="mt-1 text-[10.5px] text-muted-foreground">Ignored until {new Date(finding.ignoredUntilUtc).toLocaleString()}.</p>
-              ) : (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="mt-1 h-7 px-2 text-[10.5px]"
-                  disabled={isBusy}
-                  onClick={() => void onIgnoreHealthFinding(item, finding.kind)}
-                >
-                  Ignore for 7 days
-                </Button>
-              )}
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="mt-1 h-7 px-2 text-[10.5px]"
-                disabled={isBusy}
-                onClick={() => void onPreviewCleanup(item)}
-              >
-                {busyKey === `cleanup-preview:${item.clientId}:${item.id}` ? "Preparing preview…" : "Preview safe cleanup"}
-              </Button>
-              {cleanupPreview ? (
-                <div className="mt-2 rounded-lg border border-hairline bg-surface-1 px-2.5 py-2 text-[10.5px] text-muted-foreground">
-                  <p className="font-medium text-foreground">{cleanupPreview.matchedPolicy}</p>
-                  <p className="mt-1">{cleanupPreview.reason}</p>
-                  <p className="mt-1">{cleanupPreview.proposedAction}</p>
-                  <p className="mt-1">{cleanupPreview.affectedFiles}</p>
-                  <p className="mt-1">This preview does not take action. It shows what the Automation & recovery policy will be allowed to do after its ownership checks.</p>
-                </div>
-              ) : null}
-              <p className="mt-1.5 text-[10.5px] text-muted-foreground">
-                Configure the three-strike policy in Automation & recovery; Deluno keeps a durable record of every finding and action.
-              </p>
-            </div>
-          ))}
-          {preview ? <ImportPreviewPanel preview={preview} /> : null}
-          {isProcessing ? (
-            <div className="mt-3 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-primary">Refine before import</p>
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                This item is waiting for the configured processor to produce a cleaned output file. Deluno will import that output when it becomes ready.
-              </p>
-            </div>
-          ) : null}
-          {isQueuedImport ? (
-            <div className="mt-3 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-primary">Import queued</p>
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                Deluno has handed this completed download to the background import pipeline. The job monitor below will show move, hardlink, and catalog results.
-              </p>
-            </div>
-          ) : null}
-          {isImportFailed ? (
-            <div className="mt-3 rounded-xl border border-destructive/20 bg-destructive/5 px-3 py-2.5">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-destructive">Import failed</p>
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                Deluno blocked or failed this import. Check the recovery panel or failed import job for the exact reason before forcing a retry.
-              </p>
-            </div>
-          ) : null}
-        </div>
-
-        <div className="flex flex-wrap gap-1.5 lg:max-w-[360px] lg:justify-end">
-          {isReady ? (
-            <>
-              <ActionButton
-                icon={FileSearch}
-                label="Preview import"
-                busy={busyKey === `import-preview:${item.clientId}:${item.id}`}
-                disabled={isBusy}
-                onClick={() => void onPreview(item)}
-              />
-              <ActionButton
-                icon={ArrowDownToLine}
-                label="Import now"
-                busy={busyKey === `import-now:${item.clientId}:${item.id}`}
-                disabled={isBusy}
-                onClick={() => void onImport(item)}
-                primary
-              />
-              <ActionButton
-                icon={HardDriveDownload}
-                label="Queue import"
-                busy={busyKey === `import-queue:${item.clientId}:${item.id}`}
-                disabled={isBusy}
-                onClick={() => void onQueueImport(item)}
-              />
-            </>
-          ) : null}
-          {isImportFailed && item.sourcePath ? (
-            <>
-              <ActionButton
-                icon={FileSearch}
-                label="Preview retry"
-                busy={busyKey === `import-preview:${item.clientId}:${item.id}`}
-                disabled={isBusy}
-                onClick={() => void onPreview(item)}
-              />
-              <ActionButton
-                icon={ArrowDownToLine}
-                label="Retry import"
-                busy={busyKey === `import-now:${item.clientId}:${item.id}`}
-                disabled={isBusy}
-                onClick={() => void onImport(item)}
-                primary
-              />
-            </>
-          ) : null}
-          <ActionButton icon={Pause} label="Pause" busy={busyKey === `queue:${item.clientId}:${item.id}:pause`} disabled={isBusy} onClick={() => void onAction(item.clientId, item, "pause")} />
-          <ActionButton icon={Play} label="Resume" busy={busyKey === `queue:${item.clientId}:${item.id}:resume`} disabled={isBusy} onClick={() => void onAction(item.clientId, item, "resume")} />
-          {["qbittorrent", "transmission", "deluge", "utorrent"].includes(item.protocol) ? (
-            <ActionButton icon={RotateCw} label="Recheck" busy={busyKey === `queue:${item.clientId}:${item.id}:recheck`} disabled={isBusy} onClick={() => void onAction(item.clientId, item, "recheck")} />
-          ) : null}
-          {allowExternalClientRemoval ? (
-            <ActionButton icon={Trash2} label="Remove" busy={busyKey === `queue:${item.clientId}:${item.id}:delete`} disabled={isBusy} onClick={() => onRequestRemove(item)} destructive />
-          ) : (
-            <p className="basis-full text-[10.5px] text-muted-foreground">External-client queue removal is off. Enable it in Library setup → File handling &amp; naming if you want this confirmed control here.</p>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ImportPreviewPanel({ preview }: { preview: ImportPreviewResponse }) {
-  const hasWarnings = preview.warnings.length > 0;
-  const risk = getImportPreviewRisk(preview);
-  const probeSummary = formatProbeSummary(preview.mediaProbe);
-  return (
-    <div
-      className={cn(
-        "mt-3 rounded-xl border px-3 py-2.5",
-        risk.tone === "blocked"
-          ? "border-destructive/30 bg-destructive/5"
-          : risk.tone === "warning"
-            ? "border-warning/25 bg-warning/5"
-            : "border-primary/20 bg-primary/5"
-      )}
-    >
-      <div className="flex flex-wrap items-center gap-2">
-        <p
-          className={cn(
-            "text-[10px] font-semibold uppercase tracking-[0.14em]",
-            risk.tone === "blocked" ? "text-destructive" : risk.tone === "warning" ? "text-warning" : "text-primary"
-          )}
-        >
-          Destination rule - {preview.preferredTransferMode}
-        </p>
-        <Badge variant={risk.badgeVariant} className="text-[9px]">
-          {risk.label}
-        </Badge>
-        <Badge variant={preview.sourceExists ? "success" : "destructive"} className="text-[9px]">
-          source {preview.sourceExists ? "visible" : "missing"}
-        </Badge>
-        <Badge variant={preview.destinationExists ? "warning" : "success"} className="text-[9px]">
-          destination {preview.destinationExists ? "exists" : "clear"}
-        </Badge>
-      </div>
-      <p className="mt-1 break-all font-mono text-[10.5px] text-muted-foreground">{preview.destinationPath}</p>
-      <p className="mt-1 text-[11px] text-muted-foreground">{preview.explanation} {preview.transferExplanation}</p>
-      <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-        <PreviewFact label="Rule" value={preview.matchedRuleName || "Default resolver"} tone={preview.matchedRuleName ? "primary" : "neutral"} />
-        <PreviewFact label="Transfer" value={preview.hardlinkAvailable ? "Hardlink ready" : preview.preferredTransferMode} tone={preview.hardlinkAvailable ? "success" : "warning"} />
-        <PreviewFact label="Replacement" value={preview.destinationExists ? "Existing file" : "No conflict"} tone={preview.destinationExists ? "warning" : "success"} />
-        <PreviewFact label="Source" value={preview.sourceExists ? formatBytes(preview.sourceSizeBytes) : "Not visible"} tone={preview.sourceExists ? "success" : "danger"} />
-      </div>
-      {probeSummary ? (
-        <p className="mt-1 font-mono text-[10.5px] text-muted-foreground">
-          {probeSummary}
-        </p>
-      ) : null}
-      {preview.decisionSteps.length ? (
-        <div className="mt-2 rounded-lg border border-hairline bg-background/40 p-2">
-          <p className="text-[9.5px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Decision path</p>
-          <ol className="mt-1 space-y-1">
-            {preview.decisionSteps.map((step, index) => (
-              <li key={`${index}-${step}`} className="grid grid-cols-[18px_minmax(0,1fr)] gap-2 text-[11px] text-muted-foreground">
-                <span className="font-mono text-primary">{index + 1}</span>
-                <span>{step}</span>
-              </li>
-            ))}
-          </ol>
-        </div>
-      ) : null}
-      {hasWarnings ? (
-        <div className="mt-2 space-y-1">
-          {preview.warnings.map((warning) => (
-            <p key={warning} className="flex gap-1.5 text-[11px] text-warning">
-              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
-              <span>{warning}</span>
-            </p>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function getImportPreviewRisk(preview: ImportPreviewResponse) {
-  const warnings = preview.warnings.map((warning) => warning.toLowerCase());
-  const isBlocked =
-    !preview.sourceExists ||
-    !preview.isSupportedMediaFile ||
-    warnings.some((warning) => warning.includes("same file") || warning.includes("same path"));
-  const isWarning = preview.destinationExists || warnings.length > 0;
-  if (isBlocked) return { label: "Blocked", tone: "blocked" as const, badgeVariant: "destructive" as const };
-  if (isWarning) return { label: "Review", tone: "warning" as const, badgeVariant: "warning" as const };
-  return { label: "Ready", tone: "ready" as const, badgeVariant: "success" as const };
-}
-
-function formatProbeSummary(probe: ImportPreviewResponse["mediaProbe"]) {
-  if (!probe) return "";
-  const parts = [`Probe: ${probe.status}`];
-  if (probe.durationSeconds) parts.push(formatDuration(probe.durationSeconds));
-  const video = probe.videoStreams[0];
-  if (video) parts.push(`${video.codec ?? "video"} ${video.width ?? "?"}x${video.height ?? "?"}`);
-  parts.push(`${probe.audioStreams.length} audio`);
-  parts.push(`${probe.subtitleStreams.length} subs`);
-  return parts.join(" - ");
-}
-
-function formatDuration(seconds: number) {
-  const rounded = Math.max(0, Math.round(seconds));
-  const h = Math.floor(rounded / 3600).toString().padStart(2, "0");
-  const m = Math.floor((rounded % 3600) / 60).toString().padStart(2, "0");
-  const s = (rounded % 60).toString().padStart(2, "0");
-  return `${h}:${m}:${s}`;
-}
-
-function PreviewFact({
-  label,
-  value,
-  tone
-}: {
-  label: string;
-  value: string;
-  tone: "primary" | "success" | "warning" | "danger" | "neutral";
-}) {
-  const toneClass = {
-    primary: "border-primary/20 bg-primary/5 text-primary",
-    success: "border-success/20 bg-success/5 text-success",
-    warning: "border-warning/20 bg-warning/5 text-warning",
-    danger: "border-destructive/20 bg-destructive/5 text-destructive",
-    neutral: "border-hairline bg-background/30 text-muted-foreground"
-  }[tone];
-  return (
-    <div className={cn("rounded-lg border px-2.5 py-2", toneClass)}>
-      <p className="text-[9.5px] font-bold uppercase tracking-[0.14em] opacity-75">{label}</p>
-      <p className="mt-1 truncate text-[11px] font-semibold">{value}</p>
-    </div>
-  );
-}
-
-function ImportJobRow({ job }: { job: JobQueueItem }) {
-  const payload = parseImportJobPayload(job.payloadJson);
-  const statusVariant = job.status === JOB_STATUS.COMPLETED
-    ? "success"
-    : job.status === JOB_STATUS.FAILED
-      ? "destructive"
-      : job.status === JOB_STATUS.RUNNING
-        ? "default"
-        : "info";
-
-  return (
-    <div className="px-[calc(var(--tile-pad)*0.85)] py-[calc(var(--tile-pad)*0.7)]">
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="font-medium text-foreground">{payload?.title || "Background import"}</p>
-            <Badge variant={statusVariant} className="text-[9.5px]">{job.status}</Badge>
-            <span className="rounded-full border border-hairline px-1.5 py-0.5 text-[10px] font-semibold uppercase text-muted-foreground">
-              {payload?.mediaType || job.relatedEntityType || "media"}
-            </span>
-            <span className="rounded-full border border-hairline px-1.5 py-0.5 text-[10px] font-semibold uppercase text-muted-foreground">
-              {payload?.transferMode || "auto"}
-            </span>
-          </div>
-          <div className="mt-2 grid gap-1 font-mono text-[10.5px] text-muted-foreground">
-            <p className="truncate">from {payload?.sourcePath || "unknown source"}</p>
-            <p className="truncate">as {payload?.fileName || "resolved by destination rules"}</p>
-          </div>
-          {job.lastError ? (
-            <p className="mt-2 rounded-lg border border-destructive/20 bg-destructive/5 px-2.5 py-1.5 text-[12px] text-destructive">
-              {job.lastError}
-            </p>
-          ) : null}
-        </div>
-        <div className="grid gap-1 text-left lg:text-right">
-          <span className="font-mono text-[11px] text-muted-foreground">attempt {job.attempts}</span>
-          <span className="font-mono text-[11px] text-muted-foreground">queued {formatDateTime(job.createdUtc)}</span>
-          {job.startedUtc ? <span className="font-mono text-[11px] text-muted-foreground">started {formatDateTime(job.startedUtc)}</span> : null}
-          {job.completedUtc ? <span className="font-mono text-[11px] text-muted-foreground">done {formatDateTime(job.completedUtc)}</span> : null}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function RecoveryGroup({
-  title,
-  mediaType,
-  cases,
-  busyKey,
-  onDismiss,
-  onRetry
-}: {
-  title: string;
-  mediaType: "movie" | "series";
-  cases: Array<MovieImportRecoveryCase | SeriesImportRecoveryCase>;
-  busyKey: string | null;
-  onDismiss: (mediaType: "movie" | "series", id: string) => Promise<void>;
-  onRetry: (mediaType: "movie" | "series", item: MovieImportRecoveryCase | SeriesImportRecoveryCase) => Promise<void>;
-}) {
-  if (!cases.length) return null;
-  return (
-    <div className="space-y-2">
-      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{title}</p>
-      {cases.map((item) => {
-        const key = `recovery:${mediaType}:${item.id}`;
-        const retryKey = `recovery-retry:${mediaType}:${item.id}`;
-        const canRetry = parseRecoveryRetryRequest(item.detailsJson) !== null;
-        return (
-          <div key={item.id} className="rounded-xl border border-hairline bg-surface-1 p-3">
-            <div className="flex items-start gap-3">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="font-medium text-foreground">{item.title}</p>
-                  <Badge variant={item.failureKind === "quality" ? "warning" : "destructive"} className="text-[9px]">
-                    {item.failureKind}
-                  </Badge>
-                </div>
-                <p className="mt-1 text-[12px] text-muted-foreground">{item.summary}</p>
-                <p className="mt-1 text-[12px] text-foreground">{item.recommendedAction}</p>
-                <p className="mt-2 font-mono text-[10.5px] text-muted-foreground">{formatDateTime(item.detectedUtc)}</p>
-              </div>
-            </div>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="gap-2"
-                disabled={busyKey !== null || !canRetry}
-                onClick={() => void onRetry(mediaType, item)}
-              >
-                {busyKey === retryKey ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCw className="h-3.5 w-3.5" />}
-                Retry import
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="gap-2"
-                disabled={busyKey !== null}
-                onClick={() => void onDismiss(mediaType, item.id)}
-              >
-                {busyKey === key ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                Dismiss
-              </Button>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function CapabilityCard({ client }: { client: DownloadClientTelemetrySnapshot }) {
-  const capabilities = telemetryCapabilityChips(client);
-  return (
-    <div className="rounded-xl border border-hairline bg-surface-1 p-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate font-semibold text-foreground">{client.clientName}</p>
-          <p className="font-mono text-[10.5px] uppercase text-muted-foreground">{client.protocol}</p>
-        </div>
-        <Badge variant={isHealthyClient(client.healthStatus) ? "success" : "warning"} className="text-[9px]">
-          {client.healthStatus}
-        </Badge>
-      </div>
-      <div className="mt-3 grid grid-cols-2 gap-1.5">
-        {capabilities.map((capability) => (
-          <div
-            key={capability.label}
-            className={cn(
-              "rounded-lg border px-2 py-1.5 text-[10.5px] font-semibold",
-              capability.enabled
-                ? "border-success/20 bg-success/5 text-success"
-                : "border-hairline bg-muted/20 text-muted-foreground"
-            )}
-          >
-            {capability.label}
-          </div>
-        ))}
-      </div>
-      {client.lastHealthMessage ? (
-        <p className="mt-2 text-[11px] text-muted-foreground">{client.lastHealthMessage}</p>
-      ) : null}
-    </div>
-  );
-}
-
-function ManualImportPanel({
-  form,
-  preview,
-  busyKey,
-  onChange,
-  onPreview,
-  onQueue
-}: {
-  form: ManualImportForm;
-  preview: ImportPreviewResponse | null;
-  busyKey: string | null;
-  onChange: (form: ManualImportForm) => void;
-  onPreview: () => Promise<void>;
-  onQueue: () => Promise<void>;
-}) {
-  function update(patch: Partial<ManualImportForm>) {
-    onChange({ ...form, ...patch });
+  for (const job of importJobs) {
+    entries.push({
+      id: `import:${job.id}`,
+      kind: "import",
+      name: jobTitle(job),
+      sub: "Import",
+      detail: job.status === JOB_STATUS.FAILED ? job.lastError ?? "The import failed." : `Import ${job.status}`,
+      extra: job.attempts > 1 ? `Attempt ${job.attempts}` : undefined,
+      tone: job.status === JOB_STATUS.FAILED ? "bad" : isJobActive(job.status as never) ? "info" : "ok",
+      status: job.status,
+      whenUtc: job.completedUtc ?? job.startedUtc ?? job.createdUtc
+    });
   }
 
-  return (
-    <GlassTile>
-      <PanelHeader
-        title="Manual import"
-        subtitle="Preview and queue an import from any server-visible path."
-        meta="safe path first"
-      />
-      <div className="space-y-3 p-[calc(var(--tile-pad)*0.85)]">
-        <div className="space-y-1.5">
-          <label className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Source path</label>
-          <PathInput
-            value={form.sourcePath}
-            onChange={(sourcePath) => update({ sourcePath })}
-            placeholder="Completed file or folder path"
-            browseTitle="Choose manual import source"
-          />
-        </div>
+  for (const handoff of processorHandoffs) {
+    entries.push({
+      id: `processor:${handoff.id}`,
+      kind: "processor",
+      name: handoff.releaseName,
+      sub: handoff.processorName ?? "Processor",
+      detail: handoff.failureMessage ?? (handoff.outputPath ? "Processed output confirmed" : `Hand-off ${handoff.status}`),
+      extra: handoff.outputPath ?? handoff.sourcePath,
+      tone: handoff.failureMessage ? "bad" : handoff.outputPath ? "ok" : "info",
+      status: handoff.status,
+      whenUtc: handoff.updatedUtc
+    });
+  }
 
-        <div className="grid gap-2 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Media</label>
-            <select
-              value={form.mediaType}
-              onChange={(event) => update({ mediaType: event.target.value })}
-              className="density-control-text h-[var(--control-height-sm)] w-full rounded-xl border border-hairline bg-surface-2 px-3 text-foreground outline-none"
-            >
-              <option value="movies">Movie</option>
-              <option value="tv">TV show</option>
-            </select>
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Transfer</label>
-            <select
-              value={form.transferMode}
-              onChange={(event) => update({ transferMode: event.target.value })}
-              className="density-control-text h-[var(--control-height-sm)] w-full rounded-xl border border-hairline bg-surface-2 px-3 text-foreground outline-none"
-            >
-              <option value="auto">Auto</option>
-              <option value="hardlink">Hardlink</option>
-              <option value="copy">Copy</option>
-              <option value="move">Move</option>
-            </select>
-          </div>
-        </div>
+  for (const dispatch of dispatches) {
+    entries.push({
+      id: `sent:${dispatch.id}`,
+      kind: "sent",
+      name: dispatch.releaseName,
+      sub: dispatch.mediaType === "tv" ? "TV" : "Movies",
+      detail: `${dispatch.indexerName || "unknown source"} → ${dispatch.downloadClientName || "unassigned client"}`,
+      tone: dispatch.status === "sent" ? "ok" : dispatch.status === "failed" ? "bad" : "muted",
+      status: dispatch.status,
+      whenUtc: dispatch.createdUtc
+    });
+  }
 
-        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_96px]">
-          <Input value={form.title} onChange={(event) => update({ title: event.target.value })} placeholder="Title, e.g. Dune Part Two" />
-          <Input value={form.year} onChange={(event) => update({ year: event.target.value })} placeholder="2024" inputMode="numeric" />
-        </div>
-        <Input value={form.fileName} onChange={(event) => update({ fileName: event.target.value })} placeholder="Optional filename override" />
-        <div className="grid gap-2 sm:grid-cols-2">
-          <Input value={form.genres} onChange={(event) => update({ genres: event.target.value })} placeholder="Genres, comma separated" />
-          <Input value={form.tags} onChange={(event) => update({ tags: event.target.value })} placeholder="Tags, comma separated" />
-        </div>
+  for (const client of telemetry.clients) {
+    for (const item of client.history) {
+      entries.push({
+        id: `client:${client.clientId}:${item.id}`,
+        kind: "client",
+        name: item.title || item.releaseName,
+        sub: client.clientName,
+        detail: item.errorMessage ?? `Client reported ${item.outcome}`,
+        extra: item.sizeBytes ? formatBytes(item.sizeBytes) : undefined,
+        tone: item.errorMessage ? "bad" : "ok",
+        status: item.outcome,
+        whenUtc: item.completedUtc
+      });
+    }
+  }
 
-        <div className="grid gap-2 sm:grid-cols-2">
-          <Button
-            type="button"
-            variant="outline"
-            className="gap-2"
-            disabled={busyKey !== null}
-            onClick={() => void onPreview()}
-          >
-            {busyKey === "manual-import:preview" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSearch className="h-4 w-4" />}
-            Preview
-          </Button>
-          <Button
-            type="button"
-            className="gap-2"
-            disabled={busyKey !== null}
-            onClick={() => void onQueue()}
-          >
-            {busyKey === "manual-import:queue" ? <Loader2 className="h-4 w-4 animate-spin" /> : <HardDriveDownload className="h-4 w-4" />}
-            Queue import
-          </Button>
-        </div>
+  for (const record of healthRecords) {
+    entries.push({
+      id: `health:${record.clientId}:${record.queueItemId}:${record.kind}`,
+      kind: "health",
+      name: record.releaseName,
+      sub: "Health check",
+      detail: record.evidence,
+      extra: record.strikeCount > 1 ? `${record.strikeCount} strikes` : undefined,
+      tone: record.severity === "critical" ? "bad" : "warn",
+      status: record.kind,
+      whenUtc: record.lastObservedUtc
+    });
+  }
 
-        {preview ? <ImportPreviewPanel preview={preview} /> : null}
-      </div>
-    </GlassTile>
-  );
+  return entries.sort((a, b) => new Date(b.whenUtc).getTime() - new Date(a.whenUtc).getTime());
 }
 
-function NextStep({
-  href,
-  icon: Icon,
-  title,
-  description,
-  tone
-}: {
-  href?: string;
-  icon: typeof Download;
-  title: string;
-  description: string;
-  tone: "success" | "warning";
-}) {
-  const className = cn(
-    "group rounded-xl border p-3 transition-colors",
-    href && "hover:bg-muted/30",
-    tone === "warning" ? "border-warning/25 bg-warning/5" : "border-success/25 bg-success/5"
-  );
-  const content = (
-    <>
-      <div className={cn("flex h-8 w-8 items-center justify-center rounded-lg", tone === "warning" ? "bg-warning/15 text-warning" : "bg-success/15 text-success")}>
-        <Icon className="h-4 w-4" />
-      </div>
-      <p className="mt-3 text-[13px] font-semibold text-foreground">{title}</p>
-      <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">{description}</p>
-    </>
-  );
-
-  return href ? <Link to={href} className={className}>{content}</Link> : <div className={className}>{content}</div>;
+function activityKindLabel(kind: ActivityEntry["kind"]) {
+  switch (kind) {
+    case "import":
+      return "Import job";
+    case "processor":
+      return "Processor hand-off";
+    case "sent":
+      return "Sent to a client";
+    case "client":
+      return "Reported by a client";
+    default:
+      return "Health finding";
+  }
 }
 
-function PanelHeader({ title, subtitle, meta }: { title: string; subtitle: string; meta?: string }) {
-  return (
-    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-hairline px-[calc(var(--tile-pad)*0.85)] py-[calc(var(--tile-pad)*0.7)]">
-      <div>
-        <h2 className="font-display text-base font-semibold tracking-display text-foreground">{title}</h2>
-        <p className="mt-0.5 text-[12px] text-muted-foreground">{subtitle}</p>
-      </div>
-      {meta ? <span className="font-mono text-[11px] text-muted-foreground">{meta}</span> : null}
-    </div>
-  );
+function jobTitle(job: JobQueueItem) {
+  const parsed = parseImportJobPayload(job.payloadJson);
+  return parsed?.title || parsed?.fileName || `Job ${job.id.slice(0, 8)}`;
 }
 
-function MetricTile({
-  icon: Icon,
-  label,
-  value,
-  unit,
-  sub,
-  tone
-}: {
-  icon: typeof Download;
-  label: string;
-  value: string | number;
-  unit?: string;
-  sub: string;
-  tone: "primary" | "success" | "warn" | "neutral";
-}) {
-  const toneClass = {
-    primary: "text-primary bg-primary/10 border-primary/20",
-    success: "text-success bg-success/10 border-success/20",
-    warn: "text-warning bg-warning/10 border-warning/20",
-    neutral: "text-muted-foreground bg-muted/30 border-hairline"
-  }[tone];
-  return (
-    <div className="h-full min-w-0 rounded-2xl border border-hairline bg-card p-[calc(var(--tile-pad)*0.75)] shadow-card">
-      <div className={cn("flex h-[calc(var(--control-height-icon)*0.82)] w-[calc(var(--control-height-icon)*0.82)] items-center justify-center rounded-xl border", toneClass)}>
-        <Icon className="h-4 w-4" />
-      </div>
-      <p className="density-nowrap mt-4 text-[length:var(--metric-label-size)] font-bold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
-      <p className="density-nowrap mt-1 tabular font-display text-[length:var(--type-title-lg)] font-semibold tracking-display text-foreground">
-        {value}
-        {unit ? <span className="ml-1 text-sm font-semibold text-muted-foreground">{unit}</span> : null}
-      </p>
-      <p className="density-nowrap mt-1 text-[length:var(--metric-meta-size)] text-muted-foreground">{sub}</p>
-    </div>
-  );
-}
-
-function ActionButton({
-  icon: Icon,
-  label,
-  busy,
-  disabled,
-  onClick,
-  primary,
-  destructive
-}: {
-  icon: typeof Download;
-  label: string;
-  busy: boolean;
-  disabled: boolean;
-  onClick: () => void;
-  primary?: boolean;
-  destructive?: boolean;
-}) {
-  return (
-    <Button
-      type="button"
-      size="sm"
-      variant={primary ? "default" : destructive ? "ghost" : "outline"}
-      disabled={disabled}
-      onClick={onClick}
-      className={cn("gap-1.5", destructive && "text-destructive hover:text-destructive")}
-    >
-      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icon className="h-3.5 w-3.5" />}
-      {label}
-    </Button>
-  );
+function parseImportJobPayload(payloadJson: string | null): { title: string | null; fileName: string | null } | null {
+  if (!payloadJson) return null;
+  try {
+    const parsed = JSON.parse(payloadJson) as { preview?: { title?: string; fileName?: string }; title?: string; fileName?: string };
+    return {
+      title: parsed.preview?.title ?? parsed.title ?? null,
+      fileName: parsed.preview?.fileName ?? parsed.fileName ?? null
+    };
+  } catch {
+    return null;
+  }
 }
 
 function buildImportRequest(item: DownloadQueueItem, downloadsPath: string | null): ImportPreviewRequest {
-  const fileName = inferImportFileName(item);
-  const sourceBase = downloadsPath?.trim() || "D:\\Downloads";
-  const sourcePath = item.sourcePath?.trim() || (
-    sourceBase.endsWith("\\") || sourceBase.endsWith("/")
-      ? `${sourceBase}${fileName}`
-      : `${sourceBase}\\${fileName}`
-  );
-
   return {
-    sourcePath,
-    fileName,
-    mediaType: item.mediaType,
-    title: item.title,
+    sourcePath: item.sourcePath || downloadsPath || "",
+    fileName: inferImportFileName(item),
+    mediaType: item.mediaType === "tv" ? "tv" : "movies",
+    title: item.title || null,
     year: inferYear(item.releaseName),
-    genres: [],
-    tags: [item.category].filter(Boolean),
+    genres: null,
+    tags: null,
     studio: null,
     originalLanguage: null
   };
 }
 
 function inferImportFileName(item: DownloadQueueItem) {
-  const normalized = item.releaseName
-    .replace(/[<>:"/\\|?*]+/g, ".")
-    .replace(/\s+/g, ".")
-    .replace(/\.+/g, ".")
-    .replace(/^\.+|\.+$/g, "");
-  return /\.(mkv|mp4|avi|mov|m4v)$/i.test(normalized) ? normalized : `${normalized || item.id}.mkv`;
+  if (!item.sourcePath) return null;
+  const parts = item.sourcePath.split(/[\\/]/).filter(Boolean);
+  const last = parts[parts.length - 1];
+  return last && last.includes(".") ? last : null;
 }
 
 function inferYear(value: string) {
@@ -1649,191 +949,49 @@ function inferYear(value: string) {
 }
 
 function splitCsv(value: string) {
-  return value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
+  const parts = value.split(",").map((item) => item.trim()).filter(Boolean);
+  return parts.length ? parts : null;
 }
 
 function actionLabel(action: QueueAction) {
-  return {
-    pause: "Pause",
-    resume: "Resume",
-    delete: "Cancel",
-    recheck: "Recheck"
-  }[action];
-}
-
-function formatEta(seconds: number) {
-  if (!Number.isFinite(seconds) || seconds <= 0) return "ETA unknown";
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  const remaining = minutes % 60;
-  return `${hours}h ${remaining}m`;
-}
-
-function formatBytes(value: number) {
-  if (!Number.isFinite(value) || value <= 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let size = value;
-  let unit = 0;
-  while (size >= 1024 && unit < units.length - 1) {
-    size /= 1024;
-    unit += 1;
+  switch (action) {
+    case "pause":
+      return "Pause";
+    case "resume":
+      return "Resume";
+    case "recheck":
+      return "Re-check";
+    default:
+      return "Remove";
   }
-  return `${size.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
-}
-
-function formatDateTime(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "unknown";
-  return date.toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit"
-  });
-}
-
-interface ParsedImportJobPayload {
-  sourcePath: string | null;
-  fileName: string | null;
-  mediaType: string | null;
-  title: string | null;
-  transferMode: string | null;
-}
-
-function parseImportJobPayload(payloadJson: string | null): ParsedImportJobPayload | null {
-  if (!payloadJson) return null;
-  try {
-    const value = JSON.parse(payloadJson) as {
-      preview?: {
-        sourcePath?: string | null;
-        fileName?: string | null;
-        mediaType?: string | null;
-        title?: string | null;
-      } | null;
-      Preview?: {
-        SourcePath?: string | null;
-        FileName?: string | null;
-        MediaType?: string | null;
-        Title?: string | null;
-      } | null;
-      transferMode?: string | null;
-      TransferMode?: string | null;
-    };
-    const preview = value.preview ?? (value.Preview ? {
-      sourcePath: value.Preview.SourcePath,
-      fileName: value.Preview.FileName,
-      mediaType: value.Preview.MediaType,
-      title: value.Preview.Title
-    } : null);
-    return {
-      sourcePath: preview?.sourcePath ?? null,
-      fileName: preview?.fileName ?? null,
-      mediaType: preview?.mediaType ?? null,
-      title: preview?.title ?? null,
-      transferMode: value.transferMode ?? value.TransferMode ?? null
-    };
-  } catch {
-    return null;
-  }
-}
-
-function parseRecoveryRetryRequest(detailsJson: string | null): ImportExecuteRequest | null {
-  if (!detailsJson) return null;
-  try {
-    const value = JSON.parse(detailsJson) as Record<string, unknown>;
-    const retry = (value.retryRequest ?? value.RetryRequest) as Record<string, unknown> | undefined;
-    if (!retry) return null;
-
-    const preview = (retry.preview ?? retry.Preview) as Record<string, unknown> | undefined;
-    if (!preview) return null;
-
-    const sourcePath = stringValue(preview.sourcePath ?? preview.SourcePath);
-    if (!sourcePath) return null;
-
-    return {
-      preview: {
-        sourcePath,
-        fileName: stringValue(preview.fileName ?? preview.FileName),
-        mediaType: stringValue(preview.mediaType ?? preview.MediaType),
-        title: stringValue(preview.title ?? preview.Title),
-        year: numberValue(preview.year ?? preview.Year),
-        genres: stringArrayValue(preview.genres ?? preview.Genres),
-        tags: stringArrayValue(preview.tags ?? preview.Tags),
-        studio: stringValue(preview.studio ?? preview.Studio),
-        originalLanguage: stringValue(preview.originalLanguage ?? preview.OriginalLanguage)
-      },
-      transferMode: stringValue(retry.transferMode ?? retry.TransferMode) ?? "auto",
-      overwrite: booleanValue(retry.overwrite ?? retry.Overwrite),
-      allowCopyFallback: booleanValue(retry.allowCopyFallback ?? retry.AllowCopyFallback, true),
-      forceReplacement: booleanValue(retry.forceReplacement ?? retry.ForceReplacement, false)
-    };
-  } catch {
-    return null;
-  }
-}
-
-function stringValue(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function numberValue(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function booleanValue(value: unknown, fallback = false): boolean {
-  return typeof value === "boolean" ? value : fallback;
-}
-
-function stringArrayValue(value: unknown): string[] | null {
-  if (!Array.isArray(value)) return null;
-  const items = value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
-  return items.length ? items : null;
 }
 
 function isHealthyClient(status: string) {
-  return status === "ready" || status === "healthy";
+  return status === "healthy" || status === "ok";
 }
 
-function emptyTelemetry(): DownloadTelemetryOverview {
-  return {
-    capturedUtc: new Date(0).toISOString(),
-    clients: [],
-    summary: {
-      activeCount: 0,
-      queuedCount: 0,
-      completedCount: 0,
-      stalledCount: 0,
-      importReadyCount: 0,
-      processingCount: 0,
-      totalSpeedMbps: 0
-    }
-  };
+function formatEta(seconds: number) {
+  if (seconds <= 0) return "—";
+  if (seconds < 60) return `${Math.round(seconds)}s left`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m left`;
+  return `${(seconds / 3600).toFixed(1)}h left`;
 }
 
-function emptyMovieRecovery(): MovieImportRecoverySummary {
-  return {
-    openCount: 0,
-    qualityCount: 0,
-    unmatchedCount: 0,
-    corruptCount: 0,
-    downloadFailedCount: 0,
-    importFailedCount: 0,
-    recentCases: []
-  };
+function formatBytes(value: number) {
+  if (!value) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
+  return `${(value / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
-function emptySeriesRecovery(): SeriesImportRecoverySummary {
-  return {
-    openCount: 0,
-    qualityCount: 0,
-    unmatchedCount: 0,
-    corruptCount: 0,
-    downloadFailedCount: 0,
-    importFailedCount: 0,
-    recentCases: []
-  };
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value));
+}
+
+function formatAgo(value: string) {
+  const minutes = Math.round((Date.now() - new Date(value).getTime()) / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 60 * 48) return `${Math.round(minutes / 60)} h ago`;
+  return `${Math.round(minutes / 1440)} d ago`;
 }

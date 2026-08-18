@@ -25,7 +25,11 @@ const buttonVariants = cva(
           "bg-secondary text-secondary-foreground border border-hairline shadow-[var(--shadow-card)] hover:bg-surface-3",
         ghost: "text-muted-foreground hover:bg-secondary hover:text-foreground",
         outline:
-          "border border-hairline bg-transparent text-foreground shadow-[var(--shadow-card)] hover:bg-secondary"
+          "border border-hairline bg-transparent text-foreground shadow-[var(--shadow-card)] hover:bg-secondary",
+        destructive:
+          "border border-destructive/35 bg-transparent text-destructive shadow-[var(--shadow-card)] hover:bg-destructive/10",
+        "destructive-solid":
+          "bg-destructive text-destructive-foreground shadow-[0_1px_2px_hsl(var(--destructive)/0.35)] hover:brightness-110"
       },
       size: {
         default: "h-[var(--control-height)] px-4 py-2",

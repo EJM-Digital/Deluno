@@ -1,218 +1,337 @@
-import { useState } from "react";
+/**
+ * Size rules — a page-level form on the shared grammar.
+ *
+ *   PageToolbar (Media Plans tabs · Movies / TV)
+ *   ListCard (one media type at a time, tiers grouped into collapsible
+ *             resolution bands on one square-root ruler with a drawn axis)
+ *   ListCard (upgrade behaviour)
+ *   PageFooter (pinned: status · Discard · Save)
+ *
+ * Contracts: GET/PUT /api/quality-model.
+ */
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData } from "react-router-dom";
-import { SettingsShell } from "../components/app/settings-shell";
+import { ChevronRight } from "lucide-react";
 import { Button } from "../components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import { Field } from "../components/ui/field";
 import { Input } from "../components/ui/input";
-import { RouteSkeleton } from "../components/shell/skeleton";
+import { ListCard } from "../components/ui/list-card";
+import { PageFooter } from "../components/ui/page-footer";
+import { PageToolbar } from "../components/ui/page-toolbar";
+import { SegmentedControl } from "../components/ui/segmented-control";
+import { RangeAxis, RangeSlider } from "../components/ui/range-slider";
+import { SwitchRow } from "../components/ui/switch";
+import { configurationNavAreas } from "../components/app/settings-shell";
+import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { fetchJson, type QualityModelSnapshot, type QualityTierDefinition } from "../lib/api";
+import { cn } from "../lib/utils";
+import type { DrawerSaveState } from "../components/ui/drawer";
 
-interface QualityLoaderData {
+const TABS = configurationNavAreas.find((area) => area.label === "Media plans")?.items ?? [];
+
+interface LoaderData {
   qualityModel: QualityModelSnapshot;
 }
 
-export async function settingsQualityLoader(): Promise<QualityLoaderData> {
+export async function settingsQualityLoader(): Promise<LoaderData> {
   return { qualityModel: await fetchJson<QualityModelSnapshot>("/api/quality-model") };
 }
 
 export function SettingsQualityPage() {
-  const loaderData = useLoaderData() as QualityLoaderData | undefined;
-  if (!loaderData) return <RouteSkeleton />;
-
-  const [qualityModel, setQualityModel] = useState(loaderData.qualityModel);
+  const { qualityModel: loaded } = useLoaderData() as LoaderData;
+  const [saved, setSaved] = useState(loaded);
+  const [model, setModel] = useState(loaded);
+  const [saveState, setSaveState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
   const [message, setMessage] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+
+  // One table at a time: 26 tiers × two units is a page nobody can scan.
+  const [scope, setScope] = useState<"movie" | "episode">("movie");
+  const dirty = useMemo(() => JSON.stringify(model) !== JSON.stringify(saved), [model, saved]);
+  const state: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
+  const blocker = useUnsavedChanges(dirty);
+
+  useEffect(() => {
+    if (dirty && (saveState === "saved" || saveState === "error")) setSaveState(undefined);
+  }, [dirty, saveState]);
+
+  // The blocker has no confirm dialog here: a page form discards nothing on its
+  // own, so leaving is only confirmed through the browser prompt for reloads.
+  useEffect(() => {
+    if (blocker.state === "blocked" && !dirty) blocker.proceed();
+  }, [blocker, dirty]);
+
+  function updateTier(index: number, key: keyof QualityTierDefinition, value: number) {
+    setModel((current) => ({
+      ...current,
+      tiers: current.tiers.map((tier, tierIndex) => (tierIndex === index ? { ...tier, [key]: Number.isFinite(value) ? value : 0 } : tier))
+    }));
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (state === "saving") return;
+    setSaveState("saving");
+    try {
+      const next = await fetchJson<QualityModelSnapshot>("/api/quality-model", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tiers: model.tiers, upgradeStop: model.upgradeStop })
+      });
+      setSaved(next);
+      setModel(next);
+      setSaveState("saved");
+      setMessage("Saved just now");
+    } catch (error) {
+      setSaveState("error");
+      setMessage(error instanceof Error ? error.message : "Could not save size rules");
+    }
+  }
 
   return (
-    <SettingsShell
-      title="Size rules"
-      description="Usually leave these at their balanced defaults. Media Plans and quality profiles decide what Deluno wants; these rules reject files that are implausibly small or large."
-    >
-      <Card className="border-primary/20 bg-gradient-to-r from-primary/[0.07] via-primary/[0.025] to-transparent">
-        <CardHeader>
-          <CardTitle>Quality decides; size protects</CardTitle>
-          <CardDescription>
-            A quality profile chooses allowed release tiers and an upgrade target. These limits are a final sanity check before Deluno accepts a release. They apply across your libraries, so you only need to adjust them when your storage or source material has unusual requirements.
-          </CardDescription>
-        </CardHeader>
-      </Card>
-
-      {message ? <p className="rounded-xl border border-hairline bg-surface-1 px-3 py-2 text-sm text-muted-foreground">{message}</p> : null}
-
-      <SizeLimitsCard
-        title="Movies"
-        description="Final file-size checks for movies. Values are in GB."
-        mediaType="movies"
-        tiers={qualityModel.tiers}
-        onChange={(index, key, value) => setQualityModel((current) => updateTierValue(current, index, key, value))}
+    <form onSubmit={handleSubmit} className="flex flex-col gap-[var(--page-gap)]" noValidate>
+      <PageToolbar
+        tabs={TABS}
+        actions={
+          <SegmentedControl<"movie" | "episode">
+            aria-label="Show sizes for"
+            className="w-auto"
+            value={scope}
+            onValueChange={setScope}
+            options={[
+              // "Movies · TV" is the vocabulary MediaTypeFilter already uses everywhere else.
+              { value: "movie", label: "Movies" },
+              { value: "episode", label: "TV" }
+            ]}
+          />
+        }
       />
-      <SizeLimitsCard
-        title="TV shows"
-        description="Final file-size checks for individual episodes. Values are in MB."
-        mediaType="tv"
-        tiers={qualityModel.tiers}
-        onChange={(index, key, value) => setQualityModel((current) => updateTierValue(current, index, key, value))}
-      />
-      <p className="text-xs leading-relaxed text-muted-foreground">Drag a slider for a sensible range, or type an exact number when needed. These limits are protection, not quality preferences: each library’s selected quality profile still decides what Deluno aims to find.</p>
 
-      <Card className="settings-panel">
-        <CardHeader>
-          <CardTitle>Upgrade behaviour</CardTitle>
-          <CardDescription>These rules refine what happens after a file is already imported. Most libraries should keep the defaults.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-[var(--grid-gap)]">
-          <div className="grid gap-[var(--grid-gap)] sm:grid-cols-2">
-              <ToggleField
-                label="Stop at the profile cutoff"
-                description="Stop upgrades when the current file has reached the quality profile’s target tier."
-                checked={qualityModel.upgradeStop.stopWhenCutoffMet}
-                onChange={(checked) => setQualityModel((current) => ({ ...current, upgradeStop: { ...current.upgradeStop, stopWhenCutoffMet: checked } }))}
-              />
-              <ToggleField
-                label="Require a score improvement at the same quality"
-                description="Only replace an equally ranked release when its release-scoring result is better."
-                checked={qualityModel.upgradeStop.requireCustomFormatGainForSameQuality}
-                onChange={(checked) => setQualityModel((current) => ({ ...current, upgradeStop: { ...current.upgradeStop, requireCustomFormatGainForSameQuality: checked } }))}
-              />
-          </div>
-          <Button type="button" disabled={saving} onClick={() => void saveModel(qualityModel, setSaving, setMessage, setQualityModel)}>
-            {saving ? "Saving…" : "Save file-size guardrails"}
-          </Button>
-        </CardContent>
-      </Card>
-    </SettingsShell>
+      {scope === "movie" ? (
+        <SizeCard scope="movie" unit="GB" tiers={model.tiers} minKey="movieMinGb" maxKey="movieMaxGb" step={0.1} onChange={updateTier} />
+      ) : (
+        <SizeCard scope="episode" unit="MB" tiers={model.tiers} minKey="episodeMinMb" maxKey="episodeMaxMb" step={100} onChange={updateTier} />
+      )}
+
+      <ListCard title="Upgrade behaviour" count="What happens after a file is already in the library">
+        <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+          <SwitchRow
+            label="Stop at the profile cutoff"
+            description="Stop upgrading once the current file has reached the quality profile's target tier."
+            checked={model.upgradeStop.stopWhenCutoffMet}
+            onCheckedChange={(checked) => setModel((current) => ({ ...current, upgradeStop: { ...current.upgradeStop, stopWhenCutoffMet: checked } }))}
+          />
+          <SwitchRow
+            label="Require a score improvement at the same quality"
+            description="Only replace an equally ranked release when its release score is better."
+            checked={model.upgradeStop.requireCustomFormatGainForSameQuality}
+            onCheckedChange={(checked) => setModel((current) => ({ ...current, upgradeStop: { ...current.upgradeStop, requireCustomFormatGainForSameQuality: checked } }))}
+          />
+        </div>
+      </ListCard>
+
+      <PageFooter state={state} message={message} saveLabel="Save size rules" onDiscard={() => setModel(saved)} />
+    </form>
   );
 }
 
-function SizeLimitsCard({
-  title,
-  description,
-  mediaType,
+/* ---------------------------------------------------------------- card */
+
+/** Round a ceiling up to something readable so the shared scale ends on a tidy number. */
+function niceCeiling(value: number) {
+  if (value <= 0) return 1;
+  const magnitude = 10 ** Math.floor(Math.log10(value));
+  return Math.ceil(value / (magnitude / 2)) * (magnitude / 2);
+}
+
+/**
+ * One template for the column header, the axis, the band rows and the tier rows,
+ * so every one of them lines up. `pr-2` on the numeric columns matches the number
+ * inputs' own padding, which is what keeps a header label over its own digits.
+ */
+const SIZE_GRID = "grid grid-cols-[minmax(11rem,1.3fr)_minmax(12rem,2.4fr)_5.5rem_5.5rem] items-center gap-[var(--grid-gap)] px-[var(--card-pad-x)]";
+
+function SizeCard({
+  scope,
+  unit,
   tiers,
+  minKey,
+  maxKey,
+  step,
   onChange
 }: {
-  title: string;
-  description: string;
-  mediaType: "movies" | "tv";
+  /** Disambiguates control labels between the movie and episode tables. */
+  scope: "movie" | "episode";
+  unit: string;
   tiers: QualityTierDefinition[];
+  minKey: keyof QualityTierDefinition;
+  maxKey: keyof QualityTierDefinition;
+  step: number;
   onChange: (index: number, key: keyof QualityTierDefinition, value: number) => void;
 }) {
-  const isMovies = mediaType === "movies";
-  const minKey: keyof QualityTierDefinition = isMovies ? "movieMinGb" : "episodeMinMb";
-  const maxKey: keyof QualityTierDefinition = isMovies ? "movieMaxGb" : "episodeMaxMb";
-  const unit = isMovies ? "GB" : "MB";
-  const minimumMaximum = isMovies ? 50 : 10000;
-  const maximumMinimum = isMovies ? 1 : 100;
-  const maximumMaximum = isMovies ? 200 : 50000;
-  const step = isMovies ? 0.1 : 100;
+  const format = (value: number) => (unit === "GB" ? `${value} ${unit}` : `${value.toLocaleString()} ${unit}`);
+  // 0 as a maximum means "no upper limit", matching the backend's convention.
+  const formatMax = (value: number) => (value === 0 ? "Unlimited" : format(value));
+  const bands = useMemo(() => groupTiers(tiers, minKey, maxKey), [tiers, minKey, maxKey]);
+  // One ruler for the whole table. It is square-root scaled and drawn as an axis,
+  // because sizes run from 0.1 to 130 and a linear ruler buries everything small.
+  const scaleMax = useMemo(
+    () => niceCeiling(Math.max(...tiers.flatMap((tier) => [Number(tier[minKey]), Number(tier[maxKey])]), 1)),
+    [tiers, minKey, maxKey]
+  );
+  const [open, setOpen] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(bands.map((band) => [band.label, DEFAULT_OPEN_BANDS.includes(band.label)]))
+  );
+  const allOpen = bands.every((band) => open[band.label]);
 
   return (
-    <Card className="settings-panel">
-      <CardHeader>
-        <CardTitle>{title} file-size guardrails</CardTitle>
-        <CardDescription>{description} Adjust only when Deluno is accepting obvious junk or rejecting legitimate releases.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="overflow-x-auto rounded-2xl border border-hairline">
-          <table className="w-full min-w-[34rem] border-collapse text-sm">
-            <thead className="bg-surface-1 text-left text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
-              <tr>
-                <th className="px-[var(--tile-pad)] py-3">Quality tier</th>
-                <th className="border-l border-hairline px-[var(--tile-pad)] py-3">Minimum ({unit})</th>
-                <th className="border-l border-hairline px-[var(--tile-pad)] py-3">Maximum ({unit})</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tiers.map((tier, index) => (
-                <tr key={tier.name} className="border-t border-hairline transition-colors hover:bg-muted/20">
-                  <td className="px-[var(--tile-pad)] py-3"><span className="font-semibold text-foreground">{tier.name}</span><span className="ml-2 text-xs text-muted-foreground">Rank {tier.rank}</span></td>
-                  <td className="border-l border-hairline px-[var(--tile-pad)] py-2"><SliderLimitInput label={`${tier.name} ${isMovies ? "movie" : "episode"} minimum`} value={tier[minKey] as number} min={0} max={minimumMaximum} step={step} unit={unit} onChange={(value) => onChange(index, minKey, value)} /></td>
-                  <td className="border-l border-hairline px-[var(--tile-pad)] py-2"><SliderLimitInput label={`${tier.name} ${isMovies ? "movie" : "episode"} maximum`} value={tier[maxKey] as number} min={maximumMinimum} max={maximumMaximum} step={isMovies ? 0.5 : 100} unit={unit} onChange={(value) => onChange(index, maxKey, value)} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    <ListCard
+      title={scope === "movie" ? "Movie file sizes" : "Episode file sizes"}
+      count={`The final check that rejects a release as implausibly small or large. 0 and 0 means no limit.`}
+      actions={
+        <Button type="button" variant="outline" size="sm" onClick={() => setOpen(Object.fromEntries(bands.map((band) => [band.label, !allOpen])))}>
+          {allOpen ? "Collapse all" : "Expand all"}
+        </Button>
+      }
+    >
+      <div className="overflow-x-auto">
+        <div className="min-w-[52rem]">
+          <div className={cn(SIZE_GRID, "h-[var(--list-thead-height)] border-b border-hairline bg-surface-2/40")}>
+            {["Quality tier", "Accepted range", `Min (${unit})`, `Max (${unit})`].map((label, index) => (
+              <span
+                key={label}
+                className={cn(
+                  "truncate text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground",
+                  index >= 2 && "pr-2 text-right"
+                )}
+              >
+                {label}
+              </span>
+            ))}
+          </div>
+
+          <div className={cn(SIZE_GRID, "border-b border-hairline bg-surface-2/40 pb-2")}>
+            <span />
+            <RangeAxis scaleMax={scaleMax} scale="sqrt" unit={unit} />
+            <span />
+            <span />
+          </div>
+
+          {bands.map((band) => {
+            const expanded = Boolean(open[band.label]);
+            return (
+              <div key={band.label}>
+                <button
+                  type="button"
+                  aria-expanded={expanded}
+                  onClick={() => setOpen((current) => ({ ...current, [band.label]: !current[band.label] }))}
+                  className={cn(
+                    SIZE_GRID,
+                    // Same weight as ListGroupHeader: a heading for the rows under it,
+                    // not another hairline between them.
+                    "sticky top-0 z-10 h-[var(--list-group-height)] w-full border-y border-hairline bg-surface-3 text-left",
+                    "transition-colors hover:bg-surface-3/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                  )}
+                >
+                  <span className="flex min-w-0 items-center gap-2 text-[length:var(--type-caption)] font-semibold uppercase tracking-[0.12em] text-foreground">
+                    <ChevronRight aria-hidden className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-90")} />
+                    <span className="truncate">{band.label}</span>
+                  </span>
+                  <span />
+                  {/* The band summary sits in the Min and Max columns, over the numbers it summarises. */}
+                  <span className="pr-2 text-right text-[length:var(--type-caption)] tabular-nums text-muted-foreground">
+                    {band.unruled ? "—" : format(band.spanMin)}
+                  </span>
+                  <span className="pr-2 text-right text-[length:var(--type-caption)] tabular-nums text-muted-foreground">
+                    {band.unruled ? "—" : formatMax(band.spanMax)}
+                  </span>
+                </button>
+
+                {expanded
+                  ? band.tiers.map(({ tier, index }) => {
+                      const low = Number(tier[minKey]);
+                      const high = Number(tier[maxKey]);
+                      const unset = low === 0 && high === 0;
+                      return (
+                        <div key={tier.name} className={cn(SIZE_GRID, "min-h-[var(--list-row-height)] border-b border-hairline last:border-b-0")}>
+                          <div className="min-w-0">
+                            <span className="block truncate text-[length:var(--type-body-sm)] font-medium text-foreground">{tier.name}</span>
+                            <span className="mt-0.5 block truncate text-[length:var(--type-caption)] text-muted-foreground">
+                              Rank {tier.rank}
+                              {unset ? " · any size" : ""}
+                            </span>
+                          </div>
+                          <RangeSlider
+                            min={low}
+                            max={high}
+                            step={step}
+                            scaleMax={scaleMax}
+                            scale="sqrt"
+                            zeroMaxIsUnlimited
+                            formatValue={format}
+                            minLabel={`${tier.name} ${scope} minimum`}
+                            maxLabel={`${tier.name} ${scope} maximum`}
+                            onChange={(next) => {
+                              if (next.min !== low) onChange(index, minKey, round(next.min, step));
+                              if (next.max !== high) onChange(index, maxKey, round(next.max, step));
+                            }}
+                          />
+                          <SizeInput label={`${tier.name} ${scope} minimum value`} value={low} max={scaleMax} step={step} onChange={(value) => onChange(index, minKey, value)} />
+                          <SizeInput label={`${tier.name} ${scope} maximum value`} value={high} max={scaleMax} step={step} onChange={(value) => onChange(index, maxKey, value)} />
+                        </div>
+                      );
+                    })
+                  : null}
+              </div>
+            );
+          })}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </ListCard>
   );
 }
 
-function SliderLimitInput({
-  label,
-  value,
-  min,
-  max,
-  step,
-  unit,
-  onChange
-}: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  unit: string;
-  onChange: (value: number) => void;
-}) {
-  const sliderValue = Math.max(min, Math.min(max, value));
+/** The two bands people actually tune; the rest open on demand. */
+const DEFAULT_OPEN_BANDS = ["1080p", "2160p"];
+
+/** Resolution bands, so a 26-row table can be scanned instead of scrolled. */
+function groupTiers(tiers: QualityTierDefinition[], minKey: keyof QualityTierDefinition, maxKey: keyof QualityTierDefinition) {
+  const bands: { label: string; test: (rank: number) => boolean }[] = [
+    { label: "Low quality", test: (rank) => rank < 10 },
+    { label: "SD", test: (rank) => rank >= 10 && rank < 30 },
+    { label: "720p", test: (rank) => rank >= 30 && rank < 60 },
+    { label: "1080p", test: (rank) => rank >= 60 && rank < 95 },
+    { label: "2160p", test: (rank) => rank >= 95 && rank < 125 },
+    { label: "Disc and raw", test: (rank) => rank >= 125 }
+  ];
+  const indexed = tiers.map((tier, index) => ({ tier, index }));
+  return bands
+    .map((band) => {
+      const entries = indexed.filter((entry) => band.test(entry.tier.rank));
+      // A tier set to 0/0 carries no rule, so it must not drag the band's summary to "Unlimited".
+      const ruled = entries.filter((entry) => Number(entry.tier[minKey]) !== 0 || Number(entry.tier[maxKey]) !== 0);
+      const mins = ruled.map((entry) => Number(entry.tier[minKey]));
+      const maxes = ruled.map((entry) => Number(entry.tier[maxKey]));
+      return {
+        label: band.label,
+        tiers: entries,
+        spanMin: ruled.length ? Math.min(...mins) : 0,
+        // A 0 maximum on a ruled tier means that tier, and so the band, has no ceiling.
+        spanMax: maxes.includes(0) ? 0 : ruled.length ? Math.max(...maxes) : 0,
+        unruled: ruled.length === 0
+      };
+    })
+    .filter((band) => band.tiers.length > 0);
+}
+
+function round(value: number, step: number) {
+  const decimals = step < 1 ? 1 : 0;
+  return Number(value.toFixed(decimals));
+}
+
+function SizeInput({ label, value, max, step, onChange }: { label: string; value: number; max: number; step: number; onChange: (value: number) => void }) {
   return (
-    <div className="min-w-32 space-y-2">
-      <input
-        aria-label={label}
-        className="h-2 w-full cursor-pointer appearance-none rounded-full bg-muted accent-primary"
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={sliderValue}
-        onChange={(event) => onChange(Number(event.target.value))}
-      />
-      <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <span className="sr-only">{label}</span>
-        <Input className="h-8 min-w-0 px-2 text-right" type="number" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value || 0))} />
-        <span>{unit}</span>
-      </label>
-    </div>
+    <Field label={label} hideLabel>
+      <Input type="number" min={0} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value || 0))} className="px-2 text-right tabular-nums" />
+    </Field>
   );
-}
-
-function ToggleField({ checked, description, label, onChange }: { checked: boolean; description: string; label: string; onChange: (checked: boolean) => void }) {
-  return (
-    <label className="flex items-start gap-3 rounded-xl border border-hairline bg-background/40 p-3 text-foreground">
-      <input className="mt-1" type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
-      <span>
-        <span className="block text-sm font-semibold">{label}</span>
-        <span className="mt-1 block text-sm leading-relaxed text-muted-foreground">{description}</span>
-      </span>
-    </label>
-  );
-}
-
-function updateTierValue(model: QualityModelSnapshot, index: number, key: keyof QualityTierDefinition, value: number): QualityModelSnapshot {
-  const tiers = model.tiers.map((tier, tierIndex) => tierIndex === index ? { ...tier, [key]: Number.isFinite(value) ? value : 0 } : tier);
-  return { ...model, tiers };
-}
-
-async function saveModel(
-  model: QualityModelSnapshot,
-  setSaving: (value: boolean) => void,
-  setMessage: (value: string | null) => void,
-  setQualityModel: (value: QualityModelSnapshot) => void
-) {
-  setSaving(true);
-  setMessage(null);
-  try {
-    const saved = await fetchJson<QualityModelSnapshot>("/api/quality-model", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tiers: model.tiers, upgradeStop: model.upgradeStop })
-    });
-    setQualityModel(saved);
-    setMessage("Quality and size limits saved.");
-  } catch (error) {
-    setMessage(error instanceof Error ? error.message : "Could not save quality and size limits.");
-  } finally {
-    setSaving(false);
-  }
 }

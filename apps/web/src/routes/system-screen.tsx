@@ -17,7 +17,6 @@ import {
 import { JOB_STATUS, type JobStatus, isJobActive } from "../lib/job-status-constants";
 import { SystemShell } from "../components/app/settings-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
-import { KpiCard } from "../components/app/kpi-card";
 import { AuditTimeline, type TimelineEvent } from "../components/shell/audit-timeline";
 import { WsStatusBadge } from "../components/shell/ws-status-badge";
 import { useSignalREvent } from "../lib/use-signalr";
@@ -47,6 +46,9 @@ import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { Input } from "../components/ui/input";
 import { PathInput } from "../components/ui/path-input";
 import { RouteSkeleton } from "../components/shell/skeleton";
+import { Chip, type ChipProps } from "../components/ui/chip";
+import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
+import { SummaryStrip } from "../components/ui/summary-strip";
 
 interface SystemLoaderData {
   activity: ActivityEventItem[];
@@ -88,277 +90,182 @@ export function SystemPage() {
   const loaderData = useLoaderData() as SystemLoaderData | undefined;
   if (!loaderData) return <RouteSkeleton />;
   const { activity, automation, backupSettings, backups, downloadClients, indexers, jobs, monitoring, retryWindows, searchCycles, settings, updateStatus } = loaderData;
+
   const activeJobs = jobs.filter((job) => isJobActive(job.status as JobStatus)).length;
   const healthyIndexers = indexers.filter((item) => item.healthStatus === "healthy").length;
   const healthyClients = downloadClients.filter((item) => item.healthStatus === "healthy").length;
 
   /* Live events prepended from WebSocket */
   const [liveEvents, setLiveEvents] = useState<TimelineEvent[]>([]);
-
   useSignalREvent("ActivityEventAdded", (event) => {
     setLiveEvents((prev) => [
-      {
-        id: event.id,
-        message: event.message,
-        category: event.category,
-        severity: event.severity,
-        createdUtc: event.createdUtc
-      },
+      { id: event.id, message: event.message, category: event.category, severity: event.severity, createdUtc: event.createdUtc },
       ...prev.slice(0, 49)
     ]);
   });
 
-  /* Live job count update */
   const [liveActiveJobs, setLiveActiveJobs] = useState(activeJobs);
   useSignalREvent("QueueItemAdded", () => setLiveActiveJobs((n) => n + 1));
   useSignalREvent("QueueItemRemoved", () => setLiveActiveJobs((n) => Math.max(0, n - 1)));
 
+  // The timeline has its own tab; repeating all 500 events here made Health
+  // three times taller than everything on it that actually answers "is it well?".
   const auditCard = (
-    <Card className="self-start">
-      <CardHeader>
-        <CardTitle className="flex items-center justify-between gap-3">
-          <span>Audit timeline</span>
-          <WsStatusBadge />
-        </CardTitle>
-        <CardDescription>
-          Full searchable log of every event Deluno has recorded. Live events stream in from WebSocket.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+    <ListCard
+      title="Activity timeline"
+      count="Every event Deluno has recorded, live as it happens"
+      actions={<WsStatusBadge />}
+    >
+      <div className="p-[var(--card-pad-x)]">
         <AuditTimeline events={activity} liveEvents={liveEvents} maxVisible={500} />
-      </CardContent>
-    </Card>
-  );
-
-  const runtimeCard = (
-    <Card>
-      <CardHeader>
-        <CardTitle>System status</CardTitle>
-        <CardDescription>Host settings and defaults for this instance.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <HealthRow label="Bind address" status={`${settings.hostBindAddress}:${settings.hostPort}`} />
-        <HealthRow label="URL base" status={settings.urlBase || "/"} />
-        <HealthRow label="Authentication" status="Required" />
-        <HealthRow label="UI defaults" status={`${settings.uiTheme} / ${densityDisplayName(settings.uiDensity)}`} />
-      </CardContent>
-    </Card>
+      </div>
+    </ListCard>
   );
 
   const providerCard = (
-    <Card>
-      <CardHeader>
-        <CardTitle>Provider health</CardTitle>
-        <CardDescription>Current health of your search providers and download clients.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {indexers.slice(0, 6).map((indexer) => (
-          <HealthRow key={indexer.id} label={indexer.name} status={indexer.healthStatus} />
-        ))}
-        {downloadClients.slice(0, 4).map((client) => (
-          <HealthRow key={client.id} label={client.name} status={client.healthStatus} />
-        ))}
-      </CardContent>
-    </Card>
-  );
-
-  const automationCard = (
-    <AutomationCard automation={automation} cycles={searchCycles} retryWindows={retryWindows} onRefresh={() => revalidator.revalidate()} />
+    <ListCard title="Providers" count={`${healthyIndexers + healthyClients} of ${indexers.length + downloadClients.length} responding`}>
+      {indexers.length + downloadClients.length === 0 ? (
+        <ListEmpty title="Nothing connected yet" description="Add a search source or a download client under Connections and its health shows up here." />
+      ) : (
+        <ListTable columns={[{ label: "Provider" }, { label: "Kind", width: "minmax(0,1fr)" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]} chevron={false}>
+          {indexers.map((indexer) => (
+            <ListRow key={`indexer:${indexer.id}`}>
+              <ListNameCell name={indexer.name} sub="Search source" />
+              <ListCell primary={indexer.protocol} />
+              <ListCell mobile>
+                <Chip tone={healthTone(indexer.healthStatus)}>{indexer.healthStatus}</Chip>
+              </ListCell>
+            </ListRow>
+          ))}
+          {downloadClients.map((client) => (
+            <ListRow key={`client:${client.id}`}>
+              <ListNameCell name={client.name} sub="Download client" />
+              <ListCell primary={client.protocol} />
+              <ListCell mobile>
+                <Chip tone={healthTone(client.healthStatus)}>{client.healthStatus}</Chip>
+              </ListCell>
+            </ListRow>
+          ))}
+        </ListTable>
+      )}
+    </ListCard>
   );
 
   const jobsCard = (
-    <Card>
-      <CardHeader>
-        <CardTitle>Recent jobs</CardTitle>
-        <CardDescription>Latest background work executing in Deluno.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {jobs.slice(0, 8).map((job) => (
-          <div key={job.id} className="rounded-xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.7)]">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-[13px] font-medium leading-snug text-foreground">{job.jobType}</p>
-              <JobStatusBadge status={job.status} />
-            </div>
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              {job.source} / {formatWhen(job.createdUtc)}
-            </p>
-          </div>
+    <ListCard title="Background jobs" count={jobs.length ? `latest ${Math.min(jobs.length, 12)} of ${jobs.length}` : undefined}>
+      {jobs.length === 0 ? (
+        <ListEmpty title="No jobs have run yet" description="Searches, imports and metadata refreshes queue here as Deluno picks them up." />
+      ) : (
+        <ListTable columns={[{ label: "Job" }, { label: "Started by", width: "minmax(0,1fr)" }, { label: "When", width: "150px" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]} chevron={false}>
+          {jobs.slice(0, 12).map((job) => (
+            <ListRow key={job.id}>
+              <ListNameCell name={jobTypeLabel(job.jobType)} sub={job.jobType} />
+              <ListCell primary={job.source} secondary={job.lastError ?? undefined} />
+              <ListCell numeric primary={formatWhen(job.createdUtc)} />
+              <ListCell mobile>
+                <Chip tone={jobTone(job.status)}>{job.status}</Chip>
+              </ListCell>
+            </ListRow>
+          ))}
+        </ListTable>
+      )}
+    </ListCard>
+  );
+
+  const runtimeCard = (
+    <ListCard title="This installation" count="Host settings and defaults">
+      <ListTable columns={[{ label: "Setting" }, { label: "Value", width: "minmax(0,1.4fr)", align: "end" }]} chevron={false}>
+        {[
+          { label: "Listening on", value: `${settings.hostBindAddress}:${settings.hostPort}` },
+          { label: "URL base", value: settings.urlBase || "/" },
+          { label: "Sign-in", value: "Required" },
+          { label: "Interface", value: `${settings.uiTheme} · ${densityDisplayName(settings.uiDensity)}` }
+        ].map((row) => (
+          <ListRow key={row.label}>
+            <ListNameCell name={row.label} />
+            <ListCell numeric align="end" primary={row.value} />
+          </ListRow>
         ))}
-        {jobs.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">No recent jobs.</p>
-        ) : null}
-      </CardContent>
-    </Card>
+      </ListTable>
+    </ListCard>
   );
 
   if (location.pathname.startsWith("/system/backups")) {
     return (
-      <SystemShell title="Backups" description="Manual backups, automatic schedule, restore preview, and backup downloads.">
-        <div className="grid items-start gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
-          <BackupCard initialBackups={backups} initialSettings={backupSettings} />
-          <div className="space-y-[var(--page-gap)]">
-            <OperationsFlowCard />
-            {runtimeCard}
-          </div>
-        </div>
+      <SystemShell>
+        <BackupCard initialBackups={backups} initialSettings={backupSettings} />
+        {runtimeCard}
       </SystemShell>
     );
   }
 
   if (location.pathname.startsWith("/system/updates")) {
     return (
-      <SystemShell title="Updates" description="Version status, update preferences, and restart workflow.">
-        <div className="grid items-start gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-          <UpgradeCard status={updateStatus} />
-          <div className="space-y-[var(--page-gap)]">
-            <OperationsFlowCard />
-            {runtimeCard}
-          </div>
-        </div>
+      <SystemShell>
+        <UpgradeCard status={updateStatus} />
+        {runtimeCard}
       </SystemShell>
     );
   }
 
   if (location.pathname.startsWith("/system/audit")) {
     return (
-      <SystemShell title="Audit Timeline" description="Searchable live system activity.">
-        <div className="grid items-start gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.45fr)]">
-          {auditCard}
-          <div className="space-y-[var(--page-gap)]">
-            {jobsCard}
-            {providerCard}
-          </div>
-        </div>
+      <SystemShell>
+        {auditCard}
+        {jobsCard}
       </SystemShell>
     );
   }
 
   return (
-    <SystemShell
-      title="System"
-      description="Runtime health, background jobs, diagnostics, and the full audit timeline for this Deluno instance."
-    >
-      {/* KPI row */}
-      <div className="fluid-kpi-grid">
-        <KpiCard
-          label="Active jobs"
-          value={String(liveActiveJobs)}
-          icon={Activity}
-          meta="Queued and running background work."
-          sparkline={[1, 2, 2, 3, 2, 4, 3, 4, 3, 4, 5, 4, 4, 5, 4]}
-        />
-        <KpiCard
-          label="Healthy indexers"
-          value={`${healthyIndexers}/${indexers.length}`}
-          icon={Server}
-          meta="Providers currently reporting healthy state."
-          sparkline={[3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 5, 6, 6, 6, 6]}
-        />
-        <KpiCard
-          label="Healthy clients"
-          value={`${healthyClients}/${downloadClients.length}`}
-          icon={BellRing}
-          meta="Download clients currently reporting healthy state."
-          sparkline={[1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3]}
-        />
-        <KpiCard
-          label="Storage roots"
-          value={String([settings.movieRootPath, settings.seriesRootPath].filter(Boolean).length)}
-          icon={HardDrive}
-          meta="Configured media storage roots."
-          sparkline={[1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]}
-        />
-        <KpiCard
-          label="Open alerts"
-          value={String(monitoring.alerts.length)}
-          icon={BellRing}
-          meta={monitoring.alerts.length === 0 ? "No active monitoring alerts." : "Monitoring rules detected conditions that need action."}
-          sparkline={[1, 1, 0, 1, 2, 1, 1, 2, 3, 2, 2, 3, 2, 1, monitoring.alerts.length]}
-        />
-      </div>
+    <SystemShell>
+      <SummaryStrip
+        cells={[
+          { label: "Running jobs", value: String(liveActiveJobs), help: liveActiveJobs ? "queued or working" : "nothing queued" },
+          { label: "Search sources", value: `${healthyIndexers}/${indexers.length}`, help: healthyIndexers === indexers.length ? "all responding" : "one is not responding", tone: indexers.length && healthyIndexers < indexers.length ? "warning" : undefined },
+          { label: "Download clients", value: `${healthyClients}/${downloadClients.length}`, help: healthyClients === downloadClients.length ? "all responding" : "one is not responding", tone: downloadClients.length && healthyClients < downloadClients.length ? "warning" : undefined },
+          { label: "Alerts", value: String(monitoring.alerts.length), help: monitoring.alerts.length ? "need a look" : "nothing raised", tone: monitoring.alerts.length ? "danger" : undefined },
+          { label: "Media roots", value: String([settings.movieRootPath, settings.seriesRootPath].filter(Boolean).length), help: "folders Deluno writes to" }
+        ]}
+      />
 
-      {/* Main grid */}
-      <div className="grid items-start gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.4fr)] 2xl:grid-cols-[minmax(0,1.8fr)_minmax(380px,0.32fr)]">
-        {/* Audit timeline — the star of the show */}
-        <Card className="self-start">
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between gap-3">
-              <span>Audit timeline</span>
-              <WsStatusBadge />
-            </CardTitle>
-            <CardDescription>
-              Full searchable log of every event Deluno has recorded. Live events stream in from WebSocket.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <AuditTimeline events={activity} liveEvents={liveEvents} maxVisible={500} />
-          </CardContent>
-        </Card>
-
-        {/* Right column */}
-        <div className="space-y-[var(--page-gap)]">
-          <OperationsFlowCard />
-          <BackupCard initialBackups={backups} initialSettings={backupSettings} />
-          <UpgradeCard status={updateStatus} />
-          {automationCard}
-          <MonitoringCard monitoring={monitoring} />
-          {/* Runtime posture */}
-          <Card>
-            <CardHeader>
-              <CardTitle>System status</CardTitle>
-              <CardDescription>Host settings and defaults for this instance.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <HealthRow label="Bind address" status={`${settings.hostBindAddress}:${settings.hostPort}`} />
-              <HealthRow label="URL base" status={settings.urlBase || "/"} />
-              <HealthRow label="Authentication" status="Required" />
-              <HealthRow label="UI defaults" status={`${settings.uiTheme} · ${densityDisplayName(settings.uiDensity)}`} />
-            </CardContent>
-          </Card>
-
-          {/* Provider health */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Provider health</CardTitle>
-              <CardDescription>Current health of your search providers and download clients.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {indexers.slice(0, 6).map((indexer) => (
-                <HealthRow key={indexer.id} label={indexer.name} status={indexer.healthStatus} />
-              ))}
-              {downloadClients.slice(0, 4).map((client) => (
-                <HealthRow key={client.id} label={client.name} status={client.healthStatus} />
-              ))}
-            </CardContent>
-          </Card>
-
-          {/* Recent jobs */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent jobs</CardTitle>
-              <CardDescription>Latest background work executing in Deluno.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {jobs.slice(0, 8).map((job) => (
-                <div key={job.id} className="rounded-xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.7)]">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-[13px] font-medium text-foreground leading-snug">{job.jobType}</p>
-                    <JobStatusBadge status={job.status} />
-                  </div>
-                  <p className="mt-1 text-[11px] text-muted-foreground">
-                    {job.source} · {formatWhen(job.createdUtc)}
-                  </p>
-                </div>
-              ))}
-              {jobs.length === 0 ? (
-                <p className="py-6 text-center text-sm text-muted-foreground">No recent jobs.</p>
-              ) : null}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      {monitoring.alerts.length ? <MonitoringCard monitoring={monitoring} /> : null}
+      {providerCard}
+      <AutomationCard automation={automation} cycles={searchCycles} retryWindows={retryWindows} onRefresh={() => revalidator.revalidate()} />
+      {jobsCard}
+      {runtimeCard}
     </SystemShell>
   );
+}
+
+/* ---------------------------------------------------------------- bits */
+
+function healthTone(status: string): NonNullable<ChipProps["tone"]> {
+  if (status === "healthy" || status === "ok") return "ok";
+  if (status === "degraded" || status === "warning") return "warn";
+  if (status === "unhealthy" || status === "failed") return "bad";
+  return "muted";
+}
+
+function jobTone(status: string): NonNullable<ChipProps["tone"]> {
+  if (status === JOB_STATUS.FAILED) return "bad";
+  if (status === JOB_STATUS.COMPLETED) return "ok";
+  if (isJobActive(status as JobStatus)) return "info";
+  return "muted";
+}
+
+/** "filesystem.import.execute" reads as machinery; say what it does. */
+function jobTypeLabel(jobType: string) {
+  const known: Record<string, string> = {
+    "filesystem.import.execute": "Import a file",
+    "metadata.refresh": "Refresh details",
+    "search.cycle": "Search cycle",
+    "notification.dispatch": "Send a notification",
+    "backup.create": "Create a backup"
+  };
+  if (known[jobType]) return known[jobType];
+  const tail = jobType.split(".").pop() ?? jobType;
+  return tail.charAt(0).toUpperCase() + tail.slice(1).replace(/([A-Z])/g, " $1");
 }
 
 function AutomationCard({

@@ -1,14 +1,13 @@
-import { Link, useLoaderData } from "react-router-dom";
+import { useEffect } from "react";
+import { Link, useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
 import {
   AlertTriangle,
   ArrowUpRight,
   Calendar,
   Download,
-  Film,
   HardDrive,
   RadioTower,
-  Sparkles,
-  Tv
+  Sparkles
 } from "lucide-react";
 import type { ActiveDownload, IndexerHealthItem, MediaItem } from "../lib/media-types";
 import { MEDIA_STATUS_PRESENTATION, mediaStatusIsActive } from "../lib/media-status-presentation";
@@ -38,9 +37,36 @@ import { buildSetupStatus, type SetupAttentionTone, type SetupStatusModel } from
 import { cn } from "../lib/utils";
 import { OnboardingBanner } from "../components/shell/onboarding-banner";
 import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { Chip } from "../components/ui/chip";
+import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
+import { SummaryStrip } from "../components/ui/summary-strip";
+import { MetricChart, type MetricPoint } from "../components/ui/metric-chart";
+import { useLiveSeries } from "../hooks/use-live-series";
 import { RouteSkeleton } from "../components/shell/skeleton";
 
+interface OutcomeSeries {
+  succeeded: MetricPoint[];
+  failed: MetricPoint[];
+}
+
+/** `/api/dashboard/metrics` — counts of stored rows grouped by day. */
+interface DashboardMetrics {
+  days: number;
+  from: string;
+  to: string;
+  librarySize: MetricPoint[];
+  titlesAdded: MetricPoint[];
+  searches: OutcomeSeries;
+  jobs: OutcomeSeries;
+  importFailures: MetricPoint[];
+  grabs: MetricPoint[];
+}
+
 interface DashboardLoaderData {
+  metrics: DashboardMetrics | null;
+  /** Combined client throughput right now, in MB/s. */
+  speedMbps: number;
   activeDownloads: ActiveDownload[];
   activeDownloadCount: number;
   indexerHealth: IndexerHealthItem[];
@@ -81,6 +107,8 @@ interface DashboardUpcomingItem {
   href: string;
   startsAt: string;
 }
+
+const EMPTY_SERIES: MetricPoint[] = [];
 
 export async function dashboardLoader(): Promise<DashboardLoaderData> {
   const emptyMovieWanted: MovieWantedSummary = { totalWanted: 0, missingCount: 0, upgradeCount: 0, waitingCount: 0, recentItems: [] };
@@ -124,7 +152,13 @@ export async function dashboardLoader(): Promise<DashboardLoaderData> {
   const monitoredCount = allItems.filter((item) => item.monitored).length;
   const healthyCount = indexerHealth.filter((item) => item.status === "healthy").length;
 
+  // A dashboard that cannot draw its charts still has to render, so a failed
+  // metrics call degrades to no charts rather than an error page.
+  const metrics = await fetchJson<DashboardMetrics>("/api/dashboard/metrics?days=30").catch(() => null);
+
   return {
+    metrics,
+    speedMbps: telemetry.summary.totalSpeedMbps,
     activeDownloads,
     activeDownloadCount: telemetry.summary.activeCount + telemetry.summary.queuedCount + telemetry.summary.importReadyCount,
     indexerHealth,
@@ -160,12 +194,54 @@ export async function dashboardLoader(): Promise<DashboardLoaderData> {
 
 export function DashboardPage() {
   const data = useLoaderData() as DashboardLoaderData | undefined;
+  const navigate = useNavigate();
   if (!data) return <RouteSkeleton />;
+
   const healthIssues = data.indexerHealth.filter((item) => item.status !== "healthy").length;
+  const revalidator = useRevalidator();
   const topDownload = data.activeDownloads[0];
+
+  // Speed only exists as "right now", so the page samples what it is already
+  // polling. Five seconds keeps the line moving without hammering the API.
+  const speedSeries = useLiveSeries(Number(data.speedMbps.toFixed(2)), { samples: 60 });
+  useEffect(() => {
+    const timer = window.setInterval(() => revalidator.revalidate(), 5_000);
+    return () => window.clearInterval(timer);
+  }, [revalidator]);
   const upcomingGroups = groupDashboardUpcoming(data.upcoming);
   const setupProgress = data.setupProgress;
-  const setupAttentionItems = data.setupStatus.attentionItems;
+
+  /** Everything that wants a decision from you, in one list, most urgent first. */
+  const attention = [
+    ...data.setupStatus.attentionItems.map((item) => ({
+      id: `setup:${item.id}`,
+      tone: item.tone,
+      title: item.title,
+      text: item.text,
+      href: item.href,
+      action: item.action
+    })),
+    ...(data.missingCount > 0
+      ? [{
+          id: "missing",
+          tone: "warn" as SetupAttentionTone,
+          title: `${data.missingCount} ${data.missingCount === 1 ? "title is" : "titles are"} still missing`,
+          text: `${data.movieMissingCount} movies and ${data.showMissingCount} TV shows have no acceptable release yet.`,
+          href: "/movies",
+          action: "Review"
+        }]
+      : []),
+    ...(data.retryWindows.length > 0
+      ? [{
+          id: "retries",
+          tone: "warn" as SetupAttentionTone,
+          title: `${data.retryWindows.length} retry ${data.retryWindows.length === 1 ? "window" : "windows"} pending`,
+          text: "A search or download failed and is waiting before it tries again.",
+          href: "/system/audit",
+          action: "See activity"
+        }]
+      : [])
+  ];
 
   function dismissOnboarding() {
     void authedFetch("/api/setup/progress", {
@@ -180,223 +256,210 @@ export function DashboardPage() {
   }
 
   return (
-    <div className="space-y-[var(--grid-gap)]">
+    <div className="flex flex-col gap-[var(--page-gap)]">
+      {/* No toolbar. "Add a movie" / "Add a show" lived here and gave the dashboard
+          a 40px row holding two buttons that belong to Movies and TV — adding a title
+          is a library job, not a "what needs me now" job. The onboarding checklist
+          still links to it while a first title is the next step. */}
       <OnboardingBanner
         state={data.onboarding}
         isSetupSuppressed={setupProgress.isSkipped || setupProgress.isCompleted}
         onDismiss={dismissOnboarding}
       />
 
-      <section className="relative overflow-hidden rounded-xl border border-hairline bg-card p-[var(--tile-pad)] shadow-card dark:border-white/[0.06]">
-        <div className="relative flex flex-col gap-[var(--grid-gap)] lg:flex-row lg:items-end lg:justify-between">
-          <div className="min-w-0">
-            <p className="flex items-center gap-2 text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-              <Sparkles className="h-3.5 w-3.5 text-primary" />
-              Dashboard
-            </p>
-            <h2 className="mt-1 font-display text-[length:var(--type-title-md)] font-semibold tracking-tight text-foreground">
-              Your media, your way.
-            </h2>
-            <p className="mt-1 max-w-2xl text-[length:var(--type-body-sm)] leading-relaxed text-muted-foreground">
-              Build your library, decide what to monitor, and let Deluno handle the work in the background.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Link to="/movies?add=true" className="inline-flex h-[var(--control-height-sm)] items-center gap-2 rounded-lg bg-primary px-4 text-[13px] font-semibold text-primary-foreground shadow-glow transition hover:bg-primary/90">
-              <Film className="h-4 w-4" />
-              Add a movie
-            </Link>
-            <Link to="/tv?add=true" className="inline-flex h-[var(--control-height-sm)] items-center gap-2 rounded-lg border border-hairline bg-card px-4 text-[13px] font-semibold text-muted-foreground transition hover:border-primary/30 hover:text-foreground">
-              <Tv className="h-4 w-4" />
-              Add a show
-            </Link>
-            <Link to="/settings/automation" className="inline-flex h-[var(--control-height-sm)] items-center gap-2 rounded-lg px-3 text-[13px] font-semibold text-primary transition hover:bg-primary/10">
-              Tune automation
-              <ArrowUpRight className="h-3.5 w-3.5" />
-            </Link>
-          </div>
-        </div>
-      </section>
+      <SummaryStrip
+        cells={[
+          {
+            label: "In your library",
+            value: data.totalCount.toLocaleString(),
+            help: data.totalCount > 0 ? `${data.movieCount} movies · ${data.showCount} shows · ${data.librarySizeTb} TB` : data.configuredLibraryCount > 0 ? "no media yet" : "no library set up yet"
+          },
+          { label: "Being watched for", value: data.monitoredCount.toLocaleString(), help: "Deluno keeps looking for these" },
+          {
+            label: "Downloading",
+            value: data.activeDownloadCount.toString(),
+            help: topDownload ? `${topDownload.speedMbps.toFixed(1)} MB/s` : "nothing in flight"
+          },
+          {
+            label: "Still missing",
+            value: data.missingCount.toString(),
+            help: data.upgradeCount ? `plus ${data.upgradeCount} could be upgraded` : "nothing waiting",
+            tone: data.missingCount > 0 ? "warning" : undefined
+          },
+          {
+            label: "Connections",
+            value: data.indexerHealthPercent === null ? "—" : `${data.indexerHealthPercent}%`,
+            help: data.indexerHealth.length === 0 ? "none set up yet" : healthIssues > 0 ? `${healthIssues} need a look` : "all responding",
+            tone: data.indexerHealth.length && healthIssues > 0 ? "warning" : undefined
+          }
+        ]}
+      />
 
-      <section className="dashboard-metric-grid">
-        <MetricPlane
-          label="Library"
-          value={data.totalCount.toLocaleString()}
-          meta={data.totalCount > 0 ? `${data.movieCount} movie${data.movieCount === 1 ? "" : "s"} - ${data.showCount} TV show${data.showCount === 1 ? "" : "s"} - ${data.librarySizeTb} TB` : data.configuredLibraryCount > 0 ? `${data.configuredLibraryCount} library${data.configuredLibraryCount === 1 ? "" : "ies"} ready for media` : "No library configured yet"}
-          icon={HardDrive}
-          tone="primary"
+      <div className="grid gap-[var(--grid-gap)] md:grid-cols-2 xl:grid-cols-3">
+        {/* Live, and labelled as such: this is sampled in the browser, not stored. */}
+        <MetricChart
+          label="Download speed"
+          value={data.speedMbps > 0 ? `${data.speedMbps.toFixed(1)} MB/s` : "Idle"}
+          help={
+            data.activeDownloadCount > 0
+              ? `${data.activeDownloadCount} transfer${data.activeDownloadCount === 1 ? "" : "s"} in flight`
+              : "nothing downloading"
+          }
+          series={speedSeries.length ? speedSeries : [{ date: new Date().toISOString(), value: 0 }]}
+          tone={data.speedMbps > 0 ? "success" : "primary"}
+          footer={speedSeries.length > 1 ? "since you opened this page" : "waiting for a second reading"}
         />
-        <MetricPlane
-          label="Monitored"
-          value={data.monitoredCount.toLocaleString()}
-          meta="Movies and TV shows Deluno will search for"
-          icon={Film}
-          tone="neutral"
-        />
-        <MetricPlane
-          label="Queue"
-          value={data.activeDownloadCount.toString()}
-          meta={topDownload ? `${topDownload.speedMbps.toFixed(1)} MB/s active` : "All movie and TV transfer work"}
-          icon={Download}
-          tone="info"
-        />
-        <MetricPlane
-          label="Missing titles"
-          value={data.missingCount.toString()}
-          meta={`${data.movieMissingCount} movies - ${data.showMissingCount} TV shows - ${data.upgradeCount} upgrades`}
-          icon={AlertTriangle}
-          tone={data.missingCount > 0 ? "warn" : "success"}
-        />
-        <MetricPlane
-          label="Connections"
-          value={data.indexerHealthPercent === null ? "--" : `${data.indexerHealthPercent}`}
-          unit={data.indexerHealthPercent === null ? undefined : "%"}
-          meta={data.indexerHealth.length === 0 ? "No search sources or download clients" : healthIssues > 0 ? `${healthIssues} connections need review` : "All connections responding"}
-          icon={RadioTower}
-          tone={data.indexerHealth.length === 0 ? "neutral" : healthIssues > 0 ? "warn" : "success"}
-        />
-      </section>
+        {data.metrics ? (
+          <>
+          <MetricChart
+            label="Library"
+            value={String(data.metrics.librarySize.at(-1)?.value ?? 0)}
+            help={`${sumSeries(data.metrics.titlesAdded)} added in ${data.metrics.days} days`}
+            series={data.metrics.librarySize}
+            tone="primary"
+            zeroBased={false}
+          />
+          <MetricChart
+            label="Searches"
+            value={formatRate(data.metrics.searches)}
+            help={`${sumSeries(data.metrics.searches.succeeded)} matched a release`}
+            series={data.metrics.searches.succeeded}
+            compare={{ series: data.metrics.searches.failed, label: "no match", tone: "warning" }}
+            tone="success"
+          />
+          </>
+        ) : null}
+      </div>
 
-      <section className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1fr)_430px]">
-        <div className="grid min-w-0 gap-[var(--grid-gap)]">
-          <RenderPanel>
-            <PanelHeader
-              eyebrow="Live work"
-              title="Transfers in progress"
-              action={
-                <Link to="/queue" className="inline-flex items-center gap-1 text-[length:var(--type-caption)] font-semibold text-primary">
-                  Open queue
-                  <ArrowUpRight className="h-3.5 w-3.5" />
-                </Link>
-              }
-            />
-            {data.activeDownloads.length ? (
-              <div className="divide-y divide-hairline">
-                {data.activeDownloads.slice(0, 5).map((download) => <DownloadSummaryRow key={download.id} download={download} />)}
-              </div>
-            ) : (
-              <EmptyPanelText>No downloads, processing, or imports need your attention right now.</EmptyPanelText>
+      {attention.length > 0 ? (
+        <ListCard title="Worth a look" count={`${attention.length} ${attention.length === 1 ? "thing needs" : "things need"} a decision from you`}>
+          <ListTable columns={[{ label: "What" }, { label: "Why", width: "minmax(0,2fr)" }, { label: "Go", width: "150px", mobile: true, srOnly: true }]} chevron={false}>
+            {attention.map((item) => (
+              <ListRow key={item.id}>
+                <ListNameCell name={item.title} sub={toneWord(item.tone)} />
+                <ListCell primary={item.text} />
+                <ListCell mobile align="end">
+                  <Button asChild type="button" variant="outline" size="sm">
+                    <Link to={item.href}>{item.action}</Link>
+                  </Button>
+                </ListCell>
+              </ListRow>
+            ))}
+          </ListTable>
+        </ListCard>
+      ) : null}
+
+      {data.activeDownloads.length ? (
+        <ListCard
+          title="Downloading now"
+          count={`${data.activeDownloadCount} in flight`}
+          actions={
+            <Button asChild type="button" variant="outline" size="sm">
+              <Link to="/queue">Open Transfers</Link>
+            </Button>
+          }
+        >
+          <ListTable columns={[{ label: "Release" }, { label: "Progress", width: "minmax(0,1.2fr)" }, { label: "Speed / left" }, { label: "From" }]} chevron={false}>
+            {data.activeDownloads.slice(0, 6).map((download) => (
+              <ListRow key={download.id}>
+                <ListNameCell name={download.title} sub={download.quality ?? "Unknown quality"} />
+                <ListCell>
+                  <span aria-hidden className="block h-1.5 w-full overflow-hidden rounded-full bg-surface-3">
+                    <span className="block h-full rounded-full bg-primary" style={{ width: `${Math.min(100, Math.max(0, download.progress))}%` }} />
+                  </span>
+                  <span className="mt-1 block text-[length:var(--type-caption)] tabular-nums text-muted-foreground">{Math.round(download.progress)}%</span>
+                </ListCell>
+                <ListCell numeric primary={`${download.speedMbps.toFixed(1)} MB/s`} secondary={download.etaMinutes > 0 ? `${download.etaMinutes} min left` : undefined} />
+                <ListCell primary={download.indexer} secondary={download.peers ? `${download.peers} peers` : undefined} />
+              </ListRow>
+            ))}
+          </ListTable>
+        </ListCard>
+      ) : null}
+
+      {upcomingGroups.length ? (
+        <ListCard
+          title="Airing soon"
+          count="The next 72 hours"
+          actions={
+            <Button asChild type="button" variant="outline" size="sm">
+              <Link to="/calendar">Open Schedule</Link>
+            </Button>
+          }
+        >
+          <ListTable columns={[{ label: "Show" }, { label: "Episode", width: "minmax(0,1.4fr)" }, { label: "When", width: "170px", mobile: true }]}>
+            {upcomingGroups.flatMap((group) =>
+              group.entries.slice(0, 3).map((entry) => (
+                <ListRow key={entry.id} onClick={() => navigate(entry.href)}>
+                  <ListNameCell name={entry.title} sub={entry.network} />
+                  <ListCell primary={entry.episode} />
+                  <ListCell numeric mobile primary={group.day} secondary={entry.dateLabel} />
+                </ListRow>
+              ))
             )}
-          </RenderPanel>
+          </ListTable>
+        </ListCard>
+      ) : null}
 
-          <RenderPanel>
-            <PanelHeader
-              eyebrow="Library"
-              title="Fresh in the library"
-              action={
-                <Link to="/movies" className="inline-flex items-center gap-1 text-[length:var(--type-caption)] font-semibold text-primary">
-                  Browse all
-                  <ArrowUpRight className="h-3.5 w-3.5" />
-                </Link>
-              }
-            />
-            <div className="dashboard-poster-grid">
-              {data.recentlyAdded.slice(0, 12).map((item) => (
-                <PosterPreview key={`${item.type}-${item.id}`} item={item} />
-              ))}
-            </div>
-            {data.recentlyAdded.length === 0 ? (
-              <EmptyPanelText>
-                Your recently imported movies and shows will appear here. Add a title when you are ready to start your library.
-              </EmptyPanelText>
-            ) : null}
-          </RenderPanel>
-        </div>
+      <ListCard
+        title="Recently added"
+        count={data.recentlyAdded.length ? `${data.recentlyAdded.length} newest` : undefined}
+        actions={
+          <Button asChild type="button" variant="outline" size="sm">
+            <Link to="/movies">Browse library</Link>
+          </Button>
+        }
+      >
+        {data.recentlyAdded.length === 0 ? (
+          <ListEmpty
+            title="Nothing in the library yet"
+            description="Movies and shows appear here as Deluno imports them. Add your first title whenever you are ready."
+            actions={
+              <Button asChild type="button" variant="outline">
+                <Link to="/movies?add=true">Add a movie</Link>
+              </Button>
+            }
+          />
+        ) : (
+          <div className="dashboard-poster-grid p-[var(--card-pad-x)]">
+            {data.recentlyAdded.slice(0, 12).map((item) => (
+              <PosterPreview key={`${item.type}-${item.id}`} item={item} />
+            ))}
+          </div>
+        )}
+      </ListCard>
 
-        <div className="grid min-w-0 gap-[var(--grid-gap)] self-start">
-          <RenderPanel>
-            <PanelHeader
-              eyebrow="Status"
-              title="Needs attention"
-              action={
-                <Link to="/settings" className="inline-flex items-center gap-1 text-[length:var(--type-caption)] font-semibold text-primary">
-                  {data.setupStatus.completedCount}/{data.setupStatus.totalCount} setup
-                  <ArrowUpRight className="h-3.5 w-3.5" />
-                </Link>
-              }
-            />
-            <div className="space-y-3">
-              {setupAttentionItems.length > 0 ? (
-                setupAttentionItems.map((item) => (
-                  <DecisionRow key={item.id} tone={item.tone} title={item.title} text={item.text} href={item.href} action={item.action} />
-                ))
-              ) : (
-                <DecisionRow
-                  tone="success"
-                  title="Setup complete"
-                  text="Libraries, connections, Media Plans, and automation are ready. New setup issues will appear here."
-                  href="/settings"
-                  action="Review setup"
-                />
-              )}
-              <DecisionRow
-                tone={data.missingCount > 0 ? "warn" : "success"}
-                title={data.missingCount > 0 ? "Missing media waiting" : "No missing media needs review"}
-                text={data.missingCount > 0 ? `${data.missingCount} titles are missing or still waiting for a valid release.` : "Wanted movies and shows are either satisfied or waiting on normal automation."}
-                href="/movies"
-                action={data.missingCount > 0 ? "Review missing" : "Browse library"}
-              />
-              {topDownload ? (
-                <DecisionRow
-                  tone="info"
-                  title="Queue moving"
-                  text={`${topDownload.title} is leading the active queue.`}
-                  href="/queue"
-                  action="Open queue"
-                />
-              ) : null}
-              {data.retryWindows.length > 0 ? (
-                <DecisionRow
-                  tone="warn"
-                  title="Retry windows pending"
-                  text={`${data.retryWindows.length} failed search or download retry window${data.retryWindows.length === 1 ? "" : "s"} scheduled.`}
-                  href="/system"
-                  action="Review activity"
-                />
-              ) : null}
-            </div>
-          </RenderPanel>
-
-          <RenderPanel>
-            <PanelHeader eyebrow="Calendar" title="Next 72 hours" icon={Calendar} />
-            <div className="space-y-[var(--page-gap)]">
-              {upcomingGroups.length ? (
-                upcomingGroups.slice(0, 3).map(({ day, entries }) => (
-                  <div key={day} className="space-y-2">
-                    <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.18em] text-primary">{day}</p>
-                    {entries.slice(0, 2).map((entry) => (
-                      <Link key={entry.id} to={entry.href} className="flex items-center gap-3 rounded-lg border border-hairline bg-surface-1/70 p-2.5 transition hover:border-primary/30 hover:bg-primary/5">
-                        <Artwork src={entry.poster} title={entry.title} className="h-12 w-8 rounded-md" />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{entry.title}</span>
-                          <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">
-                            <span className="text-primary">{entry.episode}</span> - {entry.network}
-                          </span>
-                        </span>
-                      </Link>
-                    ))}
-                  </div>
-                ))
-              ) : (
-                <EmptyPanelText>No upcoming episodes or retry windows in the next 72 hours.</EmptyPanelText>
-              )}
-            </div>
-          </RenderPanel>
-
-          <RenderPanel>
-            <PanelHeader eyebrow="Connections" title="Search sources & download clients" icon={RadioTower} />
-            <div className="space-y-2">
-              {data.indexerHealth.length ? (
-                data.indexerHealth.slice(0, 6).map((item) => <HealthRow key={item.id} item={item} />)
-              ) : (
-                <EmptyPanelText>No providers configured yet.</EmptyPanelText>
-              )}
-            </div>
-          </RenderPanel>
-        </div>
-      </section>
+      {data.indexerHealth.length ? (
+        <ListCard
+          title="Connections"
+          count={healthIssues ? `${healthIssues} of ${data.indexerHealth.length} need a look` : "all responding"}
+          actions={
+            <Button asChild type="button" variant="outline" size="sm">
+              <Link to="/indexers">Open Connections</Link>
+            </Button>
+          }
+        >
+          <ListTable columns={[{ label: "Connection" }, { label: "Response", width: "minmax(0,1fr)" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]} chevron={false}>
+            {data.indexerHealth.map((item) => (
+              <ListRow key={item.id}>
+                <ListNameCell name={item.name} />
+                <ListCell numeric primary={item.responseMs === null ? "—" : `${item.responseMs} ms`} />
+                <ListCell mobile>
+                  <Chip tone={item.status === "healthy" ? "ok" : item.status === "degraded" ? "warn" : "bad"}>{item.status}</Chip>
+                </ListCell>
+              </ListRow>
+            ))}
+          </ListTable>
+        </ListCard>
+      ) : null}
     </div>
   );
+}
+
+function toneWord(tone: SetupAttentionTone) {
+  if (tone === "warn") return "Needs attention";
+  if (tone === "success") return "Done";
+  return "Suggestion";
 }
 
 function MetricPlane({
@@ -768,6 +831,8 @@ function formatDashboardTime(date: Date) {
 
 function emptyDashboardData(): DashboardLoaderData {
   return {
+    metrics: null,
+    speedMbps: 0,
     activeDownloads: [],
     activeDownloadCount: 0,
     indexerHealth: [],
@@ -808,4 +873,19 @@ function emptyDashboardData(): DashboardLoaderData {
       settings: emptyPlatformSettingsSnapshot
     })
   };
+}
+
+/** Totals a day series. */
+function sumSeries(points: MetricPoint[]) {
+  return points.reduce((total, point) => total + point.value, 0);
+}
+
+/**
+ * A hit rate only means something once something was tried, so with no searches
+ * this says so rather than printing a confident 0%.
+ */
+function formatRate(outcome: { succeeded: MetricPoint[]; failed: MetricPoint[] }) {
+  const matched = sumSeries(outcome.succeeded);
+  const attempts = matched + sumSeries(outcome.failed);
+  return attempts === 0 ? "None yet" : `${Math.round((matched / attempts) * 100)}%`;
 }

@@ -38,16 +38,17 @@ export function ConfirmDialog({
           )}
           aria-describedby="confirm-description"
         >
-          <Dialog.Title className="sr-only">{title}</Dialog.Title>
           <div className="p-6">
             <div className="mb-4 flex items-start gap-[var(--grid-gap)]">
               {confirmVariant === "destructive" && (
-                <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-500/10">
-                  <AlertTriangle className="h-4 w-4 text-red-500" />
+                <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-destructive/10">
+                  <AlertTriangle className="h-4 w-4 text-destructive" />
                 </span>
               )}
               <div>
-                <p className="font-semibold text-foreground">{title}</p>
+                {/* The visible heading is the dialog's accessible name. A separate
+                    sr-only Dialog.Title made screen readers announce it twice. */}
+                <Dialog.Title className="font-semibold text-foreground">{title}</Dialog.Title>
                 <p id="confirm-description" className="mt-1 text-sm text-muted-foreground leading-relaxed">
                   {description}
                 </p>
@@ -64,11 +65,7 @@ export function ConfirmDialog({
                 size="sm"
                 disabled={busy}
                 onClick={onConfirm}
-                className={
-                  confirmVariant === "destructive"
-                    ? "bg-red-600 text-white hover:brightness-110 shadow-none from-red-600 to-red-700"
-                    : undefined
-                }
+                variant={confirmVariant === "destructive" ? "destructive-solid" : "default"}
               >
                 {confirmLabel}
               </Button>

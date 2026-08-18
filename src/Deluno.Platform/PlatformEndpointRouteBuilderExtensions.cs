@@ -1364,6 +1364,39 @@ public static class PlatformEndpointRouteBuilderExtensions
             return Results.Ok(item);
         });
 
+        endpoints.MapPut("/api/libraries/{id}", async (
+            string id,
+            HttpContext httpContext,
+            [FromBody] UpdateLibraryDetailsRequest request,
+            IPlatformSettingsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+            if (string.IsNullOrWhiteSpace(request.Name))
+            {
+                errors["name"] = ["Give this library a name."];
+            }
+
+            if (string.IsNullOrWhiteSpace(request.RootPath))
+            {
+                errors["rootPath"] = ["Choose a folder for this library."];
+            }
+
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            var item = await repository.UpdateLibraryDetailsAsync(id, request, cancellationToken);
+            return item is null ? Results.NotFound() : Results.Ok(item);
+        });
+
         endpoints.MapPut("/api/libraries/{id}/automation", async (
             string id,
             HttpContext httpContext,

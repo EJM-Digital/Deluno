@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
@@ -2259,6 +2260,48 @@ public sealed class SqliteJobStore(
             RelatedEntityType: reader.IsDBNull(5) ? null : reader.GetString(5),
             RelatedEntityId: reader.IsDBNull(6) ? null : reader.GetString(6),
             CreatedUtc: ParseTimestamp(reader.GetString(7)));
+    }
+
+    public async Task<JobDailyMetrics> GetDailyMetricsAsync(
+        DateOnly fromDate,
+        DateOnly toDate,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+
+        var from = fromDate.ToString("yyyy-MM-dd");
+        var toExclusive = toDate.AddDays(1).ToString("yyyy-MM-dd");
+
+        async Task<IReadOnlyDictionary<string, int>> ReadAsync(string sql)
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = sql;
+            AddParameter(command, "@from", from);
+            AddParameter(command, "@to", toExclusive);
+
+            var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                if (!reader.IsDBNull(0))
+                {
+                    counts[reader.GetString(0)] = reader.GetInt32(1);
+                }
+            }
+
+            return counts;
+        }
+
+        var completed = await ReadAsync(
+            "SELECT substr(completed_utc, 1, 10) AS day, COUNT(*) FROM job_queue WHERE status = 'completed' AND completed_utc >= @from AND completed_utc < @to GROUP BY day;");
+        var failed = await ReadAsync(
+            "SELECT substr(completed_utc, 1, 10) AS day, COUNT(*) FROM job_queue WHERE status = 'failed' AND completed_utc >= @from AND completed_utc < @to GROUP BY day;");
+        var grabs = await ReadAsync(
+            "SELECT substr(created_utc, 1, 10) AS day, COUNT(*) FROM download_dispatches WHERE created_utc >= @from AND created_utc < @to GROUP BY day;");
+
+        return new JobDailyMetrics(completed, failed, grabs);
     }
 
     private static void AddParameter(System.Data.Common.DbCommand command, string name, object? value)

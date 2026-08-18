@@ -1,3 +1,6 @@
+using Deluno.Contracts;
+using Deluno.Platform.Contracts;
+using Deluno.Platform.Data;
 using System.Globalization;
 using System.Text.Json;
 using Deluno.Infrastructure.Storage;
@@ -538,6 +541,7 @@ public sealed class SqliteSeriesCatalogRepository(
                     e.episode_number,
                     e.title,
                     e.air_date_utc,
+                    e.overview,
                     e.monitored,
                     e.has_file,
                     COALESCE(w.wanted_status, CASE WHEN e.has_file = 1 THEN 'covered' ELSE 'missing' END),
@@ -566,18 +570,19 @@ public sealed class SqliteSeriesCatalogRepository(
                     EpisodeNumber: episodeReader.GetInt32(2),
                     Title: episodeReader.IsDBNull(3) ? null : episodeReader.GetString(3),
                     AirDateUtc: episodeReader.IsDBNull(4) ? null : ParseTimestamp(episodeReader.GetString(4)),
-                    Monitored: episodeReader.GetInt64(5) == 1,
-                    HasFile: episodeReader.GetInt64(6) == 1,
-                    WantedStatus: episodeReader.GetString(7),
-                    WantedReason: episodeReader.GetString(8),
-                    QualityCutoffMet: episodeReader.GetInt64(9) == 1,
-                    CurrentQuality: episodeReader.IsDBNull(10) ? null : episodeReader.GetString(10),
-                    TargetQuality: episodeReader.IsDBNull(11) ? null : episodeReader.GetString(11),
-                    PreventLowerQualityReplacements: episodeReader.GetInt64(12) == 1,
-                    LastQualityDeltaDecision: episodeReader.IsDBNull(13) ? null : episodeReader.GetInt32(13),
-                    LastSearchUtc: episodeReader.IsDBNull(14) ? null : ParseTimestamp(episodeReader.GetString(14)),
-                    NextEligibleSearchUtc: episodeReader.IsDBNull(15) ? null : ParseTimestamp(episodeReader.GetString(15)),
-                    UpdatedUtc: ParseTimestamp(episodeReader.GetString(16))));
+                    Overview: episodeReader.IsDBNull(5) ? null : episodeReader.GetString(5),
+                    Monitored: episodeReader.GetInt64(6) == 1,
+                    HasFile: episodeReader.GetInt64(7) == 1,
+                    WantedStatus: episodeReader.GetString(8),
+                    WantedReason: episodeReader.GetString(9),
+                    QualityCutoffMet: episodeReader.GetInt64(10) == 1,
+                    CurrentQuality: episodeReader.IsDBNull(11) ? null : episodeReader.GetString(11),
+                    TargetQuality: episodeReader.IsDBNull(12) ? null : episodeReader.GetString(12),
+                    PreventLowerQualityReplacements: episodeReader.GetInt64(13) == 1,
+                    LastQualityDeltaDecision: episodeReader.IsDBNull(14) ? null : episodeReader.GetInt32(14),
+                    LastSearchUtc: episodeReader.IsDBNull(15) ? null : ParseTimestamp(episodeReader.GetString(15)),
+                    NextEligibleSearchUtc: episodeReader.IsDBNull(16) ? null : ParseTimestamp(episodeReader.GetString(16)),
+                    UpdatedUtc: ParseTimestamp(episodeReader.GetString(17))));
             }
         }
 
@@ -1980,6 +1985,396 @@ public sealed class SqliteSeriesCatalogRepository(
             UpdatedUtc: ParseTimestamp(reader.GetString(17)));
     }
 
+    /// <summary>
+    /// Apply the provider's catalogue to this series.
+    ///
+    /// The rule is that the provider owns what exists and the disk owns what you
+    /// have. So this writes title, overview and air date, inserts episodes that
+    /// were never downloaded, and never touches has_file, quality_cutoff_met,
+    /// file_path, imported_utc or monitored — a user who unmonitored an episode
+    /// keeps that decision through every future refresh.
+    /// </summary>
+    public async Task<SeriesCatalogueSyncResult> SyncEpisodeCatalogueAsync(
+        string seriesId,
+        IReadOnlyList<CatalogueEpisodeItem> episodes,
+        string source,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(seriesId) || episodes.Count == 0)
+        {
+            return SeriesCatalogueSyncResult.None;
+        }
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        var now = timeProvider.GetUtcNow();
+        var stamp = now.ToString("O");
+        var added = 0;
+        var updated = 0;
+
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        foreach (var seasonNumber in episodes.Select(item => item.SeasonNumber).Distinct().OrderBy(item => item))
+        {
+            var seasonId = await EnsureSeasonAsync(connection, transaction, seriesId, seasonNumber, stamp, cancellationToken);
+
+            foreach (var episode in episodes.Where(item => item.SeasonNumber == seasonNumber).OrderBy(item => item.EpisodeNumber))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                using var upsert = connection.CreateCommand();
+                upsert.Transaction = transaction;
+                upsert.CommandText =
+                    """
+                    INSERT INTO episode_entries (
+                        id, series_id, season_id, season_number, episode_number, title, overview, air_date_utc,
+                        monitored, has_file, quality_cutoff_met, catalogue_source, catalogue_synced_utc,
+                        created_utc, updated_utc
+                    )
+                    VALUES (
+                        @id, @seriesId, @seasonId, @seasonNumber, @episodeNumber, @title, @overview, @airDateUtc,
+                        1, 0, 0, @source, @syncedUtc,
+                        @createdUtc, @updatedUtc
+                    )
+                    ON CONFLICT(series_id, season_number, episode_number) DO UPDATE SET
+                        season_id = COALESCE(episode_entries.season_id, excluded.season_id),
+                        title = excluded.title,
+                        overview = excluded.overview,
+                        air_date_utc = excluded.air_date_utc,
+                        catalogue_source = excluded.catalogue_source,
+                        catalogue_synced_utc = excluded.catalogue_synced_utc,
+                        updated_utc = excluded.updated_utc;
+                    """;
+                AddParameter(upsert, "@id", Guid.CreateVersion7().ToString("N"));
+                AddParameter(upsert, "@seriesId", seriesId);
+                AddParameter(upsert, "@seasonId", seasonId);
+                AddParameter(upsert, "@seasonNumber", episode.SeasonNumber);
+                AddParameter(upsert, "@episodeNumber", episode.EpisodeNumber);
+                AddParameter(upsert, "@title", NormalizeText(episode.Title));
+                AddParameter(upsert, "@overview", NormalizeText(episode.Overview));
+                AddParameter(upsert, "@airDateUtc", episode.AirDateUtc?.ToString("O"));
+                AddParameter(upsert, "@source", source);
+                AddParameter(upsert, "@syncedUtc", stamp);
+                AddParameter(upsert, "@createdUtc", stamp);
+                AddParameter(upsert, "@updatedUtc", stamp);
+
+                // SQLite reports 1 for both an insert and an ON CONFLICT update, so
+                // ask which happened rather than inferring it from the row count.
+                var existedBefore = await EpisodeExistsAsync(connection, transaction, seriesId, episode, cancellationToken);
+                await upsert.ExecuteNonQueryAsync(cancellationToken);
+                if (existedBefore)
+                {
+                    updated++;
+                }
+                else
+                {
+                    added++;
+                }
+            }
+        }
+
+        // Episodes nobody has a file for still need a wanted state, or the search
+        // engine has nothing to act on — this is what makes a missing episode
+        // findable rather than merely visible.
+        using (var backfill = connection.CreateCommand())
+        {
+            backfill.Transaction = transaction;
+            backfill.CommandText =
+                """
+                INSERT INTO episode_wanted_state (
+                    episode_id, series_id, library_id, wanted_status, wanted_reason, updated_utc
+                )
+                SELECT
+                    episode.id,
+                    episode.series_id,
+                    series_state.library_id,
+                    CASE WHEN episode.has_file = 1 THEN 'covered' ELSE 'missing' END,
+                    CASE
+                        WHEN episode.has_file = 1 THEN 'Imported from your existing library.'
+                        WHEN episode.air_date_utc IS NULL THEN 'Not announced yet.'
+                        WHEN episode.air_date_utc > @now THEN 'Has not aired yet.'
+                        ELSE 'Deluno is looking for this episode.'
+                    END,
+                    @updatedUtc
+                FROM episode_entries AS episode
+                JOIN series_wanted_state AS series_state ON series_state.series_id = episode.series_id
+                WHERE episode.series_id = @seriesId
+                  AND NOT EXISTS (
+                      SELECT 1 FROM episode_wanted_state AS existing WHERE existing.episode_id = episode.id
+                  );
+                """;
+            AddParameter(backfill, "@seriesId", seriesId);
+            AddParameter(backfill, "@now", stamp);
+            AddParameter(backfill, "@updatedUtc", stamp);
+            await backfill.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+
+        return new SeriesCatalogueSyncResult(
+            episodes.Select(item => item.SeasonNumber).Distinct().Count(),
+            episodes.Count,
+            added,
+            updated);
+    }
+
+    /// <summary>
+    /// Episodes airing inside a window, for the calendar.
+    ///
+    /// A full-catalogue series can hold hundreds of episodes, so the window is
+    /// applied in SQL. The page used to pull every episode of every show and take
+    /// the first 48 by date, which after a catalogue sync means 1989.
+    /// </summary>
+    public async Task<IReadOnlyList<SeriesCalendarEpisodeItem>> ListCalendarEpisodesAsync(
+        DateTimeOffset fromUtc,
+        DateTimeOffset toUtc,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT
+                e.id, e.series_id, s.title, s.poster_url,
+                e.season_number, e.episode_number, e.title, e.air_date_utc,
+                e.has_file, e.monitored,
+                COALESCE(w.wanted_status, CASE WHEN e.has_file = 1 THEN 'covered' ELSE 'missing' END)
+            FROM episode_entries e
+            INNER JOIN series_entries s ON s.id = e.series_id
+            LEFT JOIN episode_wanted_state w ON w.episode_id = e.id
+            WHERE e.air_date_utc IS NOT NULL
+              AND e.air_date_utc >= @fromUtc
+              AND e.air_date_utc < @toUtc
+            ORDER BY e.air_date_utc ASC, s.title ASC, e.season_number ASC, e.episode_number ASC
+            LIMIT @take;
+            """;
+        AddParameter(command, "@fromUtc", fromUtc.ToString("O"));
+        AddParameter(command, "@toUtc", toUtc.ToString("O"));
+        AddParameter(command, "@take", take);
+
+        var items = new List<SeriesCalendarEpisodeItem>();
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            items.Add(new SeriesCalendarEpisodeItem(
+                EpisodeId: reader.GetString(0),
+                SeriesId: reader.GetString(1),
+                SeriesTitle: reader.GetString(2),
+                PosterUrl: reader.IsDBNull(3) ? null : reader.GetString(3),
+                SeasonNumber: reader.GetInt32(4),
+                EpisodeNumber: reader.GetInt32(5),
+                Title: reader.IsDBNull(6) ? null : reader.GetString(6),
+                AirDateUtc: ParseTimestamp(reader.GetString(7)),
+                HasFile: reader.GetInt64(8) == 1,
+                Monitored: reader.GetInt64(9) == 1,
+                WantedStatus: reader.GetString(10)));
+        }
+
+        return items;
+    }
+
+    /// <summary>Episodes still wanted across every series, newest air date first.</summary>
+    public async Task<IReadOnlyList<WantedEpisodeItem>> ListWantedEpisodesAsync(
+        int take,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT
+                e.id, e.series_id, s.title, e.season_number, e.episode_number, e.title,
+                e.air_date_utc, e.monitored,
+                COALESCE(w.wanted_status, 'missing'),
+                COALESCE(w.wanted_reason, 'Episode is missing from the library.'),
+                w.last_search_utc, w.next_eligible_search_utc
+            FROM episode_entries e
+            INNER JOIN series_entries s ON s.id = e.series_id
+            LEFT JOIN episode_wanted_state w ON w.episode_id = e.id
+            WHERE e.has_file = 0
+              AND COALESCE(w.wanted_status, 'missing') IN ('missing', 'upgrade')
+            ORDER BY
+                CASE WHEN e.air_date_utc IS NULL THEN 1 ELSE 0 END,
+                e.air_date_utc DESC,
+                s.title ASC,
+                e.season_number ASC,
+                e.episode_number ASC
+            LIMIT @take;
+            """;
+        AddParameter(command, "@take", take);
+
+        var items = new List<WantedEpisodeItem>();
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            items.Add(new WantedEpisodeItem(
+                EpisodeId: reader.GetString(0),
+                SeriesId: reader.GetString(1),
+                SeriesTitle: reader.GetString(2),
+                SeasonNumber: reader.GetInt32(3),
+                EpisodeNumber: reader.GetInt32(4),
+                Title: reader.IsDBNull(5) ? null : reader.GetString(5),
+                AirDateUtc: reader.IsDBNull(6) ? null : ParseTimestamp(reader.GetString(6)),
+                Monitored: reader.GetInt64(7) == 1,
+                WantedStatus: reader.GetString(8),
+                WantedReason: reader.GetString(9),
+                LastSearchUtc: reader.IsDBNull(10) ? null : ParseTimestamp(reader.GetString(10)),
+                NextEligibleSearchUtc: reader.IsDBNull(11) ? null : ParseTimestamp(reader.GetString(11))));
+        }
+
+        return items;
+    }
+
+    public async Task<MediaDailyMetrics> GetDailyMetricsAsync(
+        DateOnly fromDate,
+        DateOnly toDate,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        var from = fromDate.ToString("yyyy-MM-dd");
+        var toExclusive = toDate.AddDays(1).ToString("yyyy-MM-dd");
+
+        var added = await ReadDailyAsync(
+            connection,
+            $"SELECT {DailyCounts.GroupBy("created_utc")} AS day, COUNT(*) FROM series_entries WHERE created_utc >= @from AND created_utc < @to GROUP BY day;",
+            from, toExclusive, cancellationToken);
+
+        var before = await ReadScalarAsync(
+            connection,
+            "SELECT COUNT(*) FROM series_entries WHERE created_utc < @from;",
+            from, cancellationToken);
+
+        var matched = await ReadDailyAsync(
+            connection,
+            $"SELECT {DailyCounts.GroupBy("created_utc")} AS day, COUNT(*) FROM series_search_history WHERE outcome = 'matched' AND created_utc >= @from AND created_utc < @to GROUP BY day;",
+            from, toExclusive, cancellationToken);
+
+        var unmatched = await ReadDailyAsync(
+            connection,
+            $"SELECT {DailyCounts.GroupBy("created_utc")} AS day, COUNT(*) FROM series_search_history WHERE outcome <> 'matched' AND created_utc >= @from AND created_utc < @to GROUP BY day;",
+            from, toExclusive, cancellationToken);
+
+        var importFailures = await ReadDailyAsync(
+            connection,
+            $"SELECT {DailyCounts.GroupBy("detected_utc")} AS day, COUNT(*) FROM series_import_recovery_cases WHERE detected_utc >= @from AND detected_utc < @to GROUP BY day;",
+            from, toExclusive, cancellationToken);
+
+        return new MediaDailyMetrics(before, added, matched, unmatched, importFailures);
+    }
+
+    private static async Task<IReadOnlyDictionary<string, int>> ReadDailyAsync(
+        System.Data.Common.DbConnection connection,
+        string sql,
+        string from,
+        string toExclusive,
+        CancellationToken cancellationToken)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        AddParameter(command, "@from", from);
+        AddParameter(command, "@to", toExclusive);
+
+        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            if (!reader.IsDBNull(0))
+            {
+                counts[reader.GetString(0)] = reader.GetInt32(1);
+            }
+        }
+
+        return counts;
+    }
+
+    private static async Task<int> ReadScalarAsync(
+        System.Data.Common.DbConnection connection,
+        string sql,
+        string from,
+        CancellationToken cancellationToken)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        AddParameter(command, "@from", from);
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return value is null or DBNull ? 0 : Convert.ToInt32(value, System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private static async Task<bool> EpisodeExistsAsync(
+        System.Data.Common.DbConnection connection,
+        System.Data.Common.DbTransaction transaction,
+        string seriesId,
+        CatalogueEpisodeItem episode,
+        CancellationToken cancellationToken)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            """
+            SELECT 1 FROM episode_entries
+            WHERE series_id = @seriesId AND season_number = @seasonNumber AND episode_number = @episodeNumber
+            LIMIT 1;
+            """;
+        AddParameter(command, "@seriesId", seriesId);
+        AddParameter(command, "@seasonNumber", episode.SeasonNumber);
+        AddParameter(command, "@episodeNumber", episode.EpisodeNumber);
+        return await command.ExecuteScalarAsync(cancellationToken) is not null;
+    }
+
+    private static async Task<string> EnsureSeasonAsync(
+        System.Data.Common.DbConnection connection,
+        System.Data.Common.DbTransaction transaction,
+        string seriesId,
+        int seasonNumber,
+        string stamp,
+        CancellationToken cancellationToken)
+    {
+        using (var find = connection.CreateCommand())
+        {
+            find.Transaction = transaction;
+            find.CommandText =
+                """
+                SELECT id FROM season_entries
+                WHERE series_id = @seriesId AND season_number = @seasonNumber
+                LIMIT 1;
+                """;
+            AddParameter(find, "@seriesId", seriesId);
+            AddParameter(find, "@seasonNumber", seasonNumber);
+            if (await find.ExecuteScalarAsync(cancellationToken) is string existing && !string.IsNullOrWhiteSpace(existing))
+            {
+                return existing;
+            }
+        }
+
+        var seasonId = Guid.CreateVersion7().ToString("N");
+        using var insert = connection.CreateCommand();
+        insert.Transaction = transaction;
+        insert.CommandText =
+            """
+            INSERT INTO season_entries (id, series_id, season_number, monitored, created_utc, updated_utc)
+            VALUES (@id, @seriesId, @seasonNumber, 1, @createdUtc, @updatedUtc);
+            """;
+        AddParameter(insert, "@id", seasonId);
+        AddParameter(insert, "@seriesId", seriesId);
+        AddParameter(insert, "@seasonNumber", seasonNumber);
+        AddParameter(insert, "@createdUtc", stamp);
+        AddParameter(insert, "@updatedUtc", stamp);
+        await insert.ExecuteNonQueryAsync(cancellationToken);
+        return seasonId;
+    }
+
     private static void AddParameter(System.Data.Common.DbCommand command, string name, object? value)
     {
         var parameter = command.CreateParameter();
@@ -2265,6 +2660,7 @@ public sealed class SqliteSeriesCatalogRepository(
                 EpisodeNumber: reader.GetInt32(2),
                 Title: reader.IsDBNull(3) ? null : reader.GetString(3),
                 AirDateUtc: reader.IsDBNull(4) ? null : ParseTimestamp(reader.GetString(4)),
+                Overview: null,
                 Monitored: reader.GetInt64(5) == 1,
                 HasFile: reader.GetInt64(6) == 1,
                 WantedStatus: reader.GetString(7),

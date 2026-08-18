@@ -1,16 +1,18 @@
-import { useEffect, useMemo } from "react";
-import { Link, useLoaderData, useRevalidator } from "react-router-dom";
-import {
-  Activity as ActivityIcon,
-  AlertTriangle,
-  ArrowDownToLine,
-  CheckCircle2,
-  Clock3,
-  Download,
-  RefreshCw,
-  Workflow,
-  Zap
-} from "lucide-react";
+/**
+ * Activity — the permanent record of what happened and why.
+ *
+ * Four lists over one poll: the job queue, what went to download clients, the
+ * event trail, and imports that could not be filed. Each row opens the detail
+ * rather than printing it inline, because an error string or a payload is worth
+ * reading in full and worth nothing squeezed into a cell.
+ *
+ * Contracts: GET /api/jobs, /api/activity, /api/download-dispatches,
+ * /api/movies/import-recovery, /api/series/import-recovery;
+ * POST /api/jobs/retry-failed.
+ */
+import { useEffect, useMemo, useState } from "react";
+import { useLoaderData, useRevalidator } from "react-router-dom";
+import { RefreshCw } from "lucide-react";
 import {
   fetchJson,
   type ActivityEventItem,
@@ -19,24 +21,24 @@ import {
   type MovieImportRecoverySummary,
   type SeriesImportRecoverySummary
 } from "../lib/api";
-import {
-  JOB_STATUS,
-  type JobStatus,
-  isJobActive,
-  isJobInProgress,
-  isJobSuccessful,
-  isJobFailed,
-  getJobStatusLabel,
-  getJobStatusVariant
-} from "../lib/job-status-constants";
+import { JOB_STATUS, isJobActive, isJobFailed, isJobInProgress, isJobSuccessful, type JobStatus } from "../lib/job-status-constants";
 import { authedFetch } from "../lib/use-auth";
-import { cn } from "../lib/utils";
-import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { GlassTile, PageHero } from "../components/shell/page-hero";
-import { EmptyState } from "../components/shell/empty-state";
-import { Stagger, StaggerItem } from "../components/shell/motion";
+import { Chip } from "../components/ui/chip";
+import { Drawer, DrawerFacts, DrawerFooter, DrawerSection } from "../components/ui/drawer";
+import {
+  LIST_TRACK,
+  ListCard,
+  ListCell,
+  ListEmpty,
+  ListNameCell,
+  ListRow,
+  ListTable
+} from "../components/ui/list-card";
+import { PageToolbar } from "../components/ui/page-toolbar";
 import { RouteSkeleton } from "../components/shell/skeleton";
+import { SegmentedControl } from "../components/ui/segmented-control";
+import { SummaryStrip } from "../components/ui/summary-strip";
 import { toast } from "../components/shell/toaster";
 
 interface ActivityLoaderData {
@@ -46,6 +48,8 @@ interface ActivityLoaderData {
   movieRecovery: MovieImportRecoverySummary;
   seriesRecovery: SeriesImportRecoverySummary;
 }
+
+type Section = "jobs" | "events" | "imports";
 
 export async function activityLoader(): Promise<ActivityLoaderData> {
   const [jobs, activity, dispatches, movieRecovery, seriesRecovery] = await Promise.all([
@@ -61,672 +65,335 @@ export async function activityLoader(): Promise<ActivityLoaderData> {
 
 export function ActivityPage() {
   const loaderData = useLoaderData() as ActivityLoaderData | undefined;
-  if (!loaderData) return <RouteSkeleton />;
-  const { activity, dispatches, jobs, movieRecovery, seriesRecovery } = loaderData;
   const revalidator = useRevalidator();
+  const [section, setSection] = useState<Section>("jobs");
+  const [openJobId, setOpenJobId] = useState<string | null>(null);
+  const [openEventId, setOpenEventId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
+  // The page is a live view, so it refreshes itself. `revalidate` is stable, so
+  // this sets one interval up rather than tearing it down on every tick.
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      revalidator.revalidate();
-    }, 10000);
+    const timer = window.setInterval(() => revalidator.revalidate(), 10_000);
     return () => window.clearInterval(timer);
   }, [revalidator]);
 
-  const activeJobs = jobs.filter((job) => isJobActive(job.status as JobStatus)).length;
+  if (!loaderData) return <RouteSkeleton />;
+  const { activity, dispatches, jobs, movieRecovery, seriesRecovery } = loaderData;
+
   const runningJobs = jobs.filter((job) => isJobInProgress(job.status as JobStatus)).length;
+  const queuedJobs = jobs.filter((job) => isJobActive(job.status as JobStatus)).length - runningJobs;
   const completedJobs = jobs.filter((job) => isJobSuccessful(job.status as JobStatus)).length;
   const failedJobs = jobs.filter((job) => isJobFailed(job.status as JobStatus)).length;
   const openRecovery = movieRecovery.openCount + seriesRecovery.openCount;
 
+  const importCases = useMemo(
+    () => [
+      ...movieRecovery.recentCases.map((item) => ({ ...item, mediaLabel: "Movie" })),
+      ...seriesRecovery.recentCases.map((item) => ({ ...item, mediaLabel: "TV" }))
+    ],
+    [movieRecovery.recentCases, seriesRecovery.recentCases]
+  );
+
+  const openJob = jobs.find((job) => job.id === openJobId) ?? null;
+  const openEvent = activity.find((event) => event.id === openEventId) ?? null;
+
   async function handleRetryFailedJobs() {
+    setBusy(true);
     try {
       const response = await authedFetch("/api/jobs/retry-failed", { method: "POST" });
-      if (!response.ok) {
-        throw new Error("Failed jobs could not be requeued.");
-      }
+      if (!response.ok) throw new Error("Failed jobs could not be requeued.");
       const result = (await response.json()) as { retried?: number };
       toast.success(`${result.retried ?? 0} failed job${result.retried === 1 ? "" : "s"} requeued`);
       revalidator.revalidate();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Retry failed.");
+    } finally {
+      setBusy(false);
     }
   }
 
-  const statusCopy = useMemo(() => {
-    if (failedJobs > 0) {
-      return {
-        tone: "warn" as const,
-        text: (
-          <>
-            <span className="bg-gradient-to-r from-warning via-warning to-destructive bg-clip-text text-transparent">
-              {failedJobs} job{failedJobs > 1 ? "s" : ""} need attention
-            </span>
-          </>
-        )
-      };
-    }
-    if (runningJobs > 0) {
-      return {
-        tone: "primary" as const,
-        text: (
-          <>
-            <span className="bg-gradient-to-r from-primary via-primary to-[hsl(var(--primary-2))] bg-clip-text text-transparent">
-              {runningJobs} job{runningJobs > 1 ? "s" : ""} running
-            </span>
-          </>
-        )
-      };
-    }
-    return {
-      tone: "success" as const,
-      text: (
-        <>
-          <span className="bg-gradient-to-r from-success via-success to-primary bg-clip-text text-transparent">
-            All clear
-          </span>
-        </>
-      )
-    };
-  }, [failedJobs, runningJobs]);
-
   return (
-    <div className="space-y-[var(--page-gap)]">
-      {/* ═══════ HERO ═══════ */}
-      <PageHero
-        eyebrow="Activity"
-        eyebrowIcon={<ActivityIcon className="h-3 w-3 text-primary" />}
-        title={<>The record of what Deluno has done · {statusCopy.text}</>}
-        subtitle={
-          <>
-            Use this to understand what happened and why; make day-to-day changes in Automation or Transfers. {" "}
-            <span className="font-semibold text-foreground">{activeJobs}</span> tasks in progress ·{" "}
-            <span className="font-semibold text-foreground">{dispatches.length}</span> releases sent to downloads ·{" "}
-            <span
-              className={cn(
-                "font-semibold",
-                openRecovery > 0 ? "text-warning" : "text-success"
-              )}
-            >
-              {openRecovery > 0 ? `${openRecovery} import issue${openRecovery === 1 ? "" : "s"}` : "all imports clear"}
-            </span>
-          </>
+    <div className="grid gap-[var(--page-gap)]">
+      <PageToolbar
+        left={
+          <SegmentedControl<Section>
+            aria-label="Section"
+            className="w-auto"
+            value={section}
+            onValueChange={setSection}
+            options={[
+              { value: "jobs", label: "Jobs & downloads" },
+              { value: "events", label: "Events" },
+              { value: "imports", label: "Import issues" }
+            ]}
+          />
         }
-        stats={[
-          { label: "Working now", value: activeJobs.toString(), tone: "primary" },
-          { label: "Running", value: runningJobs.toString(), tone: "neutral" },
-          { label: "Completed", value: completedJobs.toString(), tone: "success" },
-          { label: "Needs attention", value: failedJobs.toString(), tone: failedJobs > 0 ? "danger" : "neutral" }
-        ]}
         actions={
           <>
-            <Button
-              size="lg"
-              variant="secondary"
-              className="gap-2"
-              onClick={() => revalidator.revalidate()}
-            >
+            <Button type="button" variant="outline" onClick={() => revalidator.revalidate()} disabled={revalidator.state !== "idle"}>
               <RefreshCw className="h-4 w-4" />
               Refresh
             </Button>
-            {failedJobs > 0 ? (
-              <Button size="lg" className="gap-2" onClick={() => void handleRetryFailedJobs()}>
-                <Zap className="h-4 w-4" />
-                Retry {failedJobs} failed
-              </Button>
-            ) : null}
+            <Button type="button" onClick={() => void handleRetryFailedJobs()} disabled={busy || failedJobs === 0}>
+              Retry {failedJobs || "failed"} {failedJobs === 1 ? "job" : "jobs"}
+            </Button>
           </>
         }
       />
 
-      {/* ═══════ SUMMARY RAIL ═══════ */}
-      <Stagger className="fluid-kpi-grid">
-        <StaggerItem className="h-full">
-          <PulseMetric
-            icon={Workflow}
-            label="Working now"
-            value={activeJobs}
-            sub={`${runningJobs} running`}
-            tone="primary"
-          />
-        </StaggerItem>
-        <StaggerItem className="h-full">
-          <PulseMetric
-            icon={ArrowDownToLine}
-            label="Sent to downloads"
-            value={dispatches.length}
-            sub="released to clients"
-            tone="neutral"
-          />
-        </StaggerItem>
-        <StaggerItem className="h-full">
-          <PulseMetric
-            icon={AlertTriangle}
-            label="Import issues"
-            value={openRecovery}
-            sub={openRecovery > 0 ? "needs attention" : "all clear"}
-            tone={openRecovery > 0 ? "warn" : "success"}
-          />
-        </StaggerItem>
-        <StaggerItem className="h-full">
-          <PulseMetric
-            icon={CheckCircle2}
-            label="Completed"
-            value={completedJobs}
-            sub={failedJobs > 0 ? `${failedJobs} failed` : "healthy"}
-            tone={failedJobs > 0 ? "danger" : "success"}
-          />
-        </StaggerItem>
-      </Stagger>
-
-      {/* ═══════ TIMELINE + QUEUE ═══════ */}
-      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.45fr)_minmax(360px,0.95fr)]">
-        {/* Queue + Dispatches */}
-        <div className="space-y-[var(--page-gap)]">
-          <GlassTile>
-            <div className="flex items-center justify-between border-b border-hairline px-[var(--tile-pad)] py-[calc(var(--tile-pad)*0.7)]">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">
-                  Background work
-                </p>
-                <p className="text-[15px] font-semibold text-foreground">
-                  {activeJobs} working now · {jobs.length} recent
-                </p>
-              </div>
-              {runningJobs > 0 ? (
-                <div className="flex items-center gap-1.5 rounded-full bg-info/12 px-2.5 py-1 dark:bg-info/18">
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-info" />
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-info">
-                    LIVE
-                  </span>
-                </div>
-              ) : null}
-            </div>
-            <div className="divide-y divide-hairline">
-              {jobs.length ? (
-                jobs.map((job) => (
-                  <Link
-                    key={job.id}
-                    to={relatedEntityHref(job.relatedEntityType, job.relatedEntityId)}
-                      className="group grid gap-3 px-[var(--tile-pad)] py-[calc(var(--tile-pad)*0.7)] transition-colors hover:bg-muted/30 sm:grid-cols-[auto_minmax(0,1fr)_auto]"
-                  >
-                    <StatusPulse status={job.status} />
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-[13.5px] font-semibold text-foreground">
-                          {formatJobType(job.jobType)}
-                        </p>
-                        <Badge variant={jobStatusVariant(job.status)}>
-                          {formatJobStatus(job.status)}
-                        </Badge>
-                        {job.relatedEntityType ? (
-                          <Badge>{formatEntityType(job.relatedEntityType)}</Badge>
-                        ) : null}
-                      </div>
-                      <p className="mt-1 line-clamp-1 text-[12.5px] text-muted-foreground">
-                        {job.lastError || `Source: ${formatJobSource(job.source)}`}
-                      </p>
-                      <div className="mt-1 flex flex-wrap gap-3 text-[11px] text-muted-foreground">
-                        <span className="tabular">{job.attempts} attempts</span>
-                        <span>{formatWhen(job.createdUtc)}</span>
-                        {job.workerId ? (
-                          <span className="font-mono-code">{job.workerId}</span>
-                        ) : null}
-                      </div>
-                    </div>
-                  </Link>
-                ))
-              ) : (
-                <EmptyState
-                  size="sm"
-                  variant="custom"
-                  title="Queue is clear"
-                  description="Nothing in the background queue — Deluno is caught up."
-                />
-              )}
-            </div>
-          </GlassTile>
-
-          <GlassTile>
-            <div className="flex items-center justify-between border-b border-hairline px-[var(--tile-pad)] py-[calc(var(--tile-pad)*0.7)]">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">
-                  Sent to downloads
-                </p>
-                <p className="text-[15px] font-semibold text-foreground">
-                  {dispatches.length} recent release{dispatches.length === 1 ? "" : "s"}
-                </p>
-              </div>
-              <Badge variant="success">live</Badge>
-            </div>
-            <div className="divide-y divide-hairline">
-              {dispatches.length ? (
-                dispatches.map((dispatch) => (
-                  <Link
-                    key={dispatch.id}
-                    to={
-                      dispatch.mediaType === "tv"
-                        ? `/tv/${dispatch.entityId}`
-                        : `/movies/${dispatch.entityId}`
-                    }
-                      className="group flex items-center gap-3 px-[var(--tile-pad)] py-[calc(var(--tile-pad)*0.62)] transition-colors hover:bg-muted/30"
-                  >
-                    <span
-                      className={cn(
-                        "h-2 w-2 shrink-0 rounded-full",
-                        dispatch.status === "sent"
-                          ? "bg-success shadow-[0_0_6px_hsl(var(--success)/0.5)]"
-                          : dispatch.status === "failed"
-                            ? "bg-destructive shadow-[0_0_6px_hsl(var(--destructive)/0.5)]"
-                          : "bg-warning shadow-[0_0_6px_hsl(var(--warning)/0.5)]"
-                      )}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13px] font-medium text-foreground">
-                        {dispatch.releaseName}
-                      </p>
-                      <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-                        <span className="font-medium text-foreground/80">{dispatch.indexerName}</span>
-                        <span className="text-foreground/20">→</span>
-                        <span>{dispatch.downloadClientName}</span>
-                        <span className="text-foreground/20">·</span>
-                        <span className="rounded bg-muted/50 px-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground dark:bg-white/[0.05]">
-                          {dispatch.mediaType === "tv" ? "TV" : "Movie"}
-                        </span>
-                        <span className="rounded bg-muted/50 px-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground dark:bg-white/[0.05]">
-                          {formatDispatchStatus(dispatch.status)}
-                        </span>
-                      </div>
-                    </div>
-                    <span className="shrink-0 text-[11px] tabular text-muted-foreground">
-                      {formatWhen(dispatch.createdUtc)}
-                    </span>
-                  </Link>
-                ))
-              ) : (
-                <EmptyState
-                  size="sm"
-                  variant="custom"
-                  title="No dispatches yet"
-                  description="Once Deluno hands a release to a client, it will land here."
-                />
-              )}
-            </div>
-          </GlassTile>
-        </div>
-
-        {/* Events timeline + recovery */}
-        <div className="space-y-[var(--page-gap)]">
-          <GlassTile>
-            <div className="border-b border-hairline px-[var(--tile-pad)] py-[calc(var(--tile-pad)*0.7)]">
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">
-                Recent activity
-              </p>
-              <p className="text-[15px] font-semibold text-foreground">What Deluno has been doing</p>
-            </div>
-              <div className="relative px-[var(--tile-pad)] py-[calc(var(--tile-pad)*0.8)]">
-              {/* Vertical connector line */}
-              <span
-                aria-hidden
-                className="absolute bottom-4 left-[25px] top-6 w-px bg-gradient-to-b from-primary/40 via-hairline to-transparent"
-              />
-              <div className="space-y-3.5">
-                {activity.length ? (
-                  activity.slice(0, 14).map((event, i) => (
-                    <Link
-                      key={event.id}
-                      to={relatedEntityHref(event.relatedEntityType, event.relatedEntityId)}
-                      className="group relative flex gap-3 rounded-xl p-1.5 transition-colors hover:bg-muted/30"
-                    >
-                      <span
-                        className={cn(
-                          "relative z-10 mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-background bg-card",
-                          i === 0 && "bg-primary border-primary shadow-[0_0_0_4px_hsl(var(--primary)/0.2)]"
-                        )}
-                      >
-                        <span
-                          className={cn(
-                            "h-1.5 w-1.5 rounded-full",
-                            i === 0 ? "bg-primary-foreground" : eventDotColor(event.category)
-                          )}
-                        />
-                      </span>
-                      <div className="min-w-0 flex-1 pb-0.5">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-[13px] font-semibold text-foreground">
-                            {formatEventCategory(event.category)}
-                          </p>
-                          {event.relatedEntityType ? (
-                            <Badge>{formatEntityType(event.relatedEntityType)}</Badge>
-                          ) : null}
-                        </div>
-                        <p className="mt-0.5 line-clamp-2 text-[12px] leading-relaxed text-muted-foreground">
-                          {event.message}
-                        </p>
-                        <p className="mt-0.5 inline-flex items-center gap-1 text-[10.5px] tabular text-muted-foreground/80">
-                          <Clock3 className="h-2.5 w-2.5" />
-                          {formatWhen(event.createdUtc)}
-                        </p>
-                      </div>
-                    </Link>
-                  ))
-                ) : (
-                  <EmptyState
-                    size="sm"
-                    variant="custom"
-                  title="Nothing to show yet"
-                    description="Searches, downloads, imports, and automatic checks will appear here."
-                  />
-                )}
-              </div>
-            </div>
-          </GlassTile>
-
-            <GlassTile className="p-[var(--tile-pad)]">
-            <div className="mb-3 flex items-center justify-between">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">
-                  Import issues
-                </p>
-                <p className="text-[15px] font-semibold text-foreground">Files needing your help</p>
-              </div>
-              {openRecovery > 0 ? (
-                <Badge variant="warning">{openRecovery} open</Badge>
-              ) : (
-                <Badge variant="success">clear</Badge>
-              )}
-            </div>
-            <div className="space-y-3">
-              <RecoveryPanel
-                label="Movies"
-                openCount={movieRecovery.openCount}
-                corruptCount={movieRecovery.corruptCount}
-                importFailedCount={movieRecovery.importFailedCount}
-                unmatchedCount={movieRecovery.unmatchedCount}
-              />
-              <RecoveryPanel
-                label="TV"
-                openCount={seriesRecovery.openCount}
-                corruptCount={seriesRecovery.corruptCount}
-                importFailedCount={seriesRecovery.importFailedCount}
-                unmatchedCount={seriesRecovery.unmatchedCount}
-              />
-            </div>
-          </GlassTile>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ══════════════════════ PRIMITIVES ══════════════════════ */
-
-function PulseMetric({
-  icon: Icon,
-  label,
-  value,
-  sub,
-  tone
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: number;
-  sub: string;
-  tone: "primary" | "success" | "warn" | "danger" | "neutral";
-}) {
-  const tones = {
-    primary: "border-primary/20 bg-primary/5 dark:bg-primary/10",
-    success: "border-success/20 bg-success/5 dark:bg-success/10",
-    warn: "border-warning/20 bg-warning/5 dark:bg-warning/12",
-    danger: "border-destructive/20 bg-destructive/5 dark:bg-destructive/10",
-    neutral: "border-hairline bg-card dark:border-white/[0.06]"
-  }[tone];
-
-  const iconBg = {
-    primary: "bg-primary/15 text-primary",
-    success: "bg-success/15 text-success",
-    warn: "bg-warning/15 text-warning",
-    danger: "bg-destructive/15 text-destructive",
-    neutral: "bg-muted/60 text-muted-foreground"
-  }[tone];
-
-  const valueColor = {
-    primary: "text-primary",
-    success: "text-success",
-    warn: "text-warning",
-    danger: "text-destructive",
-    neutral: "text-foreground"
-  }[tone];
-
-  return (
-    <div
-      className={cn(
-        "relative min-w-0 overflow-hidden rounded-2xl border px-[calc(var(--tile-pad)*0.8)] py-[calc(var(--tile-pad)*0.8)] shadow-card transition-all",
-        "before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px",
-        "before:bg-gradient-to-r before:from-transparent before:via-hairline before:to-transparent",
-        tones
-      )}
-    >
-      <div className="flex items-start justify-between">
-        <div className={cn("flex h-8 w-8 items-center justify-center rounded-xl", iconBg)}>
-          <Icon className="h-4 w-4" />
-        </div>
-      </div>
-      <p className="density-nowrap mt-3 text-[length:var(--metric-label-size)] font-bold uppercase tracking-[0.16em] text-muted-foreground/70">
-        {label}
-      </p>
-      <p
-        className={cn(
-          "density-nowrap mt-0.5 tabular font-display text-[length:var(--type-title-lg)] font-bold tracking-display",
-          valueColor
-        )}
-      >
-        {value}
-      </p>
-      <p className="density-nowrap mt-0.5 text-[length:var(--metric-meta-size)] text-muted-foreground">{sub}</p>
-    </div>
-  );
-}
-
-function StatusPulse({ status }: { status: string }) {
-  const cfg = {
-    [JOB_STATUS.RUNNING]: {
-      color: "bg-info",
-      pulse: true,
-      glow: "shadow-[0_0_8px_hsl(var(--info)/0.6)]"
-    },
-    [JOB_STATUS.QUEUED]: {
-      color: "bg-warning",
-      pulse: false,
-      glow: "shadow-[0_0_6px_hsl(var(--warning)/0.4)]"
-    },
-    [JOB_STATUS.COMPLETED]: {
-      color: "bg-success",
-      pulse: false,
-      glow: "shadow-[0_0_6px_hsl(var(--success)/0.5)]"
-    },
-    [JOB_STATUS.FAILED]: {
-      color: "bg-destructive",
-      pulse: true,
-      glow: "shadow-[0_0_8px_hsl(var(--destructive)/0.6)]"
-    }
-  };
-  const c = cfg[status as keyof typeof cfg] ?? cfg[JOB_STATUS.QUEUED];
-  return (
-    <span className="flex h-5 items-center justify-center">
-      <span
-        className={cn(
-          "h-2 w-2 rounded-full",
-          c.color,
-          c.glow,
-          c.pulse && "animate-pulse"
-        )}
+      <SummaryStrip
+        cells={[
+          { label: "Running", value: runningJobs, help: runningJobs ? "in flight now" : "nothing working" },
+          { label: "Queued", value: queuedJobs, help: "waiting for a worker" },
+          { label: "Finished", value: completedJobs, help: "in the last 24 jobs" },
+          { label: "Failed", value: failedJobs, tone: failedJobs > 0 ? "danger" : undefined, help: failedJobs ? "need attention" : "none failing" },
+          { label: "Import issues", value: openRecovery, tone: openRecovery > 0 ? "warning" : undefined, help: openRecovery ? "need a decision" : "all imports clear" }
+        ]}
       />
-    </span>
-  );
-}
 
-function RecoveryPanel({
-  corruptCount,
-  importFailedCount,
-  label,
-  openCount,
-  unmatchedCount
-}: {
-  corruptCount: number;
-  importFailedCount: number;
-  label: string;
-  openCount: number;
-  unmatchedCount: number;
-}) {
-  return (
-    <div
-      className={cn(
-        "rounded-xl border p-3",
-        openCount > 0
-          ? "border-warning/25 bg-warning/5 dark:bg-warning/10"
-          : "border-hairline bg-muted/30 dark:bg-white/[0.02]"
-      )}
-    >
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-[13px] font-bold text-foreground">{label}</p>
-        <Badge variant={openCount > 0 ? "warning" : "success"}>
-          {openCount > 0 ? `${openCount} open` : "clear"}
-        </Badge>
-      </div>
-      <div className="mt-3 grid grid-cols-3 gap-2">
-        <MiniMetric value={unmatchedCount} label="Unmatched" />
-        <MiniMetric value={importFailedCount} label="Failed" />
-        <MiniMetric value={corruptCount} label="Corrupt" />
-      </div>
-    </div>
-  );
-}
+      {section === "jobs" ? (
+        <>
+          <ListCard title="Job queue" count={jobs.length ? `Latest ${jobs.length}` : undefined}>
+            {jobs.length === 0 ? (
+              <ListEmpty title="Nothing queued" description="Scheduled searches, metadata refreshes and imports appear here as they run." />
+            ) : (
+              <ListTable
+                columns={[
+                  { label: "Job" },
+                  { label: "Source", mobile: true },
+                  { label: "Attempts", align: "end" },
+                  { label: "When" },
+                  { label: "Status", width: LIST_TRACK.status }
+                ]}
+              >
+                {jobs.map((job) => (
+                  <ListRow key={job.id} onClick={() => setOpenJobId(job.id)} selected={openJobId === job.id}>
+                    <ListNameCell name={formatJobType(job.jobType)} sub={job.lastError ?? job.workerId ?? "—"} />
+                    <ListCell primary={job.source} mobile />
+                    <ListCell primary={job.attempts} align="end" numeric />
+                    <ListCell primary={formatDateTime(job.completedUtc ?? job.startedUtc ?? job.scheduledUtc)} />
+                    <ListCell>
+                      <Chip tone={jobTone(job.status)}>{formatJobStatus(job.status)}</Chip>
+                    </ListCell>
+                  </ListRow>
+                ))}
+              </ListTable>
+            )}
+          </ListCard>
 
-function MiniMetric({ value, label }: { value: number; label: string }) {
-  return (
-    <div className="rounded-lg border border-hairline bg-card/80 px-2 py-1.5 text-center dark:border-white/[0.05] dark:bg-white/[0.02]">
-      <p
-        className={cn(
-          "tabular text-base font-bold",
-          value > 0 ? "text-foreground" : "text-muted-foreground/60"
-        )}
+          <ListCard title="Sent to downloads" count={dispatches.length ? `Latest ${dispatches.length}` : undefined}>
+            {dispatches.length === 0 ? (
+              <ListEmpty title="Nothing sent yet" description="Releases Deluno hands to a download client are listed here, with what the client said back." />
+            ) : (
+              <ListTable
+                chevron={false}
+                columns={[
+                  { label: "Release" },
+                  { label: "Client", mobile: true },
+                  { label: "Media" },
+                  { label: "When" },
+                  { label: "Status", width: LIST_TRACK.status }
+                ]}
+              >
+                {dispatches.map((dispatch) => (
+                  <ListRow key={dispatch.id}>
+                    <ListNameCell name={dispatch.releaseName} sub={dispatch.indexerName} />
+                    <ListCell primary={dispatch.downloadClientName} mobile />
+                    <ListCell primary={dispatch.mediaType === "tv" ? "TV" : "Movies"} />
+                    <ListCell primary={formatDateTime(dispatch.createdUtc)} />
+                    <ListCell>
+                      <Chip tone={dispatchTone(dispatch.status)}>{formatDispatchStatus(dispatch.status)}</Chip>
+                    </ListCell>
+                  </ListRow>
+                ))}
+              </ListTable>
+            )}
+          </ListCard>
+        </>
+      ) : null}
+
+      {section === "events" ? (
+        <ListCard title="Events" count={activity.length ? `Latest ${activity.length}` : undefined}>
+          {activity.length === 0 ? (
+            <ListEmpty title="Nothing has happened yet" description="Every consequential thing Deluno does is recorded here, with the reason behind it." />
+          ) : (
+            <ListTable columns={[{ label: "Event" }, { label: "Category", mobile: true }, { label: "When" }]}>
+              {activity.map((event) => (
+                <ListRow key={event.id} onClick={() => setOpenEventId(event.id)} selected={openEventId === event.id}>
+                  <ListNameCell name={event.message} sub={event.detail} />
+                  <ListCell primary={event.category} mobile />
+                  <ListCell primary={formatDateTime(event.createdUtc)} />
+                </ListRow>
+              ))}
+            </ListTable>
+          )}
+        </ListCard>
+      ) : null}
+
+      {section === "imports" ? (
+        <ListCard
+          title="Import issues"
+          count={openRecovery ? `${openRecovery} open` : undefined}
+        >
+          {importCases.length === 0 ? (
+            <ListEmpty title="Nothing stuck" description="Downloads that finish but cannot be filed — wrong quality, no match, corrupt — land here for a decision." />
+          ) : (
+            <ListTable
+              chevron={false}
+              columns={[
+                { label: "Issue" },
+                { label: "Media", mobile: true },
+                { label: "What to do", width: "minmax(0,1.4fr)" },
+                { label: "Found" }
+              ]}
+            >
+              {importCases.map((item) => (
+                <ListRow key={`${item.mediaLabel}-${item.id}`}>
+                  <ListNameCell name={`${formatFailureKind(item.failureKind)} · ${item.title}`} sub={item.summary} />
+                  <ListCell primary={item.mediaLabel} mobile />
+                  <ListCell primary={item.recommendedAction} />
+                  <ListCell primary={formatDateTime(item.detectedUtc)} />
+                </ListRow>
+              ))}
+            </ListTable>
+          )}
+        </ListCard>
+      ) : null}
+
+      <Drawer
+        open={openJob !== null}
+        onOpenChange={(next) => {
+          if (!next) setOpenJobId(null);
+        }}
+        title={openJob ? formatJobType(openJob.jobType) : "Job"}
+        description={openJob ? `${openJob.source} · ${formatJobStatus(openJob.status)}` : undefined}
+        footer={<DrawerFooter state="clean" readOnly saveLabel="Close" onCancel={() => setOpenJobId(null)} />}
       >
-        {value}
-      </p>
-      <p className="text-[10px] text-muted-foreground">{label}</p>
+        {openJob ? (
+          <>
+            <DrawerSection title="Run" aside={formatJobStatus(openJob.status)}>
+              <DrawerFacts
+                items={[
+                  { label: "Attempts", value: String(openJob.attempts) },
+                  { label: "Scheduled", value: formatDateTime(openJob.scheduledUtc) },
+                  { label: "Started", value: openJob.startedUtc ? formatDateTime(openJob.startedUtc) : "Not started" },
+                  { label: "Finished", value: openJob.completedUtc ? formatDateTime(openJob.completedUtc) : "Not finished" },
+                  { label: "Worker", value: openJob.workerId ?? "—", mono: true }
+                ]}
+              />
+            </DrawerSection>
+
+            {openJob.lastError ? (
+              <DrawerSection title="Why it failed">
+                <p className="whitespace-pre-wrap text-[length:var(--type-body-sm)] leading-relaxed text-destructive">{openJob.lastError}</p>
+              </DrawerSection>
+            ) : null}
+
+            {openJob.relatedEntityId ? (
+              <DrawerSection title="What it was for">
+                <DrawerFacts
+                  items={[
+                    { label: "Type", value: openJob.relatedEntityType ?? "—" },
+                    { label: "Id", value: openJob.relatedEntityId, mono: true }
+                  ]}
+                />
+              </DrawerSection>
+            ) : null}
+
+            {openJob.payloadJson ? (
+              <DrawerSection title="Payload">
+                <pre className="overflow-x-auto rounded-[10px] border border-hairline bg-surface-1 p-3 font-mono text-[length:var(--type-caption)] text-muted-foreground">
+                  {prettyJson(openJob.payloadJson)}
+                </pre>
+              </DrawerSection>
+            ) : null}
+          </>
+        ) : null}
+      </Drawer>
+
+      <Drawer
+        open={openEvent !== null}
+        onOpenChange={(next) => {
+          if (!next) setOpenEventId(null);
+        }}
+        title={openEvent?.message ?? "Event"}
+        description={openEvent ? `${openEvent.category} · ${formatDateTime(openEvent.createdUtc)}` : undefined}
+        footer={<DrawerFooter state="clean" readOnly saveLabel="Close" onCancel={() => setOpenEventId(null)} />}
+      >
+        {openEvent ? (
+          <>
+            <DrawerSection title="What happened">
+              <p className="text-[length:var(--type-body-sm)] leading-relaxed text-foreground">{openEvent.message}</p>
+              {openEvent.detail ? (
+                <p className="text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">{openEvent.detail}</p>
+              ) : null}
+            </DrawerSection>
+
+            {openEvent.relatedEntityId ? (
+              <DrawerSection title="What it was about">
+                <DrawerFacts
+                  items={[
+                    { label: "Type", value: openEvent.relatedEntityType ?? "—" },
+                    { label: "Id", value: openEvent.relatedEntityId, mono: true }
+                  ]}
+                />
+              </DrawerSection>
+            ) : null}
+
+            {openEvent.detailsJson ? (
+              <DrawerSection title="Detail">
+                <pre className="overflow-x-auto rounded-[10px] border border-hairline bg-surface-1 p-3 font-mono text-[length:var(--type-caption)] text-muted-foreground">
+                  {prettyJson(openEvent.detailsJson)}
+                </pre>
+              </DrawerSection>
+            ) : null}
+          </>
+        ) : null}
+      </Drawer>
     </div>
   );
 }
 
-/* ══════════════════════ FORMATTERS ══════════════════════ */
-
-function formatWhen(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit"
-  }).format(new Date(value));
-}
+/* -------------------------------------------------------------- helpers */
 
 function formatJobType(value: string) {
-  switch (value) {
-    case "movies.catalog.refresh":
-      return "Movie catalog refresh";
-    case "series.catalog.refresh":
-      return "TV catalog refresh";
-    case "movies.quality.recalculate":
-      return "Movie quality recalc";
-    case "series.quality.recalculate":
-      return "TV quality recalc";
-    default:
-      return value;
-  }
+  const [area, ...rest] = value.split(".");
+  const action = rest.join(" ").replace(/[-_]/g, " ");
+  const label = `${area} ${action}`.trim();
+  return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
-function formatJobStatus(value: string) {
-  switch (value) {
-    case JOB_STATUS.QUEUED:
-      return "Waiting";
-    case JOB_STATUS.RUNNING:
-      return "Running";
+function formatJobStatus(status: string) {
+  const spaced = status.replace(/[-_]/g, " ");
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+function jobTone(status: string): "ok" | "warn" | "bad" | "info" | "muted" {
+  switch (status) {
     case JOB_STATUS.COMPLETED:
-      return "Completed";
-    case JOB_STATUS.FAILED:
-      return "Attention";
-    default:
-      return value;
-  }
-}
-
-function jobStatusVariant(
-  value: string
-): "default" | "success" | "warning" | "destructive" | "info" {
-  switch (value) {
+      return "ok";
     case JOB_STATUS.RUNNING:
       return "info";
-    case JOB_STATUS.COMPLETED:
-      return "success";
+    case JOB_STATUS.QUEUED:
+      return "muted";
     case JOB_STATUS.FAILED:
-      return "destructive";
+      return "bad";
     default:
-      return "warning";
+      return "warn";
   }
 }
 
-function formatJobSource(value: string) {
-  switch (value) {
-    case "movies":
-      return "Movies";
-    case "series":
-      return "TV";
+function dispatchTone(status: string): "ok" | "warn" | "bad" | "info" {
+  switch (status) {
+    case "sent":
+      return "ok";
+    case "failed":
+      return "bad";
+    case "planned":
+      return "warn";
     default:
-      return value;
-  }
-}
-
-function formatEntityType(value: string) {
-  switch (value) {
-    case "movie":
-      return "Movie";
-    case "series":
-      return "Series";
-    case "library":
-      return "Library";
-    default:
-      return value;
-  }
-}
-
-function formatEventCategory(value: string) {
-  switch (value) {
-    case "job.queued":
-      return "Queued";
-    case "job.started":
-      return "Started";
-    case "job.completed":
-      return "Completed";
-    case "job.failed":
-      return "Failed";
-    case "library.import.existing":
-      return "Library import";
-    case "release.dispatched":
-      return "Release dispatched";
-    case "release.rejected":
-      return "Release rejected";
-    case "filesystem.import.auto-queued":
-      return "Import auto-queued";
-    case "filesystem.import.completed":
-      return "Imported";
-    case "processing.waiting":
-      return "Waiting for processor";
-    case "movie.release.force-grabbed":
-    case "series.release.force-grabbed":
-      return "Force override";
-    case "library.search.executed":
-      return "Search cycle";
-    default:
-      return value;
+      return "info";
   }
 }
 
@@ -739,26 +406,40 @@ function formatDispatchStatus(status: string) {
     case "planned":
       return "Needs URL";
     default:
-      return status;
+      return status.charAt(0).toUpperCase() + status.slice(1);
   }
 }
 
-function eventDotColor(category: string) {
-  if (category.includes("failed") || category.includes("rejected") || category.includes("replacement")) return "bg-destructive";
-  if (category.includes("waiting") || category.includes("force")) return "bg-warning";
-  if (category.includes("completed") || category.includes("dispatched") || category.includes("auto-queued")) return "bg-success";
-  if (category.includes("started") || category.includes("running")) return "bg-info";
-  return "bg-muted-foreground/60";
-}
-
-function relatedEntityHref(type: string | null, id: string | null) {
-  if (!type || !id) return "/activity";
-  switch (type) {
-    case "movie":
-      return `/movies/${id}`;
-    case "series":
-      return `/tv/${id}`;
+function formatFailureKind(value: string) {
+  switch (value) {
+    case "quality":
+      return "Quality rejected";
+    case "unmatched":
+      return "Needs matching";
+    case "corrupt":
+      return "Corrupt";
+    case "downloadFailed":
+      return "Download failed";
+    case "importFailed":
+      return "Import failed";
     default:
-      return "/activity";
+      return "Needs review";
   }
+}
+
+function prettyJson(value: string) {
+  try {
+    return JSON.stringify(JSON.parse(value), null, 2);
+  } catch {
+    return value;
+  }
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(new Date(value));
 }

@@ -49,7 +49,7 @@ public sealed class QualityModelService(
                 return BuildDefaultModel() with { UpdatedUtc = updatedUtc };
             }
 
-            return parsed with { UpdatedUtc = updatedUtc };
+            return MergeMissingTiers(parsed) with { UpdatedUtc = updatedUtc };
         }
         catch
         {
@@ -92,29 +92,71 @@ public sealed class QualityModelService(
         return next;
     }
 
+    /*
+      The full release vocabulary users expect to tune, matching the Radarr and
+      Sonarr quality set. Ranks of the original twelve tiers are unchanged so
+      saved quality profiles keep resolving; additions slot into the gaps.
+      Low-grade sources (cams, screeners) are listed so a profile can reject
+      them explicitly instead of leaving them unclassified.
+    */
     private static QualityModelSnapshot BuildDefaultModel()
     {
         return new QualityModelSnapshot(
             Version: ModelVersion,
-            Tiers:
-            [
-                new("SDTV", 10, 0.3, 1.8, 120, 900, 0),
-                new("DVD", 20, 0.7, 3.5, 180, 1200, 0),
-                new("HDTV 720p", 30, 0.8, 6.5, 220, 1800, 10),
-                new("WEB 720p", 40, 0.8, 8.0, 240, 2200, 20),
-                new("Bluray 720p", 50, 1.2, 10.0, 280, 2500, 30),
-                new("HDTV 1080p", 60, 1.3, 14.0, 350, 3200, 40),
-                new("WEB 1080p", 70, 1.5, 25.0, 420, 3800, 50),
-                new("Bluray 1080p", 80, 2.2, 35.0, 480, 4400, 60),
-                new("Remux 1080p", 90, 12.0, 60.0, 1500, 8000, 70),
-                new("WEB 2160p", 100, 7.0, 60.0, 1600, 12000, 80),
-                new("Bluray 2160p", 110, 12.0, 90.0, 2200, 18000, 90),
-                new("Remux 2160p", 120, 35.0, 130.0, 6000, 36000, 100)
-            ],
+            Tiers: DefaultTiers,
             UpgradeStop: new QualityUpgradeStopPolicy(
                 StopWhenCutoffMet: true,
                 RequireCustomFormatGainForSameQuality: true),
             UpdatedUtc: DateTimeOffset.UtcNow);
+    }
+
+    private static readonly IReadOnlyList<QualityTierDefinition> DefaultTiers =
+    [
+        new("Unknown", 1, 0.1, 2.0, 50, 800, 0),
+        new("WORKPRINT", 2, 0.1, 2.0, 50, 800, 0),
+        new("CAM", 3, 0.1, 2.0, 50, 800, 0),
+        new("TELESYNC", 4, 0.1, 2.5, 50, 900, 0),
+        new("TELECINE", 5, 0.2, 3.0, 60, 1000, 0),
+        new("REGIONAL", 6, 0.2, 3.0, 60, 1000, 0),
+        new("DVDSCR", 7, 0.3, 3.5, 80, 1100, 0),
+        new("SDTV", 10, 0.3, 1.8, 120, 900, 0),
+        new("DVD", 20, 0.7, 3.5, 180, 1200, 0),
+        new("DVD-R", 21, 1.0, 8.5, 220, 2000, 0),
+        new("WEB 480p", 22, 0.4, 3.0, 150, 1100, 5),
+        new("Bluray 480p", 24, 0.5, 4.0, 170, 1300, 5),
+        new("Bluray 576p", 25, 0.6, 5.0, 190, 1500, 5),
+        new("HDTV 720p", 30, 0.8, 6.5, 220, 1800, 10),
+        new("WEB 720p", 40, 0.8, 8.0, 240, 2200, 20),
+        new("Bluray 720p", 50, 1.2, 10.0, 280, 2500, 30),
+        new("HDTV 1080p", 60, 1.3, 14.0, 350, 3200, 40),
+        new("WEB 1080p", 70, 1.5, 25.0, 420, 3800, 50),
+        new("Bluray 1080p", 80, 2.2, 35.0, 480, 4400, 60),
+        new("Remux 1080p", 90, 12.0, 60.0, 1500, 8000, 70),
+        new("HDTV 2160p", 95, 4.0, 40.0, 900, 9000, 75),
+        new("WEB 2160p", 100, 7.0, 60.0, 1600, 12000, 80),
+        new("Bluray 2160p", 110, 12.0, 90.0, 2200, 18000, 90),
+        new("Remux 2160p", 120, 35.0, 130.0, 6000, 36000, 100),
+        new("BR-DISK", 125, 20.0, 130.0, 4000, 36000, 0),
+        new("Raw-HD", 126, 4.0, 60.0, 1200, 12000, 0)
+    ];
+
+    /*
+      An install that already saved a model keeps every value it tuned; tiers
+      added to the catalogue since then are merged in at their defaults so the
+      list never silently lags behind the release vocabulary.
+    */
+    private static QualityModelSnapshot MergeMissingTiers(QualityModelSnapshot snapshot)
+    {
+        var known = snapshot.Tiers
+            .Select(tier => tier.Name.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var missing = DefaultTiers.Where(tier => !known.Contains(tier.Name)).ToList();
+        if (missing.Count == 0)
+        {
+            return snapshot;
+        }
+
+        return snapshot with { Tiers = snapshot.Tiers.Concat(missing).OrderBy(tier => tier.Rank).ToList() };
     }
 
     private static void Validate(QualityModelSnapshot model)
@@ -144,12 +186,15 @@ public sealed class QualityModelService(
                 throw new InvalidOperationException($"Tier '{tier.Name}' has invalid rank.");
             }
 
-            if (tier.MovieMinGb < 0 || tier.MovieMaxGb <= tier.MovieMinGb)
+            // A maximum of 0 means "no upper limit", the same convention Radarr and
+            // Sonarr use for Unlimited. A minimum of 0 means "no lower limit", so
+            // 0/0 is the valid "accept any size" band.
+            if (tier.MovieMinGb < 0 || tier.MovieMaxGb < 0 || (tier.MovieMaxGb > 0 && tier.MovieMaxGb <= tier.MovieMinGb))
             {
                 throw new InvalidOperationException($"Tier '{tier.Name}' has invalid movie size bounds.");
             }
 
-            if (tier.EpisodeMinMb < 0 || tier.EpisodeMaxMb <= tier.EpisodeMinMb)
+            if (tier.EpisodeMinMb < 0 || tier.EpisodeMaxMb < 0 || (tier.EpisodeMaxMb > 0 && tier.EpisodeMaxMb <= tier.EpisodeMinMb))
             {
                 throw new InvalidOperationException($"Tier '{tier.Name}' has invalid episode size bounds.");
             }
