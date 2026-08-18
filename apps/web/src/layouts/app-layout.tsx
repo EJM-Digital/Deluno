@@ -76,6 +76,10 @@ const routeMeta = [
   { match: (path: string) => path.startsWith("/settings/policy-sets") || path.startsWith("/settings/profiles") || path.startsWith("/settings/quality") || path.startsWith("/settings/custom-formats"), title: "Media plans", subtitle: "The plan Deluno follows for quality, size, releases, and upgrades" },
   { match: (path: string) => path.startsWith("/settings/lists"), title: "Import lists", subtitle: "Bring movies and shows in from watchlists and curated feeds" },
   { match: (path: string) => path.startsWith("/settings/general") || path.startsWith("/settings/notifications") || path.startsWith("/settings/ui") || path.startsWith("/settings/migration"), title: "Preferences", subtitle: "How you want Deluno to behave, look, and tell you things" },
+  // Exact "/settings" is the setup overview, not a settings page. Without
+  // this it fell through to the "Files & folders" catch-all below and the
+  // topbar named a different page than the one being shown.
+  { match: (path: string) => path === "/settings", title: "Setup overview", subtitle: "Set up Deluno once, in order" },
   { match: (path: string) => path.startsWith("/settings"), title: "Files & folders", subtitle: "Where your media lives, and how Deluno names and files it" },
   { match: (path: string) => path.startsWith("/system") || path.startsWith("/setup-guide"), title: "System", subtitle: "How this installation is doing — health, backups, updates, and audit" }
 ];
