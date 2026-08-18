@@ -45,6 +45,9 @@ import { Input } from "../components/ui/input";
 import { PathInput } from "../components/ui/path-input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
+import { Chip } from "../components/ui/chip";
+import { ListCard, ListCell, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
+import { SummaryStrip } from "../components/ui/summary-strip";
 import { RouteSkeleton } from "../components/shell/skeleton";
 
 type StepId = "mode" | "folders" | "quality" | "services" | "finish";
@@ -514,27 +517,28 @@ export function SetupGuidePage() {
               This sets up everything you need to get started: media folders, quality settings, and optional search providers and download clients.
               Advanced users can skip this and configure everything manually.
             </p>
-            <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-              <SetupOutcome label="Folders" value="Movies, TV, downloads" />
-              <SetupOutcome label="Quality" value="Simple profile choice" />
-              <SetupOutcome label="Release scoring" value="Plain-English format rules" />
-              <SetupOutcome label="Routing" value="Optional source + client" />
-            </div>
+            <SummaryStrip
+              className="mt-4"
+              cells={[
+                { label: "Folders", value: "Movies, TV, downloads" },
+                { label: "Quality", value: "Simple profile choice" },
+                { label: "Release scoring", value: "Plain-English rules" },
+                { label: "Routing", value: "Optional source + client" }
+              ]}
+            />
           </div>
-          <Card className="bg-surface-1/70">
-            <CardHeader className="pb-3">
-              <CardTitle>Readiness</CardTitle>
-              <CardDescription>Turns green only after this wizard collects or confirms the step.</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-1">
+          <ListCard title="Readiness" count={`${completion.filter((item) => item.done).length} of ${completion.length} done`}>
+            <ListTable columns={[{ label: "Step" }, { label: "State", width: LIST_TRACK.status, mobile: true }]} chevron={false}>
               {completion.map((item) => (
-                <div key={item.label} className="flex min-h-10 items-center justify-between gap-3 rounded-xl border border-hairline bg-background/35 px-3 py-2">
-                  <span className="text-sm text-foreground">{item.label}</span>
-                  {item.done ? <CheckCircle2 className="h-4 w-4 text-success" /> : <span className="h-2 w-2 rounded-full bg-muted" />}
-                </div>
+                <ListRow key={item.label}>
+                  <ListNameCell name={item.label} />
+                  <ListCell mobile>
+                    <Chip tone={item.done ? "ok" : "muted"}>{item.done ? "Done" : "Waiting"}</Chip>
+                  </ListCell>
+                </ListRow>
               ))}
-            </CardContent>
-          </Card>
+            </ListTable>
+          </ListCard>
         </div>
       </section>
 
@@ -1000,13 +1004,15 @@ function FinishStep({
 
   return (
     <div className="space-y-[var(--page-gap)]">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <SummaryTile label="Libraries" value={form.mediaIntent === "both" ? "Movies + TV" : form.mediaIntent === "tv" ? "TV" : "Movies"} />
-        <SummaryTile label="Quality" value={form.qualityPreset ? QUALITY_PRESETS[form.qualityPreset].label : "Not chosen"} />
-        <SummaryTile label="Release scoring" value={form.formatGoal ? FORMAT_GOALS[form.formatGoal].label : "Not chosen"} />
-        <SummaryTile label="Indexer" value={form.indexerUrl.trim() ? form.indexerProtocol : "Later"} />
-        <SummaryTile label="Client" value={form.clientHost.trim() ? form.clientProtocol : "Later"} />
-      </div>
+      <SummaryStrip
+        cells={[
+          { label: "Libraries", value: form.mediaIntent === "both" ? "Movies + TV" : form.mediaIntent === "tv" ? "TV" : "Movies" },
+          { label: "Quality", value: form.qualityPreset ? QUALITY_PRESETS[form.qualityPreset].label : "Not chosen", tone: form.qualityPreset ? undefined : "warning" },
+          { label: "Release scoring", value: form.formatGoal ? FORMAT_GOALS[form.formatGoal].label : "Not chosen", tone: form.formatGoal ? undefined : "warning" },
+          { label: "Indexer", value: form.indexerUrl.trim() ? form.indexerProtocol : "Later" },
+          { label: "Client", value: form.clientHost.trim() ? form.clientProtocol : "Later" }
+        ]}
+      />
       <div className="rounded-2xl border border-hairline bg-surface-1 p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -1173,14 +1179,15 @@ function SetupComplete({ result }: { result: SetupCompletion }) {
         </p>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{result.message} Review the summary below before moving on.</p>
       </div>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        <SummaryTile label="Libraries" value={result.libraries.join(" + ") || "None"} />
-        <SummaryTile label="Quality profiles" value={result.qualityProfiles.join(" + ") || "Existing"} />
-        <SummaryTile label="Custom formats" value={result.customFormatCount > 0 ? `${result.customFormatCount} created` : "Reused existing"} />
-        <SummaryTile label="Indexer" value={result.indexerName ?? "Later"} />
-        <SummaryTile label="Client" value={result.clientName ?? "Later"} />
-        <SummaryTile label="First title" value={result.firstTitle ?? "Skipped"} />
-      </div>
+      <SummaryStrip
+        cells={[
+          { label: "Libraries", value: result.libraries.join(" + ") || "None" },
+          { label: "Quality profiles", value: result.qualityProfiles.join(" + ") || "Existing" },
+          { label: "Release rules", value: result.customFormatCount > 0 ? `${result.customFormatCount} created` : "Reused existing" },
+          { label: "Indexer", value: result.indexerName ?? "Later", help: result.indexerName ? "connected" : "add one when you are ready" },
+          { label: "First title", value: result.firstTitle ?? "Skipped", help: result.clientName ? `via ${result.clientName}` : "no download client yet" }
+        ]}
+      />
       <div className="grid gap-3 lg:grid-cols-4">
         <HandoffTile title="Dashboard" copy="See automation, provider health, queue, and recent activity." to="/" />
         <HandoffTile title="Add titles" copy="Browse and monitor the library you just created." to={result.firstTitlePath ?? "/movies"} />
@@ -1265,24 +1272,6 @@ function FieldShell({ icon: Icon, label, copy, children }: { icon: LucideIcon; l
         </div>
       </div>
       {children}
-    </div>
-  );
-}
-
-function SummaryTile({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl border border-hairline bg-surface-1 p-4">
-      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
-      <p className="mt-2 font-display text-xl font-semibold text-foreground">{value}</p>
-    </div>
-  );
-}
-
-function SetupOutcome({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl border border-hairline bg-surface-1/70 px-3 py-2">
-      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
-      <p className="mt-1 text-sm font-semibold text-foreground">{value}</p>
     </div>
   );
 }
