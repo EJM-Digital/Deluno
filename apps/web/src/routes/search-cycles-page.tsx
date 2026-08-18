@@ -2,7 +2,7 @@
  * Automation & recovery — list → drawer plus one page-level form.
  *
  *   PageToolbar (Resume/Pause automation)
- *   Summary strip (5 cells)
+ *   SummaryStrip (automation · searching · due · source checks · sent)
  *   ListCard  libraries (schedule · next search · last result · status · on · ›)
  *             → drawer: Schedule · Budget · Search window · Run now / Skip
  *   ListCard  failed-download handling (page form, saved by PageFooter)
@@ -21,6 +21,7 @@ import { Field, FieldRow } from "../components/ui/field";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { PageFooter } from "../components/ui/page-footer";
 import { PageToolbar } from "../components/ui/page-toolbar";
+import { SummaryStrip } from "../components/ui/summary-strip";
 import { ListGroupHeader, MediaTypeFilter, useMediaTypeSplit } from "../components/ui/media-type-split";
 import { PresetField } from "../components/ui/preset-field";
 import { Select } from "../components/ui/select";
@@ -120,6 +121,7 @@ export function SearchCyclesPage() {
       ),
     [searchCycles]
   );
+  const cyclesShown = useMemo(() => searchCycles.slice(0, 12), [searchCycles]);
 
   /* ------------------------------------------------------ global + rows */
   const [busy, setBusy] = useState<string | null>(null);
@@ -216,13 +218,23 @@ export function SearchCyclesPage() {
   }
 
   /* ------------------------------------------------- failed downloads */
-  const savedCleanup = useMemo(() => cleanupFrom(settings), [settings]);
+  // The baseline is state, not a memo over `settings`: this page revalidates every
+  // 10s, so deriving it would leave the form "dirty" for the whole round trip after
+  // a save — long enough for the effect below to wipe "Saved just now" off the footer.
+  const [savedCleanup, setSavedCleanup] = useState<CleanupForm>(() => cleanupFrom(settings));
   const [cleanup, setCleanup] = useState<CleanupForm>(savedCleanup);
   const [cleanupState, setCleanupState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
   const [cleanupMessage, setCleanupMessage] = useState<string | null>(null);
-  useEffect(() => setCleanup(savedCleanup), [savedCleanup]);
 
-  const cleanupDirty = JSON.stringify(cleanup) !== JSON.stringify(savedCleanup);
+  const cleanupDirty = !same(cleanup, savedCleanup);
+  const settingsCleanup = useMemo(() => cleanupFrom(settings), [settings]);
+  useEffect(() => {
+    // Adopt server state only when the user has nothing unsaved in this form.
+    if (cleanupDirty || same(savedCleanup, settingsCleanup)) return;
+    setSavedCleanup(settingsCleanup);
+    setCleanup(settingsCleanup);
+  }, [cleanupDirty, savedCleanup, settingsCleanup]);
+
   const cleanupFooter: DrawerSaveState = cleanupState === "saving" ? "saving" : cleanupDirty ? "dirty" : cleanupState ?? "clean";
   useUnsavedChanges(cleanupDirty || drawerDirty);
   useEffect(() => {
@@ -247,6 +259,8 @@ export function SearchCyclesPage() {
         })
       });
       if (!response.ok) throw new Error("Could not save failed-download handling.");
+      // Move the baseline first: the revalidation below is slower than the render.
+      setSavedCleanup(cleanup);
       setCleanupState("saved");
       setCleanupMessage("Saved just now");
       revalidator.revalidate();
@@ -273,13 +287,15 @@ export function SearchCyclesPage() {
         }
       />
 
-      <div className="grid grid-cols-2 overflow-hidden rounded-2xl border border-hairline bg-card shadow-card md:grid-cols-5 dark:border-white/[0.07]">
-        <StripCell label="Automation" value={paused ? "Paused" : "Running"} help={paused ? "Queued work is held safely" : "Deluno searches on schedule"} tone={paused ? "warning" : undefined} />
-        <StripCell label="Searching now" value={String(running)} help={running ? "libraries mid-cycle" : "nothing running"} />
-        <StripCell label="Due" value={String(due)} help={due ? "libraries ready for a cycle" : "all caught up"} />
-        <StripCell label="Source checks" value={cycleCost.apiCalls.toLocaleString()} help="in the last 50 cycles" />
-        <StripCell label="Sent to downloads" value={formatBytes(cycleCost.queuedBytes)} help="in the last 50 cycles" />
-      </div>
+      <SummaryStrip
+        cells={[
+          { label: "Automation", value: paused ? "Paused" : "Running", help: paused ? "Queued work is held safely" : "Deluno searches on schedule", tone: paused ? "warning" : undefined },
+          { label: "Searching now", value: String(running), help: running ? "libraries mid-cycle" : "nothing running" },
+          { label: "Due", value: String(due), help: due ? "libraries ready for a cycle" : "all caught up" },
+          { label: "Source checks", value: cycleCost.apiCalls.toLocaleString(), help: "in the last 50 cycles" },
+          { label: "Sent to downloads", value: formatBytes(cycleCost.queuedBytes), help: "in the last 50 cycles" }
+        ]}
+      />
 
       <ListCard title="Library schedules" count={libraries.length ? `${libraries.length} ${libraries.length === 1 ? "library" : "libraries"}` : undefined}>
         {libraries.length === 0 ? (
@@ -335,12 +351,12 @@ export function SearchCyclesPage() {
         </div>
       </ListCard>
 
-      <ListCard title="Recent cycles" count={searchCycles.length ? `${searchCycles.length} runs` : undefined}>
+      <ListCard title="Recent cycles" count={cyclesShown.length ? runsLabel(cyclesShown.length, searchCycles.length) : undefined}>
         {searchCycles.length === 0 ? (
           <ListEmpty title="No search cycles yet" description="Once a library runs a missing or upgrade search, each cycle and what it queued shows up here." />
         ) : (
           <ListTable columns={[{ label: "Library" }, { label: "Trigger" }, { label: "Result" }, { label: "Ran" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]} chevron={false}>
-            {searchCycles.slice(0, 12).map((cycle) => (
+            {cyclesShown.map((cycle) => (
               <ListRow key={cycle.id}>
                 <ListNameCell name={cycle.libraryName} sub={cycle.mediaType === "tv" ? "TV shows" : "Movies"} />
                 <ListCell primary={triggerLabel(cycle.triggerKind)} />
@@ -424,14 +440,15 @@ export function SearchCyclesPage() {
 
 /* ---------------------------------------------------------------- bits */
 
-function StripCell({ label, value, help, tone }: { label: string; value: string; help: string; tone?: "warning" }) {
-  return (
-    <div className="border-b border-r border-hairline px-[var(--card-pad-x)] py-3 last:border-r-0 md:border-b-0">
-      <span className="block text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{label}</span>
-      <span className={`mt-1 block text-[length:var(--type-title-sm)] font-semibold tabular-nums leading-tight ${tone === "warning" ? "text-warning" : "text-foreground"}`}>{value}</span>
-      <span className="block text-[length:var(--type-caption)] text-muted-foreground">{help}</span>
-    </div>
-  );
+/** Shallow value equality for the small flat forms on this page. */
+function same<T>(a: T, b: T) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/** The card lists the latest 12, so say so rather than counting what is off-screen. */
+function runsLabel(shown: number, total: number) {
+  if (total > shown) return `Latest ${shown} of ${total} runs`;
+  return total === 1 ? "1 run" : `${total} runs`;
 }
 
 function emptyAutomation(): AutomationForm {
