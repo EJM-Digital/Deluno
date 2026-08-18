@@ -226,12 +226,14 @@ function SizeCard({
                   onClick={() => setOpen((current) => ({ ...current, [band.label]: !current[band.label] }))}
                   className={cn(
                     SIZE_GRID,
-                    "sticky top-0 z-10 h-9 w-full border-b border-hairline bg-surface-2/95 text-left backdrop-blur",
-                    "transition-colors hover:bg-surface-3/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                    // Same weight as ListGroupHeader: a heading for the rows under it,
+                    // not another hairline between them.
+                    "sticky top-0 z-10 h-[var(--list-group-height)] w-full border-y border-hairline bg-surface-3 text-left",
+                    "transition-colors hover:bg-surface-3/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                   )}
                 >
-                  <span className="flex min-w-0 items-center gap-1.5 text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-foreground/80">
-                    <ChevronRight aria-hidden className={cn("h-3.5 w-3.5 shrink-0 transition-transform", expanded && "rotate-90")} />
+                  <span className="flex min-w-0 items-center gap-2 text-[length:var(--type-caption)] font-semibold uppercase tracking-[0.12em] text-foreground">
+                    <ChevronRight aria-hidden className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-90")} />
                     <span className="truncate">{band.label}</span>
                   </span>
                   <span />
