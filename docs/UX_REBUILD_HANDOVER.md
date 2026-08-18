@@ -91,16 +91,56 @@ Six more pages, one per commit, each verified live before committing.
 
 **Menus.** Rail 280px → 240px — it was sized by its group headings, not its links. Headings shortened (`Happening now` · `Setup` · `Deluno`), icon chips kept (stripping them made rows read as plain text), content column inset 32px so it sits centred with items left-aligned. The status headline was hardcoded to "All systems normal" in every state, directly above a line reporting failed jobs; it follows the real signal now.
 
+## Metadata became a catalogue source
+
+The biggest thing found in this pass was not a UI defect. `episode_entries` had
+exactly one INSERT in the whole codebase, inside the file importer, and it wrote
+`title` and `air_date_utc` as literal NULL. An episode existed only once a file
+for it did, so **the library was a mirror of the disk, not a model of the media**:
+seven of thirteen episodes on disk meant Deluno believed the season was seven
+episodes long and complete, and it could not want — therefore could not search
+for — an episode it had never seen. Nothing had a date, so `/api/series/upcoming`
+returned 0 for a fully linked show and the Calendar could only ever be empty.
+Movies had `release_year` and no notion of when a film is obtainable.
+
+Sonarr and Radarr invert this: the provider owns what exists, the disk owns what
+you have. Deluno does now too.
+
+- **Gateway** (`services/metadata-gateway`) gained `GET /metadata/tv/{id}/catalogue`
+  and `GET /metadata/movie/{id}/release-dates`. The per-season fan-out happens in
+  the worker, so the app makes one request instead of one per season, cached in KV
+  for 6h. **Not deployed** — `npm run deploy` in that folder publishes it. Until
+  then the app falls back to a direct TMDB call, which is why this works today.
+- **TV**: `SyncEpisodeCatalogueAsync` upserts on (series, season, episode), writes
+  title/overview/air date, and never touches `has_file`, `quality_cutoff_met`,
+  `file_path`, `imported_utc` or `monitored`. Unowned episodes get a wanted state,
+  which is what makes a missing episode findable rather than merely visible. Runs
+  on link, refresh, and the recurring job.
+- **Movies**: cinema/digital/physical dates plus a per-film minimum availability
+  (announced / inCinemas / released) that gates the eligible-search query.
+- **Schedule**: two windowed endpoints (`/api/series/calendar`, `/api/movies/calendar`)
+  replaced a full-inventory scan. The old page sorted every episode ascending and
+  took 48 — after a catalogue sync that is 1989.
+
+Measured: Breaking Bad 10 → 71 episodes (61 newly findable); The Simpsons 885
+episodes across 39 seasons in 14.3s; Blade Runner in cinemas 1982-06-25, digital
+2016-12-24, physical 1984-09-07.
+
+**Seeded fixtures left in the dev database on purpose** — invented titles resolve
+no metadata, so verification needs real ones: Breaking Bad, The Simpsons and Blade
+Runner, plus two "UX fixture" libraries pointing at scratch folders. The seed
+script lives in the session scratchpad; `clean` removes all of it.
+
 ## Remaining queue
 
 Everything left is media-side — roughly 5,400 lines across nine files. No settings or operational page remains.
 
 | Page | Lines | State |
 |---|---|---|
-| `show-detail-page` | 1,822 | untouched — own `h1`, 39 `Card` uses |
-| `movie-detail-page` | ~1,380 | **toolbar done**; body panels still `Card`, metadata editor still a bespoke Radix dialog rather than a `Drawer` |
+| `show-detail-page` | 1,822 → 1,140 | **done** — three sections, episode drawer, per-row monitor switch |
+| `movie-detail-page` | 1,375 → ~1,090 | **done** — shares the metadata drawer and decision trail; four dead controls wired |
 | `activity-page` | 764 | untouched |
-| `calendar-page` | 380 | untouched — own `h1` |
+| `calendar-page` | 380 → ~400 | **done** — windowed query, real air and release dates |
 | `media-import-page` | 334 | untouched |
 | wanted ×2, upgrades ×2, episode search | ~1,050 | untouched, share one shell |
 
