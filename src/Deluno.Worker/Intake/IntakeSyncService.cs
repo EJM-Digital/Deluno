@@ -8,6 +8,8 @@ using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
+using Deluno.Intake.Contracts;
+using Deluno.Intake.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Deluno.Platform.Quality;
@@ -20,6 +22,7 @@ namespace Deluno.Worker.Intake;
 
 public sealed class IntakeSyncService(
     IPlatformSettingsRepository platformSettingsRepository,
+    IIntakeRepository intakeRepository,
     IJobScheduler jobScheduler,
     IJobQueueRepository jobQueueRepository,
     IMovieCatalogRepository movieCatalogRepository,
@@ -43,7 +46,7 @@ public sealed class IntakeSyncService(
     public async Task<int> PlanDueSyncJobsAsync(CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
-        var sources = await platformSettingsRepository.ListIntakeSourcesAsync(cancellationToken);
+        var sources = await intakeRepository.ListIntakeSourcesAsync(cancellationToken);
         var queued = 0;
 
         foreach (var source in sources.Where(item => item.IsEnabled))
@@ -74,12 +77,12 @@ public sealed class IntakeSyncService(
 
     public async Task<IntakeListPreviewResult> PreviewAsync(string sourceId, CancellationToken cancellationToken)
     {
-        var source = await platformSettingsRepository.GetIntakeSourceAsync(sourceId, cancellationToken)
+        var source = await intakeRepository.GetIntakeSourceAsync(sourceId, cancellationToken)
             ?? throw new InvalidOperationException("Import list not found.");
         var targetLibrary = ResolveTargetLibrary(source, await platformSettingsRepository.ListLibrariesAsync(cancellationToken));
         var entries = await FetchEntriesAsync(source, cancellationToken);
         var mediaType = source.MediaType == "tv" ? "tv" : "movies";
-        var exclusions = await platformSettingsRepository.ListActiveIntakeListExclusionsAsync(source.Id, cancellationToken);
+        var exclusions = await intakeRepository.ListActiveIntakeListExclusionsAsync(source.Id, cancellationToken);
         var excludedKeys = exclusions.ToDictionary(item => item.EntryKey, item => item, StringComparer.OrdinalIgnoreCase);
         var known = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
@@ -159,7 +162,7 @@ public sealed class IntakeSyncService(
 
     public async Task<IntakeSyncRunResult> RunAsync(string sourceId, string? relatedJobId, bool manual, CancellationToken cancellationToken)
     {
-        var source = await platformSettingsRepository.GetIntakeSourceAsync(sourceId, cancellationToken);
+        var source = await intakeRepository.GetIntakeSourceAsync(sourceId, cancellationToken);
         if (source is null)
         {
             throw new InvalidOperationException("Intake source not found.");
@@ -183,7 +186,7 @@ public sealed class IntakeSyncService(
             throw new InvalidOperationException($"Choose no more than {PreviewLimit} preview entries at a time.");
         }
 
-        var source = await platformSettingsRepository.GetIntakeSourceAsync(sourceId, cancellationToken)
+        var source = await intakeRepository.GetIntakeSourceAsync(sourceId, cancellationToken)
             ?? throw new InvalidOperationException("Import list not found.");
         var selectedKeys = request.Entries
             .Where(item => !string.IsNullOrWhiteSpace(item.Title))
@@ -241,7 +244,7 @@ public sealed class IntakeSyncService(
         if (targetLibrary is null)
         {
             var failureSummary = "No compatible target library exists for this source media type.";
-            await platformSettingsRepository.RecordIntakeSourceSyncResultAsync(source.Id, timeProvider.GetUtcNow(), "error", failureSummary, cancellationToken);
+            await intakeRepository.RecordIntakeSourceSyncResultAsync(source.Id, timeProvider.GetUtcNow(), "error", failureSummary, cancellationToken);
             await activityFeedRepository.RecordActivityAsync(
                 "intake.sync.failed",
                 $"{source.Name} sync failed: {failureSummary}",
@@ -269,7 +272,7 @@ public sealed class IntakeSyncService(
             {
                 logger.LogWarning(ex, "Intake source {SourceId} fetch failed.", source.Id);
                 var failureSummary = $"Provider fetch failed: {ex.Message}";
-                await platformSettingsRepository.RecordIntakeSourceSyncResultAsync(source.Id, timeProvider.GetUtcNow(), "error", failureSummary, cancellationToken);
+                await intakeRepository.RecordIntakeSourceSyncResultAsync(source.Id, timeProvider.GetUtcNow(), "error", failureSummary, cancellationToken);
                 await activityFeedRepository.RecordActivityAsync(
                     "intake.sync.failed",
                     $"{source.Name} sync failed during fetch.",
@@ -304,7 +307,7 @@ public sealed class IntakeSyncService(
         }
 
         var skipReasons = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        var excludedKeys = (await platformSettingsRepository.ListActiveIntakeListExclusionsAsync(source.Id, cancellationToken))
+        var excludedKeys = (await intakeRepository.ListActiveIntakeListExclusionsAsync(source.Id, cancellationToken))
             .Select(item => item.EntryKey)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var skipped = 0;
@@ -422,7 +425,7 @@ public sealed class IntakeSyncService(
                     duplicates++;
                 }
 
-                await platformSettingsRepository.RecordIntakeTitleOriginAsync(
+                await intakeRepository.RecordIntakeTitleOriginAsync(
                     new CreateIntakeTitleOriginRequest(
                         source.Id,
                         source.Name,
@@ -514,7 +517,7 @@ public sealed class IntakeSyncService(
             : "success";
         var summary = $"Fetched {entries.Count}, added {added}, duplicates {duplicates}, skipped {skipped}, errors {errors}.";
 
-        await platformSettingsRepository.RecordIntakeSourceSyncResultAsync(source.Id, timeProvider.GetUtcNow(), status, summary, cancellationToken);
+        await intakeRepository.RecordIntakeSourceSyncResultAsync(source.Id, timeProvider.GetUtcNow(), status, summary, cancellationToken);
         await activityFeedRepository.RecordActivityAsync(
             "intake.sync.completed",
             $"{source.Name} sync completed ({status}). {summary}",

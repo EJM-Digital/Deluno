@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace Deluno.Platform.Intake;
+namespace Deluno.Intake;
 
 /// <summary>
 /// Keeps the supported import-list providers explicit. This is deliberately

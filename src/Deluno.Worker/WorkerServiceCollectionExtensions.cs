@@ -1,6 +1,6 @@
 using Deluno.Worker.Services;
 using Deluno.Worker.Intake;
-using Deluno.Platform.Contracts;
+using Deluno.Intake.Contracts;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Deluno.Worker;

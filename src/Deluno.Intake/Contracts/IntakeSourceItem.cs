@@ -1,4 +1,4 @@
-namespace Deluno.Platform.Contracts;
+namespace Deluno.Intake.Contracts;
 
 public sealed record IntakeSourceItem(
     string Id,

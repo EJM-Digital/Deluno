@@ -1,5 +1,7 @@
 using Deluno.Infrastructure.Storage.Migrations;
 using Deluno.Persistence.Tests.Support;
+using Deluno.Intake.Contracts;
+using Deluno.Intake.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -24,6 +26,10 @@ public sealed class IntakeSourcePersistenceTests
             timeProvider,
             TestSecretProtection.Create(storage));
 
+        var intakeRepository = new SqliteIntakeRepository(
+            storage.Factory,
+            timeProvider);
+
         var movieLibrary = await repository.CreateLibraryAsync(
             new CreateLibraryRequest(
                 Name: "Test Movies",
@@ -45,7 +51,7 @@ public sealed class IntakeSourcePersistenceTests
                 MaxItemsPerRun: 25),
             CancellationToken.None);
 
-        var created = await repository.CreateIntakeSourceAsync(
+        var created = await intakeRepository.CreateIntakeSourceAsync(
             new CreateIntakeSourceRequest(
                 Name: "IMDb Watchlist",
                 Provider: "imdb",
@@ -74,7 +80,7 @@ public sealed class IntakeSourcePersistenceTests
         Assert.Null(created.LastSyncUtc);
         Assert.Equal("never", created.LastSyncStatus);
 
-        var updated = await repository.UpdateIntakeSourceAsync(
+        var updated = await intakeRepository.UpdateIntakeSourceAsync(
             created.Id,
             new UpdateIntakeSourceRequest(
                 Name: created.Name,
@@ -103,7 +109,7 @@ public sealed class IntakeSourcePersistenceTests
         Assert.Equal("adult", updated.Audience);
         Assert.Equal(6, updated.SyncIntervalHours);
 
-        var synced = await repository.RecordIntakeSourceSyncResultAsync(
+        var synced = await intakeRepository.RecordIntakeSourceSyncResultAsync(
             created.Id,
             DateTimeOffset.Parse("2026-05-14T05:00:00Z"),
             "success",

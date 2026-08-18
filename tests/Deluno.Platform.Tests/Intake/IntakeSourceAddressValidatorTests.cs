@@ -1,4 +1,4 @@
-using Deluno.Platform.Intake;
+using Deluno.Intake;
 
 namespace Deluno.Platform.Tests.Intake;
 

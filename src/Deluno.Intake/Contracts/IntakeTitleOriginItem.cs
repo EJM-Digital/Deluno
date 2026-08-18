@@ -1,4 +1,4 @@
-namespace Deluno.Platform.Contracts;
+namespace Deluno.Intake.Contracts;
 
 /// <summary>
 /// Records why a title came into Deluno from an import list. The source name

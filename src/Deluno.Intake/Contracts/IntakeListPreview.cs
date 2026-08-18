@@ -1,4 +1,4 @@
-namespace Deluno.Platform.Contracts;
+namespace Deluno.Intake.Contracts;
 
 /// <summary>
 /// Read-only result of fetching an import list. Preview is deliberately separate

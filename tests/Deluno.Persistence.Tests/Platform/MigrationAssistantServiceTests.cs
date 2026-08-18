@@ -1,5 +1,6 @@
 using Deluno.Infrastructure.Storage.Migrations;
 using Deluno.Persistence.Tests.Support;
+using Deluno.Intake.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Deluno.Platform.Migration;
@@ -231,7 +232,7 @@ public sealed class MigrationAssistantServiceTests
         var platform = new SqlitePlatformSettingsRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
         var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
         var series = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
-        var service = new MigrationAssistantService(platform,
+        var service = new MigrationAssistantService(platform, CreateIntakeRepository(storage),
         [
             new MovieMigrationCatalogImporter(movies),
             new SeriesMigrationCatalogImporter(series)
@@ -279,7 +280,7 @@ public sealed class MigrationAssistantServiceTests
         using var storage = TestStorage.Create();
         await CreateServiceAsync(storage);
         var repository = CreateRepository(storage);
-        var failingService = new MigrationAssistantService(repository, [new ThrowingCatalogImporter()]);
+        var failingService = new MigrationAssistantService(repository, CreateIntakeRepository(storage), [new ThrowingCatalogImporter()]);
 
         var failed = await failingService.ApplyAsync(CreateRadarrRequest(), CancellationToken.None);
 
@@ -289,7 +290,7 @@ public sealed class MigrationAssistantServiceTests
         Assert.Contains(failedAudit.Applied, item => item.Result == "failed");
         Assert.Contains(failedAudit.ResultReport.Errors, error => error.Contains("retry", StringComparison.OrdinalIgnoreCase));
 
-        var retry = await new MigrationAssistantService(repository).ApplyAsync(CreateRadarrRequest(), CancellationToken.None);
+        var retry = await new MigrationAssistantService(repository, CreateIntakeRepository(storage)).ApplyAsync(CreateRadarrRequest(), CancellationToken.None);
 
         Assert.Empty(retry.Report.Errors);
         Assert.Empty(retry.Applied);
@@ -366,7 +367,14 @@ public sealed class MigrationAssistantServiceTests
             new SqliteDatabaseMigrator(storage.Factory, timeProvider),
             NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
 
-        return new MigrationAssistantService(CreateRepository(storage));
+        return new MigrationAssistantService(CreateRepository(storage), CreateIntakeRepository(storage));
+    }
+
+    private static SqliteIntakeRepository CreateIntakeRepository(TestStorage storage)
+    {
+        return new SqliteIntakeRepository(
+            storage.Factory,
+            new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T00:00:00Z")));
     }
 
     private static SqlitePlatformSettingsRepository CreateRepository(TestStorage storage)

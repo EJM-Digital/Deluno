@@ -8,6 +8,7 @@
     <Project Path="src/Deluno.Filesystem/Deluno.Filesystem.csproj" />
     <Project Path="src/Deluno.Host/Deluno.Host.csproj" />
     <Project Path="src/Deluno.Infrastructure/Deluno.Infrastructure.csproj" />
+    <Project Path="src/Deluno.Intake/Deluno.Intake.csproj" />
     <Project Path="src/Deluno.Integrations/Deluno.Integrations.csproj" />
     <Project Path="src/Deluno.Jobs/Deluno.Jobs.csproj" />
     <Project Path="src/Deluno.Movies/Deluno.Movies.csproj" />

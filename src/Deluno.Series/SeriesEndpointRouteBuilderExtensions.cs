@@ -3,6 +3,8 @@ using System.Text.Json;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Jobs.Decisions;
+using Deluno.Intake.Contracts;
+using Deluno.Intake.Data;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.Search;
 using Deluno.Integrations.Metadata;
@@ -1006,6 +1008,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             BulkSeriesRequest request,
             ISeriesCatalogRepository repository,
             IPlatformSettingsRepository platformSettingsRepository,
+            [FromServices] IIntakeRepository intakeRepository,
             IJobScheduler jobScheduler,
             IJobQueueRepository jobQueueRepository,
             IActivityFeedRepository activityFeedRepository,
@@ -1058,6 +1061,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                                 request,
                                 repository,
                                 platformSettingsRepository,
+                                intakeRepository,
                                 jobQueueRepository,
                                 activityFeedRepository,
                                 cancellationToken);
@@ -2169,6 +2173,7 @@ public static class SeriesEndpointRouteBuilderExtensions
         BulkSeriesRequest request,
         ISeriesCatalogRepository repository,
         IPlatformSettingsRepository platformSettingsRepository,
+        IIntakeRepository intakeRepository,
         IJobQueueRepository jobQueueRepository,
         IActivityFeedRepository activityFeedRepository,
         CancellationToken cancellationToken)
@@ -2200,14 +2205,14 @@ public static class SeriesEndpointRouteBuilderExtensions
 
         if (request.AddImportListExclusion)
         {
-            var origins = await platformSettingsRepository.ListIntakeTitleOriginsAsync("tv", series.Id, cancellationToken);
+            var origins = await intakeRepository.ListIntakeTitleOriginsAsync("tv", series.Id, cancellationToken);
             var exclusionsAdded = 0;
             var exclusionWarnings = new List<string>();
             foreach (var origin in origins.GroupBy(item => item.SourceId, StringComparer.OrdinalIgnoreCase).Select(group => group.First()))
             {
                 try
                 {
-                    var exclusion = await platformSettingsRepository.CreateIntakeListExclusionAsync(
+                    var exclusion = await intakeRepository.CreateIntakeListExclusionAsync(
                         origin.SourceId,
                         new CreateIntakeListExclusionRequest(series.Title, series.StartYear, series.ImdbId, null),
                         cancellationToken);

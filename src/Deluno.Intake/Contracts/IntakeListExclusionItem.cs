@@ -1,4 +1,4 @@
-namespace Deluno.Platform.Contracts;
+namespace Deluno.Intake.Contracts;
 
 /// <summary>
 /// A durable decision not to add one entry from an import list. It only affects
