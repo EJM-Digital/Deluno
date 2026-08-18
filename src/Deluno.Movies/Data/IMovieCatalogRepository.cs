@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Deluno.Movies.Contracts;
 
 namespace Deluno.Movies.Data;
@@ -156,4 +157,31 @@ public interface IMovieCatalogRepository
 
     /// <summary>Update quality profile for a movie</summary>
     Task<bool> UpdateQualityProfileAsync(string movieId, string qualityProfileId, CancellationToken cancellationToken);
+
+    /// <summary>Store the provider's cinema, digital and physical release dates.</summary>
+    Task<bool> UpdateReleaseDatesAsync(
+        string movieId,
+        DateOnly? inCinemas,
+        DateOnly? digital,
+        DateOnly? physical,
+        CancellationToken cancellationToken);
+
+    /// <summary>Set when Deluno may start searching: announced, inCinemas or released.</summary>
+    Task<bool> UpdateMinimumAvailabilityAsync(
+        string movieId,
+        string minimumAvailability,
+        CancellationToken cancellationToken);
+
+    /// <summary>Films with a cinema, digital or physical release inside a window.</summary>
+    Task<IReadOnlyList<MovieCalendarItem>> ListCalendarMoviesAsync(
+        DateOnly fromDate,
+        DateOnly toDate,
+        int take,
+        CancellationToken cancellationToken);
+
+    /// <summary>Per-day counts for the dashboard, straight from stored timestamps.</summary>
+    Task<MediaDailyMetrics> GetDailyMetricsAsync(
+        DateOnly fromDate,
+        DateOnly toDate,
+        CancellationToken cancellationToken);
 }

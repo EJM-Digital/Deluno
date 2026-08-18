@@ -3,10 +3,33 @@ import test from "node:test";
 import {
   buildCacheKey,
   enforceRateLimit,
+  lookupMovieReleaseDates,
+  lookupSeriesCatalogue,
   lookupTmdb,
   mapTmdbResult,
+  matchRoute,
   parseLookup
 } from "../src/index.js";
+
+/** Minimal TMDb stand-in: answers by URL path, counts the calls it received. */
+function stubTmdb(routes) {
+  const calls = [];
+  return {
+    calls,
+    fetch: async (url) => {
+      const path = new URL(url).pathname;
+      calls.push(path);
+      const body = routes[path];
+      if (body === undefined) {
+        return { ok: false, status: 404, json: async () => ({}) };
+      }
+      if (typeof body === "number") {
+        return { ok: false, status: body, json: async () => ({}) };
+      }
+      return { ok: true, status: 200, json: async () => body };
+    }
+  };
+}
 
 test("validates the public lookup contract", () => {
   assert.equal(parseLookup(new URLSearchParams("mediaType=movies&query=The+Matrix&year=1999")).value.query, "The Matrix");
@@ -74,4 +97,86 @@ test("searches TMDb once and returns card-ready results without a detail fan-out
   assert.equal(results[0].providerId, "603");
   assert.equal(results[0].posterUrl, "https://image.tmdb.org/t/p/w500/poster.jpg");
   assert.equal(calls.length, 1);
+});
+
+test("routes the catalogue and release-date endpoints, and nothing else", () => {
+  assert.deepEqual(matchRoute("/metadata/search"), { kind: "search" });
+  assert.deepEqual(matchRoute("/metadata/tv/1396/catalogue"), { kind: "catalogue", id: "1396" });
+  assert.deepEqual(matchRoute("/metadata/movie/78/release-dates"), { kind: "release-dates", id: "78" });
+  assert.equal(matchRoute("/metadata/tv/abc/catalogue"), null);
+  assert.equal(matchRoute("/metadata/tv/1396/catalogue/extra"), null);
+  assert.equal(matchRoute("/metadata/anything"), null);
+});
+
+test("builds a season/episode catalogue so an episode is known before a file is", async () => {
+  const tmdb = stubTmdb({
+    "/3/tv/1396": { seasons: [{ season_number: 0 }, { season_number: 1 }, { season_number: 2 }] },
+    "/3/tv/1396/season/0": { name: "Specials", air_date: "2009-02-17", episodes: [] },
+    "/3/tv/1396/season/1": {
+      name: "Season 1",
+      air_date: "2008-01-20",
+      episodes: [
+        { episode_number: 1, name: "Pilot", overview: "  A teacher.  ", air_date: "2008-01-20" },
+        { episode_number: 2, name: "  ", overview: null, air_date: null }
+      ]
+    },
+    "/3/tv/1396/season/2": { name: "Season 2", air_date: "2009-03-08", episodes: [{ episode_number: 1, name: "Seven Thirty-Seven", air_date: "2009-03-08" }] }
+  });
+
+  const result = await lookupSeriesCatalogue("1396", "key", tmdb.fetch);
+
+  assert.equal(result.seasonCount, 3);
+  assert.equal(result.episodeCount, 3);
+  const [, first] = result.seasons;
+  assert.equal(first.seasonNumber, 1);
+  assert.equal(first.episodes[0].title, "Pilot");
+  assert.equal(first.episodes[0].overview, "A teacher.");
+  assert.equal(first.episodes[0].airDate, "2008-01-20");
+  // A blank title and a missing air date become null rather than empty strings.
+  assert.equal(first.episodes[1].title, null);
+  assert.equal(first.episodes[1].airDate, null);
+  // One request per season plus the series itself, done here rather than by the app.
+  assert.equal(tmdb.calls.length, 4);
+});
+
+test("keeps the rest of a catalogue when one season is unavailable", async () => {
+  const tmdb = stubTmdb({
+    "/3/tv/9": { seasons: [{ season_number: 1 }, { season_number: 2 }] },
+    "/3/tv/9/season/1": { name: "Season 1", episodes: [{ episode_number: 1, name: "One", air_date: "2020-01-01" }] },
+    "/3/tv/9/season/2": 404
+  });
+
+  const result = await lookupSeriesCatalogue("9", "key", tmdb.fetch);
+  assert.equal(result.seasonCount, 1);
+  assert.equal(result.seasons[0].episodes[0].title, "One");
+});
+
+test("takes the earliest date of each release type and ignores festival premieres", async () => {
+  const tmdb = stubTmdb({
+    "/3/movie/78/release_dates": {
+      results: [
+        { iso_3166_1: "US", release_dates: [
+          { type: 1, release_date: "1982-08-01T00:00:00.000Z" },
+          { type: 3, release_date: "1982-09-09T00:00:00.000Z" },
+          { type: 5, release_date: "2017-11-13T00:00:00.000Z" }
+        ] },
+        { iso_3166_1: "GB", release_dates: [
+          { type: 3, release_date: "1982-09-03T00:00:00.000Z" },
+          { type: 4, release_date: "2007-12-18T00:00:00.000Z" }
+        ] }
+      ]
+    }
+  });
+
+  const result = await lookupMovieReleaseDates("78", "key", tmdb.fetch);
+
+  assert.equal(result.inCinemas, "1982-09-03");
+  assert.equal(result.digital, "2007-12-18");
+  assert.equal(result.physical, "2017-11-13");
+});
+
+test("reports no dates rather than guessing when TMDb has none", async () => {
+  const tmdb = stubTmdb({ "/3/movie/1/release_dates": { results: [] } });
+  const result = await lookupMovieReleaseDates("1", "key", tmdb.fetch);
+  assert.deepEqual([result.inCinemas, result.digital, result.physical], [null, null, null]);
 });

@@ -75,6 +75,47 @@ public static class SeriesEndpointRouteBuilderExtensions
             return Results.Ok(items);
         });
 
+        series.MapGet("/episodes/wanted", async (
+            int? take,
+            ISeriesCatalogRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var items = await repository.ListWantedEpisodesAsync(Math.Clamp(take ?? 200, 1, 1000), cancellationToken);
+            return Results.Ok(items);
+        });
+
+        series.MapGet("/calendar", async (
+            DateTimeOffset? from,
+            DateTimeOffset? to,
+            int? take,
+            ISeriesCatalogRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var start = from ?? DateTimeOffset.UtcNow.AddDays(-7);
+            var end = to ?? start.AddDays(35);
+            if (end <= start)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["to"] = ["The end of the window must be after the start."]
+                });
+            }
+
+            // A wide window over a full catalogue is a lot of rows; cap it so a
+            // calendar request can never turn into a table scan of every episode.
+            if ((end - start).TotalDays > 400)
+            {
+                end = start.AddDays(400);
+            }
+
+            var items = await repository.ListCalendarEpisodesAsync(
+                start,
+                end,
+                Math.Clamp(take ?? 500, 1, 2000),
+                cancellationToken);
+            return Results.Ok(items);
+        });
+
         series.MapGet("/search-history", async (ISeriesCatalogRepository repository, CancellationToken cancellationToken) =>
         {
             var items = await repository.ListSearchHistoryAsync(cancellationToken);
@@ -493,6 +534,14 @@ public static class SeriesEndpointRouteBuilderExtensions
             }
 
             var updated = await ApplyMetadataAsync(repository, item.Id, match, cancellationToken);
+            await SyncCatalogueAsync(
+                repository,
+                metadataProvider,
+                activityFeedRepository,
+                item.Id,
+                item.Title,
+                match.ProviderId,
+                cancellationToken);
             await activityFeedRepository.RecordActivityAsync(
                 "metadata.series.refreshed",
                 $"{item.Title} metadata was refreshed from {match.Provider.ToUpperInvariant()}.",
@@ -545,6 +594,14 @@ public static class SeriesEndpointRouteBuilderExtensions
             }
 
             var updated = await ApplyMetadataAsync(repository, item.Id, match, cancellationToken);
+            await SyncCatalogueAsync(
+                repository,
+                metadataProvider,
+                activityFeedRepository,
+                item.Id,
+                item.Title,
+                match.ProviderId,
+                cancellationToken);
             await activityFeedRepository.RecordActivityAsync(
                 "metadata.series.linked",
                 $"{item.Title} metadata was linked to {match.Provider.ToUpperInvariant()} item {match.ProviderId}.",
@@ -614,14 +671,17 @@ public static class SeriesEndpointRouteBuilderExtensions
                 item.Id,
                 item.MetadataProvider ?? "manual",
                 item.MetadataProviderId ?? item.ImdbId ?? item.Id,
-                string.IsNullOrWhiteSpace(request.OriginalTitle) ? item.OriginalTitle : request.OriginalTitle.Trim(),
-                string.IsNullOrWhiteSpace(request.Overview) ? item.Overview : request.Overview.Trim(),
-                string.IsNullOrWhiteSpace(request.PosterUrl) ? item.PosterUrl : request.PosterUrl.Trim(),
-                string.IsNullOrWhiteSpace(request.BackdropUrl) ? item.BackdropUrl : request.BackdropUrl.Trim(),
-                request.Rating ?? item.Rating,
-                string.IsNullOrWhiteSpace(request.Genres) ? item.Genres : request.Genres.Trim(),
-                string.IsNullOrWhiteSpace(request.ExternalUrl) ? item.ExternalUrl : request.ExternalUrl.Trim(),
-                string.IsNullOrWhiteSpace(request.ImdbId) ? item.ImdbId : request.ImdbId.Trim(),
+                // PUT replaces the override set: a field that arrives blank clears the
+                // stored value. Treating blank as "keep" made a manual override
+                // impossible to undo — you could only replace it with other text.
+                NormalizeOverride(request.OriginalTitle),
+                NormalizeOverride(request.Overview),
+                NormalizeOverride(request.PosterUrl),
+                NormalizeOverride(request.BackdropUrl),
+                request.Rating,
+                NormalizeOverride(request.Genres),
+                NormalizeOverride(request.ExternalUrl),
+                NormalizeOverride(request.ImdbId),
                 JsonSerializer.Serialize(new
                 {
                     kind = "manual-metadata-override",
@@ -1952,6 +2012,76 @@ public static class SeriesEndpointRouteBuilderExtensions
         });
 
         return endpoints;
+    }
+
+    /// <summary>Blank means "no override", so it is stored as null rather than kept.</summary>
+    private static string? NormalizeOverride(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    /// <summary>
+    /// Pull the provider's season/episode list in after a match is applied.
+    ///
+    /// This is what makes the library a model of the show rather than a mirror of
+    /// the folder: episodes exist, and carry their title and air date, before any
+    /// file for them does. A provider that cannot answer leaves the inventory
+    /// exactly as it was.
+    /// </summary>
+    private static async Task<SeriesCatalogueSyncResult> SyncCatalogueAsync(
+        ISeriesCatalogRepository repository,
+        IMetadataProvider metadataProvider,
+        IActivityFeedRepository activityFeedRepository,
+        string seriesId,
+        string seriesTitle,
+        string? providerId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(providerId))
+        {
+            return SeriesCatalogueSyncResult.None;
+        }
+
+        IReadOnlyList<MetadataSeason> seasons;
+        try
+        {
+            seasons = await metadataProvider.GetSeriesCatalogueAsync(providerId, cancellationToken);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            // A catalogue that cannot be fetched must never fail the metadata
+            // request that triggered it — the title itself linked fine.
+            return SeriesCatalogueSyncResult.None;
+        }
+
+        var episodes = seasons
+            .SelectMany(season => season.Episodes)
+            .Select(episode => new CatalogueEpisodeItem(
+                episode.SeasonNumber,
+                episode.EpisodeNumber,
+                episode.Title,
+                episode.Overview,
+                episode.AirDateUtc))
+            .ToArray();
+
+        if (episodes.Length == 0)
+        {
+            return SeriesCatalogueSyncResult.None;
+        }
+
+        var result = await repository.SyncEpisodeCatalogueAsync(seriesId, episodes, "tmdb", cancellationToken);
+
+        if (result.AddedCount > 0)
+        {
+            await activityFeedRepository.RecordActivityAsync(
+                "metadata.series.catalogue",
+                $"Deluno learned {result.AddedCount} more episode{(result.AddedCount == 1 ? "" : "s")} of {seriesTitle} from the metadata provider.",
+                JsonSerializer.Serialize(result),
+                null,
+                "series",
+                seriesId,
+                cancellationToken);
+        }
+
+        return result;
     }
 
     private static Dictionary<string, string[]> Validate(CreateSeriesRequest request)

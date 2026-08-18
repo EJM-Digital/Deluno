@@ -1,1 +1,1 @@
-export { indexersLoader, IndexersPage } from "./indexers-screen";
+export { indexersLoader, IndexersPage } from "./connections-screen";

@@ -1,336 +1,241 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+/**
+ * Tags — list → drawer. Contracts: GET/POST /api/tags, PUT/DELETE /api/tags/{id}.
+ */
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
-import { LoaderCircle, PencilLine, Trash2 } from "lucide-react";
-import { SettingsShell } from "../components/app/settings-shell";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
-import { Input } from "../components/ui/input";
+import { Plus } from "lucide-react";
 import { Button } from "../components/ui/button";
-import { InputDescription } from "../components/ui/input-description";
-import { EmptyState } from "../components/shell/empty-state";
-import { emptyPlatformSettingsSnapshot, fetchJson, type LibraryItem, type PlatformSettingsSnapshot, type QualityProfileItem, type TagItem } from "../lib/api";
+import { ConfirmDialog } from "../components/ui/confirm-dialog";
+import { Drawer, DrawerDanger, DrawerFooter, DrawerSection, type DrawerSaveState } from "../components/ui/drawer";
+import { Field, FieldRow } from "../components/ui/field";
+import { Input } from "../components/ui/input";
+import { ListCard, ListCell, ListEmpty, ListRow, ListTable } from "../components/ui/list-card";
+import { PageToolbar } from "../components/ui/page-toolbar";
+import { Select } from "../components/ui/select";
+import { Textarea } from "../components/ui/textarea";
+import { toast } from "../components/shell/toaster";
+import { librarySetupNavItems } from "../components/app/settings-shell";
+import { fetchJson, type LibraryItem, type PlatformSettingsSnapshot, type QualityProfileItem, type TagItem } from "../lib/api";
 import { settingsOverviewLoader } from "./settings-overview-page";
 import { authedFetch } from "../lib/use-auth";
-import { RouteSkeleton } from "../components/shell/skeleton";
+import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
+import { cn } from "../lib/utils";
 
-interface SettingsOverviewLoaderData {
+const COLORS = ["slate", "emerald", "teal", "blue", "violet", "amber", "rose"] as const;
+
+interface LoaderData {
   libraries: LibraryItem[];
   qualityProfiles: QualityProfileItem[];
   settings: PlatformSettingsSnapshot;
-}
-
-interface SettingsTagsLoaderData extends SettingsOverviewLoaderData {
   tags: TagItem[];
 }
 
-export async function settingsTagsLoader(): Promise<SettingsTagsLoaderData> {
-  const [overview, tags] = await Promise.all([
-    settingsOverviewLoader(),
-    fetchJson<TagItem[]>("/api/tags")
-  ]);
+interface TagForm {
+  name: string;
+  color: string;
+  description: string;
+}
 
+type DrawerMode = { kind: "closed" } | { kind: "create" } | { kind: "edit"; id: string };
+
+export async function settingsTagsLoader(): Promise<LoaderData> {
+  const [overview, tags] = await Promise.all([settingsOverviewLoader(), fetchJson<TagItem[]>("/api/tags")]);
   return { ...overview, tags };
 }
 
 export function SettingsTagsPage() {
-  const loaderData = useLoaderData() as SettingsTagsLoaderData | undefined;
-  if (!loaderData) return <RouteSkeleton />;
-  const { libraries, tags } = loaderData;
+  const { tags } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [formState, setFormState] = useState<Record<string, TagItem>>(
-    Object.fromEntries(tags.map((tag) => [tag.id, tag]))
-  );
-  const [createForm, setCreateForm] = useState({ name: "", color: "slate", description: "" });
-  const [busyKey, setBusyKey] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const sorted = useMemo(() => [...tags].sort((a, b) => a.name.localeCompare(b.name)), [tags]);
 
-  async function handleCreate(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setBusyKey("create");
-    setMessage(null);
+  const [mode, setMode] = useState<DrawerMode>({ kind: "closed" });
+  const [form, setForm] = useState<TagForm>(emptyForm);
+  const [initialForm, setInitialForm] = useState<TagForm>(emptyForm);
+  const [saveState, setSaveState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [busy, setBusy] = useState(false);
 
-    try {
-      const response = await authedFetch("/api/tags", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(createForm)
-      });
+  const isOpen = mode.kind !== "closed";
+  const editing = mode.kind === "edit" ? tags.find((tag) => tag.id === mode.id) ?? null : null;
+  const dirty = isOpen && (form.name !== initialForm.name || form.color !== initialForm.color || form.description !== initialForm.description);
+  const footerState: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
+  const blocker = useUnsavedChanges(dirty);
+  useEffect(() => {
+    if (dirty && (saveState === "saved" || saveState === "error")) setSaveState(undefined);
+  }, [dirty, saveState]);
 
-      if (!response.ok) {
-        throw new Error("Tag could not be created.");
-      }
-
-      setCreateForm({ name: "", color: createForm.color, description: "" });
-      setMessage("Tag created.");
-      revalidator.revalidate();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Tag could not be created.");
-    } finally {
-      setBusyKey(null);
-    }
+  function open(tag: TagItem | null) {
+    const next = tag ? { name: tag.name, color: tag.color, description: tag.description ?? "" } : emptyForm();
+    setMode(tag ? { kind: "edit", id: tag.id } : { kind: "create" });
+    setForm(next);
+    setInitialForm(next);
+    setSaveState(undefined);
+    setNameError(null);
+  }
+  function closeDrawer() {
+    setMode({ kind: "closed" });
+    setConfirmDiscard(false);
+  }
+  function requestClose() {
+    if (dirty) setConfirmDiscard(true);
+    else closeDrawer();
   }
 
-  async function handleSave(id: string) {
-    const tag = formState[id];
-    if (!tag) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!isOpen || busy) return;
+    if (!form.name.trim()) {
+      setNameError("Give the tag a name.");
       return;
     }
-
-    setBusyKey(`save:${id}`);
-    setMessage(null);
-
+    setBusy(true);
+    setSaveState("saving");
     try {
-      const response = await authedFetch(`/api/tags/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: tag.name,
-          color: tag.color,
-          description: tag.description
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error("Tag could not be updated.");
+      const payload = { name: form.name.trim(), color: form.color, description: form.description.trim() };
+      const response = await authedFetch(mode.kind === "edit" ? `/api/tags/${mode.id}` : "/api/tags", { method: mode.kind === "edit" ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      if (!response.ok) throw new Error(mode.kind === "edit" ? "Tag could not be saved." : "Tag could not be created.");
+      if (mode.kind === "create") {
+        const created = (await response.json()) as TagItem;
+        setMode({ kind: "edit", id: created.id });
+        setSaveMessage("Tag created");
+      } else {
+        setSaveMessage("Saved just now");
       }
-
-      setEditingId(null);
-      setMessage("Tag updated.");
+      setForm(payload);
+      setInitialForm(payload);
+      setSaveState("saved");
       revalidator.revalidate();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Tag could not be updated.");
+      setSaveState("error");
+      setSaveMessage(error instanceof Error ? error.message : "Could not save");
     } finally {
-      setBusyKey(null);
+      setBusy(false);
     }
   }
 
-  async function handleDelete(id: string) {
-    setBusyKey(`delete:${id}`);
-    setMessage(null);
-
+  async function handleRemove() {
+    if (mode.kind !== "edit") return;
+    setBusy(true);
     try {
-      const response = await authedFetch(`/api/tags/${id}`, { method: "DELETE" });
-      if (!response.ok && response.status !== 204) {
-        throw new Error("Tag could not be removed.");
-      }
-
-      setMessage("Tag removed.");
+      const response = await authedFetch(`/api/tags/${mode.id}`, { method: "DELETE" });
+      if (!response.ok && response.status !== 204) throw new Error("Tag could not be removed.");
+      toast.success(`${editing?.name ?? "Tag"} removed`);
+      setConfirmRemove(false);
+      setInitialForm(form);
+      closeDrawer();
       revalidator.revalidate();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Tag could not be removed.");
+      toast.error(error instanceof Error ? error.message : "Tag could not be removed.");
     } finally {
-      setBusyKey(null);
+      setBusy(false);
     }
   }
 
   return (
-    <SettingsShell
-      title="Tags"
-      description="Create a shared set of labels for the libraries, destination rules, and routing rules you organise together."
-    >
-      {message ? (
-        <div className="rounded-xl border border-hairline bg-surface-1 px-4 py-3 text-sm text-muted-foreground">
-          {message}
-        </div>
-      ) : null}
+    <div className="grid gap-[var(--page-gap)]">
+      <PageToolbar
+        tabs={librarySetupNavItems}
+        actions={
+          <Button type="button" onClick={() => open(null)}>
+            <Plus className="h-4 w-4" />
+            New tag
+          </Button>
+        }
+      />
 
-      <div className="settings-split settings-split-config-heavy">
-        <Card className="settings-panel order-2">
-          <CardHeader>
-            <CardTitle>Configured tags</CardTitle>
-            <CardDescription>Reusable labels saved for consistent use across your media setup.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {tags.length ? (
-              tags.map((tag) => {
-                const current = formState[tag.id] ?? tag;
-                const editing = editingId === tag.id;
-
-                return (
-                  <div key={tag.id} className="rounded-xl border border-hairline bg-surface-1 p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        {editing ? (
-                          <Input
-                            value={current.name}
-                            onChange={(event) =>
-                              setFormState((state) => ({
-                                ...state,
-                                [tag.id]: { ...current, name: event.target.value }
-                              }))
-                            }
-                          />
-                        ) : (
-                          <div className="flex items-center gap-3">
-                            <span className={`inline-flex h-3 w-3 rounded-full ${tagDotClass(current.color)}`} />
-                            <p className="font-display text-base font-semibold text-foreground">{current.name}</p>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <Button variant="ghost" size="icon" onClick={() => setEditingId(editing ? null : tag.id)}>
-                          <PencilLine className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => void handleDelete(tag.id)}
-                          disabled={busyKey === `delete:${tag.id}`}
-                        >
-                          {busyKey === `delete:${tag.id}` ? (
-                            <LoaderCircle className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                      <Field label="Color">
-                        {editing ? (
-                          <ColorSelect
-                            value={current.color}
-                            onChange={(value) =>
-                              setFormState((state) => ({
-                                ...state,
-                                [tag.id]: { ...current, color: value }
-                              }))
-                            }
-                          />
-                        ) : (
-                          <p className="text-sm text-muted-foreground">{current.color}</p>
-                        )}
-                      </Field>
-                      <Field label="Description">
-                        {editing ? (
-                          <Input
-                            value={current.description}
-                            onChange={(event) =>
-                              setFormState((state) => ({
-                                ...state,
-                                [tag.id]: { ...current, description: event.target.value }
-                              }))
-                            }
-                          />
-                        ) : (
-                          <p className="text-sm text-muted-foreground">
-                            {current.description || "No description yet"}
-                          </p>
-                        )}
-                      </Field>
-                    </div>
-
-                    {editing ? (
-                      <div className="mt-4">
-                        <Button onClick={() => void handleSave(tag.id)} disabled={busyKey === `save:${tag.id}`}>
-                          {busyKey === `save:${tag.id}` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-                          Save tag
-                        </Button>
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })
-            ) : (
-              <EmptyState
-                size="sm"
-                variant="custom"
-                title="No tags yet"
-                description="Tags let you group libraries, providers, and profiles under shared labels."
-              />
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="settings-panel order-1">
-          <CardHeader>
-            <CardTitle>Add tag</CardTitle>
-            <CardDescription>Use short, recognisable names so the same label means the same thing everywhere you use it.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-[var(--page-gap)]">
-            <form className="space-y-3" onSubmit={handleCreate}>
-              <Field label="Name" description="A short name for this tag, used across libraries, routing, and policies.">
-                <Input
-                  value={createForm.name}
-                  onChange={(event) => setCreateForm((state) => ({ ...state, name: event.target.value }))}
-                />
-              </Field>
-              <Field label="Color" description="Visual indicator to distinguish tags in lists and dropdowns.">
-                <ColorSelect
-                  value={createForm.color}
-                  onChange={(value) => setCreateForm((state) => ({ ...state, color: value }))}
-                />
-              </Field>
-              <Field label="Description" description="Optional explanation of this tag's purpose for team context.">
-                <Input
-                  value={createForm.description}
-                  onChange={(event) => setCreateForm((state) => ({ ...state, description: event.target.value }))}
-                />
-              </Field>
-              <Button type="submit" disabled={busyKey === "create"}>
-                {busyKey === "create" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-                Add tag
+      <ListCard title="Tags" count={tags.length ? `${tags.length} ${tags.length === 1 ? "tag" : "tags"}` : undefined}>
+        {tags.length === 0 ? (
+          <ListEmpty
+            title="No tags yet"
+            description="Labels shared by libraries, final destinations and routing — Kids, 4K, Anime, or a processor workflow. Add only the ones that make you manage media differently."
+            actions={
+              <Button type="button" size="sm" onClick={() => open(null)}>
+                <Plus className="h-3.5 w-3.5" />
+                New tag
               </Button>
-            </form>
+            }
+          />
+        ) : (
+          <ListTable columns={[{ label: "Name" }, { label: "Colour" }, { label: "Description", width: "minmax(0,2fr)" }]}>
+            {sorted.map((tag) => (
+              <ListRow key={tag.id} onClick={() => open(tag)} selected={mode.kind === "edit" && mode.id === tag.id}>
+                <div role="cell" className="flex min-w-0 items-center gap-2.5">
+                  <span aria-hidden className={cn("h-2.5 w-2.5 shrink-0 rounded-full", dotClass(tag.color))} />
+                  <span className="truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{tag.name}</span>
+                </div>
+                <ListCell primary={capitalise(tag.color)} />
+                <ListCell primary={tag.description || <span className="text-muted-foreground">—</span>} />
+              </ListRow>
+            ))}
+          </ListTable>
+        )}
+      </ListCard>
 
-            <div className="density-help space-y-3 text-muted-foreground">
-              <BacklogRow title="Start with a purpose" copy="Use tags for a clear distinction such as Kids, 4K, Anime, or a processor workflow." />
-              <BacklogRow title="Keep labels consistent" copy="Use the same spelling wherever a library, destination rule, or routing rule refers to that tag." />
-              <BacklogRow title="Keep the list focused" copy={`${libraries.length} library${libraries.length === 1 ? " is" : "ies are"} configured. Add only the labels that help you manage them differently.`} />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </SettingsShell>
-  );
-}
+      <Drawer
+        open={isOpen}
+        onOpenChange={(open) => {
+          if (!open) requestClose();
+        }}
+        title={mode.kind === "create" ? "New tag" : editing?.name ?? form.name}
+        description={mode.kind === "create" ? "A label shared by libraries, destinations and routing." : "Tag"}
+        onSubmit={handleSubmit}
+        footer={<DrawerFooter state={footerState} message={saveMessage} saveLabel={mode.kind === "create" ? "Create tag" : "Save tag"} onCancel={requestClose} disabled={busy} />}
+      >
+        <DrawerSection title="Basics">
+          <FieldRow>
+            <Field label="Name" error={nameError} help="Use the same spelling wherever a library or rule refers to it.">
+              <Input value={form.name} onChange={(event) => { setNameError(null); setForm((current) => ({ ...current, name: event.target.value })); }} placeholder="Kids" autoComplete="off" />
+            </Field>
+            <Field label="Colour">
+              <Select value={form.color} onChange={(event) => setForm((current) => ({ ...current, color: event.target.value }))} options={COLORS.map((color) => ({ value: color, label: capitalise(color) }))} />
+            </Field>
+          </FieldRow>
+          <Field label="Description" optional>
+            <Textarea value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} placeholder="What this tag is for." rows={2} />
+          </Field>
+        </DrawerSection>
+        {editing ? (
+          <DrawerSection>
+            <DrawerDanger title="Delete this tag" description="Anything referring to it simply loses the label." action={<Button type="button" variant="destructive" size="sm" onClick={() => setConfirmRemove(true)} disabled={busy}>Delete</Button>} />
+          </DrawerSection>
+        ) : null}
+      </Drawer>
 
-function Field({ children, label, description }: { children: ReactNode; label: string; description?: string }) {
-  return (
-    <div className="density-field rounded-xl border border-hairline bg-surface-1">
-      <p className="density-label uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
-      <div style={{ marginTop: "var(--field-label-gap)" }}>{children}</div>
-      {description && <InputDescription>{description}</InputDescription>}
+      <ConfirmDialog open={confirmRemove} onOpenChange={setConfirmRemove} title={`Delete “${editing?.name ?? form.name}”?`} description="Anything referring to this tag simply loses the label." confirmLabel="Delete tag" busy={busy} onConfirm={() => void handleRemove()} />
+      <ConfirmDialog
+        open={confirmDiscard || blocker.state === "blocked"}
+        onOpenChange={(open) => {
+          if (open) return;
+          setConfirmDiscard(false);
+          if (blocker.state === "blocked") blocker.reset();
+        }}
+        title="Discard unsaved changes?"
+        description="Your edits to this tag haven't been saved."
+        confirmLabel="Discard"
+        onConfirm={() => {
+          setConfirmDiscard(false);
+          if (blocker.state === "blocked") {
+            setMode({ kind: "closed" });
+            blocker.proceed();
+          } else {
+            closeDrawer();
+          }
+        }}
+      />
     </div>
   );
 }
 
-function ColorSelect({
-  value,
-  onChange
-}: {
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  const options = ["slate", "emerald", "teal", "blue", "violet", "amber", "rose"];
-
-  return (
-    <select
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      className="density-control-text h-[var(--control-height)] w-full rounded-xl border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none"
-    >
-      {options.map((option) => (
-        <option key={option} value={option}>
-          {option}
-        </option>
-      ))}
-    </select>
-  );
+function emptyForm(): TagForm {
+  return { name: "", color: "slate", description: "" };
 }
-
-function BacklogRow({ title, copy }: { title: string; copy: string }) {
-  return (
-    <div className="density-field rounded-xl border border-hairline bg-surface-1">
-      <p className="font-medium text-foreground">{title}</p>
-      <p className="mt-1">{copy}</p>
-    </div>
-  );
+function capitalise(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
-
-function tagDotClass(color: string) {
+function dotClass(color: string) {
   switch (color) {
     case "emerald":
       return "bg-emerald-500";

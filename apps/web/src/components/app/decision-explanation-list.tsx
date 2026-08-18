@@ -1,50 +1,122 @@
-import { Badge } from "../ui/badge";
+/**
+ * The decision trail, as one card on both detail pages.
+ *
+ * Every consequential thing Deluno does has to be explainable, so the row says
+ * what it decided and the drawer says why: the inputs it weighed, the outcome,
+ * and the alternatives it turned down with their scores.
+ */
+import { useState } from "react";
+import { Chip } from "../ui/chip";
+import { Drawer, DrawerFacts, DrawerFooter, DrawerSection } from "../ui/drawer";
+import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../ui/list-card";
 import type { DecisionExplanationItem } from "../../lib/api";
 
 export function DecisionExplanationList({ decisions }: { decisions: DecisionExplanationItem[] }) {
-  if (decisions.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        No recorded decisions yet. Searches, grabs, imports, and retries will appear here with their inputs and outcome.
-      </p>
-    );
-  }
+  const [openId, setOpenId] = useState<string | null>(null);
+  const open = decisions.find((item) => item.id === openId) ?? null;
+  const shown = decisions.slice(0, 12);
 
   return (
-    <div className="space-y-3">
-      {decisions.slice(0, 6).map((item) => (
-        <article key={item.id} className="rounded-xl border border-hairline bg-surface-1 p-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge>{item.scope}</Badge>
-            <Badge variant={statusVariant(item.status)}>{item.status}</Badge>
-          </div>
-          <p className="mt-3 text-sm font-medium leading-relaxed text-foreground">{item.reason}</p>
-          <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{item.outcome}</p>
-          {item.alternatives.length ? (
-            <div className="mt-3 space-y-2 border-t border-hairline pt-3">
-              {item.alternatives.slice(0, 3).map((alternative) => (
-                <div key={`${item.id}-${alternative.name}`} className="flex items-start justify-between gap-3 text-xs">
-                  <div>
-                    <p className="font-medium text-foreground">{alternative.name}</p>
-                    <p className="mt-0.5 text-muted-foreground">{alternative.reason}</p>
-                  </div>
-                  <span className="tabular shrink-0 text-muted-foreground">
-                    {alternative.score === null ? alternative.status : `${alternative.status} ${alternative.score}`}
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </article>
-      ))}
-    </div>
+    <>
+      <ListCard
+        title="Decision trail"
+        count={decisions.length ? `Latest ${shown.length} of ${decisions.length}` : undefined}
+      >
+        {shown.length === 0 ? (
+          <ListEmpty
+            title="No decisions recorded yet"
+            description="Searches, grabs, imports and retries land here with the inputs Deluno weighed and what it chose."
+          />
+        ) : (
+          <ListTable
+            columns={[
+              { label: "Decision" },
+              { label: "Scope", mobile: true },
+              { label: "When" },
+              { label: "Status", width: LIST_TRACK.status }
+            ]}
+          >
+            {shown.map((item) => (
+              <ListRow key={item.id} onClick={() => setOpenId(item.id)} selected={openId === item.id}>
+                {/* The engine sometimes records the same sentence as both reason and
+                    outcome; showing it twice in one row reads as a rendering fault. */}
+                <ListNameCell name={item.reason} sub={item.outcome === item.reason ? undefined : item.outcome} />
+                <ListCell primary={item.scope} mobile />
+                <ListCell primary={formatDateTime(item.occurredUtc)} />
+                <ListCell>
+                  <Chip tone={statusTone(item.status)}>{formatStatus(item.status)}</Chip>
+                </ListCell>
+              </ListRow>
+            ))}
+          </ListTable>
+        )}
+      </ListCard>
+
+      <Drawer
+        open={open !== null}
+        onOpenChange={(next) => {
+          if (!next) setOpenId(null);
+        }}
+        title={open?.reason ?? "Decision"}
+        description={open ? `${open.scope} · ${formatDateTime(open.occurredUtc)}` : undefined}
+        footer={
+          <DrawerFooter state="clean" readOnly saveLabel="Close" onCancel={() => setOpenId(null)} />
+        }
+      >
+        {open ? (
+          <>
+            <DrawerSection title="Outcome" aside={formatStatus(open.status)}>
+              <p className="text-[length:var(--type-body-sm)] leading-relaxed text-foreground">{open.outcome}</p>
+            </DrawerSection>
+
+            {Object.entries(open.inputs).filter(([, value]) => value).length ? (
+              <DrawerSection title="What it weighed">
+                <DrawerFacts
+                  items={Object.entries(open.inputs)
+                    .filter(([, value]) => value)
+                    .map(([label, value]) => ({ label, value: value as string }))}
+                />
+              </DrawerSection>
+            ) : null}
+
+            {open.alternatives.length ? (
+              <DrawerSection title="Alternatives" aside={`${open.alternatives.length} considered`}>
+                <DrawerFacts
+                  items={open.alternatives.map((alternative) => ({
+                    label: alternative.name,
+                    value: alternative.score === null ? alternative.status : `${alternative.status} · ${alternative.score}`
+                  }))}
+                />
+                <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">
+                  {open.alternatives[0]?.reason}
+                </p>
+              </DrawerSection>
+            ) : null}
+          </>
+        ) : null}
+      </Drawer>
+    </>
   );
 }
 
-function statusVariant(status: string): "success" | "warning" | "destructive" | "info" {
+function formatStatus(status: string) {
+  const spaced = status.replace(/[-_]/g, " ");
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+function statusTone(status: string): "ok" | "warn" | "bad" | "info" {
   const normalized = status.toLowerCase();
-  if (["completed", "matched", "sent", "requeued"].includes(normalized)) return "success";
-  if (["held", "checked", "planned", "started"].includes(normalized)) return "warning";
-  if (["failed", "dead-letter", "blocked"].includes(normalized)) return "destructive";
+  if (["completed", "matched", "sent", "requeued"].includes(normalized)) return "ok";
+  if (["held", "checked", "planned", "started"].includes(normalized)) return "warn";
+  if (["failed", "dead-letter", "blocked"].includes(normalized)) return "bad";
   return "info";
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(new Date(value));
 }

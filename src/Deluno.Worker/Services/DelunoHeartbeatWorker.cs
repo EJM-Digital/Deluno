@@ -1551,6 +1551,16 @@ public sealed class DelunoHeartbeatWorker(
             JsonSerializer.Serialize(match, PayloadJsonOptions),
             stoppingToken);
 
+        // Re-syncing the catalogue on the schedule is how an episode announced
+        // after the show was added ever becomes known. Without it the inventory
+        // is only as current as the day someone last pressed Refresh.
+        var catalogue = await SyncSeriesCatalogueAsync(
+            metadataProvider,
+            seriesCatalogRepository,
+            series.Id,
+            match.ProviderId,
+            stoppingToken);
+
         await activityFeedRepository.RecordActivityAsync(
             "metadata.series.refreshed",
             $"{series.Title} metadata was refreshed by the background worker.",
@@ -1560,7 +1570,62 @@ public sealed class DelunoHeartbeatWorker(
             series.Id,
             stoppingToken);
 
+        if (catalogue.AddedCount > 0)
+        {
+            await activityFeedRepository.RecordActivityAsync(
+                "metadata.series.catalogue",
+                $"Deluno learned {catalogue.AddedCount} more episode{(catalogue.AddedCount == 1 ? "" : "s")} of {series.Title}.",
+                JsonSerializer.Serialize(catalogue, PayloadJsonOptions),
+                job.Id,
+                "series",
+                series.Id,
+                stoppingToken);
+
+            return $"Refreshed metadata for {series.Title} and added {catalogue.AddedCount} newly announced episode{(catalogue.AddedCount == 1 ? "" : "s")}.";
+        }
+
         return $"Refreshed metadata for {series.Title}.";
+    }
+
+    /// <summary>
+    /// Pull the provider's season/episode list into the inventory. A provider
+    /// that cannot answer leaves the catalogue as it was — never a failed job.
+    /// </summary>
+    private static async Task<SeriesCatalogueSyncResult> SyncSeriesCatalogueAsync(
+        IMetadataProvider metadataProvider,
+        ISeriesCatalogRepository seriesCatalogRepository,
+        string seriesId,
+        string? providerId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(providerId))
+        {
+            return SeriesCatalogueSyncResult.None;
+        }
+
+        IReadOnlyList<MetadataSeason> seasons;
+        try
+        {
+            seasons = await metadataProvider.GetSeriesCatalogueAsync(providerId, cancellationToken);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            return SeriesCatalogueSyncResult.None;
+        }
+
+        var episodes = seasons
+            .SelectMany(season => season.Episodes)
+            .Select(episode => new CatalogueEpisodeItem(
+                episode.SeasonNumber,
+                episode.EpisodeNumber,
+                episode.Title,
+                episode.Overview,
+                episode.AirDateUtc))
+            .ToArray();
+
+        return episodes.Length == 0
+            ? SeriesCatalogueSyncResult.None
+            : await seriesCatalogRepository.SyncEpisodeCatalogueAsync(seriesId, episodes, "tmdb", cancellationToken);
     }
 
     private static async Task<string> RecalculateSeriesQualityAsync(

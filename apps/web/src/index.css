@@ -63,7 +63,10 @@
     --shell-icon-size-sm: 0.875rem;
     --topbar-height: calc(74px * var(--density-scale));
     --topbar-height-mobile: calc(74px * var(--density-scale));
-    --sidebar-width: 280px;
+    /* Sized by the widest group heading, not by the links. The rail stopped
+       needing room for expanded child labels when sub-navigation moved into
+       the page toolbar, so the headings became the only thing holding it open. */
+    --sidebar-width: 240px;
     --sidebar-rail: 58px;
     --mobile-tabbar-height: 56px;
     --glass-bg: hsl(0 0% 100% / 0.82);
@@ -827,7 +830,7 @@
   --type-title-xl: 2.5rem;
   --type-display: 3rem;
   --content-max-width: 1920px;
-  --sidebar-width: 280px;
+  --sidebar-width: 240px;
   --content-outer-gap: clamp(0.75rem, 1.4vw, 1.5rem);
   --content-pad-inline: clamp(0.75rem, 1.4vw, 1.75rem);
   --content-pad-block: clamp(1rem, 1.6vw, 1.75rem);
@@ -906,7 +909,7 @@
   --type-title-xl: 2.15rem;
   --type-display: 2.55rem;
   --content-max-width: 1760px;
-  --sidebar-width: 256px;
+  --sidebar-width: 214px;
   --content-outer-gap: clamp(0.5rem, 1vw, 1rem);
   --content-pad-inline: clamp(0.65rem, 1.1vw, 1.25rem);
   --content-pad-block: clamp(0.9rem, 1.2vw, 1.35rem);
@@ -991,7 +994,7 @@
   --type-title-xl: 2.5rem;
   --type-display: 3rem;
   --content-max-width: 1920px;
-  --sidebar-width: 280px;
+  --sidebar-width: 240px;
   --content-outer-gap: clamp(0.75rem, 1.4vw, 1.5rem);
   --content-pad-inline: clamp(0.75rem, 1.4vw, 1.75rem);
   --content-pad-block: clamp(1rem, 1.6vw, 1.75rem);
@@ -1076,7 +1079,7 @@
     --type-title-xl: 3rem;
     --type-display: 3.5rem;
     --content-max-width: 2400px;
-    --sidebar-width: 300px;
+    --sidebar-width: 258px;
     --content-outer-gap: clamp(0.7rem, 1vw, 1.4rem);
     --content-pad-inline: clamp(0.95rem, 1.35vw, 1.9rem);
     --content-pad-block: clamp(1.25rem, 1.75vw, 2.25rem);
@@ -1161,7 +1164,7 @@
     --type-title-xl: 3.45rem;
     --type-display: 4rem;
     --content-max-width: 2880px;
-    --sidebar-width: 320px;
+    --sidebar-width: 276px;
     --content-outer-gap: clamp(0.65rem, 0.85vw, 1.5rem);
     --content-pad-inline: clamp(1rem, 1.35vw, 2.15rem);
     --content-pad-block: clamp(1.35rem, 1.9vw, 2.75rem);
@@ -1219,6 +1222,21 @@ html {
   --row-height: calc(52px * var(--density-scale));
   --data-row-py: calc(10px * var(--density-scale));
   --data-cell-px: calc(16px * var(--density-scale));
+
+  /*
+    List → drawer grammar (see components/ui/list-card, drawer, toolbar).
+    One row height, one card-header height, one toolbar height, one drawer
+    width — every collection page and every editor composes these.
+  */
+  --list-row-height: calc(56px * var(--density-scale));
+  --list-header-height: calc(48px * var(--density-scale));
+  --list-thead-height: calc(36px * var(--density-scale));
+  /* Group divider inside a list — taller than a column header, shorter than a row. */
+  --list-group-height: calc(40px * var(--density-scale));
+  --toolbar-height: calc(40px * var(--density-scale));
+  --drawer-width: 600px;
+  --drawer-header-height: 72px;
+  --drawer-footer-height: 64px;
 
   /*
     Spatial rhythm: every view composes these four steps instead of inventing
@@ -1300,6 +1318,12 @@ html {
   --shell-nav-text-min: calc(148px * var(--font-scale));
   --shell-pill-height: calc(42px * var(--density-scale));
   --shell-nav-pad-x: calc(15px * var(--density-scale));
+  /* Centres the icon+label column in the rail rather than pinning it left.
+     Sub-navigation moving into page toolbars left the rail much wider than its
+     content; this spends that slack evenly instead of all on the right.
+     Deliberately not density-scaled: the labels already grow with density, so
+     scaling the inset too would push the column back off-centre at the top tiers. */
+  --shell-nav-inset: 32px;
   --shell-nav-gap: calc(8px * var(--density-scale));
   --shell-action-gap: calc(4px * var(--density-scale));
   --shell-avatar-size: calc(26px * var(--density-scale));
@@ -1314,9 +1338,9 @@ html {
   --shell-icon-size: calc(15px * var(--density-scale));
   --shell-icon-size-sm: calc(14px * var(--density-scale));
   --sidebar-width: clamp(
-    calc(218px * var(--density-scale)),
+    calc(200px * var(--density-scale)),
     calc((var(--tile-pad) * 1.15) + (var(--shell-nav-pad-x) * 2) + var(--shell-icon-col) + var(--shell-nav-text-min) + (28px * var(--density-scale))),
-    calc(256px * var(--density-scale))
+    calc(240px * var(--density-scale))
   );
 
   --settings-nav-size: calc(14px * var(--font-scale));
@@ -1655,4 +1679,89 @@ html .text-\[64px\] {
 @keyframes sheen {
   from { transform: translateX(-120%) skewX(-12deg); }
   to   { transform: translateX(160%)  skewX(-12deg); }
+}
+
+/* ── DUAL-THUMB RANGE (components/ui/range-slider.tsx) ──────────────
+   Two range inputs stacked over one track. The inputs are transparent and
+   pointer-transparent; only their thumbs take pointer events, so whichever
+   thumb is under the cursor is the one that drags. */
+.deluno-range {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: var(--control-height);
+  width: 100%;
+  min-width: 8rem;
+}
+
+.deluno-range-track {
+  position: absolute;
+  inset-inline: 0;
+  height: 6px;
+  border-radius: 999px;
+  background: hsl(var(--surface-3));
+  overflow: hidden;
+}
+
+.deluno-range-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 999px;
+  background: hsl(var(--primary));
+}
+
+.deluno-range-input {
+  position: absolute;
+  inset-inline: 0;
+  width: 100%;
+  height: var(--control-height);
+  margin: 0;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  pointer-events: none;
+}
+
+.deluno-range-input:focus-visible {
+  outline: none;
+}
+
+.deluno-range-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  pointer-events: auto;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: hsl(var(--primary));
+  border: 2px solid hsl(var(--card));
+  box-shadow: 0 1px 2px hsl(222 44% 3% / 0.45);
+  cursor: grab;
+}
+
+.deluno-range-input:active::-webkit-slider-thumb {
+  cursor: grabbing;
+}
+
+.deluno-range-input:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px hsl(var(--ring) / 0.45);
+}
+
+.deluno-range-input::-moz-range-thumb {
+  pointer-events: auto;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: hsl(var(--primary));
+  border: 2px solid hsl(var(--card));
+  cursor: grab;
+}
+
+.deluno-range-input:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 3px hsl(var(--ring) / 0.45);
+}
+
+.deluno-range-input::-moz-range-track {
+  background: transparent;
 }

@@ -43,6 +43,36 @@ public static class MoviesEndpointRouteBuilderExtensions
             return Results.Ok(summary);
         });
 
+        movies.MapGet("/calendar", async (
+            DateOnly? from,
+            DateOnly? to,
+            int? take,
+            IMovieCatalogRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var start = from ?? DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-7);
+            var end = to ?? start.AddDays(35);
+            if (end <= start)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["to"] = ["The end of the window must be after the start."]
+                });
+            }
+
+            if (end.DayNumber - start.DayNumber > 400)
+            {
+                end = start.AddDays(400);
+            }
+
+            var items = await repository.ListCalendarMoviesAsync(
+                start,
+                end,
+                Math.Clamp(take ?? 500, 1, 2000),
+                cancellationToken);
+            return Results.Ok(items);
+        });
+
         movies.MapGet("/search-history", async (IMovieCatalogRepository repository, CancellationToken cancellationToken) =>
         {
             var items = await repository.ListSearchHistoryAsync(cancellationToken);
@@ -887,6 +917,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             }
 
             var updated = await ApplyMetadataAsync(repository, movie.Id, match, cancellationToken);
+            await SyncReleaseDatesAsync(repository, metadataProvider, movie.Id, match.ProviderId, cancellationToken);
             await activityFeedRepository.RecordActivityAsync(
                 "metadata.movie.refreshed",
                 $"{movie.Title} metadata was refreshed from {match.Provider.ToUpperInvariant()}.",
@@ -939,6 +970,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             }
 
             var updated = await ApplyMetadataAsync(repository, movie.Id, match, cancellationToken);
+            await SyncReleaseDatesAsync(repository, metadataProvider, movie.Id, match.ProviderId, cancellationToken);
             await activityFeedRepository.RecordActivityAsync(
                 "metadata.movie.linked",
                 $"{movie.Title} metadata was linked to {match.Provider.ToUpperInvariant()} item {match.ProviderId}.",
@@ -1008,14 +1040,17 @@ public static class MoviesEndpointRouteBuilderExtensions
                 movie.Id,
                 movie.MetadataProvider ?? "manual",
                 movie.MetadataProviderId ?? movie.ImdbId ?? movie.Id,
-                string.IsNullOrWhiteSpace(request.OriginalTitle) ? movie.OriginalTitle : request.OriginalTitle.Trim(),
-                string.IsNullOrWhiteSpace(request.Overview) ? movie.Overview : request.Overview.Trim(),
-                string.IsNullOrWhiteSpace(request.PosterUrl) ? movie.PosterUrl : request.PosterUrl.Trim(),
-                string.IsNullOrWhiteSpace(request.BackdropUrl) ? movie.BackdropUrl : request.BackdropUrl.Trim(),
-                request.Rating ?? movie.Rating,
-                string.IsNullOrWhiteSpace(request.Genres) ? movie.Genres : request.Genres.Trim(),
-                string.IsNullOrWhiteSpace(request.ExternalUrl) ? movie.ExternalUrl : request.ExternalUrl.Trim(),
-                string.IsNullOrWhiteSpace(request.ImdbId) ? movie.ImdbId : request.ImdbId.Trim(),
+                // PUT replaces the override set: a field that arrives blank clears the
+                // stored value. Treating blank as "keep" made a manual override
+                // impossible to undo — you could only replace it with other text.
+                NormalizeOverride(request.OriginalTitle),
+                NormalizeOverride(request.Overview),
+                NormalizeOverride(request.PosterUrl),
+                NormalizeOverride(request.BackdropUrl),
+                request.Rating,
+                NormalizeOverride(request.Genres),
+                NormalizeOverride(request.ExternalUrl),
+                NormalizeOverride(request.ImdbId),
                 JsonSerializer.Serialize(new
                 {
                     kind = "manual-metadata-override",
@@ -1380,6 +1415,43 @@ public static class MoviesEndpointRouteBuilderExtensions
 
         return endpoints;
     }
+
+    /// <summary>
+    /// Pull the provider's release dates in after a match is applied, so Deluno
+    /// knows when the film is actually obtainable rather than only what year it
+    /// came out. A provider that cannot answer leaves the stored dates alone.
+    /// </summary>
+    private static async Task SyncReleaseDatesAsync(
+        IMovieCatalogRepository repository,
+        IMetadataProvider metadataProvider,
+        string movieId,
+        string? providerId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(providerId))
+        {
+            return;
+        }
+
+        MetadataReleaseDates dates;
+        try
+        {
+            dates = await metadataProvider.GetMovieReleaseDatesAsync(providerId, cancellationToken);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        if (dates.HasAny)
+        {
+            await repository.UpdateReleaseDatesAsync(movieId, dates.InCinemas, dates.Digital, dates.Physical, cancellationToken);
+        }
+    }
+
+    /// <summary>Blank means "no override", so it is stored as null rather than kept.</summary>
+    private static string? NormalizeOverride(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static Dictionary<string, string[]> Validate(CreateMovieRequest request)
     {

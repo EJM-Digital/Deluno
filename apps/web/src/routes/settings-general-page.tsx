@@ -1,20 +1,30 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+/**
+ * General — a page-level form on the shared grammar.
+ *
+ *   PageToolbar (System settings tabs)
+ *   SummaryStrip (instance · address · authentication · last saved)
+ *   ListCard  instance and host (page form)
+ *   PageFooter (pinned: status · Discard · Save)
+ *
+ * Contracts: PUT /api/settings.
+ */
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
-import { LoaderCircle } from "lucide-react";
-import { SettingsShell } from "../components/app/settings-shell";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
-import { Button } from "../components/ui/button";
+import { Field, FieldRow } from "../components/ui/field";
 import { Input } from "../components/ui/input";
-import { InputDescription } from "../components/ui/input-description";
+import { ListCard } from "../components/ui/list-card";
+import { PageFooter } from "../components/ui/page-footer";
+import { PageToolbar } from "../components/ui/page-toolbar";
 import { PresetField } from "../components/ui/preset-field";
-import { SaveStatus, useSaveStatus } from "../components/shell/save-status";
-import { toast } from "../components/shell/toaster";
+import { SummaryStrip } from "../components/ui/summary-strip";
+import { systemSettingsNavItems } from "../components/app/settings-shell";
+import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
+import type { DrawerSaveState } from "../components/ui/drawer";
 import { settingsOverviewLoader } from "./settings-overview-page";
-import { emptyPlatformSettingsSnapshot, type LibraryItem, type PlatformSettingsSnapshot, type QualityProfileItem } from "../lib/api";
+import type { LibraryItem, PlatformSettingsSnapshot, QualityProfileItem } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
-import { RouteSkeleton } from "../components/shell/skeleton";
 
-interface SettingsOverviewLoaderData {
+interface LoaderData {
   libraries: LibraryItem[];
   qualityProfiles: QualityProfileItem[];
   settings: PlatformSettingsSnapshot;
@@ -22,169 +32,160 @@ interface SettingsOverviewLoaderData {
 
 export const settingsGeneralLoader = settingsOverviewLoader;
 
+interface GeneralForm {
+  appInstanceName: string;
+  hostBindAddress: string;
+  hostPort: string;
+  urlBase: string;
+}
+
 export function SettingsGeneralPage() {
-  const loaderData = useLoaderData() as SettingsOverviewLoaderData | undefined;
-  if (!loaderData) return <RouteSkeleton />;
-  const settings = loaderData.settings;
+  const { settings } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
-  const [formState, setFormState] = useState(settings);
-  const [busy, setBusy] = useState(false);
-  const save = useSaveStatus();
 
-  async function handleSave(event: FormEvent<HTMLFormElement>) {
+  const [savedForm, setSavedForm] = useState<GeneralForm>(() => formFrom(settings));
+  const [form, setForm] = useState<GeneralForm>(savedForm);
+  const [saveState, setSaveState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
+  const [message, setMessage] = useState<string | null>(null);
+
+  const dirty = !same(form, savedForm);
+  const settingsForm = useMemo(() => formFrom(settings), [settings]);
+  useEffect(() => {
+    if (dirty || same(savedForm, settingsForm)) return;
+    setSavedForm(settingsForm);
+    setForm(settingsForm);
+  }, [dirty, savedForm, settingsForm]);
+
+  const state: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
+  useUnsavedChanges(dirty);
+  useEffect(() => {
+    if (dirty && (saveState === "saved" || saveState === "error")) setSaveState(undefined);
+  }, [dirty, saveState]);
+
+  /** Address and port only take effect on restart, so say so rather than imply a live change. */
+  const hostChanged = form.hostBindAddress !== savedForm.hostBindAddress || form.hostPort !== savedForm.hostPort;
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setBusy(true);
-    save.markSyncing("Saving…");
-
+    if (state === "saving") return;
+    setSaveState("saving");
     try {
       const response = await authedFetch("/api/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formState)
+        body: JSON.stringify({
+          ...settings,
+          appInstanceName: form.appInstanceName.trim(),
+          hostBindAddress: form.hostBindAddress.trim(),
+          hostPort: Number(form.hostPort || 5099),
+          urlBase: form.urlBase.trim()
+        })
       });
-
-      if (!response.ok) {
-        throw new Error("General settings could not be saved.");
-      }
-
-      save.markSaved();
-      toast.success("General settings saved");
+      if (!response.ok) throw new Error("General settings could not be saved.");
+      setSavedForm(form);
+      setSaveState("saved");
+      setMessage(hostChanged ? "Saved — restart Deluno to move to the new address" : "Saved just now");
       revalidator.revalidate();
     } catch (error) {
-      const msg = error instanceof Error ? error.message : "General settings could not be saved.";
-      save.markError(msg);
-      toast.error(msg);
-    } finally {
-      setBusy(false);
+      setSaveState("error");
+      setMessage(error instanceof Error ? error.message : "Could not save");
     }
   }
 
   return (
-    <SettingsShell
-      title="General"
-      description="Instance name and network access. Media, notification, and automation choices stay in their own named sections."
-    >
-      <div className="settings-split settings-split-balanced">
-        <Card className="settings-panel">
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between gap-3">
-              Instance and host
-              <SaveStatus state={save.state} message={save.message} />
-            </CardTitle>
-            <CardDescription>Persisted general settings for this Deluno instance.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form className="space-y-[calc(var(--field-group-pad)*0.9)]" onSubmit={handleSave}>
-              <div className="grid gap-[var(--grid-gap)] sm:grid-cols-2">
-                <Field label="Instance">
-                  <Input
-                    value={formState.appInstanceName}
-                    onChange={(event) =>
-                      setFormState((current) => ({ ...current, appInstanceName: event.target.value }))
-                    }
-                  />
-                  <InputDescription>Display name for this Deluno installation (e.g., "Home Server", "Plex Grabber")</InputDescription>
-                </Field>
-                <Field label="Bind address">
-                  <PresetField
-                    value={formState.hostBindAddress}
-                    onChange={(value) =>
-                      setFormState((current) => ({ ...current, hostBindAddress: value }))
-                    }
-                    options={[
-                      { label: "Local machine only (127.0.0.1)", value: "127.0.0.1" },
-                      { label: "All network interfaces (0.0.0.0)", value: "0.0.0.0" },
-                      { label: "IPv6 localhost (::1)", value: "::1" }
-                    ]}
-                    customLabel="Custom bind address"
-                    customPlaceholder="IP address or hostname"
-                  />
-                  <InputDescription>Which network interface to listen on. Use 127.0.0.1 if accessing only locally, 0.0.0.0 for remote access.</InputDescription>
-                </Field>
-                <Field label="Port">
-                  <PresetField
-                    inputType="number"
-                    value={String(formState.hostPort)}
-                    onChange={(value) =>
-                      setFormState((current) => ({ ...current, hostPort: Number(value || 5099) }))
-                    }
-                    options={[
-                      { label: "Deluno default (5099)", value: "5099" },
-                      { label: "Radarr-style port (7878)", value: "7878" },
-                      { label: "Sonarr-style port (8989)", value: "8989" },
-                      { label: "9696", value: "9696" }
-                    ]}
-                    customLabel="Custom port"
-                    customPlaceholder="Port number"
-                  />
-                  <InputDescription>HTTP port where Deluno will be accessible. Must not conflict with other services.</InputDescription>
-                </Field>
-                <Field label="URL base">
-                  <PresetField
-                    value={formState.urlBase}
-                    onChange={(value) =>
-                      setFormState((current) => ({ ...current, urlBase: value }))
-                    }
-                    options={[
-                      { label: "None, serve at /", value: "" },
-                      { label: "/deluno", value: "/deluno" },
-                      { label: "/media", value: "/media" }
-                    ]}
-                    customLabel="Custom URL base"
-                    customPlaceholder="/my-deluno"
-                  />
-                  <InputDescription>Path prefix when Deluno is behind a reverse proxy. Leave empty if serving at domain root.</InputDescription>
-                </Field>
-              </div>
+    <form onSubmit={handleSubmit} className="flex flex-col gap-[var(--page-gap)]" noValidate>
+      <PageToolbar tabs={systemSettingsNavItems} />
 
-              <Button type="submit" disabled={busy}>
-                {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-                Save general settings
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+      <SummaryStrip
+        cells={[
+          { label: "Instance", value: settings.appInstanceName || "Deluno", help: "shown in the topbar and notifications" },
+          { label: "Listening on", value: `${settings.hostBindAddress}:${settings.hostPort}`, help: settings.hostBindAddress === "127.0.0.1" ? "this machine only" : "reachable from your network" },
+          { label: "Sign-in", value: "Required", help: "every session must authenticate" },
+          { label: "Last saved", value: formatWhen(settings.updatedUtc), help: "general settings" }
+        ]}
+      />
 
-        <Card className="settings-panel">
-          <CardHeader>
-            <CardTitle>Status</CardTitle>
-            <CardDescription>Current general settings for this instance.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <GeneralStat label="Instance" value={settings.appInstanceName} />
-            <GeneralStat label="Host" value={`${settings.hostBindAddress}:${settings.hostPort}`} />
-            <GeneralStat label="Authentication" value="Required" />
-            <GeneralStat label="Updated" value={formatWhen(settings.updatedUtc)} />
-          </CardContent>
-        </Card>
-      </div>
-    </SettingsShell>
+      <ListCard title="Instance and host" count="How this installation names and serves itself">
+        <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+          <Field label="Instance name" help="Shown in the topbar and in notifications, so you can tell two installations apart.">
+            <Input
+              value={form.appInstanceName}
+              onChange={(event) => setForm((current) => ({ ...current, appInstanceName: event.target.value }))}
+              placeholder="Home server"
+              className="max-w-[24rem]"
+            />
+          </Field>
+          <FieldRow>
+            <Field label="Bind address" help="Use the local address unless you need to reach Deluno from another machine.">
+              <PresetField
+                value={form.hostBindAddress}
+                onChange={(value) => setForm((current) => ({ ...current, hostBindAddress: value }))}
+                options={[
+                  { label: "This machine only (127.0.0.1)", value: "127.0.0.1" },
+                  { label: "Every network interface (0.0.0.0)", value: "0.0.0.0" },
+                  { label: "IPv6 localhost (::1)", value: "::1" }
+                ]}
+                customLabel="Custom bind address"
+                customPlaceholder="IP address or hostname"
+              />
+            </Field>
+            <Field label="Port" help="Must not clash with another service on this machine.">
+              <PresetField
+                inputType="number"
+                value={form.hostPort}
+                onChange={(value) => setForm((current) => ({ ...current, hostPort: value }))}
+                options={[
+                  { label: "Deluno default (5099)", value: "5099" },
+                  { label: "Radarr-style (7878)", value: "7878" },
+                  { label: "Sonarr-style (8989)", value: "8989" },
+                  { label: "9696", value: "9696" }
+                ]}
+                customLabel="Custom port"
+                customPlaceholder="Port number"
+              />
+            </Field>
+          </FieldRow>
+          <Field label="URL base" optional help="Path prefix when Deluno sits behind a reverse proxy. Leave blank when it serves from the root.">
+            <PresetField
+              value={form.urlBase}
+              onChange={(value) => setForm((current) => ({ ...current, urlBase: value }))}
+              options={[
+                { label: "None — serve at /", value: "" },
+                { label: "/deluno", value: "/deluno" },
+                { label: "/media", value: "/media" }
+              ]}
+              customLabel="Custom URL base"
+              customPlaceholder="/my-deluno"
+            />
+          </Field>
+          {hostChanged ? (
+            <p className="text-[length:var(--type-caption)] text-warning">
+              Changing the address or port takes effect the next time Deluno starts. The page you are on now stays on the old one until then.
+            </p>
+          ) : null}
+        </div>
+      </ListCard>
+
+      <PageFooter state={state} message={message} saveLabel="Save general settings" onDiscard={() => setForm(savedForm)} />
+    </form>
   );
 }
 
-function Field({ children, label }: { children: ReactNode; label: string }) {
-  return (
-    <div className="density-field rounded-xl border border-hairline bg-surface-1">
-      <p className="density-label uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
-      <div style={{ marginTop: "var(--field-label-gap)" }}>{children}</div>
-    </div>
-  );
+/* ---------------------------------------------------------------- bits */
+
+function same<T>(a: T, b: T) {
+  return JSON.stringify(a) === JSON.stringify(b);
 }
 
-function GeneralStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="density-field rounded-xl border border-hairline bg-surface-1">
-      <p className="density-label uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
-      <p className="density-control-text mt-2 text-foreground">{value}</p>
-    </div>
-  );
+function formFrom(settings: PlatformSettingsSnapshot): GeneralForm {
+  return {
+    appInstanceName: settings.appInstanceName,
+    hostBindAddress: settings.hostBindAddress,
+    hostPort: String(settings.hostPort),
+    urlBase: settings.urlBase
+  };
 }
 
 function formatWhen(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit"
-  }).format(new Date(value));
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value));
 }

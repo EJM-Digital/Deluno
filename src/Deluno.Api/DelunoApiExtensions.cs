@@ -66,6 +66,7 @@ public static class DelunoApiExtensions
         api.MapDelunoMonitoringEndpoints();
 
         endpoints.MapDownloadDispatchesEndpoints();
+        endpoints.MapDelunoDashboardMetricsEndpoints();
 
         return endpoints;
     }

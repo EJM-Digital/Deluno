@@ -188,6 +188,11 @@ public interface IPlatformSettingsRepository
         UpdateLibraryAutomationRequest request,
         CancellationToken cancellationToken);
 
+    Task<LibraryItem?> UpdateLibraryDetailsAsync(
+        string id,
+        UpdateLibraryDetailsRequest request,
+        CancellationToken cancellationToken);
+
     Task<LibraryItem?> UpdateLibraryQualityProfileAsync(
         string id,
         UpdateLibraryQualityProfileRequest request,
