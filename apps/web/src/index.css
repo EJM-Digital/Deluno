@@ -1228,6 +1228,8 @@ html {
   --list-row-height: calc(56px * var(--density-scale));
   --list-header-height: calc(48px * var(--density-scale));
   --list-thead-height: calc(36px * var(--density-scale));
+  /* Group divider inside a list — taller than a column header, shorter than a row. */
+  --list-group-height: calc(40px * var(--density-scale));
   --toolbar-height: calc(40px * var(--density-scale));
   --drawer-width: 600px;
   --drawer-header-height: 72px;

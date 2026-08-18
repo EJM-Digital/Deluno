@@ -51,18 +51,26 @@ export function MediaTypeFilter({
   );
 }
 
-/** Divider row inside a ListTable. Sticks under the column header while scrolling. */
+/**
+ * Divider row inside a ListTable. Sticks under the column header while scrolling.
+ *
+ * Deliberately heavier than a column header: it is a heading for the rows beneath
+ * it, so it takes a full surface, both borders and foreground-strength type. A
+ * group divider that reads as a hairline gets skipped over.
+ */
 export function ListGroupHeader({ label, count }: { label: string; count?: number }) {
   return (
     <div
       role="row"
       className={cn(
-        "sticky top-0 z-10 flex items-center gap-2 border-b border-hairline bg-surface-2/90 px-[var(--card-pad-x)] py-1.5 backdrop-blur",
-        "text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground"
+        "sticky top-0 z-10 flex h-[var(--list-group-height)] items-center gap-2 border-y border-hairline bg-surface-3 px-[var(--card-pad-x)]",
+        "text-[length:var(--type-caption)] font-semibold uppercase tracking-[0.12em] text-foreground"
       )}
     >
       <span role="columnheader">{label}</span>
-      {count !== undefined ? <span className="font-normal normal-case tracking-normal opacity-70">{count}</span> : null}
+      {count !== undefined ? (
+        <span className="font-normal normal-case tracking-normal text-muted-foreground">{count}</span>
+      ) : null}
     </div>
   );
 }
