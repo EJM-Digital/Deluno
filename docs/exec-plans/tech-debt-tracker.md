@@ -39,12 +39,6 @@ them; the doc is the source of truth and this list is the index.
   dashboard tab on a dev-sized library.
 - Paginate `/api/movies` and `/api/series`. Both return the full catalogue, so
   the two largest dashboard responses scale linearly with the user's library.
-- Move the `AutoStartJobs` check to the top of the worker lane tick. It is
-  currently the fourth thing that happens, after a DI scope, fourteen service
-  resolutions, a heartbeat write and a settings read — roughly 39 database round
-  trips per minute at idle even with automation switched off.
-- Skip the write in `UpsertLibraryAutomationStateAsync` when nothing changed.
-  Measured 15 rewrites/min of identical data.
 - Lease a batch per tick with bounded concurrency instead of one job per tick.
   The import lane's 2s timer caps sustained throughput at 30 jobs/min regardless
   of machine capacity; a 1,000-item backlog takes 33 minutes of pure tick
@@ -56,10 +50,6 @@ them; the doc is the source of truth and this list is the index.
 - Move the cleanup/retry throttles out of worker instance fields. `_lastDispatchCleanupUtc`
   and friends make "every 6 hours" mean "every 6 hours of uptime", and two hosts
   would each run every pass.
-- Load-test `Cache=Shared` before keeping it. Shared cache adds table-level
-  locking and can surface `SQLITE_LOCKED`, which `busy_timeout` does not retry.
-  Also `DefaultTimeout=5s` and `busy_timeout=5000ms` share one budget, so a
-  blocked command races its own timeout.
 
 ## Open — module split (`ADR-001-module-boundaries.md`, `PLAN-module-split.md`)
 
@@ -78,9 +68,10 @@ them; the doc is the source of truth and this list is the index.
 
 Goal: nothing the tool does should be capped by a number somebody typed once.
 
-Absolute limitlessness is not a thing anyone can ship — SQLite has one writer,
-RAM and disk are finite, and indexers rate-limit us whether we like it or not.
-The achievable version, and the standard every item below is measured against:
+Absolute limitlessness is not a thing anyone can ship — RAM and disk are finite
+and indexers rate-limit us whether we like it or not. But most of what looks
+like a limit here is not one. The achievable version, and the standard every
+item below is measured against:
 
 1. **No arbitrary caps.** If a number is not derived from a real resource
    constraint, it goes.
@@ -93,15 +84,6 @@ The achievable version, and the standard every item below is measured against:
 
 ### Caps that silently change behaviour — highest priority
 
-- **Search queries only 4 indexers, serially.** `FeedMediaSearchPlanner.cs:41`
-  applies `.Take(4)` to the enabled, media-type-matching indexers and then
-  `foreach`es them one at a time. A user who configures ten indexers has six
-  silently never searched, and the four that do run add their latencies instead
-  of overlapping. This is both a product cap and a performance cap in the same
-  eight lines. Should be: all matching indexers, in parallel, bounded by a
-  configured concurrency limit.
-- **RSS/feed parsing stops at 30 items** — `FeedMediaSearchPlanner.cs:169`,
-  `document.Descendants("item").Take(30)`. A busy feed loses the tail.
 - **Import lane processes 30 jobs/min maximum**, one per 2s tick — see
   `AUDIT-001`. A capacity cap imposed by a timer.
 - **Realtime events are dropped at 1,000 queued** (`DropOldest`). Acceptable
@@ -151,10 +133,15 @@ that hardened into limits.
 
 ### Structural ceilings to make explicit
 
-- **SQLite allows one writer per database.** This is the real ceiling and it is
-  invisible today. It should be a stated architectural limit with a measured
-  number behind it, and the thing that decides whether "no limits" means one
-  large install or many.
+- **SQLite allows one writer per database file** — note *per file*. Deluno runs
+  five (`platform`, `movies`, `series`, `jobs`, `cache`), so there are already
+  five independent writers, and WAL means readers never block them. This was
+  previously written up as a global ceiling; it is not one, and it was not the
+  bottleneck — `Cache=Shared` was. Remaining headroom, in order of value:
+  split the highest-churn tables into their own file (a `dispatches.db` would
+  take the heaviest writes off `jobs.db`), batch writes into fewer transactions,
+  and open read paths with `Mode=ReadOnly`. Worth measuring and stating a real
+  number rather than assuming.
 - **One job leased per lane tick, three fixed lanes.** Concurrency is a
   consequence of the loop shape rather than a setting.
 - **`Clients.All` broadcast** — every event to every connection, so realtime
@@ -182,13 +169,32 @@ that hardened into limits.
 - Resolve ownership of in-flight `Deluno.Library` and `Deluno.Search` seams.
 - Keep docs free of old `C:\Users\User\Deluno` workspace paths.
 
-## Closed
+## Closed — fixed this session
 
-- Removed the 62 endpoint injections of `IPlatformSettingsRepository` that existed
-  only to feed the auth check, plus a dead per-request resolution in the host auth
-  middleware.
+- **SQLite connections were serialised behind `Cache=Shared`.** Shared cache
+  imposes table-level locks inside the process and raises `SQLITE_LOCKED`, which
+  `busy_timeout` does not retry; nothing here used an in-memory database, the one
+  case it exists for. Switched to private cache and tuned `cache_size` (16 MiB),
+  `mmap_size` (256 MiB), `wal_autocheckpoint` (2000 pages), and raised the command
+  timeout above `busy_timeout` so the two stopped racing. Measured at 24 concurrent
+  workers over the dashboard's endpoints: throughput 2,190 -> 3,932 req/s, p99
+  164 -> 22 ms, max 319 -> 24 ms. `a6a1ef8`
+- **Search queried only 4 indexers, serially.** `.Take(4)` removed and the fan-out
+  parallelised, bounded at 16 in flight. Every configured indexer is now searched,
+  and latency is the slowest indexer rather than the sum. `8f86234`
+- **The worker paid for every tick before checking whether automation was on.**
+  Gate moved first, settings snapshot shared across lanes behind a one-second
+  window, heartbeat throttled to 15s, and the ten job-processing services resolved
+  only after a job is leased. Idle heartbeat writes ~39/min -> 6/min. `dbd24e0`
+- **Automation state was rewritten with unchanged values.** Both writers now
+  compare before writing. 15/min -> ~2/min. `8508d88`
+- Removed the 63 `IPlatformSettingsRepository` injections that existed only to feed
+  the auth check, including a dead per-request resolution in the host middleware.
 - Lifted shared SQLite plumbing (`SqliteRecordHelpers`) and domain normalisers
   (`DelunoValueNormalizers`) out of the Platform god-repository.
+
+## Closed
+
 - Added compact agent map and knowledge-base validation.
 - Added local boot/health script that produces backend/frontend URLs, process ids, health status, and logs.
 - Added validation for duplicated frontend download telemetry status literals and replaced the client telemetry duplicates in the indexers route.
