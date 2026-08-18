@@ -28,14 +28,27 @@ public sealed class SqliteDatabaseMigrator(
         {
             if (applied.TryGetValue(migration.Version, out var existing))
             {
-                if (!string.Equals(existing.Checksum, migration.Checksum, StringComparison.OrdinalIgnoreCase) ||
-                    !string.Equals(existing.Name, migration.Name, StringComparison.Ordinal))
+                if (!string.Equals(existing.Name, migration.Name, StringComparison.Ordinal))
                 {
                     throw new InvalidOperationException(
-                        $"Database '{databaseName}' migration {migration.Version} was already applied with a different definition.");
+                        $"Database '{databaseName}' migration {migration.Version} was applied as '{existing.Name}' but is now '{migration.Name}'.");
                 }
 
-                continue;
+                if (string.Equals(existing.Checksum, migration.Checksum, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                // Stamped by a build that hashed the raw literal. The SQL itself is
+                // unchanged, so adopt the row rather than refusing to start.
+                if (string.Equals(existing.Checksum, migration.LegacyChecksum, StringComparison.OrdinalIgnoreCase))
+                {
+                    await RestampChecksumAsync(connection, migration, cancellationToken);
+                    continue;
+                }
+
+                throw new InvalidOperationException(
+                    $"Database '{databaseName}' migration {migration.Version} was already applied with a different definition.");
             }
 
             await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
@@ -136,6 +149,27 @@ public sealed class SqliteDatabaseMigrator(
         parameter.ParameterName = name;
         parameter.Value = value;
         command.Parameters.Add(parameter);
+    }
+
+    /// <summary>
+    /// Adopt a row written before checksums were normalised. The migration is not
+    /// re-run — only the recorded hash is brought up to date.
+    /// </summary>
+    private static async Task RestampChecksumAsync(
+        DbConnection connection,
+        IDelunoDatabaseMigration migration,
+        CancellationToken cancellationToken)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE schema_migrations
+            SET checksum = @checksum
+            WHERE version = @version;
+            """;
+        AddParameter(command, "@checksum", migration.Checksum);
+        AddParameter(command, "@version", migration.Version);
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private sealed record AppliedMigration(string Name, string Checksum);
