@@ -44,17 +44,40 @@ public sealed class DelunoHeartbeatWorker(
     private DateTimeOffset _lastIntakeAutomationUtc = DateTimeOffset.MinValue;
     private readonly JobLane[] _lanes =
     [
-        new("search", TimeSpan.FromSeconds(5), ["library.search", "intake.sync"], PlanAutomation: true),
-        new("import", TimeSpan.FromSeconds(2), ["filesystem.import.execute"], PlanAutomation: false),
-        new("maintenance", TimeSpan.FromSeconds(8),
+        // Planning only. Deciding what should run is cheap and must not sit
+        // behind a long-running job, so it gets its own lane and executes
+        // nothing itself.
+        new("planning", TimeSpan.FromSeconds(5), [],
+            PlanAutomation: true, PlanImports: true, PlanMaintenance: true),
+
+        // Disk-bound. The widest lane: imports are the backlog users actually
+        // feel, and the work is mostly waiting on file I/O.
+        new("import", TimeSpan.FromSeconds(1), ["filesystem.import.execute"],
+            BatchSize: 16, MaxConcurrency: 8),
+
+        // Indexer-bound. Deliberately narrow — each job already fans out across
+        // every configured indexer internally, so stacking many searches at once
+        // multiplies outbound requests against the same remote hosts.
+        new("search", TimeSpan.FromSeconds(2), ["library.search"],
+            BatchSize: 4, MaxConcurrency: 2),
+
+        // Remote list providers, and rate-limited by them.
+        new("intake", TimeSpan.FromSeconds(5), ["intake.sync"],
+            BatchSize: 4, MaxConcurrency: 2),
+
+        // Metadata provider HTTP. Separate from catalogue work so a slow
+        // provider cannot stall local recalculation.
+        new("metadata", TimeSpan.FromSeconds(3), ["movies.metadata.refresh", "series.metadata.refresh"],
+            BatchSize: 8, MaxConcurrency: 4),
+
+        // Local only: SQLite and CPU, no network. Safe to run wide.
+        new("catalog", TimeSpan.FromSeconds(3),
         [
-            "movies.metadata.refresh",
-            "series.metadata.refresh",
             "movies.quality.recalculate",
             "series.quality.recalculate",
             "movies.catalog.refresh",
             "series.catalog.refresh"
-        ], PlanAutomation: false)
+        ], BatchSize: 16, MaxConcurrency: 8)
     ];
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -184,7 +207,7 @@ public sealed class DelunoHeartbeatWorker(
                 await PlanIntakeAutomationAsync(intakeSyncService, timeProvider, stoppingToken);
             }
 
-            if (lane.Name == "import")
+            if (lane.PlanImports)
             {
                 await PlanImportAutomationAsync(
                     jobScheduler,
@@ -199,7 +222,7 @@ public sealed class DelunoHeartbeatWorker(
                     stoppingToken);
             }
 
-            if (lane.Name == "maintenance")
+            if (lane.PlanMaintenance)
             {
                 var cleanupService = scope.ServiceProvider.GetRequiredService<IDispatchCleanupService>();
                 var downloadRetryService = scope.ServiceProvider.GetRequiredService<IDownloadRetryService>();
@@ -215,13 +238,23 @@ public sealed class DelunoHeartbeatWorker(
                     stoppingToken);
             }
 
-            var job = await jobQueueRepository.LeaseNextAsync(
+            // A planning-only lane has nothing to execute.
+            if (lane.JobTypes.Count == 0)
+            {
+                continue;
+            }
+
+            // Lease a batch, not a single job. One job per tick made sustained
+            // throughput a function of the timer — the 2-second import lane
+            // could never exceed 30 jobs a minute however much was queued.
+            var jobs = await jobQueueRepository.LeaseBatchAsync(
                 $"{_workerId}-{lane.Name}",
                 TimeSpan.FromMinutes(2),
                 lane.JobTypes,
+                lane.BatchSize,
                 stoppingToken);
 
-            if (job is null)
+            if (jobs.Count == 0)
             {
                 logger.LogDebug("Worker {WorkerId} lane {LaneName} tick with no pending jobs.", _workerId, lane.Name);
                 continue;
@@ -234,35 +267,48 @@ public sealed class DelunoHeartbeatWorker(
             var metadataProvider = services.GetRequiredService<IMetadataProvider>();
             var importPipelineService = services.GetRequiredService<IImportPipelineService>();
 
-            try
-            {
-                logger.LogInformation("Processing job {JobId} of type {JobType} on lane {LaneName}.", job.Id, job.JobType, lane.Name);
-                var message = await ProcessJobAsync(
-                    job,
-                    jobQueueRepository,
-                    platformSettingsRepository,
-                    acquisitionPipeline,
-                    downloadClientGrabService,
-                    metadataProvider,
-                    importPipelineService,
-                    movieCatalogRepository,
-                    seriesCatalogRepository,
-                    activityFeedRepository,
-                    intakeSyncService,
-                    timeProvider,
-                    stoppingToken);
+            // Jobs in a batch are independent, so they run together rather than
+            // queueing behind each other. Failure stays per job: one job's
+            // exception is recorded against that job and does not touch the rest.
+            await Parallel.ForEachAsync(
+                jobs,
+                new ParallelOptions
+                {
+                    MaxDegreeOfParallelism = lane.MaxConcurrency,
+                    CancellationToken = stoppingToken
+                },
+                async (job, token) =>
+                {
+                    try
+                    {
+                        logger.LogInformation("Processing job {JobId} of type {JobType} on lane {LaneName}.", job.Id, job.JobType, lane.Name);
+                        var message = await ProcessJobAsync(
+                            job,
+                            jobQueueRepository,
+                            platformSettingsRepository,
+                            acquisitionPipeline,
+                            downloadClientGrabService,
+                            metadataProvider,
+                            importPipelineService,
+                            movieCatalogRepository,
+                            seriesCatalogRepository,
+                            activityFeedRepository,
+                            intakeSyncService,
+                            timeProvider,
+                            token);
 
-                await jobQueueRepository.CompleteAsync(job.Id, $"{_workerId}-{lane.Name}", message, stoppingToken);
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Worker {WorkerId} lane {LaneName} failed processing job {JobId}.", _workerId, lane.Name, job.Id);
-                await jobQueueRepository.FailAsync(job.Id, $"{_workerId}-{lane.Name}", ex.Message, stoppingToken);
-            }
+                        await jobQueueRepository.CompleteAsync(job.Id, $"{_workerId}-{lane.Name}", message, token);
+                    }
+                    catch (OperationCanceledException) when (token.IsCancellationRequested)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogError(ex, "Worker {WorkerId} lane {LaneName} failed processing job {JobId}.", _workerId, lane.Name, job.Id);
+                        await jobQueueRepository.FailAsync(job.Id, $"{_workerId}-{lane.Name}", ex.Message, CancellationToken.None);
+                    }
+                });
         }
     }
 
@@ -2098,9 +2144,25 @@ public sealed class DelunoHeartbeatWorker(
         string? SourceId,
         bool Manual);
 
+    /// <summary>
+    /// One lane. Lanes are separated by the resource they contend on, not by a
+    /// generic "maintenance" grouping — metadata refreshes wait on a remote
+    /// metadata provider, imports wait on disk, searches wait on indexers, and
+    /// a catalogue recalculation waits on nothing but SQLite. Putting those in
+    /// one lane made each of them wait behind the others for no reason.
+    /// </summary>
+    /// <param name="JobTypes">
+    /// Empty means the lane only plans work and never executes it.
+    /// </param>
+    /// <param name="BatchSize">Jobs claimed per tick.</param>
+    /// <param name="MaxConcurrency">Jobs from that batch run at once.</param>
     private sealed record JobLane(
         string Name,
         TimeSpan Interval,
         IReadOnlyList<string> JobTypes,
-        bool PlanAutomation);
+        bool PlanAutomation = false,
+        bool PlanImports = false,
+        bool PlanMaintenance = false,
+        int BatchSize = 8,
+        int MaxConcurrency = 4);
 }

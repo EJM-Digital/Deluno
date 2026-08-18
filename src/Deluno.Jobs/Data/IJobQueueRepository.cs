@@ -24,6 +24,17 @@ public interface IJobQueueRepository
         IReadOnlyList<string>? jobTypes,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Leases up to <paramref name="maxJobs"/> ready jobs in one transaction, so
+    /// throughput is bounded by the machine rather than by a caller's tick rate.
+    /// </summary>
+    Task<IReadOnlyList<JobQueueItem>> LeaseBatchAsync(
+        string workerId,
+        TimeSpan leaseDuration,
+        IReadOnlyList<string>? jobTypes,
+        int maxJobs,
+        CancellationToken cancellationToken);
+
     Task CompleteAsync(string jobId, string workerId, string? completionMessage, CancellationToken cancellationToken);
 
     Task FailAsync(string jobId, string workerId, string errorMessage, CancellationToken cancellationToken);
