@@ -150,7 +150,6 @@ public static class SeriesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] CreateSeriesImportRecoveryCaseRequest request,
             ISeriesCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -173,7 +172,6 @@ public static class SeriesEndpointRouteBuilderExtensions
             string id,
             HttpContext httpContext,
             ISeriesCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -196,7 +194,6 @@ public static class SeriesEndpointRouteBuilderExtensions
             string id,
             HttpContext httpContext,
             ISeriesCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -219,7 +216,6 @@ public static class SeriesEndpointRouteBuilderExtensions
             string id,
             HttpContext httpContext,
             ISeriesCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -242,7 +238,6 @@ public static class SeriesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] UpdateSeriesMonitoringRequest request,
             ISeriesCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -272,7 +267,6 @@ public static class SeriesEndpointRouteBuilderExtensions
             [FromBody] DeferAutomationRequest request,
             HttpContext httpContext,
             ISeriesCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
             TimeProvider timeProvider,
             CancellationToken cancellationToken) =>
         {
@@ -293,7 +287,6 @@ public static class SeriesEndpointRouteBuilderExtensions
             [FromBody] SkipNextAutomationRequest request,
             HttpContext httpContext,
             ISeriesCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -311,7 +304,6 @@ public static class SeriesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] UpdateEpisodeMonitoringRequest request,
             ISeriesCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -508,7 +500,6 @@ public static class SeriesEndpointRouteBuilderExtensions
             string id,
             HttpContext httpContext,
             ISeriesCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
             IMetadataProvider metadataProvider,
             IActivityFeedRepository activityFeedRepository,
             CancellationToken cancellationToken) =>
@@ -560,7 +551,6 @@ public static class SeriesEndpointRouteBuilderExtensions
             [FromBody] MetadataLinkRequest request,
             HttpContext httpContext,
             ISeriesCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
             IMetadataProvider metadataProvider,
             IActivityFeedRepository activityFeedRepository,
             CancellationToken cancellationToken) =>
@@ -619,7 +609,6 @@ public static class SeriesEndpointRouteBuilderExtensions
             string id,
             HttpContext httpContext,
             ISeriesCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
             IJobScheduler jobScheduler,
             CancellationToken cancellationToken) =>
         {
@@ -652,7 +641,6 @@ public static class SeriesEndpointRouteBuilderExtensions
             [FromBody] MetadataOverrideRequest request,
             HttpContext httpContext,
             ISeriesCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
             IActivityFeedRepository activityFeedRepository,
             CancellationToken cancellationToken) =>
         {
@@ -707,7 +695,6 @@ public static class SeriesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] MetadataRefreshJobsRequest request,
             ISeriesCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
             IJobScheduler jobScheduler,
             CancellationToken cancellationToken) =>
         {
@@ -1145,7 +1132,6 @@ public static class SeriesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] BulkQualityProfileRequest request,
             ISeriesCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1243,7 +1229,6 @@ public static class SeriesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] BulkReassignLibraryRequest request,
             ISeriesCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1278,7 +1263,6 @@ public static class SeriesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] BulkTagsRequest request,
             ISeriesCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1860,7 +1844,6 @@ public static class SeriesEndpointRouteBuilderExtensions
             [FromBody] UpdateSeriesReplacementProtectionRequest request,
             HttpContext httpContext,
             ISeriesCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);

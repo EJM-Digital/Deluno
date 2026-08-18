@@ -107,7 +107,6 @@ public static class MoviesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] CreateMovieImportRecoveryCaseRequest request,
             IMovieCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -130,7 +129,6 @@ public static class MoviesEndpointRouteBuilderExtensions
             string id,
             HttpContext httpContext,
             IMovieCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -153,7 +151,6 @@ public static class MoviesEndpointRouteBuilderExtensions
             string id,
             HttpContext httpContext,
             IMovieCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -176,7 +173,6 @@ public static class MoviesEndpointRouteBuilderExtensions
             string id,
             HttpContext httpContext,
             IMovieCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -199,7 +195,6 @@ public static class MoviesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] UpdateMovieMonitoringRequest request,
             IMovieCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -229,7 +224,6 @@ public static class MoviesEndpointRouteBuilderExtensions
             [FromBody] DeferAutomationRequest request,
             HttpContext httpContext,
             IMovieCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
             TimeProvider timeProvider,
             CancellationToken cancellationToken) =>
         {
@@ -250,7 +244,6 @@ public static class MoviesEndpointRouteBuilderExtensions
             [FromBody] SkipNextAutomationRequest request,
             HttpContext httpContext,
             IMovieCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -803,7 +796,6 @@ public static class MoviesEndpointRouteBuilderExtensions
             [FromBody] UpdateReplacementProtectionRequest request,
             HttpContext httpContext,
             IMovieCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -891,7 +883,6 @@ public static class MoviesEndpointRouteBuilderExtensions
             string id,
             HttpContext httpContext,
             IMovieCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
             IMetadataProvider metadataProvider,
             IActivityFeedRepository activityFeedRepository,
             CancellationToken cancellationToken) =>
@@ -936,7 +927,6 @@ public static class MoviesEndpointRouteBuilderExtensions
             [FromBody] MetadataLinkRequest request,
             HttpContext httpContext,
             IMovieCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
             IMetadataProvider metadataProvider,
             IActivityFeedRepository activityFeedRepository,
             CancellationToken cancellationToken) =>
@@ -988,7 +978,6 @@ public static class MoviesEndpointRouteBuilderExtensions
             string id,
             HttpContext httpContext,
             IMovieCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
             IJobScheduler jobScheduler,
             CancellationToken cancellationToken) =>
         {
@@ -1021,7 +1010,6 @@ public static class MoviesEndpointRouteBuilderExtensions
             [FromBody] MetadataOverrideRequest request,
             HttpContext httpContext,
             IMovieCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
             IActivityFeedRepository activityFeedRepository,
             CancellationToken cancellationToken) =>
         {
@@ -1076,7 +1064,6 @@ public static class MoviesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] MetadataRefreshJobsRequest request,
             IMovieCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
             IJobScheduler jobScheduler,
             CancellationToken cancellationToken) =>
         {
@@ -1184,7 +1171,6 @@ public static class MoviesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] BulkQualityProfileRequest request,
             IMovieCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1282,7 +1268,6 @@ public static class MoviesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] BulkReassignLibraryRequest request,
             IMovieCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1317,7 +1302,6 @@ public static class MoviesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] BulkTagsRequest request,
             IMovieCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);

@@ -17,7 +17,6 @@ public static class MetadataEndpointRouteBuilderExtensions
         metadata.MapGet("/status", async (
             HttpContext httpContext,
             IMetadataProvider provider,
-            IPlatformSettingsRepository platformRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -36,7 +35,6 @@ public static class MetadataEndpointRouteBuilderExtensions
             string? mediaType,
             int? year,
             IMetadataProvider provider,
-            IPlatformSettingsRepository platformRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -54,7 +52,6 @@ public static class MetadataEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] MetadataTestRequest request,
             IMetadataProvider provider,
-            IPlatformSettingsRepository platformRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -86,7 +83,6 @@ public static class MetadataEndpointRouteBuilderExtensions
             HttpContext httpContext,
             string? mediaType,
             TmdbMetadataProvider provider,
-            IPlatformSettingsRepository platformRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -124,7 +120,6 @@ public static class MetadataEndpointRouteBuilderExtensions
         broker.MapGet("/status", async (
             HttpContext httpContext,
             TmdbMetadataProvider provider,
-            IPlatformSettingsRepository platformRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -150,7 +145,6 @@ public static class MetadataEndpointRouteBuilderExtensions
             int? year,
             string? providerId,
             TmdbMetadataProvider provider,
-            IPlatformSettingsRepository platformRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
