@@ -21,6 +21,7 @@ using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Realtime;
 using Deluno.Security.Contracts;
+using Deluno.Security;
 using System.Net.Http;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Builder;
@@ -49,7 +50,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -71,7 +72,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             return denied ?? Results.Ok(await repository.SetGlobalAutomationEnabledAsync(request.IsEnabled, cancellationToken));
         });
 
@@ -94,7 +95,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IMigrationAssistantService migrationAssistant,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -111,7 +112,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IMigrationAssistantService migrationAssistant,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -126,7 +127,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             return denied ?? Results.Ok(await repository.ListMigrationAuditReportsAsync(20, cancellationToken));
         });
 
@@ -136,7 +137,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -146,179 +147,6 @@ public static class PlatformEndpointRouteBuilderExtensions
             return report is null ? Results.NotFound() : Results.Ok(report);
         });
 
-        auth.MapPost("/login", async (
-            [FromBody] LoginRequest request,
-            IDataProtectionProvider dataProtectionProvider,
-            TimeProvider timeProvider,
-            IPlatformSettingsRepository repository,
-            CancellationToken cancellationToken) =>
-        {
-            if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Password))
-            {
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["username"] = ["Username is required."],
-                    ["password"] = ["Password is required."]
-                });
-            }
-
-            var login = await repository.ValidateUserCredentialsAsync(request.Username, request.Password, cancellationToken);
-            if (login is null)
-            {
-                return Results.Unauthorized();
-            }
-
-            return Results.Ok(UserAuthorization.IssueLoginResponse(dataProtectionProvider, timeProvider, login));
-        });
-
-        auth.MapGet("/bootstrap-status", async (
-            IPlatformSettingsRepository repository,
-            CancellationToken cancellationToken) =>
-        {
-            var requiresSetup = await repository.RequiresBootstrapAsync(cancellationToken);
-            return Results.Ok(new BootstrapStatusResponse(RequiresSetup: requiresSetup));
-        });
-
-        auth.MapPost("/bootstrap", async (
-            [FromBody] BootstrapUserRequest request,
-            IDataProtectionProvider dataProtectionProvider,
-            TimeProvider timeProvider,
-            IPlatformSettingsRepository repository,
-            CancellationToken cancellationToken) =>
-        {
-            if (!await repository.RequiresBootstrapAsync(cancellationToken))
-            {
-                return Results.Conflict(new
-                {
-                    message = "Deluno has already been configured."
-                });
-            }
-
-            var errors = ValidateBootstrap(request);
-            if (errors.Count > 0)
-            {
-                return Results.ValidationProblem(errors);
-            }
-
-            var created = await repository.BootstrapUserAsync(request, cancellationToken);
-            return Results.Ok(UserAuthorization.IssueLoginResponse(dataProtectionProvider, timeProvider, created));
-        });
-
-        auth.MapPost("/logout", async (
-            HttpContext httpContext,
-            IPlatformSettingsRepository repository,
-            CancellationToken cancellationToken) =>
-        {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
-            if (denied is not null)
-            {
-                return denied;
-            }
-
-            if (!UserAuthorization.TryReadUser(httpContext, out var user) || user is null)
-            {
-                return Results.Unauthorized();
-            }
-
-            await repository.RevokeUserAccessTokensAsync(user.Id, cancellationToken);
-            return Results.NoContent();
-        });
-
-        auth.MapPut("/password", async (
-            HttpContext httpContext,
-            [FromBody] ChangePasswordRequest request,
-            IPlatformSettingsRepository repository,
-            CancellationToken cancellationToken) =>
-        {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
-            if (denied is not null)
-            {
-                return denied;
-            }
-
-            if (!UserAuthorization.TryReadUser(httpContext, out var user) || user is null)
-            {
-                return Results.Unauthorized();
-            }
-
-            var errors = ValidatePasswordChange(request);
-            if (errors.Count > 0)
-            {
-                return Results.ValidationProblem(errors);
-            }
-
-            var changed = await repository.ChangeUserPasswordAsync(
-                user.Id,
-                request.CurrentPassword!,
-                request.NewPassword!,
-                cancellationToken);
-
-            if (!changed)
-            {
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["currentPassword"] = ["Current password is not correct."]
-                });
-            }
-
-            return Results.NoContent();
-        });
-
-        apiKeys.MapGet(string.Empty, async (
-            HttpContext httpContext,
-            IPlatformSettingsRepository repository,
-            CancellationToken cancellationToken) =>
-        {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
-            if (denied is not null)
-            {
-                return denied;
-            }
-
-            var items = await repository.ListApiKeysAsync(cancellationToken);
-            return Results.Ok(items);
-        });
-
-        apiKeys.MapPost(string.Empty, async (
-            HttpContext httpContext,
-            [FromBody] CreateApiKeyRequest request,
-            IPlatformSettingsRepository repository,
-            CancellationToken cancellationToken) =>
-        {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
-            if (denied is not null)
-            {
-                return denied;
-            }
-
-            if (string.IsNullOrWhiteSpace(request.Name))
-            {
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["name"] = ["Give this API key a clear name."]
-                });
-            }
-
-            var created = await repository.CreateApiKeyAsync(request, cancellationToken);
-            return Results.Ok(created);
-        });
-
-        apiKeys.MapDelete("{id}", async (
-            string id,
-            HttpContext httpContext,
-            IPlatformSettingsRepository repository,
-            CancellationToken cancellationToken) =>
-        {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
-            if (denied is not null)
-            {
-                return denied;
-            }
-
-            var removed = await repository.DeleteApiKeyAsync(id, cancellationToken);
-            return removed ? Results.NoContent() : Results.NotFound();
-        });
-
         var setup = endpoints.MapGroup("/api/setup");
 
         setup.MapGet("/progress", async (
@@ -326,7 +154,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             return denied ?? Results.Ok(await repository.GetSetupProgressAsync(cancellationToken));
         });
 
@@ -336,7 +164,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             return denied ?? Results.Ok(await repository.SaveSetupProgressAsync(request, cancellationToken));
         });
 
@@ -345,7 +173,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             return denied ?? Results.Ok(await repository.GetSetupDraftAsync(cancellationToken));
         });
 
@@ -355,7 +183,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             return denied ?? Results.Ok(await repository.SaveSetupDraftAsync(request, cancellationToken));
         });
 
@@ -364,7 +192,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -381,7 +209,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IActivityFeedRepository activityFeedRepository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -425,7 +253,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -448,7 +276,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -470,7 +298,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -486,7 +314,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -519,7 +347,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IQualityModelService service,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -556,7 +384,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -585,7 +413,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -610,7 +438,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -626,7 +454,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -643,7 +471,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             Deluno.Platform.Notifications.IOutboundNotificationService notificationService,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -671,7 +499,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -694,7 +522,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -716,7 +544,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -739,7 +567,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -767,7 +595,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -797,7 +625,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -826,7 +654,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -843,7 +671,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IJobScheduler jobScheduler,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -876,7 +704,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IIntakeListPreviewService previewService,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -900,7 +728,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IIntakeListApprovalService approvalService,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -922,7 +750,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -939,7 +767,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IActivityFeedRepository activityFeedRepository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -975,7 +803,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -994,7 +822,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IActivityFeedRepository activityFeedRepository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1027,7 +855,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1050,7 +878,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1072,7 +900,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1105,7 +933,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1128,7 +956,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1150,7 +978,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1172,7 +1000,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1196,7 +1024,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1222,7 +1050,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1238,7 +1066,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1260,7 +1088,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1289,7 +1117,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1317,7 +1145,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1349,7 +1177,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1372,7 +1200,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1405,7 +1233,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1429,7 +1257,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IJobScheduler jobScheduler,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1469,7 +1297,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IJobScheduler jobScheduler,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1509,7 +1337,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1532,7 +1360,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IJobQueueRepository jobs,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1557,7 +1385,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IJobQueueRepository jobs,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1583,7 +1411,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IActivityFeedRepository activityFeedRepository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1613,7 +1441,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1628,7 +1456,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1676,7 +1504,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1699,7 +1527,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IIntegrationResiliencePolicy resiliencePolicy,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1752,7 +1580,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1769,7 +1597,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1789,7 +1617,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             Deluno.Platform.Notifications.IOutboundNotificationService notificationService,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1835,7 +1663,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1859,7 +1687,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -1891,7 +1719,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null) return denied;
             if (string.IsNullOrWhiteSpace(request.RemotePath) || string.IsNullOrWhiteSpace(request.LocalPath))
             {
@@ -1912,7 +1740,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null) return denied;
             var removed = await repository.DeleteDownloadClientPathMappingAsync(id, mappingId, cancellationToken);
             return removed ? Results.NoContent() : Results.NotFound();
@@ -1925,7 +1753,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null) return denied;
             var mapping = (await repository.ListDownloadClientPathMappingsAsync(id, cancellationToken))
                 .FirstOrDefault(item => string.Equals(item.Id, mappingId, StringComparison.OrdinalIgnoreCase));
@@ -1948,7 +1776,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IIntegrationResiliencePolicy resiliencePolicy,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -2000,7 +1828,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -2017,7 +1845,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -2035,7 +1863,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IIntegrationResiliencePolicy resiliencePolicy,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -2081,7 +1909,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -2109,7 +1937,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -2131,7 +1959,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -2148,7 +1976,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -2237,7 +2065,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IJobQueueRepository jobs,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -2268,7 +2096,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IJobQueueRepository jobs,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -2350,7 +2178,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IJobQueueRepository jobs,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -2368,7 +2196,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IActivityFeedRepository activityFeed,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -2386,7 +2214,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IActivityFeedRepository activityFeed,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -2434,7 +2262,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null) return denied;
             var scopeDenied = UserAuthorization.RequireApiScope(httpContext, "imports");
             if (scopeDenied is not null) return scopeDenied;
@@ -2448,7 +2276,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IActivityFeedRepository activityFeed,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null) return denied;
             var scopeDenied = UserAuthorization.RequireApiScope(httpContext, "imports");
             if (scopeDenied is not null) return scopeDenied;
@@ -2506,7 +2334,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null) return denied;
             return Results.Ok(await repository.ListProcessorConnectionsAsync(cancellationToken));
         });
@@ -2517,7 +2345,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null) return denied;
             var errors = ValidateProcessorConnection(request.Name, request.SubmissionUrl, request.AuthHeaderName);
             if (errors.Count > 0) return Results.ValidationProblem(errors);
@@ -2531,7 +2359,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null) return denied;
             var errors = ValidateProcessorConnection(request.Name, request.SubmissionUrl, request.AuthHeaderName);
             if (errors.Count > 0) return Results.ValidationProblem(errors);
@@ -2545,7 +2373,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null) return denied;
             return await repository.DeleteProcessorConnectionAsync(id, cancellationToken)
                 ? Results.NoContent()
@@ -2560,7 +2388,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IActivityFeedRepository activityFeed,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null) return denied;
             var connection = await repository.GetProcessorConnectionAsync(id, cancellationToken);
             if (connection is null) return Results.NotFound();
@@ -2585,7 +2413,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IJobScheduler jobScheduler,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -2769,7 +2597,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -2785,7 +2613,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -2802,7 +2630,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -2818,7 +2646,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -2835,7 +2663,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -2851,7 +2679,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -2870,7 +2698,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -2887,7 +2715,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, repository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;
@@ -3138,67 +2966,6 @@ public static class PlatformEndpointRouteBuilderExtensions
         if (string.IsNullOrWhiteSpace(name))
         {
             errors["name"] = ["Give this filter view a name."];
-        }
-
-        return errors;
-    }
-
-    private static Dictionary<string, string[]> ValidateUser(string? username, string? password)
-    {
-        var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
-
-        if (string.IsNullOrWhiteSpace(username))
-        {
-            errors["username"] = ["Give this user a username."];
-        }
-
-        if (string.IsNullOrWhiteSpace(password))
-        {
-            errors["password"] = ["Give this user a password."];
-        }
-        else if (password.Length < 8)
-        {
-            errors["password"] = ["Use at least 8 characters for the password."];
-        }
-
-        return errors;
-    }
-
-    private static Dictionary<string, string[]> ValidateBootstrap(BootstrapUserRequest request)
-    {
-        var errors = ValidateUser(request.Username, request.Password);
-
-        if (string.IsNullOrWhiteSpace(request.DisplayName))
-        {
-            errors["displayName"] = ["Choose the name Deluno should show in the app."];
-        }
-
-        return errors;
-    }
-
-    private static Dictionary<string, string[]> ValidatePasswordChange(ChangePasswordRequest request)
-    {
-        var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
-
-        if (string.IsNullOrWhiteSpace(request.CurrentPassword))
-        {
-            errors["currentPassword"] = ["Enter your current password."];
-        }
-
-        if (string.IsNullOrWhiteSpace(request.NewPassword))
-        {
-            errors["newPassword"] = ["Enter a new password."];
-        }
-        else if (request.NewPassword.Length < 8)
-        {
-            errors["newPassword"] = ["Use at least 8 characters for the new password."];
-        }
-
-        if (!string.IsNullOrWhiteSpace(request.CurrentPassword) &&
-            !string.IsNullOrWhiteSpace(request.NewPassword) &&
-            string.Equals(request.CurrentPassword, request.NewPassword, StringComparison.Ordinal))
-        {
-            errors["newPassword"] = ["Choose a password that is different from your current password."];
         }
 
         return errors;

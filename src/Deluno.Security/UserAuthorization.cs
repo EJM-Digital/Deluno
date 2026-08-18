@@ -1,13 +1,12 @@
 using System.Text;
 using System.Text.Json;
-using Deluno.Platform.Contracts;
-using Deluno.Platform.Data;
 using Deluno.Security.Contracts;
+using Deluno.Security.Data;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Deluno.Platform;
+namespace Deluno.Security;
 
 public static class UserAuthorization
 {
@@ -49,9 +48,26 @@ public static class UserAuthorization
         return protector.Protect(JsonSerializer.Serialize(payload));
     }
 
+    /// <summary>
+    /// Authenticates the caller using the request's own service scope.
+    ///
+    /// Endpoints used to take an IPlatformSettingsRepository purely to hand it
+    /// to this method, which is why that interface ended up injected across
+    /// nearly every endpoint in the app (ADR-001). Resolving ISecurityRepository
+    /// here instead keeps auth a one-argument concern; the explicit overload
+    /// below stays for tests that supply their own repository.
+    /// </summary>
+    public static ValueTask<IResult?> RequireAuthenticatedAsync(
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+        => RequireAuthenticatedAsync(
+            httpContext,
+            httpContext.RequestServices.GetRequiredService<ISecurityRepository>(),
+            cancellationToken);
+
     public static async ValueTask<IResult?> RequireAuthenticatedAsync(
         HttpContext httpContext,
-        IPlatformSettingsRepository repository,
+        ISecurityRepository repository,
         CancellationToken cancellationToken)
     {
         var apiKey = ReadApiKey(httpContext);

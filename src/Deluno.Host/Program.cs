@@ -11,6 +11,7 @@ using Deluno.Integrations.Search;
 using Deluno.Jobs;
 using Deluno.Movies;
 using Deluno.Platform;
+using Deluno.Security;
 using Deluno.Security.Hardening;
 using Deluno.Realtime;
 using Deluno.Series;
@@ -35,6 +36,7 @@ builder.WebHost.ConfigureKestrel(options =>
 
 builder.Services.AddDelunoInfrastructure(builder.Configuration);
 builder.Services.AddDelunoApi();
+builder.Services.AddDelunoSecurityModule();
 builder.Services.AddDelunoPlatformModule();
 builder.Services.AddDelunoMoviesModule();
 builder.Services.AddDelunoSeriesModule();
@@ -139,7 +141,7 @@ app.Use(async (context, next) =>
     }
 
     var repository = context.RequestServices.GetRequiredService<Deluno.Platform.Data.IPlatformSettingsRepository>();
-    var denied = await UserAuthorization.RequireAuthenticatedAsync(context, repository, context.RequestAborted);
+    var denied = await UserAuthorization.RequireAuthenticatedAsync(context, context.RequestAborted);
     if (denied is not null)
     {
         await denied.ExecuteAsync(context);
@@ -194,6 +196,7 @@ app.UseSwaggerUI(options =>
 app.MapDelunoApi();
 app.MapDelunoBackupEndpoints();
 app.MapDelunoPlatformEndpoints();
+app.MapDelunoSecurityEndpoints();
 app.MapDelunoSecretsDiagnostics();
 app.MapDelunoMoviesEndpoints();
 app.MapDelunoSeriesEndpoints();

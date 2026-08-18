@@ -10,6 +10,7 @@ using Deluno.Integrations.Search;
 using Deluno.Jobs;
 using Deluno.Movies;
 using Deluno.Platform;
+using Deluno.Security;
 using Deluno.Security.Hardening;
 using Deluno.Realtime;
 using Deluno.Series;
@@ -39,7 +40,8 @@ public static class ServiceHost
 
         builder.Services.AddDelunoInfrastructure(builder.Configuration);
         builder.Services.AddDelunoApi();
-        builder.Services.AddDelunoPlatformModule();
+        builder.Services.AddDelunoSecurityModule();
+builder.Services.AddDelunoPlatformModule();
         builder.Services.AddDelunoMoviesModule();
         builder.Services.AddDelunoSeriesModule();
         builder.Services.AddDelunoJobsModule();
@@ -105,8 +107,7 @@ public static class ServiceHost
 
             if (!requiresAuth) { await next(); return; }
 
-            var repo = context.RequestServices.GetRequiredService<Deluno.Platform.Data.IPlatformSettingsRepository>();
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(context, repo, context.RequestAborted);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(context, context.RequestAborted);
             if (denied is not null) { await denied.ExecuteAsync(context); return; }
 
             var scopeDenied = UserAuthorization.RequireApiScope(context, ResolveScopes(path, context.Request.Method));
@@ -118,6 +119,7 @@ public static class ServiceHost
         app.MapDelunoApi();
         app.MapDelunoBackupEndpoints();
         app.MapDelunoPlatformEndpoints();
+        app.MapDelunoSecurityEndpoints();
         app.MapDelunoMoviesEndpoints();
         app.MapDelunoSeriesEndpoints();
         app.MapDelunoJobsEndpoints();

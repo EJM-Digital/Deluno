@@ -4,6 +4,7 @@ using Deluno.Movies.Data;
 using Deluno.Platform;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
+using Deluno.Security;
 using Deluno.Series.Data;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Mvc;
@@ -35,7 +36,7 @@ public static class DashboardMetricsEndpointRouteBuilderExtensions
             [FromServices] IJobQueueRepository jobQueueRepository,
             CancellationToken cancellationToken) =>
         {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, platformSettingsRepository, cancellationToken);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
             {
                 return denied;

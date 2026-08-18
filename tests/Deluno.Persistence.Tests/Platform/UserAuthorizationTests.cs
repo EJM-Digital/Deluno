@@ -4,7 +4,9 @@ using Deluno.Persistence.Tests.Support;
 using Deluno.Platform;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
+using Deluno.Security;
 using Deluno.Security.Contracts;
+using Deluno.Security.Data;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -103,12 +105,12 @@ public sealed class UserAuthorizationTests
             NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
     }
 
-    private static SqlitePlatformSettingsRepository CreateRepository(
+    private static SqliteSecurityRepository CreateRepository(
         TestStorage storage,
         TimeProvider timeProvider)
-        => new(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
+        => new(storage.Factory, timeProvider);
 
-    private static Task<UserItem> BootstrapUserAsync(SqlitePlatformSettingsRepository repository)
+    private static Task<UserItem> BootstrapUserAsync(SqliteSecurityRepository repository)
         => repository.BootstrapUserAsync(
             new BootstrapUserRequest(
                 Username: "admin",

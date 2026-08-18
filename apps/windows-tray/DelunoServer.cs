@@ -11,12 +11,13 @@ using Deluno.Integrations.Search;
 using Deluno.Jobs;
 using Deluno.Movies;
 using Deluno.Platform;
+using Deluno.Security;
 using Deluno.Security.Hardening;
 using Deluno.Realtime;
 using Deluno.Series;
 using Deluno.Worker;
 using Microsoft.AspNetCore.DataProtection;
-using UserAuthorization = Deluno.Platform.UserAuthorization;
+using UserAuthorization = Deluno.Security.UserAuthorization;
 
 namespace Deluno.Tray;
 
@@ -55,7 +56,8 @@ public sealed class DelunoServer : IDisposable
         builder.Services.AddHostedService<TrayUpdateBackgroundService>();
         builder.Services.AddDelunoInfrastructure(builder.Configuration);
         builder.Services.AddDelunoApi();
-        builder.Services.AddDelunoPlatformModule();
+        builder.Services.AddDelunoSecurityModule();
+builder.Services.AddDelunoPlatformModule();
         builder.Services.AddDelunoMoviesModule();
         builder.Services.AddDelunoSeriesModule();
         builder.Services.AddDelunoJobsModule();
@@ -123,8 +125,7 @@ public sealed class DelunoServer : IDisposable
 
             if (!requiresAuth) { await next(); return; }
 
-            var repo = context.RequestServices.GetRequiredService<Deluno.Platform.Data.IPlatformSettingsRepository>();
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(context, repo, context.RequestAborted);
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(context, context.RequestAborted);
             if (denied is not null) { await denied.ExecuteAsync(context); return; }
 
             var scopeDenied = UserAuthorization.RequireApiScope(context, ResolveScopes(path, context.Request.Method));
@@ -136,6 +137,7 @@ public sealed class DelunoServer : IDisposable
         _app.MapDelunoApi();
         _app.MapDelunoBackupEndpoints();
         _app.MapDelunoPlatformEndpoints();
+        _app.MapDelunoSecurityEndpoints();
         _app.MapDelunoMoviesEndpoints();
         _app.MapDelunoSeriesEndpoints();
         _app.MapDelunoJobsEndpoints();
