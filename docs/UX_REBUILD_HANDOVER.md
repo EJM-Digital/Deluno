@@ -147,20 +147,21 @@ Suites: gateway 10/10, Movies 18/18, Integrations 52/52, Platform 86/86,
 Tray 3/3, Persistence 234/235 (`Fresh_install_does_not_invent_libraries_or_quality_profiles`
 fails on this branch without any of this work).
 
-### The background job queue does not drain
+### The job queue was not broken — automation was switched off
 
-**Nothing scheduled runs.** A freshly enqueued `series.metadata.refresh` — a
-type the worker explicitly declares in its `maintenance` lane at startup — sits
-at `queued`, `attempts=0`, for over two minutes. The oldest queued job is
-`movies.catalog.refresh` scheduled three days before this session, still at
-`attempts=0`. The worker logs all three lanes starting, so it is running and not
-leasing.
+An earlier version of this document claimed the queue did not drain and called
+it the most important thing to fix. That was wrong, and the check that would
+have shown it was one API call away.
 
-This predates the branch and **the cause has not been traced.** Everything in
-this rebuild was verified through the manual paths, which do work; anything that
-depends on the scheduler — recurring searches, automatic catalogue refresh,
-quality recalculation — is inert until this is fixed. It is the single most
-important thing to look at next.
+`DelunoHeartbeatWorker.RunLaneAsync` reads `settings.AutoStartJobs` every tick
+and skips the tick when it is false. This install had `autoStartJobs: false` —
+which the Dashboard was already reporting as "Automation paused", with a
+"Configure automation" action next to it. Turning it on drained everything in
+under a minute: 7 queued and 3-day-old `movies.catalog.refresh` jobs went to 9
+completed, 0 remaining. It is on now.
+
+The lesson worth keeping: a queue at `attempts=0` means nothing has *tried*,
+which points at leasing or a gate, not at a handler.
 
 ## Remaining queue
 
