@@ -1,6 +1,6 @@
-using Deluno.Platform.Contracts;
+using Deluno.Notifications.Contracts;
 
-namespace Deluno.Platform.Data;
+namespace Deluno.Notifications;
 
 public interface INotificationService
 {

@@ -1,12 +1,12 @@
 using System.Net.Http.Json;
 using System.Text.Json;
-using Deluno.Platform.Data;
+using Deluno.Notifications.Data;
 using Microsoft.Extensions.Logging;
 
-namespace Deluno.Platform.Notifications;
+namespace Deluno.Notifications;
 
 public sealed class OutboundNotificationService(
-    IPlatformSettingsRepository repository,
+    INotificationRepository repository,
     IHttpClientFactory httpClientFactory,
     ILogger<OutboundNotificationService> logger) : IOutboundNotificationService
 {

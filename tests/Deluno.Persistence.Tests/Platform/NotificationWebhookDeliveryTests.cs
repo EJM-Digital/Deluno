@@ -3,7 +3,9 @@ using Deluno.Infrastructure.Storage.Migrations;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
-using Deluno.Platform.Notifications;
+using Deluno.Notifications;
+using Deluno.Notifications.Contracts;
+using Deluno.Notifications.Data;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Deluno.Persistence.Tests.Platform;
@@ -21,10 +23,9 @@ public sealed class NotificationWebhookDeliveryTests
             new SqliteDatabaseMigrator(storage.Factory, timeProvider),
             NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
 
-        var repository = new SqlitePlatformSettingsRepository(
+        var repository = new SqliteNotificationRepository(
             storage.Factory,
-            timeProvider,
-            TestSecretProtection.Create(storage));
+            timeProvider);
 
         var webhook = await repository.CreateNotificationWebhookAsync(
             new CreateNotificationWebhookRequest(
@@ -70,10 +71,9 @@ public sealed class NotificationWebhookDeliveryTests
             new SqliteDatabaseMigrator(storage.Factory, timeProvider),
             NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
 
-        var repository = new SqlitePlatformSettingsRepository(
+        var repository = new SqliteNotificationRepository(
             storage.Factory,
-            timeProvider,
-            TestSecretProtection.Create(storage));
+            timeProvider);
 
         await repository.CreateNotificationWebhookAsync(
             new CreateNotificationWebhookRequest(

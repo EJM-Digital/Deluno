@@ -1,4 +1,4 @@
-namespace Deluno.Platform.Contracts;
+namespace Deluno.Notifications.Contracts;
 
 public sealed record NotificationWebhookItem(
     string Id,

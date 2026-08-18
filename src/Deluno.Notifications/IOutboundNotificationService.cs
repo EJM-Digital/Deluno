@@ -1,4 +1,4 @@
-namespace Deluno.Platform.Notifications;
+namespace Deluno.Notifications;
 
 public interface IOutboundNotificationService
 {
