@@ -6,6 +6,7 @@ using Deluno.Infrastructure.Storage;
 using Deluno.Platform.Contracts;
 using Deluno.Security;
 using Deluno.Security.Contracts;
+using static Deluno.Infrastructure.Storage.SqliteRecordHelpers;
 
 namespace Deluno.Platform.Data;
 
@@ -4137,12 +4138,6 @@ public sealed class SqlitePlatformSettingsRepository(
         return await reader.ReadAsync(cancellationToken) ? ReadLibraryView(reader) : null;
     }
 
-    private static string? NormalizeName(string? value)
-    {
-        var normalized = value?.Trim();
-        return string.IsNullOrWhiteSpace(normalized) ? null : normalized;
-    }
-
     private static string BuildIntakeEntryKey(string title, int? year, string? imdbId)
     {
         if (!string.IsNullOrWhiteSpace(imdbId))
@@ -4273,15 +4268,6 @@ public sealed class SqlitePlatformSettingsRepository(
         => NormalizeMediaType(mediaType) == "tv"
             ? "WEB 720p, WEB 1080p, HDTV 1080p"
             : "WEB 1080p, Bluray 1080p, Remux 1080p";
-
-    private static string NormalizeCsv(string? value)
-    {
-        return string.Join(
-            ", ",
-            (value ?? string.Empty)
-                .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-                .Distinct(StringComparer.OrdinalIgnoreCase));
-    }
 
     private static double? NormalizeNullableRating(double? value)
     {
@@ -4860,19 +4846,8 @@ public sealed class SqlitePlatformSettingsRepository(
         return items;
     }
 
-    private static void AddParameter(System.Data.Common.DbCommand command, string name, object? value)
-    {
-        var parameter = command.CreateParameter();
-        parameter.ParameterName = name;
-        parameter.Value = value ?? DBNull.Value;
-        command.Parameters.Add(parameter);
-    }
-
     private static string? GetValue(IReadOnlyDictionary<string, string> values, string key)
         => values.TryGetValue(key, out var value) ? value : null;
-
-    private static DateTimeOffset ParseTimestamp(string value)
-        => DateTimeOffset.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
 
     public async Task<IReadOnlyList<NotificationWebhookItem>> ListNotificationWebhooksAsync(CancellationToken cancellationToken)
     {
