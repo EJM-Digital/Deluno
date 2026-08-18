@@ -1,4 +1,5 @@
-import { Link, useLoaderData, useNavigate } from "react-router-dom";
+import { useEffect } from "react";
+import { Link, useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -41,6 +42,7 @@ import { Chip } from "../components/ui/chip";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { MetricChart, type MetricPoint } from "../components/ui/metric-chart";
+import { useLiveSeries } from "../hooks/use-live-series";
 import { RouteSkeleton } from "../components/shell/skeleton";
 
 interface OutcomeSeries {
@@ -63,6 +65,8 @@ interface DashboardMetrics {
 
 interface DashboardLoaderData {
   metrics: DashboardMetrics | null;
+  /** Combined client throughput right now, in MB/s. */
+  speedMbps: number;
   activeDownloads: ActiveDownload[];
   activeDownloadCount: number;
   indexerHealth: IndexerHealthItem[];
@@ -154,6 +158,7 @@ export async function dashboardLoader(): Promise<DashboardLoaderData> {
 
   return {
     metrics,
+    speedMbps: telemetry.summary.totalSpeedMbps,
     activeDownloads,
     activeDownloadCount: telemetry.summary.activeCount + telemetry.summary.queuedCount + telemetry.summary.importReadyCount,
     indexerHealth,
@@ -193,7 +198,16 @@ export function DashboardPage() {
   if (!data) return <RouteSkeleton />;
 
   const healthIssues = data.indexerHealth.filter((item) => item.status !== "healthy").length;
+  const revalidator = useRevalidator();
   const topDownload = data.activeDownloads[0];
+
+  // Speed only exists as "right now", so the page samples what it is already
+  // polling. Five seconds keeps the line moving without hammering the API.
+  const speedSeries = useLiveSeries(Number(data.speedMbps.toFixed(2)), { samples: 60 });
+  useEffect(() => {
+    const timer = window.setInterval(() => revalidator.revalidate(), 5_000);
+    return () => window.clearInterval(timer);
+  }, [revalidator]);
   const upcomingGroups = groupDashboardUpcoming(data.upcoming);
   const setupProgress = data.setupProgress;
 
@@ -281,8 +295,22 @@ export function DashboardPage() {
         ]}
       />
 
-      {data.metrics ? (
-        <div className="grid gap-[var(--grid-gap)] md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-[var(--grid-gap)] md:grid-cols-2 xl:grid-cols-3">
+        {/* Live, and labelled as such: this is sampled in the browser, not stored. */}
+        <MetricChart
+          label="Download speed"
+          value={data.speedMbps > 0 ? `${data.speedMbps.toFixed(1)} MB/s` : "Idle"}
+          help={
+            data.activeDownloadCount > 0
+              ? `${data.activeDownloadCount} transfer${data.activeDownloadCount === 1 ? "" : "s"} in flight`
+              : "nothing downloading"
+          }
+          series={speedSeries.length ? speedSeries : [{ date: new Date().toISOString(), value: 0 }]}
+          tone={data.speedMbps > 0 ? "success" : "primary"}
+          footer={speedSeries.length > 1 ? "since you opened this page" : "waiting for a second reading"}
+        />
+        {data.metrics ? (
+          <>
           <MetricChart
             label="Library"
             value={String(data.metrics.librarySize.at(-1)?.value ?? 0)}
@@ -299,23 +327,9 @@ export function DashboardPage() {
             compare={{ series: data.metrics.searches.failed, label: "no match", tone: "warning" }}
             tone="success"
           />
-          <MetricChart
-            label="Automation"
-            value={String(sumSeries(data.metrics.jobs.succeeded))}
-            help={`jobs finished · ${sumSeries(data.metrics.jobs.failed)} failed`}
-            series={data.metrics.jobs.succeeded}
-            compare={{ series: data.metrics.jobs.failed, label: "failed", tone: "danger" }}
-            tone="primary"
-          />
-          <MetricChart
-            label="Stuck imports"
-            value={String(sumSeries(data.metrics.importFailures))}
-            help={`${sumSeries(data.metrics.grabs)} releases grabbed`}
-            series={data.metrics.importFailures}
-            tone={sumSeries(data.metrics.importFailures) > 0 ? "danger" : "success"}
-          />
-        </div>
-      ) : null}
+          </>
+        ) : null}
+      </div>
 
       {attention.length > 0 ? (
         <ListCard title="Worth a look" count={`${attention.length} ${attention.length === 1 ? "thing needs" : "things need"} a decision from you`}>
@@ -818,6 +832,7 @@ function formatDashboardTime(date: Date) {
 function emptyDashboardData(): DashboardLoaderData {
   return {
     metrics: null,
+    speedMbps: 0,
     activeDownloads: [],
     activeDownloadCount: 0,
     indexerHealth: [],

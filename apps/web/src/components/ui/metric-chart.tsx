@@ -46,6 +46,8 @@ interface MetricChartProps {
   tone?: MetricTone;
   /** Cumulative series start high and stay high; their floor should not be zero. */
   zeroBased?: boolean;
+  /** Replaces the date range — for a series whose window is not calendar days. */
+  footer?: string;
   className?: string;
 }
 
@@ -57,6 +59,7 @@ export function MetricChart({
   compare,
   tone = "primary",
   zeroBased = true,
+  footer,
   className
 }: MetricChartProps) {
   const gradientId = useId();
@@ -80,9 +83,12 @@ export function MetricChart({
 
   const total = points.reduce((sum, point) => sum + point.value, 0);
   const compareTotal = compare?.series.reduce((sum, point) => sum + point.value, 0) ?? 0;
+  // A live series is samples, not days; saying "days" for a 5-second reading is
+  // the same class of lie as an invented sparkline.
+  const unit = footer ? "readings" : "days";
   const summary = compare
-    ? `${label}: ${value}. ${total} versus ${compareTotal} ${compare.label.toLowerCase()} over ${points.length} days.`
-    : `${label}: ${value}. ${total} over ${points.length} days.`;
+    ? `${label}: ${value}. ${total} versus ${compareTotal} ${compare.label.toLowerCase()} over ${points.length} ${unit}.`
+    : `${label}: ${value}. ${total} over ${points.length} ${unit}.`;
 
   return (
     <section
@@ -148,8 +154,14 @@ export function MetricChart({
       </svg>
 
       <footer className="flex items-center justify-between gap-2 border-t border-hairline px-[var(--card-pad-x)] py-1.5">
-        <span className="text-[length:var(--type-micro)] text-muted-foreground">{formatDay(points[0]?.date)}</span>
-        <span className="text-[length:var(--type-micro)] text-muted-foreground">{formatDay(points[points.length - 1]?.date)}</span>
+        {footer ? (
+          <span className="truncate text-[length:var(--type-micro)] text-muted-foreground">{footer}</span>
+        ) : (
+          <>
+            <span className="text-[length:var(--type-micro)] text-muted-foreground">{formatDay(points[0]?.date)}</span>
+            <span className="text-[length:var(--type-micro)] text-muted-foreground">{formatDay(points[points.length - 1]?.date)}</span>
+          </>
+        )}
       </footer>
     </section>
   );
