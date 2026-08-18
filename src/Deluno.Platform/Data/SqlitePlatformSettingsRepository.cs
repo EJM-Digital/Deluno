@@ -7,6 +7,7 @@ using Deluno.Platform.Contracts;
 using Deluno.Security;
 using Deluno.Security.Contracts;
 using static Deluno.Infrastructure.Storage.SqliteRecordHelpers;
+using static Deluno.Contracts.DelunoValueNormalizers;
 
 namespace Deluno.Platform.Data;
 
@@ -3781,19 +3782,6 @@ public sealed class SqlitePlatformSettingsRepository(
         return string.IsNullOrWhiteSpace(normalized) ? null : normalized;
     }
 
-    private static string NormalizeMediaType(string? value)
-    {
-        var normalized = value?.Trim().ToLowerInvariant();
-        return normalized switch
-        {
-            "movies" => "movies",
-            "tv" => "tv",
-            "tv shows" => "tv",
-            "tvshows" => "tv",
-            _ => "movies"
-        };
-    }
-
     private static string NormalizeDestinationMatchKind(string? value)
     {
         var normalized = value?.Trim().ToLowerInvariant();
@@ -3886,36 +3874,6 @@ public sealed class SqlitePlatformSettingsRepository(
         => NormalizeMediaType(mediaType) == "tv"
             ? "WEB 720p, WEB 1080p, HDTV 1080p"
             : "WEB 1080p, Bluray 1080p, Remux 1080p";
-
-    private static double? NormalizeNullableRating(double? value)
-    {
-        if (value is null || double.IsNaN(value.Value) || double.IsInfinity(value.Value))
-        {
-            return null;
-        }
-
-        return Math.Clamp(value.Value, 0, 10);
-    }
-
-    private static int? NormalizeNullableYear(int? value)
-        => value is >= 1888 and <= 2100 ? value : null;
-
-    private static int NormalizeSyncIntervalHours(int? value)
-        => NormalizeSyncIntervalHours(value ?? 24);
-
-    private static int NormalizeSyncIntervalHours(int value)
-        => Math.Clamp(value <= 0 ? 24 : value, 1, 168);
-
-    private static string NormalizeAudience(string? value)
-    {
-        var normalized = value?.Trim().ToLowerInvariant();
-        return normalized switch
-        {
-            "kids" => "kids",
-            "adult" => "adult",
-            _ => "any"
-        };
-    }
 
     private static string NormalizeIntakeSyncStatus(string? value)
     {
@@ -4092,11 +4050,6 @@ public sealed class SqlitePlatformSettingsRepository(
     private static int NormalizePriorityValue(int value)
     {
         return value <= 0 ? 100 : value;
-    }
-
-    private static int? NormalizeNullablePositiveValue(int? value)
-    {
-        return value is > 0 ? value.Value : null;
     }
 
     private static async Task<IReadOnlyList<LibrarySourceLinkItem>> ReadLibrarySourceLinksAsync(
