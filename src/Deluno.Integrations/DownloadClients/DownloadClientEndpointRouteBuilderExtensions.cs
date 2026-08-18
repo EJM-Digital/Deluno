@@ -34,7 +34,6 @@ public static class DownloadClientEndpointRouteBuilderExtensions
             string clientId,
             HttpContext httpContext,
             [FromBody] DownloadClientActionRequest request,
-            IPlatformSettingsRepository platformRepository,
             IDownloadClientTelemetryService telemetryService,
             CancellationToken cancellationToken) =>
         {
@@ -52,7 +51,6 @@ public static class DownloadClientEndpointRouteBuilderExtensions
             string clientId,
             string queueItemId,
             HttpContext httpContext,
-            IPlatformSettingsRepository platformRepository,
             IDownloadClientTelemetryService telemetryService,
             CancellationToken cancellationToken) =>
         {
@@ -83,7 +81,6 @@ public static class DownloadClientEndpointRouteBuilderExtensions
             string clientId,
             HttpContext httpContext,
             [FromBody] DownloadClientGrabRequest request,
-            IPlatformSettingsRepository platformRepository,
             IDownloadClientGrabService grabService,
             CancellationToken cancellationToken) =>
         {

@@ -30,7 +30,6 @@ public static class DashboardMetricsEndpointRouteBuilderExtensions
         endpoints.MapGet("/api/dashboard/metrics", async (
             int? days,
             HttpContext httpContext,
-            [FromServices] IPlatformSettingsRepository platformSettingsRepository,
             [FromServices] IMovieCatalogRepository movieCatalogRepository,
             [FromServices] ISeriesCatalogRepository seriesCatalogRepository,
             [FromServices] IJobQueueRepository jobQueueRepository,

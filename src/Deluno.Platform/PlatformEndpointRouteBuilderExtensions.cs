@@ -91,7 +91,6 @@ public static class PlatformEndpointRouteBuilderExtensions
         migration.MapPost("/preview", async (
             HttpContext httpContext,
             [FromBody] MigrationImportRequest request,
-            IPlatformSettingsRepository repository,
             IMigrationAssistantService migrationAssistant,
             CancellationToken cancellationToken) =>
         {
@@ -108,7 +107,6 @@ public static class PlatformEndpointRouteBuilderExtensions
         migration.MapPost("/apply", async (
             HttpContext httpContext,
             [FromBody] MigrationImportRequest request,
-            IPlatformSettingsRepository repository,
             IMigrationAssistantService migrationAssistant,
             CancellationToken cancellationToken) =>
         {
@@ -343,7 +341,6 @@ public static class PlatformEndpointRouteBuilderExtensions
         qualityModel.MapPut(string.Empty, async (
             HttpContext httpContext,
             [FromBody] UpdateQualityModelRequest request,
-            IPlatformSettingsRepository repository,
             IQualityModelService service,
             CancellationToken cancellationToken) =>
         {
@@ -467,7 +464,6 @@ public static class PlatformEndpointRouteBuilderExtensions
         notificationWebhooks.MapPost("{id}/test", async (
             string id,
             HttpContext httpContext,
-            IPlatformSettingsRepository repository,
             Deluno.Platform.Notifications.IOutboundNotificationService notificationService,
             CancellationToken cancellationToken) =>
         {
@@ -700,7 +696,6 @@ public static class PlatformEndpointRouteBuilderExtensions
         intakeSources.MapPost("{id}/preview", async (
             string id,
             HttpContext httpContext,
-            IPlatformSettingsRepository repository,
             IIntakeListPreviewService previewService,
             CancellationToken cancellationToken) =>
         {
@@ -724,7 +719,6 @@ public static class PlatformEndpointRouteBuilderExtensions
             string id,
             HttpContext httpContext,
             [FromBody] ApproveIntakeListPreviewRequest request,
-            IPlatformSettingsRepository repository,
             IIntakeListApprovalService approvalService,
             CancellationToken cancellationToken) =>
         {
@@ -1406,7 +1400,6 @@ public static class PlatformEndpointRouteBuilderExtensions
         endpoints.MapPost("/api/libraries/{id}/import-existing", async (
             string id,
             HttpContext httpContext,
-            IPlatformSettingsRepository repository,
             IExistingLibraryImportService importService,
             IActivityFeedRepository activityFeedRepository,
             CancellationToken cancellationToken) =>
@@ -1523,7 +1516,6 @@ public static class PlatformEndpointRouteBuilderExtensions
         indexers.MapPost("test", async (
             HttpContext httpContext,
             [FromBody] CreateIndexerRequest request,
-            IPlatformSettingsRepository repository,
             IIntegrationResiliencePolicy resiliencePolicy,
             CancellationToken cancellationToken) =>
         {
@@ -1772,7 +1764,6 @@ public static class PlatformEndpointRouteBuilderExtensions
         downloadClients.MapPost("test", async (
             HttpContext httpContext,
             [FromBody] CreateDownloadClientRequest request,
-            IPlatformSettingsRepository repository,
             IIntegrationResiliencePolicy resiliencePolicy,
             CancellationToken cancellationToken) =>
         {
@@ -2174,7 +2165,6 @@ public static class PlatformEndpointRouteBuilderExtensions
             HttpContext httpContext,
             int? take,
             string? mediaType,
-            IPlatformSettingsRepository repository,
             IJobQueueRepository jobs,
             CancellationToken cancellationToken) =>
         {
@@ -2192,7 +2182,6 @@ public static class PlatformEndpointRouteBuilderExtensions
         integrations.MapGet("/external/activity", async (
             HttpContext httpContext,
             int? take,
-            IPlatformSettingsRepository repository,
             IActivityFeedRepository activityFeed,
             CancellationToken cancellationToken) =>
         {
@@ -2594,7 +2583,6 @@ public static class PlatformEndpointRouteBuilderExtensions
         notifications.MapGet(string.Empty, async (
             HttpContext httpContext,
             INotificationService notificationService,
-            IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -2610,7 +2598,6 @@ public static class PlatformEndpointRouteBuilderExtensions
         notifications.MapGet("/unread-count", async (
             HttpContext httpContext,
             INotificationService notificationService,
-            IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -2627,7 +2614,6 @@ public static class PlatformEndpointRouteBuilderExtensions
             HttpContext httpContext,
             string notificationId,
             INotificationService notificationService,
-            IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -2643,7 +2629,6 @@ public static class PlatformEndpointRouteBuilderExtensions
         notifications.MapPost("/read-all", async (
             HttpContext httpContext,
             INotificationService notificationService,
-            IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -2660,7 +2645,6 @@ public static class PlatformEndpointRouteBuilderExtensions
             HttpContext httpContext,
             string notificationId,
             INotificationService notificationService,
-            IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -2676,7 +2660,6 @@ public static class PlatformEndpointRouteBuilderExtensions
         notifications.MapDelete(string.Empty, async (
             HttpContext httpContext,
             INotificationService notificationService,
-            IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -2695,7 +2678,6 @@ public static class PlatformEndpointRouteBuilderExtensions
         preferences.MapGet(string.Empty, async (
             HttpContext httpContext,
             INotificationService notificationService,
-            IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -2712,7 +2694,6 @@ public static class PlatformEndpointRouteBuilderExtensions
             HttpContext httpContext,
             NotificationPreferences request,
             INotificationService notificationService,
-            IPlatformSettingsRepository repository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
