@@ -170,7 +170,8 @@ const settingsPageMeta = [
   {
     match: (path: string) => path.startsWith("/settings/migration"),
     title: "Migration Assistant",
-    description: "Preview and import external media automation configuration without overwriting existing Deluno setup."
+    description: "Preview and import external media automation configuration without overwriting existing Deluno setup.",
+    chrome: "none"
   },
   {
     match: (path: string) => path.startsWith("/settings/metadata"),
