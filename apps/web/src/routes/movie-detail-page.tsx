@@ -32,6 +32,9 @@ import { DecisionExplanationList } from "../components/app/decision-explanation-
 import { RatingStrip } from "../components/app/rating-strip";
 import { EmptyState } from "../components/shell/empty-state";
 import { RouteSkeleton } from "../components/shell/skeleton";
+import { ListCard } from "../components/ui/list-card";
+import { PageToolbar } from "../components/ui/page-toolbar";
+import { SegmentedControl } from "../components/ui/segmented-control";
 
 interface MovieDetailLoaderData {
   activity: ActivityEventItem[];
@@ -446,14 +449,39 @@ export function MovieDetailPage() {
   }
 
   return (
-    <div className="space-y-[var(--page-gap)]">
-      <Link
-        to="/movies"
-        className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to Movies
-      </Link>
+    <div className="flex flex-col gap-[var(--page-gap)]">
+      {/* One toolbar: where you came from, which half of the page you want, and
+          the two searches. The topbar names the section, the hero names the film. */}
+      <PageToolbar
+        actions={
+          <>
+            <Button asChild type="button" variant="outline">
+              <Link to="/movies">
+                <ArrowLeft className="h-4 w-4" />
+                All movies
+              </Link>
+            </Button>
+            <SegmentedControl<"details" | "history">
+              aria-label="Section"
+              className="w-auto"
+              value={activeDetailSection}
+              onValueChange={setActiveDetailSection}
+              options={[
+                { value: "details", label: "Files & destination" },
+                { value: "history", label: "History & activity" }
+              ]}
+            />
+            <Button type="button" variant="outline" onClick={() => void handleSearchNow("interactive")} disabled={busyAction !== null} title="Review every candidate and choose the release yourself.">
+              {busyAction === "interactive-search" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              Choose a release
+            </Button>
+            <Button type="button" onClick={() => void handleSearchNow("automatic")} disabled={busyAction !== null} title="Deluno applies the active Media Plan and sends the best acceptable release.">
+              {busyAction === "automatic-search" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              Search now
+            </Button>
+          </>
+        }
+      />
 
       <Card className="relative isolate min-h-[19rem] overflow-hidden border-primary/25 bg-card">
         {movie.backdropUrl ? (
@@ -513,6 +541,17 @@ export function MovieDetailPage() {
                 <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">IMDb</span><span className="font-medium text-foreground">{movie.imdbId ?? "—"}</span></div>
               </div>
               <Button variant="outline" className="mt-4 w-full" onClick={() => setIsMetadataEditorOpen(true)}>Edit metadata</Button>
+              {/* Destructive, so it sits with the other "manage this title" controls
+                  rather than beside the two searches in the toolbar. */}
+              <Button
+                variant="ghost"
+                className="mt-2 w-full text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => setIsRemoveConfirmationOpen(true)}
+                disabled={busyAction !== null}
+              >
+                <Trash2 className="h-4 w-4" />
+                Remove from Deluno
+              </Button>
             </aside>
           </div>
         </CardContent>
@@ -557,41 +596,6 @@ export function MovieDetailPage() {
         </Dialog.Portal>
       </Dialog.Root>
 
-      <div className="flex flex-wrap gap-2">
-        <Button onClick={() => void handleSearchNow("automatic")} disabled={busyAction !== null} title="Deluno applies the active Media Plan and automatically sends the best acceptable release.">
-          {busyAction === "automatic-search" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-          Automatic search
-        </Button>
-        <Button variant="outline" onClick={() => void handleSearchNow("interactive")} disabled={busyAction !== null} title="Review every candidate and choose the release yourself.">
-          {busyAction === "interactive-search" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-          Interactive search
-        </Button>
-        <Button
-          variant="ghost"
-          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-          onClick={() => setIsRemoveConfirmationOpen(true)}
-          disabled={busyAction !== null}
-        >
-          <Trash2 className="h-4 w-4" />
-          Remove from Deluno
-        </Button>
-      </div>
-
-      <nav className="flex flex-wrap gap-1 rounded-xl border border-hairline bg-surface-1 p-1" aria-label="Movie detail sections">
-        {[
-          ["details", "Files & destination"],
-          ["history", "History & activity"]
-        ].map(([section, label]) => (
-          <button
-            key={section}
-            type="button"
-            onClick={() => setActiveDetailSection(section as "details" | "history")}
-            className={activeDetailSection === section ? "rounded-lg bg-card px-4 py-2 text-sm font-semibold text-foreground shadow-sm" : "rounded-lg px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground"}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
 
       {actionMessage ? (
         <div className="rounded-xl border border-hairline bg-surface-1 px-4 py-3 text-sm text-muted-foreground" role="status" aria-live="polite">
