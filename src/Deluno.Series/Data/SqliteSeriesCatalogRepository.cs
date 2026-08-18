@@ -2176,6 +2176,61 @@ public sealed class SqliteSeriesCatalogRepository(
         return items;
     }
 
+    /// <summary>Episodes still wanted across every series, newest air date first.</summary>
+    public async Task<IReadOnlyList<WantedEpisodeItem>> ListWantedEpisodesAsync(
+        int take,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT
+                e.id, e.series_id, s.title, e.season_number, e.episode_number, e.title,
+                e.air_date_utc, e.monitored,
+                COALESCE(w.wanted_status, 'missing'),
+                COALESCE(w.wanted_reason, 'Episode is missing from the library.'),
+                w.last_search_utc, w.next_eligible_search_utc
+            FROM episode_entries e
+            INNER JOIN series_entries s ON s.id = e.series_id
+            LEFT JOIN episode_wanted_state w ON w.episode_id = e.id
+            WHERE e.has_file = 0
+              AND COALESCE(w.wanted_status, 'missing') IN ('missing', 'upgrade')
+            ORDER BY
+                CASE WHEN e.air_date_utc IS NULL THEN 1 ELSE 0 END,
+                e.air_date_utc DESC,
+                s.title ASC,
+                e.season_number ASC,
+                e.episode_number ASC
+            LIMIT @take;
+            """;
+        AddParameter(command, "@take", take);
+
+        var items = new List<WantedEpisodeItem>();
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            items.Add(new WantedEpisodeItem(
+                EpisodeId: reader.GetString(0),
+                SeriesId: reader.GetString(1),
+                SeriesTitle: reader.GetString(2),
+                SeasonNumber: reader.GetInt32(3),
+                EpisodeNumber: reader.GetInt32(4),
+                Title: reader.IsDBNull(5) ? null : reader.GetString(5),
+                AirDateUtc: reader.IsDBNull(6) ? null : ParseTimestamp(reader.GetString(6)),
+                Monitored: reader.GetInt64(7) == 1,
+                WantedStatus: reader.GetString(8),
+                WantedReason: reader.GetString(9),
+                LastSearchUtc: reader.IsDBNull(10) ? null : ParseTimestamp(reader.GetString(10)),
+                NextEligibleSearchUtc: reader.IsDBNull(11) ? null : ParseTimestamp(reader.GetString(11))));
+        }
+
+        return items;
+    }
+
     private static async Task<bool> EpisodeExistsAsync(
         System.Data.Common.DbConnection connection,
         System.Data.Common.DbTransaction transaction,

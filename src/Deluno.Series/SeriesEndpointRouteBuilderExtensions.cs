@@ -75,6 +75,15 @@ public static class SeriesEndpointRouteBuilderExtensions
             return Results.Ok(items);
         });
 
+        series.MapGet("/episodes/wanted", async (
+            int? take,
+            ISeriesCatalogRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var items = await repository.ListWantedEpisodesAsync(Math.Clamp(take ?? 200, 1, 1000), cancellationToken);
+            return Results.Ok(items);
+        });
+
         series.MapGet("/calendar", async (
             DateTimeOffset? from,
             DateTimeOffset? to,

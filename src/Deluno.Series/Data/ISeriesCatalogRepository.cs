@@ -209,4 +209,9 @@ public interface ISeriesCatalogRepository
         DateTimeOffset toUtc,
         int take,
         CancellationToken cancellationToken);
+
+    /// <summary>Episodes still wanted across every series.</summary>
+    Task<IReadOnlyList<WantedEpisodeItem>> ListWantedEpisodesAsync(
+        int take,
+        CancellationToken cancellationToken);
 }
