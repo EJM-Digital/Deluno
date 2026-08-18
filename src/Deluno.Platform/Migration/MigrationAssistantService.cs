@@ -1,12 +1,15 @@
 using System.Globalization;
 using System.Text.Json;
 using Deluno.Platform.Contracts;
+using Deluno.Intake.Contracts;
+using Deluno.Intake.Data;
 using Deluno.Platform.Data;
 
 namespace Deluno.Platform.Migration;
 
 public sealed class MigrationAssistantService(
     IPlatformSettingsRepository repository,
+    IIntakeRepository intakeRepository,
     IEnumerable<IMigrationCatalogImporter>? catalogImporters = null) : IMigrationAssistantService
 {
     private static readonly JsonDocumentOptions DocumentOptions = new()
@@ -47,7 +50,7 @@ public sealed class MigrationAssistantService(
 
         using (document)
         {
-            var existing = await ExistingState.LoadAsync(repository, cancellationToken);
+            var existing = await ExistingState.LoadAsync(repository, intakeRepository, cancellationToken);
             var operations = new List<MigrationReportOperation>();
             var contexts = ResolveContexts(document.RootElement, sourceKind).ToArray();
 
@@ -195,7 +198,7 @@ public sealed class MigrationAssistantService(
                 }
                 case "intake-source":
                 {
-                    var created = await repository.CreateIntakeSourceAsync(
+                    var created = await intakeRepository.CreateIntakeSourceAsync(
                         new CreateIntakeSourceRequest(
                             GetData(operation, "name") ?? operation.Name,
                             GetData(operation, "provider") ?? "rss",
@@ -1164,13 +1167,16 @@ public sealed class MigrationAssistantService(
         IReadOnlyDictionary<string, string> DownloadClientsByName,
         IReadOnlyDictionary<string, string> IntakeSourcesByName)
     {
-        public static async Task<ExistingState> LoadAsync(IPlatformSettingsRepository repository, CancellationToken cancellationToken)
+        public static async Task<ExistingState> LoadAsync(
+            IPlatformSettingsRepository repository,
+            IIntakeRepository intakeRepository,
+            CancellationToken cancellationToken)
         {
             var profiles = await repository.ListQualityProfilesAsync(cancellationToken);
             var libraries = await repository.ListLibrariesAsync(cancellationToken);
             var indexers = await repository.ListIndexersAsync(cancellationToken);
             var clients = await repository.ListDownloadClientsAsync(cancellationToken);
-            var intakeSources = await repository.ListIntakeSourcesAsync(cancellationToken);
+            var intakeSources = await intakeRepository.ListIntakeSourcesAsync(cancellationToken);
 
             return new ExistingState(
                 profiles.Select(profile => MakeKey(profile.MediaType, profile.Name)).ToHashSet(StringComparer.Ordinal),

@@ -1,4 +1,6 @@
 using Deluno.Persistence.Tests.Support;
+using Deluno.Intake.Contracts;
+using Deluno.Intake.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Deluno.Infrastructure.Storage.Migrations;
@@ -252,7 +254,7 @@ public sealed class PlatformSettingsPersistenceTests
             new SqliteDatabaseMigrator(storage.Factory, timeProvider),
             NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
 
-        var repository = new SqlitePlatformSettingsRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
+        var repository = new SqliteIntakeRepository(storage.Factory, timeProvider);
         var source = await repository.CreateIntakeSourceAsync(
             new CreateIntakeSourceRequest(
                 "Weekend films",
@@ -286,7 +288,7 @@ public sealed class PlatformSettingsPersistenceTests
         Assert.Null(permanent!.ExpiresUtc);
         Assert.Equal(timeProvider.GetUtcNow().AddDays(7), temporary!.ExpiresUtc);
 
-        var reloaded = new SqlitePlatformSettingsRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
+        var reloaded = new SqliteIntakeRepository(storage.Factory, timeProvider);
         var active = await reloaded.ListActiveIntakeListExclusionsAsync(source.Id, CancellationToken.None);
         Assert.Equal(2, active.Count);
         Assert.Contains(active, item => item.EntryKey == "imdb:tt2543164");
@@ -308,7 +310,7 @@ public sealed class PlatformSettingsPersistenceTests
             new SqliteDatabaseMigrator(storage.Factory, timeProvider),
             NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
 
-        var repository = new SqlitePlatformSettingsRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
+        var repository = new SqliteIntakeRepository(storage.Factory, timeProvider);
         var first = await repository.RecordIntakeTitleOriginAsync(
             new CreateIntakeTitleOriginRequest(
                 "list-1", "Weekend films", "imdb", "movies", "movie-1", "imdb:tt2543164", "Arrival", 2016, "tt2543164"),
@@ -316,7 +318,7 @@ public sealed class PlatformSettingsPersistenceTests
 
         Assert.NotNull(first);
         timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-15T01:00:00Z"));
-        repository = new SqlitePlatformSettingsRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
+        repository = new SqliteIntakeRepository(storage.Factory, timeProvider);
         var refreshed = await repository.RecordIntakeTitleOriginAsync(
             new CreateIntakeTitleOriginRequest(
                 "list-1", "Weekend films renamed", "imdb", "movies", "movie-1", "imdb:tt2543164", "Arrival", 2016, "tt2543164"),
