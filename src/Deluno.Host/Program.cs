@@ -1,3 +1,5 @@
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 using Deluno.Api;
 using Deluno.Api.Backup;
 using Deluno.Api.Monitoring;
@@ -31,13 +33,43 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 // Keep the normal local port while allowing isolated browser tests and packaged
 // side-by-side diagnostics to select a different loopback endpoint.
 var listenPort = builder.Configuration.GetValue<int?>("Server:Port") ?? 5099;
+
+// Loopback only unless someone deliberately opts in. Deluno is a single-user
+// local control plane, and ListenAnyIP put the whole API — including the
+// unauthenticated setup endpoints on a fresh install — on every interface.
+var allowLan = builder.Configuration.GetValue<bool>("Server:AllowLan");
 builder.WebHost.ConfigureKestrel(options =>
 {
-    options.ListenAnyIP(listenPort);
+    if (allowLan)
+    {
+        options.ListenAnyIP(listenPort);
+    }
+    else
+    {
+        options.ListenLocalhost(listenPort);
+    }
 });
 
 builder.Services.AddDelunoInfrastructure(builder.Configuration);
 builder.Services.AddDelunoApi();
+
+// Login is the one endpoint an unauthenticated caller can hit repeatedly, and
+// each attempt costs 100k PBKDF2 iterations — so it is both a credential
+// guessing surface and a cheap way to burn the CPU of a machine that is
+// meant to be transcoding. Fixed window, keyed by remote address.
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy(DelunoRateLimitPolicies.Login, httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            }));
+});
 builder.Services.AddDelunoSecurityModule();
 builder.Services.AddDelunoNotificationsModule();
 builder.Services.AddDelunoIntakeModule();
@@ -107,6 +139,7 @@ app.Use(async (context, next) =>
     await next();
 });
 
+app.UseRateLimiter();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.UseDelunoCorrelation();
@@ -132,8 +165,6 @@ app.Use(async (context, next) =>
          !path.Equals("/api/auth/login", StringComparison.OrdinalIgnoreCase) &&
          !path.Equals("/api/auth/bootstrap-status", StringComparison.OrdinalIgnoreCase) &&
          !path.Equals("/api/auth/bootstrap", StringComparison.OrdinalIgnoreCase) &&
-         !path.StartsWithSegments("/api/openapi", StringComparison.OrdinalIgnoreCase) &&
-         !path.StartsWithSegments("/api/docs", StringComparison.OrdinalIgnoreCase) &&
          !path.StartsWithSegments("/api/health", StringComparison.OrdinalIgnoreCase) &&
          !path.StartsWithSegments("/api/metadata/artwork", StringComparison.OrdinalIgnoreCase)) ||
         path.StartsWithSegments("/hubs", StringComparison.OrdinalIgnoreCase);
