@@ -44,6 +44,9 @@ export default defineConfig({
       env: {
         ...process.env,
         Storage__DataRoot: smokeDataRoot,
+        // The suite logs in for every test from one address; the production
+        // default of 10/min would throttle the run, not an attacker.
+        Security__Login__PermitLimit: "100000",
         Server__Port: String(smokeApiPort)
       }
     },

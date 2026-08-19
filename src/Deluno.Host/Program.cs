@@ -57,6 +57,11 @@ builder.Services.AddDelunoApi();
 // each attempt costs 100k PBKDF2 iterations — so it is both a credential
 // guessing surface and a cheap way to burn the CPU of a machine that is
 // meant to be transcoding. Fixed window, keyed by remote address.
+// Configurable rather than hardcoded: the defaults are the production posture,
+// but the smoke suite authenticates once per test from a single address and
+// would otherwise throttle itself. Raised via Security:Login:* in that run.
+var loginPermitLimit = builder.Configuration.GetValue<int?>("Security:Login:PermitLimit") ?? 10;
+var loginWindowSeconds = builder.Configuration.GetValue<int?>("Security:Login:WindowSeconds") ?? 60;
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -65,8 +70,8 @@ builder.Services.AddRateLimiter(options =>
             httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
             _ => new FixedWindowRateLimiterOptions
             {
-                PermitLimit = 10,
-                Window = TimeSpan.FromMinutes(1),
+                PermitLimit = loginPermitLimit,
+                Window = TimeSpan.FromSeconds(loginWindowSeconds),
                 QueueLimit = 0
             }));
 });
