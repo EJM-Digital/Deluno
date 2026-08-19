@@ -303,6 +303,52 @@ public sealed class SqliteSeriesCatalogRepository(
         return candidates;
     }
 
+    public async Task<string?> FindExistingIdAsync(
+        string title,
+        int? startYear,
+        string? imdbId,
+        string? metadataProvider,
+        string? metadataProviderId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+
+        // The same three rules AddAsync matches on, and each has an index:
+        // ix_series_entries_imdb_id, ix_series_entries_metadata_provider_id and
+        // ix_series_entries_title_year. No join and no GROUP BY -- those are in
+        // AddAsync's version only because it returns the whole row.
+        command.CommandText =
+            """
+            SELECT id
+            FROM series_entries
+            WHERE
+                (@imdbId IS NOT NULL AND imdb_id = @imdbId)
+                OR (
+                    @metadataProvider IS NOT NULL
+                    AND @metadataProviderId IS NOT NULL
+                    AND metadata_provider = @metadataProvider
+                    AND metadata_provider_id = @metadataProviderId
+                )
+                OR (
+                    lower(title) = lower(@title)
+                    AND COALESCE(start_year, -1) = COALESCE(@startYear, -1)
+                )
+            ORDER BY created_utc ASC
+            LIMIT 1;
+            """;
+        AddParameter(command, "@imdbId", NormalizeExternalId(imdbId));
+        AddParameter(command, "@metadataProvider", NormalizeExternalId(metadataProvider));
+        AddParameter(command, "@metadataProviderId", NormalizeExternalId(metadataProviderId));
+        AddParameter(command, "@title", title.Trim());
+        AddParameter(command, "@startYear", startYear);
+
+        return await command.ExecuteScalarAsync(cancellationToken) as string;
+    }
+
     public async Task<IReadOnlyList<SeriesListItem>> ListAsync(CancellationToken cancellationToken)
     {
         var items = new List<SeriesListItem>();
@@ -2761,6 +2807,73 @@ public sealed class SqliteSeriesCatalogRepository(
 
         var affected = await command.ExecuteNonQueryAsync(cancellationToken);
         return affected > 0;
+    }
+
+    public async Task<IReadOnlyList<string>> ListEpisodesNeedingRecoveryAsync(
+        string libraryId,
+        int perSeriesLimit,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+
+        // ROW_NUMBER is what keeps the per-series cap without reading every
+        // series: the window is evaluated over the rows that already passed the
+        // filter, not over the catalogue.
+        command.CommandText =
+            """
+            SELECT id
+            FROM (
+                SELECT
+                    e.id AS id,
+                    e.updated_utc AS updated_utc,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY e.series_id
+                        ORDER BY e.updated_utc ASC, e.id ASC
+                    ) AS rank_in_series
+                FROM episode_entries e
+                INNER JOIN episode_wanted_state w
+                    ON w.episode_id = e.id
+                   AND w.library_id = @libraryId
+                WHERE e.monitored = 1
+                  AND e.has_file = 1
+                  AND COALESCE(w.quality_cutoff_met, e.quality_cutoff_met) = 0
+            )
+            WHERE rank_in_series <= @perSeriesLimit
+            ORDER BY updated_utc ASC, id ASC
+            LIMIT @take;
+            """;
+        AddParameter(command, "@libraryId", libraryId);
+        AddParameter(command, "@perSeriesLimit", Math.Clamp(perSeriesLimit, 1, 100));
+        AddParameter(command, "@take", Math.Clamp(take, 1, 500));
+
+        var episodeIds = new List<string>();
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            episodeIds.Add(reader.GetString(0));
+        }
+
+        return episodeIds;
+    }
+
+    public async Task<DateTimeOffset?> GetEpisodeUpdatedUtcAsync(string episodeId, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT updated_utc FROM episode_entries WHERE id = @episodeId LIMIT 1;";
+        AddParameter(command, "@episodeId", episodeId);
+
+        return await command.ExecuteScalarAsync(cancellationToken) is string value
+            ? ParseTimestamp(value)
+            : null;
     }
 
     public async Task<IReadOnlyList<SeriesEpisodeInventoryItem>> ListMonitoredMissingEpisodesAsync(

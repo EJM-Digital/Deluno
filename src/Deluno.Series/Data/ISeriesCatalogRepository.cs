@@ -9,6 +9,24 @@ public interface ISeriesCatalogRepository
 
     Task<SeriesListItem?> GetByIdAsync(string id, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// The id of the entry this request would land on, or <c>null</c> if it
+    /// would create a new one — the same matching rules
+    /// <see cref="AddAsync"/> applies, asked without adding anything.
+    ///
+    /// This exists so a caller can answer "do I already have this?" with an
+    /// indexed lookup. Intake used to answer it by loading the entire catalogue
+    /// into a dictionary every five minutes, which is the one shape that cannot
+    /// survive a growing library.
+    /// </summary>
+    Task<string?> FindExistingIdAsync(
+        string title,
+        int? startYear,
+        string? imdbId,
+        string? metadataProvider,
+        string? metadataProviderId,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<SeriesListItem>> ListAsync(CancellationToken cancellationToken);
 
     /// <summary>
@@ -183,6 +201,27 @@ public interface ISeriesCatalogRepository
         string libraryId,
         bool preventLowerQualityReplacements,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Episodes in this library that have a file which is below the quality
+    /// cutoff, oldest first, capped at <paramref name="perSeriesLimit"/> per
+    /// show so one long-running series cannot fill the whole result.
+    ///
+    /// The filtering, the per-series cap and the overall cap are all in SQL. The
+    /// previous shape asked for every series and then every episode of each of
+    /// them, in order to return twenty ids.
+    /// </summary>
+    Task<IReadOnlyList<string>> ListEpisodesNeedingRecoveryAsync(
+        string libraryId,
+        int perSeriesLimit,
+        int take,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// When this episode last changed, or <c>null</c> if there is no such
+    /// episode. One indexed lookup by id.
+    /// </summary>
+    Task<DateTimeOffset?> GetEpisodeUpdatedUtcAsync(string episodeId, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<SeriesEpisodeInventoryItem>> ListMonitoredMissingEpisodesAsync(
         string seriesId,

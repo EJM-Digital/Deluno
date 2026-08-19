@@ -87,22 +87,6 @@ public sealed class IntakeSyncService(
         var mediaType = source.MediaType == "tv" ? "tv" : "movies";
         var exclusions = await intakeRepository.ListActiveIntakeListExclusionsAsync(source.Id, cancellationToken);
         var excludedKeys = exclusions.ToDictionary(item => item.EntryKey, item => item, StringComparer.OrdinalIgnoreCase);
-        var known = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-        if (mediaType == "tv")
-        {
-            foreach (var item in await seriesCatalogRepository.ListAsync(cancellationToken))
-            {
-                IndexTitle(known, item.Id, item.Title, item.StartYear, item.ImdbId);
-            }
-        }
-        else
-        {
-            foreach (var item in await movieCatalogRepository.ListAsync(cancellationToken))
-            {
-                IndexTitle(known, item.Id, item.Title, item.ReleaseYear, item.ImdbId);
-            }
-        }
 
         var items = new List<IntakeListPreviewItem>();
         foreach (var entry in entries.Take(PreviewLimit))
@@ -128,7 +112,7 @@ public sealed class IntakeSyncService(
                 continue;
             }
 
-            var existing = Lookup(known, BuildKey(title, entry.Year, entry.ImdbId));
+            var existing = await FindExistingIdAsync(mediaType, title, entry.Year, entry.ImdbId, null, null, cancellationToken);
             items.Add(existing is not null
                 ? new IntakeListPreviewItem(title, entry.Year, mediaType, entry.ImdbId,
                     "already in library", "A matching title is already in this Deluno library.", GetMatchConfidence(entry))
@@ -289,26 +273,6 @@ public sealed class IntakeSyncService(
             }
         }
 
-        var movieIndex = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var seriesIndex = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var knownIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (source.MediaType == "tv")
-        {
-            foreach (var item in await seriesCatalogRepository.ListAsync(cancellationToken))
-            {
-                IndexTitle(seriesIndex, item.Id, item.Title, item.StartYear, item.ImdbId);
-                knownIds.Add(item.Id);
-            }
-        }
-        else
-        {
-            foreach (var item in await movieCatalogRepository.ListAsync(cancellationToken))
-            {
-                IndexTitle(movieIndex, item.Id, item.Title, item.ReleaseYear, item.ImdbId);
-                knownIds.Add(item.Id);
-            }
-        }
-
         var skipReasons = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var excludedKeys = (await intakeRepository.ListActiveIntakeListExclusionsAsync(source.Id, cancellationToken))
             .Select(item => item.EntryKey)
@@ -360,12 +324,21 @@ public sealed class IntakeSyncService(
 
                 var resolvedYear = metadata?.Year ?? entry.Year;
                 var resolvedImdb = metadata?.ImdbId ?? entry.ImdbId;
-                var duplicateKey = BuildKey(resolvedTitle!, resolvedYear, resolvedImdb);
                 var mediaType = source.MediaType == "tv" ? "tv" : "movies";
 
-                var existingId = mediaType == "tv"
-                    ? Lookup(seriesIndex, duplicateKey)
-                    : Lookup(movieIndex, duplicateKey);
+                // One indexed lookup per list entry, asked with everything the
+                // metadata lookup resolved. This used to be a dictionary built
+                // from the whole catalogue, rebuilt on every sync -- and the
+                // dictionary was the weaker check, keyed on IMDb id or on
+                // title+year but never on the provider id.
+                var existingId = await FindExistingIdAsync(
+                    mediaType,
+                    resolvedTitle!,
+                    resolvedYear,
+                    resolvedImdb,
+                    metadata?.Provider,
+                    metadata?.ProviderId,
+                    cancellationToken);
 
                 if (existingId is null)
                 {
@@ -389,7 +362,6 @@ public sealed class IntakeSyncService(
                                 MetadataJson: metadata is null ? null : JsonSerializer.Serialize(metadata, JsonOptions)),
                             cancellationToken);
                         existingId = created.Id;
-                        IndexTitle(seriesIndex, created.Id, created.Title, created.StartYear, created.ImdbId);
                     }
                     else
                     {
@@ -411,17 +383,9 @@ public sealed class IntakeSyncService(
                                 MetadataJson: metadata is null ? null : JsonSerializer.Serialize(metadata, JsonOptions)),
                             cancellationToken);
                         existingId = created.Id;
-                        IndexTitle(movieIndex, created.Id, created.Title, created.ReleaseYear, created.ImdbId);
                     }
 
-                    if (knownIds.Add(existingId!))
-                    {
-                        added++;
-                    }
-                    else
-                    {
-                        duplicates++;
-                    }
+                    added++;
                 }
                 else
                 {
@@ -1050,17 +1014,23 @@ public sealed class IntakeSyncService(
         return candidates[0];
     }
 
-    private static void IndexTitle(IDictionary<string, string> index, string id, string title, int? year, string? imdbId)
-    {
-        var key = BuildKey(title, year, imdbId);
-        if (!index.ContainsKey(key))
-        {
-            index[key] = id;
-        }
-    }
-
-    private static string? Lookup(IDictionary<string, string> index, string key)
-        => index.TryGetValue(key, out var value) ? value : null;
+    /// <summary>
+    /// Whether this title is already in the catalogue, and if so which entry it
+    /// is. The repositories answer it with the same rules their AddAsync uses
+    /// to decide it has seen a title before, so "already there" and "adding it
+    /// would land on an existing row" cannot disagree.
+    /// </summary>
+    private Task<string?> FindExistingIdAsync(
+        string mediaType,
+        string title,
+        int? year,
+        string? imdbId,
+        string? metadataProvider,
+        string? metadataProviderId,
+        CancellationToken cancellationToken)
+        => mediaType == "tv"
+            ? seriesCatalogRepository.FindExistingIdAsync(title, year, imdbId, metadataProvider, metadataProviderId, cancellationToken)
+            : movieCatalogRepository.FindExistingIdAsync(title, year, imdbId, metadataProvider, metadataProviderId, cancellationToken);
 
     private static string BuildKey(string title, int? year, string? imdbId)
     {

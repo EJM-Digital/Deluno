@@ -2,67 +2,47 @@ using Deluno.Series.Data;
 
 namespace Deluno.Series.Services;
 
-public sealed class EpisodeImportRecoveryService(ISeriesCatalogRepository seriesCatalogRepository)
+/// <summary>
+/// Finds episodes that have a file but not a good enough one, so they can be
+/// re-fetched.
+///
+/// Both questions here used to be answered by reading the whole catalogue: list
+/// every series, then pull the full episode inventory of each one, to return at
+/// most twenty ids. At a few thousand shows that is hundreds of thousands of
+/// rows read to answer a question SQL can answer directly, and it ignored the
+/// <c>libraryId</c> it was given.
+/// </summary>
+public sealed class EpisodeImportRecoveryService(
+    ISeriesCatalogRepository seriesCatalogRepository,
+    TimeProvider timeProvider)
     : IEpisodeImportRecoveryService
 {
-    public async Task<IReadOnlyList<string>> FindEpisodesNeedingRecoveryAsync(
+    /// <summary>
+    /// The most one series may contribute, so a long-running show with a lot of
+    /// under-cutoff files cannot crowd out every other series.
+    /// </summary>
+    private const int PerSeriesLimit = 5;
+
+    private const int RecoveryBatchSize = 20;
+
+    public Task<IReadOnlyList<string>> FindEpisodesNeedingRecoveryAsync(
         string libraryId,
         CancellationToken cancellationToken)
-    {
-        // Phase 5 Implementation:
-        // Queries episodes with file but quality below target using inventory detail
-        // Filters to those that are monitored and have quality_cutoff_met = 0
-        // Returns episode IDs needing re-download in priority order
-
-        var series = await seriesCatalogRepository.ListAsync(cancellationToken);
-        var episodesNeedingRecovery = new List<string>();
-
-        foreach (var singleSeries in series)
-        {
-            var inventory = await seriesCatalogRepository.GetInventoryDetailAsync(singleSeries.Id, cancellationToken);
-            if (inventory is null)
-            {
-                continue;
-            }
-
-            var needsRecovery = inventory.Episodes
-                .Where(e => e.HasFile && !e.QualityCutoffMet && e.Monitored)
-                .OrderBy(e => e.UpdatedUtc)
-                .Take(5);
-
-            foreach (var episode in needsRecovery)
-            {
-                episodesNeedingRecovery.Add(episode.EpisodeId);
-            }
-        }
-
-        return episodesNeedingRecovery.Take(20).ToList();
-    }
+        => seriesCatalogRepository.ListEpisodesNeedingRecoveryAsync(
+            libraryId,
+            PerSeriesLimit,
+            RecoveryBatchSize,
+            cancellationToken);
 
     public async Task<int> RecoveryPriorityAsync(string episodeId, CancellationToken cancellationToken)
     {
-        // Phase 5 Implementation:
-        // Calculates recovery priority based on last update time
-        // Older updates get higher priority scores
-
-        var series = await seriesCatalogRepository.ListAsync(cancellationToken);
-
-        foreach (var singleSeries in series)
+        var updatedUtc = await seriesCatalogRepository.GetEpisodeUpdatedUtcAsync(episodeId, cancellationToken);
+        if (updatedUtc is null)
         {
-            var inventory = await seriesCatalogRepository.GetInventoryDetailAsync(singleSeries.Id, cancellationToken);
-            if (inventory is null)
-            {
-                continue;
-            }
-
-            var episode = inventory.Episodes.FirstOrDefault(e => e.EpisodeId == episodeId);
-            if (episode is not null)
-            {
-                var ageHours = (int)((DateTimeOffset.UtcNow - episode.UpdatedUtc).TotalHours);
-                return Math.Max(100, ageHours);
-            }
+            return 0;
         }
 
-        return 0;
+        var ageHours = (int)(timeProvider.GetUtcNow() - updatedUtc.Value).TotalHours;
+        return Math.Max(100, ageHours);
     }
 }
