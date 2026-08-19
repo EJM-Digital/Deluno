@@ -8,11 +8,14 @@ using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
+using Deluno.Connections.Contracts;
+using Deluno.Connections.Data;
 
 namespace Deluno.Integrations.DownloadClients;
 
 public sealed class DownloadClientGrabService(
     IPlatformSettingsRepository platformRepository,
+    IConnectionsRepository connectionsRepository,
     IHttpClientFactory httpClientFactory,
     IIntegrationResiliencePolicy resiliencePolicy,
     IJobScheduler jobScheduler,
@@ -27,7 +30,7 @@ public sealed class DownloadClientGrabService(
         DownloadClientGrabRequest request,
         CancellationToken cancellationToken)
     {
-        var client = (await platformRepository.ListDownloadClientsAsync(cancellationToken))
+        var client = (await connectionsRepository.ListDownloadClientsAsync(cancellationToken))
             .FirstOrDefault(item => string.Equals(item.Id, clientId, StringComparison.OrdinalIgnoreCase));
         if (client is null)
         {

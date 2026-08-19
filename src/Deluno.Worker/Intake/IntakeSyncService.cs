@@ -10,9 +10,11 @@ using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Intake.Contracts;
 using Deluno.Intake.Data;
+using Deluno.Libraries.Contracts;
+using Deluno.Libraries.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
-using Deluno.Platform.Quality;
+using Deluno.Quality;
 using Deluno.Series.Contracts;
 using Deluno.Series.Data;
 using Microsoft.Extensions.Configuration;
@@ -22,6 +24,7 @@ namespace Deluno.Worker.Intake;
 
 public sealed class IntakeSyncService(
     IPlatformSettingsRepository platformSettingsRepository,
+    ILibrariesRepository librariesRepository,
     IIntakeRepository intakeRepository,
     IJobScheduler jobScheduler,
     IJobQueueRepository jobQueueRepository,
@@ -79,7 +82,7 @@ public sealed class IntakeSyncService(
     {
         var source = await intakeRepository.GetIntakeSourceAsync(sourceId, cancellationToken)
             ?? throw new InvalidOperationException("Import list not found.");
-        var targetLibrary = ResolveTargetLibrary(source, await platformSettingsRepository.ListLibrariesAsync(cancellationToken));
+        var targetLibrary = ResolveTargetLibrary(source, await librariesRepository.ListLibrariesAsync(cancellationToken));
         var entries = await FetchEntriesAsync(source, cancellationToken);
         var mediaType = source.MediaType == "tv" ? "tv" : "movies";
         var exclusions = await intakeRepository.ListActiveIntakeListExclusionsAsync(source.Id, cancellationToken);
@@ -239,7 +242,7 @@ public sealed class IntakeSyncService(
         CancellationToken cancellationToken)
     {
 
-        var libraries = await platformSettingsRepository.ListLibrariesAsync(cancellationToken);
+        var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
         var targetLibrary = ResolveTargetLibrary(source, libraries);
         if (targetLibrary is null)
         {

@@ -3,11 +3,14 @@
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Deluno.Connections\Deluno.Connections.csproj" />
     <ProjectReference Include="..\Deluno.Contracts\Deluno.Contracts.csproj" />
     <ProjectReference Include="..\Deluno.Infrastructure\Deluno.Infrastructure.csproj" />
     <ProjectReference Include="..\Deluno.Intake\Deluno.Intake.csproj" />
     <ProjectReference Include="..\Deluno.Jobs\Deluno.Jobs.csproj" />
+    <ProjectReference Include="..\Deluno.Libraries\Deluno.Libraries.csproj" />
     <ProjectReference Include="..\Deluno.Notifications\Deluno.Notifications.csproj" />
+    <ProjectReference Include="..\Deluno.Quality\Deluno.Quality.csproj" />
     <ProjectReference Include="..\Deluno.Security\Deluno.Security.csproj" />
   </ItemGroup>
 </Project>

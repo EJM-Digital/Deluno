@@ -1,7 +1,7 @@
 using Deluno.Jobs.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Movies.Services;
-using Deluno.Platform.Quality;
+using Deluno.Quality;
 using Deluno.Platform.Migration;
 using Deluno.Movies.Migration;
 using Microsoft.Extensions.DependencyInjection;

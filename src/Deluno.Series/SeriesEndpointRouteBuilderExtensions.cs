@@ -8,10 +8,13 @@ using Deluno.Intake.Data;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.Search;
 using Deluno.Integrations.Metadata;
+using Deluno.Libraries.Contracts;
+using Deluno.Libraries.Data;
 using Deluno.Platform.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform;
-using Deluno.Platform.Quality;
+using Deluno.Quality;
+using Deluno.Quality.Data;
 using Deluno.Security;
 using Deluno.Series.Contracts;
 using Deluno.Series.Data;
@@ -19,6 +22,7 @@ using Deluno.Series.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Deluno.Quality.Contracts;
 
 namespace Deluno.Series;
 
@@ -129,7 +133,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             string id,
             HttpContext httpContext,
             ISeriesCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
+            ILibrariesRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -335,7 +339,8 @@ public static class SeriesEndpointRouteBuilderExtensions
             string? mode,
             HttpContext httpContext,
             ISeriesCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
+            ILibrariesRepository platformSettingsRepository,
+            IQualityRepository qualityRepository,
             IJobQueueRepository jobQueueRepository,
             IAcquisitionDecisionPipeline acquisitionPipeline,
             IDownloadClientGrabService downloadClientGrabService,
@@ -377,7 +382,7 @@ public static class SeriesEndpointRouteBuilderExtensions
 
             var routing = await platformSettingsRepository.GetLibraryRoutingAsync(library.Id, cancellationToken);
             var now = timeProvider.GetUtcNow();
-            var customFormats = await ResolveCustomFormatsAsync(platformSettingsRepository, library.QualityProfileId, cancellationToken);
+            var customFormats = await ResolveCustomFormatsAsync(qualityRepository, library.QualityProfileId, cancellationToken);
 
             var decisionPlan = await acquisitionPipeline.PlanAsync(
                 new AcquisitionDecisionRequest(
@@ -736,7 +741,8 @@ public static class SeriesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] SearchSeriesEpisodesRequest request,
             ISeriesCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
+            ILibrariesRepository platformSettingsRepository,
+            IQualityRepository qualityRepository,
             IJobQueueRepository jobQueueRepository,
             IAcquisitionDecisionPipeline acquisitionPipeline,
             IDownloadClientGrabService downloadClientGrabService,
@@ -812,7 +818,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             var configuredClients = routing?.DownloadClients.Count ?? 0;
             var now = timeProvider.GetUtcNow();
             var nextEligibleSearchUtc = now.AddHours(Math.Max(1, library.RetryDelayHours));
-            var customFormats = await ResolveCustomFormatsAsync(platformSettingsRepository, library.QualityProfileId, cancellationToken);
+            var customFormats = await ResolveCustomFormatsAsync(qualityRepository, library.QualityProfileId, cancellationToken);
 
             if (configuredSources == 0 || configuredClients == 0)
             {
@@ -982,7 +988,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                         ["episodeCount"] = targetEpisodes.Count.ToString(),
                         ["sourceCount"] = configuredSources.ToString(),
                         ["downloadClientCount"] = configuredClients.ToString(),
-                        ["policyVersion"] = Deluno.Platform.Quality.MediaPolicyCatalog.CurrentVersion
+                        ["policyVersion"] = Deluno.Quality.MediaPolicyCatalog.CurrentVersion
                     },
                     Outcome: $"{sentCount} sent, {plannedCount} planned, {failedCount} failed.",
                     Alternatives: []),
@@ -1007,7 +1013,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             BulkSeriesRequest request,
             ISeriesCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
+            ILibrariesRepository platformSettingsRepository,
             [FromServices] IIntakeRepository intakeRepository,
             IJobScheduler jobScheduler,
             IJobQueueRepository jobQueueRepository,
@@ -1176,7 +1182,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] BulkSearchRequest request,
             ISeriesCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
+            ILibrariesRepository platformSettingsRepository,
             IJobQueueRepository jobQueueRepository,
             CancellationToken cancellationToken) =>
         {
@@ -1369,6 +1375,8 @@ public static class SeriesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             ISeriesCatalogRepository repository,
             IPlatformSettingsRepository platformSettingsRepository,
+            ILibrariesRepository librariesRepository,
+            IQualityRepository qualityRepository,
             IJobQueueRepository jobQueueRepository,
             IAcquisitionDecisionPipeline acquisitionPipeline,
             IDownloadClientGrabService downloadClientGrabService,
@@ -1404,7 +1412,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                 });
             }
 
-            var libraries = await platformSettingsRepository.ListLibrariesAsync(cancellationToken);
+            var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
             var library = libraries.FirstOrDefault(item => item.Id == wantedItem.LibraryId);
             if (library is null)
             {
@@ -1414,7 +1422,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                 });
             }
 
-            var routing = await platformSettingsRepository.GetLibraryRoutingAsync(library.Id, cancellationToken);
+            var routing = await librariesRepository.GetLibraryRoutingAsync(library.Id, cancellationToken);
             var downloadClient = routing?.DownloadClients.OrderBy(item => item.Priority).FirstOrDefault();
             if (downloadClient is null)
             {
@@ -1429,7 +1437,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             var overrideReason = string.IsNullOrWhiteSpace(request.OverrideReason)
                 ? "User manually forced this release from search results."
                 : request.OverrideReason.Trim();
-            var customFormats = await ResolveCustomFormatsAsync(platformSettingsRepository, library.QualityProfileId, cancellationToken);
+            var customFormats = await ResolveCustomFormatsAsync(qualityRepository, library.QualityProfileId, cancellationToken);
             var sourcePriorityScore = routing?.Sources
                 .FirstOrDefault(item => string.Equals(item.IndexerId, request.IndexerId, StringComparison.OrdinalIgnoreCase)) is { } source
                     ? Math.Max(0, 200 - source.Priority)
@@ -1561,7 +1569,8 @@ public static class SeriesEndpointRouteBuilderExtensions
             int seasonNumber,
             HttpContext httpContext,
             ISeriesCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
+            ILibrariesRepository platformSettingsRepository,
+            IQualityRepository qualityRepository,
             IJobQueueRepository jobQueueRepository,
             IAcquisitionDecisionPipeline acquisitionPipeline,
             IDownloadClientGrabService downloadClientGrabService,
@@ -1625,7 +1634,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             var configuredClients = routing?.DownloadClients.Count ?? 0;
             var now = timeProvider.GetUtcNow();
             var nextEligibleSearchUtc = now.AddHours(Math.Max(1, library.RetryDelayHours));
-            var customFormats = await ResolveCustomFormatsAsync(platformSettingsRepository, library.QualityProfileId, cancellationToken);
+            var customFormats = await ResolveCustomFormatsAsync(qualityRepository, library.QualityProfileId, cancellationToken);
 
             if (configuredSources == 0 || configuredClients == 0)
             {
@@ -1790,7 +1799,7 @@ public static class SeriesEndpointRouteBuilderExtensions
         series.MapGet("/{id}/workflow-status", async (
             string id,
             ISeriesCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
+            ILibrariesRepository platformSettingsRepository,
             ISeriesWorkflowService workflowService,
             CancellationToken cancellationToken) =>
         {
@@ -1942,7 +1951,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] CreateSeriesRequest request,
             ISeriesCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
+            ILibrariesRepository platformSettingsRepository,
             IMediaDecisionService mediaDecisionService,
             IJobScheduler jobScheduler,
             CancellationToken cancellationToken) =>
@@ -2172,7 +2181,7 @@ public static class SeriesEndpointRouteBuilderExtensions
         SeriesListItem series,
         BulkSeriesRequest request,
         ISeriesCatalogRepository repository,
-        IPlatformSettingsRepository platformSettingsRepository,
+        ILibrariesRepository platformSettingsRepository,
         IIntakeRepository intakeRepository,
         IJobQueueRepository jobQueueRepository,
         IActivityFeedRepository activityFeedRepository,
@@ -2280,7 +2289,7 @@ public static class SeriesEndpointRouteBuilderExtensions
     }
 
     private static async Task<IReadOnlyList<CustomFormatItem>> ResolveCustomFormatsAsync(
-        IPlatformSettingsRepository repository,
+        IQualityRepository repository,
         string? qualityProfileId,
         CancellationToken cancellationToken)
     {

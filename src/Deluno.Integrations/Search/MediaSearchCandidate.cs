@@ -20,5 +20,5 @@ public sealed record MediaSearchCandidate(
     int SizeScore = 0,
     string? ReleaseGroup = null,
     double? EstimatedBitrateMbps = null,
-    string PolicyVersion = Deluno.Platform.Quality.MediaPolicyCatalog.CurrentVersion,
+    string PolicyVersion = Deluno.Quality.MediaPolicyCatalog.CurrentVersion,
     IReadOnlyList<CustomFormatMatchResult>? MatchedCustomFormats = null);

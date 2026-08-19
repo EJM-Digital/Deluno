@@ -2,14 +2,19 @@ using System.Globalization;
 using System.Net;
 using System.Xml.Linq;
 using Deluno.Infrastructure.Resilience;
+using Deluno.Libraries.Contracts;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
-using Deluno.Platform.Quality;
+using Deluno.Quality;
+using Deluno.Quality.Contracts;
+using Deluno.Connections.Contracts;
+using Deluno.Connections.Data;
 
 namespace Deluno.Integrations.Search;
 
 public sealed class FeedMediaSearchPlanner(
     IPlatformSettingsRepository platformRepository,
+    IConnectionsRepository connectionsRepository,
     IHttpClientFactory httpClientFactory,
     IIntegrationResiliencePolicy resiliencePolicy,
     IQualityModelService qualityModelService,
@@ -35,7 +40,7 @@ public sealed class FeedMediaSearchPlanner(
         int? episodeNumber = null,
         CancellationToken cancellationToken = default)
     {
-        var indexers = await platformRepository.ListIndexersAsync(cancellationToken);
+        var indexers = await connectionsRepository.ListIndexersAsync(cancellationToken);
         var sourceIndexers = sources
             .Join(
                 indexers.Where(item => item.IsEnabled && CoversMediaType(item, mediaType)),

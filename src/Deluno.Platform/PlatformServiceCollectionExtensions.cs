@@ -1,6 +1,5 @@
 using Deluno.Platform.Data;
 using Deluno.Platform.Migration;
-using Deluno.Platform.Quality;
 using Deluno.Security;
 using Deluno.Security.Hardening;
 using Microsoft.Extensions.DependencyInjection;
@@ -12,9 +11,6 @@ public static class PlatformServiceCollectionExtensions
     public static IServiceCollection AddDelunoPlatformModule(this IServiceCollection services)
     {
         services.AddSingleton<IPlatformSettingsRepository, SqlitePlatformSettingsRepository>();
-        services.AddSingleton<IVersionedMediaPolicyEngine, VersionedMediaPolicyEngine>();
-        services.AddSingleton<IQualityModelService, QualityModelService>();
-        services.AddSingleton<IMediaDecisionService, MediaDecisionService>();
         services.AddSingleton<IMigrationAssistantService, MigrationAssistantService>();
         services.AddHostedService<PlatformSchemaInitializer>();
         return services;

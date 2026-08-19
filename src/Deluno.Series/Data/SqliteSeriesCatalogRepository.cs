@@ -4,7 +4,7 @@ using Deluno.Platform.Data;
 using System.Globalization;
 using System.Text.Json;
 using Deluno.Infrastructure.Storage;
-using Deluno.Platform.Quality;
+using Deluno.Quality;
 using Deluno.Series.Contracts;
 using Microsoft.Data.Sqlite;
 

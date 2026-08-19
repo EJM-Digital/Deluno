@@ -1,5 +1,5 @@
 using Deluno.Movies.Services;
-using Deluno.Platform.Quality;
+using Deluno.Quality;
 
 namespace Deluno.Integrations.Tests.Search;
 

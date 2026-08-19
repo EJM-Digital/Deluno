@@ -5,12 +5,14 @@ using System.Text.RegularExpressions;
 using Deluno.Infrastructure.Observability;
 using Deluno.Jobs.Data;
 using Deluno.Jobs.Decisions;
+using Deluno.Libraries.Contracts;
+using Deluno.Libraries.Data;
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Deluno.Notifications;
-using Deluno.Platform.Quality;
+using Deluno.Quality;
 using Deluno.Series.Contracts;
 using Deluno.Series.Data;
 using Microsoft.AspNetCore.Http;
@@ -20,6 +22,7 @@ namespace Deluno.Filesystem;
 
 public sealed partial class ImportPipelineService(
     IPlatformSettingsRepository platformRepository,
+    ILibrariesRepository librariesRepository,
     IMovieCatalogRepository movieCatalogRepository,
     ISeriesCatalogRepository seriesCatalogRepository,
     IActivityFeedRepository activityFeedRepository,
@@ -39,7 +42,7 @@ public sealed partial class ImportPipelineService(
     public async Task<ImportPreviewResponse> PreviewAsync(ImportPreviewRequest request, CancellationToken cancellationToken)
     {
         var settings = await platformRepository.GetAsync(cancellationToken);
-        var rules = await platformRepository.ListDestinationRulesAsync(cancellationToken);
+        var rules = await librariesRepository.ListDestinationRulesAsync(cancellationToken);
         var preview = ResolveImportPreview(request, settings, rules);
         return await EnrichPreviewWithMediaProbeAsync(preview, cancellationToken);
     }
@@ -47,7 +50,7 @@ public sealed partial class ImportPipelineService(
     public async Task<ImportPipelineResult> ExecuteAsync(ImportExecuteRequest request, CancellationToken cancellationToken)
     {
         var settings = await platformRepository.GetAsync(cancellationToken);
-        var rules = await platformRepository.ListDestinationRulesAsync(cancellationToken);
+        var rules = await librariesRepository.ListDestinationRulesAsync(cancellationToken);
         var preview = await EnrichPreviewWithMediaProbeAsync(ResolveImportPreview(request.Preview, settings, rules), cancellationToken);
         var mediaType = NormalizeMediaType(request.Preview.MediaType);
         var extension = Path.GetExtension(preview.DestinationPath);
@@ -234,7 +237,7 @@ public sealed partial class ImportPipelineService(
             File.Move(stagingPath, preview.DestinationPath, overwrite: request.Overwrite);
             VerifyFinalImport(preview.DestinationPath, stagedSize);
 
-            var libraries = await platformRepository.ListLibrariesAsync(cancellationToken);
+            var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
             var catalogImportResult = await MarkCatalogImportedAsync(
                 request.Preview,
                 preview,

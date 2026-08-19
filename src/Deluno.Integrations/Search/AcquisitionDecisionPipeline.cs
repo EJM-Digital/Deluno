@@ -1,7 +1,11 @@
 using Deluno.Integrations.DownloadClients;
 using Deluno.Jobs.Decisions;
+using Deluno.Libraries.Contracts;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
+using Deluno.Quality.Contracts;
+using Deluno.Connections.Contracts;
+using Deluno.Connections.Data;
 
 namespace Deluno.Integrations.Search;
 
@@ -20,18 +24,18 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
     private readonly IMediaSearchPlanner mediaSearchPlanner;
     private readonly IReleaseRankingModelService rankingModelService;
     private readonly IIntelligentRoutingService? intelligentRoutingService;
-    private readonly IPlatformSettingsRepository? platformRepository;
+    private readonly IConnectionsRepository? connectionsRepository;
 
     public AcquisitionDecisionPipeline(
         IMediaSearchPlanner mediaSearchPlanner,
         IReleaseRankingModelService? rankingModelService = null,
         IIntelligentRoutingService? intelligentRoutingService = null,
-        IPlatformSettingsRepository? platformRepository = null)
+        IConnectionsRepository? connectionsRepository = null)
     {
         this.mediaSearchPlanner = mediaSearchPlanner;
         this.rankingModelService = rankingModelService ?? DisabledRankingModelService;
         this.intelligentRoutingService = intelligentRoutingService;
-        this.platformRepository = platformRepository;
+        this.connectionsRepository = connectionsRepository;
     }
 
     public async Task<AcquisitionDecisionPlan> PlanAsync(
@@ -77,7 +81,7 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
 
         return new AcquisitionDecisionPlan(
             SearchPlan: searchPlan,
-            PolicyVersion: bestCandidate?.PolicyVersion ?? Deluno.Platform.Quality.MediaPolicyCatalog.CurrentVersion,
+            PolicyVersion: bestCandidate?.PolicyVersion ?? Deluno.Quality.MediaPolicyCatalog.CurrentVersion,
             Outcome: outcome,
             SearchResult: BuildSearchResult(searchPlan, clientCount),
             SourceCount: sourceCount,
@@ -93,7 +97,7 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
     public AcquisitionSelectedReleaseDecision EvaluateSelectedRelease(AcquisitionSelectedReleaseRequest request)
     {
         var quality = request.CandidateQuality
-            ?? Deluno.Platform.Quality.LibraryQualityDecider.DetectQuality(request.ReleaseName)
+            ?? Deluno.Quality.LibraryQualityDecider.DetectQuality(request.ReleaseName)
             ?? "WEB 1080p";
         var customFormatScore = CustomFormatMatcher.Evaluate(
             request.ReleaseName,
@@ -265,15 +269,15 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
         CancellationToken cancellationToken)
     {
         // Tests and pure policy callers may intentionally supply a planner without
-        // a platform store. Runtime DI always supplies it, so real acquisition
+        // a connections store. Runtime DI always supplies it, so real acquisition
         // never treats a merely linked connection as ready.
-        if (platformRepository is null)
+        if (connectionsRepository is null)
         {
             return new ReadyConnections(request.Sources, request.DownloadClients);
         }
 
-        var indexers = await platformRepository.ListIndexersAsync(cancellationToken);
-        var clients = await platformRepository.ListDownloadClientsAsync(cancellationToken);
+        var indexers = await connectionsRepository.ListIndexersAsync(cancellationToken);
+        var clients = await connectionsRepository.ListDownloadClientsAsync(cancellationToken);
         var readyIndexerIds = indexers
             .Where(item => item.IsEnabled && string.Equals(item.HealthStatus, "healthy", StringComparison.OrdinalIgnoreCase))
             .Select(item => item.Id)

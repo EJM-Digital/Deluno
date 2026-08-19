@@ -1,0 +1,696 @@
+using System.Text.Json;
+using Deluno.Contracts;
+using Deluno.Libraries.Contracts;
+using Deluno.Libraries.Data;
+using Deluno.Jobs.Contracts;
+using Deluno.Jobs.Data;
+using Deluno.Realtime;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Routing;
+using Deluno.Security;
+using Deluno.Security.Contracts;
+using static Deluno.Contracts.DelunoValueNormalizers;
+
+namespace Deluno.Libraries;
+
+/// <summary>
+/// /api/libraries, /api/destination-rules and /api/library-views. Split out of
+/// PlatformEndpointRouteBuilderExtensions by ADR-001 Step 1; handler bodies are
+/// unchanged apart from the repository type and explicit [FromServices].
+/// The library-scoped search-now/skip-cycle/import-existing actions and the
+/// rules-vs-global-settings destination "resolve" endpoint stay in
+/// Deluno.Platform, which references Deluno.Libraries for LibraryItem.
+/// </summary>
+public static class LibrariesEndpointRouteBuilderExtensions
+{
+    public static IEndpointRouteBuilder MapDelunoLibrariesEndpoints(this IEndpointRouteBuilder endpoints)
+    {
+        var libraries = endpoints.MapGroup("/api/libraries");
+        var destinationRules = endpoints.MapGroup("/api/destination-rules");
+        var libraryViews = endpoints.MapGroup("/api/library-views");
+
+        destinationRules.MapGet(string.Empty, async ([FromServices] ILibrariesRepository repository, CancellationToken cancellationToken) =>
+        {
+            var items = await repository.ListDestinationRulesAsync(cancellationToken);
+            return Results.Ok(items);
+        });
+
+
+        destinationRules.MapPost(string.Empty, async (
+            HttpContext httpContext,
+            [FromBody] CreateDestinationRuleRequest request,
+            [FromServices] ILibrariesRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var errors = ValidateDestinationRule(request.Name, request.MatchValue, request.RootPath);
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            var item = await repository.CreateDestinationRuleAsync(request, cancellationToken);
+            return Results.Ok(item);
+        });
+
+        destinationRules.MapPut("{id}", async (
+            string id,
+            HttpContext httpContext,
+            [FromBody] UpdateDestinationRuleRequest request,
+            [FromServices] ILibrariesRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var errors = ValidateDestinationRule(request.Name, request.MatchValue, request.RootPath);
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            var item = await repository.UpdateDestinationRuleAsync(id, request, cancellationToken);
+            return item is null ? Results.NotFound() : Results.Ok(item);
+        });
+
+        destinationRules.MapDelete("{id}", async (
+            string id,
+            HttpContext httpContext,
+            [FromServices] ILibrariesRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var removed = await repository.DeleteDestinationRuleAsync(id, cancellationToken);
+            return removed ? Results.NoContent() : Results.NotFound();
+        });
+
+        libraryViews.MapGet(string.Empty, async (
+            HttpContext httpContext,
+            string? variant,
+            [FromServices] ILibrariesRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var user = httpContext.Items["deluno.user"] as UserItem;
+            if (user is null)
+            {
+                return Results.Unauthorized();
+            }
+
+            var items = await repository.ListLibraryViewsAsync(user.Id, variant ?? "movies", cancellationToken);
+            return Results.Ok(items);
+        });
+
+        libraryViews.MapPost(string.Empty, async (
+            HttpContext httpContext,
+            [FromBody] CreateLibraryViewRequest request,
+            [FromServices] ILibrariesRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var user = httpContext.Items["deluno.user"] as UserItem;
+            if (user is null)
+            {
+                return Results.Unauthorized();
+            }
+
+            var errors = ValidateLibraryView(request.Name);
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            var item = await repository.CreateLibraryViewAsync(user.Id, request, cancellationToken);
+            return Results.Ok(item);
+        });
+
+        libraryViews.MapPut("{id}", async (
+            string id,
+            HttpContext httpContext,
+            [FromBody] UpdateLibraryViewRequest request,
+            [FromServices] ILibrariesRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var user = httpContext.Items["deluno.user"] as UserItem;
+            if (user is null)
+            {
+                return Results.Unauthorized();
+            }
+
+            var errors = ValidateLibraryView(request.Name);
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            var item = await repository.UpdateLibraryViewAsync(user.Id, id, request, cancellationToken);
+            return item is null ? Results.NotFound() : Results.Ok(item);
+        });
+
+        libraryViews.MapDelete("{id}", async (
+            string id,
+            HttpContext httpContext,
+            [FromServices] ILibrariesRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var user = httpContext.Items["deluno.user"] as UserItem;
+            if (user is null)
+            {
+                return Results.Unauthorized();
+            }
+
+            var removed = await repository.DeleteLibraryViewAsync(user.Id, id, cancellationToken);
+            return removed ? Results.NoContent() : Results.NotFound();
+        });
+
+        libraries.MapGet(string.Empty, async (
+            int? pageSize,
+            string? pageToken,
+            [FromServices] ILibrariesRepository repository,
+            [FromServices] IJobQueueRepository jobs,
+            CancellationToken cancellationToken) =>
+        {
+            var items = await repository.ListLibrariesAsync(cancellationToken);
+            var automation = await jobs.ListLibraryAutomationStatesAsync(cancellationToken);
+            var merged = items.Select(item => MergeLibraryState(item, automation)).ToArray();
+
+            if (pageSize is null && pageToken is null)
+            {
+                return Results.Ok(merged);
+            }
+
+            var (page, nextPageToken) = DelunoPaging.Paginate(merged, new PageOptions { PageSize = pageSize ?? 50, PageToken = pageToken });
+            return Results.Ok(new { items = page, nextPageToken });
+        });
+
+        libraries.MapPost(string.Empty, async (
+            HttpContext httpContext,
+            [FromBody] CreateLibraryRequest request,
+            [FromServices] ILibrariesRepository repository,
+            [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var errors = ValidateLibrary(request);
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            var item = await repository.CreateLibraryAsync(request, cancellationToken);
+            await realtimeEventPublisher.PublishEntityChangedAsync("Library", item.Id, cancellationToken);
+            return Results.Ok(item);
+        });
+
+        endpoints.MapPut("/api/libraries/{id}", async (
+            string id,
+            HttpContext httpContext,
+            [FromBody] UpdateLibraryDetailsRequest request,
+            [FromServices] ILibrariesRepository repository,
+            [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+            if (string.IsNullOrWhiteSpace(request.Name))
+            {
+                errors["name"] = ["Give this library a name."];
+            }
+
+            if (string.IsNullOrWhiteSpace(request.RootPath))
+            {
+                errors["rootPath"] = ["Choose a folder for this library."];
+            }
+
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            var item = await repository.UpdateLibraryDetailsAsync(id, request, cancellationToken);
+            if (item is null)
+            {
+                return Results.NotFound();
+            }
+
+            await realtimeEventPublisher.PublishEntityChangedAsync("Library", item.Id, cancellationToken);
+            return Results.Ok(item);
+        });
+
+        endpoints.MapPut("/api/libraries/{id}/automation", async (
+            string id,
+            HttpContext httpContext,
+            [FromBody] UpdateLibraryAutomationRequest request,
+            [FromServices] ILibrariesRepository repository,
+            [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var errors = ValidateLibraryAutomation(request);
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            var item = await repository.UpdateLibraryAutomationAsync(id, request, cancellationToken);
+            if (item is null)
+            {
+                return Results.NotFound();
+            }
+
+            await realtimeEventPublisher.PublishEntityChangedAsync("AutomationState", item.Id, cancellationToken);
+            return Results.Ok(item);
+        });
+
+        endpoints.MapPut("/api/libraries/{id}/quality-profile", async (
+            string id,
+            HttpContext httpContext,
+            [FromBody] UpdateLibraryQualityProfileRequest request,
+            [FromServices] ILibrariesRepository repository,
+            [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
+            IJobScheduler jobScheduler,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var item = await repository.UpdateLibraryQualityProfileAsync(id, request, cancellationToken);
+            if (item is null)
+            {
+                return Results.NotFound();
+            }
+
+            await realtimeEventPublisher.PublishEntityChangedAsync("Library", item.Id, cancellationToken);
+
+            await jobScheduler.EnqueueAsync(
+                new EnqueueJobRequest(
+                    JobType: item.MediaType == "tv" ? "series.quality.recalculate" : "movies.quality.recalculate",
+                    Source: item.MediaType,
+                    PayloadJson: JsonSerializer.Serialize(new
+                    {
+                        libraryId = item.Id,
+                        libraryName = item.Name,
+                        mediaType = item.MediaType,
+                        cutoffQuality = item.CutoffQuality,
+                        upgradeUntilCutoff = item.UpgradeUntilCutoff,
+                        upgradeUnknownItems = item.UpgradeUnknownItems
+                    }),
+                    RelatedEntityType: "library",
+                    RelatedEntityId: item.Id),
+                cancellationToken);
+
+            return Results.Ok(item);
+        });
+
+        endpoints.MapPut("/api/libraries/{id}/media-plan", async (
+            string id,
+            HttpContext httpContext,
+            [FromBody] UpdateLibraryMediaPlanRequest request,
+            [FromServices] ILibrariesRepository repository,
+            [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
+            IJobScheduler jobScheduler,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var item = await repository.UpdateLibraryMediaPlanAsync(id, request, cancellationToken);
+            if (item is null)
+            {
+                return Results.NotFound();
+            }
+
+            await realtimeEventPublisher.PublishEntityChangedAsync("Library", item.Id, cancellationToken);
+
+            await jobScheduler.EnqueueAsync(
+                new EnqueueJobRequest(
+                    JobType: item.MediaType == "tv" ? "series.quality.recalculate" : "movies.quality.recalculate",
+                    Source: item.MediaType,
+                    PayloadJson: JsonSerializer.Serialize(new
+                    {
+                        libraryId = item.Id,
+                        libraryName = item.Name,
+                        mediaType = item.MediaType,
+                        policySetId = item.DefaultPolicySetId,
+                        policySetName = item.DefaultPolicySetName,
+                        cutoffQuality = item.CutoffQuality,
+                        upgradeUntilCutoff = item.UpgradeUntilCutoff
+                    }),
+                    RelatedEntityType: "library",
+                    RelatedEntityId: item.Id),
+                cancellationToken);
+
+            return Results.Ok(item);
+        });
+
+        endpoints.MapPut("/api/libraries/{id}/workflow", async (
+            string id,
+            HttpContext httpContext,
+            [FromBody] UpdateLibraryWorkflowRequest request,
+            [FromServices] ILibrariesRepository repository,
+            [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var errors = ValidateLibraryWorkflow(request);
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            var item = await repository.UpdateLibraryWorkflowAsync(id, request, cancellationToken);
+            if (item is null)
+            {
+                return Results.NotFound();
+            }
+
+            await realtimeEventPublisher.PublishEntityChangedAsync("Library", item.Id, cancellationToken);
+            return Results.Ok(item);
+        });
+
+        libraries.MapDelete("{id}", async (
+            string id,
+            HttpContext httpContext,
+            [FromServices] ILibrariesRepository repository,
+            [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var removed = await repository.DeleteLibraryAsync(id, cancellationToken);
+            if (!removed)
+            {
+                return Results.NotFound();
+            }
+
+            await realtimeEventPublisher.PublishEntityChangedAsync("Library", id, cancellationToken);
+            return Results.NoContent();
+        });
+
+        libraries.MapGet("export", async (
+            HttpContext httpContext,
+            [FromServices] ILibrariesRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var items = await repository.ListLibrariesAsync(cancellationToken);
+            var export = items.Select(lib => new
+            {
+                lib.Name,
+                lib.MediaType,
+                lib.Purpose,
+                lib.RootPath,
+                lib.DownloadsPath,
+                lib.QualityProfileId,
+                lib.ImportWorkflow,
+                lib.ProcessorName,
+                lib.ProcessorOutputPath,
+                lib.ProcessorTimeoutMinutes,
+                lib.ProcessorFailureMode,
+                lib.AutoSearchEnabled,
+                lib.MissingSearchEnabled,
+                lib.UpgradeSearchEnabled,
+                lib.SearchIntervalHours,
+                lib.RetryDelayHours,
+                lib.MaxItemsPerRun,
+                lib.SearchWindowStartHour,
+                lib.SearchWindowEndHour
+            });
+            return Results.Ok(new { exportedAt = DateTimeOffset.UtcNow, libraries = export });
+        });
+
+        endpoints.MapGet("/api/libraries/{id}/routing", async (
+            string id,
+            [FromServices] ILibrariesRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var routing = await repository.GetLibraryRoutingAsync(id, cancellationToken);
+            return routing is null ? Results.NotFound() : Results.Ok(routing);
+        });
+
+        endpoints.MapPut("/api/libraries/{id}/routing", async (
+            string id,
+            HttpContext httpContext,
+            [FromBody] UpdateLibraryRoutingRequest request,
+            [FromServices] ILibrariesRepository repository,
+            [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var errors = ValidateLibraryRouting(request);
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            var routing = await repository.SaveLibraryRoutingAsync(id, request, cancellationToken);
+            if (routing is null)
+            {
+                return Results.NotFound();
+            }
+
+            await realtimeEventPublisher.PublishEntityChangedAsync("Library", id, cancellationToken);
+            return Results.Ok(routing);
+        });
+
+        return endpoints;
+    }
+
+    private static Dictionary<string, string[]> ValidateLibraryRouting(UpdateLibraryRoutingRequest request)
+    {
+        var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var source in request.Sources ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(source.IndexerId))
+            {
+                errors["sources"] = ["Choose a source before saving library routing."];
+                break;
+            }
+        }
+
+        foreach (var client in request.DownloadClients ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(client.DownloadClientId))
+            {
+                errors["downloadClients"] = ["Choose a download client before saving library routing."];
+                break;
+            }
+        }
+
+        return errors;
+    }
+
+
+    private static Dictionary<string, string[]> ValidateLibrary(CreateLibraryRequest request)
+    {
+        var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+
+        if (string.IsNullOrWhiteSpace(request.Name))
+        {
+            errors["name"] = ["Give this library a name."];
+        }
+
+        if (string.IsNullOrWhiteSpace(request.RootPath))
+        {
+            errors["rootPath"] = ["Choose a folder for this library."];
+        }
+
+        var mediaType = request.MediaType?.Trim().ToLowerInvariant();
+        if (mediaType is not ("movies" or "tv" or "tv shows" or "tvshows"))
+        {
+            errors["mediaType"] = ["Choose Movies or TV Shows."];
+        }
+
+        return errors;
+    }
+
+
+    private static Dictionary<string, string[]> ValidateDestinationRule(string? name, string? matchValue, string? rootPath)
+    {
+        var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            errors["name"] = ["Give this destination rule a name."];
+        }
+
+        if (string.IsNullOrWhiteSpace(matchValue))
+        {
+            errors["matchValue"] = ["Choose what this rule should match."];
+        }
+
+        if (string.IsNullOrWhiteSpace(rootPath))
+        {
+            errors["rootPath"] = ["Choose where matching titles should land."];
+        }
+
+        return errors;
+    }
+
+
+    private static Dictionary<string, string[]> ValidateLibraryView(string? name)
+    {
+        var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            errors["name"] = ["Give this filter view a name."];
+        }
+
+        return errors;
+    }
+
+
+    private static Dictionary<string, string[]> ValidateLibraryAutomation(UpdateLibraryAutomationRequest request)
+    {
+        var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+
+        if (request.SearchIntervalHours is <= 0)
+        {
+            errors["searchIntervalHours"] = ["Choose how often Deluno should check this library."];
+        }
+
+        if (request.RetryDelayHours is <= 0)
+        {
+            errors["retryDelayHours"] = ["Choose how long Deluno should wait before trying again."];
+        }
+
+        if (request.MaxItemsPerRun is <= 0)
+        {
+            errors["maxItemsPerRun"] = ["Choose how many titles Deluno should work through at a time."];
+        }
+
+        return errors;
+    }
+
+
+    private static Dictionary<string, string[]> ValidateLibraryWorkflow(UpdateLibraryWorkflowRequest request)
+    {
+        var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+        var workflow = NormalizeImportWorkflow(request.ImportWorkflow);
+
+        if (workflow == "refine-before-import" && string.IsNullOrWhiteSpace(request.ProcessorOutputPath))
+        {
+            errors["processorOutputPath"] = ["Choose where the processor will write cleaned files before Deluno imports them."];
+        }
+
+        if (request.ProcessorTimeoutMinutes is <= 0)
+        {
+            errors["processorTimeoutMinutes"] = ["Choose how long Deluno should wait for the processor."];
+        }
+
+        return errors;
+    }
+
+
+    private static string NormalizeImportWorkflow(string? value)
+        => value?.Trim().ToLowerInvariant() switch
+        {
+            "refine-before-import" or "refine" or "processor" or "processing" => "refine-before-import",
+            _ => "standard"
+        };
+
+    /// <summary>
+    /// Used to filter libraries by media scope for the bulk search-now
+    /// trigger -- not related to indexer/download-client media scope,
+    /// which is Deluno.Connections' own copy of the same small switch.
+    /// </summary>
+
+    private static LibraryItem MergeLibraryState(
+        LibraryItem item,
+        IReadOnlyDictionary<string, LibraryAutomationStateItem> automation)
+    {
+        if (!automation.TryGetValue(item.Id, out var state))
+        {
+            return item;
+        }
+
+        return item with
+        {
+            AutomationStatus = state.Status,
+            SearchRequested = state.SearchRequested,
+            LastSearchedUtc = state.LastCompletedUtc,
+            NextSearchUtc = state.NextSearchUtc
+        };
+    }
+
+
+}

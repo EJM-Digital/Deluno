@@ -5,7 +5,7 @@ using System.Globalization;
 using System.Text.Json;
 using Deluno.Infrastructure.Storage;
 using Deluno.Movies.Contracts;
-using Deluno.Platform.Quality;
+using Deluno.Quality;
 using Microsoft.Data.Sqlite;
 
 namespace Deluno.Movies.Data;

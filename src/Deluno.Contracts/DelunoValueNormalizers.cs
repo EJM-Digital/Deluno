@@ -53,9 +53,30 @@ public static class DelunoValueNormalizers
         return value is > 0 ? value.Value : null;
     }
 
+    public static int NormalizePositiveValue(int? value, int fallback)
+    {
+        return value is > 0 ? value.Value : fallback;
+    }
+
     public static int NormalizeSyncIntervalHours(int? value)
         => NormalizeSyncIntervalHours(value ?? 24);
 
     public static int NormalizeSyncIntervalHours(int value)
         => Math.Clamp(value <= 0 ? 24 : value, 1, 168);
+
+    public static string? NormalizePath(string? value)
+    {
+        var normalized = value?.Trim();
+        return string.IsNullOrWhiteSpace(normalized) ? null : normalized;
+    }
+
+    public static string NormalizeUiView(string? value)
+    {
+        var normalized = value?.Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "list" => "list",
+            _ => "grid"
+        };
+    }
 }

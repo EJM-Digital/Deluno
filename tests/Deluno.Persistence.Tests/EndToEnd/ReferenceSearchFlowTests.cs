@@ -3,11 +3,14 @@ using System.Text;
 using Deluno.Infrastructure.Resilience;
 using Deluno.Infrastructure.Storage.Migrations;
 using Deluno.Integrations.Search;
+using Deluno.Libraries.Contracts;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
-using Deluno.Platform.Quality;
+using Deluno.Quality;
 using Microsoft.Extensions.Logging.Abstractions;
+using Deluno.Connections.Contracts;
+using Deluno.Connections.Data;
 
 namespace Deluno.Persistence.Tests.EndToEnd;
 
@@ -30,20 +33,21 @@ public sealed class ReferenceSearchFlowTests
             NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
 
         var repository = new SqlitePlatformSettingsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
-        var indexer = await repository.CreateIndexerAsync(new CreateIndexerRequest(
+        var connectionsRepository = new SqliteConnectionsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
+        var indexer = await connectionsRepository.CreateIndexerAsync(new CreateIndexerRequest(
             "Reference Torznab fixture", "torznab", "public", "https://fixture.invalid/torznab/api", null,
             1, "2000", null, "movies", true), CancellationToken.None);
-        await repository.UpdateIndexerHealthAsync(
+        await connectionsRepository.UpdateIndexerHealthAsync(
             indexer.Id,
             "healthy",
             "Deterministic Torznab fixture verified.",
             null,
             1,
             CancellationToken.None);
-        var client = await repository.CreateDownloadClientAsync(new CreateDownloadClientRequest(
+        var client = await connectionsRepository.CreateDownloadClientAsync(new CreateDownloadClientRequest(
             "Reference qBittorrent", "qbittorrent", "localhost", 8080, null, null,
             "C:\\Downloads", "movies", "tv", null, 1, true), CancellationToken.None);
-        await repository.UpdateDownloadClientHealthAsync(
+        await connectionsRepository.UpdateDownloadClientHealthAsync(
             client.Id,
             "healthy",
             "Deterministic qBittorrent fixture verified.",
@@ -53,11 +57,12 @@ public sealed class ReferenceSearchFlowTests
         var handler = new TorznabFixtureHandler();
         var planner = new FeedMediaSearchPlanner(
             repository,
+            connectionsRepository,
             new SingleClientFactory(handler),
             new PassthroughResiliencePolicy(),
             new QualityModelService(storage.Factory, time),
             new DisabledRankingModelService());
-        var pipeline = new AcquisitionDecisionPipeline(planner, platformRepository: repository);
+        var pipeline = new AcquisitionDecisionPipeline(planner, connectionsRepository: connectionsRepository);
 
         var plan = await pipeline.PlanAsync(new AcquisitionDecisionRequest(
             "Dune Part Two",

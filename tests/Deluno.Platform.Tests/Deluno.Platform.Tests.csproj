@@ -18,7 +18,9 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Deluno.Api\Deluno.Api.csproj" />
     <ProjectReference Include="..\..\src\Deluno.Intake\Deluno.Intake.csproj" />
+    <ProjectReference Include="..\..\src\Deluno.Libraries\Deluno.Libraries.csproj" />
     <ProjectReference Include="..\..\src\Deluno.Platform\Deluno.Platform.csproj" />
+    <ProjectReference Include="..\..\src\Deluno.Quality\Deluno.Quality.csproj" />
   </ItemGroup>
 
   <ItemGroup>

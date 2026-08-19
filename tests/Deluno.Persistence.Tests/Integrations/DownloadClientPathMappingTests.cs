@@ -1,5 +1,6 @@
 using Deluno.Integrations.DownloadClients;
 using Deluno.Platform.Contracts;
+using Deluno.Connections.Contracts;
 
 namespace Deluno.Persistence.Tests.Integrations;
 

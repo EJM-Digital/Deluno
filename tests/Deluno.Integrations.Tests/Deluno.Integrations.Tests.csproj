@@ -21,6 +21,7 @@
     <ProjectReference Include="..\..\src\Deluno.Movies\Deluno.Movies.csproj" />
     <ProjectReference Include="..\..\src\Deluno.Intake\Deluno.Intake.csproj" />
     <ProjectReference Include="..\..\src\Deluno.Platform\Deluno.Platform.csproj" />
+    <ProjectReference Include="..\..\src\Deluno.Quality\Deluno.Quality.csproj" />
     <ProjectReference Include="..\..\src\Deluno.Worker\Deluno.Worker.csproj" />
   </ItemGroup>
 

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Deluno.Platform.Contracts;
+using Deluno.Quality.Contracts;
 
 namespace Deluno.Integrations.Search;
 

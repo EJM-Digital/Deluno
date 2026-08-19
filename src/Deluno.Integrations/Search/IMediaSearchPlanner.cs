@@ -1,4 +1,6 @@
+using Deluno.Libraries.Contracts;
 using Deluno.Platform.Contracts;
+using Deluno.Quality.Contracts;
 
 namespace Deluno.Integrations.Search;
 

@@ -1,10 +1,11 @@
 using System.Text;
 using System.Text.Json;
 using Deluno.Jobs.Data;
+using Deluno.Libraries.Contracts;
+using Deluno.Libraries.Data;
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Platform.Contracts;
-using Deluno.Platform.Data;
 using Deluno.Series.Contracts;
 using Deluno.Series.Data;
 using Microsoft.AspNetCore.WebUtilities;
@@ -12,7 +13,7 @@ using Microsoft.AspNetCore.WebUtilities;
 namespace Deluno.Filesystem;
 
 public sealed class FilesystemReconciliationService(
-    IPlatformSettingsRepository platformRepository,
+    ILibrariesRepository librariesRepository,
     IMovieCatalogRepository movieCatalogRepository,
     ISeriesCatalogRepository seriesCatalogRepository,
     IActivityFeedRepository activityFeedRepository,
@@ -33,7 +34,7 @@ public sealed class FilesystemReconciliationService(
 
     public async Task<FilesystemReconciliationReport> ScanAsync(CancellationToken cancellationToken)
     {
-        var libraries = await platformRepository.ListLibrariesAsync(cancellationToken);
+        var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
         var issues = new List<FilesystemReconciliationIssue>();
 
         foreach (var library in libraries.Where(item => !string.IsNullOrWhiteSpace(item.RootPath)))
@@ -64,7 +65,7 @@ public sealed class FilesystemReconciliationService(
     {
         var token = DecodeIssueToken(request.IssueId);
         var action = NormalizeAction(request.Action);
-        var libraries = await platformRepository.ListLibrariesAsync(cancellationToken);
+        var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
         var library = libraries.FirstOrDefault(item => string.Equals(item.Id, token.LibraryId, StringComparison.OrdinalIgnoreCase));
         if (library is null)
         {

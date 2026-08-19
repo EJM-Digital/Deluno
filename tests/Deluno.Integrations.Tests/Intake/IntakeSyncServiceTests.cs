@@ -6,9 +6,11 @@ using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Intake.Contracts;
 using Deluno.Intake.Data;
+using Deluno.Libraries.Contracts;
+using Deluno.Libraries.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
-using Deluno.Platform.Quality;
+using Deluno.Quality;
 using Deluno.Series.Data;
 using Deluno.Worker.Intake;
 using Microsoft.Extensions.Configuration;
@@ -78,6 +80,7 @@ public sealed class IntakeSyncServiceTests
             CreatedUtc: DateTimeOffset.Parse("2026-08-14T00:00:00Z"),
             UpdatedUtc: DateTimeOffset.Parse("2026-08-14T00:00:00Z"));
         var platform = new Mock<IPlatformSettingsRepository>();
+        var libraries = new Mock<ILibrariesRepository>();
         var intake = new Mock<IIntakeRepository>();
         var movies = new Mock<IMovieCatalogRepository>();
         var metadata = new Mock<IMetadataProvider>();
@@ -87,7 +90,7 @@ public sealed class IntakeSyncServiceTests
 
         intake.Setup(repo => repo.GetIntakeSourceAsync(source.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(source);
-        platform.Setup(repo => repo.ListLibrariesAsync(It.IsAny<CancellationToken>()))
+        libraries.Setup(repo => repo.ListLibrariesAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync([library]);
         intake.Setup(repo => repo.ListActiveIntakeListExclusionsAsync(source.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
@@ -145,6 +148,7 @@ public sealed class IntakeSyncServiceTests
 
         var service = new IntakeSyncService(
             platform.Object,
+            libraries.Object,
             intake.Object,
             new Mock<IJobScheduler>().Object,
             new Mock<IJobQueueRepository>().Object,
@@ -204,9 +208,10 @@ public sealed class IntakeSyncServiceTests
             CreatedUtc: DateTimeOffset.Parse("2026-08-14T00:00:00Z"),
             UpdatedUtc: DateTimeOffset.Parse("2026-08-14T00:00:00Z"));
         var platform = new Mock<IPlatformSettingsRepository>();
+        var libraries = new Mock<ILibrariesRepository>();
         var intake = new Mock<IIntakeRepository>();
         intake.Setup(repo => repo.GetIntakeSourceAsync(source.Id, It.IsAny<CancellationToken>())).ReturnsAsync(source);
-        platform.Setup(repo => repo.ListLibrariesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        libraries.Setup(repo => repo.ListLibrariesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
         intake.Setup(repo => repo.ListActiveIntakeListExclusionsAsync(source.Id, It.IsAny<CancellationToken>())).ReturnsAsync([]);
 
         var series = new Mock<ISeriesCatalogRepository>();
@@ -214,6 +219,7 @@ public sealed class IntakeSyncServiceTests
         var handler = new PublicMdbListHandler();
         var service = new IntakeSyncService(
             platform.Object,
+            libraries.Object,
             intake.Object,
             new Mock<IJobScheduler>().Object,
             new Mock<IJobQueueRepository>().Object,

@@ -1,4 +1,4 @@
-using Deluno.Platform.Quality;
+using Deluno.Quality;
 
 namespace Deluno.Platform.Tests.Quality;
 

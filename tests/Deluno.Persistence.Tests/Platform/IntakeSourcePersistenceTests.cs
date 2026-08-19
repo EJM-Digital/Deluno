@@ -2,7 +2,8 @@ using Deluno.Infrastructure.Storage.Migrations;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Intake.Contracts;
 using Deluno.Intake.Data;
-using Deluno.Platform.Contracts;
+using Deluno.Libraries.Contracts;
+using Deluno.Libraries.Data;
 using Deluno.Platform.Data;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -21,16 +22,15 @@ public sealed class IntakeSourcePersistenceTests
             new SqliteDatabaseMigrator(storage.Factory, timeProvider),
             NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
 
-        var repository = new SqlitePlatformSettingsRepository(
+        var librariesRepository = new SqliteLibrariesRepository(
             storage.Factory,
-            timeProvider,
-            TestSecretProtection.Create(storage));
+            timeProvider);
 
         var intakeRepository = new SqliteIntakeRepository(
             storage.Factory,
             timeProvider);
 
-        var movieLibrary = await repository.CreateLibraryAsync(
+        var movieLibrary = await librariesRepository.CreateLibraryAsync(
             new CreateLibraryRequest(
                 Name: "Test Movies",
                 MediaType: "movies",

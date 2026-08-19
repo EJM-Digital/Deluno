@@ -289,6 +289,20 @@ public sealed class SignalRRealtimeEventPublisher(
         return Task.CompletedTask;
     }
 
+    public Task PublishEntityChangedAsync(
+        string entityType,
+        string entityId,
+        CancellationToken cancellationToken)
+    {
+        Enqueue(
+            $"{entityType}Changed",
+            new
+            {
+                id = entityId
+            });
+        return Task.CompletedTask;
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await foreach (var envelope in _events.Reader.ReadAllAsync(stoppingToken))

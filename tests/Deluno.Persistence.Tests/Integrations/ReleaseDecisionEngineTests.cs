@@ -375,7 +375,7 @@ public sealed class ReleaseDecisionEngineTests
         var decision = ReleaseDecisionEngine.Decide(GoodInput());
 
         Assert.False(string.IsNullOrWhiteSpace(decision.PolicyVersion));
-        Assert.Equal(Deluno.Platform.Quality.MediaPolicyCatalog.CurrentVersion, decision.PolicyVersion);
+        Assert.Equal(Deluno.Quality.MediaPolicyCatalog.CurrentVersion, decision.PolicyVersion);
     }
 
     // ── Summary ───────────────────────────────────────────────────────────

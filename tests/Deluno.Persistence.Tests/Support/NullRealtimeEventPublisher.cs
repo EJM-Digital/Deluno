@@ -110,4 +110,10 @@ internal sealed class NullRealtimeEventPublisher : IRealtimeEventPublisher
         string? failureReason,
         CancellationToken cancellationToken)
         => Task.CompletedTask;
+
+    public Task PublishEntityChangedAsync(
+        string entityType,
+        string entityId,
+        CancellationToken cancellationToken)
+        => Task.CompletedTask;
 }

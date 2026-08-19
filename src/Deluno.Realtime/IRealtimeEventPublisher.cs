@@ -97,4 +97,16 @@ public interface IRealtimeEventPublisher
         string? importedPath,
         string? failureReason,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The generic entity-change family from ADR-002: identity, not the new
+    /// value, so the client invalidates <paramref name="entityType"/> +
+    /// <paramref name="entityId"/> and refetches rather than trusting a
+    /// second serialization of the object over the wire. The event name on
+    /// the wire is "{entityType}Changed" (e.g. "QualityProfileChanged").
+    /// </summary>
+    Task PublishEntityChangedAsync(
+        string entityType,
+        string entityId,
+        CancellationToken cancellationToken);
 }
