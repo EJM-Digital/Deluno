@@ -37,14 +37,22 @@ public sealed class ApiRateLimitTests : IAsyncDisposable
                         {
                             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
                             options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
-                                RateLimitPartition.GetFixedWindowLimiter(
-                                    ApiRateLimitPartitionKeyResolver.Resolve(httpContext),
+                            {
+                                var partitionKey = ApiRateLimitPartitionKeyResolver.ResolveOrExempt(httpContext);
+                                if (partitionKey is null)
+                                {
+                                    return RateLimitPartition.GetNoLimiter("exempt-session");
+                                }
+
+                                return RateLimitPartition.GetFixedWindowLimiter(
+                                    partitionKey,
                                     _ => new FixedWindowRateLimiterOptions
                                     {
                                         PermitLimit = 2,
                                         Window = TimeSpan.FromMinutes(1),
                                         QueueLimit = 0
-                                    }));
+                                    });
+                            });
                             options.OnRejected = async (context, cancellationToken) =>
                             {
                                 context.HttpContext.Response.Headers.RetryAfter = "60";
@@ -75,9 +83,9 @@ public sealed class ApiRateLimitTests : IAsyncDisposable
     [Fact]
     public async Task Requests_over_the_permit_limit_are_rejected_with_retry_after()
     {
-        var first = await _client.GetAsync("/api/health/live");
-        var second = await _client.GetAsync("/api/health/live");
-        var third = await _client.GetAsync("/api/health/live");
+        var first = await SendWithApiKeyAsync("deluno_test-key");
+        var second = await SendWithApiKeyAsync("deluno_test-key");
+        var third = await SendWithApiKeyAsync("deluno_test-key");
 
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
         Assert.Equal(HttpStatusCode.OK, second.StatusCode);
@@ -93,10 +101,10 @@ public sealed class ApiRateLimitTests : IAsyncDisposable
     [Fact]
     public async Task Different_api_keys_get_independent_budgets()
     {
-        var callerA1 = await SendWithApiKeyAsync("key-a");
-        var callerA2 = await SendWithApiKeyAsync("key-a");
-        var callerA3 = await SendWithApiKeyAsync("key-a");
-        var callerB1 = await SendWithApiKeyAsync("key-b");
+        var callerA1 = await SendWithApiKeyAsync("deluno_key-a");
+        var callerA2 = await SendWithApiKeyAsync("deluno_key-a");
+        var callerA3 = await SendWithApiKeyAsync("deluno_key-a");
+        var callerB1 = await SendWithApiKeyAsync("deluno_key-b");
 
         Assert.Equal(HttpStatusCode.OK, callerA1.StatusCode);
         Assert.Equal(HttpStatusCode.OK, callerA2.StatusCode);
@@ -104,10 +112,47 @@ public sealed class ApiRateLimitTests : IAsyncDisposable
         Assert.Equal(HttpStatusCode.OK, callerB1.StatusCode);
     }
 
+    /// <summary>
+    /// This is the fix for the multi-tab problem, not the generous default:
+    /// a browser session token (not a generated <c>deluno_</c> API key) never
+    /// goes through the limiter at all, so every tab of the same login is
+    /// unaffected by how many other tabs are open. Sends far more than the
+    /// tiny test permit limit to prove there is genuinely no ceiling, not
+    /// just a high one.
+    /// </summary>
+    [Fact]
+    public async Task Browser_session_tokens_are_never_rate_limited()
+    {
+        for (var i = 0; i < 10; i++)
+        {
+            var response = await SendWithSessionTokenAsync("opaque-session-token-not-an-api-key");
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        }
+    }
+
+    [Fact]
+    public async Task Requests_with_no_credential_fall_back_to_ip_based_limiting()
+    {
+        var first = await _client.GetAsync("/api/health/live");
+        var second = await _client.GetAsync("/api/health/live");
+        var third = await _client.GetAsync("/api/health/live");
+
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, third.StatusCode);
+    }
+
     private async Task<HttpResponseMessage> SendWithApiKeyAsync(string apiKey)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, "/api/health/live");
         request.Headers.Add("X-Api-Key", apiKey);
+        return await _client.SendAsync(request);
+    }
+
+    private async Task<HttpResponseMessage> SendWithSessionTokenAsync(string sessionToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/health/live");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", sessionToken);
         return await _client.SendAsync(request);
     }
 
