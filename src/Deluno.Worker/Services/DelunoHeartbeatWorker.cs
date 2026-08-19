@@ -17,7 +17,8 @@ namespace Deluno.Worker.Services;
 public sealed class DelunoHeartbeatWorker(
     ILogger<DelunoHeartbeatWorker> logger,
     IServiceScopeFactory scopeFactory,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IJobLaneSignal laneSignal)
     : BackgroundService
 {
     private readonly string _workerId = $"worker-{Environment.MachineName.ToLowerInvariant()}";
@@ -32,13 +33,16 @@ public sealed class DelunoHeartbeatWorker(
     [
         // Planning only. Deciding what should run is cheap and must not sit
         // behind a long-running job, so it gets its own lane and executes
-        // nothing itself.
-        new("planning", TimeSpan.FromSeconds(5), [],
-            PlanAutomation: true, PlanImports: true, PlanMaintenance: true),
+        // nothing itself. It has no job types of its own to be woken by, so it
+        // is signalled through the "planning.wake" sentinel instead — notably
+        // by RequestLibrarySearchAsync, the path the Search button takes.
+        new("planning", TimeSpan.FromSeconds(30), [],
+            PlanAutomation: true, PlanImports: true, PlanMaintenance: true,
+            SignalTypesOverride: ["planning.wake"]),
 
         // Disk-bound. The widest lane: imports are the backlog users actually
         // feel, and the work is mostly waiting on file I/O.
-        new("import", TimeSpan.FromSeconds(1), ["filesystem.import.execute"],
+        new("import", TimeSpan.FromSeconds(30), ["filesystem.import.execute"],
             BatchSize: 16, MaxConcurrency: 8),
 
         // Indexer-bound. Deliberately narrow — each job already fans out across
@@ -47,20 +51,20 @@ public sealed class DelunoHeartbeatWorker(
         //
         // "episode.search" belongs here, not in its own lane: it contends on the
         // exact same indexers as "library.search" and has to share the budget.
-        new("search", TimeSpan.FromSeconds(2), ["library.search", "episode.search"],
+        new("search", TimeSpan.FromSeconds(30), ["library.search", "episode.search"],
             BatchSize: 4, MaxConcurrency: 2),
 
         // Remote list providers, and rate-limited by them.
-        new("intake", TimeSpan.FromSeconds(5), ["intake.sync"],
+        new("intake", TimeSpan.FromSeconds(30), ["intake.sync"],
             BatchSize: 4, MaxConcurrency: 2),
 
         // Metadata provider HTTP. Separate from catalogue work so a slow
         // provider cannot stall local recalculation.
-        new("metadata", TimeSpan.FromSeconds(3), ["movies.metadata.refresh", "series.metadata.refresh"],
+        new("metadata", TimeSpan.FromSeconds(30), ["movies.metadata.refresh", "series.metadata.refresh"],
             BatchSize: 8, MaxConcurrency: 4),
 
         // Local only: SQLite and CPU, no network. Safe to run wide.
-        new("catalog", TimeSpan.FromSeconds(3),
+        new("catalog", TimeSpan.FromSeconds(30),
         [
             "movies.quality.recalculate",
             "series.quality.recalculate",
@@ -188,15 +192,31 @@ public sealed class DelunoHeartbeatWorker(
             await Task.Delay(jitterMilliseconds, stoppingToken);
         }
 
-        using var timer = new PeriodicTimer(lane.Interval);
+        var gate = laneSignal.Register(lane.Name, lane.SignalTypes);
         logger.LogInformation(
             "Worker {WorkerId} lane {LaneName} started for {JobTypes}.",
             _workerId,
             lane.Name,
             string.Join(", ", lane.JobTypes));
 
-        while (await timer.WaitForNextTickAsync(stoppingToken))
+        // Drained a full batch last time round — more work is likely still
+        // queued, so skip the wait and go straight back to leasing instead of
+        // pacing a backlog by the interval.
+        var drainImmediately = false;
+
+        while (!stoppingToken.IsCancellationRequested)
         {
+            if (!drainImmediately)
+            {
+                // Signal first, interval as a backstop. The backstop still has
+                // to exist: it covers jobs made ready by scheduled_utc passing,
+                // lease recovery after a crash, and anything enqueued by
+                // another process that does not go through this signal.
+                await gate.WaitAsync(lane.Interval, stoppingToken);
+            }
+
+            drainImmediately = false;
+
             using var scope = scopeFactory.CreateScope();
             var services = scope.ServiceProvider;
 
@@ -304,6 +324,14 @@ public sealed class DelunoHeartbeatWorker(
                 continue;
             }
 
+            // A full batch means the backlog may not be drained yet. Loop
+            // straight round instead of waiting out the interval — otherwise a
+            // 500-job backlog is still paced by the backstop.
+            if (jobs.Count == lane.BatchSize)
+            {
+                drainImmediately = true;
+            }
+
             // Only reached when there is a job, so it never costs anything on an
             // idle tick.
             var handlerRegistry = services.GetRequiredService<JobHandlerRegistry>();
@@ -352,6 +380,13 @@ public sealed class DelunoHeartbeatWorker(
     /// a catalogue recalculation waits on nothing but SQLite. Putting those in
     /// one lane made each of them wait behind the others for no reason.
     /// </summary>
+    /// <param name="Interval">
+    /// A backstop, not the primary trigger — the lane is normally woken by
+    /// <see cref="IJobLaneSignal"/> as soon as matching work is enqueued. This
+    /// still covers jobs made ready by their scheduled time passing, lease
+    /// recovery after a crash, and work enqueued through a path that does not
+    /// signal.
+    /// </param>
     /// <param name="JobTypes">
     /// Empty means the lane only plans work and never executes it.
     /// </param>
@@ -363,6 +398,12 @@ public sealed class DelunoHeartbeatWorker(
     /// tick, so lanes on the same or nearby intervals do not all wake and hit
     /// SQLite in the same instant. Defaults to 25% of <see cref="Interval"/>.
     /// </param>
+    /// <param name="SignalTypesOverride">
+    /// The job types this lane registers with <see cref="IJobLaneSignal"/> to be
+    /// woken by. Defaults to <see cref="JobTypes"/>; a planning-only lane (empty
+    /// <see cref="JobTypes"/>) needs an explicit override, since it executes no
+    /// job type but still wants to be signalled.
+    /// </param>
     private sealed record JobLane(
         string Name,
         TimeSpan Interval,
@@ -373,8 +414,11 @@ public sealed class DelunoHeartbeatWorker(
         int BatchSize = 8,
         int MaxConcurrency = 4,
         bool Enabled = true,
-        TimeSpan? JitterOverride = null)
+        TimeSpan? JitterOverride = null,
+        IReadOnlyList<string>? SignalTypesOverride = null)
     {
         public TimeSpan Jitter { get; init; } = JitterOverride ?? TimeSpan.FromMilliseconds(Interval.TotalMilliseconds * 0.25);
+
+        public IReadOnlyList<string> SignalTypes { get; init; } = SignalTypesOverride ?? JobTypes;
     }
 }

@@ -23,6 +23,8 @@ public static class JobsServiceCollectionExtensions
         services.AddSingleton<IDispatchMetricsRepository>(provider =>
             provider.GetRequiredService<SqliteDispatchMetricsRepository>());
 
+        services.AddSingleton<IJobLaneSignal, JobLaneSignal>();
+
         services.AddSingleton<SqliteJobStore>();
         services.AddSingleton<IJobScheduler>(provider => provider.GetRequiredService<SqliteJobStore>());
         services.AddSingleton<IJobQueueRepository>(provider => provider.GetRequiredService<SqliteJobStore>());

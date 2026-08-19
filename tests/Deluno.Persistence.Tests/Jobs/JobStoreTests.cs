@@ -291,6 +291,54 @@ public sealed class JobStoreTests
     }
 
     [Fact]
+    public async Task EnqueueAsync_signals_the_lane_for_a_job_that_is_runnable_now()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T04:00:00Z"));
+        await InitializeJobsAsync(storage, timeProvider);
+
+        var laneSignal = new JobLaneSignal();
+        var gate = laneSignal.Register("import", ["filesystem.import.execute"]);
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository(), laneSignal);
+
+        await store.EnqueueAsync(
+            new EnqueueJobRequest(
+                JobType: "filesystem.import.execute",
+                Source: "test",
+                PayloadJson: "{}",
+                RelatedEntityType: null,
+                RelatedEntityId: null,
+                ScheduledUtc: null),
+            CancellationToken.None);
+
+        Assert.Equal(1, gate.CurrentCount);
+    }
+
+    [Fact]
+    public async Task EnqueueAsync_does_not_signal_a_job_scheduled_in_the_future()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T04:00:00Z"));
+        await InitializeJobsAsync(storage, timeProvider);
+
+        var laneSignal = new JobLaneSignal();
+        var gate = laneSignal.Register("import", ["filesystem.import.execute"]);
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository(), laneSignal);
+
+        await store.EnqueueAsync(
+            new EnqueueJobRequest(
+                JobType: "filesystem.import.execute",
+                Source: "test",
+                PayloadJson: "{}",
+                RelatedEntityType: null,
+                RelatedEntityId: null,
+                ScheduledUtc: timeProvider.GetUtcNow().AddHours(1)),
+            CancellationToken.None);
+
+        Assert.Equal(0, gate.CurrentCount);
+    }
+
+    [Fact]
     public async Task TryClaimScheduledPassAsync_only_the_first_caller_within_the_interval_claims_the_pass()
     {
         using var storage = TestStorage.Create();
