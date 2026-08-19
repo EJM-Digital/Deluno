@@ -290,6 +290,33 @@ public sealed class JobStoreTests
         Assert.Equal(timeProvider.GetUtcNow().AddHours(6), state.NextSearchUtc!.Value);
     }
 
+    [Fact]
+    public async Task TryClaimScheduledPassAsync_only_the_first_caller_within_the_interval_claims_the_pass()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new MutableTimeProvider(DateTimeOffset.Parse("2026-04-29T04:00:00Z"));
+        await InitializeJobsAsync(storage, timeProvider);
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+
+        var firstClaim = await store.TryClaimScheduledPassAsync("dispatch.cleanup", TimeSpan.FromHours(6), CancellationToken.None);
+        Assert.True(firstClaim);
+
+        // A second host racing immediately after must not also claim it.
+        var secondClaim = await store.TryClaimScheduledPassAsync("dispatch.cleanup", TimeSpan.FromHours(6), CancellationToken.None);
+        Assert.False(secondClaim);
+
+        // Still inside the interval a few minutes later.
+        timeProvider.Advance(TimeSpan.FromMinutes(30));
+        Assert.False(await store.TryClaimScheduledPassAsync("dispatch.cleanup", TimeSpan.FromHours(6), CancellationToken.None));
+
+        // Past the interval, the pass can be claimed again.
+        timeProvider.Advance(TimeSpan.FromHours(6));
+        Assert.True(await store.TryClaimScheduledPassAsync("dispatch.cleanup", TimeSpan.FromHours(6), CancellationToken.None));
+
+        // A different key is independent of "dispatch.cleanup"'s schedule.
+        Assert.True(await store.TryClaimScheduledPassAsync("intake.automation", TimeSpan.FromMinutes(5), CancellationToken.None));
+    }
+
     private static async Task InitializeJobsAsync(TestStorage storage, TimeProvider timeProvider)
     {
         await new JobsSchemaInitializer(
