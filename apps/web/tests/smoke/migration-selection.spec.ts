@@ -14,6 +14,6 @@ test.describe("migration selection", () => {
 
     await indexerSelection.click();
     await expect(indexerSelection).not.toBeChecked();
-    await expect(page.getByRole("button", { name: /Apply selected changes \(/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Apply \d+ selected/ })).toBeVisible();
   });
 });
