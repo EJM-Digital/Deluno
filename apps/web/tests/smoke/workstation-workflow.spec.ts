@@ -149,7 +149,9 @@ test.describe("dashboard workflow", () => {
     test.skip(testInfo.project.name === "mobile", "The mobile drawer has the same destination tree.");
     await authenticateAndNavigate(page, "/settings/media-management");
 
-    const expectedSections = ["/settings/media-management", "/indexers", "/settings/policy-sets", "/settings/lists"];
+    // Area rows, not their children — see the tabsInToolbar rule on
+    // configurationNavAreas. Child pages live in the page toolbar.
+    const expectedSections = ["/settings/libraries", "/indexers", "/settings/policy-sets", "/settings/lists"];
     const navigator = page.locator("aside").getByRole("navigation", { name: "Library setup" });
     await expect(navigator).toBeVisible();
     for (const destination of expectedSections) {
@@ -161,7 +163,7 @@ test.describe("dashboard workflow", () => {
     await page.goto("/search-cycles");
     await expect(page.getByRole("navigation", { name: "Automation and transfer status" }).getByRole("link", { name: "Automation", exact: true })).toBeVisible();
     await page.goto("/system");
-    await expect(page.locator("aside").getByRole("navigation", { name: "System controls" }).getByRole("link", { name: "System & settings", exact: true })).toBeVisible();
+    await expect(page.locator("aside").getByRole("navigation", { name: "System controls" }).getByRole("link", { name: "System", exact: true })).toBeVisible();
   });
 
   test("keeps installation-wide settings under Maintain Deluno", async ({ page }, testInfo) => {
@@ -169,9 +171,9 @@ test.describe("dashboard workflow", () => {
     await authenticateAndNavigate(page, "/settings/general");
 
     const maintenance = page.locator("aside").getByRole("navigation", { name: "System controls" });
-    await expect(maintenance.getByRole("button", { name: "Collapse System & settings" })).toHaveAttribute("aria-expanded", "true");
-    await expect(maintenance.getByRole("link", { name: "General", exact: true })).toBeVisible();
-    await expect(page.locator("aside").getByRole("navigation", { name: "Library setup" }).getByRole("link", { name: "System & settings", exact: true })).toHaveCount(0);
+    await expect(maintenance.getByRole("button", { name: /Collapse|Expand/ })).toHaveCount(0);
+    await expect(maintenance.getByRole("link", { name: "System", exact: true })).toBeVisible();
+    await expect(page.locator("aside").getByRole("navigation", { name: "Library setup" }).getByRole("link", { name: "Preferences", exact: true })).toHaveCount(0);
   });
 
   test("keeps every system maintenance destination visible from System", async ({ page }) => {
@@ -198,11 +200,11 @@ test.describe("dashboard workflow", () => {
   test("keeps failed-download handling together with automation and recovery", async ({ page }) => {
     await authenticateAndNavigate(page, "/search-cycles");
 
-    await expect(page.getByRole("heading", { name: "Failed download handling" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Failed downloads" })).toBeVisible();
     await expect(page.getByLabel("Act after this many strikes")).toHaveValue("3");
     await expect(page.getByText("Block this release", { exact: true })).toBeVisible();
     await expect(page.getByText("Search for a replacement", { exact: true })).toBeVisible();
-    await expect(page.getByText("Remove client entry", { exact: true })).toBeVisible();
+    await expect(page.getByText("Remove the client entry", { exact: true })).toBeVisible();
     await expect(page.getByText("Purge residual files", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Save failed-download handling" })).toBeVisible();
   });
@@ -228,7 +230,7 @@ test.describe("dashboard workflow", () => {
     await expect(page.getByText("Follow the automatic path from search to download, processing, import, and the record of every decision.", { exact: true })).toHaveCount(0);
     await expect(page.getByText("Change the folders, sources, download clients, plans, and rules Deluno uses.", { exact: true })).toHaveCount(0);
     await expect(page.getByText("Check health, keep backups, install updates, and manage advanced access.", { exact: true })).toHaveCount(0);
-    await expect(page.getByText("How Deluno manages your media", { exact: true })).toBeVisible();
+    await expect(page.getByText("Guided configuration for your media library, quality policy, automation, and runtime behaviour.").first()).toBeVisible();
     await page.getByRole("link", { name: "Transfers" }).click();
     await expect(page.getByText("Follow downloads through processing and safe import", { exact: true })).toBeVisible();
     await expect(page.getByText("Control room", { exact: true })).toHaveCount(0);
@@ -249,7 +251,7 @@ test.describe("dashboard workflow", () => {
     await authenticateAndNavigate(page, "/settings/policy-sets");
 
     // List → drawer: the page is a list of plans; "New plan" opens the editor drawer.
-    await expect(page.getByRole("heading", { name: "Media plans", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Media plans", exact: true }).first()).toBeVisible();
     await page.getByRole("button", { name: "New plan" }).first().click();
     await expect(page.getByRole("dialog", { name: "New media plan" })).toBeVisible();
 
@@ -271,11 +273,11 @@ test.describe("dashboard workflow", () => {
     const navigation = testInfo.project.name === "mobile"
       ? page.getByLabel("Panel")
       : page.locator("aside").getByRole("navigation", { name: "Library setup" });
-    const importLists = navigation.getByRole("link", { name: "Discover media", exact: true });
+    const importLists = navigation.getByRole("link", { name: "Import lists", exact: true });
     await expect(importLists).toHaveAttribute("href", "/settings/lists");
     await importLists.click();
 
-    await expect(page.getByRole("heading", { name: "Import lists", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Import lists", exact: true }).first()).toBeVisible();
     await page.getByRole("button", { name: "New list" }).first().click();
     await expect(page.getByRole("dialog", { name: "New import list" }).getByText(/Paste a public list URL/)).toBeVisible();
   });
@@ -296,17 +298,13 @@ test.describe("dashboard workflow", () => {
   test("keeps library details discoverable and provider credentials out of normal setup", async ({ page }, testInfo) => {
     await authenticateAndNavigate(page, "/settings/media-management");
 
-    if (testInfo.project.name === "mobile") await page.getByRole("button", { name: "More destinations" }).click();
-    const navigation = testInfo.project.name === "mobile"
-      ? page.getByLabel("Panel")
-      : page.locator("aside").getByRole("navigation", { name: "Library setup" });
-    const libraryDetails = navigation.getByRole("link", { name: "Metadata & sidecars", exact: true });
-    await expect(libraryDetails).toHaveAttribute("href", "/settings/metadata");
-    await libraryDetails.click();
+    // Metadata is a page inside the Files & folders area, so it is reached from
+    // the page toolbar rather than the sidebar — see the tabsInToolbar rule.
+    await page.getByRole("link", { name: "Metadata & sidecars", exact: true }).first().click();
 
-    await expect(page.getByRole("heading", { name: "Metadata & sidecars", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Metadata & sidecars", exact: true }).first()).toBeVisible();
     await expect(page.getByText("What Deluno saves", { exact: true })).toBeVisible();
-    await expect(page.getByText(/There are no provider keys to set here/)).toBeVisible();
+    await expect(page.getByText(/there are no provider keys to set/)).toBeVisible();
     await expect(page.getByText("TMDb API key", { exact: true })).toHaveCount(0);
     await expect(page.getByText("OMDb API key", { exact: true })).toHaveCount(0);
     await expect(page.getByText("Provider route", { exact: true })).toHaveCount(0);
