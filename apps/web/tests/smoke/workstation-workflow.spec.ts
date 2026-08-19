@@ -136,7 +136,7 @@ test.describe("dashboard workflow", () => {
     // See the comment on configurationNavAreas: the two must not do the same job
     // twice. Assert the area rows here, and the sibling tabs on the page below.
     const tree = page.locator("aside").getByRole("navigation", { name: "Library setup" });
-    for (const destination of ["/settings/libraries", "/indexers", "/settings/policy-sets", "/settings/lists"]) {
+    for (const destination of ["/settings/libraries", "/indexers/indexers", "/settings/policy-sets", "/settings/lists"]) {
       await expect(tree.locator(`a[href="${destination}"]`).first()).toHaveCount(1);
     }
     await expect(tree.getByRole("button", { name: /Collapse|Expand/ })).toHaveCount(0);
@@ -150,7 +150,7 @@ test.describe("dashboard workflow", () => {
 
     // Area rows, not their children — see the tabsInToolbar rule on
     // configurationNavAreas. Child pages live in the page toolbar.
-    const expectedSections = ["/settings/libraries", "/indexers", "/settings/policy-sets", "/settings/lists"];
+    const expectedSections = ["/settings/libraries", "/indexers/indexers", "/settings/policy-sets", "/settings/lists"];
     const navigator = page.locator("aside").getByRole("navigation", { name: "Library setup" });
     await expect(navigator).toBeVisible();
     for (const destination of expectedSections) {
