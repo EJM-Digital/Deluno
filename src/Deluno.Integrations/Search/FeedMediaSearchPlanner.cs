@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using System.Globalization;
 using System.Net;
 using System.Xml.Linq;
@@ -18,15 +19,32 @@ public sealed class FeedMediaSearchPlanner(
     IHttpClientFactory httpClientFactory,
     IIntegrationResiliencePolicy resiliencePolicy,
     IQualityModelService qualityModelService,
-    IReleaseRankingModelService rankingModelService)
+    IReleaseRankingModelService rankingModelService,
+    IOutboundRequestThrottle outboundRequestThrottle,
+    ILogger<FeedMediaSearchPlanner> logger)
     : IMediaSearchPlanner
 {
     /// <summary>
     /// How many indexers are queried at once. This bounds outbound sockets,
     /// not how many indexers are searched — every matching indexer is always
     /// searched, this only decides how many are in flight together.
+    ///
+    /// It does not pace anything: sixteen different indexers in flight is fine,
+    /// sixteen requests to the <em>same</em> indexer is what gets an account
+    /// flagged. That is what the throttle below is for.
     /// </summary>
     private const int MaxConcurrentIndexerSearches = 16;
+
+    /// <summary>
+    /// The longest a search will sit waiting for its turn at one indexer.
+    ///
+    /// A search job holds a two-minute lease, so waiting has to stay well
+    /// inside it — a job that loses its lease gets leased again by another
+    /// worker, which would send the request twice, which is the opposite of the
+    /// point. Past this the indexer is skipped for this pass and said so out
+    /// loud; the next pass will reach it.
+    /// </summary>
+    private static readonly TimeSpan MaxIndexerThrottleWait = TimeSpan.FromSeconds(20);
 
     public async Task<MediaSearchPlan> BuildPlanAsync(
         string title,
@@ -145,6 +163,35 @@ public sealed class FeedMediaSearchPlanner(
         if (!Uri.TryCreate(BuildSearchUrl(indexer, title, year, mediaType, seasonNumber, episodeNumber), UriKind.Absolute, out var uri))
         {
             return [];
+        }
+
+        // Paced before the request, not after the indexer complains. Keyed on
+        // the host rather than the indexer id, because two indexer entries can
+        // point at the same tracker and it is the tracker that does the
+        // counting.
+        var waited = await outboundRequestThrottle.TryAcquireAsync(
+            uri.Host,
+            OutboundRate.PerIndexerDefault,
+            MaxIndexerThrottleWait,
+            cancellationToken);
+
+        if (waited is null)
+        {
+            // Skipping is a real outcome and has to be visible. A search that
+            // quietly queried nine of ten indexers looks identical to one that
+            // queried all ten and found nothing.
+            logger.LogInformation(
+                "Skipped {IndexerName} ({Host}) for this search: it is still inside its request interval after {Wait}.",
+                indexer.Name,
+                uri.Host,
+                MaxIndexerThrottleWait);
+
+            return [];
+        }
+
+        if (waited > TimeSpan.FromSeconds(1))
+        {
+            logger.LogDebug("Waited {Wait} before querying {Host}.", waited, uri.Host);
         }
 
         var result = await resiliencePolicy.ExecuteAsync(

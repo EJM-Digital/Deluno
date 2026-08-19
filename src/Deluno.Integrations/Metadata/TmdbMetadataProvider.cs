@@ -21,9 +21,20 @@ public sealed class TmdbMetadataProvider(
     IOptions<StoragePathOptions> storageOptions,
     TimeProvider timeProvider,
     IIntegrationResiliencePolicy resiliencePolicy,
+    IOutboundRequestThrottle outboundRequestThrottle,
     ILogger<TmdbMetadataProvider> logger)
     : IMetadataProvider
 {
+    /// <summary>
+    /// The longest a metadata lookup will wait for its turn.
+    ///
+    /// Short, because unlike an indexer search there is nothing to protect: a
+    /// metadata refresh that does not happen this minute happens next minute,
+    /// and the backfill re-queues it. Better to hand the lease back than to sit
+    /// on it.
+    /// </summary>
+    private static readonly TimeSpan MaxMetadataThrottleWait = TimeSpan.FromSeconds(10);
+
     private const string ProviderName = "tmdb";
     private const string BrokerProviderName = "deluno";
     private static readonly JsonSerializerOptions CacheJsonOptions = new(JsonSerializerDefaults.Web);
@@ -396,6 +407,18 @@ public sealed class TmdbMetadataProvider(
         var extension = ResolveArtworkExtension(remoteUri);
         Directory.CreateDirectory(_artworkRootPath);
         var destinationPath = Path.Combine(_artworkRootPath, $"{cacheKey}{extension}");
+
+        // Artwork comes from the same provider and counts against the same
+        // budget. A backfill fetching a poster per title is the larger half of
+        // the traffic, not an afterthought.
+        if (await outboundRequestThrottle.TryAcquireAsync(
+                remoteUri.Host,
+                OutboundRate.MetadataProviderDefault,
+                MaxMetadataThrottleWait,
+                cancellationToken) is null)
+        {
+            return remoteUrl;
+        }
 
         try
         {
@@ -1251,6 +1274,24 @@ public sealed class TmdbMetadataProvider(
         string operation,
         CancellationToken cancellationToken)
     {
+        // Paced before the request. A freshly imported library asks this
+        // roughly once per title; at 20,000 titles and no pacing that is a
+        // sustained burst, which is how a run during this work collected 394
+        // rate-limit responses out of about 20,000 requests.
+        if (await outboundRequestThrottle.TryAcquireAsync(
+                ThrottleHost(url),
+                OutboundRate.MetadataProviderDefault,
+                MaxMetadataThrottleWait,
+                cancellationToken) is null)
+        {
+            logger.LogInformation(
+                "Deferred {Operation}: the metadata provider is still inside its request budget after {Wait}.",
+                operation,
+                MaxMetadataThrottleWait);
+
+            return default;
+        }
+
         var result = await resiliencePolicy.ExecuteAsync(
             new IntegrationResilienceRequest(key, operation, FailureThreshold: 2),
             async token =>
@@ -1295,6 +1336,15 @@ public sealed class TmdbMetadataProvider(
 
         return url.Split('?', 2)[0].Trim().ToLowerInvariant();
     }
+
+    /// <summary>
+    /// The host a request is paced against. Relative URLs go through the
+    /// configured base address, so they share one budget with the absolute ones.
+    /// </summary>
+    private string ThrottleHost(string url)
+        => Uri.TryCreate(url, UriKind.Absolute, out var absolute)
+            ? absolute.Host
+            : httpClient.BaseAddress?.Host ?? "metadata-provider";
 
     private static string NormalizeMediaType(string? mediaType)
     {
