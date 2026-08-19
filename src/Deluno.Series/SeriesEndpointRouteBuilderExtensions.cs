@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
 using Deluno.Jobs.Contracts;
@@ -36,6 +37,38 @@ public static class SeriesEndpointRouteBuilderExtensions
         {
             var items = await repository.ListAsync(cancellationToken);
             return Results.Ok(items);
+        });
+
+
+        // The list surface for a library that keeps growing. Search, filter,
+        // sort and the counts all happen in SQL; the response says how many rows
+        // match and hands back a continuation token, so a caller can always tell
+        // a complete answer from a partial one.
+        //
+        // series.MapGet("/") above still returns the whole catalogue. It goes
+        // when the library view moves onto this; until then a page is available
+        // to anything that wants one.
+        series.MapGet("/page", async (
+            string? search,
+            string? status,
+            string? sort,
+            string? direction,
+            int? pageSize,
+            string? pageToken,
+            [FromServices] ISeriesCatalogRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var page = await repository.ListPageAsync(
+                new CatalogueQuery(
+                    Search: search,
+                    Status: status,
+                    Sort: sort,
+                    Descending: !string.Equals(direction, "asc", StringComparison.OrdinalIgnoreCase),
+                    PageSize: pageSize ?? 50,
+                    PageToken: pageToken),
+                cancellationToken);
+
+            return Results.Ok(page);
         });
 
         series.MapGet("/import-recovery", async (ISeriesCatalogRepository repository, CancellationToken cancellationToken) =>

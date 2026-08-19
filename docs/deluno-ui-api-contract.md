@@ -90,6 +90,7 @@ Implemented endpoints:
 - `POST /api/movies/{id}/metadata/refresh`
 - `POST /api/movies/{id}/metadata/link`
 - `PUT /api/movies/{id}/metadata/override`
+- `GET /api/movies/page` — the paged catalogue list; see below
 - `POST /api/movies/{id}/metadata/jobs`
 - `POST /api/movies/metadata/jobs` — `{ forceAll?, take? }` → `{ enqueuedCount, remainingCount, staleCount, markedForRefreshCount, message }`
 - `POST /api/movies`
@@ -132,6 +133,7 @@ Implemented endpoints:
 - `POST /api/series/{id}/metadata/refresh`
 - `POST /api/series/{id}/metadata/link`
 - `PUT /api/series/{id}/metadata/override`
+- `GET /api/series/page` — the paged catalogue list; see below
 - `POST /api/series/{id}/metadata/jobs`
 - `POST /api/series/metadata/jobs` — same shape as the movie twin
 - `POST /api/series/{id}/episodes/search`
@@ -295,6 +297,31 @@ refresh in one statement rather than queueing a page of jobs — the backfill th
 through it continuously. This is a breaking change: the response no longer carries a
 `jobs` array, which on a large library was up to 1,000 job objects and reported a few
 percent of the work as if it were all of it.
+
+### The paged catalogue list
+
+`GET /api/{movies,series}/page` takes `search`, `status`, `sort`, `direction`,
+`pageSize` and `pageToken`, and returns
+`{ items, nextPageToken, totalCount, facets }`.
+
+- **Search, filter, sort and the counts all happen in SQL.** The list surface must
+  not fetch the catalogue and work it out in the browser; that is what stops
+  working as a library grows.
+- **`pageToken` is keyset, not offset.** Page 400 costs what page 1 costs, and a row
+  inserted while somebody scrolls cannot shift the window. An unreadable token means
+  "start again", never an error — tokens travel in URLs and outlive deploys.
+- **`totalCount` and `facets` are present on the first page only** (`null` on a
+  continuation). Counting is the one part of the request that scans, so it happens
+  once per filter rather than once per page.
+- `sort` is one of `added` (default), `title`, `year`, `rating`; each has an index
+  behind it. `status` is one of `all`, `monitored`, `unmonitored`, `downloaded`,
+  `missing`. `pageSize` is clamped to 200.
+- Rows carry `fileSizeBytes` and `currentQuality`, which the unpaged list never sent.
+
+`GET /api/movies` and `GET /api/series` still return the entire catalogue and have no
+size control at all — 12.4 MB for 20,505 movies, measured. They are what the library
+view still uses; they go when it moves onto the paged endpoint, and until then nothing
+new should be built on them.
 
 ### Outbound pacing
 

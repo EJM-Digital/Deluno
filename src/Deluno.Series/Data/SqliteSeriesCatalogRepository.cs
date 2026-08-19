@@ -422,6 +422,185 @@ public sealed class SqliteSeriesCatalogRepository(
         return await command.ExecuteScalarAsync(cancellationToken) as string;
     }
 
+    /// <summary>
+    /// How many rows one catalogue page may hold. A page is what a screen shows
+    /// plus a scroll ahead, not a way to ask for the library in one request.
+    /// </summary>
+    private const int MaxCataloguePageSize = 200;
+
+    private const string CatalogueHasFile = "EXISTS(SELECT 1 FROM series_wanted_state w WHERE w.series_id = s.id AND w.has_file = 1)";
+
+    /// <summary>
+    /// The projection a catalogue page returns. Matches <see cref="ReadSeries"/>
+    /// ordinal for ordinal, then adds the two fields the list actually displays
+    /// and previously read out of an empty metadata blob — the file size and the
+    /// current quality, which live in the wanted state, not in provider
+    /// metadata.
+    /// </summary>
+    private const string CataloguePageColumns =
+        """
+            s.id,
+            s.title,
+            s.start_year,
+            s.imdb_id,
+            s.monitored,
+            EXISTS(SELECT 1 FROM series_wanted_state w WHERE w.series_id = s.id AND w.has_file = 1) AS has_file,
+            s.metadata_provider,
+            s.metadata_provider_id,
+            s.original_title,
+            s.overview,
+            s.poster_url,
+            s.backdrop_url,
+            s.rating,
+            s.genres,
+            s.external_url,
+            NULL AS metadata_json,
+            s.metadata_updated_utc,
+            s.created_utc,
+            s.updated_utc,
+            (SELECT MAX(w.file_size_bytes) FROM series_wanted_state w WHERE w.series_id = s.id) AS file_size_bytes,
+            (SELECT w.current_quality FROM series_wanted_state w WHERE w.series_id = s.id AND w.current_quality IS NOT NULL LIMIT 1) AS current_quality
+        """;
+
+    /// <summary>
+    /// One page of the catalogue — searched, filtered, sorted and counted in SQL.
+    ///
+    /// This replaces "hand the caller every row and let the browser work it
+    /// out", which is fine at two hundred titles and impossible at twenty
+    /// thousand. The page itself is a seek, so page four hundred costs what page
+    /// one costs; the counts are a separate pass, done once per filter rather
+    /// than on every page of it.
+    /// </summary>
+    public async Task<CataloguePage<SeriesListItem>> ListPageAsync(
+        CatalogueQuery query,
+        CancellationToken cancellationToken)
+    {
+        var pageSize = Math.Clamp(query.PageSize <= 0 ? 50 : query.PageSize, 1, MaxCataloguePageSize);
+        var sort = CatalogueSortFields.Normalize(query.Sort);
+        var status = CatalogueStatusFilters.Normalize(query.Status);
+        var search = string.IsNullOrWhiteSpace(query.Search) ? null : query.Search.Trim();
+        var token = CataloguePageToken.Decode(query.PageToken);
+
+        var sortExpression = CatalogueKeyset.SortExpression(sort, "s", "start_year");
+        var where = CatalogueKeyset.CombineFilters(
+            search is null ? string.Empty : CatalogueKeyset.SearchFilter("s"),
+            CatalogueKeyset.StatusFilter(status, "s", CatalogueHasFile),
+            token is null ? string.Empty : CatalogueKeyset.SeekPredicate(sortExpression, "s", query.Descending));
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        var items = new List<SeriesListItem>(pageSize);
+        string? lastSortValue = null;
+
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                $"""
+                SELECT
+                {CataloguePageColumns},
+                    {sortExpression} AS sort_value
+                FROM series_entries s
+                WHERE {where}
+                ORDER BY {CatalogueKeyset.OrderBy(sortExpression, "s", query.Descending)}
+                LIMIT @pageSize;
+                """;
+
+            AddParameter(command, "@pageSize", pageSize);
+            CatalogueKeyset.BindSearch(command, search);
+            if (token is not null)
+            {
+                CatalogueKeyset.BindSeek(command, token, sort);
+            }
+
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                items.Add(ReadSeries(reader) with
+                {
+                    FileSizeBytes = reader.IsDBNull(19) ? null : reader.GetInt64(19),
+                    CurrentQuality = reader.IsDBNull(20) ? null : reader.GetString(20)
+                });
+
+                lastSortValue = CatalogueKeyset.ReadSortValue(reader, 21);
+            }
+        }
+
+        // A full page might still be the last one. Handing back a token that
+        // turns out to be empty costs one wasted request; the alternative is a
+        // second query on every page purely to find out.
+        var nextPageToken = items.Count == pageSize
+            ? new CataloguePageToken(lastSortValue, items[^1].Id).Encode()
+            : null;
+
+        // Counting scans, so it happens once per filter rather than on every
+        // page of it. A continuation page keeps the numbers the caller has.
+        if (token is not null)
+        {
+            return new CataloguePage<SeriesListItem>(items, nextPageToken, null, null);
+        }
+
+        var facets = await CountCatalogueFacetsAsync(connection, search, cancellationToken);
+
+        return new CataloguePage<SeriesListItem>(
+            items,
+            nextPageToken,
+            SelectFacetTotal(facets, status),
+            facets);
+    }
+
+    /// <summary>
+    /// Every quick-filter count in one pass over the searched set, so the five
+    /// numbers above the list cost one scan rather than five queries — or, as
+    /// before, a download of the whole catalogue and a count in the browser.
+    /// </summary>
+    private async Task<CatalogueFacets> CountCatalogueFacetsAsync(
+        System.Data.Common.DbConnection connection,
+        string? search,
+        CancellationToken cancellationToken)
+    {
+        var where = CatalogueKeyset.CombineFilters(
+            search is null ? string.Empty : CatalogueKeyset.SearchFilter("s"));
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            $"""
+            SELECT
+                COUNT(*),
+                SUM(CASE WHEN s.monitored = 1 THEN 1 ELSE 0 END),
+                SUM(CASE WHEN s.monitored = 0 THEN 1 ELSE 0 END),
+                SUM(CASE WHEN {CatalogueHasFile} THEN 1 ELSE 0 END),
+                SUM(CASE WHEN {CatalogueHasFile} THEN 0 ELSE 1 END)
+            FROM series_entries s
+            WHERE {where};
+            """;
+        CatalogueKeyset.BindSearch(command, search);
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return new CatalogueFacets(0, 0, 0, 0, 0);
+        }
+
+        return new CatalogueFacets(
+            All: reader.GetInt32(0),
+            Monitored: reader.IsDBNull(1) ? 0 : reader.GetInt32(1),
+            Unmonitored: reader.IsDBNull(2) ? 0 : reader.GetInt32(2),
+            Downloaded: reader.IsDBNull(3) ? 0 : reader.GetInt32(3),
+            Missing: reader.IsDBNull(4) ? 0 : reader.GetInt32(4));
+    }
+
+    private static int SelectFacetTotal(CatalogueFacets facets, string status)
+        => status switch
+        {
+            CatalogueStatusFilters.Monitored => facets.Monitored,
+            CatalogueStatusFilters.Unmonitored => facets.Unmonitored,
+            CatalogueStatusFilters.Downloaded => facets.Downloaded,
+            CatalogueStatusFilters.Missing => facets.Missing,
+            _ => facets.All
+        };
+
     public async Task<IReadOnlyList<SeriesListItem>> ListAsync(CancellationToken cancellationToken)
     {
         var items = new List<SeriesListItem>();
