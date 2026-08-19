@@ -238,10 +238,7 @@ export const router = createBrowserRouter([
         children: [
       {
         path: "indexers",
-        lazy: withSkeleton(async () => {
-          const module = await import("./routes/indexers-page");
-          return { loader: module.indexersLoader, Component: module.IndexersPage };
-        })
+        element: <Navigate to="/indexers/indexers" replace />
       },
       {
         path: "indexers/indexers",
@@ -369,10 +366,7 @@ export const router = createBrowserRouter([
           },
           {
             path: "automation",
-            lazy: withSkeleton(async () => {
-              const module = await import("./routes/search-cycles-page");
-              return { loader: module.searchCyclesLoader, Component: module.SearchCyclesPage };
-            })
+            element: <Navigate to="/search-cycles" replace />
           },
           {
             path: "migration",

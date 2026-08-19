@@ -36,7 +36,7 @@ export const configurationNavAreas = [
     match: (path: string) => path.startsWith("/indexers"),
     label: "Connections",
     icon: "connections",
-    to: "/indexers",
+    to: "/indexers/indexers",
     tabsInToolbar: true,
     items: [
       { to: "/indexers/indexers", label: "Indexers", end: false },
@@ -78,7 +78,7 @@ export const systemSettingsNavItems = [
 /** The running installation itself, as toolbar tabs. */
 export const systemHealthNavItems = [
   { to: "/system", label: "Health", end: true },
-  { to: "/system/audit", label: "Activity", end: false },
+  { to: "/system/audit", label: "Audit", end: false },
   { to: "/system/backups", label: "Backups", end: false },
   { to: "/system/updates", label: "Updates", end: false },
   { to: "/system/api", label: "API access", end: false },
@@ -130,7 +130,7 @@ const systemNavItems = [
  * was consolidated there were two independent maps, which drifted: "/settings"
  * was "Files & folders" in the topbar and "Setup overview" in the body.
  */
-export const settingsPageMeta = [
+export const settingsPageMeta = [
   {
     match: (path: string) => path.startsWith("/settings/processing"),
     title: "Processing workflow",
