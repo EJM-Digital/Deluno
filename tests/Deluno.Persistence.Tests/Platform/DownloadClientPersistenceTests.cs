@@ -3,6 +3,8 @@ using Deluno.Persistence.Tests.Support;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Microsoft.Extensions.Logging.Abstractions;
+using Deluno.Connections.Contracts;
+using Deluno.Connections.Data;
 
 namespace Deluno.Persistence.Tests.Platform;
 
@@ -10,14 +12,14 @@ public sealed class DownloadClientPersistenceTests
 {
     // ── helpers ──────────────────────────────────────────────────────────────
 
-    private static async Task<SqlitePlatformSettingsRepository> CreateRepositoryAsync(TestStorage storage)
+    private static async Task<SqliteConnectionsRepository> CreateRepositoryAsync(TestStorage storage)
     {
         var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-01-01T00:00:00Z"));
         await new PlatformSchemaInitializer(
             storage.Factory,
             new SqliteDatabaseMigrator(storage.Factory, timeProvider),
             NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
-        return new SqlitePlatformSettingsRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
+        return new SqliteConnectionsRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
     }
 
     private static CreateDownloadClientRequest BaseCreateRequest(string name = "qBittorrent") =>

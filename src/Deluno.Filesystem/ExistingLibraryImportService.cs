@@ -1,14 +1,14 @@
 using System.Text.RegularExpressions;
 using Deluno.Contracts;
+using Deluno.Libraries.Data;
 using Deluno.Movies.Data;
-using Deluno.Platform.Data;
-using Deluno.Platform.Quality;
+using Deluno.Quality;
 using Deluno.Series.Data;
 
 namespace Deluno.Filesystem;
 
 public sealed class ExistingLibraryImportService(
-    IPlatformSettingsRepository platformSettingsRepository,
+    ILibrariesRepository librariesRepository,
     IMovieCatalogRepository movieCatalogRepository,
     ISeriesCatalogRepository seriesCatalogRepository,
     IMediaDecisionService mediaDecisionService)
@@ -29,7 +29,7 @@ public sealed class ExistingLibraryImportService(
 
     public async Task<ExistingLibraryImportResult?> ImportLibraryAsync(string libraryId, CancellationToken cancellationToken)
     {
-        var library = (await platformSettingsRepository.ListLibrariesAsync(cancellationToken))
+        var library = (await librariesRepository.ListLibrariesAsync(cancellationToken))
             .FirstOrDefault(item => string.Equals(item.Id, libraryId, StringComparison.OrdinalIgnoreCase));
 
         if (library is null || string.IsNullOrWhiteSpace(library.RootPath) || !Directory.Exists(library.RootPath))
@@ -78,7 +78,7 @@ public sealed class ExistingLibraryImportService(
     }
 
     private async Task<bool> ImportMovieAsync(
-        Deluno.Platform.Contracts.LibraryItem library,
+        Deluno.Libraries.Contracts.LibraryItem library,
         DetectedLibraryItem item,
         CancellationToken cancellationToken)
     {
@@ -106,7 +106,7 @@ public sealed class ExistingLibraryImportService(
     }
 
     private async Task<bool> ImportSeriesAsync(
-        Deluno.Platform.Contracts.LibraryItem library,
+        Deluno.Libraries.Contracts.LibraryItem library,
         DetectedLibraryItem item,
         CancellationToken cancellationToken)
     {

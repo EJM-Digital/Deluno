@@ -4,7 +4,7 @@ using Deluno.Api.Health;
 using Deluno.Infrastructure.Storage;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
-using Deluno.Platform.Data;
+using Deluno.Connections.Data;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 
@@ -14,7 +14,7 @@ public sealed class MonitoringService(
     IDelunoReadinessService readinessService,
     IDispatchMetricsRepository dispatchMetricsRepository,
     IJobQueueRepository jobQueueRepository,
-    IPlatformSettingsRepository platformSettingsRepository,
+    IConnectionsRepository connectionsRepository,
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
     IOptions<StoragePathOptions> storageOptions,
     IApiLatencyTracker latencyTracker,
@@ -224,8 +224,8 @@ public sealed class MonitoringService(
         int openDispatchAlerts,
         CancellationToken cancellationToken)
     {
-        var indexers = await platformSettingsRepository.ListIndexersAsync(cancellationToken);
-        var clients = await platformSettingsRepository.ListDownloadClientsAsync(cancellationToken);
+        var indexers = await connectionsRepository.ListIndexersAsync(cancellationToken);
+        var clients = await connectionsRepository.ListDownloadClientsAsync(cancellationToken);
         var jobs = await jobQueueRepository.ListAsync(200, cancellationToken);
 
         var activeJobs = jobs.Count(job => string.Equals(job.Status, "running", StringComparison.OrdinalIgnoreCase));

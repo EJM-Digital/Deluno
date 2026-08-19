@@ -1,11 +1,13 @@
 using Deluno.Filesystem;
 using Deluno.Infrastructure.Storage.Migrations;
 using Deluno.Jobs.Data;
+using Deluno.Libraries.Contracts;
+using Deluno.Libraries.Data;
 using Deluno.Movies.Data;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
-using Deluno.Platform.Quality;
+using Deluno.Quality;
 using Deluno.Series.Data;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -28,8 +30,9 @@ public sealed class ImportPipelineServiceTests
         await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
 
         var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
         await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
-        await platform.CreateLibraryAsync(
+        await libraries.CreateLibraryAsync(
             new CreateLibraryRequest(
                 Name: "Movies",
                 MediaType: "movies",
@@ -51,7 +54,7 @@ public sealed class ImportPipelineServiceTests
             CancellationToken.None);
 
         var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
-        var service = CreateService(storage, timeProvider, platform, movies);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
 
         var result = await service.ExecuteAsync(
             new ImportExecuteRequest(
@@ -104,8 +107,9 @@ public sealed class ImportPipelineServiceTests
         Directory.CreateDirectory(blockedDestinationPath);
 
         var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
         await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
-        await platform.CreateLibraryAsync(
+        await libraries.CreateLibraryAsync(
             new CreateLibraryRequest(
                 Name: "Movies",
                 MediaType: "movies",
@@ -127,7 +131,7 @@ public sealed class ImportPipelineServiceTests
             CancellationToken.None);
 
         var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
-        var service = CreateService(storage, timeProvider, platform, movies);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
 
         var result = await service.ExecuteAsync(
             new ImportExecuteRequest(
@@ -174,11 +178,12 @@ public sealed class ImportPipelineServiceTests
         await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 3072).Select(value => (byte)(value % 211)).ToArray());
 
         var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
         await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
-        await CreateMovieLibraryAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
 
         var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
-        var service = CreateService(storage, timeProvider, platform, movies);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
         var import = await service.ExecuteAsync(
             new ImportExecuteRequest(
                 Preview: new ImportPreviewRequest(
@@ -199,7 +204,7 @@ public sealed class ImportPipelineServiceTests
 
         File.Delete(import.Response!.Preview.DestinationPath);
 
-        var reconciliation = CreateReconciliationService(storage, timeProvider, platform, movies);
+        var reconciliation = CreateReconciliationService(storage, timeProvider, libraries, movies);
         var report = await reconciliation.ScanAsync(CancellationToken.None);
         var issue = Assert.Single(report.Issues, item => item.Kind == "missingTrackedFile");
         Assert.Equal("critical", issue.Severity);
@@ -226,8 +231,9 @@ public sealed class ImportPipelineServiceTests
         Directory.CreateDirectory(movieRootPath);
 
         var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
         await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
-        await CreateMovieLibraryAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
 
         var orphanPath = Path.Combine(movieRootPath, "Loose.Movie.2024.mkv");
         var artifactPath = Path.Combine(movieRootPath, "Loose.Movie.2024.mkv.deluno-stage-test.tmp");
@@ -235,7 +241,7 @@ public sealed class ImportPipelineServiceTests
         await File.WriteAllTextAsync(artifactPath, "partial import");
 
         var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
-        var reconciliation = CreateReconciliationService(storage, timeProvider, platform, movies);
+        var reconciliation = CreateReconciliationService(storage, timeProvider, libraries, movies);
         var report = await reconciliation.ScanAsync(CancellationToken.None);
 
         var orphan = Assert.Single(report.Issues, item => item.Kind == "orphanFile");
@@ -270,8 +276,9 @@ public sealed class ImportPipelineServiceTests
         await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
 
         var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
         await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
-        await CreateMovieLibraryAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
 
         var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
         var dispatchId = await jobStore.RecordDownloadDispatchAsync(
@@ -294,6 +301,7 @@ public sealed class ImportPipelineServiceTests
         var importResolutions = new SqliteImportResolutionsRepository(storage.Factory, timeProvider);
         var service = new ImportPipelineService(
             platform,
+            libraries,
             movies,
             new SqliteSeriesCatalogRepository(storage.Factory, timeProvider),
             jobStore,
@@ -362,13 +370,20 @@ public sealed class ImportPipelineServiceTests
         TimeProvider timeProvider)
         => new(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
 
+    private static SqliteLibrariesRepository CreateLibrariesRepository(
+        TestStorage storage,
+        TimeProvider timeProvider)
+        => new(storage.Factory, timeProvider);
+
     private static ImportPipelineService CreateService(
         TestStorage storage,
         TimeProvider timeProvider,
         SqlitePlatformSettingsRepository platform,
+        ILibrariesRepository librariesRepository,
         SqliteMovieCatalogRepository movies)
         => new(
             platform,
+            librariesRepository,
             movies,
             new SqliteSeriesCatalogRepository(storage.Factory, timeProvider),
             new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository()),
@@ -382,17 +397,17 @@ public sealed class ImportPipelineServiceTests
     private static FilesystemReconciliationService CreateReconciliationService(
         TestStorage storage,
         TimeProvider timeProvider,
-        SqlitePlatformSettingsRepository platform,
+        ILibrariesRepository librariesRepository,
         SqliteMovieCatalogRepository movies)
         => new(
-            platform,
+            librariesRepository,
             movies,
             new SqliteSeriesCatalogRepository(storage.Factory, timeProvider),
             new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository()),
             timeProvider);
 
     private static async Task CreateMovieLibraryAsync(
-        SqlitePlatformSettingsRepository platform,
+        ILibrariesRepository librariesRepository,
         string movieRootPath,
         string downloadsPath)
     {
@@ -414,7 +429,7 @@ public sealed class ImportPipelineServiceTests
             SearchIntervalHours: 6,
             RetryDelayHours: 24,
             MaxItemsPerRun: 25);
-        await platform.CreateLibraryAsync(request, CancellationToken.None);
+        await librariesRepository.CreateLibraryAsync(request, CancellationToken.None);
     }
 
     private static async Task SaveSettingsAsync(

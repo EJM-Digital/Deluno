@@ -7,13 +7,19 @@ using System.Text.Json.Serialization;
 using Deluno.Infrastructure.Resilience;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
+using Deluno.Libraries.Contracts;
+using Deluno.Libraries.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
+using Deluno.Connections.Contracts;
+using Deluno.Connections.Data;
 
 namespace Deluno.Integrations.DownloadClients;
 
 public sealed class DownloadClientTelemetryService(
     IPlatformSettingsRepository platformRepository,
+    ILibrariesRepository librariesRepository,
+    IConnectionsRepository connectionsRepository,
     IJobQueueRepository jobQueueRepository,
     IHttpClientFactory httpClientFactory,
     TimeProvider timeProvider,
@@ -27,9 +33,9 @@ public sealed class DownloadClientTelemetryService(
     {
         var capturedUtc = timeProvider.GetUtcNow();
         var platformSettings = await platformRepository.GetAsync(cancellationToken);
-        var clients = await platformRepository.ListDownloadClientsAsync(cancellationToken);
-        var pathMappings = await platformRepository.ListDownloadClientPathMappingsAsync(null, cancellationToken);
-        var libraries = await platformRepository.ListLibrariesAsync(cancellationToken);
+        var clients = await connectionsRepository.ListDownloadClientsAsync(cancellationToken);
+        var pathMappings = await connectionsRepository.ListDownloadClientPathMappingsAsync(null, cancellationToken);
+        var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
         var dispatches = await jobQueueRepository.ListDownloadDispatchesAsync(100, null, cancellationToken);
         var importJobs = await jobQueueRepository.ListAsync(200, cancellationToken);
         var snapshots = new List<DownloadClientTelemetrySnapshot>();
@@ -89,7 +95,7 @@ public sealed class DownloadClientTelemetryService(
         DownloadClientActionRequest request,
         CancellationToken cancellationToken)
     {
-        var client = (await platformRepository.ListDownloadClientsAsync(cancellationToken))
+        var client = (await connectionsRepository.ListDownloadClientsAsync(cancellationToken))
             .FirstOrDefault(item => string.Equals(item.Id, clientId, StringComparison.OrdinalIgnoreCase));
         if (client is null)
         {
@@ -842,7 +848,7 @@ public sealed class DownloadClientTelemetryService(
             return new DownloadHealthRemediationReport(0, 0, 0, 0, 0, []);
         }
 
-        var libraries = await platformRepository.ListLibrariesAsync(cancellationToken);
+        var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
         var notes = new List<string>();
         var evaluated = 0;
         var replacements = 0;
@@ -852,7 +858,7 @@ public sealed class DownloadClientTelemetryService(
 
         foreach (var snapshot in overview.Clients)
         {
-            var client = (await platformRepository.ListDownloadClientsAsync(cancellationToken))
+            var client = (await connectionsRepository.ListDownloadClientsAsync(cancellationToken))
                 .FirstOrDefault(item => string.Equals(item.Id, snapshot.ClientId, StringComparison.OrdinalIgnoreCase));
             if (client is null) continue;
 

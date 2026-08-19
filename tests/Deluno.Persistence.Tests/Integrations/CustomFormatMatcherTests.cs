@@ -1,5 +1,6 @@
 using Deluno.Integrations.Search;
 using Deluno.Platform.Contracts;
+using Deluno.Quality.Contracts;
 
 namespace Deluno.Persistence.Tests.Integrations;
 

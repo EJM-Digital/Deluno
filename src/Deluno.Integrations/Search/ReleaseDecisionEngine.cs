@@ -1,6 +1,6 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
-using Deluno.Platform.Quality;
+using Deluno.Quality;
 
 namespace Deluno.Integrations.Search;
 

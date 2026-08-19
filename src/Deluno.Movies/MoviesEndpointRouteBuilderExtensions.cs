@@ -8,17 +8,21 @@ using Deluno.Intake.Data;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.Search;
 using Deluno.Integrations.Metadata;
+using Deluno.Libraries.Contracts;
+using Deluno.Libraries.Data;
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Movies.Services;
 using Deluno.Platform.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform;
-using Deluno.Platform.Quality;
+using Deluno.Quality;
+using Deluno.Quality.Data;
 using Deluno.Security;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Deluno.Quality.Contracts;
 
 namespace Deluno.Movies;
 
@@ -86,7 +90,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             string id,
             HttpContext httpContext,
             IMovieCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
+            ILibrariesRepository platformSettingsRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -264,7 +268,8 @@ public static class MoviesEndpointRouteBuilderExtensions
             string? mode,
             HttpContext httpContext,
             IMovieCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
+            ILibrariesRepository platformSettingsRepository,
+            IQualityRepository qualityRepository,
             IJobQueueRepository jobQueueRepository,
             IAcquisitionDecisionPipeline acquisitionPipeline,
             IDownloadClientGrabService downloadClientGrabService,
@@ -306,7 +311,7 @@ public static class MoviesEndpointRouteBuilderExtensions
 
             var routing = await platformSettingsRepository.GetLibraryRoutingAsync(library.Id, cancellationToken);
             var now = timeProvider.GetUtcNow();
-            var customFormats = await ResolveCustomFormatsAsync(platformSettingsRepository, library.QualityProfileId, cancellationToken);
+            var customFormats = await ResolveCustomFormatsAsync(qualityRepository, library.QualityProfileId, cancellationToken);
 
             var decisionPlan = await acquisitionPipeline.PlanAsync(
                 new AcquisitionDecisionRequest(
@@ -431,7 +436,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             BulkMovieRequest request,
             IMovieCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
+            ILibrariesRepository platformSettingsRepository,
             [FromServices] IIntakeRepository intakeRepository,
             IJobScheduler jobScheduler,
             IJobQueueRepository jobQueueRepository,
@@ -562,6 +567,8 @@ public static class MoviesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             IMovieCatalogRepository repository,
             IPlatformSettingsRepository platformSettingsRepository,
+            ILibrariesRepository librariesRepository,
+            IQualityRepository qualityRepository,
             IJobQueueRepository jobQueueRepository,
             IAcquisitionDecisionPipeline acquisitionPipeline,
             IDownloadClientGrabService downloadClientGrabService,
@@ -597,7 +604,7 @@ public static class MoviesEndpointRouteBuilderExtensions
                 });
             }
 
-            var libraries = await platformSettingsRepository.ListLibrariesAsync(cancellationToken);
+            var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
             var library = libraries.FirstOrDefault(item => item.Id == wantedItem.LibraryId);
             if (library is null)
             {
@@ -607,7 +614,7 @@ public static class MoviesEndpointRouteBuilderExtensions
                 });
             }
 
-            var routing = await platformSettingsRepository.GetLibraryRoutingAsync(library.Id, cancellationToken);
+            var routing = await librariesRepository.GetLibraryRoutingAsync(library.Id, cancellationToken);
             var downloadClient = routing?.DownloadClients.OrderBy(item => item.Priority).FirstOrDefault();
             if (downloadClient is null)
             {
@@ -623,7 +630,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             var overrideReason = string.IsNullOrWhiteSpace(request.OverrideReason)
                 ? "User manually forced this release from search results."
                 : request.OverrideReason.Trim();
-            var customFormats = await ResolveCustomFormatsAsync(platformSettingsRepository, library.QualityProfileId, cancellationToken);
+            var customFormats = await ResolveCustomFormatsAsync(qualityRepository, library.QualityProfileId, cancellationToken);
             var sourcePriorityScore = routing?.Sources
                 .FirstOrDefault(item => string.Equals(item.IndexerId, request.IndexerId, StringComparison.OrdinalIgnoreCase)) is { } source
                     ? Math.Max(0, 200 - source.Priority)
@@ -752,7 +759,8 @@ public static class MoviesEndpointRouteBuilderExtensions
         movies.MapGet("/{id}/workflow-status", async (
             string id,
             IMovieCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
+            ILibrariesRepository platformSettingsRepository,
+            IQualityRepository qualityRepository,
             IMovieWorkflowService workflowService,
             CancellationToken cancellationToken) =>
         {
@@ -769,7 +777,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             QualityProfileItem? profile = null;
             if (library?.QualityProfileId is not null)
             {
-                var profiles = await platformSettingsRepository.ListQualityProfilesAsync(cancellationToken);
+                var profiles = await qualityRepository.ListQualityProfilesAsync(cancellationToken);
                 profile = profiles.FirstOrDefault(item => item.Id == library.QualityProfileId);
             }
 
@@ -833,7 +841,8 @@ public static class MoviesEndpointRouteBuilderExtensions
             string id,
             [FromBody] EvaluateCandidateRequest request,
             IMovieCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
+            ILibrariesRepository platformSettingsRepository,
+            IQualityRepository qualityRepository,
             IMovieWorkflowService workflowService,
             CancellationToken cancellationToken) =>
         {
@@ -858,7 +867,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             QualityProfileItem? profile = null;
             if (library?.QualityProfileId is not null)
             {
-                var profiles = await platformSettingsRepository.ListQualityProfilesAsync(cancellationToken);
+                var profiles = await qualityRepository.ListQualityProfilesAsync(cancellationToken);
                 profile = profiles.FirstOrDefault(item => item.Id == library.QualityProfileId);
             }
 
@@ -1106,7 +1115,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] CreateMovieRequest request,
             IMovieCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
+            ILibrariesRepository platformSettingsRepository,
             IMediaDecisionService mediaDecisionService,
             IJobScheduler jobScheduler,
             CancellationToken cancellationToken) =>
@@ -1215,7 +1224,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] BulkSearchRequest request,
             IMovieCatalogRepository repository,
-            IPlatformSettingsRepository platformSettingsRepository,
+            ILibrariesRepository platformSettingsRepository,
             IJobQueueRepository jobQueueRepository,
             CancellationToken cancellationToken) =>
         {
@@ -1542,7 +1551,7 @@ public static class MoviesEndpointRouteBuilderExtensions
         MovieListItem movie,
         BulkMovieRequest request,
         IMovieCatalogRepository repository,
-        IPlatformSettingsRepository platformSettingsRepository,
+        ILibrariesRepository platformSettingsRepository,
         IIntakeRepository intakeRepository,
         IJobQueueRepository jobQueueRepository,
         IActivityFeedRepository activityFeedRepository,
@@ -1640,7 +1649,7 @@ public static class MoviesEndpointRouteBuilderExtensions
     }
 
     private static async Task<IReadOnlyList<CustomFormatItem>> ResolveCustomFormatsAsync(
-        IPlatformSettingsRepository repository,
+        IQualityRepository repository,
         string? qualityProfileId,
         CancellationToken cancellationToken)
     {

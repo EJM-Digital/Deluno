@@ -1,6 +1,7 @@
 using Deluno.Integrations.Search;
 using Moq;
 using Deluno.Platform.Contracts;
+using Deluno.Quality.Contracts;
 
 namespace Deluno.Integrations.Tests.Search;
 

@@ -1,4 +1,4 @@
-using Deluno.Platform.Contracts;
+using Deluno.Libraries.Contracts;
 
 namespace Deluno.Platform.Tests;
 

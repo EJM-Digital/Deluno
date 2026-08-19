@@ -1,7 +1,7 @@
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Services;
 using Deluno.Platform.Contracts;
-using Deluno.Platform.Quality;
+using Deluno.Quality;
 using Moq;
 
 namespace Deluno.Movies.Tests.Services;

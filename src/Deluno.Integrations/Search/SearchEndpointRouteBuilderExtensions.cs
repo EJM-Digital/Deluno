@@ -1,10 +1,12 @@
 using Microsoft.AspNetCore.Mvc;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
-using Deluno.Platform.Quality;
+using Deluno.Quality;
+using Deluno.Quality.Data;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Deluno.Quality.Contracts;
 
 namespace Deluno.Integrations.Search;
 
@@ -14,7 +16,7 @@ public static class SearchEndpointRouteBuilderExtensions
     /// Registers the <c>POST /api/custom-formats/dry-run</c> endpoint.
     /// This lives in <c>Deluno.Integrations</c> so it can reference
     /// <see cref="CustomFormatMatcher"/> while reading formats from
-    /// <see cref="IPlatformSettingsRepository"/>.
+    /// <see cref="IQualityRepository"/>.
     /// </summary>
     public static IEndpointRouteBuilder MapDelunoSearchEndpoints(this IEndpointRouteBuilder endpoints)
     {
@@ -22,7 +24,7 @@ public static class SearchEndpointRouteBuilderExtensions
 
         customFormats.MapPost("dry-run", async (
             [FromBody] CustomFormatDryRunRequest request,
-            IPlatformSettingsRepository repository,
+            IQualityRepository repository,
             CancellationToken cancellationToken) =>
         {
             if (string.IsNullOrWhiteSpace(request.ReleaseName))

@@ -1,4 +1,4 @@
-using Deluno.Platform.Quality;
+using Deluno.Quality;
 using Deluno.Series.Contracts;
 using Deluno.Series.Data;
 

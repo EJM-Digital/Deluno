@@ -18,6 +18,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Deluno.Movies\Deluno.Movies.csproj" />
     <ProjectReference Include="..\..\src\Deluno.Platform\Deluno.Platform.csproj" />
+    <ProjectReference Include="..\..\src\Deluno.Quality\Deluno.Quality.csproj" />
   </ItemGroup>
 
   <ItemGroup>

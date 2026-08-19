@@ -4,6 +4,8 @@ using Deluno.Persistence.Tests.Support;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Microsoft.Extensions.Logging.Abstractions;
+using Deluno.Connections.Contracts;
+using Deluno.Connections.Data;
 
 namespace Deluno.Persistence.Tests.Platform;
 
@@ -69,7 +71,7 @@ public sealed class SecretStorageTests
         using var storage = TestStorage.Create();
         var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T07:00:00Z"));
         await InitializePlatformAsync(storage, timeProvider);
-        var repository = CreateRepository(storage, timeProvider);
+        var repository = CreateConnectionsRepository(storage, timeProvider);
 
         var indexer = await repository.CreateIndexerAsync(
             new CreateIndexerRequest(
@@ -123,6 +125,11 @@ public sealed class SecretStorageTests
     }
 
     private static SqlitePlatformSettingsRepository CreateRepository(
+        TestStorage storage,
+        TimeProvider timeProvider)
+        => new(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
+
+    private static SqliteConnectionsRepository CreateConnectionsRepository(
         TestStorage storage,
         TimeProvider timeProvider)
         => new(storage.Factory, timeProvider, TestSecretProtection.Create(storage));

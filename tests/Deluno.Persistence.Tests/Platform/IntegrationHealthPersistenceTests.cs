@@ -3,6 +3,8 @@ using Deluno.Persistence.Tests.Support;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Microsoft.Extensions.Logging.Abstractions;
+using Deluno.Connections.Contracts;
+using Deluno.Connections.Data;
 
 namespace Deluno.Persistence.Tests.Platform;
 
@@ -14,7 +16,7 @@ public sealed class IntegrationHealthPersistenceTests
         using var storage = TestStorage.Create();
         var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T09:00:00Z"));
         await InitializePlatformAsync(storage, timeProvider);
-        var repository = new SqlitePlatformSettingsRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
+        var repository = new SqliteConnectionsRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
 
         var indexer = await repository.CreateIndexerAsync(
             new CreateIndexerRequest(
