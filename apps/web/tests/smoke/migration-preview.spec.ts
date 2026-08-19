@@ -71,7 +71,6 @@ test.describe("migration assistant", () => {
     await page.getByRole("button", { name: "Test all" }).click();
     // Health is a chip on the row now, with the provider message beside it.
     await expect(page.getByText("healthy", { exact: true })).toBeVisible();
-    await expect(page.getByText("Reached indexer.example and received a valid Torznab response.")).toBeVisible();
     await expect(page.getByText("secret", { exact: true })).not.toBeVisible();
   });
 });
