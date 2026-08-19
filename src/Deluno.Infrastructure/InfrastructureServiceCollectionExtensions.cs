@@ -30,6 +30,9 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddHostedService<DelunoStorageBootstrapService>();
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<IIntegrationResiliencePolicy, IntegrationResiliencePolicy>();
+        // Singleton because pacing only works if every caller shares one view
+        // of when a host was last spoken to.
+        services.AddSingleton<IOutboundRequestThrottle, OutboundRequestThrottle>();
         return services;
     }
 }

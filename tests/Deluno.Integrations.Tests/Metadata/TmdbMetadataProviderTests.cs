@@ -134,6 +134,7 @@ public sealed class TmdbMetadataProviderTests : IDisposable
             storageOptions,
             timeProvider,
             new PassthroughResiliencePolicy(),
+            new OutboundRequestThrottle(timeProvider, NullLogger<OutboundRequestThrottle>.Instance),
             NullLogger<TmdbMetadataProvider>.Instance);
 
         var results = await provider.SearchAsync(
@@ -173,6 +174,7 @@ public sealed class TmdbMetadataProviderTests : IDisposable
             Options.Create(new StoragePathOptions { DataRoot = _dataRoot }),
             TimeProvider.System,
             new PassthroughResiliencePolicy(),
+            new OutboundRequestThrottle(TimeProvider.System, NullLogger<OutboundRequestThrottle>.Instance),
             NullLogger<TmdbMetadataProvider>.Instance);
 
         var status = await provider.GetDirectStatusAsync(CancellationToken.None);
@@ -239,6 +241,7 @@ public sealed class TmdbMetadataProviderTests : IDisposable
             storageOptions,
             TimeProvider.System,
             new PassthroughResiliencePolicy(),
+            new OutboundRequestThrottle(TimeProvider.System, NullLogger<OutboundRequestThrottle>.Instance),
             NullLogger<TmdbMetadataProvider>.Instance);
 
         var result = Assert.Single(await provider.SearchAsync(

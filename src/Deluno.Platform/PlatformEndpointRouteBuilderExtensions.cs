@@ -500,6 +500,37 @@ public static class PlatformEndpointRouteBuilderExtensions
 
         var integrations = endpoints.MapGroup("/api/integrations");
 
+        // What Deluno is currently holding back, and for how long. A throttle
+        // that works is indistinguishable from a hang unless somebody can see
+        // it, which is why this exists rather than only a log line.
+        integrations.MapGet("/outbound-throttle", async (
+            HttpContext httpContext,
+            [FromServices] IOutboundRequestThrottle throttle,
+            TimeProvider timeProvider,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var now = timeProvider.GetUtcNow();
+            var hosts = throttle.Describe()
+                .Select(state => new
+                {
+                    state.Host,
+                    state.Waiting,
+                    state.GrantedCount,
+                    state.RefusedCount,
+                    TotalWaitedSeconds = Math.Round(state.TotalWaited.TotalSeconds, 1),
+                    NextPermitInSeconds = Math.Max(0, Math.Round((state.NextPermitUtc - now).TotalSeconds, 1))
+                })
+                .ToArray();
+
+            return Results.Ok(new { hosts });
+        });
+
         integrations.MapGet("/external/manifest", async (
             HttpContext httpContext,
             IPlatformSettingsRepository repository,

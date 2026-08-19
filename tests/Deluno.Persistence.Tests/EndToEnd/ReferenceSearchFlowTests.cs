@@ -61,7 +61,9 @@ public sealed class ReferenceSearchFlowTests
             new SingleClientFactory(handler),
             new PassthroughResiliencePolicy(),
             new QualityModelService(storage.Factory, time),
-            new DisabledRankingModelService());
+            new DisabledRankingModelService(),
+            new OutboundRequestThrottle(time, NullLogger<OutboundRequestThrottle>.Instance),
+            NullLogger<FeedMediaSearchPlanner>.Instance);
         var pipeline = new AcquisitionDecisionPipeline(planner, connectionsRepository: connectionsRepository);
 
         var plan = await pipeline.PlanAsync(new AcquisitionDecisionRequest(

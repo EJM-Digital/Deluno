@@ -296,6 +296,20 @@ through it continuously. This is a breaking change: the response no longer carri
 `jobs` array, which on a large library was up to 1,000 job objects and reported a few
 percent of the work as if it were all of it.
 
+### Outbound pacing
+
+`GET /api/integrations/outbound-throttle` reports what Deluno is holding back and for
+how long: `{ hosts: [{ host, waiting, grantedCount, refusedCount, totalWaitedSeconds,
+nextPermitInSeconds }] }`.
+
+Requests to indexers and metadata providers are paced **before** they are sent —
+one request every two seconds per indexer host (the floor Prowlarr enforces), and a
+ten-per-second budget for metadata providers. A request that cannot get a slot inside
+the caller's budget is skipped and logged rather than queued indefinitely, because a
+search job holding its lease past two minutes would be leased again and sent twice.
+
+This endpoint exists so a throttle that is working can be told apart from a hang.
+
 ## Indexers And Download Clients
 
 Implemented indexer endpoints:
