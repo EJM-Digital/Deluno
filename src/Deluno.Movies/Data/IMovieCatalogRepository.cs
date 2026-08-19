@@ -9,6 +9,24 @@ public interface IMovieCatalogRepository
 
     Task<MovieListItem?> GetByIdAsync(string id, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// The id of the entry this request would land on, or <c>null</c> if it
+    /// would create a new one — the same matching rules
+    /// <see cref="AddAsync"/> applies, asked without adding anything.
+    ///
+    /// This exists so a caller can answer "do I already have this?" with an
+    /// indexed lookup. Intake used to answer it by loading the entire catalogue
+    /// into a dictionary every five minutes, which is the one shape that cannot
+    /// survive a growing library.
+    /// </summary>
+    Task<string?> FindExistingIdAsync(
+        string title,
+        int? releaseYear,
+        string? imdbId,
+        string? metadataProvider,
+        string? metadataProviderId,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<MovieListItem>> ListAsync(CancellationToken cancellationToken);
 
     /// <summary>

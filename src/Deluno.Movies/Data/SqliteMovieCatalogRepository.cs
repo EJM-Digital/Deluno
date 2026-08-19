@@ -327,6 +327,52 @@ public sealed class SqliteMovieCatalogRepository(
     /// Callers needing the blob must fetch the single entity rather than
     /// reading it off a list row.
     /// </remarks>
+    public async Task<string?> FindExistingIdAsync(
+        string title,
+        int? releaseYear,
+        string? imdbId,
+        string? metadataProvider,
+        string? metadataProviderId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+
+        // The same three rules AddAsync matches on, and each has an index:
+        // ix_movie_entries_imdb_id, ix_movie_entries_metadata_provider_id and
+        // ix_movie_entries_title_year. No join and no GROUP BY -- those are in
+        // AddAsync's version only because it returns the whole row.
+        command.CommandText =
+            """
+            SELECT id
+            FROM movie_entries
+            WHERE
+                (@imdbId IS NOT NULL AND imdb_id = @imdbId)
+                OR (
+                    @metadataProvider IS NOT NULL
+                    AND @metadataProviderId IS NOT NULL
+                    AND metadata_provider = @metadataProvider
+                    AND metadata_provider_id = @metadataProviderId
+                )
+                OR (
+                    lower(title) = lower(@title)
+                    AND COALESCE(release_year, -1) = COALESCE(@releaseYear, -1)
+                )
+            ORDER BY created_utc ASC
+            LIMIT 1;
+            """;
+        AddParameter(command, "@imdbId", NormalizeExternalId(imdbId));
+        AddParameter(command, "@metadataProvider", NormalizeExternalId(metadataProvider));
+        AddParameter(command, "@metadataProviderId", NormalizeExternalId(metadataProviderId));
+        AddParameter(command, "@title", title.Trim());
+        AddParameter(command, "@releaseYear", releaseYear);
+
+        return await command.ExecuteScalarAsync(cancellationToken) as string;
+    }
+
     public async Task<IReadOnlyList<MovieListItem>> ListAsync(CancellationToken cancellationToken)
     {
         var movies = new List<MovieListItem>();

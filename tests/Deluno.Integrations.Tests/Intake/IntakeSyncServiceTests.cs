@@ -105,8 +105,6 @@ public sealed class IntakeSyncServiceTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync((IntakeSourceItem?)null);
 
-        movies.Setup(repo => repo.ListAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([]);
         movies.Setup(repo => repo.AddAsync(It.IsAny<CreateMovieRequest>(), It.IsAny<CancellationToken>()))
             .Callback<CreateMovieRequest, CancellationToken>((request, _) => addedMovie = request)
             .ReturnsAsync(new MovieListItem(
@@ -178,7 +176,147 @@ public sealed class IntakeSyncServiceTests
         Assert.Equal("movies", recordedOrigin.MediaType);
         Assert.Equal("movie-arrival", recordedOrigin.EntityId);
         Assert.Equal("title:arrival:2016", recordedOrigin.EntryKey);
+
+        // The dedupe check is a lookup per list entry, not the whole catalogue.
+        // Loading every movie to answer "do I already have this?" is the one
+        // shape that gets slower as the library grows.
+        movies.Verify(repo => repo.ListAsync(It.IsAny<CancellationToken>()), Times.Never);
+        movies.Verify(
+            repo => repo.FindExistingIdAsync(
+                "Arrival",
+                2016,
+                It.Is<string?>(value => string.IsNullOrEmpty(value)),
+                null,
+                null,
+                It.IsAny<CancellationToken>()),
+            Times.Once);
     }
+
+    [Fact]
+    public async Task RunAsync_counts_a_title_already_in_the_catalogue_as_a_duplicate_without_adding_it()
+    {
+        var source = CreateWatchlistSource();
+        var library = CreateMovieLibrary();
+        var platform = new Mock<IPlatformSettingsRepository>();
+        var libraries = new Mock<ILibrariesRepository>();
+        var intake = new Mock<IIntakeRepository>();
+        var movies = new Mock<IMovieCatalogRepository>();
+        var metadata = new Mock<IMetadataProvider>();
+        var decisions = new Mock<IMediaDecisionService>();
+
+        intake.Setup(repo => repo.GetIntakeSourceAsync(source.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(source);
+        libraries.Setup(repo => repo.ListLibrariesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([library]);
+        intake.Setup(repo => repo.ListActiveIntakeListExclusionsAsync(source.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        intake.Setup(repo => repo.RecordIntakeTitleOriginAsync(It.IsAny<CreateIntakeTitleOriginRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IntakeTitleOriginItem?)null);
+        intake.Setup(repo => repo.RecordIntakeSourceSyncResultAsync(
+                source.Id,
+                It.IsAny<DateTimeOffset>(),
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IntakeSourceItem?)null);
+        metadata.Setup(provider => provider.SearchAsync(It.IsAny<MetadataLookupRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        decisions.Setup(service => service.DecideWantedState(It.IsAny<MediaWantedDecisionInput>()))
+            .Returns(new LibraryQualityDecision("wanted", "Missing from the library.", false, null, "WEBDL-1080p", "test"));
+
+        movies.Setup(repo => repo.FindExistingIdAsync(
+                "Arrival",
+                2016,
+                It.Is<string?>(value => string.IsNullOrEmpty(value)),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync("movie-arrival");
+
+        var service = new IntakeSyncService(
+            platform.Object,
+            libraries.Object,
+            intake.Object,
+            new Mock<IJobScheduler>().Object,
+            new Mock<IJobQueueRepository>().Object,
+            movies.Object,
+            new Mock<ISeriesCatalogRepository>().Object,
+            metadata.Object,
+            decisions.Object,
+            new Mock<IActivityFeedRepository>().Object,
+            new ConfigurationBuilder().Build(),
+            TimeProvider.System,
+            new SingleClientFactory(new StubHttpMessageHandler()),
+            NullLogger<IntakeSyncService>.Instance);
+
+        var result = await service.RunAsync(source.Id, relatedJobId: null, manual: true, CancellationToken.None);
+
+        Assert.Equal("success", result.Status);
+        Assert.Equal(1, result.FetchedCount);
+        Assert.Equal(0, result.AddedCount);
+        Assert.Equal(1, result.DuplicateCount);
+        movies.Verify(repo => repo.AddAsync(It.IsAny<CreateMovieRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        movies.Verify(repo => repo.ListAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    private static IntakeSourceItem CreateWatchlistSource()
+        => new(
+            Id: "source-watchlist",
+            Name: "Weekend watchlist",
+            Provider: "url-list",
+            FeedUrl: "https://lists.deluno.test/weekend.txt",
+            MediaType: "movies",
+            LibraryId: "library-movies",
+            LibraryName: "Movies",
+            QualityProfileId: null,
+            QualityProfileName: null,
+            RequiredGenres: string.Empty,
+            MinimumRating: null,
+            MinimumYear: null,
+            MaximumAgeDays: null,
+            AllowedCertifications: string.Empty,
+            Audience: "any",
+            SyncIntervalHours: 12,
+            LastSyncUtc: null,
+            LastSyncStatus: "never",
+            LastSyncSummary: null,
+            SearchOnAdd: false,
+            IsEnabled: true,
+            CreatedUtc: DateTimeOffset.Parse("2026-08-14T00:00:00Z"),
+            UpdatedUtc: DateTimeOffset.Parse("2026-08-14T00:00:00Z"));
+
+    private static LibraryItem CreateMovieLibrary()
+        => new(
+            Id: "library-movies",
+            Name: "Movies",
+            MediaType: "movies",
+            Purpose: "Movie collection",
+            RootPath: "D:\\Media\\Movies",
+            DownloadsPath: null,
+            QualityProfileId: null,
+            QualityProfileName: null,
+            CutoffQuality: "WEBDL-1080p",
+            UpgradeUntilCutoff: true,
+            UpgradeUnknownItems: true,
+            ImportWorkflow: "direct",
+            ProcessorName: null,
+            ProcessorOutputPath: null,
+            ProcessorTimeoutMinutes: 60,
+            ProcessorFailureMode: "hold",
+            AutoSearchEnabled: true,
+            MissingSearchEnabled: true,
+            UpgradeSearchEnabled: true,
+            SearchIntervalHours: 6,
+            RetryDelayHours: 12,
+            MaxItemsPerRun: 50,
+            SearchWindowStartHour: null,
+            SearchWindowEndHour: null,
+            AutomationStatus: "active",
+            SearchRequested: false,
+            LastSearchedUtc: null,
+            NextSearchUtc: null,
+            CreatedUtc: DateTimeOffset.Parse("2026-08-14T00:00:00Z"),
+            UpdatedUtc: DateTimeOffset.Parse("2026-08-14T00:00:00Z"));
 
     [Fact]
     public async Task PreviewAsync_fetches_a_public_mdblist_url_as_a_custom_list_without_an_api_key()
