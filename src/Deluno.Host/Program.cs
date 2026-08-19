@@ -70,8 +70,20 @@ var loginWindowSeconds = builder.Configuration.GetValue<int?>("Security:Login:Wi
 // A global budget for the other ~279 routes an API key can drive. Login keeps
 // its own stricter policy on top — a global limiter runs in addition to
 // endpoint-specific policies, it does not replace them.
-var apiPermitLimit = builder.Configuration.GetValue<int?>("Security:Api:PermitLimit") ?? 600;
-var apiWindowSeconds = builder.Configuration.GetValue<int?>("Security:Api:WindowSeconds") ?? 60;
+//
+// The web app itself is one caller of this budget: every tab shares its
+// session's bearer token, so N open tabs share one partition, not one each.
+// #132 measured the dashboard alone at 204 requests/minute from a single idle
+// tab, before the shell-wide 45s attention poll that runs on every
+// authenticated page. Two dashboard tabs already approach 600/min; three
+// exceed it. 3000/min (50 req/s sustained) leaves roughly 14x that single-tab
+// headroom — comfortably covering several open tabs/windows of the same
+// login while #132's polling reduction is still outstanding — and still
+// firmly bounds the failure mode this exists for: a script or integration
+// bug sustaining tens of requests per second is not something a real user
+// does by opening tabs.
+var apiPermitLimit = builder.Configuration.GetValue<int?>("Security:Api:PermitLimit") ?? ApiRateLimitDefaults.DefaultPermitLimit;
+var apiWindowSeconds = builder.Configuration.GetValue<int?>("Security:Api:WindowSeconds") ?? ApiRateLimitDefaults.DefaultWindowSeconds;
 
 builder.Services.AddRateLimiter(options =>
 {
@@ -102,8 +114,19 @@ builder.Services.AddRateLimiter(options =>
             return RateLimitPartition.GetNoLimiter("exempt");
         }
 
+        // Only requests presenting a generated API key are limited. Deluno's
+        // own UI (and its background jobs, which never call this HTTP
+        // surface at all) are trusted internal traffic — this limiter exists
+        // for the third-party-script surface #142 was filed about, not to
+        // throttle the app using itself.
+        var partitionKey = ApiRateLimitPartitionKeyResolver.ResolveOrExempt(httpContext);
+        if (partitionKey is null)
+        {
+            return RateLimitPartition.GetNoLimiter("exempt-session");
+        }
+
         return RateLimitPartition.GetFixedWindowLimiter(
-            ApiRateLimitPartitionKeyResolver.Resolve(httpContext),
+            partitionKey,
             _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = apiPermitLimit,

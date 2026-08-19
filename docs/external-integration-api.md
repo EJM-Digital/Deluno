@@ -22,7 +22,9 @@ Deluno stores only a hash of generated API keys. The raw key is shown once at cr
 
 ## Rate Limits
 
-Every `/api` request (other than static assets, `/hubs`, and `/api/metadata/artwork`) is subject to a global rate limit, in addition to the stricter limit on `/api/auth/login`. The default budget is **600 requests per 60-second window**, partitioned per API key (or per bearer token, or per remote address for unauthenticated requests) — not shared across callers.
+A request presenting a generated API key (`X-Api-Key`, or `Authorization: Bearer deluno_...`) is subject to a global rate limit, in addition to the stricter limit on `/api/auth/login`. The default budget is **3000 requests per 60-second window**, partitioned per API key — not shared across different callers.
+
+This limit exists to protect Deluno from a misbehaving *external* script or integration. It does **not** apply to Deluno's own web UI: a request presenting the browser's own login session token (not a `deluno_`-prefixed API key) is exempt entirely, so it is never affected by how many tabs of the same login are open or how often the dashboard polls. Static assets, `/hubs`, and `/api/metadata/artwork` are exempt for everyone. A fully unauthenticated request (no credential presented at all — most `/api` routes require one) falls back to a per-remote-address limit as a defensive floor.
 
 Configure it with:
 
@@ -30,7 +32,7 @@ Configure it with:
 {
   "Security": {
     "Api": {
-      "PermitLimit": 600,
+      "PermitLimit": 3000,
       "WindowSeconds": 60
     }
   }
