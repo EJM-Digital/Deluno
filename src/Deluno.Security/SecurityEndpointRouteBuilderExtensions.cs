@@ -1,6 +1,7 @@
 using Deluno.Security.Contracts;
 using Deluno.Security.Data;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -19,9 +20,15 @@ public static class SecurityEndpointRouteBuilderExtensions
     public static IEndpointRouteBuilder MapDelunoSecurityEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var auth = endpoints.MapGroup("/api/auth");
+
+        // Only /login carries the limiter. bootstrap-status is polled by the
+        // web app on load, so limiting the whole group would throttle normal
+        // use rather than credential guessing.
+        var login = endpoints.MapGroup("/api/auth")
+            .RequireRateLimiting(DelunoRateLimitPolicies.Login);
         var apiKeys = endpoints.MapGroup("/api/api-keys");
 
-        auth.MapPost("/login", async (
+        login.MapPost("/login", async (
             [FromBody] LoginRequest request,
             IDataProtectionProvider dataProtectionProvider,
             TimeProvider timeProvider,
