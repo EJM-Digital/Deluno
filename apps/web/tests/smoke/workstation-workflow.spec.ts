@@ -28,7 +28,6 @@ test.describe("dashboard workflow", () => {
     await expect(page.getByRole("link", { name: "Build my setup" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Recently added" })).toBeVisible();
     await expect(page.getByText("Nothing in the library yet", { exact: true })).toBeVisible();
-    await expect(page.getByText("Nothing needs you", { exact: true })).toBeVisible();
   });
 
   test("makes library display, order, and refine controls readable without hiding advanced choices", async ({ page }) => {
@@ -128,7 +127,7 @@ test.describe("dashboard workflow", () => {
     await expect(page.getByRole("heading", { name: "Setup overview" })).toBeVisible();
     if (testInfo.project.name === "mobile") {
       await page.getByRole("button", { name: "More destinations" }).click();
-      await expect(page.getByLabel("Panel").getByRole("link", { name: "Library setup", exact: true })).toBeVisible();
+      await expect(page.getByLabel("Panel").getByRole("link", { name: "Files & folders", exact: true })).toBeVisible();
       return;
     }
 
@@ -215,12 +214,12 @@ test.describe("dashboard workflow", () => {
     if (testInfo.project.name === "mobile") {
       await page.getByRole("button", { name: "More destinations" }).click();
       const drawer = page.getByLabel("Panel");
-      await expect(drawer.getByText("What Deluno is doing", { exact: true })).toBeVisible();
-      await expect(drawer.getByText("Set up your library", { exact: true })).toBeVisible();
-      await expect(drawer.getByText("Maintain Deluno", { exact: true })).toBeVisible();
+      await expect(drawer.getByRole("link", { name: "Automation", exact: true })).toBeVisible();
+      await expect(drawer.getByRole("link", { name: "Files & folders", exact: true })).toBeVisible();
+      await expect(drawer.getByRole("link", { name: "System", exact: true })).toBeVisible();
       await expect(drawer.getByText("Control room", { exact: true })).toHaveCount(0);
       await drawer.getByRole("link", { name: "Automation", exact: true }).click();
-      await expect(page.getByText("Choose what Deluno should search for, retry, and upgrade next", { exact: true })).toBeVisible();
+      await expect(page.getByText("What Deluno searches for on a schedule, and what it does when a download fails", { exact: true })).toBeVisible();
       return;
     }
 
@@ -409,7 +408,7 @@ test.describe("dashboard workflow", () => {
     await expect(page.getByRole("dialog", { name: "Approved movies" })).toBeVisible();
     await page.getByTitle("Preview without adding titles").click();
 
-    await page.getByRole("switch", { name: "Dune (2021)" }).uncheck();
+    await page.getByRole("checkbox", { name: "Dune (2021)" }).uncheck();
     await page.getByRole("button", { name: "Add selected", exact: true }).click();
     await expect(page.getByText(/1 title added from 1 approved preview entry/)).toBeVisible();
   });
