@@ -753,17 +753,82 @@ public sealed class SqliteMovieCatalogRepository(
         long? fileSizeBytes,
         CancellationToken cancellationToken)
     {
+        var created = await ImportExistingBatchAsync(
+            libraryId,
+            [
+                new ExistingMovieImportRequest(
+                    Title: title,
+                    ReleaseYear: releaseYear,
+                    WantedStatus: wantedStatus,
+                    WantedReason: wantedReason,
+                    CurrentQuality: currentQuality,
+                    TargetQuality: targetQuality,
+                    QualityCutoffMet: qualityCutoffMet,
+                    UnmonitorWhenCutoffMet: unmonitorWhenCutoffMet,
+                    FilePath: filePath,
+                    FileSizeBytes: fileSizeBytes)
+            ],
+            cancellationToken);
+
+        return created > 0;
+    }
+
+    /// <summary>
+    /// Imports a slice of already-on-disk titles inside one transaction, and
+    /// returns how many were newly created.
+    ///
+    /// A transaction per title means a disk flush per title, which is most of
+    /// why importing 20,000 movies took hours rather than the seconds of real
+    /// work involved. The batch size is the caller's slice, so this stays
+    /// bounded however large the library is.
+    /// </summary>
+    public async Task<int> ImportExistingBatchAsync(
+        string libraryId,
+        IReadOnlyList<ExistingMovieImportRequest> requests,
+        CancellationToken cancellationToken)
+    {
+        if (requests.Count == 0)
+        {
+            return 0;
+        }
+
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Movies,
             cancellationToken);
 
-        var normalizedTitle = title.Trim();
-        var normalizedFilePath = NormalizeText(filePath);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
         var now = timeProvider.GetUtcNow();
-        string? movieId = null;
+        var created = 0;
+
+        foreach (var request in requests)
+        {
+            if (await ImportExistingCoreAsync(connection, transaction, libraryId, request, now, cancellationToken))
+            {
+                created++;
+            }
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+
+        return created;
+    }
+
+    private static async Task<bool> ImportExistingCoreAsync(
+        System.Data.Common.DbConnection connection,
+        System.Data.Common.DbTransaction transaction,
+        string libraryId,
+        ExistingMovieImportRequest request,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var normalizedTitle = request.Title.Trim();
+        var normalizedFilePath = NormalizeText(request.FilePath);
+        string? movieId;
 
         using (var lookup = connection.CreateCommand())
         {
+            lookup.Transaction = transaction;
             lookup.CommandText =
                 """
                 SELECT id
@@ -774,7 +839,7 @@ public sealed class SqliteMovieCatalogRepository(
                 """;
 
             AddParameter(lookup, "@title", normalizedTitle);
-            AddParameter(lookup, "@releaseYear", releaseYear);
+            AddParameter(lookup, "@releaseYear", request.ReleaseYear);
 
             movieId = await lookup.ExecuteScalarAsync(cancellationToken) as string;
         }
@@ -786,6 +851,7 @@ public sealed class SqliteMovieCatalogRepository(
             created = true;
 
             using var insert = connection.CreateCommand();
+            insert.Transaction = transaction;
             insert.CommandText =
                 """
                 INSERT INTO movie_entries (
@@ -798,15 +864,16 @@ public sealed class SqliteMovieCatalogRepository(
 
             AddParameter(insert, "@id", movieId);
             AddParameter(insert, "@title", normalizedTitle);
-            AddParameter(insert, "@releaseYear", releaseYear);
-            AddParameter(insert, "@monitored", unmonitorWhenCutoffMet && qualityCutoffMet ? 0 : 1);
+            AddParameter(insert, "@releaseYear", request.ReleaseYear);
+            AddParameter(insert, "@monitored", request.UnmonitorWhenCutoffMet && request.QualityCutoffMet ? 0 : 1);
             AddParameter(insert, "@createdUtc", now.ToString("O"));
             AddParameter(insert, "@updatedUtc", now.ToString("O"));
             await insert.ExecuteNonQueryAsync(cancellationToken);
         }
-        else if (unmonitorWhenCutoffMet && qualityCutoffMet)
+        else if (request.UnmonitorWhenCutoffMet && request.QualityCutoffMet)
         {
             using var unmonitor = connection.CreateCommand();
+            unmonitor.Transaction = transaction;
             unmonitor.CommandText =
                 """
                 UPDATE movie_entries
@@ -820,6 +887,7 @@ public sealed class SqliteMovieCatalogRepository(
         }
 
         using var wanted = connection.CreateCommand();
+        wanted.Transaction = transaction;
         wanted.CommandText =
             """
             INSERT INTO movie_wanted_state (
@@ -852,13 +920,13 @@ public sealed class SqliteMovieCatalogRepository(
 
         AddParameter(wanted, "@movieId", movieId);
         AddParameter(wanted, "@libraryId", libraryId);
-        AddParameter(wanted, "@wantedStatus", NormalizeWantedStatus(wantedStatus));
-        AddParameter(wanted, "@wantedReason", wantedReason.Trim());
-        AddParameter(wanted, "@currentQuality", currentQuality);
-        AddParameter(wanted, "@targetQuality", targetQuality);
-        AddParameter(wanted, "@qualityCutoffMet", qualityCutoffMet ? 1 : 0);
+        AddParameter(wanted, "@wantedStatus", NormalizeWantedStatus(request.WantedStatus));
+        AddParameter(wanted, "@wantedReason", request.WantedReason.Trim());
+        AddParameter(wanted, "@currentQuality", request.CurrentQuality);
+        AddParameter(wanted, "@targetQuality", request.TargetQuality);
+        AddParameter(wanted, "@qualityCutoffMet", request.QualityCutoffMet ? 1 : 0);
         AddParameter(wanted, "@filePath", normalizedFilePath);
-        AddParameter(wanted, "@fileSizeBytes", fileSizeBytes);
+        AddParameter(wanted, "@fileSizeBytes", request.FileSizeBytes);
         AddParameter(wanted, "@importedUtc", normalizedFilePath is null ? null : now.ToString("O"));
         AddParameter(wanted, "@lastVerifiedUtc", normalizedFilePath is null ? null : now.ToString("O"));
         AddParameter(wanted, "@updatedUtc", now.ToString("O"));

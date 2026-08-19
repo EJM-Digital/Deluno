@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Deluno.Contracts;
 using Deluno.Filesystem;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Jobs.Contracts;
@@ -200,6 +201,70 @@ public sealed class WorkPlanner(
         }
 
         await intakeSyncService.PlanDueSyncJobsAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// How long an active import run may go without progress before it is
+    /// assumed abandoned and re-queued. Long enough that a slice in flight is
+    /// never re-queued underneath itself (a slice is capped at 20 seconds, and
+    /// the job lease at two minutes), short enough that a user who restarted
+    /// the app sees the import pick up again rather than sit there.
+    /// </summary>
+    private static readonly TimeSpan ImportRunIdleBeforeResume = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// Re-queues import runs that stopped without finishing.
+    ///
+    /// This is what makes an import survive a restart. The run row holds the
+    /// position, so re-queueing costs one slice of replayed work at most --
+    /// every import write is an upsert, so replaying it changes nothing. Paused
+    /// runs are left alone; they are idle because somebody asked them to be.
+    ///
+    /// Bounded by construction: there is at most one active run per library, and
+    /// the query is capped regardless.
+    /// </summary>
+    public async Task PlanLibraryImportResumeAsync(
+        IJobScheduler jobScheduler,
+        IExistingLibraryImportService importService,
+        TimeProvider timeProvider,
+        CancellationToken cancellationToken)
+    {
+        if (!await jobQueueRepository.TryClaimScheduledPassAsync(
+                "library.import.resume",
+                TimeSpan.FromMinutes(1),
+                cancellationToken))
+        {
+            return;
+        }
+
+        try
+        {
+            var idleBefore = timeProvider.GetUtcNow() - ImportRunIdleBeforeResume;
+            var stalled = await importService.ListResumableRunsAsync(idleBefore, 25, cancellationToken);
+
+            foreach (var run in stalled)
+            {
+                logger.LogInformation(
+                    "Resuming library import {RunId} for {LibraryName} from item {ProcessedCount}.",
+                    run.RunId,
+                    run.LibraryName,
+                    run.ProcessedCount);
+
+                await jobScheduler.EnqueueAsync(
+                    new EnqueueJobRequest(
+                        JobType: "library.import.existing",
+                        Source: "library-import-resume",
+                        PayloadJson: JsonSerializer.Serialize(new { run.RunId, run.LibraryId }),
+                        RelatedEntityType: "library",
+                        RelatedEntityId: run.LibraryId,
+                        DedupeKey: LibraryImportSliceOutcome.ContinuationDedupeKey(run.RunId, run.ProcessedCount)),
+                    cancellationToken);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Library import resume pass failed.");
+        }
     }
 
     public async Task PlanImportAutomationAsync(

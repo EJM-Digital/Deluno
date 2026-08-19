@@ -99,6 +99,16 @@ public interface ISeriesCatalogRepository
         IReadOnlyList<ImportedEpisodeItem>? episodes,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Imports a slice of already-on-disk shows, and the episodes detected
+    /// with them, in one transaction; returns how many were newly created.
+    /// The single-show overload above is a batch of one.
+    /// </summary>
+    Task<int> ImportExistingBatchAsync(
+        string libraryId,
+        IReadOnlyList<ExistingSeriesImportRequest> requests,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<SeriesTrackedFileItem>> ListTrackedFilesAsync(
         string libraryId,
         CancellationToken cancellationToken);

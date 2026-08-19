@@ -86,6 +86,16 @@ public interface IMovieCatalogRepository
         long? fileSizeBytes,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Imports a slice of already-on-disk titles in one transaction, and
+    /// returns how many were newly created. The single-title overload above is
+    /// a batch of one; an existing-library import at any real size uses this.
+    /// </summary>
+    Task<int> ImportExistingBatchAsync(
+        string libraryId,
+        IReadOnlyList<ExistingMovieImportRequest> requests,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<MovieTrackedFileItem>> ListTrackedFilesAsync(
         string libraryId,
         CancellationToken cancellationToken);

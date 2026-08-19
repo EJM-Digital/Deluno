@@ -256,7 +256,12 @@ Implemented endpoints:
 - `PUT /api/libraries/{id}/workflow`
 - `POST /api/libraries/{id}/search-now`
 - `POST /api/libraries/{id}/skip-cycle`
-- `POST /api/libraries/{id}/import-existing`
+- `POST /api/libraries/{id}/import-existing` — starts a run, returns `202` with its progress
+- `GET /api/libraries/{id}/import-existing` — the run in flight, or the most recent one
+- `POST /api/libraries/{id}/import-existing/pause`
+- `POST /api/libraries/{id}/import-existing/resume`
+- `POST /api/libraries/{id}/import-existing/cancel`
+- `GET /api/libraries/{id}/import-existing/issues?take=100` — what the run set aside for review
 - `GET /api/libraries/{id}/routing`
 - `PUT /api/libraries/{id}/routing`
 
@@ -264,6 +269,19 @@ Current UI contract expectations:
 
 - library automation, workflow, quality-profile assignment, and routing are already implemented settings surfaces
 - routing is library-aware and should remain the place where indexer/download-client normalization is consumed by higher-level workflows
+
+Importing an existing library is a **tracked background operation**, not a request
+that returns when the work is done. `POST .../import-existing` creates (or re-attaches
+to) a run and returns immediately with `202`; a worker advances it in slices. This is a
+breaking change from the previous shape, which returned `200` with a final counts object
+after doing the whole import inline — at 20,000 items that request ran for hours and
+timed out.
+
+The progress body is `{ run, percentComplete, itemsPerSecond, estimatedSecondsRemaining }`.
+`run.status` is one of `queued`, `running`, `paused`, `completed`, `cancelled`, `failed`.
+There is at most one active run per library, so a second POST returns the existing one.
+Poll the `GET` for progress; it reads a single row and costs the same at 20 items or
+200,000.
 
 Current gaps:
 
