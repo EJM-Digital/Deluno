@@ -11,6 +11,10 @@ public class MovieWorkflowServiceTests
     private readonly Mock<IVersionedMediaPolicyEngine> mockPolicyEngine;
     private readonly MovieWorkflowService service;
 
+    // Ported cases (see below) use a real engine because it has no external
+    // dependencies, so mocking it only tests the mock.
+    private readonly MovieWorkflowService realEngineService = new(new VersionedMediaPolicyEngine());
+
     public MovieWorkflowServiceTests()
     {
         mockPolicyEngine = new Mock<IVersionedMediaPolicyEngine>();
@@ -264,5 +268,153 @@ public class MovieWorkflowServiceTests
 
         Assert.Equal("missing", result.WantedStatus);
         Assert.True(result.IsReplacementAllowed);
+    }
+
+    // ── Ported from tests/Deluno.Integrations.Tests/Search/MovieWorkflowServiceTests.cs ──
+    // These use the real VersionedMediaPolicyEngine, matching that file's setup.
+
+    [Fact]
+    public void EvaluateWantedStatus_EmptyCurrentQuality_ReturnsMissing()
+    {
+        var result = realEngineService.EvaluateWantedStatus(
+            currentQuality: "",
+            targetQuality: "WEB 1080p",
+            qualityCutoffMet: false,
+            upgradeUntilCutoff: false,
+            upgradeUnknownItems: false);
+
+        Assert.Equal("missing", result.WantedStatus);
+    }
+
+    [Fact]
+    public void EvaluateWantedStatus_BelowCutoffWithUpgradeDisabled_ReturnsWaiting()
+    {
+        var result = realEngineService.EvaluateWantedStatus(
+            currentQuality: "WEB 720p",
+            targetQuality: "WEB 1080p",
+            qualityCutoffMet: false,
+            upgradeUntilCutoff: false,
+            upgradeUnknownItems: false);
+
+        Assert.Equal("waiting", result.WantedStatus);
+    }
+
+    [Fact]
+    public void EvaluateWantedStatus_AtCutoff_ReturnsWaiting()
+    {
+        var result = realEngineService.EvaluateWantedStatus(
+            currentQuality: "WEB 1080p",
+            targetQuality: "WEB 1080p",
+            qualityCutoffMet: true,
+            upgradeUntilCutoff: true,
+            upgradeUnknownItems: false);
+
+        Assert.Equal("waiting", result.WantedStatus);
+    }
+
+    [Fact]
+    public void EvaluateWantedStatus_AboveCutoff_ReturnsWaiting()
+    {
+        var result = realEngineService.EvaluateWantedStatus(
+            currentQuality: "Remux 2160p",
+            targetQuality: "WEB 1080p",
+            qualityCutoffMet: true,
+            upgradeUntilCutoff: true,
+            upgradeUnknownItems: false);
+
+        Assert.Equal("waiting", result.WantedStatus);
+    }
+
+    [Fact]
+    public void EvaluateWantedStatus_ReturnsCurrentAndTargetQuality()
+    {
+        var result = realEngineService.EvaluateWantedStatus(
+            currentQuality: "WEB 720p",
+            targetQuality: "WEB 1080p",
+            qualityCutoffMet: false,
+            upgradeUntilCutoff: true,
+            upgradeUnknownItems: false);
+
+        Assert.Equal("WEB 720p", result.CurrentQuality);
+        Assert.Equal("WEB 1080p", result.TargetQuality);
+    }
+
+    [Fact]
+    public void EvaluateWantedStatus_Missing_HasNonEmptyReason()
+    {
+        var result = realEngineService.EvaluateWantedStatus(
+            currentQuality: null,
+            targetQuality: "WEB 1080p",
+            qualityCutoffMet: false,
+            upgradeUntilCutoff: false,
+            upgradeUnknownItems: false);
+
+        Assert.False(string.IsNullOrWhiteSpace(result.Reason));
+    }
+
+    [Fact]
+    public void IsReplacementAllowed_RealEngine_ProtectionDisabled_ReturnsTrue()
+    {
+        var result = realEngineService.IsReplacementAllowed(
+            currentQuality: "WEB 1080p",
+            candidateQuality: "WEB 720p",
+            preventLowerQualityReplacements: false);
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public void IsReplacementAllowed_ProtectionEnabled_LowerRank_ReturnsFalse()
+    {
+        var result = realEngineService.IsReplacementAllowed(
+            currentQuality: "WEB 1080p",
+            candidateQuality: "WEB 720p",
+            preventLowerQualityReplacements: true);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void IsReplacementAllowed_ProtectionEnabled_SameRank_ReturnsTrue()
+    {
+        var result = realEngineService.IsReplacementAllowed(
+            currentQuality: "WEB 1080p",
+            candidateQuality: "WEB 1080p",
+            preventLowerQualityReplacements: true);
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public void IsReplacementAllowed_ProtectionEnabled_HigherRank_ReturnsTrue()
+    {
+        var result = realEngineService.IsReplacementAllowed(
+            currentQuality: "WEB 1080p",
+            candidateQuality: "Remux 2160p",
+            preventLowerQualityReplacements: true);
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public void IsReplacementAllowed_ProtectionEnabled_NullCurrentFile_RealEngine_ReturnsTrue()
+    {
+        var result = realEngineService.IsReplacementAllowed(
+            currentQuality: null,
+            candidateQuality: "WEB 720p",
+            preventLowerQualityReplacements: true);
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public void IsReplacementAllowed_ProtectionEnabled_EmptyCurrentFile_ReturnsTrue()
+    {
+        var result = realEngineService.IsReplacementAllowed(
+            currentQuality: "",
+            candidateQuality: "WEB 720p",
+            preventLowerQualityReplacements: true);
+
+        Assert.True(result);
     }
 }
