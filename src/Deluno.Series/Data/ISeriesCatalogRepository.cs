@@ -27,6 +27,15 @@ public interface ISeriesCatalogRepository
         string? metadataProviderId,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// One page of the catalogue — searched, filtered, sorted and counted in
+    /// SQL. This is what a list surface should use; <see cref="ListAsync"/>
+    /// returns the whole catalogue and does not survive a growing library.
+    /// </summary>
+    Task<CataloguePage<SeriesListItem>> ListPageAsync(
+        CatalogueQuery query,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<SeriesListItem>> ListAsync(CancellationToken cancellationToken);
 
     /// <summary>

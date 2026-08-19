@@ -20,4 +20,14 @@ public sealed record SeriesListItem(
     string? MetadataJson,
     DateTimeOffset? MetadataUpdatedUtc,
     DateTimeOffset CreatedUtc,
-    DateTimeOffset UpdatedUtc);
+    DateTimeOffset UpdatedUtc,
+    /// <summary>
+    /// Size of the file Deluno is tracking, and the quality it detected.
+    ///
+    /// Populated by the paged catalogue query only. The list has always shown a
+    /// size column and a size sort, but read them from a metadata blob field no
+    /// provider writes — these come from the wanted state, where Deluno actually
+    /// records them.
+    /// </summary>
+    long? FileSizeBytes = null,
+    string? CurrentQuality = null);

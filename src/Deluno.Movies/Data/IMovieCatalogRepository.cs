@@ -27,6 +27,15 @@ public interface IMovieCatalogRepository
         string? metadataProviderId,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// One page of the catalogue — searched, filtered, sorted and counted in
+    /// SQL. This is what a list surface should use; <see cref="ListAsync"/>
+    /// returns the whole catalogue and does not survive a growing library.
+    /// </summary>
+    Task<CataloguePage<MovieListItem>> ListPageAsync(
+        CatalogueQuery query,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<MovieListItem>> ListAsync(CancellationToken cancellationToken);
 
     /// <summary>
