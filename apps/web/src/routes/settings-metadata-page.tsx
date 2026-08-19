@@ -193,8 +193,20 @@ export function SettingsMetadataPage() {
           })
         )
       );
+      // The server phrases this, because it is the only side that knows how much
+      // is left. "Queued 500 titles" on a 20,000-item library read as finished
+      // while covering 2.5% of it.
       const enqueued = results.reduce((total, item) => total + item.enqueuedCount, 0);
-      setJobResult((current) => ({ ...current, [job.key]: enqueued ? `Queued ${enqueued} ${enqueued === 1 ? "title" : "titles"}` : "Nothing needed refreshing" }));
+      const remaining = results.reduce((total, item) => total + item.remainingCount, 0);
+      const summary =
+        results.length === 1
+          ? results[0].message
+          : remaining > 0
+            ? `Queued ${enqueued.toLocaleString()} ${enqueued === 1 ? "title" : "titles"}. Another ${remaining.toLocaleString()} still to go — Deluno keeps working through them in the background.`
+            : enqueued
+              ? `Queued ${enqueued.toLocaleString()} ${enqueued === 1 ? "title" : "titles"}. That is everything that needs refreshing.`
+              : "Nothing needs refreshing.";
+      setJobResult((current) => ({ ...current, [job.key]: summary }));
       revalidator.revalidate();
     } catch (error) {
       setJobResult((current) => ({ ...current, [job.key]: error instanceof Error ? error.message : "Could not queue" }));

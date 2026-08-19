@@ -91,7 +91,7 @@ Implemented endpoints:
 - `POST /api/movies/{id}/metadata/link`
 - `PUT /api/movies/{id}/metadata/override`
 - `POST /api/movies/{id}/metadata/jobs`
-- `POST /api/movies/metadata/jobs`
+- `POST /api/movies/metadata/jobs` — `{ forceAll?, take? }` → `{ enqueuedCount, remainingCount, staleCount, markedForRefreshCount, message }`
 - `POST /api/movies`
 - `POST /api/movies/bulk`
 - `DELETE /api/movies/bulk`
@@ -133,7 +133,7 @@ Implemented endpoints:
 - `POST /api/series/{id}/metadata/link`
 - `PUT /api/series/{id}/metadata/override`
 - `POST /api/series/{id}/metadata/jobs`
-- `POST /api/series/metadata/jobs`
+- `POST /api/series/metadata/jobs` — same shape as the movie twin
 - `POST /api/series/{id}/episodes/search`
 - `POST /api/series/{id}/grab`
 - `POST /api/series/{id}/seasons/{seasonNumber}/search`
@@ -287,6 +287,14 @@ Current gaps:
 
 - there is no dedicated update-library endpoint yet beyond the specific sub-settings routes
 - routing preview/explanation payloads can still get richer
+
+The metadata refresh endpoints select candidates in SQL and return **honest counts**:
+`enqueuedCount` is the batch primed now, `remainingCount` is what is still to go, and
+`message` phrases both for display. `forceAll` marks the whole library as wanting a
+refresh in one statement rather than queueing a page of jobs — the backfill then works
+through it continuously. This is a breaking change: the response no longer carries a
+`jobs` array, which on a large library was up to 1,000 job objects and reported a few
+percent of the work as if it were all of it.
 
 ## Indexers And Download Clients
 

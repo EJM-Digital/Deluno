@@ -48,15 +48,6 @@ public sealed class WorkPlanner(
     /// </summary>
     private static readonly TimeSpan MetadataTopUpInterval = TimeSpan.FromMinutes(1);
 
-    /// <summary>
-    /// How long to leave an entry alone after a metadata attempt, whether or
-    /// not the provider matched it. Without this an unmatchable title stays
-    /// permanently stale and is re-queued on every top-up — a hot loop against
-    /// the provider, which at 20,000 items and a 1% unmatchable rate would be
-    /// 200 pointless lookups a minute, forever.
-    /// </summary>
-    private static readonly TimeSpan MetadataAttemptCooldown = TimeSpan.FromHours(24);
-
     public async Task RunDispatchCleanupAsync(
         IDispatchCleanupService cleanupService,
         CancellationToken cancellationToken)
@@ -108,8 +99,11 @@ public sealed class WorkPlanner(
         }
 
         var now = timeProvider.GetUtcNow();
-        var staleBefore = now.AddDays(-14);
-        var retryAttemptsBefore = now - MetadataAttemptCooldown;
+        // Shared with the manual refresh endpoints, so the count they
+        // report as still to go is the count this planner will actually
+        // work through.
+        var staleBefore = now - MetadataStalenessWindow.StaleAfter;
+        var retryAttemptsBefore = now - MetadataStalenessWindow.AttemptCooldown;
 
         await TopUpMetadataQueueAsync(
             jobScheduler,

@@ -1002,7 +1002,14 @@ export interface MetadataTestResponse {
 
 export interface MetadataRefreshJobsResponse {
   enqueuedCount: number;
-  jobs: JobQueueItem[];
+  /** How many stale titles are left after this batch. */
+  remainingCount: number;
+  /** Everything the backfill currently considers stale, including the batch just queued. */
+  staleCount: number;
+  /** How many entries a "refresh everything" request marked. Zero otherwise. */
+  markedForRefreshCount: number;
+  /** What happened, phrased for a person. Prefer this over recomputing it. */
+  message: string;
 }
 
 export interface JobQueueItem {

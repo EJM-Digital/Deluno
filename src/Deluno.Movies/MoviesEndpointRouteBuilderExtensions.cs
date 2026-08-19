@@ -1078,6 +1078,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             [FromBody] MetadataRefreshJobsRequest request,
             IMovieCatalogRepository repository,
             IJobScheduler jobScheduler,
+            TimeProvider timeProvider,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1086,29 +1087,58 @@ public static class MoviesEndpointRouteBuilderExtensions
                 return denied;
             }
 
-            var take = Math.Clamp(request.Take ?? 250, 1, 1000);
-            var moviesToRefresh = (await repository.ListAsync(cancellationToken))
-                .Where(item => request.ForceAll || string.IsNullOrWhiteSpace(item.MetadataProviderId) || item.MetadataUpdatedUtc is null)
-                .OrderBy(item => item.MetadataUpdatedUtc ?? DateTimeOffset.MinValue)
-                .ThenBy(item => item.Title, StringComparer.OrdinalIgnoreCase)
-                .Take(take)
-                .ToArray();
-            var jobs = new List<Deluno.Jobs.Contracts.JobQueueItem>();
+            var now = timeProvider.GetUtcNow();
+            var staleBefore = now - MetadataStalenessWindow.StaleAfter;
+            var retryAttemptsBefore = now - MetadataStalenessWindow.AttemptCooldown;
 
-            foreach (var movie in moviesToRefresh)
+            // "Refresh everything" marks everything, in one statement, and lets
+            // the backfill work through it. It used to load the catalogue, take
+            // the first few hundred and queue a job each -- which on a large
+            // library covered a few percent and said nothing about the rest.
+            var requested = request.ForceAll
+                ? await repository.RequestMetadataRefreshForAllAsync(cancellationToken)
+                : 0;
+
+            var take = Math.Clamp(request.Take ?? 250, 1, 1000);
+            var totalStale = await repository.CountStaleMetadataCandidatesAsync(
+                staleBefore,
+                retryAttemptsBefore,
+                cancellationToken);
+
+            // Filtered, ordered and limited in SQL. The queue is primed here for
+            // responsiveness; the planner keeps topping it up until nothing is
+            // stale, so this number is a head start, not the whole job.
+            var candidates = await repository.ListStaleMetadataCandidatesAsync(
+                staleBefore,
+                retryAttemptsBefore,
+                take,
+                cancellationToken);
+
+            foreach (var candidate in candidates)
             {
-                var job = await jobScheduler.EnqueueAsync(
+                await jobScheduler.EnqueueAsync(
                     new EnqueueJobRequest(
                         JobType: "movies.metadata.refresh",
                         Source: "metadata",
-                        PayloadJson: JsonSerializer.Serialize(new { movie.Id, movie.Title, movie.ReleaseYear, request.ForceAll }),
+                        PayloadJson: JsonSerializer.Serialize(new
+                        {
+                            candidate.Id,
+                            candidate.Title,
+                            ReleaseYear = candidate.Year,
+                            request.ForceAll
+                        }),
                         RelatedEntityType: "movie",
-                        RelatedEntityId: movie.Id),
+                        RelatedEntityId: candidate.Id),
                     cancellationToken);
-                jobs.Add(job);
             }
 
-            return Results.Ok(new MetadataRefreshJobsResponse(jobs.Count, jobs));
+            var remaining = Math.Max(0, totalStale - candidates.Count);
+            return Results.Ok(new MetadataRefreshJobsResponse(
+                EnqueuedCount: candidates.Count,
+                RemainingCount: remaining,
+                StaleCount: totalStale,
+                MarkedForRefreshCount: requested,
+                Message: DescribeRefresh(candidates.Count, remaining)));
         });
 
         movies.MapPost("/", async (
@@ -1727,7 +1757,33 @@ public static class MoviesEndpointRouteBuilderExtensions
 
     private sealed record MetadataRefreshJobsResponse(
         int EnqueuedCount,
-        IReadOnlyList<Deluno.Jobs.Contracts.JobQueueItem> Jobs);
+        int RemainingCount,
+        int StaleCount,
+        int MarkedForRefreshCount,
+        string Message);
+    /// <summary>
+    /// What actually happened, in a sentence a person can act on.
+    ///
+    /// The old endpoint returned a count of queued jobs and nothing else, so on
+    /// a 20,000-item library "Queued 500 titles" was indistinguishable from
+    /// "finished" while covering 2.5% of it.
+    /// </summary>
+    private static string DescribeRefresh(int enqueued, int remaining)
+    {
+        if (enqueued == 0)
+        {
+            return remaining > 0
+                ? "Nothing can be refreshed right now — everything stale was tried recently and is waiting out its cooldown."
+                : "Nothing needs refreshing.";
+        }
+
+        var queued = $"Queued {enqueued:N0} title{(enqueued == 1 ? string.Empty : "s")}";
+
+        return remaining > 0
+            ? $"{queued}. Another {remaining:N0} still to go — Deluno keeps working through them in the background."
+            : $"{queued}. That is everything that needs refreshing.";
+    }
+
 
     private sealed record UpdateReplacementProtectionRequest(
         bool PreventLowerQualityReplacements);
