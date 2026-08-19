@@ -262,7 +262,9 @@ public sealed class SqliteSeriesCatalogRepository(
                 s.rating,
                 s.genres,
                 s.external_url,
-                s.metadata_json,
+                -- Not shipped in the list; see the movie repository's ListAsync
+                -- for the reasoning. Detail (GetByIdAsync) still selects it.
+                NULL AS metadata_json,
                 s.metadata_updated_utc,
                 s.created_utc,
                 s.updated_utc
