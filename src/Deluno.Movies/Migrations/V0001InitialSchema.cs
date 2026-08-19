@@ -13,7 +13,8 @@ public static class MoviesDatabaseMigrations
         new V0005MovieImportRecoveryStatus(),
         new V0006MovieSkipNextAutomationSearch(),
         new V0007MovieReleaseDates(),
-        new V0008MovieCatalogueListIndex()
+        new V0008MovieCatalogueListIndex(),
+        new V0009MovieMetadataAttemptTracking()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

@@ -27,6 +27,9 @@ public sealed class SeriesMetadataRefreshJobHandler(
             return "TV metadata refresh skipped because the series no longer exists.";
         }
 
+        // Stamped regardless of outcome — see the movie handler for why.
+        await seriesCatalogRepository.RecordMetadataAttemptAsync(series.Id, cancellationToken);
+
         var matches = await metadataProvider.SearchAsync(
             new MetadataLookupRequest(series.Title, "tv", series.StartYear, series.MetadataProviderId),
             cancellationToken);

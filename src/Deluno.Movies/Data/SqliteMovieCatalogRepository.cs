@@ -240,6 +240,78 @@ public sealed class SqliteMovieCatalogRepository(
         return await reader.ReadAsync(cancellationToken) ? ReadMovie(reader) : null;
     }
 
+    public async Task RecordMetadataAttemptAsync(string id, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE movie_entries
+            SET metadata_attempted_utc = @attemptedUtc
+            WHERE id = @id;
+            """;
+
+        AddParameter(command, "@attemptedUtc", timeProvider.GetUtcNow().ToString("O"));
+        AddParameter(command, "@id", id);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<Deluno.Jobs.Contracts.MetadataRefreshCandidate>> ListStaleMetadataCandidatesAsync(
+        DateTimeOffset staleBefore,
+        DateTimeOffset retryAttemptsBefore,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        var candidates = new List<Deluno.Jobs.Contracts.MetadataRefreshCandidate>();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        // Filter, order and limit all happen here rather than over a
+        // fully-materialised catalogue. Rows never metadata-matched sort first
+        // (metadata_updated_utc IS NULL), then oldest-refreshed.
+        command.CommandText =
+            """
+            SELECT id, title, release_year
+            FROM movie_entries
+            WHERE (
+                    metadata_provider_id IS NULL
+                 OR TRIM(metadata_provider_id) = ''
+                 OR metadata_updated_utc IS NULL
+                 OR metadata_updated_utc < @staleBefore
+                  )
+              -- Skip anything tried recently, whether or not it matched.
+              -- Without this an entry the provider cannot match stays
+              -- stale forever and is re-queued on every top-up.
+              AND (metadata_attempted_utc IS NULL OR metadata_attempted_utc < @retryAttemptsBefore)
+            ORDER BY
+                CASE WHEN metadata_updated_utc IS NULL THEN 0 ELSE 1 END,
+                metadata_updated_utc ASC,
+                title ASC
+            LIMIT @take;
+            """;
+
+        AddParameter(command, "@staleBefore", staleBefore.ToString("O"));
+        AddParameter(command, "@retryAttemptsBefore", retryAttemptsBefore.ToString("O"));
+        AddParameter(command, "@take", take);
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            candidates.Add(new Deluno.Jobs.Contracts.MetadataRefreshCandidate(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.IsDBNull(2) ? null : reader.GetInt32(2)));
+        }
+
+        return candidates;
+    }
+
     /// <summary>
     /// The catalogue list. Returns a deliberately lighter row than
     /// <see cref="GetByIdAsync"/>: <c>MetadataJson</c> is always null here.

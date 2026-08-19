@@ -232,6 +232,77 @@ public sealed class SqliteSeriesCatalogRepository(
         return await reader.ReadAsync(cancellationToken) ? ReadSeries(reader) : null;
     }
 
+    public async Task RecordMetadataAttemptAsync(string id, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE series_entries
+            SET metadata_attempted_utc = @attemptedUtc
+            WHERE id = @id;
+            """;
+
+        AddParameter(command, "@attemptedUtc", timeProvider.GetUtcNow().ToString("O"));
+        AddParameter(command, "@id", id);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<Deluno.Jobs.Contracts.MetadataRefreshCandidate>> ListStaleMetadataCandidatesAsync(
+        DateTimeOffset staleBefore,
+        DateTimeOffset retryAttemptsBefore,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        var candidates = new List<Deluno.Jobs.Contracts.MetadataRefreshCandidate>();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        // See the movie repository's equivalent: filter/order/limit in SQL so a
+        // large backlog never materialises the whole catalogue.
+        command.CommandText =
+            """
+            SELECT id, title, start_year
+            FROM series_entries
+            WHERE (
+                    metadata_provider_id IS NULL
+                 OR TRIM(metadata_provider_id) = ''
+                 OR metadata_updated_utc IS NULL
+                 OR metadata_updated_utc < @staleBefore
+                  )
+              -- Skip anything tried recently, whether or not it matched.
+              -- Without this an entry the provider cannot match stays
+              -- stale forever and is re-queued on every top-up.
+              AND (metadata_attempted_utc IS NULL OR metadata_attempted_utc < @retryAttemptsBefore)
+            ORDER BY
+                CASE WHEN metadata_updated_utc IS NULL THEN 0 ELSE 1 END,
+                metadata_updated_utc ASC,
+                title ASC
+            LIMIT @take;
+            """;
+
+        AddParameter(command, "@staleBefore", staleBefore.ToString("O"));
+        AddParameter(command, "@retryAttemptsBefore", retryAttemptsBefore.ToString("O"));
+        AddParameter(command, "@take", take);
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            candidates.Add(new Deluno.Jobs.Contracts.MetadataRefreshCandidate(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.IsDBNull(2) ? null : reader.GetInt32(2)));
+        }
+
+        return candidates;
+    }
+
     public async Task<IReadOnlyList<SeriesListItem>> ListAsync(CancellationToken cancellationToken)
     {
         var items = new List<SeriesListItem>();

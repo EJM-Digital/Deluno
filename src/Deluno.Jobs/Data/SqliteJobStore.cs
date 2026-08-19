@@ -779,6 +779,32 @@ public sealed class SqliteJobStore(
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    public async Task<int> CountActiveJobsAsync(string jobType, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        // Mirrors LeaseBatchAsync's runnable predicate, plus jobs already
+        // leased. A job that has exhausted its attempts is deliberately
+        // excluded -- counting permanently-failed rows would inflate the depth
+        // forever and silently stall any planner topping up against it.
+        command.CommandText =
+            """
+            SELECT COUNT(*)
+            FROM job_queue
+            WHERE job_type = @jobType
+              AND (
+                    status = 'running'
+                    OR (status IN ('queued', 'failed') AND attempts < max_attempts)
+                  );
+            """;
+
+        AddParameter(command, "@jobType", jobType);
+        return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
+    }
+
     public async Task<bool> TryClaimScheduledPassAsync(string scheduleKey, TimeSpan interval, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();

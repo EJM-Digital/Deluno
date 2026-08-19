@@ -33,6 +33,29 @@ public sealed class WorkPlanner(
         PropertyNameCaseInsensitive = true
     };
 
+    /// <summary>
+    /// How many metadata refresh jobs of one type to keep queued. Bounded so a
+    /// large backfill never writes the whole catalogue into the job table, and
+    /// deep enough that the metadata lane is not left idle between top-ups.
+    /// </summary>
+    private const int MetadataQueueTargetDepth = 200;
+
+    /// <summary>
+    /// How often the backfill tops the queue up. Short, because it is now a
+    /// top-up rather than the old fixed 30-per-pass allocation — a settled
+    /// library finds nothing stale and queues nothing.
+    /// </summary>
+    private static readonly TimeSpan MetadataTopUpInterval = TimeSpan.FromMinutes(1);
+
+    /// <summary>
+    /// How long to leave an entry alone after a metadata attempt, whether or
+    /// not the provider matched it. Without this an unmatchable title stays
+    /// permanently stale and is re-queued on every top-up — a hot loop against
+    /// the provider, which at 20,000 items and a 1% unmatchable rate would be
+    /// 200 pointless lookups a minute, forever.
+    /// </summary>
+    private static readonly TimeSpan MetadataAttemptCooldown = TimeSpan.FromHours(24);
+
     public async Task RunDispatchCleanupAsync(
         IDispatchCleanupService cleanupService,
         CancellationToken cancellationToken)
@@ -75,68 +98,96 @@ public sealed class WorkPlanner(
         IJobScheduler jobScheduler,
         IMovieCatalogRepository movieCatalogRepository,
         ISeriesCatalogRepository seriesCatalogRepository,
-        IReadOnlyList<JobQueueItem> existingJobs,
         TimeProvider timeProvider,
         CancellationToken cancellationToken)
     {
-        if (!await jobQueueRepository.TryClaimScheduledPassAsync("metadata.refresh", TimeSpan.FromHours(6), cancellationToken))
+        if (!await jobQueueRepository.TryClaimScheduledPassAsync("metadata.refresh", MetadataTopUpInterval, cancellationToken))
         {
             return;
         }
 
         var now = timeProvider.GetUtcNow();
         var staleBefore = now.AddDays(-14);
+        var retryAttemptsBefore = now - MetadataAttemptCooldown;
 
-        var queuedMovieIds = existingJobs
-            .Where(job => job.JobType == "movies.metadata.refresh")
-            .Select(job => job.RelatedEntityId)
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var queuedSeriesIds = existingJobs
-            .Where(job => job.JobType == "series.metadata.refresh")
-            .Select(job => job.RelatedEntityId)
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        await TopUpMetadataQueueAsync(
+            jobScheduler,
+            jobType: "movies.metadata.refresh",
+            relatedEntityType: "movie",
+            fetchCandidates: take => movieCatalogRepository.ListStaleMetadataCandidatesAsync(staleBefore, retryAttemptsBefore, take, cancellationToken),
+            cancellationToken);
 
-        var moviesToRefresh = (await movieCatalogRepository.ListAsync(cancellationToken))
-            .Where(item => string.IsNullOrWhiteSpace(item.MetadataProviderId) || item.MetadataUpdatedUtc is null || item.MetadataUpdatedUtc < staleBefore)
-            .Where(item => !queuedMovieIds.Contains(item.Id))
-            .OrderBy(item => item.MetadataUpdatedUtc ?? DateTimeOffset.MinValue)
-            .ThenBy(item => item.Title, StringComparer.OrdinalIgnoreCase)
-            .Take(30)
-            .ToArray();
+        await TopUpMetadataQueueAsync(
+            jobScheduler,
+            jobType: "series.metadata.refresh",
+            relatedEntityType: "series",
+            fetchCandidates: take => seriesCatalogRepository.ListStaleMetadataCandidatesAsync(staleBefore, retryAttemptsBefore, take, cancellationToken),
+            cancellationToken);
+    }
 
-        foreach (var movie in moviesToRefresh)
+    /// <summary>
+    /// Keeps a metadata queue topped up to <see cref="MetadataQueueTargetDepth"/>
+    /// rather than queueing a fixed number per pass.
+    ///
+    /// The old shape queued 30 per type every 6 hours, which is fine for a
+    /// settled library and hopeless for a backlog: 20,000 freshly imported
+    /// movies would have taken 667 passes -- about 167 days -- to get their
+    /// metadata. Topping up instead means the backfill runs continuously and
+    /// finishes in the time it takes the metadata lane to drain, while a
+    /// settled library queues nothing at all because nothing is stale.
+    ///
+    /// Depth is bounded deliberately: queueing all 20,000 at once would write
+    /// 20,000 rows and hand the lane a backlog it cannot reason about. The
+    /// drain rate is set by the metadata lane's own concurrency, which is what
+    /// bounds outbound provider traffic -- see #163 for pacing that properly.
+    /// </summary>
+    private async Task TopUpMetadataQueueAsync(
+        IJobScheduler jobScheduler,
+        string jobType,
+        string relatedEntityType,
+        Func<int, Task<IReadOnlyList<MetadataRefreshCandidate>>> fetchCandidates,
+        CancellationToken cancellationToken)
+    {
+        var active = await jobQueueRepository.CountActiveJobsAsync(jobType, cancellationToken);
+        var room = MetadataQueueTargetDepth - active;
+        if (room <= 0)
         {
+            return;
+        }
+
+        var candidates = await fetchCandidates(room);
+        if (candidates.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var candidate in candidates)
+        {
+            // EnqueueAsync dedupes against an existing active job for the same
+            // entity, so re-selecting something already queued is a no-op
+            // rather than a duplicate.
             await jobScheduler.EnqueueAsync(
                 new EnqueueJobRequest(
-                    JobType: "movies.metadata.refresh",
+                    JobType: jobType,
                     Source: "metadata",
-                    PayloadJson: JsonSerializer.Serialize(new { movie.Id, movie.Title, movie.ReleaseYear, scheduled = true }),
-                    RelatedEntityType: "movie",
-                    RelatedEntityId: movie.Id),
+                    PayloadJson: JsonSerializer.Serialize(new
+                    {
+                        candidate.Id,
+                        candidate.Title,
+                        candidate.Year,
+                        scheduled = true
+                    }),
+                    RelatedEntityType: relatedEntityType,
+                    RelatedEntityId: candidate.Id),
                 cancellationToken);
         }
 
-        var seriesToRefresh = (await seriesCatalogRepository.ListAsync(cancellationToken))
-            .Where(item => string.IsNullOrWhiteSpace(item.MetadataProviderId) || item.MetadataUpdatedUtc is null || item.MetadataUpdatedUtc < staleBefore)
-            .Where(item => !queuedSeriesIds.Contains(item.Id))
-            .OrderBy(item => item.MetadataUpdatedUtc ?? DateTimeOffset.MinValue)
-            .ThenBy(item => item.Title, StringComparer.OrdinalIgnoreCase)
-            .Take(30)
-            .ToArray();
-
-        foreach (var series in seriesToRefresh)
-        {
-            await jobScheduler.EnqueueAsync(
-                new EnqueueJobRequest(
-                    JobType: "series.metadata.refresh",
-                    Source: "metadata",
-                    PayloadJson: JsonSerializer.Serialize(new { series.Id, series.Title, series.StartYear, scheduled = true }),
-                    RelatedEntityType: "series",
-                    RelatedEntityId: series.Id),
-                cancellationToken);
-        }
+        logger.LogInformation(
+            "Metadata backfill queued {Queued} {JobType} job(s); {Active} were already active (target depth {Target}).",
+            candidates.Count,
+            jobType,
+            active,
+            MetadataQueueTargetDepth);
     }
 
     public async Task PlanIntakeAutomationAsync(

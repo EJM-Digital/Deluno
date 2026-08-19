@@ -292,12 +292,10 @@ public sealed class DelunoHeartbeatWorker(
                 var downloadRetryService = scope.ServiceProvider.GetRequiredService<IDownloadRetryService>();
                 await workPlanner.RunDispatchCleanupAsync(cleanupService, stoppingToken);
                 await workPlanner.RunDispatchRetryPassAsync(downloadRetryService, stoppingToken);
-                var jobList = await jobQueueRepository.ListAsync(600, stoppingToken);
                 await workPlanner.PlanMetadataRefreshAutomationAsync(
                     jobScheduler,
                     movieCatalogRepository,
                     seriesCatalogRepository,
-                    jobList,
                     timeProvider,
                     stoppingToken);
             }
