@@ -249,7 +249,10 @@ public sealed class SqliteSeriesCatalogRepository(
                 s.start_year,
                 s.imdb_id,
                 s.monitored,
-                COALESCE(MAX(w.has_file), 0) AS has_file,
+                EXISTS(
+                    SELECT 1 FROM series_wanted_state w
+                    WHERE w.series_id = s.id AND w.has_file = 1
+                ) AS has_file,
                 s.metadata_provider,
                 s.metadata_provider_id,
                 s.original_title,
@@ -264,8 +267,6 @@ public sealed class SqliteSeriesCatalogRepository(
                 s.created_utc,
                 s.updated_utc
             FROM series_entries s
-            LEFT JOIN series_wanted_state w ON w.series_id = s.id
-            GROUP BY s.id
             ORDER BY s.created_utc DESC, s.title ASC;
             """;
 

@@ -257,7 +257,10 @@ public sealed class SqliteMovieCatalogRepository(
                 m.release_year,
                 m.imdb_id,
                 m.monitored,
-                COALESCE(MAX(w.has_file), 0) AS has_file,
+                EXISTS(
+                    SELECT 1 FROM movie_wanted_state w
+                    WHERE w.movie_id = m.id AND w.has_file = 1
+                ) AS has_file,
                 m.metadata_provider,
                 m.metadata_provider_id,
                 m.original_title,
@@ -276,8 +279,6 @@ public sealed class SqliteMovieCatalogRepository(
                 m.physical_release_date,
                 m.minimum_availability
             FROM movie_entries m
-            LEFT JOIN movie_wanted_state w ON w.movie_id = m.id
-            GROUP BY m.id
             ORDER BY m.created_utc DESC, m.title ASC;
             """;
 
