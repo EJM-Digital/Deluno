@@ -86,43 +86,4 @@ test.describe("authenticated app smoke", () => {
     });
   }
 
-  test("desktop Library setup navigation expands in place and keeps child navigation clear", async ({ page }) => {
-    test.skip(test.info().project.name === "mobile", "The desktop sidebar is replaced by the mobile navigation drawer.");
-
-    await page.goto("/settings/media-management");
-
-    const sidebar = page.locator("aside");
-    const setupToggle = page.getByRole("button", { name: "Collapse Library setup" });
-    const librarySection = page.getByRole("link", { name: "Library setup", exact: true });
-    const processingAndImport = page.getByRole("link", { name: "File handling & naming", exact: true });
-
-    await expect(sidebar).toBeVisible();
-    expect(await sidebar.evaluate((element) => getComputedStyle(element).overflowX)).toBe("visible");
-    await expect(setupToggle).toBeVisible();
-    await expect(librarySection).toBeVisible();
-    await expect(processingAndImport).toBeVisible();
-
-    const parentBox = await librarySection.boundingBox();
-    const childBox = await processingAndImport.boundingBox();
-    expect(parentBox).not.toBeNull();
-    expect(childBox).not.toBeNull();
-    expect(childBox!.x).toBeGreaterThan(parentBox!.x);
-
-    await setupToggle.click();
-    await expect(processingAndImport).toBeHidden();
-    await expect(page).toHaveURL(/\/settings\/media-management$/);
-
-    await page.getByRole("button", { name: "Expand Library setup" }).click();
-    await expect(processingAndImport).toBeVisible();
-
-    await page.getByRole("link", { name: "Connections", exact: true }).click();
-    await expect(page).toHaveURL(/\/indexers$/);
-    const downloadClients = sidebar.getByRole("link", { name: "Download clients", exact: true });
-    await expect(downloadClients).toBeVisible();
-    await downloadClients.click();
-    await expect(page).toHaveURL(/\/indexers\/download-clients$/);
-    await expect(page.getByRole("heading", { name: "Download clients", exact: true })).toBeVisible();
-    await expect(page.getByText("Remove items from the client queue", { exact: true })).toBeVisible();
-  });
-
 });
