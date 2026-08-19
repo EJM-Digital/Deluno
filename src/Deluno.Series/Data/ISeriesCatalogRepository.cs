@@ -33,6 +33,28 @@ public interface ISeriesCatalogRepository
     /// The stalest series still wanting metadata, filtered, ordered and
     /// limited in SQL. Returns only what a refresh job payload needs.
     /// </summary>
+    /// <summary>
+    /// How many entries the backfill would consider stale right now. The
+    /// counterpart to <see cref="ListStaleMetadataCandidatesAsync"/>, so a
+    /// caller that queues a page of them can say honestly how many are left
+    /// rather than reporting the page as if it were the whole job.
+    /// </summary>
+    Task<int> CountStaleMetadataCandidatesAsync(
+        DateTimeOffset staleBefore,
+        DateTimeOffset retryAttemptsBefore,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Marks every entry as wanting a metadata refresh, and returns how many
+    /// were marked.
+    ///
+    /// One statement, whatever the library size. It deliberately does not clear
+    /// <c>metadata_updated_utc</c>: forcing a refresh should not destroy the
+    /// record of when each entry was genuinely last refreshed, which is what
+    /// the backfill prioritises by and what a user sees on a title.
+    /// </summary>
+    Task<int> RequestMetadataRefreshForAllAsync(CancellationToken cancellationToken);
+
     Task<IReadOnlyList<Deluno.Jobs.Contracts.MetadataRefreshCandidate>> ListStaleMetadataCandidatesAsync(
         DateTimeOffset staleBefore,
         DateTimeOffset retryAttemptsBefore,

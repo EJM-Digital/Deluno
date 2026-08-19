@@ -259,6 +259,87 @@ public sealed class SqliteMovieCatalogRepository(
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// What counts as stale, in one place so the list and the count cannot
+    /// disagree about it.
+    /// </summary>
+    /// <remarks>
+    /// The last clause is what stops a forced refresh becoming a hot loop. An
+    /// entry the provider cannot match never gets a
+    /// <c>metadata_updated_utc</c>, so without it a refresh request would
+    /// re-select that entry on every pass, forever. Once an attempt has been
+    /// made after the request, only the ordinary cooldown applies.
+    ///
+    /// The comparisons are strict for the same reason. A refresh that lands in
+    /// the same instant as the request is treated as having satisfied it, which
+    /// at worst skips one forced refresh; the alternative reading would leave a
+    /// successfully refreshed entry permanently requested.
+    /// </remarks>
+    private const string StaleMetadataPredicate =
+        """
+        (
+            metadata_provider_id IS NULL
+         OR TRIM(metadata_provider_id) = ''
+         OR metadata_updated_utc IS NULL
+         OR metadata_updated_utc < @staleBefore
+         OR (
+                metadata_refresh_requested_utc IS NOT NULL
+            AND (metadata_updated_utc IS NULL OR metadata_refresh_requested_utc > metadata_updated_utc)
+            )
+        )
+        AND (
+            metadata_attempted_utc IS NULL
+         OR metadata_attempted_utc < @retryAttemptsBefore
+         OR (
+                metadata_refresh_requested_utc IS NOT NULL
+            AND metadata_attempted_utc < metadata_refresh_requested_utc
+            )
+        )
+        """;
+
+    public async Task<int> CountStaleMetadataCandidatesAsync(
+        DateTimeOffset staleBefore,
+        DateTimeOffset retryAttemptsBefore,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            $"""
+            SELECT COUNT(*)
+            FROM movie_entries
+            WHERE {StaleMetadataPredicate};
+            """;
+        AddParameter(command, "@staleBefore", staleBefore.ToString("O"));
+        AddParameter(command, "@retryAttemptsBefore", retryAttemptsBefore.ToString("O"));
+
+        return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
+    }
+
+    public async Task<int> RequestMetadataRefreshForAllAsync(CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE movie_entries
+            SET metadata_refresh_requested_utc = @now
+            WHERE metadata_refresh_requested_utc IS NULL
+               OR metadata_refresh_requested_utc < @now;
+            """;
+        AddParameter(command, "@now", now.ToString("O"));
+
+        return await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<Deluno.Jobs.Contracts.MetadataRefreshCandidate>> ListStaleMetadataCandidatesAsync(
         DateTimeOffset staleBefore,
         DateTimeOffset retryAttemptsBefore,
@@ -276,20 +357,12 @@ public sealed class SqliteMovieCatalogRepository(
         // fully-materialised catalogue. Rows never metadata-matched sort first
         // (metadata_updated_utc IS NULL), then oldest-refreshed.
         command.CommandText =
-            """
+            $"""
             SELECT id, title, release_year
             FROM movie_entries
-            WHERE (
-                    metadata_provider_id IS NULL
-                 OR TRIM(metadata_provider_id) = ''
-                 OR metadata_updated_utc IS NULL
-                 OR metadata_updated_utc < @staleBefore
-                  )
-              -- Skip anything tried recently, whether or not it matched.
-              -- Without this an entry the provider cannot match stays
-              -- stale forever and is re-queued on every top-up.
-              AND (metadata_attempted_utc IS NULL OR metadata_attempted_utc < @retryAttemptsBefore)
+            WHERE {StaleMetadataPredicate}
             ORDER BY
+                CASE WHEN metadata_refresh_requested_utc IS NOT NULL THEN 0 ELSE 1 END,
                 CASE WHEN metadata_updated_utc IS NULL THEN 0 ELSE 1 END,
                 metadata_updated_utc ASC,
                 title ASC

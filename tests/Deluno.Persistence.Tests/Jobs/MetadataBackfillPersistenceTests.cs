@@ -158,6 +158,134 @@ public sealed class MetadataBackfillPersistenceTests
         Assert.Contains(afterCooldown, c => c.Id == unmatchable.Id);
     }
 
+
+    /// <summary>
+    /// "Refresh everything" is one statement, not a page of the catalogue. It
+    /// used to load every row, take the first few hundred, and queue a job each
+    /// — which on a 20,000-item library covered a couple of percent and said
+    /// nothing about the rest.
+    /// </summary>
+    [Fact]
+    public async Task Requesting_a_refresh_for_everything_makes_even_freshly_matched_entries_stale_again()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(Now);
+        await new MoviesSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<MoviesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+
+        var fresh = await repository.AddAsync(new CreateMovieRequest("Fresh", 2024, null), CancellationToken.None);
+        await repository.AddAsync(new CreateMovieRequest("Also Fresh", 2023, null), CancellationToken.None);
+        // Refreshed a day ago: recent enough not to be stale, and before the
+        // refresh request that follows.
+        await SetMetadataStateAsync(storage, fresh.Id, providerId: "tmdb-1", updatedUtc: Now.AddDays(-1));
+
+        var staleBefore = Now.AddDays(-14);
+        var retryAttemptsBefore = Now.AddHours(-24);
+
+        Assert.DoesNotContain(
+            await repository.ListStaleMetadataCandidatesAsync(staleBefore, retryAttemptsBefore, 50, CancellationToken.None),
+            candidate => candidate.Id == fresh.Id);
+
+        Assert.Equal(2, await repository.RequestMetadataRefreshForAllAsync(CancellationToken.None));
+
+        var candidates = await repository.ListStaleMetadataCandidatesAsync(
+            staleBefore, retryAttemptsBefore, 50, CancellationToken.None);
+        Assert.Contains(candidates, candidate => candidate.Id == fresh.Id);
+
+        // The count has to agree with the list, or the endpoint reports a
+        // "still to go" figure the planner will never act on.
+        Assert.Equal(
+            candidates.Count,
+            await repository.CountStaleMetadataCandidatesAsync(staleBefore, retryAttemptsBefore, CancellationToken.None));
+
+        // What "forced" must not do: destroy the record of when the entry was
+        // genuinely last refreshed.
+        var refreshed = Assert.Single(
+            await repository.ListAsync(CancellationToken.None),
+            item => item.Id == fresh.Id);
+        Assert.Equal(Now.AddDays(-1), refreshed.MetadataUpdatedUtc);
+    }
+
+    /// <summary>
+    /// The unhappy path for a forced refresh. A title the provider cannot match
+    /// never gets a success timestamp, so the refresh request alone would keep
+    /// selecting it on every pass — the same hot loop the attempt cooldown was
+    /// introduced to stop, reintroduced by the force flag. One attempt after the
+    /// request has to be enough to take it out of the running.
+    /// </summary>
+    [Fact]
+    public async Task A_forced_refresh_of_an_unmatchable_entry_stops_after_one_attempt()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(Now);
+        await new MoviesSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<MoviesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+
+        var unmatchable = await repository.AddAsync(
+            new CreateMovieRequest("Totally Obscure Home Video", 1991, null),
+            CancellationToken.None);
+
+        await repository.RequestMetadataRefreshForAllAsync(CancellationToken.None);
+
+        var staleBefore = Now.AddDays(-14);
+        var retryAttemptsBefore = Now.AddHours(-24);
+
+        Assert.Contains(
+            await repository.ListStaleMetadataCandidatesAsync(staleBefore, retryAttemptsBefore, 50, CancellationToken.None),
+            candidate => candidate.Id == unmatchable.Id);
+
+        // The refresh runs and matches nothing, so only the attempt is recorded.
+        await repository.RecordMetadataAttemptAsync(unmatchable.Id, CancellationToken.None);
+
+        Assert.DoesNotContain(
+            await repository.ListStaleMetadataCandidatesAsync(staleBefore, retryAttemptsBefore, 50, CancellationToken.None),
+            candidate => candidate.Id == unmatchable.Id);
+        Assert.Equal(
+            0,
+            await repository.CountStaleMetadataCandidatesAsync(staleBefore, retryAttemptsBefore, CancellationToken.None));
+
+        // And it is still not abandoned forever: once the ordinary cooldown
+        // lapses it comes back round.
+        Assert.Contains(
+            await repository.ListStaleMetadataCandidatesAsync(staleBefore, Now.AddHours(25), 50, CancellationToken.None),
+            candidate => candidate.Id == unmatchable.Id);
+    }
+
+    /// <summary>
+    /// A requested refresh jumps the queue: the user pressed a button, and the
+    /// entries they asked about should not sit behind a routine 14-day sweep.
+    /// </summary>
+    [Fact]
+    public async Task Requested_refreshes_are_selected_before_merely_stale_entries()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(Now);
+        await new MoviesSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<MoviesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+
+        var requested = await repository.AddAsync(new CreateMovieRequest("Requested", 2024, null), CancellationToken.None);
+        await SetMetadataStateAsync(storage, requested.Id, providerId: "tmdb-1", updatedUtc: Now.AddDays(-1));
+        await repository.RequestMetadataRefreshForAllAsync(CancellationToken.None);
+
+        // Added after the request, so it is merely stale rather than requested.
+        await repository.AddAsync(new CreateMovieRequest("Never Matched", 1999, null), CancellationToken.None);
+
+        var candidates = await repository.ListStaleMetadataCandidatesAsync(
+            Now.AddDays(-14), Now.AddHours(-24), 50, CancellationToken.None);
+
+        Assert.Equal(2, candidates.Count);
+        Assert.Equal(requested.Id, candidates[0].Id);
+    }
+
     private static async Task<JobQueueItem> EnqueueAsync(SqliteJobStore store, string jobType, string relatedEntityId)
         => await store.EnqueueAsync(
             new EnqueueJobRequest(
