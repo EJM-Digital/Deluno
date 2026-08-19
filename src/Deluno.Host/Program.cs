@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Deluno.Api;
 using Deluno.Api.Backup;
 using Deluno.Api.Monitoring;
+using Deluno.Contracts;
 using Deluno.Filesystem;
 using Deluno.Infrastructure;
 using Deluno.Infrastructure.Observability;
@@ -65,6 +66,13 @@ builder.Services.AddDelunoApi();
 // would otherwise throttle itself. Raised via Security:Login:* in that run.
 var loginPermitLimit = builder.Configuration.GetValue<int?>("Security:Login:PermitLimit") ?? 10;
 var loginWindowSeconds = builder.Configuration.GetValue<int?>("Security:Login:WindowSeconds") ?? 60;
+
+// A global budget for the other ~279 routes an API key can drive. Login keeps
+// its own stricter policy on top — a global limiter runs in addition to
+// endpoint-specific policies, it does not replace them.
+var apiPermitLimit = builder.Configuration.GetValue<int?>("Security:Api:PermitLimit") ?? 600;
+var apiWindowSeconds = builder.Configuration.GetValue<int?>("Security:Api:WindowSeconds") ?? 60;
+
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -77,6 +85,42 @@ builder.Services.AddRateLimiter(options =>
                 Window = TimeSpan.FromSeconds(loginWindowSeconds),
                 QueueLimit = 0
             }));
+
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+    {
+        var path = httpContext.Request.Path;
+
+        // Static files and the SignalR hubs are exempt: hub connections are
+        // long-lived and a limiter would cut live updates, not abuse.
+        // Artwork is excluded from auth and the no-store cache header for the
+        // same reason it is excluded here — a poster grid fires dozens of
+        // requests at once and none of them are attacker-controlled traffic.
+        if (!path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWithSegments("/hubs", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWithSegments("/api/metadata/artwork", StringComparison.OrdinalIgnoreCase))
+        {
+            return RateLimitPartition.GetNoLimiter("exempt");
+        }
+
+        return RateLimitPartition.GetFixedWindowLimiter(
+            ApiRateLimitPartitionKeyResolver.Resolve(httpContext),
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = apiPermitLimit,
+                Window = TimeSpan.FromSeconds(apiWindowSeconds),
+                QueueLimit = 0
+            });
+    });
+
+    options.OnRejected = async (context, cancellationToken) =>
+    {
+        context.HttpContext.Response.Headers.RetryAfter =
+            apiWindowSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        context.HttpContext.Response.ContentType = "application/json";
+        await context.HttpContext.Response.WriteAsync(
+            "{\"error\":\"Rate limit exceeded.\",\"retryAfterSeconds\":" + apiWindowSeconds + "}",
+            cancellationToken);
+    };
 });
 builder.Services.AddDelunoSecurityModule();
 builder.Services.AddDelunoNotificationsModule();
@@ -101,10 +145,10 @@ builder.Services.AddSwaggerGen(options =>
     // Use a stable fully-qualified schema id so the generated API document stays
     // available instead of failing on those valid independent contracts.
     options.CustomSchemaIds(type => (type.FullName ?? type.Name).Replace('+', '.'));
-    options.SwaggerDoc("v1", new OpenApiInfo
+    options.SwaggerDoc(DelunoApiVersion.Current, new OpenApiInfo
     {
         Title = "Deluno API",
-        Version = "v1",
+        Version = DelunoApiVersion.Current,
         Description = "Deluno operational API for local automation, integrations, and UI orchestration."
     });
 });
@@ -149,6 +193,15 @@ app.Use(async (context, next) =>
     }
     await next();
 });
+
+app.UseDelunoApiVersioning();
+
+// Explicit, rather than relying on WebApplication's implicit UseRouting.
+// Implicit routing matches at the very start of the pipeline — before any
+// custom middleware — so it would resolve the endpoint against the
+// unrewritten /api/v1/... path and the version alias above would have no
+// effect on dispatch even though it edited the path.
+app.UseRouting();
 
 app.UseRateLimiter();
 app.UseDefaultFiles();
@@ -234,7 +287,7 @@ app.UseSwagger(options =>
 app.UseSwaggerUI(options =>
 {
     options.RoutePrefix = "api/docs";
-    options.SwaggerEndpoint("/api/openapi/v1.json", "Deluno API v1");
+    options.SwaggerEndpoint($"/api/openapi/{DelunoApiVersion.Current}.json", $"Deluno API {DelunoApiVersion.Current}");
     options.DocumentTitle = "Deluno API docs";
 });
 
