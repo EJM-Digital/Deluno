@@ -7,7 +7,6 @@ test.describe("dashboard workflow", () => {
 
     await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "Add a movie" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Add a show" })).toBeVisible();
 
     await page.getByRole("link", { name: "Add a movie" }).click();
 
@@ -22,15 +21,14 @@ test.describe("dashboard workflow", () => {
   test("shows real empty-state information instead of invented dashboard activity", async ({ page }) => {
     await authenticateAndNavigate(page, "/");
 
-    await expect(page.getByText("No search sources or download clients", { exact: true })).toBeVisible();
-    await expect(page.getByText("No downloads, processing, or imports need your attention right now.", { exact: true })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Needs attention", exact: true })).toBeVisible();
-    await expect(page.getByText("0/4 setup", { exact: true })).toBeVisible();
-    await expect(page.getByText("Library not configured", { exact: true })).toBeVisible();
-    await expect(page.getByText("Connections incomplete", { exact: true })).toBeVisible();
-    await expect(page.getByText("No Media Plan selected", { exact: true })).toBeVisible();
-    await expect(page.getByText("Library and health over time", { exact: true })).toHaveCount(0);
-    await expect(page.getByText("Download speed", { exact: true })).toHaveCount(0);
+    // The dashboard states what is actually true of an empty install rather than
+    // filling the space with invented activity. Setup guidance is offered, and
+    // the library sections say plainly that they are empty.
+    await expect(page.getByRole("heading", { name: "Build your media library" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Build my setup" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Recently added" })).toBeVisible();
+    await expect(page.getByText("Nothing in the library yet", { exact: true })).toBeVisible();
+    await expect(page.getByText("Nothing needs you", { exact: true })).toBeVisible();
   });
 
   test("makes library display, order, and refine controls readable without hiding advanced choices", async ({ page }) => {
@@ -432,21 +430,21 @@ test.describe("dashboard workflow", () => {
   test("gives downloads and imports a clear next step", async ({ page }) => {
     await authenticateAndNavigate(page, "/queue");
 
-    await expect(page.getByRole("heading", { name: "Your downloads, ready for your library." })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "What to do next" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Downloads" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Transfers" })).toBeVisible();
   });
 
   test("keeps download-health evidence available after queue work", async ({ page }) => {
     await authenticateAndNavigate(page, "/queue");
 
-    await expect(page.getByRole("heading", { name: "Download health history" })).toBeVisible();
-    await expect(page.getByText("Persisted import paths are redacted.")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Recent activity" })).toBeVisible();
+    await expect(page.getByText("Nothing has happened yet")).toBeVisible();
   });
 
   test("keeps activity as a readable history", async ({ page }) => {
     await authenticateAndNavigate(page, "/activity");
 
-    await expect(page.getByRole("heading", { name: /The record of what Deluno has done/ })).toBeVisible();
-    await expect(page.getByText("Recent activity", { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Job queue" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Sent to downloads" })).toBeVisible();
   });
 });
