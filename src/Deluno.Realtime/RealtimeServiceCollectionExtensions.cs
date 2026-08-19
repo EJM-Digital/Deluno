@@ -12,6 +12,7 @@ public static class RealtimeServiceCollectionExtensions
         services.AddSignalR();
         services.AddSingleton<SignalRRealtimeEventPublisher>();
         services.AddSingleton<IRealtimeEventPublisher>(provider => provider.GetRequiredService<SignalRRealtimeEventPublisher>());
+        services.AddSingleton<IRealtimeResumeSource>(provider => provider.GetRequiredService<SignalRRealtimeEventPublisher>());
         services.AddHostedService(provider => provider.GetRequiredService<SignalRRealtimeEventPublisher>());
         return services;
     }

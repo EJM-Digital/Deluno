@@ -10,9 +10,13 @@ namespace Deluno.Realtime;
 public sealed class SignalRRealtimeEventPublisher(
     IHubContext<ActivityHub> hubContext,
     ILogger<SignalRRealtimeEventPublisher> logger,
-    TimeProvider timeProvider)
-    : BackgroundService, IRealtimeEventPublisher
+    TimeProvider timeProvider,
+    int resumeWindowSize = SignalRRealtimeEventPublisher.DefaultResumeWindowSize)
+    : BackgroundService, IRealtimeEventPublisher, IRealtimeResumeSource
 {
+    /// <summary>How many envelopes a reconnecting client can resume across.</summary>
+    public const int DefaultResumeWindowSize = 5000;
+
     private readonly Channel<RealtimeEnvelope> _events = Channel.CreateBounded<RealtimeEnvelope>(
         new BoundedChannelOptions(1000)
         {
@@ -20,6 +24,10 @@ public sealed class SignalRRealtimeEventPublisher(
             SingleWriter = false,
             FullMode = BoundedChannelFullMode.DropOldest
         });
+
+    private readonly object _ringLock = new();
+    private readonly Queue<RealtimeEnvelope> _ring = new();
+    private long _seq;
 
     public Task PublishHealthChangedAsync(
         string source,
@@ -285,9 +293,10 @@ public sealed class SignalRRealtimeEventPublisher(
     {
         await foreach (var envelope in _events.Reader.ReadAllAsync(stoppingToken))
         {
+            AddToResumeWindow(envelope);
             try
             {
-                await hubContext.Clients.All.SendAsync(envelope.EventName, envelope.Payload, stoppingToken);
+                await hubContext.Clients.All.SendAsync("RealtimeEvent", envelope, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -295,14 +304,28 @@ public sealed class SignalRRealtimeEventPublisher(
             }
             catch (Exception exception)
             {
-                logger.LogDebug(exception, "Realtime event {EventName} could not be delivered.", envelope.EventName);
+                logger.LogDebug(exception, "Realtime event {EventName} could not be delivered.", envelope.Name);
             }
         }
     }
 
+    /// <summary>
+    /// Stamps the envelope with the next sequence number before it is ever
+    /// queued, so a sequence is reserved for every event this publisher is
+    /// asked to send — even one later evicted from the bounded channel by
+    /// <see cref="BoundedChannelFullMode.DropOldest"/> before a reader sees
+    /// it. That eviction then shows up as a genuine, detectable gap in the
+    /// resume window instead of silently renumbering later events.
+    /// </summary>
     private void Enqueue(string eventName, object payload)
     {
-        if (!_events.Writer.TryWrite(new RealtimeEnvelope(eventName, payload)))
+        var envelope = new RealtimeEnvelope(
+            Interlocked.Increment(ref _seq),
+            eventName,
+            timeProvider.GetUtcNow().ToString("O"),
+            payload);
+
+        if (!_events.Writer.TryWrite(envelope))
         {
             DelunoObservability.RealtimeEventsDropped.Add(
                 1,
@@ -311,5 +334,40 @@ public sealed class SignalRRealtimeEventPublisher(
         }
     }
 
-    private sealed record RealtimeEnvelope(string EventName, object Payload);
+    private void AddToResumeWindow(RealtimeEnvelope envelope)
+    {
+        lock (_ringLock)
+        {
+            _ring.Enqueue(envelope);
+            while (_ring.Count > resumeWindowSize)
+            {
+                _ring.Dequeue();
+            }
+        }
+    }
+
+    public RealtimeResumeResult Resume(long lastSeq)
+    {
+        lock (_ringLock)
+        {
+            if (lastSeq <= 0)
+            {
+                return new RealtimeResumeResult(RealtimeResumeStatus.ResyncRequired, []);
+            }
+
+            if (lastSeq >= Interlocked.Read(ref _seq))
+            {
+                return new RealtimeResumeResult(RealtimeResumeStatus.CaughtUp, []);
+            }
+
+            var oldestBuffered = _ring.Count > 0 ? _ring.Peek().Seq : long.MaxValue;
+            if (lastSeq < oldestBuffered - 1)
+            {
+                return new RealtimeResumeResult(RealtimeResumeStatus.ResyncRequired, []);
+            }
+
+            var missed = _ring.Where(envelope => envelope.Seq > lastSeq).ToArray();
+            return new RealtimeResumeResult(RealtimeResumeStatus.Replayed, missed);
+        }
+    }
 }
