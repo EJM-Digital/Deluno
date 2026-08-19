@@ -29,5 +29,6 @@
     <Project Path="tests/Deluno.Platform.Tests/Deluno.Platform.Tests.csproj" />
     <Project Path="tests/Deluno.Series.Tests/Deluno.Series.Tests.csproj" />
     <Project Path="tests/Deluno.Tray.Tests/Deluno.Tray.Tests.csproj" />
+    <Project Path="tests/Deluno.Worker.Tests/Deluno.Worker.Tests.csproj" />
   </Folder>
 </Solution>

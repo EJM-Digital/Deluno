@@ -769,6 +769,33 @@ public sealed class SqliteJobStore(
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    public async Task<bool> TryClaimScheduledPassAsync(string scheduleKey, TimeSpan interval, CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        var cutoff = now - interval;
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            INSERT INTO worker_schedule_state (schedule_key, last_run_utc)
+            VALUES (@scheduleKey, @now)
+            ON CONFLICT(schedule_key) DO UPDATE SET
+                last_run_utc = excluded.last_run_utc
+            WHERE worker_schedule_state.last_run_utc <= @cutoff;
+            """;
+
+        AddParameter(command, "@scheduleKey", scheduleKey);
+        AddParameter(command, "@now", now.ToString("O"));
+        AddParameter(command, "@cutoff", cutoff.ToString("O"));
+
+        var rowsAffected = await command.ExecuteNonQueryAsync(cancellationToken);
+        return rowsAffected > 0;
+    }
+
     public async Task<IReadOnlyDictionary<string, LibraryAutomationStateItem>> ListLibraryAutomationStatesAsync(CancellationToken cancellationToken)
     {
         var items = new Dictionary<string, LibraryAutomationStateItem>(StringComparer.OrdinalIgnoreCase);

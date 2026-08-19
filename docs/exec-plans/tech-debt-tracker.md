@@ -51,9 +51,6 @@ work) — see `628fa52`.
   only because `RecoverExpiredLeasesAsync` happens to issue a write first;
   reorder those statements and the deferred-transaction upgrade starts throwing
   `SQLITE_BUSY` under contention.
-- Move the cleanup/retry throttles out of worker instance fields. `_lastDispatchCleanupUtc`
-  and friends make "every 6 hours" mean "every 6 hours of uptime", and two hosts
-  would each run every pass.
 
 ## Open — module split (`ADR-001-module-boundaries.md`, `PLAN-module-split.md`)
 
@@ -65,8 +62,6 @@ work) — see `628fa52`.
   tested is how a silent regression ships.
 - Step 2: collapse the fourteen duplicated repository methods into `Deluno.Media`.
 - Step 3: give recovery and cleanup a module; they currently span 9 of 12 projects.
-- Step 4: split `DelunoHeartbeatWorker` (2,029 LOC, one switch) into handlers
-  registered by job type.
 
 ## Open — arbitrary caps and hard limits
 
@@ -175,6 +170,27 @@ that hardened into limits.
 
 ## Closed — fixed this session
 
+- **`ProcessJobAsync` was a 490-line, 14-parameter dispatch chain, and `Deluno.Worker`
+  had zero tests.** Split into ten `IJobHandler` implementations under
+  `src/Deluno.Worker/Jobs/`, resolved by a `JobHandlerRegistry` keyed on job type. An
+  unregistered type now throws instead of returning `"Finished a background task."`
+  for nothing. `DelunoHeartbeatWorker.cs` is down from 2,175 to 380 lines; the
+  planning methods moved to `WorkPlanner.cs`. `tests/Deluno.Worker.Tests` added.
+- **`episode.search` had a handler but no lane would ever lease it.** Added to the
+  `search` lane's job types, and `DelunoHeartbeatWorker` now asserts at startup that
+  every registered handler's job type is routed by exactly one lane, failing fast
+  and naming the offending type if not.
+- **The five recurring maintenance passes lived in in-memory fields, so a nightly
+  restart reset "every 6 hours" to "never happened" and two hosts sharing one
+  database would each run every pass.** Moved to `worker_schedule_state`
+  (migration `V0011`) behind `IJobQueueRepository.TryClaimScheduledPassAsync`, an
+  atomic `INSERT ... ON CONFLICT ... WHERE` that only one caller within the
+  interval can win. `_lastHeartbeatUtc` deliberately stayed per-process — it is
+  liveness, not a shared schedule.
+- **Lanes had no enable flag and no jitter, so six lanes on 1/2/3/5-second timers
+  all started in the same instant.** `JobLane` gained `Enabled` and `Jitter`
+  (defaulting to 25% of the lane's interval), applied once before each lane's
+  first tick.
 - **Jobs were leased one per tick, capping import throughput at 30/min.**
   `LeaseBatchAsync` claims a batch in one transaction (now explicitly IMMEDIATE);
   the worker runs each batch with per-lane concurrency. `628fa52`

@@ -41,6 +41,15 @@ public interface IJobQueueRepository
 
     Task HeartbeatAsync(string workerId, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Atomically checks and claims a recurring background pass. Returns
+    /// <c>true</c> only when the caller is the one that gets to run it — either
+    /// no prior run is recorded, or the last one is older than
+    /// <paramref name="interval"/>. Two hosts calling this concurrently for the
+    /// same key never both receive <c>true</c>.
+    /// </summary>
+    Task<bool> TryClaimScheduledPassAsync(string scheduleKey, TimeSpan interval, CancellationToken cancellationToken);
+
     Task<IReadOnlyDictionary<string, LibraryAutomationStateItem>> ListLibraryAutomationStatesAsync(CancellationToken cancellationToken);
 
     Task<IReadOnlyList<SearchCycleRunItem>> ListSearchCycleRunsAsync(
