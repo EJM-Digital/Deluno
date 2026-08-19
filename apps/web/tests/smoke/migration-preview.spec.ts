@@ -20,7 +20,7 @@ test.describe("migration assistant", () => {
             name: "Migrated source",
             reason: "A supported search source was found.",
             canApply: true,
-            warnings: [],
+            warnings: ["Quality rules need review before they become a Media Plan."],
             data: { baseUrl: "https://indexer.example/api", apiKey: "[redacted]" }
           }]
         })
@@ -65,12 +65,13 @@ test.describe("migration assistant", () => {
     await authenticateAndNavigate(page, "/settings/migration");
     await page.getByLabel("Exported JSON").fill('{"indexers":[]}');
     await page.getByRole("button", { name: "Preview import" }).click();
-    await page.getByRole("button", { name: /Apply selected changes \(1\)/ }).click();
+    await page.getByRole("button", { name: /Apply 1 selected/ }).click();
 
-    await expect(page.getByRole("button", { name: "Validate imported connections (1)" })).toBeVisible();
-    await page.getByRole("button", { name: "Validate imported connections (1)" }).click();
-    await expect(page.getByText("Migrated source · healthy")).toBeVisible();
-    await expect(page.getByText("Every imported connection responded successfully.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Test all" })).toBeVisible();
+    await page.getByRole("button", { name: "Test all" }).click();
+    // Health is a chip on the row now, with the provider message beside it.
+    await expect(page.getByText("healthy", { exact: true })).toBeVisible();
+    await expect(page.getByText("Reached indexer.example and received a valid Torznab response.")).toBeVisible();
     await expect(page.getByText("secret", { exact: true })).not.toBeVisible();
   });
 });
