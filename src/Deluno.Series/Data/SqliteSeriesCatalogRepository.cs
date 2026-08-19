@@ -938,17 +938,87 @@ public sealed class SqliteSeriesCatalogRepository(
         IReadOnlyList<ImportedEpisodeItem>? episodes,
         CancellationToken cancellationToken)
     {
+        var created = await ImportExistingBatchAsync(
+            libraryId,
+            [
+                new ExistingSeriesImportRequest(
+                    Title: title,
+                    StartYear: startYear,
+                    WantedStatus: wantedStatus,
+                    WantedReason: wantedReason,
+                    CurrentQuality: currentQuality,
+                    TargetQuality: targetQuality,
+                    QualityCutoffMet: qualityCutoffMet,
+                    UnmonitorWhenCutoffMet: unmonitorWhenCutoffMet,
+                    FilePath: filePath,
+                    FileSizeBytes: fileSizeBytes,
+                    Episodes: episodes)
+            ],
+            cancellationToken);
+
+        return created > 0;
+    }
+
+    /// <summary>
+    /// Imports a slice of already-on-disk shows inside one transaction, and
+    /// returns how many were newly created.
+    ///
+    /// A transaction per show means a disk flush per show, and a show is not
+    /// one row - it is a row per season and per episode as well. Batching is
+    /// what keeps a library of a few thousand shows from costing hundreds of
+    /// thousands of separate commits. The batch size is the caller's slice, so
+    /// this stays bounded however large the library is.
+    /// </summary>
+    public async Task<int> ImportExistingBatchAsync(
+        string libraryId,
+        IReadOnlyList<ExistingSeriesImportRequest> requests,
+        CancellationToken cancellationToken)
+    {
+        if (requests.Count == 0)
+        {
+            return 0;
+        }
+
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Series,
             cancellationToken);
 
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        var now = timeProvider.GetUtcNow();
+        var created = 0;
+
+        foreach (var request in requests)
+        {
+            if (await ImportExistingCoreAsync(connection, transaction, libraryId, request, now, cancellationToken))
+            {
+                created++;
+            }
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+
+        return created;
+    }
+
+    private static async Task<bool> ImportExistingCoreAsync(
+        System.Data.Common.DbConnection connection,
+        System.Data.Common.DbTransaction transaction,
+        string libraryId,
+        ExistingSeriesImportRequest request,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var (title, startYear, wantedStatus, wantedReason, currentQuality, targetQuality,
+            qualityCutoffMet, unmonitorWhenCutoffMet, filePath, fileSizeBytes, episodes) = request;
+
         var normalizedTitle = title.Trim();
         var normalizedFilePath = NormalizeText(filePath);
-        var now = timeProvider.GetUtcNow();
         string? seriesId = null;
 
         using (var lookup = connection.CreateCommand())
         {
+            lookup.Transaction = transaction;
             lookup.CommandText =
                 """
                 SELECT id
@@ -971,6 +1041,7 @@ public sealed class SqliteSeriesCatalogRepository(
             created = true;
 
             using var insert = connection.CreateCommand();
+            insert.Transaction = transaction;
             insert.CommandText =
                 """
                 INSERT INTO series_entries (
@@ -992,6 +1063,7 @@ public sealed class SqliteSeriesCatalogRepository(
         else if (unmonitorWhenCutoffMet && qualityCutoffMet)
         {
             using var unmonitor = connection.CreateCommand();
+            unmonitor.Transaction = transaction;
             unmonitor.CommandText =
                 """
                 UPDATE series_entries
@@ -1005,6 +1077,7 @@ public sealed class SqliteSeriesCatalogRepository(
         }
 
         using var wanted = connection.CreateCommand();
+        wanted.Transaction = transaction;
         wanted.CommandText =
             """
             INSERT INTO series_wanted_state (
@@ -1058,6 +1131,7 @@ public sealed class SqliteSeriesCatalogRepository(
 
                 using (var findSeason = connection.CreateCommand())
                 {
+                    findSeason.Transaction = transaction;
                     findSeason.CommandText =
                         """
                         SELECT id
@@ -1076,6 +1150,7 @@ public sealed class SqliteSeriesCatalogRepository(
                     seasonId = Guid.CreateVersion7().ToString("N");
 
                     using var insertSeason = connection.CreateCommand();
+                    insertSeason.Transaction = transaction;
                     insertSeason.CommandText =
                         """
                         INSERT INTO season_entries (
@@ -1099,6 +1174,7 @@ public sealed class SqliteSeriesCatalogRepository(
 
                     using (var findEpisode = connection.CreateCommand())
                     {
+                        findEpisode.Transaction = transaction;
                         findEpisode.CommandText =
                             """
                             SELECT id
@@ -1119,6 +1195,7 @@ public sealed class SqliteSeriesCatalogRepository(
                         episodeId = Guid.CreateVersion7().ToString("N");
 
                         using var insertEpisode = connection.CreateCommand();
+                        insertEpisode.Transaction = transaction;
                         insertEpisode.CommandText =
                             """
                             INSERT INTO episode_entries (
@@ -1149,6 +1226,7 @@ public sealed class SqliteSeriesCatalogRepository(
                     else
                     {
                         using var updateEpisode = connection.CreateCommand();
+                        updateEpisode.Transaction = transaction;
                         updateEpisode.CommandText =
                             """
                             UPDATE episode_entries
@@ -1175,6 +1253,7 @@ public sealed class SqliteSeriesCatalogRepository(
                     }
 
                     using var upsertEpisodeWanted = connection.CreateCommand();
+                    upsertEpisodeWanted.Transaction = transaction;
                     upsertEpisodeWanted.CommandText =
                         """
                         INSERT INTO episode_wanted_state (

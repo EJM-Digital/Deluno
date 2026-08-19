@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Jobs.Contracts;
@@ -42,7 +43,12 @@ public sealed class DelunoHeartbeatWorker(
 
         // Disk-bound. The widest lane: imports are the backlog users actually
         // feel, and the work is mostly waiting on file I/O.
-        new("import", TimeSpan.FromSeconds(30), ["filesystem.import.execute"],
+        //
+        // "library.import.existing" belongs here too: it is the same resource.
+        // Each of its jobs is one bounded slice of a library scan, so it queues
+        // and drains like any other import rather than holding a lease for
+        // hours.
+        new("import", TimeSpan.FromSeconds(30), ["filesystem.import.execute", "library.import.existing"],
             BatchSize: 16, MaxConcurrency: 8),
 
         // Indexer-bound. Deliberately narrow — each job already fans out across
@@ -273,6 +279,12 @@ public sealed class DelunoHeartbeatWorker(
 
             if (lane.PlanImports)
             {
+                await workPlanner.PlanLibraryImportResumeAsync(
+                    jobScheduler,
+                    services.GetRequiredService<IExistingLibraryImportService>(),
+                    timeProvider,
+                    stoppingToken);
+
                 await workPlanner.PlanImportAutomationAsync(
                     jobScheduler,
                     platformSettingsRepository,

@@ -365,11 +365,17 @@ public static class PlatformEndpointRouteBuilderExtensions
             return skipped ? Results.Accepted() : Results.NotFound();
         });
 
+        // Importing an existing library is a tracked background operation, not
+        // a request that returns when the work is finished. At 20,000 items the
+        // work runs far longer than any HTTP request should live, so the POST
+        // only starts the run and hands back its position; the worker advances
+        // it, and the GET below is what a progress display reads.
         endpoints.MapPost("/api/libraries/{id}/import-existing", async (
             string id,
             HttpContext httpContext,
-            IExistingLibraryImportService importService,
-            IActivityFeedRepository activityFeedRepository,
+            [FromServices] IExistingLibraryImportService importService,
+            [FromServices] IJobScheduler jobScheduler,
+            [FromServices] IActivityFeedRepository activityFeedRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -378,22 +384,117 @@ public static class PlatformEndpointRouteBuilderExtensions
                 return denied;
             }
 
-            var result = await importService.ImportLibraryAsync(id, cancellationToken);
-            if (result is null)
+            var progress = await importService.StartAsync(id, cancellationToken);
+            if (progress is null)
             {
                 return Results.NotFound();
             }
 
-            await activityFeedRepository.RecordActivityAsync(
-                "library.import.existing",
-                $"Deluno scanned {result.LibraryName} and brought in {result.ImportedCount} existing item{(result.ImportedCount == 1 ? "" : "s")}.",
-                null,
-                null,
-                "library",
-                result.LibraryId,
-                cancellationToken);
+            await EnqueueImportSliceAsync(jobScheduler, progress.Run, cancellationToken);
 
-            return Results.Ok(result);
+            if (progress.Run.ProcessedCount == 0)
+            {
+                await activityFeedRepository.RecordActivityAsync(
+                    "library.import.existing",
+                    $"Deluno started bringing in what is already in {progress.Run.LibraryName}.",
+                    null,
+                    null,
+                    "library",
+                    progress.Run.LibraryId,
+                    cancellationToken);
+            }
+
+            return Results.Accepted($"/api/libraries/{id}/import-existing", progress);
+        });
+
+        endpoints.MapGet("/api/libraries/{id}/import-existing", async (
+            string id,
+            HttpContext httpContext,
+            [FromServices] IExistingLibraryImportService importService,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var progress = await importService.GetProgressAsync(id, cancellationToken);
+            return progress is null ? Results.NotFound() : Results.Ok(progress);
+        });
+
+        endpoints.MapPost("/api/libraries/{id}/import-existing/pause", async (
+            string id,
+            HttpContext httpContext,
+            [FromServices] IExistingLibraryImportService importService,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var progress = await importService.SetStateAsync(id, LibraryImportRunStatuses.Paused, cancellationToken);
+            return progress is null ? Results.NotFound() : Results.Accepted(null, progress);
+        });
+
+        endpoints.MapPost("/api/libraries/{id}/import-existing/resume", async (
+            string id,
+            HttpContext httpContext,
+            [FromServices] IExistingLibraryImportService importService,
+            [FromServices] IJobScheduler jobScheduler,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var progress = await importService.SetStateAsync(id, LibraryImportRunStatuses.Running, cancellationToken);
+            if (progress is null)
+            {
+                return Results.NotFound();
+            }
+
+            await EnqueueImportSliceAsync(jobScheduler, progress.Run, cancellationToken);
+            return Results.Accepted(null, progress);
+        });
+
+        endpoints.MapPost("/api/libraries/{id}/import-existing/cancel", async (
+            string id,
+            HttpContext httpContext,
+            [FromServices] IExistingLibraryImportService importService,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var progress = await importService.SetStateAsync(id, LibraryImportRunStatuses.Cancelled, cancellationToken);
+            return progress is null ? Results.NotFound() : Results.Accepted(null, progress);
+        });
+
+        // What the run set aside rather than guessing at. Capped, because a bad
+        // library could produce one of these per title.
+        endpoints.MapGet("/api/libraries/{id}/import-existing/issues", async (
+            string id,
+            int? take,
+            HttpContext httpContext,
+            [FromServices] IExistingLibraryImportService importService,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var issues = await importService.ListIssuesAsync(id, Math.Clamp(take ?? 100, 1, 500), cancellationToken);
+            return Results.Ok(issues);
         });
 
 
@@ -1136,6 +1237,30 @@ public static class PlatformEndpointRouteBuilderExtensions
             "failed" or "error" => "failed",
             _ => "accepted"
         };
+
+    /// <summary>
+    /// Queues the next slice of an import run.
+    ///
+    /// The dedupe key carries the run's current position, so a continuation and
+    /// a resume sweep that both decide the same slice is next collapse into one
+    /// job, while a genuine continuation is never mistaken for the job that is
+    /// already running.
+    /// </summary>
+    private static async Task EnqueueImportSliceAsync(
+        IJobScheduler jobScheduler,
+        LibraryImportRunItem run,
+        CancellationToken cancellationToken)
+    {
+        await jobScheduler.EnqueueAsync(
+            new EnqueueJobRequest(
+                JobType: "library.import.existing",
+                Source: "library-import",
+                PayloadJson: JsonSerializer.Serialize(new { RunId = run.Id, run.LibraryId }),
+                RelatedEntityType: "library",
+                RelatedEntityId: run.LibraryId,
+                DedupeKey: LibraryImportSliceOutcome.ContinuationDedupeKey(run.Id, run.ProcessedCount)),
+            cancellationToken);
+    }
 
     private static LibraryAutomationPlanItem ToPlanItem(LibraryItem library)
     {

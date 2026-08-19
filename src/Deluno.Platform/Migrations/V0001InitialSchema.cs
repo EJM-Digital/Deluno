@@ -23,7 +23,8 @@ public static class PlatformDatabaseMigrations
         new V0015ProcessorConnections(),
         new V0016IntakeTitleOrigins(),
         new V0017DownloadClientPathMappings(),
-        new V0018LibraryMediaPlans()
+        new V0018LibraryMediaPlans(),
+        new V0019LibraryImportRuns()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration
