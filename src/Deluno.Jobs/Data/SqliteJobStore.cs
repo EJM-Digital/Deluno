@@ -16,7 +16,8 @@ public sealed class SqliteJobStore(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
     TimeProvider timeProvider,
     IRealtimeEventPublisher realtimeEventPublisher,
-    IDownloadDispatchesRepository downloadDispatchesRepository)
+    IDownloadDispatchesRepository downloadDispatchesRepository,
+    IJobLaneSignal? laneSignal = null)
     : IJobScheduler, IJobQueueRepository, IActivityFeedRepository
 {
     private static readonly JsonSerializerOptions PayloadJsonOptions = new()
@@ -137,6 +138,15 @@ public sealed class SqliteJobStore(
             now.ToString("O"),
             cancellationToken);
         DelunoObservability.JobsQueued.Add(1, new("job.type", job.JobType), new("source", job.Source));
+
+        // Only jobs runnable right now should wake a lane. LeaseBatchAsync
+        // filters on scheduled_utc <= @now, so a future-dated job would produce
+        // a wake-up that finds nothing.
+        if (job.ScheduledUtc <= now)
+        {
+            laneSignal?.Notify(job.JobType);
+        }
+
         return job;
     }
 
@@ -1039,6 +1049,11 @@ public sealed class SqliteJobStore(
             SeverityForCategory("library.search.requested"),
             now.ToString("O"),
             cancellationToken);
+
+        // The path the Search button takes. It only sets a flag for the
+        // planning lane to notice — waking that lane now is most of this
+        // issue's user-visible win.
+        laneSignal?.Notify("planning.wake");
         return true;
     }
 
@@ -1145,6 +1160,8 @@ public sealed class SqliteJobStore(
 
         var stateByLibraryId = await ReadLibraryAutomationStatesAsync(connection, transaction, cancellationToken);
         var pendingJobLibraries = await ReadPendingLibraryJobsAsync(connection, transaction, cancellationToken);
+
+        var queuedAny = false;
 
         var orderedLibraries = libraries
             .Select(library =>
@@ -1310,6 +1327,7 @@ public sealed class SqliteJobStore(
             }
 
             await InsertJobAsync(connection, transaction, job, cancellationToken);
+            queuedAny = true;
 
             DateTimeOffset? nextSearchUtc = library.AutoSearchEnabled
                 ? now.AddHours(Math.Max(1, library.SearchIntervalHours))
@@ -1358,6 +1376,10 @@ public sealed class SqliteJobStore(
         }
 
         await transaction.CommitAsync(cancellationToken);
+        if (queuedAny)
+        {
+            laneSignal?.Notify("library.search");
+        }
     }
 
     public async Task PlanEpisodeSearchesAsync(
@@ -1377,6 +1399,7 @@ public sealed class SqliteJobStore(
             cancellationToken);
 
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var queuedAny = false;
 
         foreach (var episode in episodes)
         {
@@ -1426,6 +1449,7 @@ public sealed class SqliteJobStore(
             }
 
             await InsertJobAsync(connection, transaction, job, cancellationToken);
+            queuedAny = true;
 
             var nextEligibleSearchUtc = now.AddDays(1);
             using (var update = connection.CreateCommand())
@@ -1465,6 +1489,10 @@ public sealed class SqliteJobStore(
         }
 
         await transaction.CommitAsync(cancellationToken);
+        if (queuedAny)
+        {
+            laneSignal?.Notify("episode.search");
+        }
     }
 
     public async Task<string> RecordDownloadDispatchAsync(
