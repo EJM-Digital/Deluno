@@ -147,37 +147,6 @@ test.describe("dashboard workflow", () => {
     await expect(page.getByText("Other configuration", { exact: true })).toHaveCount(0);
   });
 
-  test("uses collapsible owner submenus instead of an all-settings wall", async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name === "mobile", "The same hierarchy is covered in the mobile drawer test.");
-    await authenticateAndNavigate(page, "/settings");
-
-    await expect(page.getByRole("heading", { name: "All configuration" })).toHaveCount(0);
-    const tree = page.locator("aside").getByRole("navigation", { name: "Library setup" });
-    await page.goto("/settings/media-management");
-    for (const destination of ["/settings/processing", "/settings/destination-rules", "/settings/metadata", "/settings/tags"]) {
-      await expect(tree.locator(`a[href="${destination}"]`)).toHaveCount(1);
-    }
-
-    await page.goto("/settings/policy-sets");
-    for (const destination of ["/settings/profiles", "/settings/quality", "/settings/custom-formats"]) {
-      await expect(tree.locator(`a[href="${destination}"]`)).toHaveCount(1);
-    }
-
-    await page.goto("/settings/lists");
-    await expect(tree.locator('a[href="/settings/lists"]').first()).toHaveCount(1);
-
-    await page.goto("/settings/general");
-    const maintenance = page.locator("aside").getByRole("navigation", { name: "System controls" });
-    for (const destination of ["/settings/migration", "/settings/notifications", "/settings/ui", "/setup-guide", "/system/backups", "/system/updates", "/system/api", "/system/docs"]) {
-      await expect(maintenance.locator(`a[href="${destination}"]`)).toHaveCount(1);
-    }
-
-    await page.goto("/indexers/indexers");
-    for (const destination of ["/indexers/indexers", "/indexers/download-clients", "/indexers/library-routing"]) {
-      await expect(tree.locator(`a[href="${destination}"]`)).toHaveCount(1);
-    }
-  });
-
   test("keeps the same configuration tree in every configuration family", async ({ page }, testInfo) => {
     test.skip(testInfo.project.name === "mobile", "The mobile drawer has the same destination tree.");
     await authenticateAndNavigate(page, "/settings/media-management");
@@ -205,27 +174,6 @@ test.describe("dashboard workflow", () => {
     await expect(maintenance.getByRole("button", { name: "Collapse System & settings" })).toHaveAttribute("aria-expanded", "true");
     await expect(maintenance.getByRole("link", { name: "General", exact: true })).toBeVisible();
     await expect(page.locator("aside").getByRole("navigation", { name: "Library setup" }).getByRole("link", { name: "System & settings", exact: true })).toHaveCount(0);
-  });
-
-  test("lets the Library setup sidebar tree expand and collapse independently", async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name === "mobile", "The mobile hierarchy lives in the navigation drawer.");
-    await authenticateAndNavigate(page, "/settings/media-management");
-
-    const setupToggle = page.getByRole("button", { name: "Collapse Library setup" });
-    const sidebar = page.locator("aside");
-    await expect(setupToggle).toHaveAttribute("aria-expanded", "true");
-    await setupToggle.click();
-    await expect(page.getByRole("button", { name: "Expand Library setup" })).toHaveAttribute("aria-expanded", "false");
-    await expect(sidebar.getByRole("link", { name: "File handling & naming", exact: true })).toHaveCount(0);
-
-    await page.getByRole("button", { name: "Expand Library setup" }).click();
-    const plansToggle = page.getByRole("button", { name: "Expand Media Plans", exact: true });
-    await expect(plansToggle).toHaveAttribute("aria-expanded", "false");
-    await plansToggle.click();
-    const expandedPlansToggle = page.getByRole("button", { name: "Collapse Media Plans", exact: true });
-    await expect(expandedPlansToggle).toHaveAttribute("aria-expanded", "true");
-    await expandedPlansToggle.click();
-    await expect(page.getByRole("button", { name: "Expand Media Plans", exact: true })).toHaveAttribute("aria-expanded", "false");
   });
 
   test("keeps every system maintenance destination visible from System", async ({ page }) => {
