@@ -42,6 +42,14 @@ public interface IJobQueueRepository
     Task HeartbeatAsync(string workerId, CancellationToken cancellationToken);
 
     /// <summary>
+    /// How many jobs of this type are still going to be worked — queued,
+    /// running, or failed with retries left. Lets a planner top a queue up to
+    /// a target depth instead of either queueing everything at once or
+    /// queueing a fixed number per pass regardless of backlog.
+    /// </summary>
+    Task<int> CountActiveJobsAsync(string jobType, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Atomically checks and claims a recurring background pass. Returns
     /// <c>true</c> only when the caller is the one that gets to run it — either
     /// no prior run is recorded, or the last one is older than

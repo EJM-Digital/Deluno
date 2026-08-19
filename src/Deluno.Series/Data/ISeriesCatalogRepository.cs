@@ -11,6 +11,23 @@ public interface ISeriesCatalogRepository
 
     Task<IReadOnlyList<SeriesListItem>> ListAsync(CancellationToken cancellationToken);
 
+    /// <summary>
+    /// The stalest series still wanting metadata, filtered, ordered and
+    /// limited in SQL. Returns only what a refresh job payload needs.
+    /// </summary>
+    Task<IReadOnlyList<Deluno.Jobs.Contracts.MetadataRefreshCandidate>> ListStaleMetadataCandidatesAsync(
+        DateTimeOffset staleBefore,
+        DateTimeOffset retryAttemptsBefore,
+        int take,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Records that a metadata refresh was attempted, regardless of whether
+    /// the provider matched. Distinct from the success timestamp so an
+    /// unmatchable entry is not re-selected by every backfill pass.
+    /// </summary>
+    Task RecordMetadataAttemptAsync(string id, CancellationToken cancellationToken);
+
     Task<int> UpdateMonitoredAsync(IReadOnlyList<string> seriesIds, bool monitored, CancellationToken cancellationToken);
 
     Task<SeriesListItem?> UpdateMetadataAsync(

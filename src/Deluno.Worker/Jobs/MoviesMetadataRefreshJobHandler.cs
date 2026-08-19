@@ -26,6 +26,12 @@ public sealed class MoviesMetadataRefreshJobHandler(
             return "Movie metadata refresh skipped because the movie no longer exists.";
         }
 
+        // Stamped before the provider call and regardless of the outcome. The
+        // backfill selects on staleness, and staleness was previously only
+        // cleared by a successful match — so a title the provider cannot match
+        // stayed stale forever and was re-queued on every pass.
+        await movieCatalogRepository.RecordMetadataAttemptAsync(movie.Id, cancellationToken);
+
         var matches = await metadataProvider.SearchAsync(
             new MetadataLookupRequest(movie.Title, "movies", movie.ReleaseYear, movie.MetadataProviderId),
             cancellationToken);
