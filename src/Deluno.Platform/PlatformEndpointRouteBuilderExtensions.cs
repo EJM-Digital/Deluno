@@ -420,7 +420,7 @@ public static class PlatformEndpointRouteBuilderExtensions
 
             var manifest = new ExternalIntegrationManifest(
                 Product: "Deluno",
-                Version: "1",
+                Version: Deluno.Contracts.DelunoApiVersion.Current,
                 InstanceName: settings.AppInstanceName,
                 Capabilities:
                 [

@@ -47,6 +47,9 @@ export default defineConfig({
         // The suite logs in for every test from one address; the production
         // default of 10/min would throttle the run, not an attacker.
         Security__Login__PermitLimit: "100000",
+        // Same reasoning for the global API limiter: 189 tests driving the
+        // whole UI from one process would otherwise trip the 600/min default.
+        Security__Api__PermitLimit: "1000000",
         Server__Port: String(smokeApiPort)
       }
     },

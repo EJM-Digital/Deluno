@@ -20,6 +20,31 @@ Authorization: Bearer deluno_generated_key_here
 
 Deluno stores only a hash of generated API keys. The raw key is shown once at creation time. Revoking a key takes effect immediately.
 
+## Rate Limits
+
+Every `/api` request (other than static assets, `/hubs`, and `/api/metadata/artwork`) is subject to a global rate limit, in addition to the stricter limit on `/api/auth/login`. The default budget is **600 requests per 60-second window**, partitioned per API key (or per bearer token, or per remote address for unauthenticated requests) — not shared across callers.
+
+Configure it with:
+
+```json
+{
+  "Security": {
+    "Api": {
+      "PermitLimit": 600,
+      "WindowSeconds": 60
+    }
+  }
+}
+```
+
+A request over the limit gets `429 Too Many Requests`, a `Retry-After` header naming the window in seconds, and a JSON body:
+
+```json
+{ "error": "Rate limit exceeded.", "retryAfterSeconds": 60 }
+```
+
+There is no back-pressure signal beyond this — back off and retry after the window rather than retrying immediately.
+
 ## OpenAPI And Interactive Docs
 
 Deluno publishes machine-readable API docs and an interactive Swagger UI:
@@ -28,6 +53,12 @@ Deluno publishes machine-readable API docs and an interactive Swagger UI:
 - `GET /api/docs`
 
 Use `/api/openapi/v1.json` as the contract source for generated clients and integration validation.
+
+## Versioning
+
+`/api/v1/...` is the stable form to code against. The bare `/api/...` form is an unversioned alias that always tracks the newest version Deluno currently serves — convenient for local scripts, but it can change shape across a Deluno update without notice.
+
+Every response — success or error — carries an `X-Deluno-Api-Version` header naming the version that served it (currently `v1`). Requesting an unsupported version (`/api/v2/...` today) returns `400 Bad Request` with an explicit message, not a `404`, so a client can tell "this version doesn't exist yet" apart from "this route doesn't exist".
 
 ## Webhooks
 
@@ -101,7 +132,7 @@ Response shape:
 ```json
 {
   "product": "Deluno",
-  "version": "1",
+  "version": "v1",
   "instanceName": "Deluno",
   "capabilities": [
     "movies",
