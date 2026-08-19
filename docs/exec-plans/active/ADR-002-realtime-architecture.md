@@ -119,6 +119,8 @@ has no realtime at all and no degraded mode.
 Restore negotiation so the stack degrades WS → SSE → long-polling. Deluno then
 gets SSE anyway, as a fallback, without being rebuilt around it.
 
+Done: negotiation restored (#133).
+
 ## The design
 
 ### Envelope
