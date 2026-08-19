@@ -13,10 +13,6 @@ work) — see `628fa52`.
 
 ## Open — realtime (`ADR-002-realtime-architecture.md`)
 
-- Restore SignalR negotiation. The client sets `skipNegotiation: true` with a
-  forced WebSockets transport, which disables the WS → SSE → long-poll fallback
-  entirely. Behind a reverse proxy that will not upgrade, the app has no
-  realtime and no degraded mode.
 - Wire the five orphaned events. The backend publishes `DispatchDetected`,
   `DispatchGrabAttempt`, `DispatchGrabCompleted`, `DispatchImportStarted` and
   `DispatchImportCompleted`; `use-signalr.tsx` registers handlers for eight of
@@ -170,6 +166,11 @@ that hardened into limits.
 
 ## Closed — fixed this session
 
+- **SignalR forced WebSockets and disabled negotiation, so a reverse proxy that
+  would not upgrade left the app with no realtime and no degraded mode.**
+  Removed `transport: WebSockets` and `skipNegotiation: true` from
+  `use-signalr.tsx`; the client now negotiates and falls back
+  WebSockets → SSE → long-polling. `#133`.
 - **`ProcessJobAsync` was a 490-line, 14-parameter dispatch chain, and `Deluno.Worker`
   had zero tests.** Split into ten `IJobHandler` implementations under
   `src/Deluno.Worker/Jobs/`, resolved by a `JobHandlerRegistry` keyed on job type. An

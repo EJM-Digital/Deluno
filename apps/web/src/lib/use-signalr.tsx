@@ -7,7 +7,7 @@
  *   - Auto-connect on mount (with auth token if present)
  *   - Exponential-backoff reconnect (max 30 s)
  *   - Connection state surfaced via `useSignalRStatus()`
- *   - WebSockets-only transport for predictable low-overhead live updates
+ *   - Negotiated transport with automatic fallback (WebSockets -> SSE -> long-polling)
  *   - Dev mode: logs events to console when VITE_WS_DEBUG=1
  *
  * Every push arrives wrapped in an envelope carrying a monotonic sequence
@@ -221,9 +221,10 @@ export function SignalRProvider({
 
     const builder = new signalR.HubConnectionBuilder()
       .withUrl(HUB_URL, {
-        accessTokenFactory: accessToken ? () => accessToken : undefined,
-        transport: signalR.HttpTransportType.WebSockets,
-        skipNegotiation: true
+        // No forced transport and no skipped negotiation: let SignalR
+        // negotiate and degrade WebSockets -> SSE -> long-polling. See
+        // docs/exec-plans/active/ADR-002-realtime-architecture.md.
+        accessTokenFactory: accessToken ? () => accessToken : undefined
       })
       .withAutomaticReconnect([0, 2000, 5000, 10000, 30000])
       .configureLogging(DEBUG ? signalR.LogLevel.Information : signalR.LogLevel.None)

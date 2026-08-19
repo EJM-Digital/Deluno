@@ -56,7 +56,10 @@ function serveApp(request, response) {
 
 const server = http.createServer((request, response) => {
   const pathname = new URL(request.url ?? "/", "http://localhost").pathname;
-  if (pathname.startsWith("/api/")) {
+  // /hubs must reach the API as well. This server does not proxy WebSocket
+  // upgrades, so the client negotiates down to SSE -- which is exactly the
+  // fallback this change exists to restore.
+  if (pathname.startsWith("/api/") || pathname.startsWith("/hubs")) {
     proxyApi(request, response);
     return;
   }
