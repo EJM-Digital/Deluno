@@ -22,8 +22,6 @@ public sealed class MovieMigrationCatalogImporter(IMovieCatalogRepository reposi
         var libraries = request.Libraries.Where(library => library.MediaType == MediaType).ToArray();
         var applied = new List<MigrationAppliedItem>();
         var warnings = new List<string>();
-        var existingIds = (await repository.ListAsync(cancellationToken)).Select(item => item.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
-
         foreach (var title in titles)
         {
             var library = ResolveLibrary(title, libraries);
@@ -33,6 +31,17 @@ public sealed class MovieMigrationCatalogImporter(IMovieCatalogRepository reposi
                 continue;
             }
 
+            // Migration imports can contain a small batch of titles while the
+            // existing library is huge. Ask SQLite for this title's indexed
+            // match instead of materialising the whole catalogue merely to
+            // decide whether AddAsync will upsert it.
+            var existingId = await repository.FindExistingIdAsync(
+                title.Title,
+                title.Year,
+                title.ImdbId,
+                title.MetadataProvider,
+                title.MetadataProviderId,
+                cancellationToken);
             var movie = await repository.AddAsync(new CreateMovieRequest(
                 title.Title,
                 title.Year,
@@ -40,7 +49,7 @@ public sealed class MovieMigrationCatalogImporter(IMovieCatalogRepository reposi
                 title.Monitored,
                 title.MetadataProvider,
                 title.MetadataProviderId), cancellationToken);
-            var alreadyPresent = !existingIds.Add(movie.Id);
+            var alreadyPresent = existingId is not null;
             await repository.EnsureWantedStateAsync(
                 movie.Id,
                 library.Id,
