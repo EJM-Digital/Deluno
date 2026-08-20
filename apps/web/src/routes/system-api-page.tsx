@@ -186,7 +186,7 @@ export function SystemApiPage() {
                     ["read", "GET", "/api/integrations/external/activity"],
                     ["read", "GET", "/api/monitoring/dashboard"],
                     ["read", "GET", "/api/monitoring/alerts"],
-                    ["read", "GET", "/api/monitoring/diagnostics?query=failed&take=100"],
+                    ["read", "GET", "/api/monitoring/diagnostics?query=failed&pageSize=100&pageToken=… (maximum 500)"],
                     ["read", "GET", "/api/monitoring/export/prometheus"],
                     ["read", "GET", "/api/monitoring/export/influx"],
                     ["read", "GET", "/api/ranking-model/status"],
@@ -201,7 +201,7 @@ export function SystemApiPage() {
                     ["queue", "POST", "/api/integrations/external/trigger-refresh"],
                     ["queue", "POST", "/api/download-clients/{clientId}/webhook"],
                     ["write", "POST", "/api/intake-sources/{id}/sync"],
-                    ["read", "GET", "/api/intake-sources/{id}/diagnostics?take=50"],
+                    ["read", "GET", "/api/intake-sources/{id}/diagnostics?pageSize=50&pageToken=… (maximum 500)"],
                     ["write", "GET|POST|PUT|DELETE", "/api/notification-webhooks"]
                   ].map(([scope, method, path]) => (
                     <div key={`${method}:${path}`} className="grid gap-2 rounded-lg border border-hairline bg-background/35 p-3 sm:grid-cols-[6rem_1fr_6rem] sm:items-center">

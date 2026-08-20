@@ -1,5 +1,6 @@
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
+using Deluno.Contracts;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Builder;
@@ -95,7 +96,7 @@ public static class DownloadDispatchesEndpointRouteBuilderExtensions
 
         var pagination = new DispatchPaginationOptions
         {
-            PageSize = Math.Max(10, Math.Min(pageSize, 100)),
+            PageSize = new PageRequest(pageSize, pageToken).BoundedPageSize,
             PageToken = pageToken
         };
 
@@ -103,7 +104,7 @@ public static class DownloadDispatchesEndpointRouteBuilderExtensions
 
         return Results.Ok(new
         {
-            dispatches = items,
+            items,
             nextPageToken,
             hasMore = !string.IsNullOrEmpty(nextPageToken)
         });
@@ -280,13 +281,13 @@ public static class DownloadDispatchesEndpointRouteBuilderExtensions
 
         var pagination = new DispatchPaginationOptions
         {
-            PageSize = Math.Max(10, Math.Min(pageSize, 100)),
+            PageSize = new PageRequest(pageSize, pageToken).BoundedPageSize,
             PageToken = pageToken
         };
 
         var (items, nextPageToken) = await repository.QueryDispatchesAsync(filter, pagination, cancellationToken);
 
-        var resolutions = items
+        var resolutionItems = items
             .Where(d => !string.IsNullOrEmpty(d.ImportStatus))
             .Select(d => new ImportResolutionItem(
                 Id: d.Id,
@@ -311,7 +312,7 @@ public static class DownloadDispatchesEndpointRouteBuilderExtensions
 
         return Results.Ok(new
         {
-            resolutions,
+            items = resolutionItems,
             nextPageToken,
             hasMore = !string.IsNullOrEmpty(nextPageToken)
         });

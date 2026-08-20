@@ -15,7 +15,8 @@ public sealed class DownloadDispatchRepositoryTests
         string dispatchId,
         string libraryId,
         string entityId,
-        string releaseName)
+        string releaseName,
+        DateTimeOffset? createdUtc = null)
     {
         await using var connection = await connectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Jobs,
@@ -29,7 +30,7 @@ public sealed class DownloadDispatchRepositoryTests
                 indexer_name, download_client_id, download_client_name, status, created_utc
             ) VALUES (
                 @id, @libraryId, 'movie', 'movie', @entityId, @releaseName,
-                'test-indexer', 'qbittorrent-main', 'qBittorrent', 'initial', datetime('now')
+                'test-indexer', 'qbittorrent-main', 'qBittorrent', 'initial', @createdUtc
             )
             """;
 
@@ -53,7 +54,57 @@ public sealed class DownloadDispatchRepositoryTests
         nameParam.Value = releaseName;
         command.Parameters.Add(nameParam);
 
+        var createdUtcParam = command.CreateParameter();
+        createdUtcParam.ParameterName = "@createdUtc";
+        createdUtcParam.Value = (createdUtc ?? DateTimeOffset.UtcNow).ToString("O");
+        command.Parameters.Add(createdUtcParam);
+
         await command.ExecuteNonQueryAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task QueryDispatches_uses_a_keyset_token_when_a_newer_dispatch_arrives_mid_walk()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T04:00:00Z"));
+
+        await new JobsSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var repository = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var createdUtc = DateTimeOffset.Parse("2026-04-28T04:00:00Z");
+        var originalIds = new[] { "dispatch-a", "dispatch-b", "dispatch-c" };
+        foreach (var id in originalIds)
+        {
+            await InsertDispatchAsync(storage.Factory, id, "movies-main", id, id, createdUtc);
+        }
+
+        var filter = new DispatchQueryFilter();
+        var firstPage = await repository.QueryDispatchesAsync(
+            filter,
+            new DispatchPaginationOptions { PageSize = 2 },
+            CancellationToken.None);
+
+        Assert.NotNull(firstPage.NextPageToken);
+        await InsertDispatchAsync(
+            storage.Factory,
+            "newer-dispatch",
+            "movies-main",
+            "newer",
+            "newer",
+            createdUtc.AddMinutes(1));
+
+        var secondPage = await repository.QueryDispatchesAsync(
+            filter,
+            new DispatchPaginationOptions { PageSize = 2, PageToken = firstPage.NextPageToken },
+            CancellationToken.None);
+
+        var walkedIds = firstPage.Items.Concat(secondPage.Items).Select(item => item.Id).ToArray();
+        Assert.Equal(originalIds.OrderByDescending(id => id), walkedIds);
+        Assert.DoesNotContain("newer-dispatch", walkedIds);
+        Assert.Null(secondPage.NextPageToken);
     }
 
     [Fact]

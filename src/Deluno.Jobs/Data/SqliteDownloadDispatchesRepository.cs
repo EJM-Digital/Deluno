@@ -1,5 +1,6 @@
 using System.Data.Common;
 using System.Text.Json;
+using Deluno.Contracts;
 using Deluno.Infrastructure.Storage;
 using Deluno.Jobs.Contracts;
 
@@ -291,15 +292,8 @@ public sealed class SqliteDownloadDispatchesRepository(
             parameters["maxGrabTime"] = filter.MaxGrabTime.Value.ToString("O");
         }
 
-        var pageSize = Math.Max(10, Math.Min(pagination.PageSize, 100));
-        var offset = 0;
-
-        // Simple cursor implementation: decode offset from page token
-        if (!string.IsNullOrEmpty(pagination.PageToken) &&
-            int.TryParse(pagination.PageToken, out var decodedOffset))
-        {
-            offset = decodedOffset;
-        }
+        var pageSize = new PageRequest(pagination.PageSize, pagination.PageToken).BoundedPageSize;
+        var token = DelunoPageToken.Decode(pagination.PageToken, 2);
 
         var whereClause = string.Join(" AND ", whereConditions);
 
@@ -319,9 +313,11 @@ public sealed class SqliteDownloadDispatchesRepository(
                 import_failure_message, circuit_open_until_utc, next_retry_eligible_utc, attempt_count
             FROM download_dispatches
             WHERE {{whereClause}}
-            ORDER BY grab_attempted_utc DESC, created_utc DESC
+              AND (@sortUtc IS NULL
+                   OR COALESCE(grab_attempted_utc, created_utc) < @sortUtc
+                   OR (COALESCE(grab_attempted_utc, created_utc) = @sortUtc AND id < @id))
+            ORDER BY COALESCE(grab_attempted_utc, created_utc) DESC, id DESC
             LIMIT @limit
-            OFFSET @offset
             """;
 
         foreach (var param in parameters)
@@ -330,7 +326,8 @@ public sealed class SqliteDownloadDispatchesRepository(
         }
 
         AddParameter(command, "@limit", fetchCount);
-        AddParameter(command, "@offset", offset);
+        AddParameter(command, "@sortUtc", token?[0]);
+        AddParameter(command, "@id", token?[1]);
 
         var items = new List<DownloadDispatchItem>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -343,7 +340,10 @@ public sealed class SqliteDownloadDispatchesRepository(
         if (items.Count > pageSize)
         {
             items.RemoveAt(pageSize);
-            nextPageToken = (offset + pageSize).ToString();
+            var last = items[^1];
+            nextPageToken = DelunoPageToken.Encode(
+                (last.GrabAttemptedUtc ?? last.CreatedUtc).ToString("O"),
+                last.Id);
         }
 
         return (items, nextPageToken);

@@ -14,7 +14,7 @@ import { useState } from "react";
 import { Link, useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
 import { ArrowLeft, LoaderCircle, Search, Trash2 } from "lucide-react";
 import {
-  fetchJson,
+  fetchJson, fetchPageItems,
   type ActivityEventItem,
   type DecisionExplanationItem,
   type DownloadDispatchItem,
@@ -93,10 +93,10 @@ export async function movieDetailLoader({
     fetchJson<MovieListItem>(`/api/movies/${id}`),
     fetchJson<MovieWantedSummary>("/api/movies/wanted"),
     fetchJson<MovieSearchHistoryItem[]>("/api/movies/search-history"),
-    fetchJson<DownloadDispatchItem[]>("/api/download-dispatches?mediaType=movies"),
+    fetchPageItems<DownloadDispatchItem>("/api/download-dispatches?mediaType=movies&pageSize=20"),
     fetchJson<MovieImportRecoverySummary>("/api/movies/import-recovery"),
-    fetchJson<ActivityEventItem[]>(`/api/activity?relatedEntityType=movie&relatedEntityId=${id}&take=20`),
-    fetchJson<DecisionExplanationItem[]>(`/api/decisions?relatedEntityType=movie&relatedEntityId=${id}&take=40`),
+    fetchPageItems<ActivityEventItem>(`/api/activity?relatedEntityType=movie&relatedEntityId=${id}&pageSize=20`),
+    fetchPageItems<DecisionExplanationItem>(`/api/decisions?relatedEntityType=movie&relatedEntityId=${id}&pageSize=40`),
     fetchJson<LibraryItem[]>("/api/libraries"),
     fetchJson<MovieWorkflowStatus>(`/api/movies/${id}/workflow-status`).catch(() => null),
     fetchJson<IntakeTitleOriginItem[]>(`/api/intake-title-origins?mediaType=movies&entityId=${encodeURIComponent(id)}`).catch(() => []),

@@ -45,7 +45,7 @@ Implemented REST endpoints:
 - `GET /api/system/jobs`
 - `GET /api/monitoring/dashboard`
 - `GET /api/monitoring/alerts`
-- `GET /api/monitoring/diagnostics?query=&category=&severity=&sinceUtc=&take=`
+- `GET /api/monitoring/diagnostics?query=&category=&severity=&sinceUtc=&pageSize=&pageToken=`
 - `GET /api/monitoring/export/prometheus`
 - `GET /api/monitoring/export/influx`
 - `GET /api/openapi/v1.json`
@@ -113,14 +113,13 @@ Implemented endpoints:
 
 Current UI contract expectations:
 
-- library rows should treat `GET /api/movies` as the source of truth for catalog state
+- library rows should treat `GET /api/movies/page` as the source of truth for catalog state
 - wanted and import-recovery are first-class operational views, not hidden utilities
 - monitoring, search, metadata, and bulk actions are already part of the live product surface
 
 Current gaps:
 
-- no paging, filtering, or sorting query contract is exposed at the route layer yet
-- the library view UI is outgrowing the current list payload shape and will need richer filtering/summary contracts
+- the paged catalogue contract includes SQL-backed filtering, sorting, total count, and facets; callers must follow `nextPageToken` rather than request the whole catalogue
 
 ## Series
 
@@ -204,7 +203,7 @@ Implemented CRUD surfaces:
 - `GET|POST|PUT|DELETE /api/tags`
 - `GET|POST|PUT|DELETE /api/intake-sources`
 - `POST /api/intake-sources/{id}/sync`
-- `GET /api/intake-sources/{id}/diagnostics`
+- `GET /api/intake-sources/{id}/diagnostics?pageSize=n&pageToken=…`
 - `GET|POST|PUT|DELETE /api/custom-formats`
 - `POST /api/custom-formats/dry-run`
 - `GET|POST|PUT|DELETE /api/destination-rules`
@@ -309,7 +308,7 @@ percent of the work as if it were all of it.
 
 `GET /api/{movies,series}/page` takes `search`, `status`, `sort`, `direction`,
 `pageSize` and `pageToken`, and returns
-`{ items, nextPageToken, totalCount, facets }`.
+`{ items, nextPageToken, hasMore, totalCount, facets }`.
 
 - **Search, filter, sort and the counts all happen in SQL.** The list surface must
   not fetch the catalogue and work it out in the browser; that is what stops
@@ -322,7 +321,8 @@ percent of the work as if it were all of it.
   once per filter rather than once per page.
 - `sort` is one of `added` (default), `title`, `year`, `rating`; each has an index
   behind it. `status` is one of `all`, `monitored`, `unmonitored`, `downloaded`,
-  `missing`, or `upgrades`. `pageSize` is clamped to 200.
+  `missing`, or `upgrades`. `pageSize` is capped at the shared maximum of 500;
+  `hasMore` makes that bounded result explicit.
 - Rows carry `fileSizeBytes` and `currentQuality`, plus file path, codecs, audio
   details, release group, runtime, popularity, votes, and derived bitrate. The legacy
   unbounded catalogue routes were removed; consumers must use this paged contract.
@@ -394,8 +394,16 @@ Current gaps:
 
 Implemented core operational endpoints:
 
-- `GET /api/jobs?take=n`
-- `GET /api/activity?take=n`
+- `GET /api/jobs?pageSize=n&pageToken=…`
+- `GET /api/activity?pageSize=n&pageToken=…`
+- `GET /api/decisions?pageSize=n&pageToken=…`
+- `GET /api/library-automation?pageSize=n&pageToken=…`
+- `GET /api/search-cycles?pageSize=n&pageToken=…`
+- `GET /api/search-retry-windows?pageSize=n&pageToken=…`
+- `GET /api/download-dispatches?pageSize=n&pageToken=…`
+- `GET /api/v1/download-dispatches?pageSize=n&pageToken=…`
+- `GET /api/v1/import-resolutions?pageSize=n&pageToken=…`
+- `GET /api/download-health?pageSize=n&pageToken=…`
 - `GET /api/integrations/external/manifest`
 - `GET /api/integrations/external/health`
 - `GET /api/integrations/external/queue`
@@ -406,6 +414,8 @@ Implemented core operational endpoints:
 Current UI contract expectations:
 
 - activity and queue are already fed by durable job/activity stores, not just transient UI state
+- every operational list returns `{ items, nextPageToken, hasMore }`; page tokens are opaque seek cursors and `pageSize` is capped at 500
+- intake diagnostics return `{ source, diagnostics: { items, nextPageToken, hasMore } }`; catalogue pages add `totalCount` and `facets` on their first page
 - refine-before-import and external processor coordination are implemented platform concerns
 
 Current gaps:

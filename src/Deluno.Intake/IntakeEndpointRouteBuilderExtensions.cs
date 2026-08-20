@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Deluno.Contracts;
 using Deluno.Intake.Contracts;
 using Deluno.Intake.Data;
 using Deluno.Jobs.Contracts;
@@ -301,7 +302,8 @@ public static class IntakeEndpointRouteBuilderExtensions
 
         intakeSources.MapGet("{id}/diagnostics", async (
             string id,
-            int? take,
+            int? pageSize,
+            string? pageToken,
             HttpContext httpContext,
             [FromServices] IIntakeRepository repository,
             IActivityFeedRepository activityFeedRepository,
@@ -319,12 +321,12 @@ public static class IntakeEndpointRouteBuilderExtensions
                 return Results.NotFound();
             }
 
-            var cappedTake = Math.Clamp(take ?? 50, 1, 200);
-            var activity = await activityFeedRepository.ListActivityAsync(cappedTake, "intake-source", source.Id, cancellationToken);
+            var diagnostics = await activityFeedRepository.ListActivityPageAsync(
+                new PageRequest(pageSize ?? 50, pageToken), "intake-source", source.Id, cancellationToken);
             return Results.Ok(new
             {
                 source,
-                diagnostics = activity
+                diagnostics
             });
         });
 

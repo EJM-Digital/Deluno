@@ -1,6 +1,7 @@
 using System.Data.Common;
 using System.Globalization;
 using Deluno.Api.Health;
+using Deluno.Contracts;
 using Deluno.Infrastructure.Storage;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
@@ -54,11 +55,12 @@ public sealed class MonitoringService(
         return await BuildAlertsAsync(now, readiness, storage, dispatch, cancellationToken);
     }
 
-    public async Task<IReadOnlyList<MonitoringDiagnosticItem>> SearchDiagnosticsAsync(
+    public async Task<Page<MonitoringDiagnosticItem>> SearchDiagnosticsAsync(
         MonitoringDiagnosticsQuery query,
         CancellationToken cancellationToken)
     {
-        var cappedTake = Math.Clamp(query.Take, 1, 500);
+        var pageSize = query.Page.BoundedPageSize;
+        var token = DelunoPageToken.Decode(query.Page.PageToken, 2);
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Jobs,
             cancellationToken);
@@ -71,13 +73,14 @@ public sealed class MonitoringService(
             FROM activity_events
             WHERE (@category IS NULL OR category = @category)
               AND (@sinceUtc IS NULL OR created_utc >= @sinceUtc)
+              AND (@createdUtc IS NULL OR created_utc < @createdUtc OR (created_utc = @createdUtc AND id < @id))
               AND (
                     @query IS NULL OR
                     category LIKE @likeQuery OR
                     message LIKE @likeQuery OR
                     COALESCE(details_json, '') LIKE @likeQuery
                   )
-            ORDER BY created_utc DESC
+            ORDER BY created_utc DESC, id DESC
             LIMIT @take;
             """;
 
@@ -85,18 +88,31 @@ public sealed class MonitoringService(
         AddParameter(command, "@sinceUtc", query.SinceUtc?.ToString("O"));
         AddParameter(command, "@query", string.IsNullOrWhiteSpace(query.Query) ? null : query.Query.Trim());
         AddParameter(command, "@likeQuery", string.IsNullOrWhiteSpace(query.Query) ? null : $"%{query.Query.Trim()}%");
-        AddParameter(command, "@take", cappedTake);
+        AddParameter(command, "@take", pageSize + 1);
+        AddParameter(command, "@createdUtc", token?[0]);
+        AddParameter(command, "@id", token?[1]);
 
         var severityFilter = string.IsNullOrWhiteSpace(query.Severity)
             ? null
             : query.Severity.Trim();
 
-        var results = new List<MonitoringDiagnosticItem>();
+        var results = new List<MonitoringDiagnosticItem>(pageSize + 1);
+        var fetched = 0;
+        string? cursorCreatedUtc = null;
+        string? cursorId = null;
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
+            fetched++;
+            if (fetched > pageSize)
+            {
+                continue;
+            }
+
             var category = reader.GetString(1);
             var severity = SeverityForCategory(category);
+            cursorCreatedUtc = reader.GetString(6);
+            cursorId = reader.GetString(0);
             if (severityFilter is not null &&
                 !string.Equals(severity, severityFilter, StringComparison.OrdinalIgnoreCase))
             {
@@ -114,7 +130,11 @@ public sealed class MonitoringService(
                 CreatedUtc: DateTimeOffset.Parse(reader.GetString(6), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind)));
         }
 
-        return results;
+        var hasMore = fetched > pageSize;
+
+        return Page<MonitoringDiagnosticItem>.Of(
+            results,
+            hasMore ? DelunoPageToken.Encode(cursorCreatedUtc, cursorId) : null);
     }
 
     public async Task<MonitoringExportSnapshot> BuildExportSnapshotAsync(CancellationToken cancellationToken)

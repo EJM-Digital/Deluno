@@ -22,7 +22,7 @@ import { WsStatusBadge } from "../components/shell/ws-status-badge";
 import { useSignalREvent } from "../lib/use-signalr";
 import {
   emptyPlatformSettingsSnapshot,
-  fetchJson,
+  fetchJson, fetchPageItems,
   type ActivityEventItem,
   type BackupItem,
   type BackupSettingsSnapshot,
@@ -68,16 +68,16 @@ interface SystemLoaderData {
 export async function systemLoader(): Promise<SystemLoaderData> {
   const [settings, jobs, activity, indexers, downloadClients, backups, backupSettings, updateStatus, automation, searchCycles, retryWindows, monitoring] = await Promise.all([
     fetchJson<PlatformSettingsSnapshot>("/api/settings"),
-    fetchJson<JobQueueItem[]>("/api/jobs"),
-    fetchJson<ActivityEventItem[]>("/api/activity?take=200"),
+    fetchPageItems<JobQueueItem>("/api/jobs?pageSize=25"),
+    fetchPageItems<ActivityEventItem>("/api/activity?pageSize=200"),
     fetchJson<IndexerItem[]>("/api/indexers"),
     fetchJson<DownloadClientItem[]>("/api/download-clients"),
     fetchJson<BackupItem[]>("/api/backups"),
     fetchJson<BackupSettingsSnapshot>("/api/backups/settings"),
     fetchJson<UpdateStatusResponse>("/api/updates/status"),
-    fetchJson<LibraryAutomationStateItem[]>("/api/library-automation"),
-    fetchJson<SearchCycleRunItem[]>("/api/search-cycles?take=12"),
-    fetchJson<SearchRetryWindowItem[]>("/api/search-retry-windows?take=12"),
+    fetchPageItems<LibraryAutomationStateItem>("/api/library-automation?pageSize=50"),
+    fetchPageItems<SearchCycleRunItem>("/api/search-cycles?pageSize=12"),
+    fetchPageItems<SearchRetryWindowItem>("/api/search-retry-windows?pageSize=12"),
     fetchJson<MonitoringDashboardSnapshot>("/api/monitoring/dashboard")
   ]);
 

@@ -7,6 +7,8 @@ public interface IJobQueueRepository
 {
     Task<IReadOnlyList<JobQueueItem>> ListAsync(int take, CancellationToken cancellationToken);
 
+    Task<Page<JobQueueItem>> ListPageAsync(PageRequest request, CancellationToken cancellationToken);
+
     Task<int> RetryFailedAsync(CancellationToken cancellationToken);
 
     /// <summary>
@@ -71,8 +73,17 @@ public interface IJobQueueRepository
 
     Task<IReadOnlyDictionary<string, LibraryAutomationStateItem>> ListLibraryAutomationStatesAsync(CancellationToken cancellationToken);
 
+    Task<Page<LibraryAutomationStateItem>> ListLibraryAutomationStatesPageAsync(
+        PageRequest request,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<SearchCycleRunItem>> ListSearchCycleRunsAsync(
         int take,
+        string? libraryId,
+        CancellationToken cancellationToken);
+
+    Task<Page<SearchCycleRunItem>> ListSearchCycleRunsPageAsync(
+        PageRequest request,
         string? libraryId,
         CancellationToken cancellationToken);
 
@@ -81,8 +92,18 @@ public interface IJobQueueRepository
         string? libraryId,
         CancellationToken cancellationToken);
 
+    Task<Page<SearchRetryWindowItem>> ListSearchRetryWindowsPageAsync(
+        PageRequest request,
+        string? libraryId,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<DownloadDispatchItem>> ListDownloadDispatchesAsync(
         int take,
+        string? mediaType,
+        CancellationToken cancellationToken);
+
+    Task<Page<DownloadDispatchItem>> ListDownloadDispatchesPageAsync(
+        PageRequest request,
         string? mediaType,
         CancellationToken cancellationToken);
 

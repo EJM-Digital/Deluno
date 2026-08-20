@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Deluno.Contracts;
 using Deluno.Infrastructure.Storage;
 using Deluno.Platform.Contracts;
 using Deluno.Security;
@@ -193,6 +194,40 @@ public sealed class SqlitePlatformSettingsRepository(
             .OrderByDescending(record => record.LastObservedUtc)
             .Take(Math.Clamp(take, 1, 200))
             .ToArray();
+    }
+
+    public async Task<Page<DownloadHealthRecord>> ListDownloadHealthRecordsPageAsync(
+        PageRequest request,
+        CancellationToken cancellationToken)
+    {
+        var pageSize = request.BoundedPageSize;
+        var token = DelunoPageToken.Decode(request.PageToken, 4);
+        DateTimeOffset cursorObservedUtc = default;
+        var hasCursor = token is { } cursor &&
+            DateTimeOffset.TryParse(cursor[0], CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out cursorObservedUtc);
+        var now = timeProvider.GetUtcNow();
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
+
+        var records = ReadDownloadHealthRecords(await ReadSettingsAsync(connection, cancellationToken))
+            .Where(record => now - record.LastObservedUtc <= DownloadHealthRetention)
+            .OrderByDescending(record => record.LastObservedUtc)
+            .ThenBy(record => record.ClientId, StringComparer.Ordinal)
+            .ThenBy(record => record.QueueItemId, StringComparer.Ordinal)
+            .ThenBy(record => record.Kind, StringComparer.Ordinal)
+            .Where(record => !hasCursor ||
+                record.LastObservedUtc < cursorObservedUtc ||
+                (record.LastObservedUtc == cursorObservedUtc && string.CompareOrdinal(record.ClientId, token![1]) > 0) ||
+                (record.LastObservedUtc == cursorObservedUtc && string.Equals(record.ClientId, token![1], StringComparison.Ordinal) && string.CompareOrdinal(record.QueueItemId, token[2]) > 0) ||
+                (record.LastObservedUtc == cursorObservedUtc && string.Equals(record.ClientId, token![1], StringComparison.Ordinal) && string.Equals(record.QueueItemId, token[2], StringComparison.Ordinal) && string.CompareOrdinal(record.Kind, token[3]) > 0))
+            .Take(pageSize + 1)
+            .ToList();
+
+        var hasMore = records.Count > pageSize;
+        if (hasMore) records.RemoveAt(records.Count - 1);
+        var nextPageToken = hasMore
+            ? DelunoPageToken.Encode(records[^1].LastObservedUtc.ToString("O"), records[^1].ClientId, records[^1].QueueItemId, records[^1].Kind)
+            : null;
+        return Page<DownloadHealthRecord>.Of(records, nextPageToken);
     }
 
     public async Task<bool> IsDownloadReleaseBlockedAsync(string clientId, string releaseName, CancellationToken cancellationToken)

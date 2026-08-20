@@ -30,7 +30,7 @@ import { toast } from "../components/shell/toaster";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { useVisibleInterval } from "../hooks/use-visible-interval";
 import {
-  fetchJson,
+  fetchJson, fetchPageItems,
   type LibraryAutomationStateItem,
   type LibraryItem,
   type PlatformSettingsSnapshot,
@@ -69,10 +69,10 @@ interface LoaderData {
 
 export async function searchCyclesLoader(): Promise<LoaderData> {
   const [automationStates, libraries, settings, searchCycles] = await Promise.all([
-    fetchJson<LibraryAutomationStateItem[]>("/api/library-automation"),
+    fetchPageItems<LibraryAutomationStateItem>("/api/library-automation?pageSize=50"),
     fetchJson<LibraryItem[]>("/api/libraries"),
     fetchJson<PlatformSettingsSnapshot>("/api/settings"),
-    fetchJson<SearchCycleRunItem[]>("/api/search-cycles?take=50")
+    fetchPageItems<SearchCycleRunItem>("/api/search-cycles?pageSize=50")
   ]);
   return { automationStates, libraries, settings, searchCycles };
 }
