@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLoaderData, useLocation, useRevalidator } from "react-router-dom";
 import {
   Activity,
@@ -44,13 +44,16 @@ import { authedFetch } from "../lib/use-auth";
 import { densityDisplayName } from "../lib/use-density";
 import { Button } from "../components/ui/button";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
+import type { DrawerSaveState } from "../components/ui/drawer";
 import { Input } from "../components/ui/input";
+import { PageFooter } from "../components/ui/page-footer";
 import { PathInput } from "../components/ui/path-input";
 import { Select } from "../components/ui/select";
 import { SwitchRow } from "../components/ui/switch";
 import { Chip, type ChipProps } from "../components/ui/chip";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { SummaryStrip } from "../components/ui/summary-strip";
+import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 
 interface SystemLoaderData {
   activity: ActivityEventItem[];
@@ -194,8 +197,7 @@ export function SystemPage() {
   if (location.pathname.startsWith("/system/backups")) {
     return (
       <SystemShell>
-        <BackupCard initialBackups={backups} initialSettings={backupSettings} />
-        {runtimeCard}
+        <BackupCard initialBackups={backups} initialSettings={backupSettings}>{runtimeCard}</BackupCard>
       </SystemShell>
     );
   }
@@ -203,8 +205,7 @@ export function SystemPage() {
   if (location.pathname.startsWith("/system/updates")) {
     return (
       <SystemShell>
-        <UpgradeCard status={updateStatus} />
-        {runtimeCard}
+        <UpgradeCard status={updateStatus}>{runtimeCard}</UpgradeCard>
       </SystemShell>
     );
   }
@@ -424,19 +425,34 @@ function OperationsFlowCard() {
 
 function BackupCard({
   initialBackups,
-  initialSettings
+  initialSettings,
+  children
 }: {
   initialBackups: BackupItem[];
   initialSettings: BackupSettingsSnapshot;
+  children: ReactNode;
 }) {
   const [backups, setBackups] = useState(initialBackups);
+  const [savedSettings, setSavedSettings] = useState(initialSettings);
   const [settings, setSettings] = useState(initialSettings);
   const [busy, setBusy] = useState<string | null>(null);
   const actionStatus = useSaveStatus();
-  const scheduleStatus = useSaveStatus();
+  const [scheduleSaveState, setScheduleSaveState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
+  const [scheduleMessage, setScheduleMessage] = useState<string | null>(null);
   const [restorePreview, setRestorePreview] = useState<RestorePreviewResponse | null>(null);
   const [restoreFile, setRestoreFile] = useState<File | null>(null);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
+  const dirty = useMemo(() => JSON.stringify(settings) !== JSON.stringify(savedSettings), [settings, savedSettings]);
+  const scheduleState: DrawerSaveState = scheduleSaveState === "saving" ? "saving" : dirty ? "dirty" : scheduleSaveState ?? "clean";
+  const blocker = useUnsavedChanges(dirty);
+
+  useEffect(() => {
+    if (dirty && (scheduleSaveState === "saved" || scheduleSaveState === "error")) setScheduleSaveState(undefined);
+  }, [dirty, scheduleSaveState]);
+
+  useEffect(() => {
+    if (blocker.state === "blocked" && !dirty) blocker.proceed();
+  }, [blocker, dirty]);
 
   async function reload() {
     const [nextBackups, nextSettings] = await Promise.all([
@@ -444,7 +460,10 @@ function BackupCard({
       fetchJson<BackupSettingsSnapshot>("/api/backups/settings")
     ]);
     setBackups(nextBackups);
-    setSettings(nextSettings);
+    if (!dirty) {
+      setSavedSettings(nextSettings);
+      setSettings(nextSettings);
+    }
   }
 
   async function createBackup() {
@@ -466,18 +485,22 @@ function BackupCard({
   }
 
   async function saveSchedule() {
+    if (scheduleState === "saving") return;
     setBusy("schedule");
-    scheduleStatus.markSyncing("Saving schedule…");
+    setScheduleSaveState("saving");
+    setScheduleMessage(null);
     try {
       const next = await fetchJson<BackupSettingsSnapshot>("/api/backups/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(settings)
       });
+      setSavedSettings(next);
       setSettings(next);
-      scheduleStatus.markSaved("Backup schedule saved");
+      setScheduleSaveState("saved");
     } catch (error) {
-      scheduleStatus.markError(error instanceof Error ? error.message : "Schedule could not be saved");
+      setScheduleSaveState("error");
+      setScheduleMessage(error instanceof Error ? error.message : "Schedule could not be saved");
     } finally {
       setBusy(null);
     }
@@ -533,7 +556,8 @@ function BackupCard({
   }
 
   return (
-    <Card>
+    <>
+      <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <ShieldCheck className="h-4 w-4 text-primary" />
@@ -601,13 +625,6 @@ function BackupCard({
             <p className="text-xs text-muted-foreground">
               Next run: {settings.nextRunUtc ? formatWhen(settings.nextRunUtc) : "Not scheduled"} · Retains latest {settings.retentionCount} backup{settings.retentionCount === 1 ? "" : "s"}
             </p>
-            <div className="flex items-center gap-2">
-              <SaveStatus state={scheduleStatus.state} message={scheduleStatus.message} />
-              <Button type="button" size="sm" variant="outline" onClick={() => void saveSchedule()} disabled={busy === "schedule"}>
-                {busy === "schedule" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-                Save
-              </Button>
-            </div>
           </div>
         </div>
 
@@ -664,7 +681,22 @@ function BackupCard({
           ))}
           {backups.length === 0 ? <p className="text-sm text-muted-foreground">No backups yet.</p> : null}
         </div>
-      </CardContent>
+        </CardContent>
+      </Card>
+      {children}
+
+      <PageFooter
+        state={scheduleState}
+        message={scheduleMessage}
+        saveLabel="Save backup schedule"
+        saveType="button"
+        onSave={() => void saveSchedule()}
+        onDiscard={() => {
+          setSettings(savedSettings);
+          setScheduleSaveState(undefined);
+          setScheduleMessage(null);
+        }}
+      />
 
       <ConfirmDialog
         open={showRestoreConfirm}
@@ -676,15 +708,34 @@ function BackupCard({
         busy={busy === "restore"}
         onConfirm={() => void confirmRestore()}
       />
-    </Card>
+      <ConfirmDialog
+        open={blocker.state === "blocked"}
+        onOpenChange={(open) => {
+          if (!open && blocker.state === "blocked") blocker.reset();
+        }}
+        title="Discard unsaved changes?"
+        description="Your backup schedule edits haven't been saved."
+        confirmLabel="Discard"
+        onConfirm={() => blocker.proceed?.()}
+      />
+    </>
   );
 }
 
-function UpgradeCard({ status }: { status: UpdateStatusResponse }) {
+function UpgradeCard({ status, children }: { status: UpdateStatusResponse; children: ReactNode }) {
   const [current, setCurrent] = useState(status);
+  const [savedPreferences, setSavedPreferences] = useState<UpdatePreferencesResponse | null>(null);
   const [preferences, setPreferences] = useState<UpdatePreferencesResponse | null>(null);
   const [busyAction, setBusyAction] = useState<"check" | "download" | "prepare" | "restart" | "prefs" | null>(null);
   const actionStatus = useSaveStatus();
+  const [preferencesSaveState, setPreferencesSaveState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
+  const [preferencesMessage, setPreferencesMessage] = useState<string | null>(null);
+  const preferencesDirty = useMemo(
+    () => preferences !== null && savedPreferences !== null && JSON.stringify(preferences) !== JSON.stringify(savedPreferences),
+    [preferences, savedPreferences]
+  );
+  const preferencesState: DrawerSaveState = preferencesSaveState === "saving" ? "saving" : preferencesDirty ? "dirty" : preferencesSaveState ?? "clean";
+  const blocker = useUnsavedChanges(preferencesDirty);
 
   async function refreshStatus() {
     const next = await fetchJson<UpdateStatusResponse>("/api/updates/status");
@@ -693,6 +744,7 @@ function UpgradeCard({ status }: { status: UpdateStatusResponse }) {
 
   async function loadPreferences() {
     const next = await fetchJson<UpdatePreferencesResponse>("/api/updates/preferences");
+    setSavedPreferences(next);
     setPreferences(next);
   }
 
@@ -720,19 +772,23 @@ function UpgradeCard({ status }: { status: UpdateStatusResponse }) {
   }
 
   async function savePreferences(next: UpdatePreferencesResponse) {
+    if (preferencesState === "saving") return;
     setBusyAction("prefs");
-    actionStatus.markSyncing("Saving preferences…");
+    setPreferencesSaveState("saving");
+    setPreferencesMessage(null);
     try {
       const saved = await fetchJson<UpdatePreferencesResponse>("/api/updates/preferences", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(savedPreferencePayload(next))
       });
+      setSavedPreferences(saved);
       setPreferences(saved);
-      actionStatus.markSaved("Update preferences saved");
+      setPreferencesSaveState("saved");
       await refreshStatus();
     } catch (error) {
-      actionStatus.markError(error instanceof Error ? error.message : "Could not save preferences");
+      setPreferencesSaveState("error");
+      setPreferencesMessage(error instanceof Error ? error.message : "Could not save preferences");
     } finally {
       setBusyAction(null);
     }
@@ -744,6 +800,14 @@ function UpgradeCard({ status }: { status: UpdateStatusResponse }) {
     }
   }, [preferences]);
 
+  useEffect(() => {
+    if (preferencesDirty && (preferencesSaveState === "saved" || preferencesSaveState === "error")) setPreferencesSaveState(undefined);
+  }, [preferencesDirty, preferencesSaveState]);
+
+  useEffect(() => {
+    if (blocker.state === "blocked" && !preferencesDirty) blocker.proceed();
+  }, [blocker, preferencesDirty]);
+
   const isDocker = current.installKind === "docker";
   const canControl = current.isInstalled && !isDocker;
   const controlsDisabledReason = !current.isInstalled
@@ -753,7 +817,8 @@ function UpgradeCard({ status }: { status: UpdateStatusResponse }) {
       : null;
 
   return (
-    <Card>
+    <>
+      <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <RotateCcw className="h-4 w-4 text-primary" />
@@ -800,16 +865,6 @@ function UpgradeCard({ status }: { status: UpdateStatusResponse }) {
               onCheckedChange={(autoCheck) => setPreferences((currentValue) => currentValue ? { ...currentValue, autoCheck } : currentValue)}
               disabled={busyAction === "prefs"}
             />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={busyAction === "prefs"}
-              onClick={() => void savePreferences(preferences)}
-            >
-              {busyAction === "prefs" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-              Save preferences
-            </Button>
           </div>
         ) : null}
 
@@ -839,8 +894,35 @@ function UpgradeCard({ status }: { status: UpdateStatusResponse }) {
             {note}
           </p>
         ))}
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+      {children}
+
+      <PageFooter
+        state={preferencesState}
+        message={preferencesMessage}
+        saveLabel="Save update preferences"
+        saveType="button"
+        disabled={preferences === null}
+        onSave={() => preferences && void savePreferences(preferences)}
+        onDiscard={() => {
+          if (savedPreferences) setPreferences(savedPreferences);
+          setPreferencesSaveState(undefined);
+          setPreferencesMessage(null);
+        }}
+      />
+
+      <ConfirmDialog
+        open={blocker.state === "blocked"}
+        onOpenChange={(open) => {
+          if (!open && blocker.state === "blocked") blocker.reset();
+        }}
+        title="Discard unsaved changes?"
+        description="Your update preference edits haven't been saved."
+        confirmLabel="Discard"
+        onConfirm={() => blocker.proceed?.()}
+      />
+    </>
   );
 }
 

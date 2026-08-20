@@ -31,9 +31,9 @@ James's read of the old UI: the icons, logo and colour scheme are right, the **i
 
 Hook: `hooks/use-unsaved-changes.ts`. Tokens: `--list-row-height`, `--list-header-height`, `--list-thead-height`, `--toolbar-height`, `--drawer-width`, `--drawer-header-height`, `--drawer-footer-height` in `index.css`.
 
-## Converted (19)
+## Converted (21)
 
-Media plans · Libraries · Connections (indexers, download clients, library routing — `connections-screen.tsx` replaced the 2,180-line `indexers-screen.tsx`) · Import lists · Tags · Final destinations · Quality profiles · Notifications · Size rules · File handling · Processing workflow · Automation & recovery · **Release preferences · Metadata · General · Interface · Migration · Setup guide**.
+Media plans · Libraries · Connections (indexers, download clients, library routing — `connections-screen.tsx` replaced the 2,180-line `indexers-screen.tsx`) · Import lists · Tags · Final destinations · Quality profiles · Notifications · Size rules · File handling · Processing workflow · Automation & recovery · **Release preferences · Metadata · General · Interface · Migration · Setup guide · System backups · System updates**.
 
 Every `/settings/*` route now carries a `PageToolbar` and `chrome: "none"`.
 
