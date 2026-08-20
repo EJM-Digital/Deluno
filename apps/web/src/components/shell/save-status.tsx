@@ -6,7 +6,8 @@
  *   · error   → alert + message
  *
  * Pair with `useSaveStatus()` which exposes `markSyncing`, `markSaved`,
- * `markError` — then wire those to your mutation handlers.
+ * `markError` — then wire those to your mutation handlers. Use this for
+ * one-shot actions on a page without a single form save; use footers for forms.
  */
 
 import { useEffect, useRef, useState } from "react";
