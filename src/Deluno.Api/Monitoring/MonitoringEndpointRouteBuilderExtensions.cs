@@ -1,4 +1,5 @@
 using System.Globalization;
+using Deluno.Contracts;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -36,7 +37,8 @@ public static class MonitoringEndpointRouteBuilderExtensions
             string? category,
             string? severity,
             string? sinceUtc,
-            int? take,
+            int? pageSize,
+            string? pageToken,
             IMonitoringService service,
             CancellationToken cancellationToken) =>
         {
@@ -53,14 +55,10 @@ public static class MonitoringEndpointRouteBuilderExtensions
                     Category: category,
                     Severity: severity,
                     SinceUtc: parsedSince,
-                    Take: Math.Clamp(take ?? 100, 1, 500)),
+                    Page: new PageRequest(pageSize ?? 100, pageToken)),
                 cancellationToken);
 
-            return Results.Ok(new
-            {
-                count = items.Count,
-                diagnostics = items
-            });
+            return Results.Ok(items);
         });
 
         monitoring.MapGet("/export/prometheus", async (

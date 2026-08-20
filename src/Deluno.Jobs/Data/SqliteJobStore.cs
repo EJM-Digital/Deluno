@@ -181,6 +181,51 @@ public sealed class SqliteJobStore(
         return jobs;
     }
 
+    public async Task<Page<JobQueueItem>> ListPageAsync(PageRequest request, CancellationToken cancellationToken)
+    {
+        var pageSize = request.BoundedPageSize;
+        var token = DelunoPageToken.Decode(request.PageToken, 2);
+        var jobs = new List<JobQueueItem>(pageSize + 1);
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT
+                id, job_type, source, status, payload_json, attempts, created_utc, scheduled_utc,
+                started_utc, completed_utc, leased_until_utc, worker_id, last_error, related_entity_type, related_entity_id,
+                idempotency_key, dedupe_key, max_attempts, last_attempt_utc, next_attempt_utc
+            FROM job_queue
+            WHERE (@createdUtc IS NULL OR created_utc < @createdUtc OR (created_utc = @createdUtc AND id < @id))
+            ORDER BY created_utc DESC, id DESC
+            LIMIT @take;
+            """;
+
+        AddParameter(command, "@createdUtc", token?[0]);
+        AddParameter(command, "@id", token?[1]);
+        AddParameter(command, "@take", pageSize + 1);
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            jobs.Add(ReadJob(reader));
+        }
+
+        var hasMore = jobs.Count > pageSize;
+        if (hasMore)
+        {
+            jobs.RemoveAt(jobs.Count - 1);
+        }
+
+        var nextPageToken = hasMore
+            ? DelunoPageToken.Encode(jobs[^1].CreatedUtc.ToString("O"), jobs[^1].Id)
+            : null;
+        return Page<JobQueueItem>.Of(jobs, nextPageToken);
+    }
+
     public async Task<int> RetryFailedAsync(CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
@@ -999,6 +1044,56 @@ public sealed class SqliteJobStore(
         return items;
     }
 
+    public async Task<Page<LibraryAutomationStateItem>> ListLibraryAutomationStatesPageAsync(
+        PageRequest request,
+        CancellationToken cancellationToken)
+    {
+        var pageSize = request.BoundedPageSize;
+        var token = DelunoPageToken.Decode(request.PageToken, 3);
+        var items = new List<LibraryAutomationStateItem>(pageSize + 1);
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT
+                library_id, library_name, media_type, status, search_requested, last_planned_utc,
+                last_started_utc, last_completed_utc, next_search_utc, last_job_id, last_error, updated_utc
+            FROM library_automation_state
+            WHERE (@mediaType IS NULL
+                OR media_type > @mediaType
+                OR (media_type = @mediaType AND library_name > @libraryName)
+                OR (media_type = @mediaType AND library_name = @libraryName AND library_id > @libraryId))
+            ORDER BY media_type ASC, library_name ASC, library_id ASC
+            LIMIT @take;
+            """;
+
+        AddParameter(command, "@mediaType", token?[0]);
+        AddParameter(command, "@libraryName", token?[1]);
+        AddParameter(command, "@libraryId", token?[2]);
+        AddParameter(command, "@take", pageSize + 1);
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            items.Add(ReadLibraryAutomationState(reader));
+        }
+
+        var hasMore = items.Count > pageSize;
+        if (hasMore)
+        {
+            items.RemoveAt(items.Count - 1);
+        }
+
+        var nextPageToken = hasMore
+            ? DelunoPageToken.Encode(items[^1].MediaType, items[^1].LibraryName, items[^1].LibraryId)
+            : null;
+        return Page<LibraryAutomationStateItem>.Of(items, nextPageToken);
+    }
+
     public async Task<IReadOnlyList<SearchCycleRunItem>> ListSearchCycleRunsAsync(
         int take,
         string? libraryId,
@@ -1032,6 +1127,55 @@ public sealed class SqliteJobStore(
         }
 
         return items;
+    }
+
+    public async Task<Page<SearchCycleRunItem>> ListSearchCycleRunsPageAsync(
+        PageRequest request,
+        string? libraryId,
+        CancellationToken cancellationToken)
+    {
+        var pageSize = request.BoundedPageSize;
+        var token = DelunoPageToken.Decode(request.PageToken, 2);
+        var items = new List<SearchCycleRunItem>(pageSize + 1);
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT
+                id, library_id, library_name, media_type, trigger_kind, status,
+                planned_count, queued_count, skipped_count, notes_json, started_utc, completed_utc
+            FROM search_cycle_runs
+            WHERE (@libraryId IS NULL OR library_id = @libraryId)
+              AND (@startedUtc IS NULL OR started_utc < @startedUtc OR (started_utc = @startedUtc AND id < @id))
+            ORDER BY started_utc DESC, id DESC
+            LIMIT @take;
+            """;
+
+        AddParameter(command, "@libraryId", string.IsNullOrWhiteSpace(libraryId) ? null : libraryId);
+        AddParameter(command, "@startedUtc", token?[0]);
+        AddParameter(command, "@id", token?[1]);
+        AddParameter(command, "@take", pageSize + 1);
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            items.Add(ReadSearchCycleRun(reader));
+        }
+
+        var hasMore = items.Count > pageSize;
+        if (hasMore)
+        {
+            items.RemoveAt(items.Count - 1);
+        }
+
+        var nextPageToken = hasMore
+            ? DelunoPageToken.Encode(items[^1].StartedUtc.ToString("O"), items[^1].Id)
+            : null;
+        return Page<SearchCycleRunItem>.Of(items, nextPageToken);
     }
 
     public async Task<IReadOnlyList<SearchRetryWindowItem>> ListSearchRetryWindowsAsync(
@@ -1069,6 +1213,71 @@ public sealed class SqliteJobStore(
         return items;
     }
 
+    public async Task<Page<SearchRetryWindowItem>> ListSearchRetryWindowsPageAsync(
+        PageRequest request,
+        string? libraryId,
+        CancellationToken cancellationToken)
+    {
+        var pageSize = request.BoundedPageSize;
+        var token = DelunoPageToken.Decode(request.PageToken, 6);
+        var items = new List<SearchRetryWindowItem>(pageSize + 1);
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT
+                entity_type, entity_id, library_id, media_type, action_kind,
+                next_eligible_utc, last_attempt_utc, attempt_count, last_result, updated_utc
+            FROM search_retry_windows
+            WHERE (@libraryId IS NULL OR library_id = @libraryId)
+              AND (@nextEligibleUtc IS NULL
+                OR next_eligible_utc > @nextEligibleUtc
+                OR (next_eligible_utc = @nextEligibleUtc AND updated_utc < @updatedUtc)
+                OR (next_eligible_utc = @nextEligibleUtc AND updated_utc = @updatedUtc AND entity_type > @entityType)
+                OR (next_eligible_utc = @nextEligibleUtc AND updated_utc = @updatedUtc AND entity_type = @entityType AND entity_id > @entityId)
+                OR (next_eligible_utc = @nextEligibleUtc AND updated_utc = @updatedUtc AND entity_type = @entityType AND entity_id = @entityId AND library_id > @tokenLibraryId)
+                OR (next_eligible_utc = @nextEligibleUtc AND updated_utc = @updatedUtc AND entity_type = @entityType AND entity_id = @entityId AND library_id = @tokenLibraryId AND action_kind > @actionKind))
+            ORDER BY next_eligible_utc ASC, updated_utc DESC, entity_type ASC, entity_id ASC, library_id ASC, action_kind ASC
+            LIMIT @take;
+            """;
+
+        AddParameter(command, "@libraryId", string.IsNullOrWhiteSpace(libraryId) ? null : libraryId);
+        AddParameter(command, "@nextEligibleUtc", token?[0]);
+        AddParameter(command, "@updatedUtc", token?[1]);
+        AddParameter(command, "@entityType", token?[2]);
+        AddParameter(command, "@entityId", token?[3]);
+        AddParameter(command, "@tokenLibraryId", token?[4]);
+        AddParameter(command, "@actionKind", token?[5]);
+        AddParameter(command, "@take", pageSize + 1);
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            items.Add(ReadSearchRetryWindow(reader));
+        }
+
+        var hasMore = items.Count > pageSize;
+        if (hasMore)
+        {
+            items.RemoveAt(items.Count - 1);
+        }
+
+        var nextPageToken = hasMore
+            ? DelunoPageToken.Encode(
+                items[^1].NextEligibleUtc.ToString("O"),
+                items[^1].UpdatedUtc.ToString("O"),
+                items[^1].EntityType,
+                items[^1].EntityId,
+                items[^1].LibraryId,
+                items[^1].ActionKind)
+            : null;
+        return Page<SearchRetryWindowItem>.Of(items, nextPageToken);
+    }
+
     public async Task<IReadOnlyList<DownloadDispatchItem>> ListDownloadDispatchesAsync(
         int take,
         string? mediaType,
@@ -1098,38 +1307,59 @@ public sealed class SqliteJobStore(
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            items.Add(new DownloadDispatchItem(
-                Id: reader.GetString(0),
-                LibraryId: reader.GetString(1),
-                MediaType: reader.GetString(2),
-                EntityType: reader.GetString(3),
-                EntityId: reader.GetString(4),
-                ReleaseName: reader.GetString(5),
-                IndexerName: reader.GetString(6),
-                DownloadClientId: reader.GetString(7),
-                DownloadClientName: reader.GetString(8),
-                Status: reader.GetString(9),
-                NotesJson: reader.IsDBNull(10) ? null : reader.GetString(10),
-                CreatedUtc: ParseTimestamp(reader.GetString(11)),
-                GrabStatus: null,
-                GrabAttemptedUtc: null,
-                GrabResponseCode: null,
-                GrabMessage: null,
-                GrabFailureCode: null,
-                GrabResponseJson: null,
-                DetectedUtc: null,
-                TorrentHashOrItemId: null,
-                DownloadedBytes: null,
-                ImportStatus: null,
-                ImportDetectedUtc: null,
-                ImportCompletedUtc: null,
-                ImportedFilePath: null,
-                ImportFailureCode: null,
-                ImportFailureMessage: null,
-                CircuitOpenUntilUtc: null));
+            items.Add(ReadDownloadDispatch(reader));
         }
 
         return items;
+    }
+
+    public async Task<Page<DownloadDispatchItem>> ListDownloadDispatchesPageAsync(
+        PageRequest request,
+        string? mediaType,
+        CancellationToken cancellationToken)
+    {
+        var pageSize = request.BoundedPageSize;
+        var token = DelunoPageToken.Decode(request.PageToken, 2);
+        var items = new List<DownloadDispatchItem>(pageSize + 1);
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT
+                id, library_id, media_type, entity_type, entity_id, release_name,
+                indexer_name, download_client_id, download_client_name, status, notes_json, created_utc
+            FROM download_dispatches
+            WHERE (@mediaType IS NULL OR media_type = @mediaType)
+              AND (@createdUtc IS NULL OR created_utc < @createdUtc OR (created_utc = @createdUtc AND id < @id))
+            ORDER BY created_utc DESC, id DESC
+            LIMIT @take;
+            """;
+
+        AddParameter(command, "@mediaType", string.IsNullOrWhiteSpace(mediaType) ? null : mediaType.Trim().ToLowerInvariant());
+        AddParameter(command, "@createdUtc", token?[0]);
+        AddParameter(command, "@id", token?[1]);
+        AddParameter(command, "@take", pageSize + 1);
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            items.Add(ReadDownloadDispatch(reader));
+        }
+
+        var hasMore = items.Count > pageSize;
+        if (hasMore)
+        {
+            items.RemoveAt(items.Count - 1);
+        }
+
+        var nextPageToken = hasMore
+            ? DelunoPageToken.Encode(items[^1].CreatedUtc.ToString("O"), items[^1].Id)
+            : null;
+        return Page<DownloadDispatchItem>.Of(items, nextPageToken);
     }
 
     public async Task<string?> FindRecentDispatchIdAsync(
@@ -1964,6 +2194,57 @@ public sealed class SqliteJobStore(
         return events;
     }
 
+    public async Task<Page<ActivityEventItem>> ListActivityPageAsync(
+        PageRequest request,
+        string? relatedEntityType,
+        string? relatedEntityId,
+        CancellationToken cancellationToken)
+    {
+        var pageSize = request.BoundedPageSize;
+        var token = DelunoPageToken.Decode(request.PageToken, 2);
+        var events = new List<ActivityEventItem>(pageSize + 1);
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT
+                id, category, message, details_json, related_job_id, related_entity_type, related_entity_id, created_utc
+            FROM activity_events
+            WHERE (@relatedEntityType IS NULL OR related_entity_type = @relatedEntityType)
+              AND (@relatedEntityId IS NULL OR related_entity_id = @relatedEntityId)
+              AND (@createdUtc IS NULL OR created_utc < @createdUtc OR (created_utc = @createdUtc AND id < @id))
+            ORDER BY created_utc DESC, id DESC
+            LIMIT @take;
+            """;
+
+        AddParameter(command, "@take", pageSize + 1);
+        AddParameter(command, "@relatedEntityType", relatedEntityType);
+        AddParameter(command, "@relatedEntityId", relatedEntityId);
+        AddParameter(command, "@createdUtc", token?[0]);
+        AddParameter(command, "@id", token?[1]);
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            events.Add(ReadActivity(reader));
+        }
+
+        var hasMore = events.Count > pageSize;
+        if (hasMore)
+        {
+            events.RemoveAt(events.Count - 1);
+        }
+
+        var nextPageToken = hasMore
+            ? DelunoPageToken.Encode(events[^1].CreatedUtc.ToString("O"), events[^1].Id)
+            : null;
+        return Page<ActivityEventItem>.Of(events, nextPageToken);
+    }
+
     public async Task<ActivityEventItem> RecordActivityAsync(
         string category,
         string message,
@@ -2582,6 +2863,37 @@ public sealed class SqliteJobStore(
             LastResult: reader.IsDBNull(8) ? null : reader.GetString(8),
             UpdatedUtc: ParseTimestamp(reader.GetString(9)));
     }
+
+    private static DownloadDispatchItem ReadDownloadDispatch(System.Data.Common.DbDataReader reader)
+        => new(
+            Id: reader.GetString(0),
+            LibraryId: reader.GetString(1),
+            MediaType: reader.GetString(2),
+            EntityType: reader.GetString(3),
+            EntityId: reader.GetString(4),
+            ReleaseName: reader.GetString(5),
+            IndexerName: reader.GetString(6),
+            DownloadClientId: reader.GetString(7),
+            DownloadClientName: reader.GetString(8),
+            Status: reader.GetString(9),
+            NotesJson: reader.IsDBNull(10) ? null : reader.GetString(10),
+            CreatedUtc: ParseTimestamp(reader.GetString(11)),
+            GrabStatus: null,
+            GrabAttemptedUtc: null,
+            GrabResponseCode: null,
+            GrabMessage: null,
+            GrabFailureCode: null,
+            GrabResponseJson: null,
+            DetectedUtc: null,
+            TorrentHashOrItemId: null,
+            DownloadedBytes: null,
+            ImportStatus: null,
+            ImportDetectedUtc: null,
+            ImportCompletedUtc: null,
+            ImportedFilePath: null,
+            ImportFailureCode: null,
+            ImportFailureMessage: null,
+            CircuitOpenUntilUtc: null);
 
     private static ActivityEventItem ReadActivity(System.Data.Common.DbDataReader reader)
     {

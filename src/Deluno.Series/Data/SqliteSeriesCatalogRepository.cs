@@ -423,11 +423,6 @@ public sealed class SqliteSeriesCatalogRepository(
     }
 
     /// <summary>
-    /// How many rows one catalogue page may hold. A page is what a screen shows
-    /// plus a scroll ahead, not a way to ask for the library in one request.
-    /// </summary>
-    private const int MaxCataloguePageSize = 200;
-
     private const string CatalogueHasFile = "EXISTS(SELECT 1 FROM series_wanted_state w WHERE w.series_id = s.id AND w.has_file = 1)";
     private const string CatalogueUpgrade = "EXISTS(SELECT 1 FROM series_wanted_state w WHERE w.series_id = s.id AND w.has_file = 1 AND w.quality_cutoff_met = 0)";
 
@@ -484,7 +479,7 @@ public sealed class SqliteSeriesCatalogRepository(
         CatalogueQuery query,
         CancellationToken cancellationToken)
     {
-        var pageSize = Math.Clamp(query.PageSize <= 0 ? 50 : query.PageSize, 1, MaxCataloguePageSize);
+        var pageSize = new PageRequest(query.PageSize, query.PageToken).BoundedPageSize;
         var sort = CatalogueSortFields.Normalize(query.Sort);
         var status = CatalogueStatusFilters.Normalize(query.Status);
         var search = string.IsNullOrWhiteSpace(query.Search) ? null : query.Search.Trim();
@@ -500,8 +495,8 @@ public sealed class SqliteSeriesCatalogRepository(
             DelunoDatabaseNames.Series,
             cancellationToken);
 
-        var items = new List<SeriesListItem>(pageSize);
-        string? lastSortValue = null;
+        var items = new List<SeriesListItem>(pageSize + 1);
+        var sortValues = new List<string?>(pageSize + 1);
 
         using (var command = connection.CreateCommand())
         {
@@ -513,10 +508,10 @@ public sealed class SqliteSeriesCatalogRepository(
                 FROM series_entries s
                 WHERE {where}
                 ORDER BY {CatalogueKeyset.OrderBy(sortExpression, "s", query.Descending)}
-                LIMIT @pageSize;
+                LIMIT @fetchCount;
                 """;
 
-            AddParameter(command, "@pageSize", pageSize);
+            AddParameter(command, "@fetchCount", pageSize + 1);
             CatalogueKeyset.BindSearch(command, search);
             if (token is not null)
             {
@@ -546,22 +541,25 @@ public sealed class SqliteSeriesCatalogRepository(
                     ApproximateBitrateMbps = MediaFileFacts.ApproximateBitrateMbps(fileSizeBytes, runtimeMinutes)
                 });
 
-                lastSortValue = CatalogueKeyset.ReadSortValue(reader, 29);
+                sortValues.Add(CatalogueKeyset.ReadSortValue(reader, 29));
             }
         }
 
-        // A full page might still be the last one. Handing back a token that
-        // turns out to be empty costs one wasted request; the alternative is a
-        // second query on every page purely to find out.
-        var nextPageToken = items.Count == pageSize
-            ? new CataloguePageToken(lastSortValue, items[^1].Id).Encode()
+        var hasMore = items.Count > pageSize;
+        if (hasMore)
+        {
+            items.RemoveAt(pageSize);
+        }
+
+        var nextPageToken = hasMore
+            ? new CataloguePageToken(sortValues[pageSize - 1], items[^1].Id).Encode()
             : null;
 
         // Counting scans, so it happens once per filter rather than on every
         // page of it. A continuation page keeps the numbers the caller has.
         if (token is not null)
         {
-            return new CataloguePage<SeriesListItem>(items, nextPageToken, null, null);
+            return new CataloguePage<SeriesListItem>(items, nextPageToken, hasMore, null, null);
         }
 
         var facets = await CountCatalogueFacetsAsync(connection, search, cancellationToken);
@@ -569,6 +567,7 @@ public sealed class SqliteSeriesCatalogRepository(
         return new CataloguePage<SeriesListItem>(
             items,
             nextPageToken,
+            hasMore,
             SelectFacetTotal(facets, status),
             facets);
     }

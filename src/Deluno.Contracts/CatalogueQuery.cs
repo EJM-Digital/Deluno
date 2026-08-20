@@ -99,6 +99,7 @@ public static class CatalogueSortFields
 public sealed record CataloguePage<T>(
     IReadOnlyList<T> Items,
     string? NextPageToken,
+    bool HasMore,
     int? TotalCount,
     CatalogueFacets? Facets);
 

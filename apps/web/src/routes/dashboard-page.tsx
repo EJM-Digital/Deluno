@@ -14,7 +14,7 @@ import type { ActiveDownload, IndexerHealthItem, MediaItem } from "../lib/media-
 import { MEDIA_STATUS_PRESENTATION, mediaStatusIsActive } from "../lib/media-status-presentation";
 import {
   emptyPlatformSettingsSnapshot,
-  fetchJson,
+  fetchJson, fetchPageItems,
   type DownloadClientItem,
   type DownloadTelemetryOverview,
   type IndexerItem,
@@ -122,9 +122,9 @@ interface DashboardSources {
 
 function emptyDashboardSources(): DashboardSources {
   return {
-    moviePage: { items: [], nextPageToken: null, totalCount: 0, facets: null },
+    moviePage: { items: [], nextPageToken: null, hasMore: false, totalCount: 0, facets: null },
     movieWanted: EMPTY_MOVIE_WANTED,
-    showPage: { items: [], nextPageToken: null, totalCount: 0, facets: null },
+    showPage: { items: [], nextPageToken: null, hasMore: false, totalCount: 0, facets: null },
     showWanted: EMPTY_SERIES_WANTED,
     telemetry: EMPTY_TELEMETRY,
     indexers: [], clients: [], libraries: [], automation: [], searchCycles: [], retryWindows: [], upcomingEpisodes: [],
@@ -158,17 +158,17 @@ const EMPTY_SETUP_PROGRESS: SetupProgressItem = { lastCompletedStep: 0, isSkippe
 
 export async function dashboardLoader(): Promise<DashboardLoaderData> {
   const [moviePage, movieWanted, showPage, showWanted, telemetry, indexers, clients, libraries, automation, searchCycles, retryWindows, upcomingEpisodes, setupProgress, settings, policySets, qualityProfiles] = await Promise.all([
-    fetchJson<CataloguePage<MovieListItem>>("/api/movies/page?pageSize=14&sort=added&direction=desc").catch((): CataloguePage<MovieListItem> => ({ items: [], nextPageToken: null, totalCount: 0, facets: null })),
+    fetchJson<CataloguePage<MovieListItem>>("/api/movies/page?pageSize=14&sort=added&direction=desc").catch((): CataloguePage<MovieListItem> => ({ items: [], nextPageToken: null, hasMore: false, totalCount: 0, facets: null })),
     fetchJson<MovieWantedSummary>("/api/movies/wanted").catch(() => EMPTY_MOVIE_WANTED),
-    fetchJson<CataloguePage<SeriesListItem>>("/api/series/page?pageSize=14&sort=added&direction=desc").catch((): CataloguePage<SeriesListItem> => ({ items: [], nextPageToken: null, totalCount: 0, facets: null })),
+    fetchJson<CataloguePage<SeriesListItem>>("/api/series/page?pageSize=14&sort=added&direction=desc").catch((): CataloguePage<SeriesListItem> => ({ items: [], nextPageToken: null, hasMore: false, totalCount: 0, facets: null })),
     fetchJson<SeriesWantedSummary>("/api/series/wanted").catch(() => EMPTY_SERIES_WANTED),
     fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry").catch(() => EMPTY_TELEMETRY),
     fetchJson<IndexerItem[]>("/api/indexers").catch((): IndexerItem[] => []),
     fetchJson<DownloadClientItem[]>("/api/download-clients").catch((): DownloadClientItem[] => []),
     fetchJson<LibraryItem[]>("/api/libraries").catch((): LibraryItem[] => []),
-    fetchJson<LibraryAutomationStateItem[]>("/api/library-automation").catch((): LibraryAutomationStateItem[] => []),
-    fetchJson<SearchCycleRunItem[]>("/api/search-cycles?take=8").catch((): SearchCycleRunItem[] => []),
-    fetchJson<SearchRetryWindowItem[]>("/api/search-retry-windows?take=8").catch((): SearchRetryWindowItem[] => []),
+    fetchPageItems<LibraryAutomationStateItem>("/api/library-automation?pageSize=50").catch((): LibraryAutomationStateItem[] => []),
+    fetchPageItems<SearchCycleRunItem>("/api/search-cycles?pageSize=8").catch((): SearchCycleRunItem[] => []),
+    fetchPageItems<SearchRetryWindowItem>("/api/search-retry-windows?pageSize=8").catch((): SearchRetryWindowItem[] => []),
     fetchJson<SeriesUpcomingEpisodeItem[]>("/api/series/upcoming?take=12&hours=72").catch((): SeriesUpcomingEpisodeItem[] => []),
     fetchJson<SetupProgressItem>("/api/setup/progress").catch(() => EMPTY_SETUP_PROGRESS),
     fetchJson<PlatformSettingsSnapshot>("/api/settings").catch(() => emptyPlatformSettingsSnapshot),
@@ -253,9 +253,9 @@ function useDashboardData(initial: DashboardLoaderData | undefined) {
       { ...DASHBOARD_REFRESH, queryKey: ["indexers"], queryFn: () => fetchJson<IndexerItem[]>("/api/indexers").catch(() => []), initialData: source.indexers },
       { ...DASHBOARD_REFRESH, queryKey: ["download-clients"], queryFn: () => fetchJson<DownloadClientItem[]>("/api/download-clients").catch(() => []), initialData: source.clients },
       { ...DASHBOARD_REFRESH, queryKey: ["libraries"], queryFn: () => fetchJson<LibraryItem[]>("/api/libraries").catch(() => []), initialData: source.libraries },
-      { ...DASHBOARD_REFRESH, queryKey: ["library-automation"], queryFn: () => fetchJson<LibraryAutomationStateItem[]>("/api/library-automation").catch(() => []), initialData: source.automation },
-      { ...DASHBOARD_REFRESH, queryKey: ["search-cycles"], queryFn: () => fetchJson<SearchCycleRunItem[]>("/api/search-cycles?take=8").catch(() => []), initialData: source.searchCycles },
-      { ...DASHBOARD_REFRESH, queryKey: ["search-retry-windows"], queryFn: () => fetchJson<SearchRetryWindowItem[]>("/api/search-retry-windows?take=8").catch(() => []), initialData: source.retryWindows },
+      { ...DASHBOARD_REFRESH, queryKey: ["library-automation"], queryFn: () => fetchPageItems<LibraryAutomationStateItem>("/api/library-automation?pageSize=50").catch(() => []), initialData: source.automation },
+      { ...DASHBOARD_REFRESH, queryKey: ["search-cycles"], queryFn: () => fetchPageItems<SearchCycleRunItem>("/api/search-cycles?pageSize=8").catch(() => []), initialData: source.searchCycles },
+      { ...DASHBOARD_REFRESH, queryKey: ["search-retry-windows"], queryFn: () => fetchPageItems<SearchRetryWindowItem>("/api/search-retry-windows?pageSize=8").catch(() => []), initialData: source.retryWindows },
       { ...DASHBOARD_REFRESH, queryKey: ["series", "upcoming"], queryFn: () => fetchJson<SeriesUpcomingEpisodeItem[]>("/api/series/upcoming?take=12&hours=72").catch(() => []), initialData: source.upcomingEpisodes },
       { ...DASHBOARD_REFRESH, queryKey: ["setup-progress"], queryFn: () => fetchJson<SetupProgressItem>("/api/setup/progress").catch(() => EMPTY_SETUP_PROGRESS), initialData: source.setupProgress },
       { ...DASHBOARD_REFRESH, queryKey: ["settings"], queryFn: () => fetchJson<PlatformSettingsSnapshot>("/api/settings").catch(() => emptyPlatformSettingsSnapshot), initialData: source.settings },

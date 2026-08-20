@@ -184,14 +184,15 @@ public sealed class CataloguePagingTests
     {
         using var storage = TestStorage.Create();
         var movies = await CreateMoviesAsync(storage);
-        await SeedAsync(movies, 400);
+        await SeedAsync(movies, 501);
 
         var page = await movies.ListPageAsync(new CatalogueQuery(PageSize: 100_000), CancellationToken.None);
 
         // "Give me everything" is the request this whole change exists to stop
         // being possible.
-        Assert.Equal(200, page.Items.Count);
-        Assert.Equal(400, page.TotalCount);
+        Assert.Equal(500, page.Items.Count);
+        Assert.Equal(501, page.TotalCount);
+        Assert.True(page.HasMore);
         Assert.NotNull(page.NextPageToken);
     }
 

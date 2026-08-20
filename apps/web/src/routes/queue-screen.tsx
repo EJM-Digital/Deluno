@@ -22,7 +22,7 @@ import { useLoaderData, useRevalidator } from "react-router-dom";
 import { Loader2, Pause, Play, RefreshCw, RotateCw, Trash2, Upload } from "lucide-react";
 import {
   ApiRequestError,
-  fetchJson,
+  fetchJson, fetchPageItems,
   type DownloadCleanupPreview,
   type DownloadHealthRecord,
   type DownloadDispatchItem,
@@ -83,12 +83,12 @@ interface QueueLoaderData {
 export async function queueLoader(): Promise<QueueLoaderData> {
   const [telemetry, dispatches, movieRecovery, seriesRecovery, settings, jobs, healthRecords, processorHandoffs] = await Promise.all([
     fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry"),
-    fetchJson<DownloadDispatchItem[]>("/api/download-dispatches?take=60"),
+    fetchPageItems<DownloadDispatchItem>("/api/download-dispatches?pageSize=60"),
     fetchJson<MovieImportRecoverySummary>("/api/movies/import-recovery"),
     fetchJson<SeriesImportRecoverySummary>("/api/series/import-recovery"),
     fetchJson<PlatformSettingsSnapshot>("/api/settings"),
-    fetchJson<JobQueueItem[]>("/api/jobs?take=80"),
-    fetchJson<DownloadHealthRecord[]>("/api/download-health?take=30"),
+    fetchPageItems<JobQueueItem>("/api/jobs?pageSize=80"),
+    fetchPageItems<DownloadHealthRecord>("/api/download-health?pageSize=30"),
     fetchJson<ProcessorHandoffItem[]>("/api/integrations/processors/handoffs?take=30").catch((error) => {
       // Permit a newly deployed web build to remain usable during a rolling upgrade
       // while an older local API is still running. Other failures remain visible.

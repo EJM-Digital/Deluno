@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Deluno.Contracts;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -15,11 +16,13 @@ public static class DownloadClientEndpointRouteBuilderExtensions
         endpoints.MapGet("/api/download-health", async (
             HttpContext httpContext,
             IPlatformSettingsRepository platformRepository,
-            int? take,
+            int? pageSize,
+            string? pageToken,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
-            return denied ?? Results.Ok(await platformRepository.ListDownloadHealthRecordsAsync(take ?? 30, cancellationToken));
+            return denied ?? Results.Ok(await platformRepository.ListDownloadHealthRecordsPageAsync(
+                new PageRequest(pageSize ?? 30, pageToken), cancellationToken));
         });
 
         endpoints.MapGet("/api/download-clients/telemetry", async (

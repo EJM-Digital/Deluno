@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Infrastructure.Storage;
@@ -215,6 +216,36 @@ public sealed class JobStoreTests
         Assert.NotNull(resumed);
         Assert.Equal(own.Id, resumed.Id);
         Assert.Equal(2, resumed.Attempts);
+    }
+
+    [Fact]
+    public async Task Job_pages_seek_past_equal_timestamps_without_repeating_when_new_work_arrives()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new MutableTimeProvider(DateTimeOffset.Parse("2026-08-20T00:00:00Z"));
+        await InitializeJobsAsync(storage, timeProvider);
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+
+        var first = await store.EnqueueAsync(new EnqueueJobRequest("library.search", "test", "{}", RelatedEntityType: "library", RelatedEntityId: "one"), CancellationToken.None);
+        var second = await store.EnqueueAsync(new EnqueueJobRequest("library.search", "test", "{}", RelatedEntityType: "library", RelatedEntityId: "two"), CancellationToken.None);
+        var third = await store.EnqueueAsync(new EnqueueJobRequest("library.search", "test", "{}", RelatedEntityType: "library", RelatedEntityId: "three"), CancellationToken.None);
+
+        var pageOne = await store.ListPageAsync(new PageRequest(2), CancellationToken.None);
+        Assert.True(pageOne.HasMore);
+        Assert.NotNull(pageOne.NextPageToken);
+        Assert.Equal(2, pageOne.Items.Count);
+
+        timeProvider.Advance(TimeSpan.FromSeconds(1));
+        var insertedAfterPageOne = await store.EnqueueAsync(new EnqueueJobRequest("library.search", "test", "{}", RelatedEntityType: "library", RelatedEntityId: "four"), CancellationToken.None);
+
+        var pageTwo = await store.ListPageAsync(new PageRequest(2, pageOne.NextPageToken), CancellationToken.None);
+        Assert.False(pageTwo.HasMore);
+        var returnedIds = pageOne.Items.Concat(pageTwo.Items).Select(job => job.Id).ToArray();
+        Assert.Equal(3, returnedIds.Distinct(StringComparer.Ordinal).Count());
+        Assert.Contains(first.Id, returnedIds);
+        Assert.Contains(second.Id, returnedIds);
+        Assert.Contains(third.Id, returnedIds);
+        Assert.DoesNotContain(insertedAfterPageOne.Id, returnedIds);
     }
 
     [Fact]

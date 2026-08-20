@@ -14,7 +14,7 @@ import { useMemo, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { RefreshCw } from "lucide-react";
 import {
-  fetchJson,
+  fetchJson, fetchPageItems,
   type ActivityEventItem,
   type DownloadDispatchItem,
   type JobQueueItem,
@@ -54,9 +54,9 @@ type Section = "jobs" | "events" | "imports";
 
 export async function activityLoader(): Promise<ActivityLoaderData> {
   const [jobs, activity, dispatches, movieRecovery, seriesRecovery] = await Promise.all([
-    fetchJson<JobQueueItem[]>("/api/jobs?take=24"),
-    fetchJson<ActivityEventItem[]>("/api/activity?take=40"),
-    fetchJson<DownloadDispatchItem[]>("/api/download-dispatches?take=20"),
+    fetchPageItems<JobQueueItem>("/api/jobs?pageSize=24"),
+    fetchPageItems<ActivityEventItem>("/api/activity?pageSize=40"),
+    fetchPageItems<DownloadDispatchItem>("/api/download-dispatches?pageSize=20"),
     fetchJson<MovieImportRecoverySummary>("/api/movies/import-recovery"),
     fetchJson<SeriesImportRecoverySummary>("/api/series/import-recovery")
   ]);

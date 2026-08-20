@@ -1,5 +1,6 @@
 using Deluno.Jobs.Data;
 using Deluno.Jobs.Decisions;
+using Deluno.Contracts;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -11,12 +12,12 @@ public static class JobsEndpointRouteBuilderExtensions
     public static IEndpointRouteBuilder MapDelunoJobsEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapGet("/api/jobs", async (
-            int? take,
+            int? pageSize,
+            string? pageToken,
             IJobQueueRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var items = await repository.ListAsync(Math.Clamp(take ?? 25, 1, 100), cancellationToken);
-            return Results.Ok(items);
+            return Results.Ok(await repository.ListPageAsync(new PageRequest(pageSize ?? 25, pageToken), cancellationToken));
         });
 
         endpoints.MapPost("/api/jobs/retry-failed", async (
@@ -28,83 +29,90 @@ public static class JobsEndpointRouteBuilderExtensions
         });
 
         endpoints.MapGet("/api/activity", async (
-            int? take,
+            int? pageSize,
+            string? pageToken,
             string? relatedEntityType,
             string? relatedEntityId,
             IActivityFeedRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var items = await repository.ListActivityAsync(
-                Math.Clamp(take ?? 50, 1, 200),
+            var page = await repository.ListActivityPageAsync(
+                new PageRequest(pageSize ?? 50, pageToken),
                 relatedEntityType,
                 relatedEntityId,
                 cancellationToken);
-            return Results.Ok(items);
+            return Results.Ok(page);
         });
 
         endpoints.MapGet("/api/decisions", async (
-            int? take,
+            int? pageSize,
+            string? pageToken,
             string? relatedEntityType,
             string? relatedEntityId,
             IActivityFeedRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var items = await repository.ListActivityAsync(
-                Math.Clamp(take ?? 100, 1, 500),
+            var page = await repository.ListActivityPageAsync(
+                new PageRequest(pageSize ?? 100, pageToken),
                 relatedEntityType,
                 relatedEntityId,
                 cancellationToken);
-            return Results.Ok(items
+            return Results.Ok(Page<DecisionExplanationItem>.Of(page.Items
                 .Select(DecisionExplanationActivity.FromActivity)
                 .OfType<DecisionExplanationItem>()
-                .ToArray());
+                .ToArray(), page.NextPageToken));
         });
 
         endpoints.MapGet("/api/library-automation", async (
+            int? pageSize,
+            string? pageToken,
             IJobQueueRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var items = await repository.ListLibraryAutomationStatesAsync(cancellationToken);
-            return Results.Ok(items.Values.OrderBy(item => item.MediaType).ThenBy(item => item.LibraryName));
+            return Results.Ok(await repository.ListLibraryAutomationStatesPageAsync(
+                new PageRequest(pageSize ?? 50, pageToken), cancellationToken));
         });
 
         endpoints.MapGet("/api/search-cycles", async (
-            int? take,
+            int? pageSize,
+            string? pageToken,
             string? libraryId,
             IJobQueueRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var items = await repository.ListSearchCycleRunsAsync(
-                Math.Clamp(take ?? 20, 1, 100),
+            var page = await repository.ListSearchCycleRunsPageAsync(
+                new PageRequest(pageSize ?? 20, pageToken),
                 libraryId,
                 cancellationToken);
-            return Results.Ok(items);
+            return Results.Ok(page);
         });
 
         endpoints.MapGet("/api/search-retry-windows", async (
-            int? take,
+            int? pageSize,
+            string? pageToken,
             string? libraryId,
             IJobQueueRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var items = await repository.ListSearchRetryWindowsAsync(
-                Math.Clamp(take ?? 20, 1, 100),
+            var page = await repository.ListSearchRetryWindowsPageAsync(
+                new PageRequest(pageSize ?? 20, pageToken),
                 libraryId,
                 cancellationToken);
-            return Results.Ok(items);
+            return Results.Ok(page);
         });
 
         endpoints.MapGet("/api/download-dispatches", async (
-            int? take,
+            int? pageSize,
+            string? pageToken,
             string? mediaType,
             IJobQueueRepository repository,
             CancellationToken cancellationToken) =>
         {
-            var items = await repository.ListDownloadDispatchesAsync(
-                Math.Clamp(take ?? 20, 1, 100),
+            var page = await repository.ListDownloadDispatchesPageAsync(
+                new PageRequest(pageSize ?? 20, pageToken),
                 mediaType,
                 cancellationToken);
-            return Results.Ok(items);
+            return Results.Ok(page);
         });
 
         return endpoints;

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  fetchJson,
+  fetchAllPages, fetchJson,
   type IndexerItem,
   type JobQueueItem,
   type MovieWantedSummary,
@@ -31,7 +31,7 @@ export function useAttention(pollMs = 45000) {
     setSnapshot((s) => ({ ...s, loading: true }));
     try {
       const [jobs, indexers, movieWanted, seriesWanted] = await Promise.all([
-        fetchJson<JobQueueItem[]>("/api/jobs?take=80").catch(() => []),
+        fetchAllPages<JobQueueItem>("/api/jobs?pageSize=80").catch(() => []),
         fetchJson<IndexerItem[]>("/api/indexers").catch(() => []),
         fetchJson<MovieWantedSummary>("/api/movies/wanted").catch(() => null),
         fetchJson<SeriesWantedSummary>("/api/series/wanted").catch(() => null)

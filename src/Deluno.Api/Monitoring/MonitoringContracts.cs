@@ -1,3 +1,5 @@
+using Deluno.Contracts;
+
 namespace Deluno.Api.Monitoring;
 
 public sealed record MonitoringDashboardSnapshot(
@@ -50,7 +52,7 @@ public sealed record MonitoringDiagnosticsQuery(
     string? Category,
     string? Severity,
     DateTimeOffset? SinceUtc,
-    int Take = 100);
+    PageRequest Page);
 
 public sealed record MonitoringDiagnosticItem(
     string Id,

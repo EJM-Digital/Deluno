@@ -174,11 +174,11 @@ These endpoints are intentionally generic so processors, automation scripts, das
 - `POST /api/integrations/external/trigger-refresh` requests library search refreshes by media type.
 - `POST /api/integrations/processors/events` reports generic processor status for refine-before-import workflows.
 - `POST /api/intake-sources/{id}/sync` queues an immediate watchlist/intake sync for a configured source.
-- `GET /api/intake-sources/{id}/diagnostics?take=50` returns recent sync diagnostics and skip reasons for that source.
+- `GET /api/intake-sources/{id}/diagnostics?pageSize=50&pageToken=…` returns one explicit page of recent sync diagnostics and skip reasons for that source.
 - `GET /api/intake-title-origins?mediaType=movies|tv&entityId={id}` returns durable, non-secret import-list provenance for one title.
 - `GET /api/monitoring/dashboard` returns current readiness, storage, provider health, performance, and active alert state.
 - `GET /api/monitoring/alerts` returns active monitoring rule violations (services down, low storage, elevated failure rate).
-- `GET /api/monitoring/diagnostics?query=failed&take=100` searches operational activity diagnostics.
+- `GET /api/monitoring/diagnostics?query=failed&pageSize=100&pageToken=…` searches one explicit page of operational activity diagnostics.
 - `GET /api/monitoring/export/prometheus` returns Prometheus text exposition for Deluno monitoring gauges.
 - `GET /api/monitoring/export/influx` returns Influx line protocol for Deluno monitoring gauges.
 - `GET /api/ranking-model/status` returns ML ranking runtime status (enabled state, active version, evaluation metrics).

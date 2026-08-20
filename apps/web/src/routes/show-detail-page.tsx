@@ -14,7 +14,7 @@ import { Fragment, useMemo, useState } from "react";
 import { Link, useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
 import { ArrowLeft, LoaderCircle, Search, Trash2 } from "lucide-react";
 import {
-  fetchJson,
+  fetchJson, fetchPageItems,
   type ActivityEventItem,
   type DecisionExplanationItem,
   type DownloadDispatchItem,
@@ -85,13 +85,13 @@ export async function showDetailLoader({
       fetchJson<SeriesListItem>(`/api/series/${id}`),
       fetchJson<SeriesWantedSummary>("/api/series/wanted"),
       fetchJson<SeriesSearchHistoryItem[]>("/api/series/search-history"),
-      fetchJson<DownloadDispatchItem[]>("/api/download-dispatches?mediaType=tv"),
+      fetchPageItems<DownloadDispatchItem>("/api/download-dispatches?mediaType=tv&pageSize=20"),
       fetchJson<SeriesImportRecoverySummary>("/api/series/import-recovery"),
       fetchJson<SeriesInventoryDetail>(`/api/series/${id}/inventory`),
-      fetchJson<ActivityEventItem[]>(
-        `/api/activity?relatedEntityType=series&relatedEntityId=${id}&take=20`
+      fetchPageItems<ActivityEventItem>(
+        `/api/activity?relatedEntityType=series&relatedEntityId=${id}&pageSize=20`
       ),
-      fetchJson<DecisionExplanationItem[]>(`/api/decisions?relatedEntityType=series&relatedEntityId=${id}&take=40`),
+      fetchPageItems<DecisionExplanationItem>(`/api/decisions?relatedEntityType=series&relatedEntityId=${id}&pageSize=40`),
       fetchJson<LibraryItem[]>("/api/libraries"),
       fetchJson<IntakeTitleOriginItem[]>(`/api/intake-title-origins?mediaType=tv&entityId=${encodeURIComponent(id)}`).catch(() => []),
       fetchJson<MediaRemovalPreview>(`/api/series/${id}/removal-preview`).catch(() => ({ filePaths: [], folderPaths: [], warnings: [] }))

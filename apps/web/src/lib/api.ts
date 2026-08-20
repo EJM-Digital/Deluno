@@ -157,8 +157,16 @@ export interface CatalogueFacets {
 export interface CataloguePage<T> {
   items: T[];
   nextPageToken: string | null;
+  hasMore: boolean;
   totalCount: number | null;
   facets: CatalogueFacets | null;
+}
+
+/** Every bounded operational list states whether another page remains. */
+export interface ApiPage<T> {
+  items: T[];
+  nextPageToken: string | null;
+  hasMore: boolean;
 }
 
 export interface SeriesImportRecoveryCase {
@@ -1486,6 +1494,40 @@ export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T>
   }
 
   return (await response.json()) as T;
+}
+
+/** Reads one explicit operational-list page, including its continuation signal. */
+export async function fetchPage<T>(path: string, init?: RequestInit): Promise<ApiPage<T>> {
+  return fetchJson<ApiPage<T>>(path, init);
+}
+
+/** Reads every page deliberately, for callers whose result is a complete count rather than a screen window. */
+export async function fetchAllPages<T>(path: string, init?: RequestInit): Promise<T[]> {
+  const items: T[] = [];
+  const seenTokens = new Set<string>();
+  let nextPath = path;
+
+  while (true) {
+    const page = await fetchPage<T>(nextPath, init);
+    items.push(...page.items);
+
+    if (!page.hasMore || !page.nextPageToken) {
+      return items;
+    }
+
+    if (seenTokens.has(page.nextPageToken)) {
+      throw new Error("The API returned a repeated page token.");
+    }
+
+    seenTokens.add(page.nextPageToken);
+    const separator = path.includes("?") ? "&" : "?";
+    nextPath = `${path}${separator}pageToken=${encodeURIComponent(page.nextPageToken)}`;
+  }
+}
+
+/** Reads one explicit operational-list page for screens that only render their current window. */
+export async function fetchPageItems<T>(path: string, init?: RequestInit): Promise<T[]> {
+  return (await fetchPage<T>(path, init)).items;
 }
 
 export async function readValidationProblem(

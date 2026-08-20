@@ -131,8 +131,8 @@ public sealed class DownloadDispatchesApiTests : IAsyncDisposable
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var json = JsonDocument.Parse(await response.Content.ReadAsStreamAsync());
-        var dispatches = json.RootElement.GetProperty("dispatches");
-        Assert.True(dispatches.GetArrayLength() > 0);
+        var items = json.RootElement.GetProperty("items");
+        Assert.True(items.GetArrayLength() > 0);
     }
 
     [Fact]
@@ -255,9 +255,9 @@ public sealed class DownloadDispatchesApiTests : IAsyncDisposable
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var json = JsonDocument.Parse(await response.Content.ReadAsStreamAsync());
-        var resolutions = json.RootElement.GetProperty("resolutions");
-        Assert.True(resolutions.GetArrayLength() > 0);
-        Assert.Equal("imported", resolutions[0].GetProperty("status").GetString());
+        var items = json.RootElement.GetProperty("items");
+        Assert.True(items.GetArrayLength() > 0);
+        Assert.Equal("imported", items[0].GetProperty("status").GetString());
     }
 
     public async ValueTask DisposeAsync()

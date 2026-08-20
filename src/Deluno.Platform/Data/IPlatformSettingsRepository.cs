@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Deluno.Platform.Contracts;
 
 namespace Deluno.Platform.Data;
@@ -26,6 +27,10 @@ public interface IPlatformSettingsRepository
 
     Task<IReadOnlyList<DownloadHealthRecord>> ListDownloadHealthRecordsAsync(
         int take,
+        CancellationToken cancellationToken);
+
+    Task<Page<DownloadHealthRecord>> ListDownloadHealthRecordsPageAsync(
+        PageRequest request,
         CancellationToken cancellationToken);
 
     Task<bool> IsDownloadReleaseBlockedAsync(

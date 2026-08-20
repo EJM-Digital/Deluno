@@ -86,21 +86,19 @@ item below is measured against:
   not what is *considered*, so it is a transparency limit rather than a
   behavioural one — but the north star promises every decision is explainable.
 
-### Silent truncation on list endpoints
+### List pagination protocol
 
-No endpoint except download dispatches has a pagination protocol. Everything
-else clamps and returns a bare array, so a caller asking for more than the cap
-receives fewer items with no indication:
+All operational lists now use an explicit, opaque keyset cursor and return
+`{ items, nextPageToken, hasMore }`. Catalogue pages retain their first-page
+`totalCount` and `facets` alongside the same continuation signal. `pageSize` is
+bounded by the shared maximum of 500, so a larger request is visibly partial
+when another page remains rather than quietly looking complete.
 
-- `JobsEndpointRouteBuilderExtensions.cs` — 100, 200, 500, 100, 100, 100
-- `MonitoringService.cs:61` and `MonitoringEndpointRouteBuilderExtensions.cs:56` — 500
-- `IntakeEndpointRouteBuilderExtensions.cs:303` — 200
-- `DownloadClientEndpointRouteBuilderExtensions.cs:22` — `take ?? 30`, unclamped
-- `/api/movies`, `/api/series` — no `take` at all, always the full catalogue
-
-`SqliteDownloadDispatchesRepository.cs:324` already does keyset pagination with
-`nextPageToken` and `hasMore`. Generalise that shape across every list endpoint
-rather than inventing a second one.
+The coverage includes jobs, activity, decisions, library automation, search
+cycles, retry windows, both download-dispatch routes, download health,
+monitoring diagnostics, intake-source diagnostics, and the movie/series
+catalogues. Callers that need a complete result must intentionally walk the
+opaque token; screen windows load one page.
 
 ### Configuration ceilings a user can hit
 
