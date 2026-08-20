@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { Input } from "../ui/input";
+import { Select } from "../ui/select";
 import type { ActivityEventItem } from "../../lib/api";
 
 /* ── Types ───────────────────────────────────────────────────────── */
@@ -209,17 +210,16 @@ export function AuditTimeline({ events, liveEvents = [], maxVisible = 200 }: Aud
         </div>
 
         {/* Severity filter */}
-        <select
+        <Select
           value={sevFilter}
           onChange={(e) => { setSevFilter(e.target.value as Severity | "all"); setShowCount(50); }}
-          className="h-9 rounded-xl border border-hairline bg-surface-2 px-3 text-[12.5px] text-foreground outline-none"
         >
           <option value="all">All severities</option>
           <option value="info">Info</option>
           <option value="success">Success</option>
           <option value="warning">Warning</option>
           <option value="error">Error</option>
-        </select>
+        </Select>
       </div>
 
       {/* Counter */}

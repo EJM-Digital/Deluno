@@ -13,6 +13,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { Eye, LoaderCircle, Plus, RefreshCcw } from "lucide-react";
 import { Button } from "../components/ui/button";
+import { Checkbox } from "../components/ui/checkbox";
 import { Chip, type ChipProps } from "../components/ui/chip";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { Disclosure } from "../components/ui/disclosure";
@@ -557,7 +558,7 @@ function ImportListPreview({
             <div key={`${entry.title}-${entry.year ?? "unknown"}-${index}`} className={cn("rounded-[10px] border px-[var(--field-pad-x)] py-2", selectable && selectedKeys.includes(key) ? "border-primary/30 bg-primary/[0.06]" : "border-hairline bg-card")}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <label htmlFor={selectable ? id : undefined} className="flex items-center gap-2 text-[length:var(--type-body-sm)] font-medium text-foreground">
-                  {selectable ? <input id={id} type="checkbox" className="accent-primary" checked={selectedKeys.includes(key)} onChange={(event) => onSelectionChange(key, event.target.checked)} /> : null}
+                  {selectable ? <Checkbox id={id} checked={selectedKeys.includes(key)} onCheckedChange={(checked) => onSelectionChange(key, checked)} /> : null}
                   {entry.title}
                   {entry.year ? ` (${entry.year})` : ""}
                 </label>

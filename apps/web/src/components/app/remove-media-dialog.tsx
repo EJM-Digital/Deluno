@@ -2,6 +2,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { AlertTriangle, FolderX, ListMinus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
 
 export interface RemoveMediaOptions {
   deleteFiles: boolean;
@@ -147,12 +148,11 @@ function OptionRow({
 }) {
   return (
     <label className={`flex cursor-pointer items-start gap-3 rounded-xl border border-hairline p-4 ${disabled ? "cursor-not-allowed opacity-50" : "bg-surface-1 hover:border-amber-400/35"}`}>
-      <input
-        type="checkbox"
+      <Checkbox
         checked={checked}
         disabled={disabled}
-        onChange={(event) => onCheckedChange(event.target.checked)}
-        className="mt-0.5 h-4 w-4 accent-amber-400"
+        onCheckedChange={onCheckedChange}
+        className="mt-0.5"
       />
       <span className="mt-0.5 text-amber-400">{icon}</span>
       <span>
