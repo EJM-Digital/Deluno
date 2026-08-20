@@ -6,6 +6,7 @@ import {
   type MovieWantedSummary,
   type SeriesWantedSummary
 } from "./api";
+import { useVisibleInterval } from "../hooks/use-visible-interval";
 
 export interface AttentionSnapshot {
   failedJobs: number;
@@ -53,9 +54,9 @@ export function useAttention(pollMs = 45000) {
 
   useEffect(() => {
     void load();
-    const id = window.setInterval(() => void load(), pollMs);
-    return () => window.clearInterval(id);
-  }, [load, pollMs]);
+  }, [load]);
+
+  useVisibleInterval(() => void load(), pollMs);
 
   return { ...snapshot, refresh: load };
 }

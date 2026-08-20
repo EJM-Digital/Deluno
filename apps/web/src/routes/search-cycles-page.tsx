@@ -28,6 +28,7 @@ import { Select } from "../components/ui/select";
 import { Switch, SwitchRow } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
+import { useVisibleInterval } from "../hooks/use-visible-interval";
 import {
   fetchJson,
   type LibraryAutomationStateItem,
@@ -99,10 +100,7 @@ export function SearchCyclesPage() {
   const { automationStates, libraries, settings, searchCycles } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
 
-  useEffect(() => {
-    const timer = window.setInterval(() => revalidator.revalidate(), 10000);
-    return () => window.clearInterval(timer);
-  }, [revalidator]);
+  useVisibleInterval(() => revalidator.revalidate(), 10_000);
 
   const split = useMediaTypeSplit(libraries, (library) => library.mediaType);
   const stateByLibrary = useMemo(() => new Map(automationStates.map((state) => [state.libraryId, state])), [automationStates]);
