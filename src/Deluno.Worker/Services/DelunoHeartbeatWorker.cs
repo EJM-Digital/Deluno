@@ -86,6 +86,16 @@ public sealed class DelunoHeartbeatWorker(
         using (var scope = scopeFactory.CreateScope())
         {
             AssertHandlerRoutingIsComplete(scope.ServiceProvider.GetRequiredService<JobHandlerRegistry>());
+            var recoveredJobs = await scope.ServiceProvider.GetRequiredService<IJobQueueRepository>().ReleaseLeasesAsync(
+                _lanes.Select(lane => $"{_workerId}-{lane.Name}").ToArray(),
+                stoppingToken);
+            if (recoveredJobs.Count > 0)
+            {
+                logger.LogInformation(
+                    "Worker {WorkerId} released {JobCount} lease(s) held by its previous incarnation.",
+                    _workerId,
+                    recoveredJobs.Count);
+            }
         }
 
         await Task.WhenAll(_lanes.Select(lane => RunLaneAsync(lane, stoppingToken)));

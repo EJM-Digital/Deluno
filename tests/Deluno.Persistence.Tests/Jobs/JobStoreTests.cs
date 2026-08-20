@@ -180,6 +180,44 @@ public sealed class JobStoreTests
     }
 
     [Fact]
+    public async Task Restart_releases_only_its_own_lane_leases_without_resetting_attempts()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new MutableTimeProvider(DateTimeOffset.Parse("2026-08-20T00:00:00Z"));
+        await InitializeJobsAsync(storage, timeProvider);
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+
+        var own = await store.EnqueueAsync(
+            new EnqueueJobRequest("library.search", "test", "{}", RelatedEntityType: "library", RelatedEntityId: "own-library"),
+            CancellationToken.None);
+        var other = await store.EnqueueAsync(
+            new EnqueueJobRequest("library.search", "test", "{}", RelatedEntityType: "library", RelatedEntityId: "other-library"),
+            CancellationToken.None);
+
+        Assert.Equal(own.Id, (await store.LeaseNextAsync("worker-this-machine-search", TimeSpan.FromMinutes(2), ["library.search"], CancellationToken.None))?.Id);
+        Assert.Equal(other.Id, (await store.LeaseNextAsync("worker-other-machine-search", TimeSpan.FromMinutes(2), ["library.search"], CancellationToken.None))?.Id);
+
+        var released = await store.ReleaseLeasesAsync(["worker-this-machine-import", "worker-this-machine-search"], CancellationToken.None);
+        var releasedJob = Assert.Single(released);
+        Assert.Equal(own.Id, releasedJob.Id);
+        Assert.Equal("queued", releasedJob.Status);
+        Assert.Equal(1, releasedJob.Attempts);
+        Assert.Null(releasedJob.LeasedUntilUtc);
+        Assert.Null(releasedJob.WorkerId);
+
+        var stored = await store.ListAsync(10, CancellationToken.None);
+        var stillLeasedElsewhere = Assert.Single(stored, job => job.Id == other.Id);
+        Assert.Equal("running", stillLeasedElsewhere.Status);
+        Assert.Equal("worker-other-machine-search", stillLeasedElsewhere.WorkerId);
+        Assert.True(stillLeasedElsewhere.LeasedUntilUtc > timeProvider.GetUtcNow());
+
+        var resumed = await store.LeaseNextAsync("worker-this-machine-search", TimeSpan.FromMinutes(2), ["library.search"], CancellationToken.None);
+        Assert.NotNull(resumed);
+        Assert.Equal(own.Id, resumed.Id);
+        Assert.Equal(2, resumed.Attempts);
+    }
+
+    [Fact]
     public async Task RecordDownloadDispatchAsync_extracts_structured_decision_telemetry_from_notes_json()
     {
         using var storage = TestStorage.Create();
