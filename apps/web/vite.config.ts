@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
 const developmentPort = Number(process.env.DELUNO_WEB_PORT ?? 5173);
@@ -14,6 +14,12 @@ const apiProxy = {
 
 export default defineConfig({
   plugins: [react()],
+  test: {
+    environment: "jsdom",
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    globals: false,
+    setupFiles: ["src/test/setup.ts"]
+  },
   build: {
     rollupOptions: {
       output: {

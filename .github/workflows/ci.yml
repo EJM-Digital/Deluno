@@ -97,6 +97,9 @@ jobs:
       - name: Build frontend
         run: npm run build:web
 
+      - name: Run frontend unit tests
+        run: npm run test:unit:web
+
       - name: Run frontend smoke tests
         run: npm run test:web
 
