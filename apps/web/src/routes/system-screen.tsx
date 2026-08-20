@@ -18,6 +18,7 @@ import { JOB_STATUS, type JobStatus, isJobActive, isJobFailed, isJobSuccessful }
 import { SystemShell } from "../components/app/settings-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { AuditTimeline, type TimelineEvent } from "../components/shell/audit-timeline";
+import { SaveStatus, useSaveStatus } from "../components/shell/save-status";
 import { WsStatusBadge } from "../components/shell/ws-status-badge";
 import { useSignalREvent } from "../lib/use-signalr";
 import {
@@ -431,7 +432,8 @@ function BackupCard({
   const [backups, setBackups] = useState(initialBackups);
   const [settings, setSettings] = useState(initialSettings);
   const [busy, setBusy] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const actionStatus = useSaveStatus();
+  const scheduleStatus = useSaveStatus();
   const [restorePreview, setRestorePreview] = useState<RestorePreviewResponse | null>(null);
   const [restoreFile, setRestoreFile] = useState<File | null>(null);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
@@ -447,7 +449,7 @@ function BackupCard({
 
   async function createBackup() {
     setBusy("create");
-    setMessage(null);
+    actionStatus.markSyncing("Creating backup…");
     try {
       await fetchJson("/api/backups", {
         method: "POST",
@@ -455,9 +457,9 @@ function BackupCard({
         body: JSON.stringify({ reason: "manual" })
       });
       await reload();
-      setMessage("Backup created.");
+      actionStatus.markSaved("Backup created");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Backup failed.");
+      actionStatus.markError(error instanceof Error ? error.message : "Backup failed");
     } finally {
       setBusy(null);
     }
@@ -465,7 +467,7 @@ function BackupCard({
 
   async function saveSchedule() {
     setBusy("schedule");
-    setMessage(null);
+    scheduleStatus.markSyncing("Saving schedule…");
     try {
       const next = await fetchJson<BackupSettingsSnapshot>("/api/backups/settings", {
         method: "PUT",
@@ -473,9 +475,9 @@ function BackupCard({
         body: JSON.stringify(settings)
       });
       setSettings(next);
-      setMessage("Backup schedule saved.");
+      scheduleStatus.markSaved("Backup schedule saved");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Schedule could not be saved.");
+      scheduleStatus.markError(error instanceof Error ? error.message : "Schedule could not be saved");
     } finally {
       setBusy(null);
     }
@@ -483,7 +485,7 @@ function BackupCard({
 
   async function previewRestore(file: File) {
     setBusy("preview");
-    setMessage(null);
+    actionStatus.markSyncing("Checking backup…");
     setRestoreFile(file);
     const formData = new FormData();
     formData.append("file", file);
@@ -494,9 +496,10 @@ function BackupCard({
       });
       if (!response.ok) throw new Error(await response.text());
       setRestorePreview((await response.json()) as RestorePreviewResponse);
+      actionStatus.reset();
     } catch (error) {
       setRestorePreview(null);
-      setMessage(error instanceof Error ? error.message : "Restore preview failed.");
+      actionStatus.markError(error instanceof Error ? error.message : "Restore preview failed");
     } finally {
       setBusy(null);
     }
@@ -511,7 +514,7 @@ function BackupCard({
     setShowRestoreConfirm(false);
     if (!restoreFile) return;
     setBusy("restore");
-    setMessage(null);
+    actionStatus.markSyncing("Restoring backup…");
     const formData = new FormData();
     formData.append("file", restoreFile);
     try {
@@ -521,9 +524,9 @@ function BackupCard({
       });
       if (!response.ok) throw new Error(await response.text());
       const result = await response.json() as { message?: string };
-      setMessage(result.message ?? "Restore completed. Restart Deluno before continuing.");
+      actionStatus.markSaved(result.message ?? "Restore completed. Restart Deluno before continuing.");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Restore failed.");
+      actionStatus.markError(error instanceof Error ? error.message : "Restore failed");
     } finally {
       setBusy(null);
     }
@@ -539,7 +542,7 @@ function BackupCard({
         <CardDescription>Protect the app database, settings, queues, and integration cache before changes.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-[calc(var(--field-group-pad)*0.9)]">
-        {message ? <p className="rounded-xl border border-hairline bg-surface-1 px-3 py-2 text-sm text-muted-foreground">{message}</p> : null}
+        <SaveStatus state={actionStatus.state} message={actionStatus.message} />
         <div className="flex flex-wrap gap-2">
           <Button type="button" onClick={() => void createBackup()} disabled={busy === "create"}>
             {busy === "create" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
@@ -594,14 +597,17 @@ function BackupCard({
               browseTitle="Choose backup folder"
             />
           </div>
-          <div className="mt-3 flex items-center justify-between gap-3">
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs text-muted-foreground">
               Next run: {settings.nextRunUtc ? formatWhen(settings.nextRunUtc) : "Not scheduled"} · Retains latest {settings.retentionCount} backup{settings.retentionCount === 1 ? "" : "s"}
             </p>
-            <Button type="button" size="sm" variant="outline" onClick={() => void saveSchedule()} disabled={busy === "schedule"}>
-              {busy === "schedule" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-              Save
-            </Button>
+            <div className="flex items-center gap-2">
+              <SaveStatus state={scheduleStatus.state} message={scheduleStatus.message} />
+              <Button type="button" size="sm" variant="outline" onClick={() => void saveSchedule()} disabled={busy === "schedule"}>
+                {busy === "schedule" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+                Save
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -678,7 +684,7 @@ function UpgradeCard({ status }: { status: UpdateStatusResponse }) {
   const [current, setCurrent] = useState(status);
   const [preferences, setPreferences] = useState<UpdatePreferencesResponse | null>(null);
   const [busyAction, setBusyAction] = useState<"check" | "download" | "prepare" | "restart" | "prefs" | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const actionStatus = useSaveStatus();
 
   async function refreshStatus() {
     const next = await fetchJson<UpdateStatusResponse>("/api/updates/status");
@@ -692,7 +698,7 @@ function UpgradeCard({ status }: { status: UpdateStatusResponse }) {
 
   async function runAction(action: "check" | "download" | "prepare" | "restart") {
     setBusyAction(action);
-    setMessage(null);
+    actionStatus.markSyncing();
     try {
       const path =
         action === "check"
@@ -704,9 +710,9 @@ function UpgradeCard({ status }: { status: UpdateStatusResponse }) {
               : "/api/updates/restart-now";
       const result = await fetchJson<UpdateActionResponse>(path, { method: "POST" });
       setCurrent(result.status);
-      setMessage(result.message);
+      actionStatus.markSaved(result.message);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Update action failed.");
+      actionStatus.markError(error instanceof Error ? error.message : "Update action failed");
       await refreshStatus();
     } finally {
       setBusyAction(null);
@@ -715,7 +721,7 @@ function UpgradeCard({ status }: { status: UpdateStatusResponse }) {
 
   async function savePreferences(next: UpdatePreferencesResponse) {
     setBusyAction("prefs");
-    setMessage(null);
+    actionStatus.markSyncing("Saving preferences…");
     try {
       const saved = await fetchJson<UpdatePreferencesResponse>("/api/updates/preferences", {
         method: "PUT",
@@ -723,10 +729,10 @@ function UpgradeCard({ status }: { status: UpdateStatusResponse }) {
         body: JSON.stringify(savedPreferencePayload(next))
       });
       setPreferences(saved);
-      setMessage("Update preferences saved.");
+      actionStatus.markSaved("Update preferences saved");
       await refreshStatus();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not save preferences.");
+      actionStatus.markError(error instanceof Error ? error.message : "Could not save preferences");
     } finally {
       setBusyAction(null);
     }
@@ -756,9 +762,7 @@ function UpgradeCard({ status }: { status: UpdateStatusResponse }) {
         <CardDescription>Version status, channel, behavior mode, and restart flow.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        {message ? (
-          <p className="rounded-xl border border-hairline bg-surface-1 px-3 py-2 text-sm text-muted-foreground">{message}</p>
-        ) : null}
+        <SaveStatus state={actionStatus.state} message={actionStatus.message} />
         <HealthRow label="Current version" status={current.currentVersion} />
         <HealthRow label="Latest version" status={current.latestVersion ?? "No update available"} />
         <HealthRow label="Channel" status={current.channel} />
