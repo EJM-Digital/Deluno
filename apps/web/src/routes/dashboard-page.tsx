@@ -47,7 +47,6 @@ import { MetricChart, type MetricPoint } from "../components/ui/metric-chart";
 import { useLiveSeries } from "../hooks/use-live-series";
 import { useCoalescedRevalidate } from "../hooks/use-visible-interval";
 import { useSignalREvent, useSignalRResync } from "../lib/use-signalr";
-import { RouteSkeleton } from "../components/shell/skeleton";
 
 interface OutcomeSeries {
   succeeded: MetricPoint[];
@@ -241,8 +240,8 @@ const DASHBOARD_REFRESH = {
   refetchIntervalInBackground: false
 } as const;
 
-function useDashboardData(initial: DashboardLoaderData | undefined) {
-  const source = initial?.sources ?? emptyDashboardSources();
+function useDashboardData(initial: DashboardLoaderData) {
+  const source = initial.sources;
   const [moviePage, movieWanted, showPage, showWanted, telemetry, indexers, clients, libraries, automation, searchCycles, retryWindows, upcomingEpisodes, setupProgress, settings, policySets, qualityProfiles, metrics] = useQueries({
     queries: [
       { ...DASHBOARD_REFRESH, queryKey: ["movies"], queryFn: () => fetchJson<CataloguePage<MovieListItem>>("/api/movies/page?pageSize=14&sort=added&direction=desc").catch(() => emptyDashboardSources().moviePage), initialData: source.moviePage },
@@ -287,11 +286,11 @@ function useDashboardData(initial: DashboardLoaderData | undefined) {
 }
 
 export function DashboardPage() {
-  const loaderData = useLoaderData() as DashboardLoaderData | undefined;
+  const loaderData = useLoaderData() as DashboardLoaderData;
   const data = useDashboardData(loaderData);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [liveSpeedMbps, setLiveSpeedMbps] = useState(() => data?.speedMbps ?? 0);
+  const [liveSpeedMbps, setLiveSpeedMbps] = useState(() => data.speedMbps);
   const invalidate = useCallback((keys: ReadonlyArray<readonly string[]>) => {
     keys.forEach((queryKey) => { void queryClient.invalidateQueries({ queryKey }); });
   }, [queryClient]);
@@ -319,13 +318,11 @@ export function DashboardPage() {
   useSignalREvent("DownloadProgress", (event) => setLiveSpeedMbps(event.speedMbps));
 
   useEffect(() => {
-    setLiveSpeedMbps(data?.speedMbps ?? 0);
-  }, [data?.speedMbps]);
+    setLiveSpeedMbps(data.speedMbps);
+  }, [data.speedMbps]);
 
   // Progress events move the sparkline without reloading the whole dashboard.
   const speedSeries = useLiveSeries(Number(liveSpeedMbps.toFixed(2)), { samples: 60 });
-
-  if (!data) return <RouteSkeleton />;
 
   const healthIssues = data.indexerHealth.filter((item) => item.status !== "healthy").length;
   const topDownload = data.activeDownloads[0];

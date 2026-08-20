@@ -46,7 +46,6 @@ import {
   ListTable
 } from "../components/ui/list-card";
 import { PageToolbar } from "../components/ui/page-toolbar";
-import { RouteSkeleton } from "../components/shell/skeleton";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { Switch } from "../components/ui/switch";
@@ -107,8 +106,7 @@ export async function movieDetailLoader({
 }
 
 export function MovieDetailPage() {
-  const loaderData = useLoaderData() as MovieDetailLoaderData | undefined;
-  if (!loaderData) return <RouteSkeleton />;
+  const loaderData = useLoaderData() as MovieDetailLoaderData;
   const { activity, decisions, dispatches, importRecovery, libraries, movie, origins, removalPreview, searchHistory, wanted, workflowStatus } = loaderData;
   const navigate = useNavigate();
   const revalidator = useRevalidator();

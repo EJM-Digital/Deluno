@@ -14,7 +14,7 @@ import {
   Wifi,
   WifiOff
 } from "lucide-react";
-import { JOB_STATUS, type JobStatus, isJobActive } from "../lib/job-status-constants";
+import { JOB_STATUS, type JobStatus, isJobActive, isJobFailed, isJobSuccessful } from "../lib/job-status-constants";
 import { SystemShell } from "../components/app/settings-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { AuditTimeline, type TimelineEvent } from "../components/shell/audit-timeline";
@@ -45,7 +45,6 @@ import { Button } from "../components/ui/button";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { Input } from "../components/ui/input";
 import { PathInput } from "../components/ui/path-input";
-import { RouteSkeleton } from "../components/shell/skeleton";
 import { Chip, type ChipProps } from "../components/ui/chip";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { SummaryStrip } from "../components/ui/summary-strip";
@@ -87,8 +86,7 @@ export async function systemLoader(): Promise<SystemLoaderData> {
 export function SystemPage() {
   const location = useLocation();
   const revalidator = useRevalidator();
-  const loaderData = useLoaderData() as SystemLoaderData | undefined;
-  if (!loaderData) return <RouteSkeleton />;
+  const loaderData = useLoaderData() as SystemLoaderData;
   const { activity, automation, backupSettings, backups, downloadClients, indexers, jobs, monitoring, retryWindows, searchCycles, settings, updateStatus } = loaderData;
 
   const activeJobs = jobs.filter((job) => isJobActive(job.status as JobStatus)).length;
@@ -1000,8 +998,8 @@ function HealthRow({ label, status }: { label: string; status: string }) {
 function JobStatusBadge({ status }: { status: string }) {
   const isRunning = status === JOB_STATUS.RUNNING;
   const isQueued = status === JOB_STATUS.QUEUED;
-  const isDone = status === "completed" || status === "succeeded";
-  const isFailed = status === "failed" || status === "error";
+  const isDone = isJobSuccessful(status as JobStatus) || status === "succeeded";
+  const isFailed = isJobFailed(status as JobStatus) || status === "error";
 
   return (
     <span

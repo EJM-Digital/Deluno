@@ -11,7 +11,6 @@ import {
 } from "../lib/api";
 import { buildSetupStatus, type SetupStatusStep } from "../lib/setup-status";
 import { SettingsShell } from "../components/app/settings-shell";
-import { RouteSkeleton } from "../components/shell/skeleton";
 
 interface SettingsOverviewLoaderData {
   libraries: LibraryItem[];
@@ -36,8 +35,7 @@ export async function settingsOverviewLoader(): Promise<SettingsOverviewLoaderDa
 }
 
 export function SettingsOverviewPage() {
-  const loaderData = useLoaderData() as SettingsOverviewLoaderData | undefined;
-  if (!loaderData) return <RouteSkeleton />;
+  const loaderData = useLoaderData() as SettingsOverviewLoaderData;
 
   const { downloadClients, indexers, libraries, policySets, qualityProfiles, settings } = loaderData;
   const setupStatus = buildSetupStatus({ downloadClients, indexers, libraries, policySets, qualityProfiles, settings });

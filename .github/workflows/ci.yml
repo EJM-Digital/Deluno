@@ -87,6 +87,9 @@ jobs:
         working-directory: apps/web
         run: npx playwright install --with-deps chromium
 
+      - name: Lint frontend
+        run: npm --workspace apps/web run lint
+
       - name: Build frontend
         run: npm run build:web
 

@@ -36,7 +36,6 @@ import {
   ListTable
 } from "../components/ui/list-card";
 import { PageToolbar } from "../components/ui/page-toolbar";
-import { RouteSkeleton } from "../components/shell/skeleton";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { toast } from "../components/shell/toaster";
@@ -65,7 +64,7 @@ export async function activityLoader(): Promise<ActivityLoaderData> {
 }
 
 export function ActivityPage() {
-  const loaderData = useLoaderData() as ActivityLoaderData | undefined;
+  const loaderData = useLoaderData() as ActivityLoaderData;
   const revalidator = useRevalidator();
   const [section, setSection] = useState<Section>("jobs");
   const [openJobId, setOpenJobId] = useState<string | null>(null);
@@ -75,7 +74,6 @@ export function ActivityPage() {
   // Active work needs a short refresh, but hidden tabs must not contend with it.
   useVisibleInterval(() => revalidator.revalidate(), 10_000);
 
-  if (!loaderData) return <RouteSkeleton />;
   const { activity, dispatches, jobs, movieRecovery, seriesRecovery } = loaderData;
 
   const runningJobs = jobs.filter((job) => isJobInProgress(job.status as JobStatus)).length;

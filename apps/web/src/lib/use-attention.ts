@@ -7,6 +7,7 @@ import {
   type SeriesWantedSummary
 } from "./api";
 import { useVisibleInterval } from "../hooks/use-visible-interval";
+import { isJobFailed, type JobStatus } from "./job-status-constants";
 
 export interface AttentionSnapshot {
   failedJobs: number;
@@ -37,7 +38,7 @@ export function useAttention(pollMs = 45000) {
         fetchJson<SeriesWantedSummary>("/api/series/wanted").catch(() => null)
       ]);
 
-      const failedJobs = jobs.filter((j) => j.status === "failed").length;
+      const failedJobs = jobs.filter((job) => isJobFailed(job.status as JobStatus)).length;
       const indexerAlerts = indexers.filter((i) => i.isEnabled && i.healthStatus !== "healthy").length;
 
       setSnapshot({
