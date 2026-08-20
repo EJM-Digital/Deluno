@@ -201,8 +201,6 @@ public static class LibrariesEndpointRouteBuilderExtensions
         });
 
         libraries.MapGet(string.Empty, async (
-            int? pageSize,
-            string? pageToken,
             [FromServices] ILibrariesRepository repository,
             [FromServices] IJobQueueRepository jobs,
             CancellationToken cancellationToken) =>
@@ -211,13 +209,7 @@ public static class LibrariesEndpointRouteBuilderExtensions
             var automation = await jobs.ListLibraryAutomationStatesAsync(cancellationToken);
             var merged = items.Select(item => MergeLibraryState(item, automation)).ToArray();
 
-            if (pageSize is null && pageToken is null)
-            {
-                return Results.Ok(merged);
-            }
-
-            var (page, nextPageToken) = DelunoPaging.Paginate(merged, new PageOptions { PageSize = pageSize ?? 50, PageToken = pageToken });
-            return Results.Ok(new { items = page, nextPageToken });
+            return Results.Ok(merged);
         });
 
         libraries.MapPost(string.Empty, async (

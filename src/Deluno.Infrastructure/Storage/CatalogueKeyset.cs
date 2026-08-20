@@ -118,13 +118,14 @@ public static class CatalogueKeyset
     public static string SearchFilter(string alias)
         => $"(lower({alias}.title) LIKE @search OR lower(COALESCE({alias}.genres, '')) LIKE @search)";
 
-    public static string StatusFilter(string status, string alias, string hasFileExpression)
+    public static string StatusFilter(string status, string alias, string hasFileExpression, string? upgradeExpression = null)
         => CatalogueStatusFilters.Normalize(status) switch
         {
             CatalogueStatusFilters.Monitored => $"{alias}.monitored = 1",
             CatalogueStatusFilters.Unmonitored => $"{alias}.monitored = 0",
             CatalogueStatusFilters.Downloaded => hasFileExpression,
             CatalogueStatusFilters.Missing => $"NOT {hasFileExpression}",
+            CatalogueStatusFilters.Upgrades when !string.IsNullOrWhiteSpace(upgradeExpression) => upgradeExpression,
             _ => string.Empty
         };
 

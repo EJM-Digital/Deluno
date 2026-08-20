@@ -453,6 +453,7 @@ public sealed class SqliteMovieCatalogRepository(
     private const int MaxCataloguePageSize = 200;
 
     private const string CatalogueHasFile = "EXISTS(SELECT 1 FROM movie_wanted_state w WHERE w.movie_id = m.id AND w.has_file = 1)";
+    private const string CatalogueUpgrade = "EXISTS(SELECT 1 FROM movie_wanted_state w WHERE w.movie_id = m.id AND w.has_file = 1 AND w.quality_cutoff_met = 0)";
 
     /// <summary>
     /// The projection a catalogue page returns. Matches <see cref="ReadMovie"/>
@@ -520,7 +521,7 @@ public sealed class SqliteMovieCatalogRepository(
         var sortExpression = CatalogueKeyset.SortExpression(sort, "m", "release_year");
         var where = CatalogueKeyset.CombineFilters(
             search is null ? string.Empty : CatalogueKeyset.SearchFilter("m"),
-            CatalogueKeyset.StatusFilter(status, "m", CatalogueHasFile),
+            CatalogueKeyset.StatusFilter(status, "m", CatalogueHasFile, CatalogueUpgrade),
             token is null ? string.Empty : CatalogueKeyset.SeekPredicate(sortExpression, "m", query.Descending));
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -621,7 +622,8 @@ public sealed class SqliteMovieCatalogRepository(
                 SUM(CASE WHEN m.monitored = 1 THEN 1 ELSE 0 END),
                 SUM(CASE WHEN m.monitored = 0 THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {CatalogueHasFile} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {CatalogueHasFile} THEN 0 ELSE 1 END)
+                SUM(CASE WHEN {CatalogueHasFile} THEN 0 ELSE 1 END),
+                SUM(CASE WHEN {CatalogueUpgrade} THEN 1 ELSE 0 END)
             FROM movie_entries m
             WHERE {where};
             """;
@@ -630,7 +632,7 @@ public sealed class SqliteMovieCatalogRepository(
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken))
         {
-            return new CatalogueFacets(0, 0, 0, 0, 0);
+            return new CatalogueFacets(0, 0, 0, 0, 0, 0);
         }
 
         return new CatalogueFacets(
@@ -638,7 +640,8 @@ public sealed class SqliteMovieCatalogRepository(
             Monitored: reader.IsDBNull(1) ? 0 : reader.GetInt32(1),
             Unmonitored: reader.IsDBNull(2) ? 0 : reader.GetInt32(2),
             Downloaded: reader.IsDBNull(3) ? 0 : reader.GetInt32(3),
-            Missing: reader.IsDBNull(4) ? 0 : reader.GetInt32(4));
+            Missing: reader.IsDBNull(4) ? 0 : reader.GetInt32(4),
+            Upgrades: reader.IsDBNull(5) ? 0 : reader.GetInt32(5));
     }
 
     private static int SelectFacetTotal(CatalogueFacets facets, string status)
@@ -648,6 +651,7 @@ public sealed class SqliteMovieCatalogRepository(
             CatalogueStatusFilters.Unmonitored => facets.Unmonitored,
             CatalogueStatusFilters.Downloaded => facets.Downloaded,
             CatalogueStatusFilters.Missing => facets.Missing,
+            CatalogueStatusFilters.Upgrades => facets.Upgrades,
             _ => facets.All
         };
 

@@ -41,6 +41,7 @@ public static class CatalogueStatusFilters
     public const string Unmonitored = "unmonitored";
     public const string Downloaded = "downloaded";
     public const string Missing = "missing";
+    public const string Upgrades = "upgrades";
 
     public static string Normalize(string? value)
         => value?.Trim().ToLowerInvariant() switch
@@ -49,6 +50,7 @@ public static class CatalogueStatusFilters
             Unmonitored => Unmonitored,
             Downloaded => Downloaded,
             Missing => Missing,
+            Upgrades => Upgrades,
             _ => All
         };
 }
@@ -105,7 +107,8 @@ public sealed record CatalogueFacets(
     int Monitored,
     int Unmonitored,
     int Downloaded,
-    int Missing);
+    int Missing,
+    int Upgrades);
 
 /// <summary>
 /// The continuation token: the sort value of the last row on the page, and its

@@ -30,7 +30,7 @@ test.describe("dashboard workflow", () => {
     await expect(page.getByText("Nothing in the library yet", { exact: true })).toBeVisible();
   });
 
-  test("makes library display, order, and refine controls readable without hiding advanced choices", async ({ page }) => {
+  test("makes library display, server-backed order, and refine controls readable", async ({ page }) => {
     await authenticateAndNavigate(page, "/movies");
 
     await page.getByRole("button", { name: /^Display/ }).click();
@@ -41,13 +41,12 @@ test.describe("dashboard workflow", () => {
 
     await page.getByRole("button", { name: /^Order/ }).click();
     await expect(page.getByRole("heading", { name: "Put the right titles first" })).toBeVisible();
-    await expect(page.getByText("More ways to order your library", { exact: true })).toBeVisible();
+    await expect(page.getByText("Every available order is performed by the paged catalogue query.", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Ascending" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Descending" })).toBeVisible();
 
     await page.getByRole("button", { name: /^Refine/ }).click();
     await expect(page.getByRole("heading", { name: "Narrow the library without losing your place" })).toBeVisible();
-    await expect(page.getByText("Precise rules", { exact: true })).toBeVisible();
     await expect(page.getByText("Saved library views", { exact: true })).toBeVisible();
   });
 

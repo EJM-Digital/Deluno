@@ -33,21 +33,11 @@ public static class MoviesEndpointRouteBuilderExtensions
     {
         var movies = endpoints.MapGroup("/api/movies");
 
-        movies.MapGet("/", async (IMovieCatalogRepository repository, CancellationToken cancellationToken) =>
-        {
-            var items = await repository.ListAsync(cancellationToken);
-            return Results.Ok(items);
-        });
-
-
         // The list surface for a library that keeps growing. Search, filter,
         // sort and the counts all happen in SQL; the response says how many rows
         // match and hands back a continuation token, so a caller can always tell
         // a complete answer from a partial one.
         //
-        // movies.MapGet("/") above still returns the whole catalogue. It goes
-        // when the library view moves onto this; until then a page is available
-        // to anything that wants one.
         movies.MapGet("/page", async (
             string? search,
             string? status,

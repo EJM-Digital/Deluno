@@ -429,6 +429,7 @@ public sealed class SqliteSeriesCatalogRepository(
     private const int MaxCataloguePageSize = 200;
 
     private const string CatalogueHasFile = "EXISTS(SELECT 1 FROM series_wanted_state w WHERE w.series_id = s.id AND w.has_file = 1)";
+    private const string CatalogueUpgrade = "EXISTS(SELECT 1 FROM series_wanted_state w WHERE w.series_id = s.id AND w.has_file = 1 AND w.quality_cutoff_met = 0)";
 
     /// <summary>
     /// The projection a catalogue page returns. Matches <see cref="ReadSeries"/>
@@ -492,7 +493,7 @@ public sealed class SqliteSeriesCatalogRepository(
         var sortExpression = CatalogueKeyset.SortExpression(sort, "s", "start_year");
         var where = CatalogueKeyset.CombineFilters(
             search is null ? string.Empty : CatalogueKeyset.SearchFilter("s"),
-            CatalogueKeyset.StatusFilter(status, "s", CatalogueHasFile),
+            CatalogueKeyset.StatusFilter(status, "s", CatalogueHasFile, CatalogueUpgrade),
             token is null ? string.Empty : CatalogueKeyset.SeekPredicate(sortExpression, "s", query.Descending));
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -593,7 +594,8 @@ public sealed class SqliteSeriesCatalogRepository(
                 SUM(CASE WHEN s.monitored = 1 THEN 1 ELSE 0 END),
                 SUM(CASE WHEN s.monitored = 0 THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {CatalogueHasFile} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {CatalogueHasFile} THEN 0 ELSE 1 END)
+                SUM(CASE WHEN {CatalogueHasFile} THEN 0 ELSE 1 END),
+                SUM(CASE WHEN {CatalogueUpgrade} THEN 1 ELSE 0 END)
             FROM series_entries s
             WHERE {where};
             """;
@@ -602,7 +604,7 @@ public sealed class SqliteSeriesCatalogRepository(
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken))
         {
-            return new CatalogueFacets(0, 0, 0, 0, 0);
+            return new CatalogueFacets(0, 0, 0, 0, 0, 0);
         }
 
         return new CatalogueFacets(
@@ -610,7 +612,8 @@ public sealed class SqliteSeriesCatalogRepository(
             Monitored: reader.IsDBNull(1) ? 0 : reader.GetInt32(1),
             Unmonitored: reader.IsDBNull(2) ? 0 : reader.GetInt32(2),
             Downloaded: reader.IsDBNull(3) ? 0 : reader.GetInt32(3),
-            Missing: reader.IsDBNull(4) ? 0 : reader.GetInt32(4));
+            Missing: reader.IsDBNull(4) ? 0 : reader.GetInt32(4),
+            Upgrades: reader.IsDBNull(5) ? 0 : reader.GetInt32(5));
     }
 
     private static int SelectFacetTotal(CatalogueFacets facets, string status)
@@ -620,6 +623,7 @@ public sealed class SqliteSeriesCatalogRepository(
             CatalogueStatusFilters.Unmonitored => facets.Unmonitored,
             CatalogueStatusFilters.Downloaded => facets.Downloaded,
             CatalogueStatusFilters.Missing => facets.Missing,
+            CatalogueStatusFilters.Upgrades => facets.Upgrades,
             _ => facets.All
         };
 
