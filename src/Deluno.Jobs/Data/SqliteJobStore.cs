@@ -382,6 +382,134 @@ public sealed class SqliteJobStore(
         return leased.Count == 0 ? null : leased[0];
     }
 
+    public async Task<IReadOnlyList<JobQueueItem>> ReleaseLeasesAsync(
+        IReadOnlyList<string> workerIds,
+        CancellationToken cancellationToken)
+    {
+        var distinctWorkerIds = workerIds
+            .Where(workerId => !string.IsNullOrWhiteSpace(workerId))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (distinctWorkerIds.Length == 0)
+        {
+            return [];
+        }
+
+        var now = timeProvider.GetUtcNow();
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(
+            System.Data.IsolationLevel.Serializable,
+            cancellationToken);
+
+        var released = new List<JobQueueItem>();
+        using (var select = connection.CreateCommand())
+        {
+            select.Transaction = transaction;
+            var placeholders = new List<string>(distinctWorkerIds.Length);
+            for (var index = 0; index < distinctWorkerIds.Length; index++)
+            {
+                var parameterName = $"@workerId{index}";
+                placeholders.Add(parameterName);
+                AddParameter(select, parameterName, distinctWorkerIds[index]);
+            }
+
+            select.CommandText =
+                $"""
+                SELECT
+                    id, job_type, source, status, payload_json, attempts, created_utc, scheduled_utc,
+                    started_utc, completed_utc, leased_until_utc, worker_id, last_error, related_entity_type, related_entity_id,
+                    idempotency_key, dedupe_key, max_attempts, last_attempt_utc, next_attempt_utc
+                FROM job_queue
+                WHERE status = 'running'
+                  AND worker_id IN ({string.Join(", ", placeholders)})
+                ORDER BY scheduled_utc ASC, created_utc ASC;
+                """;
+
+            using var reader = await select.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                released.Add(ReadJob(reader));
+            }
+        }
+
+        foreach (var job in released)
+        {
+            using (var update = connection.CreateCommand())
+            {
+                update.Transaction = transaction;
+                update.CommandText =
+                    """
+                    UPDATE job_queue
+                    SET
+                        status = 'queued',
+                        started_utc = NULL,
+                        completed_utc = NULL,
+                        scheduled_utc = @scheduledUtc,
+                        leased_until_utc = NULL,
+                        worker_id = NULL,
+                        last_error = NULL,
+                        next_attempt_utc = @nextAttemptUtc
+                    WHERE id = @id
+                      AND status = 'running';
+                    """;
+                AddParameter(update, "@id", job.Id);
+                AddParameter(update, "@scheduledUtc", now.ToString("O"));
+                AddParameter(update, "@nextAttemptUtc", now.ToString("O"));
+                await update.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await MarkAutomationStateQueuedAsync(connection, transaction, job, now, cancellationToken);
+            await InsertActivityAsync(
+                connection,
+                transaction,
+                category: "job.lease-released",
+                message: $"{job.JobType}: released after this worker restarted.",
+                detailsJson: job.PayloadJson,
+                relatedJobId: job.Id,
+                relatedEntityType: job.RelatedEntityType,
+                relatedEntityId: job.RelatedEntityId,
+                createdUtc: now,
+                cancellationToken: cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+
+        foreach (var job in released)
+        {
+            await realtimeEventPublisher.PublishQueueItemAddedAsync(
+                job.Id,
+                FormatQueuedTitle(job.JobType, job.PayloadJson),
+                job.RelatedEntityType ?? "job",
+                "queued",
+                cancellationToken);
+            if (job.JobType == "library.search" && string.Equals(job.RelatedEntityType, "library", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(job.RelatedEntityId))
+            {
+                await realtimeEventPublisher.PublishEntityChangedAsync("AutomationState", job.RelatedEntityId, cancellationToken);
+            }
+            await realtimeEventPublisher.PublishActivityEventAddedAsync(
+                Guid.CreateVersion7().ToString("N"),
+                $"{job.JobType}: released after this worker restarted.",
+                "job.lease-released",
+                SeverityForCategory("job.lease-released"),
+                now.ToString("O"),
+                cancellationToken);
+        }
+
+        return released.Select(job => job with
+        {
+            Status = "queued",
+            StartedUtc = null,
+            CompletedUtc = null,
+            ScheduledUtc = now,
+            LeasedUntilUtc = null,
+            WorkerId = null,
+            LastError = null,
+            NextAttemptUtc = now
+        }).ToArray();
+    }
+
     /// <summary>
     /// Leases up to <paramref name="maxJobs"/> jobs in a single transaction.
     ///
@@ -2223,6 +2351,34 @@ public sealed class SqliteJobStore(
 
         AddParameter(command, "@libraryId", job.RelatedEntityId);
         AddParameter(command, "@lastStartedUtc", now.ToString("O"));
+        AddParameter(command, "@updatedUtc", now.ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task MarkAutomationStateQueuedAsync(
+        System.Data.Common.DbConnection connection,
+        System.Data.Common.DbTransaction transaction,
+        JobQueueItem job,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (job.JobType != "library.search" || !string.Equals(job.RelatedEntityType, "library", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            """
+            UPDATE library_automation_state
+            SET
+                status = 'queued',
+                last_error = NULL,
+                updated_utc = @updatedUtc
+            WHERE library_id = @libraryId;
+            """;
+        AddParameter(command, "@libraryId", job.RelatedEntityId);
         AddParameter(command, "@updatedUtc", now.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
     }

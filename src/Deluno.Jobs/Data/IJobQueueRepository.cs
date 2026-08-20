@@ -35,6 +35,17 @@ public interface IJobQueueRepository
         int maxJobs,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Releases work held by a previous incarnation of this worker. Callers
+    /// provide exact lane worker ids, rather than a broad host prefix, so a
+    /// restart never touches another worker on a similarly named machine.
+    /// Attempts are deliberately preserved: releasing makes work runnable, it
+    /// does not pretend the interrupted attempt never happened.
+    /// </summary>
+    Task<IReadOnlyList<JobQueueItem>> ReleaseLeasesAsync(
+        IReadOnlyList<string> workerIds,
+        CancellationToken cancellationToken);
+
     Task CompleteAsync(string jobId, string workerId, string? completionMessage, CancellationToken cancellationToken);
 
     Task FailAsync(string jobId, string workerId, string errorMessage, CancellationToken cancellationToken);
