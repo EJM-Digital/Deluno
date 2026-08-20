@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useHotkeys } from "react-hotkeys-hook";
 import { NavLink, useLocation, useNavigate, useNavigation } from "react-router-dom";
 import { CommandPalette } from "../components/shell/command-palette";
@@ -106,10 +107,17 @@ export function AppLayout() {
 
 function AppLayoutInner() {
   const { token } = useAuth();
+  const [queryClient] = useState(() => new QueryClient({
+    defaultOptions: {
+      queries: { retry: 1 }
+    }
+  }));
   return (
-    <SignalRProvider accessToken={token}>
-      <AppLayoutContent />
-    </SignalRProvider>
+    <QueryClientProvider client={queryClient}>
+      <SignalRProvider accessToken={token}>
+        <AppLayoutContent />
+      </SignalRProvider>
+    </QueryClientProvider>
   );
 }
 

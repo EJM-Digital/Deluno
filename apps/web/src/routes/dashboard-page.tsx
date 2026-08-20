@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import { Link, useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
+import { useCallback, useEffect, useState } from "react";
+import { useQueries, useQueryClient } from "@tanstack/react-query";
+import { Link, useLoaderData, useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -44,7 +45,7 @@ import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_T
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { MetricChart, type MetricPoint } from "../components/ui/metric-chart";
 import { useLiveSeries } from "../hooks/use-live-series";
-import { useCoalescedRevalidate, useVisibleInterval } from "../hooks/use-visible-interval";
+import { useCoalescedRevalidate } from "../hooks/use-visible-interval";
 import { useSignalREvent, useSignalRResync } from "../lib/use-signalr";
 import { RouteSkeleton } from "../components/shell/skeleton";
 
@@ -67,6 +68,7 @@ interface DashboardMetrics {
 }
 
 interface DashboardLoaderData {
+  sources: DashboardSources;
   metrics: DashboardMetrics | null;
   /** Combined client throughput right now, in MB/s. */
   speedMbps: number;
@@ -98,6 +100,40 @@ interface DashboardLoaderData {
   setupStatus: SetupStatusModel;
 }
 
+interface DashboardSources {
+  moviePage: CataloguePage<MovieListItem>;
+  movieWanted: MovieWantedSummary;
+  showPage: CataloguePage<SeriesListItem>;
+  showWanted: SeriesWantedSummary;
+  telemetry: DownloadTelemetryOverview;
+  indexers: IndexerItem[];
+  clients: DownloadClientItem[];
+  libraries: LibraryItem[];
+  automation: LibraryAutomationStateItem[];
+  searchCycles: SearchCycleRunItem[];
+  retryWindows: SearchRetryWindowItem[];
+  upcomingEpisodes: SeriesUpcomingEpisodeItem[];
+  setupProgress: SetupProgressItem;
+  settings: PlatformSettingsSnapshot;
+  policySets: PolicySetItem[];
+  qualityProfiles: QualityProfileItem[];
+  metrics: DashboardMetrics | null;
+}
+
+function emptyDashboardSources(): DashboardSources {
+  return {
+    moviePage: { items: [], nextPageToken: null, totalCount: 0, facets: null },
+    movieWanted: EMPTY_MOVIE_WANTED,
+    showPage: { items: [], nextPageToken: null, totalCount: 0, facets: null },
+    showWanted: EMPTY_SERIES_WANTED,
+    telemetry: EMPTY_TELEMETRY,
+    indexers: [], clients: [], libraries: [], automation: [], searchCycles: [], retryWindows: [], upcomingEpisodes: [],
+    setupProgress: EMPTY_SETUP_PROGRESS,
+    settings: emptyPlatformSettingsSnapshot,
+    policySets: [], qualityProfiles: [], metrics: null
+  };
+}
+
 interface DashboardUpcomingItem {
   id: string;
   day: string;
@@ -111,22 +147,22 @@ interface DashboardUpcomingItem {
 }
 
 const EMPTY_SERIES: MetricPoint[] = [];
+const EMPTY_MOVIE_WANTED: MovieWantedSummary = { totalWanted: 0, missingCount: 0, upgradeCount: 0, waitingCount: 0, recentItems: [] };
+const EMPTY_SERIES_WANTED: SeriesWantedSummary = { totalWanted: 0, missingCount: 0, upgradeCount: 0, waitingCount: 0, recentItems: [] };
+const EMPTY_TELEMETRY: DownloadTelemetryOverview = {
+  summary: { activeCount: 0, queuedCount: 0, completedCount: 0, stalledCount: 0, processingCount: 0, importReadyCount: 0, totalSpeedMbps: 0 },
+  clients: [],
+  capturedUtc: new Date(0).toISOString()
+};
+const EMPTY_SETUP_PROGRESS: SetupProgressItem = { lastCompletedStep: 0, isSkipped: false, isCompleted: false, updatedUtc: new Date(0).toISOString() };
 
 export async function dashboardLoader(): Promise<DashboardLoaderData> {
-  const emptyMovieWanted: MovieWantedSummary = { totalWanted: 0, missingCount: 0, upgradeCount: 0, waitingCount: 0, recentItems: [] };
-  const emptySeriesWanted: SeriesWantedSummary = { totalWanted: 0, missingCount: 0, upgradeCount: 0, waitingCount: 0, recentItems: [] };
-  const emptyTelemetry: DownloadTelemetryOverview = {
-    summary: { activeCount: 0, queuedCount: 0, completedCount: 0, stalledCount: 0, processingCount: 0, importReadyCount: 0, totalSpeedMbps: 0 },
-    clients: [],
-    capturedUtc: new Date().toISOString()
-  };
-
   const [moviePage, movieWanted, showPage, showWanted, telemetry, indexers, clients, libraries, automation, searchCycles, retryWindows, upcomingEpisodes, setupProgress, settings, policySets, qualityProfiles] = await Promise.all([
     fetchJson<CataloguePage<MovieListItem>>("/api/movies/page?pageSize=14&sort=added&direction=desc").catch((): CataloguePage<MovieListItem> => ({ items: [], nextPageToken: null, totalCount: 0, facets: null })),
-    fetchJson<MovieWantedSummary>("/api/movies/wanted").catch(() => emptyMovieWanted),
+    fetchJson<MovieWantedSummary>("/api/movies/wanted").catch(() => EMPTY_MOVIE_WANTED),
     fetchJson<CataloguePage<SeriesListItem>>("/api/series/page?pageSize=14&sort=added&direction=desc").catch((): CataloguePage<SeriesListItem> => ({ items: [], nextPageToken: null, totalCount: 0, facets: null })),
-    fetchJson<SeriesWantedSummary>("/api/series/wanted").catch(() => emptySeriesWanted),
-    fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry").catch(() => emptyTelemetry),
+    fetchJson<SeriesWantedSummary>("/api/series/wanted").catch(() => EMPTY_SERIES_WANTED),
+    fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry").catch(() => EMPTY_TELEMETRY),
     fetchJson<IndexerItem[]>("/api/indexers").catch((): IndexerItem[] => []),
     fetchJson<DownloadClientItem[]>("/api/download-clients").catch((): DownloadClientItem[] => []),
     fetchJson<LibraryItem[]>("/api/libraries").catch((): LibraryItem[] => []),
@@ -134,30 +170,38 @@ export async function dashboardLoader(): Promise<DashboardLoaderData> {
     fetchJson<SearchCycleRunItem[]>("/api/search-cycles?take=8").catch((): SearchCycleRunItem[] => []),
     fetchJson<SearchRetryWindowItem[]>("/api/search-retry-windows?take=8").catch((): SearchRetryWindowItem[] => []),
     fetchJson<SeriesUpcomingEpisodeItem[]>("/api/series/upcoming?take=12&hours=72").catch((): SeriesUpcomingEpisodeItem[] => []),
-    fetchJson<SetupProgressItem>("/api/setup/progress").catch((): SetupProgressItem => ({
-      lastCompletedStep: 0,
-      isSkipped: false,
-      isCompleted: false,
-      updatedUtc: new Date(0).toISOString()
-    })),
+    fetchJson<SetupProgressItem>("/api/setup/progress").catch(() => EMPTY_SETUP_PROGRESS),
     fetchJson<PlatformSettingsSnapshot>("/api/settings").catch(() => emptyPlatformSettingsSnapshot),
     fetchJson<PolicySetItem[]>("/api/policy-sets").catch((): PolicySetItem[] => []),
     fetchJson<QualityProfileItem[]>("/api/quality-profiles").catch((): QualityProfileItem[] => [])
   ]);
 
+  // A dashboard that cannot draw its charts still has to render, so a failed
+  // metrics call degrades to no charts rather than an error page.
+  const metrics = await fetchJson<DashboardMetrics>("/api/dashboard/metrics?days=30").catch(() => null);
+
+  return buildDashboardData({
+    moviePage, movieWanted, showPage, showWanted, telemetry, indexers, clients,
+    libraries, automation, searchCycles, retryWindows, upcomingEpisodes,
+    setupProgress, settings, policySets, qualityProfiles, metrics
+  });
+}
+
+function buildDashboardData(sources: DashboardSources): DashboardLoaderData {
+  const {
+    moviePage, movieWanted, showPage, showWanted, telemetry, indexers, clients,
+    libraries, automation, searchCycles, retryWindows, upcomingEpisodes,
+    setupProgress, settings, policySets, qualityProfiles, metrics
+  } = sources;
   const adaptedMovies = adaptMovieItems(moviePage.items, movieWanted);
   const adaptedShows = adaptSeriesItems(showPage.items, showWanted);
-  const allItems = [...adaptedMovies, ...adaptedShows];
   const activeDownloads = adaptTelemetryDownloads(telemetry);
   const indexerHealth = adaptIndexerHealth(indexers, clients);
   const monitoredCount = (moviePage.facets?.monitored ?? 0) + (showPage.facets?.monitored ?? 0);
   const healthyCount = indexerHealth.filter((item) => item.status === "healthy").length;
 
-  // A dashboard that cannot draw its charts still has to render, so a failed
-  // metrics call degrades to no charts rather than an error page.
-  const metrics = await fetchJson<DashboardMetrics>("/api/dashboard/metrics?days=30").catch(() => null);
-
   return {
+    sources,
     metrics,
     speedMbps: telemetry.summary.totalSpeedMbps,
     activeDownloads,
@@ -189,23 +233,89 @@ export async function dashboardLoader(): Promise<DashboardLoaderData> {
   };
 }
 
-export function DashboardPage() {
-  const data = useLoaderData() as DashboardLoaderData | undefined;
-  const navigate = useNavigate();
-  const revalidator = useRevalidator();
-  const [liveSpeedMbps, setLiveSpeedMbps] = useState(() => data?.speedMbps ?? 0);
+const DASHBOARD_REFRESH = {
+  // Deliberate visible-only safety net: realtime drives normal freshness, while
+  // this heartbeat recovers from a missed envelope without waking hidden tabs.
+  staleTime: 60_000,
+  refetchInterval: 60_000,
+  refetchIntervalInBackground: false
+} as const;
 
-  // A slow safety net, not the primary live-update path. Realtime gaps must
-  // degrade to a visible refetch rather than silently leaving stale data.
-  useVisibleInterval(() => revalidator.revalidate(), 60_000);
-  const nudge = useCoalescedRevalidate(() => revalidator.revalidate(), 5_000);
+function useDashboardData(initial: DashboardLoaderData | undefined) {
+  const source = initial?.sources ?? emptyDashboardSources();
+  const [moviePage, movieWanted, showPage, showWanted, telemetry, indexers, clients, libraries, automation, searchCycles, retryWindows, upcomingEpisodes, setupProgress, settings, policySets, qualityProfiles, metrics] = useQueries({
+    queries: [
+      { ...DASHBOARD_REFRESH, queryKey: ["movies"], queryFn: () => fetchJson<CataloguePage<MovieListItem>>("/api/movies/page?pageSize=14&sort=added&direction=desc").catch(() => emptyDashboardSources().moviePage), initialData: source.moviePage },
+      { ...DASHBOARD_REFRESH, queryKey: ["movies", "wanted"], queryFn: () => fetchJson<MovieWantedSummary>("/api/movies/wanted").catch(() => EMPTY_MOVIE_WANTED), initialData: source.movieWanted },
+      { ...DASHBOARD_REFRESH, queryKey: ["series"], queryFn: () => fetchJson<CataloguePage<SeriesListItem>>("/api/series/page?pageSize=14&sort=added&direction=desc").catch(() => emptyDashboardSources().showPage), initialData: source.showPage },
+      { ...DASHBOARD_REFRESH, queryKey: ["series", "wanted"], queryFn: () => fetchJson<SeriesWantedSummary>("/api/series/wanted").catch(() => EMPTY_SERIES_WANTED), initialData: source.showWanted },
+      { ...DASHBOARD_REFRESH, queryKey: ["telemetry"], queryFn: () => fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry").catch(() => EMPTY_TELEMETRY), initialData: source.telemetry },
+      { ...DASHBOARD_REFRESH, queryKey: ["indexers"], queryFn: () => fetchJson<IndexerItem[]>("/api/indexers").catch(() => []), initialData: source.indexers },
+      { ...DASHBOARD_REFRESH, queryKey: ["download-clients"], queryFn: () => fetchJson<DownloadClientItem[]>("/api/download-clients").catch(() => []), initialData: source.clients },
+      { ...DASHBOARD_REFRESH, queryKey: ["libraries"], queryFn: () => fetchJson<LibraryItem[]>("/api/libraries").catch(() => []), initialData: source.libraries },
+      { ...DASHBOARD_REFRESH, queryKey: ["library-automation"], queryFn: () => fetchJson<LibraryAutomationStateItem[]>("/api/library-automation").catch(() => []), initialData: source.automation },
+      { ...DASHBOARD_REFRESH, queryKey: ["search-cycles"], queryFn: () => fetchJson<SearchCycleRunItem[]>("/api/search-cycles?take=8").catch(() => []), initialData: source.searchCycles },
+      { ...DASHBOARD_REFRESH, queryKey: ["search-retry-windows"], queryFn: () => fetchJson<SearchRetryWindowItem[]>("/api/search-retry-windows?take=8").catch(() => []), initialData: source.retryWindows },
+      { ...DASHBOARD_REFRESH, queryKey: ["series", "upcoming"], queryFn: () => fetchJson<SeriesUpcomingEpisodeItem[]>("/api/series/upcoming?take=12&hours=72").catch(() => []), initialData: source.upcomingEpisodes },
+      { ...DASHBOARD_REFRESH, queryKey: ["setup-progress"], queryFn: () => fetchJson<SetupProgressItem>("/api/setup/progress").catch(() => EMPTY_SETUP_PROGRESS), initialData: source.setupProgress },
+      { ...DASHBOARD_REFRESH, queryKey: ["settings"], queryFn: () => fetchJson<PlatformSettingsSnapshot>("/api/settings").catch(() => emptyPlatformSettingsSnapshot), initialData: source.settings },
+      { ...DASHBOARD_REFRESH, queryKey: ["policy-sets"], queryFn: () => fetchJson<PolicySetItem[]>("/api/policy-sets").catch(() => []), initialData: source.policySets },
+      { ...DASHBOARD_REFRESH, queryKey: ["quality-profiles"], queryFn: () => fetchJson<QualityProfileItem[]>("/api/quality-profiles").catch(() => []), initialData: source.qualityProfiles },
+      { ...DASHBOARD_REFRESH, queryKey: ["dashboard-metrics"], queryFn: () => fetchJson<DashboardMetrics>("/api/dashboard/metrics?days=30").catch(() => null), initialData: source.metrics }
+    ]
+  });
+
+  return buildDashboardData({
+    moviePage: moviePage.data ?? source.moviePage,
+    movieWanted: movieWanted.data ?? source.movieWanted,
+    showPage: showPage.data ?? source.showPage,
+    showWanted: showWanted.data ?? source.showWanted,
+    telemetry: telemetry.data ?? source.telemetry,
+    indexers: indexers.data ?? source.indexers,
+    clients: clients.data ?? source.clients,
+    libraries: libraries.data ?? source.libraries,
+    automation: automation.data ?? source.automation,
+    searchCycles: searchCycles.data ?? source.searchCycles,
+    retryWindows: retryWindows.data ?? source.retryWindows,
+    upcomingEpisodes: upcomingEpisodes.data ?? source.upcomingEpisodes,
+    setupProgress: setupProgress.data ?? source.setupProgress,
+    settings: settings.data ?? source.settings,
+    policySets: policySets.data ?? source.policySets,
+    qualityProfiles: qualityProfiles.data ?? source.qualityProfiles,
+    metrics: metrics.data ?? source.metrics
+  });
+}
+
+export function DashboardPage() {
+  const loaderData = useLoaderData() as DashboardLoaderData | undefined;
+  const data = useDashboardData(loaderData);
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [liveSpeedMbps, setLiveSpeedMbps] = useState(() => data?.speedMbps ?? 0);
+  const invalidate = useCallback((keys: ReadonlyArray<readonly string[]>) => {
+    keys.forEach((queryKey) => { void queryClient.invalidateQueries({ queryKey }); });
+  }, [queryClient]);
+
+  // Action events can arrive in a burst; coalesce their broad fallback refresh.
+  // The 60-second visible-only query heartbeat remains the safety net.
+  const nudge = useCoalescedRevalidate(() => { void queryClient.invalidateQueries(); }, 5_000);
   useSignalREvent("SearchRunCompleted", nudge);
   useSignalREvent("HealthChanged", nudge);
   useSignalREvent("QueueItemAdded", nudge);
   useSignalREvent("QueueItemRemoved", nudge);
   useSignalREvent("QueueItemStatusChanged", nudge);
   useSignalREvent("ImportStateChanged", nudge);
-  useSignalRResync(() => revalidator.revalidate());
+  useSignalREvent("MovieChanged", () => invalidate([["movies"], ["movies", "wanted"], ["dashboard-metrics"]]));
+  useSignalREvent("SeriesChanged", () => invalidate([["series"], ["series", "wanted"], ["series", "upcoming"], ["dashboard-metrics"]]));
+  useSignalREvent("LibraryChanged", () => invalidate([["libraries"], ["library-automation"]]));
+  useSignalREvent("SettingsChanged", () => invalidate([["settings"], ["setup-progress"]]));
+  useSignalREvent("QualityProfileChanged", () => invalidate([["quality-profiles"], ["setup-progress"]]));
+  useSignalREvent("PolicySetChanged", () => invalidate([["policy-sets"], ["setup-progress"]]));
+  useSignalREvent("IntakeSourceChanged", () => invalidate([["setup-progress"]]));
+  useSignalREvent("AutomationStateChanged", () => invalidate([["library-automation"], ["search-cycles"], ["search-retry-windows"]]));
+  useSignalREvent("IndexerChanged", () => invalidate([["indexers"], ["dashboard-metrics"]]));
+  useSignalREvent("DownloadClientChanged", () => invalidate([["download-clients"], ["telemetry"], ["dashboard-metrics"]]));
+  useSignalRResync(() => { void queryClient.invalidateQueries(); });
   useSignalREvent("DownloadProgress", (event) => setLiveSpeedMbps(event.speedMbps));
 
   useEffect(() => {
@@ -842,6 +952,7 @@ function formatDashboardTime(date: Date) {
 
 function emptyDashboardData(): DashboardLoaderData {
   return {
+    sources: emptyDashboardSources(),
     metrics: null,
     speedMbps: 0,
     activeDownloads: [],

@@ -53,6 +53,10 @@ export default defineConfig({
             return "signalr";
           }
 
+          if (id.includes("@tanstack/react-query")) {
+            return "react-query";
+          }
+
           if (id.includes("react") || id.includes("scheduler")) {
             return "react-vendor";
           }
