@@ -42,6 +42,7 @@ public static class LibrariesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] CreateDestinationRuleRequest request,
             [FromServices] ILibrariesRepository repository,
+            [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -57,6 +58,10 @@ public static class LibrariesEndpointRouteBuilderExtensions
             }
 
             var item = await repository.CreateDestinationRuleAsync(request, cancellationToken);
+            // Destination rules are global configuration, not children of one
+            // library. The rule id lets clients invalidate the library surface
+            // without inventing a separate event family for this sub-resource.
+            await realtimeEventPublisher.PublishEntityChangedAsync("Library", item.Id, cancellationToken);
             return Results.Ok(item);
         });
 
@@ -65,6 +70,7 @@ public static class LibrariesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] UpdateDestinationRuleRequest request,
             [FromServices] ILibrariesRepository repository,
+            [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -80,13 +86,16 @@ public static class LibrariesEndpointRouteBuilderExtensions
             }
 
             var item = await repository.UpdateDestinationRuleAsync(id, request, cancellationToken);
-            return item is null ? Results.NotFound() : Results.Ok(item);
+            if (item is null) return Results.NotFound();
+            await realtimeEventPublisher.PublishEntityChangedAsync("Library", item.Id, cancellationToken);
+            return Results.Ok(item);
         });
 
         destinationRules.MapDelete("{id}", async (
             string id,
             HttpContext httpContext,
             [FromServices] ILibrariesRepository repository,
+            [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -96,7 +105,9 @@ public static class LibrariesEndpointRouteBuilderExtensions
             }
 
             var removed = await repository.DeleteDestinationRuleAsync(id, cancellationToken);
-            return removed ? Results.NoContent() : Results.NotFound();
+            if (!removed) return Results.NotFound();
+            await realtimeEventPublisher.PublishEntityChangedAsync("Library", id, cancellationToken);
+            return Results.NoContent();
         });
 
         libraryViews.MapGet(string.Empty, async (
@@ -125,6 +136,7 @@ public static class LibrariesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] CreateLibraryViewRequest request,
             [FromServices] ILibrariesRepository repository,
+            [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -146,6 +158,9 @@ public static class LibrariesEndpointRouteBuilderExtensions
             }
 
             var item = await repository.CreateLibraryViewAsync(user.Id, request, cancellationToken);
+            // Saved views are per-user presentation state rather than a library
+            // row, so their own id is the only stable invalidation identity.
+            await realtimeEventPublisher.PublishEntityChangedAsync("Library", item.Id, cancellationToken);
             return Results.Ok(item);
         });
 
@@ -154,6 +169,7 @@ public static class LibrariesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] UpdateLibraryViewRequest request,
             [FromServices] ILibrariesRepository repository,
+            [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -175,13 +191,16 @@ public static class LibrariesEndpointRouteBuilderExtensions
             }
 
             var item = await repository.UpdateLibraryViewAsync(user.Id, id, request, cancellationToken);
-            return item is null ? Results.NotFound() : Results.Ok(item);
+            if (item is null) return Results.NotFound();
+            await realtimeEventPublisher.PublishEntityChangedAsync("Library", item.Id, cancellationToken);
+            return Results.Ok(item);
         });
 
         libraryViews.MapDelete("{id}", async (
             string id,
             HttpContext httpContext,
             [FromServices] ILibrariesRepository repository,
+            [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -197,7 +216,9 @@ public static class LibrariesEndpointRouteBuilderExtensions
             }
 
             var removed = await repository.DeleteLibraryViewAsync(user.Id, id, cancellationToken);
-            return removed ? Results.NoContent() : Results.NotFound();
+            if (!removed) return Results.NotFound();
+            await realtimeEventPublisher.PublishEntityChangedAsync("Library", id, cancellationToken);
+            return Results.NoContent();
         });
 
         libraries.MapGet(string.Empty, async (
@@ -303,6 +324,7 @@ public static class LibrariesEndpointRouteBuilderExtensions
             }
 
             await realtimeEventPublisher.PublishEntityChangedAsync("AutomationState", item.Id, cancellationToken);
+            await realtimeEventPublisher.PublishEntityChangedAsync("Library", item.Id, cancellationToken);
             return Results.Ok(item);
         });
 

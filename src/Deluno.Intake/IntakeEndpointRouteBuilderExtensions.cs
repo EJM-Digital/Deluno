@@ -3,6 +3,7 @@ using Deluno.Intake.Contracts;
 using Deluno.Intake.Data;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
+using Deluno.Realtime;
 using Deluno.Security;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -61,6 +62,7 @@ public static class IntakeEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] CreateIntakeSourceRequest request,
             [FromServices] IIntakeRepository repository,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -83,6 +85,7 @@ public static class IntakeEndpointRouteBuilderExtensions
             }
 
             var item = await repository.CreateIntakeSourceAsync(request, cancellationToken);
+            await realtimeEventPublisher.PublishEntityChangedAsync("IntakeSource", item.Id, cancellationToken);
             return Results.Ok(item);
         });
 
@@ -91,6 +94,7 @@ public static class IntakeEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] UpdateIntakeSourceRequest request,
             [FromServices] IIntakeRepository repository,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -113,13 +117,16 @@ public static class IntakeEndpointRouteBuilderExtensions
             }
 
             var item = await repository.UpdateIntakeSourceAsync(id, request, cancellationToken);
-            return item is null ? Results.NotFound() : Results.Ok(item);
+            if (item is null) return Results.NotFound();
+            await realtimeEventPublisher.PublishEntityChangedAsync("IntakeSource", item.Id, cancellationToken);
+            return Results.Ok(item);
         });
 
         intakeSources.MapDelete("{id}", async (
             string id,
             HttpContext httpContext,
             [FromServices] IIntakeRepository repository,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -129,7 +136,9 @@ public static class IntakeEndpointRouteBuilderExtensions
             }
 
             var removed = await repository.DeleteIntakeSourceAsync(id, cancellationToken);
-            return removed ? Results.NoContent() : Results.NotFound();
+            if (!removed) return Results.NotFound();
+            await realtimeEventPublisher.PublishEntityChangedAsync("IntakeSource", id, cancellationToken);
+            return Results.NoContent();
         });
 
         intakeSources.MapPost("{id}/sync", async (
@@ -137,6 +146,7 @@ public static class IntakeEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromServices] IIntakeRepository repository,
             IJobScheduler jobScheduler,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -161,6 +171,8 @@ public static class IntakeEndpointRouteBuilderExtensions
                     IdempotencyKey: $"intake.sync.manual:{source.Id}:{DateTimeOffset.UtcNow:yyyyMMddHHmmss}",
                     DedupeKey: $"intake.sync:{source.Id}"),
                 cancellationToken);
+
+            await realtimeEventPublisher.PublishEntityChangedAsync("IntakeSource", source.Id, cancellationToken);
 
             return Results.Accepted($"/api/jobs/{job.Id}", job);
         });
@@ -192,6 +204,7 @@ public static class IntakeEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] ApproveIntakeListPreviewRequest request,
             IIntakeListApprovalService approvalService,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -202,7 +215,9 @@ public static class IntakeEndpointRouteBuilderExtensions
 
             try
             {
-                return Results.Ok(await approvalService.ApproveAsync(id, request, cancellationToken));
+                var result = await approvalService.ApproveAsync(id, request, cancellationToken);
+                await realtimeEventPublisher.PublishEntityChangedAsync("IntakeSource", id, cancellationToken);
+                return Results.Ok(result);
             }
             catch (InvalidOperationException exception)
             {
@@ -231,6 +246,7 @@ public static class IntakeEndpointRouteBuilderExtensions
             [FromBody] CreateIntakeListExclusionRequest request,
             [FromServices] IIntakeRepository repository,
             IActivityFeedRepository activityFeedRepository,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -259,6 +275,7 @@ public static class IntakeEndpointRouteBuilderExtensions
                 "intake-source",
                 source.Id,
                 cancellationToken);
+            await realtimeEventPublisher.PublishEntityChangedAsync("IntakeSource", source.Id, cancellationToken);
             return Results.Ok(exclusion);
         });
 
@@ -267,6 +284,7 @@ public static class IntakeEndpointRouteBuilderExtensions
             string exclusionId,
             HttpContext httpContext,
             [FromServices] IIntakeRepository repository,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -275,9 +293,10 @@ public static class IntakeEndpointRouteBuilderExtensions
                 return denied;
             }
 
-            return await repository.DeleteIntakeListExclusionAsync(id, exclusionId, cancellationToken)
-                ? Results.NoContent()
-                : Results.NotFound();
+            var removed = await repository.DeleteIntakeListExclusionAsync(id, exclusionId, cancellationToken);
+            if (!removed) return Results.NotFound();
+            await realtimeEventPublisher.PublishEntityChangedAsync("IntakeSource", id, cancellationToken);
+            return Results.NoContent();
         });
 
         intakeSources.MapGet("{id}/diagnostics", async (

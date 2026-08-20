@@ -7,5 +7,6 @@
     <ProjectReference Include="..\Deluno.Infrastructure\Deluno.Infrastructure.csproj" />
     <ProjectReference Include="..\Deluno.Jobs\Deluno.Jobs.csproj" />
     <ProjectReference Include="..\Deluno.Security\Deluno.Security.csproj" />
+    <ProjectReference Include="..\Deluno.Realtime\Deluno.Realtime.csproj" />
   </ItemGroup>
 </Project>

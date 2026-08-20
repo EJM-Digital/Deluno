@@ -99,6 +99,15 @@ public interface ISeriesCatalogRepository
 
     Task<int> UpdateEpisodeMonitoredAsync(IReadOnlyList<string> episodeIds, bool monitored, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Resolves the parent series for a bounded set of episode ids. Episode
+    /// mutations invalidate series-shaped client data, so callers need the
+    /// parent identities rather than exposing an EpisodeChanged event.
+    /// </summary>
+    Task<IReadOnlyList<string>> ListParentSeriesIdsAsync(
+        IReadOnlyList<string> episodeIds,
+        CancellationToken cancellationToken);
+
     Task<SeriesWantedSummary> GetWantedSummaryAsync(CancellationToken cancellationToken);
 
     Task<SeriesInventorySummary> GetInventorySummaryAsync(CancellationToken cancellationToken);

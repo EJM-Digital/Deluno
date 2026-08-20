@@ -822,6 +822,53 @@ public sealed class SqliteSeriesCatalogRepository(
         return updated;
     }
 
+    public async Task<IReadOnlyList<string>> ListParentSeriesIdsAsync(
+        IReadOnlyList<string> episodeIds,
+        CancellationToken cancellationToken)
+    {
+        var distinctEpisodeIds = episodeIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (distinctEpisodeIds.Length == 0)
+        {
+            return Array.Empty<string>();
+        }
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        var seriesIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // SQLite has a finite parameter limit. The operation is bounded by the
+        // caller's selected episode ids, never by the size of the catalogue.
+        foreach (var episodeIdBatch in distinctEpisodeIds.Chunk(500))
+        {
+            using var command = connection.CreateCommand();
+            var parameterNames = new List<string>(episodeIdBatch.Length);
+            for (var index = 0; index < episodeIdBatch.Length; index++)
+            {
+                var parameterName = $"@episodeId{index}";
+                parameterNames.Add(parameterName);
+                AddParameter(command, parameterName, episodeIdBatch[index]);
+            }
+
+            command.CommandText = $"""
+                SELECT DISTINCT series_id
+                FROM episode_entries
+                WHERE id IN ({string.Join(", ", parameterNames)});
+                """;
+
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                seriesIds.Add(reader.GetString(0));
+            }
+        }
+
+        return seriesIds.ToArray();
+    }
+
     public async Task<SeriesWantedSummary> GetWantedSummaryAsync(CancellationToken cancellationToken)
     {
         var items = new List<SeriesWantedItem>();

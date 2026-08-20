@@ -24,6 +24,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Deluno.Quality.Contracts;
+using Deluno.Realtime;
 
 namespace Deluno.Series;
 
@@ -267,6 +268,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] UpdateSeriesMonitoringRequest request,
             ISeriesCatalogRepository repository,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -287,6 +289,8 @@ public static class SeriesEndpointRouteBuilderExtensions
                 request.SeriesIds,
                 request.Monitored,
                 cancellationToken);
+            foreach (var seriesId in request.SeriesIds.Distinct(StringComparer.OrdinalIgnoreCase))
+                await realtimeEventPublisher.PublishEntityChangedAsync("Series", seriesId, cancellationToken);
 
             return Results.Ok(new { updated });
         });
@@ -297,6 +301,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             ISeriesCatalogRepository repository,
             TimeProvider timeProvider,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -308,7 +313,9 @@ public static class SeriesEndpointRouteBuilderExtensions
 
             var deferredUntilUtc = timeProvider.GetUtcNow().AddHours(Math.Clamp(request.Hours ?? 24, 1, 720));
             var deferred = await repository.DeferWantedSearchAsync(id, request.LibraryId, deferredUntilUtc, cancellationToken);
-            return deferred ? Results.Ok(new { deferredUntilUtc }) : Results.NotFound();
+            if (!deferred) return Results.NotFound();
+            await realtimeEventPublisher.PublishEntityChangedAsync("Series", id, cancellationToken);
+            return Results.Ok(new { deferredUntilUtc });
         });
 
         series.MapPost("/{id}/automation/skip-once", async (
@@ -316,6 +323,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             [FromBody] SkipNextAutomationRequest request,
             HttpContext httpContext,
             ISeriesCatalogRepository repository,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -326,13 +334,16 @@ public static class SeriesEndpointRouteBuilderExtensions
             }
 
             var skipped = await repository.SkipNextWantedSearchAsync(id, request.LibraryId, cancellationToken);
-            return skipped ? Results.Ok(new { message = "The next scheduled search will be skipped. Manual search remains available." }) : Results.NotFound();
+            if (!skipped) return Results.NotFound();
+            await realtimeEventPublisher.PublishEntityChangedAsync("Series", id, cancellationToken);
+            return Results.Ok(new { message = "The next scheduled search will be skipped. Manual search remains available." });
         });
 
         series.MapPut("/episodes/monitoring", async (
             HttpContext httpContext,
             [FromBody] UpdateEpisodeMonitoringRequest request,
             ISeriesCatalogRepository repository,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -353,6 +364,14 @@ public static class SeriesEndpointRouteBuilderExtensions
                 request.EpisodeIds,
                 request.Monitored,
                 cancellationToken);
+
+            if (updated > 0)
+            {
+                foreach (var seriesId in await repository.ListParentSeriesIdsAsync(request.EpisodeIds, cancellationToken))
+                {
+                    await realtimeEventPublisher.PublishEntityChangedAsync("Series", seriesId, cancellationToken);
+                }
+            }
 
             return Results.Ok(new { updated });
         });
@@ -532,6 +551,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             ISeriesCatalogRepository repository,
             IMetadataProvider metadataProvider,
             IActivityFeedRepository activityFeedRepository,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -573,7 +593,9 @@ public static class SeriesEndpointRouteBuilderExtensions
                 item.Id,
                 cancellationToken);
 
-            return updated is null ? Results.NotFound() : Results.Ok(updated);
+            if (updated is null) return Results.NotFound();
+            await realtimeEventPublisher.PublishEntityChangedAsync("Series", updated.Id, cancellationToken);
+            return Results.Ok(updated);
         });
 
         series.MapPost("/{id}/metadata/link", async (
@@ -583,6 +605,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             ISeriesCatalogRepository repository,
             IMetadataProvider metadataProvider,
             IActivityFeedRepository activityFeedRepository,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -632,7 +655,9 @@ public static class SeriesEndpointRouteBuilderExtensions
                 item.Id,
                 cancellationToken);
 
-            return updated is null ? Results.NotFound() : Results.Ok(updated);
+            if (updated is null) return Results.NotFound();
+            await realtimeEventPublisher.PublishEntityChangedAsync("Series", updated.Id, cancellationToken);
+            return Results.Ok(updated);
         });
 
         series.MapPost("/{id}/metadata/jobs", async (
@@ -672,6 +697,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             ISeriesCatalogRepository repository,
             IActivityFeedRepository activityFeedRepository,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -718,7 +744,9 @@ public static class SeriesEndpointRouteBuilderExtensions
                 item.Id,
                 cancellationToken);
 
-            return updated is null ? Results.NotFound() : Results.Ok(updated);
+            if (updated is null) return Results.NotFound();
+            await realtimeEventPublisher.PublishEntityChangedAsync("Series", updated.Id, cancellationToken);
+            return Results.Ok(updated);
         });
 
         series.MapPost("/metadata/jobs", async (
@@ -1071,6 +1099,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             IJobScheduler jobScheduler,
             IJobQueueRepository jobQueueRepository,
             IActivityFeedRepository activityFeedRepository,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1180,6 +1209,11 @@ public static class SeriesEndpointRouteBuilderExtensions
                                 $"Unknown operation: {request.Operation}"));
                             break;
                     }
+
+                    if (results[^1].Succeeded)
+                    {
+                        await realtimeEventPublisher.PublishEntityChangedAsync("Series", series.Id, cancellationToken);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -1195,6 +1229,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] BulkQualityProfileRequest request,
             ISeriesCatalogRepository repository,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1225,6 +1260,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                 if (await repository.UpdateQualityProfileAsync(id, request.QualityProfileId.Trim(), cancellationToken))
                 {
                     updated++;
+                    await realtimeEventPublisher.PublishEntityChangedAsync("Series", id, cancellationToken);
                 }
             }
 
@@ -1292,6 +1328,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] BulkReassignLibraryRequest request,
             ISeriesCatalogRepository repository,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1319,6 +1356,10 @@ public static class SeriesEndpointRouteBuilderExtensions
             var count = await repository.ReassignLibraryAsync(
                 request.SeriesIds, request.FromLibraryId, request.ToLibraryId, cancellationToken);
 
+            if (count > 0)
+                foreach (var seriesId in request.SeriesIds.Distinct(StringComparer.OrdinalIgnoreCase))
+                    await realtimeEventPublisher.PublishEntityChangedAsync("Series", seriesId, cancellationToken);
+
             return Results.Ok(new { reassigned = count });
         });
 
@@ -1326,6 +1367,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] BulkTagsRequest request,
             ISeriesCatalogRepository repository,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1369,6 +1411,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                     JsonSerializer.Serialize(metadata),
                     cancellationToken);
                 updated++;
+                await realtimeEventPublisher.PublishEntityChangedAsync("Series", seriesItem.Id, cancellationToken);
             }
 
             return Results.Ok(new { updated, tags = normalizedTags });
@@ -1910,6 +1953,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             [FromBody] UpdateSeriesReplacementProtectionRequest request,
             HttpContext httpContext,
             ISeriesCatalogRepository repository,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1940,7 +1984,9 @@ public static class SeriesEndpointRouteBuilderExtensions
                 request.PreventLowerQualityReplacements,
                 cancellationToken);
 
-            return updated ? Results.Ok(new { updated = true }) : Results.NotFound();
+            if (!updated) return Results.NotFound();
+            await realtimeEventPublisher.PublishEntityChangedAsync("Series", id, cancellationToken);
+            return Results.Ok(new { updated = true });
         });
 
         series.MapGet("/{id}/monitored-missing", async (
@@ -2007,6 +2053,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             ILibrariesRepository platformSettingsRepository,
             IMediaDecisionService mediaDecisionService,
             IJobScheduler jobScheduler,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -2058,6 +2105,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                     RelatedEntityType: "series",
                     RelatedEntityId: item.Id),
                 cancellationToken);
+            await realtimeEventPublisher.PublishEntityChangedAsync("Series", item.Id, cancellationToken);
             return Results.Created($"/api/series/{item.Id}", item);
         });
 

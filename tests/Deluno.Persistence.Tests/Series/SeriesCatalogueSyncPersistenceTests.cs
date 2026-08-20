@@ -109,6 +109,27 @@ public sealed class SeriesCatalogueSyncPersistenceTests
     }
 
     [Fact]
+    public async Task ListParentSeriesIdsAsync_returns_only_the_distinct_parents_of_selected_episodes()
+    {
+        var now = DateTimeOffset.Parse("2026-04-29T03:00:00Z");
+        var (storage, repository, _, seriesId) = await CreateSeriesAsync(now);
+        using var _ = storage;
+
+        await repository.SyncEpisodeCatalogueAsync(
+            seriesId,
+            [new CatalogueEpisodeItem(1, 1, "Good News About Hell", null, now.AddDays(-30))],
+            source: "tmdb",
+            CancellationToken.None);
+
+        var episodeId = (await GetEpisodeIdsAsync(storage, seriesId))[(1, 1)];
+        var parentSeriesIds = await repository.ListParentSeriesIdsAsync(
+            [episodeId, "missing-episode", episodeId],
+            CancellationToken.None);
+
+        Assert.Equal([seriesId], parentSeriesIds);
+    }
+
+    [Fact]
     public async Task SyncEpisodeCatalogueAsync_groups_out_of_order_episodes_into_one_row_per_distinct_season()
     {
         var now = DateTimeOffset.Parse("2026-04-29T03:00:00Z");

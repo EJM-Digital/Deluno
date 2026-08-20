@@ -53,6 +53,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] UpdatePlatformSettingsRequest request,
             IPlatformSettingsRepository repository,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -68,6 +69,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             }
 
             var snapshot = await repository.SaveAsync(request, cancellationToken);
+            await realtimeEventPublisher.PublishEntityChangedAsync("Settings", "settings", cancellationToken);
             return Results.Ok(snapshot);
         });
 
@@ -75,10 +77,18 @@ public static class PlatformEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] UpdateGlobalAutomationRequest request,
             IPlatformSettingsRepository repository,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
-            return denied ?? Results.Ok(await repository.SetGlobalAutomationEnabledAsync(request.IsEnabled, cancellationToken));
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var snapshot = await repository.SetGlobalAutomationEnabledAsync(request.IsEnabled, cancellationToken);
+            await realtimeEventPublisher.PublishEntityChangedAsync("Settings", "settings", cancellationToken);
+            return Results.Ok(snapshot);
         });
 
         var tags = endpoints.MapGroup("/api/tags");
