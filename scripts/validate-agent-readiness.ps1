@@ -189,7 +189,7 @@ if (-not (Test-Path -LiteralPath $releaseWorkflowPath -PathType Leaf)) {
 $downloadTelemetryStatusPattern = '(downloading|queued|completed|stalled|processing|processed|processingFailed|waitingForProcessor|importReady|importQueued|imported|importFailed)'
 $downloadTelemetryFiles = @(
     "apps\web\src\routes\dashboard-page.tsx",
-    "apps\web\src\routes\indexers-page.tsx",
+    "apps\web\src\routes\connections-screen.tsx",
     "apps\web\src\routes\queue-page.tsx",
     "apps\web\src\lib\ui-adapters.ts"
 )

@@ -243,21 +243,21 @@ export const router = createBrowserRouter([
       {
         path: "indexers/indexers",
         lazy: withSkeleton(async () => {
-          const module = await import("./routes/indexers-page");
+          const module = await import("./routes/connections-screen");
           return { loader: module.indexersLoader, Component: module.IndexersPage };
         })
       },
       {
         path: "indexers/download-clients",
         lazy: withSkeleton(async () => {
-          const module = await import("./routes/indexers-page");
+          const module = await import("./routes/connections-screen");
           return { loader: module.indexersLoader, Component: module.IndexersPage };
         })
       },
       {
         path: "indexers/library-routing",
         lazy: withSkeleton(async () => {
-          const module = await import("./routes/indexers-page");
+          const module = await import("./routes/connections-screen");
           return { loader: module.indexersLoader, Component: module.IndexersPage };
         })
       },
