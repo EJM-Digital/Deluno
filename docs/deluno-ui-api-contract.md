@@ -352,6 +352,12 @@ Implemented indexer endpoints:
 - `PUT /api/indexers/{id}`
 - `POST /api/indexers/{id}/test`
 
+Indexer request payloads accept `requestIntervalSeconds` as either `null` (the
+safe two-second default) or an integer from 2 through 60. `PUT /api/indexers/{id}`
+also accepts `clearRequestInterval: true` to return an existing indexer to that
+default without changing its other settings. Deluno applies the selected interval
+before every request to that indexer host.
+
 Implemented download-client endpoints:
 
 - `GET /api/download-clients`

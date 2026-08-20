@@ -71,6 +71,21 @@ public sealed class IndexerPersistenceTests
     }
 
     [Fact]
+    public async Task CreateIndexerAsync_persists_an_optional_request_interval()
+    {
+        using var storage = TestStorage.Create();
+        var repo = await CreateRepositoryAsync(storage);
+
+        var created = await repo.CreateIndexerAsync(
+            BaseCreateRequest() with { RequestIntervalSeconds = 10 },
+            CancellationToken.None);
+
+        Assert.Equal(10, created.RequestIntervalSeconds);
+        var persisted = Assert.Single(await repo.ListIndexersAsync(CancellationToken.None));
+        Assert.Equal(10, persisted.RequestIntervalSeconds);
+    }
+
+    [Fact]
     public async Task CreateIndexerAsync_multiple_indexers_are_all_listed()
     {
         using var storage = TestStorage.Create();
@@ -211,6 +226,29 @@ public sealed class IndexerPersistenceTests
 
         Assert.NotNull(updated);
         Assert.Equal(10, updated.Priority);
+    }
+
+    [Fact]
+    public async Task UpdateIndexerAsync_can_set_and_clear_the_optional_request_interval()
+    {
+        using var storage = TestStorage.Create();
+        var repo = await CreateRepositoryAsync(storage);
+        var created = await repo.CreateIndexerAsync(BaseCreateRequest(), CancellationToken.None);
+
+        var configured = await repo.UpdateIndexerAsync(
+            created.Id,
+            new UpdateIndexerRequest(null, null, null, null, null, null, null, null, null, null, RequestIntervalSeconds: 10),
+            CancellationToken.None);
+        Assert.NotNull(configured);
+        Assert.Equal(10, configured.RequestIntervalSeconds);
+
+        var cleared = await repo.UpdateIndexerAsync(
+            created.Id,
+            new UpdateIndexerRequest(null, null, null, null, null, null, null, null, null, null, ClearRequestInterval: true),
+            CancellationToken.None);
+        Assert.NotNull(cleared);
+        Assert.Null(cleared.RequestIntervalSeconds);
+        Assert.Null(Assert.Single(await repo.ListIndexersAsync(CancellationToken.None)).RequestIntervalSeconds);
     }
 
     // ── UpdateIndexerAsync — enable/disable health reset ──────────────────────

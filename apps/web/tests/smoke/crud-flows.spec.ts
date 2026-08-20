@@ -203,6 +203,46 @@ test.describe("indexer and download client CRUD", () => {
     }
   });
 
+  test("indexer request intervals are persisted, resettable, and reject unsafe values", async ({ page }) => {
+    const uniqueName = `Smoke-Interval-${Date.now()}`;
+    const createResp = await page.request.post("/api/indexers", {
+      data: {
+        name: uniqueName,
+        protocol: "rss",
+        privacy: "public",
+        baseUrl: "https://interval.example.test",
+        priority: 10,
+        categories: "",
+        tags: "",
+        mediaScope: "movies",
+        isEnabled: true,
+        requestIntervalSeconds: 10
+      },
+      headers: authHeaders()
+    });
+    expect(createResp.ok()).toBe(true);
+    const indexer = await createResp.json() as { id: string; requestIntervalSeconds: number | null };
+    expect(indexer.requestIntervalSeconds).toBe(10);
+
+    try {
+      const resetResp = await page.request.put(`/api/indexers/${indexer.id}`, {
+        data: { clearRequestInterval: true },
+        headers: authHeaders()
+      });
+      expect(resetResp.ok()).toBe(true);
+      expect((await resetResp.json() as { requestIntervalSeconds: number | null }).requestIntervalSeconds).toBeNull();
+
+      const invalidResp = await page.request.post("/api/indexers", {
+        data: { name: `${uniqueName}-invalid`, baseUrl: "https://invalid.example.test", isEnabled: true, requestIntervalSeconds: 1 },
+        headers: authHeaders()
+      });
+      expect(invalidResp.status()).toBe(400);
+      expect(JSON.stringify(await invalidResp.json())).toContain("between 2 and 60 seconds");
+    } finally {
+      await page.request.delete(`/api/indexers/${indexer.id}`, { headers: authHeaders() });
+    }
+  });
+
   // ── Download client CRUD ──────────────────────────────────────────────────
 
   test("download client created via API appears on the indexers page", async ({ page }) => {

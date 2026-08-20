@@ -24,4 +24,11 @@ public sealed record IndexerItem(
     DateTimeOffset? RateLimitedUntilUtc,
     string? DisabledReason,
     DateTimeOffset CreatedUtc,
-    DateTimeOffset UpdatedUtc);
+    DateTimeOffset UpdatedUtc)
+{
+    /// <summary>
+    /// Optional user-configured minimum interval between requests to this
+    /// indexer, in seconds. Null uses Deluno's safe two-second default.
+    /// </summary>
+    public int? RequestIntervalSeconds { get; init; }
+}

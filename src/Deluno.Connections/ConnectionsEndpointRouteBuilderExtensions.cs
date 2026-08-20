@@ -105,7 +105,10 @@ public static class ConnectionsEndpointRouteBuilderExtensions
                 null,
                 null,
                 now,
-                now);
+                now)
+            {
+                RequestIntervalSeconds = request.RequestIntervalSeconds
+            };
 
             var started = Stopwatch.GetTimestamp();
             var health = await TestIndexerWithResilienceAsync(draft, resiliencePolicy, cancellationToken);
@@ -151,6 +154,12 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             if (denied is not null)
             {
                 return denied;
+            }
+
+            var errors = ValidateIndexerUpdate(request);
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
             }
 
             var item = await repository.UpdateIndexerAsync(id, request, cancellationToken);
@@ -555,7 +564,32 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             errors["baseUrl"] = ["Add the address Deluno should use for this indexer."];
         }
 
+        AddRequestIntervalError(errors, request.RequestIntervalSeconds, clearRequested: false);
+
         return errors;
+    }
+
+    private static Dictionary<string, string[]> ValidateIndexerUpdate(UpdateIndexerRequest request)
+    {
+        var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+        AddRequestIntervalError(errors, request.RequestIntervalSeconds, request.ClearRequestInterval == true);
+        return errors;
+    }
+
+    private static void AddRequestIntervalError(Dictionary<string, string[]> errors, int? requestIntervalSeconds, bool clearRequested)
+    {
+        if (clearRequested && requestIntervalSeconds is not null)
+        {
+            errors["requestIntervalSeconds"] = ["Choose either Deluno's default interval or a custom interval, not both."];
+            return;
+        }
+
+        if (requestIntervalSeconds is < 2 or > 60)
+        {
+            errors["requestIntervalSeconds"] = ["The request interval must be between 2 and 60 seconds. Deluno will not query an indexer more often than once every 2 seconds."];
+        }
+
+        return;
     }
 
     private static string NormalizeIndexerProtocol(string? value)

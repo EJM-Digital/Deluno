@@ -14,4 +14,6 @@ public sealed record UpdateIndexerRequest(
     string? Categories,
     string? Tags,
     string? MediaScope,
-    bool? IsEnabled);
+    bool? IsEnabled,
+    int? RequestIntervalSeconds = null,
+    bool? ClearRequestInterval = null);

@@ -10,4 +10,5 @@ public sealed record CreateIndexerRequest(
     string? Categories,
     string? Tags,
     string? MediaScope,
-    bool IsEnabled);
+    bool IsEnabled,
+    int? RequestIntervalSeconds = null);

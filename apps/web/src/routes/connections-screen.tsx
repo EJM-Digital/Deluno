@@ -195,12 +195,13 @@ interface IndexerForm {
   baseUrl: string;
   apiKey: string;
   priority: string;
+  requestIntervalSeconds: string;
   categories: string;
   isEnabled: boolean;
 }
 
 function emptyIndexerForm(): IndexerForm {
-  return { name: "", protocol: "newznab", scope: "both", baseUrl: "", apiKey: "", priority: "10", categories: INDEXER_PRESETS[1]!.defaultCategories("both"), isEnabled: true };
+  return { name: "", protocol: "newznab", scope: "both", baseUrl: "", apiKey: "", priority: "10", requestIntervalSeconds: "", categories: INDEXER_PRESETS[1]!.defaultCategories("both"), isEnabled: true };
 }
 function indexerFormFrom(item: IndexerItem): IndexerForm {
   return {
@@ -210,6 +211,7 @@ function indexerFormFrom(item: IndexerItem): IndexerForm {
     baseUrl: item.baseUrl,
     apiKey: "",
     priority: String(item.priority),
+    requestIntervalSeconds: item.requestIntervalSeconds == null ? "" : String(item.requestIntervalSeconds),
     categories: item.categories,
     isEnabled: item.isEnabled
   };
@@ -389,6 +391,8 @@ export function IndexersPage() {
           baseUrl: indexerForm.baseUrl.trim(),
           apiKey: indexerForm.apiKey.trim() || undefined,
           priority: Number(indexerForm.priority || 10),
+          requestIntervalSeconds: indexerForm.requestIntervalSeconds.trim() ? Number(indexerForm.requestIntervalSeconds) : null,
+          clearRequestInterval: Boolean(drawer.id) && !indexerForm.requestIntervalSeconds.trim(),
           categories: indexerForm.categories,
           tags: "",
           mediaScope: indexerForm.scope,
@@ -868,8 +872,14 @@ function IndexerDrawerBody({
         <Field label="Category ids" help="Filled from the protocol and media type. Change only if your indexer uses non-standard ids.">
           <Input value={form.categories} onChange={(event) => setForm((current) => ({ ...current, categories: event.target.value }))} className="font-mono text-[length:var(--type-caption)]" placeholder="2000,2040,5000,5040" />
         </Field>
-        <Disclosure title="Fine-tune" summary="Nothing else to tune yet — rate limits and timeouts follow Deluno's defaults." open={fineTuneOpen} onOpenChange={setFineTuneOpen}>
-          <p className="text-[length:var(--type-caption)] text-muted-foreground">Per-indexer rate limits and timeouts are on the roadmap. Today every indexer gets a 12 s timeout and a 30-result cap per search.</p>
+        <Disclosure title="Fine-tune" summary="Use Deluno's safe 2-second default, or follow this indexer's published limit." open={fineTuneOpen} onOpenChange={setFineTuneOpen}>
+          <Field label="Request interval" error={errors.requestIntervalSeconds} help="Deluno will not query this indexer more often than this. Private trackers usually publish a limit; leave this alone if you are not sure.">
+            <div className="flex items-center gap-2">
+              <Input type="number" min="2" max="60" step="1" value={form.requestIntervalSeconds} onChange={(event) => { clearError("requestIntervalSeconds"); setForm((current) => ({ ...current, requestIntervalSeconds: event.target.value })); }} placeholder="Deluno default (2 seconds)" />
+              <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">seconds</span>
+            </div>
+          </Field>
+          <p className="text-[length:var(--type-caption)] text-muted-foreground">Custom intervals must be between 2 and 60 seconds. The default is 2 seconds.</p>
         </Disclosure>
       </DrawerSection>
 
