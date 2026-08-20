@@ -9,6 +9,7 @@ using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Deluno.Quality;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
 
@@ -22,6 +23,47 @@ namespace Deluno.Persistence.Tests.EndToEnd;
 /// </summary>
 public sealed class ReferenceSearchFlowTests
 {
+    [Fact]
+    public async Task Configured_request_interval_paces_concurrent_searches_for_the_same_indexer_host()
+    {
+        using var storage = TestStorage.Create();
+        var time = new FakeTimeProvider(DateTimeOffset.Parse("2026-08-20T00:00:00Z"));
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, time),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var platformRepository = new SqlitePlatformSettingsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
+        var connectionsRepository = new SqliteConnectionsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
+        var indexer = await connectionsRepository.CreateIndexerAsync(new CreateIndexerRequest(
+            "Paced Torznab fixture", "torznab", "public", "https://fixture.invalid/torznab/api", null,
+            1, "2000", null, "movies", true, RequestIntervalSeconds: 10), CancellationToken.None);
+        var handler = new TorznabFixtureHandler();
+        var planner = new FeedMediaSearchPlanner(
+            platformRepository,
+            connectionsRepository,
+            new SingleClientFactory(handler),
+            new PassthroughResiliencePolicy(),
+            new QualityModelService(storage.Factory, time),
+            new DisabledRankingModelService(),
+            new OutboundRequestThrottle(time, NullLogger<OutboundRequestThrottle>.Instance),
+            NullLogger<FeedMediaSearchPlanner>.Instance);
+        var sources = (IReadOnlyList<LibrarySourceLinkItem>)
+        [
+            new LibrarySourceLinkItem("paced-source", "paced-library", indexer.Id, indexer.Name, 1, "", "", time.GetUtcNow(), time.GetUtcNow())
+        ];
+
+        var first = planner.BuildPlanAsync("Dune Part Two", 2024, "movies", null, "WEB 1080p", sources, cancellationToken: CancellationToken.None);
+        var second = planner.BuildPlanAsync("Dune Part Two", 2024, "movies", null, "WEB 1080p", sources, cancellationToken: CancellationToken.None);
+
+        await Task.WhenAny(Task.WhenAll(first, second), Task.Delay(50));
+        Assert.Equal(1, handler.RequestCount);
+
+        time.Advance(TimeSpan.FromSeconds(10));
+        await Task.WhenAll(first, second);
+        Assert.Equal(2, handler.RequestCount);
+    }
+
     [Fact]
     public async Task Configured_torznab_source_returns_explainable_candidate_and_safe_dispatch_request()
     {
@@ -99,9 +141,11 @@ public sealed class ReferenceSearchFlowTests
     private sealed class TorznabFixtureHandler : HttpMessageHandler
     {
         public string Query { get; private set; } = string.Empty;
+        public int RequestCount { get; private set; }
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            RequestCount++;
             Query = request.RequestUri?.Query ?? string.Empty;
             const string feed = """
                 <?xml version="1.0" encoding="UTF-8"?>

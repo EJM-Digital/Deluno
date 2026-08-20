@@ -715,6 +715,7 @@ export interface IndexerItem {
   baseUrl: string;
   apiKey?: string | null;
   priority: number;
+  requestIntervalSeconds?: number | null;
   categories: string;
   tags: string;
   isEnabled: boolean;

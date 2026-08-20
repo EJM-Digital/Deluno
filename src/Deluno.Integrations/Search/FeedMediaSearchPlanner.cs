@@ -171,7 +171,9 @@ public sealed class FeedMediaSearchPlanner(
         // counting.
         var waited = await outboundRequestThrottle.TryAcquireAsync(
             uri.Host,
-            OutboundRate.PerIndexerDefault,
+            indexer.RequestIntervalSeconds is { } interval
+                ? OutboundRate.FromInterval(TimeSpan.FromSeconds(Math.Max(2, interval)))
+                : OutboundRate.PerIndexerDefault,
             MaxIndexerThrottleWait,
             cancellationToken);
 

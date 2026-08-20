@@ -68,7 +68,7 @@ public sealed class SqliteConnectionsRepository(
                 id, name, protocol, privacy, base_url, api_key, priority, categories, tags,
                 media_scope, is_enabled, health_status, last_health_message,
                 last_health_failure_category, last_health_latency_ms, last_health_test_utc,
-                consecutive_failures, rate_limited_until_utc, disabled_reason,
+                consecutive_failures, rate_limited_until_utc, disabled_reason, request_interval_seconds,
                 created_utc, updated_utc
             FROM indexer_sources
             ORDER BY priority ASC, name ASC;
@@ -97,8 +97,11 @@ public sealed class SqliteConnectionsRepository(
                 ConsecutiveFailures: reader.IsDBNull(16) ? 0 : reader.GetInt32(16),
                 RateLimitedUntilUtc: reader.IsDBNull(17) ? null : ParseTimestamp(reader.GetString(17)),
                 DisabledReason: reader.IsDBNull(18) ? null : reader.GetString(18),
-                CreatedUtc: ParseTimestamp(reader.GetString(19)),
-                UpdatedUtc: ParseTimestamp(reader.GetString(20))));
+                CreatedUtc: ParseTimestamp(reader.GetString(20)),
+                UpdatedUtc: ParseTimestamp(reader.GetString(21)))
+            {
+                RequestIntervalSeconds = reader.IsDBNull(19) ? null : reader.GetInt32(19)
+            });
         }
 
         return items;
@@ -223,7 +226,10 @@ public sealed class SqliteConnectionsRepository(
             RateLimitedUntilUtc: null,
             DisabledReason: null,
             CreatedUtc: now,
-            UpdatedUtc: now);
+            UpdatedUtc: now)
+        {
+            RequestIntervalSeconds = request.RequestIntervalSeconds
+        };
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
@@ -234,11 +240,11 @@ public sealed class SqliteConnectionsRepository(
             """
             INSERT INTO indexer_sources (
                 id, name, protocol, privacy, base_url, api_key, priority, categories, tags,
-                media_scope, is_enabled, health_status, last_health_message, created_utc, updated_utc
+                media_scope, is_enabled, health_status, last_health_message, request_interval_seconds, created_utc, updated_utc
             )
             VALUES (
                 @id, @name, @protocol, @privacy, @baseUrl, @apiKey, @priority, @categories, @tags,
-                @mediaScope, @isEnabled, @healthStatus, @lastHealthMessage, @createdUtc, @updatedUtc
+                @mediaScope, @isEnabled, @healthStatus, @lastHealthMessage, @requestIntervalSeconds, @createdUtc, @updatedUtc
             );
             """;
 
@@ -260,6 +266,7 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@isEnabled", item.IsEnabled ? 1 : 0);
         AddParameter(command, "@healthStatus", item.HealthStatus);
         AddParameter(command, "@lastHealthMessage", item.LastHealthMessage);
+        AddParameter(command, "@requestIntervalSeconds", item.RequestIntervalSeconds);
         AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
         AddParameter(command, "@updatedUtc", item.UpdatedUtc.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
@@ -293,6 +300,9 @@ public sealed class SqliteConnectionsRepository(
         var newTags     = request.Tags is not null ? NormalizeCsv(request.Tags) : existing.Tags;
         var newScope    = request.MediaScope is not null ? NormalizeMediaScope(request.MediaScope) : existing.MediaScope;
         var newEnabled  = request.IsEnabled ?? existing.IsEnabled;
+        var newRequestInterval = request.ClearRequestInterval == true
+            ? null
+            : request.RequestIntervalSeconds ?? existing.RequestIntervalSeconds;
 
         // If enabling a previously-disabled indexer, reset health status so the UI prompts a test
         var newHealth = newEnabled && !existing.IsEnabled ? "untested" : existing.HealthStatus;
@@ -312,6 +322,7 @@ public sealed class SqliteConnectionsRepository(
                 categories = @categories,
                 tags = @tags,
                 media_scope = @mediaScope,
+                request_interval_seconds = @requestIntervalSeconds,
                 is_enabled = @isEnabled,
                 health_status = @healthStatus,
                 last_health_message = @lastHealthMessage,
@@ -334,6 +345,7 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@categories", newCats);
         AddParameter(command, "@tags", newTags);
         AddParameter(command, "@mediaScope", newScope);
+        AddParameter(command, "@requestIntervalSeconds", newRequestInterval);
         AddParameter(command, "@isEnabled", newEnabled ? 1 : 0);
         AddParameter(command, "@healthStatus", newHealth);
         AddParameter(command, "@lastHealthMessage", newMsg);
@@ -352,6 +364,7 @@ public sealed class SqliteConnectionsRepository(
             Categories = newCats,
             Tags     = newTags,
             MediaScope = newScope,
+            RequestIntervalSeconds = newRequestInterval,
             IsEnabled  = newEnabled,
             HealthStatus = newHealth,
             LastHealthMessage = newMsg,
