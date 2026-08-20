@@ -263,7 +263,7 @@ public sealed class WorkPlanner(
 
     public async Task PlanImportAutomationAsync(
         IJobScheduler jobScheduler,
-        IPlatformSettingsRepository platformSettingsRepository,
+        IProcessorRepository processorRepository,
         ILibrariesRepository librariesRepository,
         IDownloadClientTelemetryService downloadClientTelemetryService,
         IProcessorConnectionService processorConnectionService,
@@ -297,7 +297,7 @@ public sealed class WorkPlanner(
         var recentWaiting = await activityFeedRepository.ListActivityAsync(150, null, null, cancellationToken);
         await ReconcileMatchedProcessorOutputsAsync(
             jobScheduler,
-            platformSettingsRepository,
+            processorRepository,
             activityFeedRepository,
             libraries,
             knownImportSources,
@@ -311,7 +311,7 @@ public sealed class WorkPlanner(
             recentWaiting,
             cancellationToken);
         await RecordProcessorTimeoutsAsync(
-            platformSettingsRepository,
+            processorRepository,
             activityFeedRepository,
             movieCatalogRepository,
             seriesCatalogRepository,
@@ -354,7 +354,7 @@ public sealed class WorkPlanner(
 
             if (string.Equals(library.ImportWorkflow, "refine-before-import", StringComparison.OrdinalIgnoreCase))
             {
-                var handoff = await platformSettingsRepository.EnsureProcessorHandoffAsync(
+                var handoff = await processorRepository.EnsureProcessorHandoffAsync(
                     new CreateProcessorHandoffRequest(
                         library.Id,
                         library.MediaType,
@@ -366,18 +366,18 @@ public sealed class WorkPlanner(
                     cancellationToken);
                 var currentHandoff = handoff;
                 ProcessorSubmissionResult? submission = null;
-                var connection = await platformSettingsRepository.FindProcessorConnectionByNameAsync(library.ProcessorName, cancellationToken);
+                var connection = await processorRepository.FindProcessorConnectionByNameAsync(library.ProcessorName, cancellationToken);
                 if (connection is { IsEnabled: true } && handoff.Status == "waiting")
                 {
                     submission = await processorConnectionService.SubmitAsync(connection, handoff, cancellationToken);
-                    currentHandoff = await platformSettingsRepository.UpdateProcessorHandoffAsync(
+                    currentHandoff = await processorRepository.UpdateProcessorHandoffAsync(
                         handoff.Id,
                         submission.Status,
                         null,
                         null,
                         submission.IsAccepted ? null : submission.Message,
                         cancellationToken) ?? handoff;
-                    await platformSettingsRepository.RecordProcessorConnectionHealthAsync(
+                    await processorRepository.RecordProcessorConnectionHealthAsync(
                         connection.Id,
                         submission.IsAccepted ? "healthy" : "degraded",
                         submission.Message,
@@ -594,7 +594,7 @@ public sealed class WorkPlanner(
     /// </summary>
     private static async Task ReconcileMatchedProcessorOutputsAsync(
         IJobScheduler jobScheduler,
-        IPlatformSettingsRepository platformSettingsRepository,
+        IProcessorRepository processorRepository,
         IActivityFeedRepository activityFeedRepository,
         IReadOnlyList<LibraryItem> libraries,
         ISet<string> knownImportSources,
@@ -604,7 +604,7 @@ public sealed class WorkPlanner(
         {
             "waiting", "submitted", "accepted", "started"
         };
-        var handoffs = await platformSettingsRepository.ListProcessorHandoffsAsync(null, 250, cancellationToken);
+        var handoffs = await processorRepository.ListProcessorHandoffsAsync(null, 250, cancellationToken);
 
         foreach (var handoff in handoffs.Where(item => waitingStatuses.Contains(item.Status)))
         {
@@ -656,7 +656,7 @@ public sealed class WorkPlanner(
                     IdempotencyKey: $"processor-output:{library.Id}:{Path.GetFullPath(outputPath).ToLowerInvariant()}"),
                 cancellationToken);
 
-            await platformSettingsRepository.UpdateProcessorHandoffAsync(
+            await processorRepository.UpdateProcessorHandoffAsync(
                 handoff.Id,
                 "completed",
                 outputPath,
@@ -737,7 +737,7 @@ public sealed class WorkPlanner(
     }
 
     private static async Task RecordProcessorTimeoutsAsync(
-        IPlatformSettingsRepository platformSettingsRepository,
+        IProcessorRepository processorRepository,
         IActivityFeedRepository activityFeedRepository,
         IMovieCatalogRepository movieCatalogRepository,
         ISeriesCatalogRepository seriesCatalogRepository,
@@ -797,7 +797,7 @@ public sealed class WorkPlanner(
                     cancellationToken);
             }
 
-            await platformSettingsRepository.UpdateProcessorHandoffAsync(
+            await processorRepository.UpdateProcessorHandoffAsync(
                 waiting.RelatedEntityId,
                 "timed-out",
                 null,

@@ -17,7 +17,7 @@ public sealed class ProcessorHandoffPersistenceTests
             storage.Factory,
             new SqliteDatabaseMigrator(storage.Factory, clock),
             NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
-        var repository = new SqlitePlatformSettingsRepository(storage.Factory, clock, TestSecretProtection.Create(storage));
+        var repository = new SqliteProcessorRepository(storage.Factory, clock, TestSecretProtection.Create(storage));
         var request = new CreateProcessorHandoffRequest(
             "library-1", "movies", "client-1", "queue-1", "Dune Part Two", "/downloads/dune", "FileFlows");
 
@@ -48,7 +48,7 @@ public sealed class ProcessorHandoffPersistenceTests
             storage.Factory,
             new SqliteDatabaseMigrator(storage.Factory, clock),
             NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
-        var repository = new SqlitePlatformSettingsRepository(storage.Factory, clock, TestSecretProtection.Create(storage));
+        var repository = new SqliteProcessorRepository(storage.Factory, clock, TestSecretProtection.Create(storage));
         var handoff = await repository.EnsureProcessorHandoffAsync(
             new CreateProcessorHandoffRequest("library-a", "movies", "client-1", "queue-1", "Dune", "/downloads/dune", null),
             CancellationToken.None);
@@ -68,14 +68,14 @@ public sealed class ProcessorHandoffPersistenceTests
             new SqliteDatabaseMigrator(storage.Factory, clock),
             NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
 
-        var firstRepository = new SqlitePlatformSettingsRepository(storage.Factory, clock, TestSecretProtection.Create(storage));
+        var firstRepository = new SqliteProcessorRepository(storage.Factory, clock, TestSecretProtection.Create(storage));
         var handoff = await firstRepository.EnsureProcessorHandoffAsync(
             new CreateProcessorHandoffRequest("library-1", "movies", "client-1", "queue-1", "Dune", "/downloads/dune", "FileFlows"),
             CancellationToken.None);
         await firstRepository.UpdateProcessorHandoffAsync(
             handoff.Id, "failed", null, null, "The processor endpoint was unavailable.", CancellationToken.None);
 
-        var reloadedRepository = new SqlitePlatformSettingsRepository(storage.Factory, clock, TestSecretProtection.Create(storage));
+        var reloadedRepository = new SqliteProcessorRepository(storage.Factory, clock, TestSecretProtection.Create(storage));
         var failed = await reloadedRepository.GetProcessorHandoffAsync(handoff.Id, CancellationToken.None);
         Assert.NotNull(failed);
         Assert.Equal("failed", failed!.Status);

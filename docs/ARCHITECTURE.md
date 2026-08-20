@@ -106,9 +106,14 @@ Operational visibility is split intentionally:
 
 ## Current Architectural Risk
 
-The biggest immediate architecture risk is not missing modules. It is concentration.
-
-`src/Deluno.Platform/PlatformEndpointRouteBuilderExtensions.cs` has become a very large API owner. The contracts are clearer than the composition. Future refactors should separate route registration and service ownership by concern without collapsing boundaries between domains.
+The remaining architectural risk is keeping the module seams explicit as the
+composition root grows. The platform route surface is now separated into
+settings/setup/tags, migration, library actions, and external integrations;
+the platform settings repository is likewise separated from download health,
+processor, and migration-audit persistence. The endpoint inventory test in
+`tests/Deluno.Platform.Tests/Routing/` guards the route table while future seams
+are moved. See `docs/exec-plans/active/ADR-001-module-boundaries.md` for the
+boundary rules and ownership decisions.
 
 ## Validation Hooks
 

@@ -21,13 +21,14 @@ public sealed class DownloadHealthGrabGuardTests
         using var storage = TestStorage.Create();
         var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-14T00:00:00Z"));
         await new PlatformSchemaInitializer(storage.Factory, new SqliteDatabaseMigrator(storage.Factory, time), NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
-        var repository = new SqlitePlatformSettingsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
+        var settingsRepository = new SqlitePlatformSettingsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
+        var healthRepository = new SqliteDownloadHealthRepository(storage.Factory, time);
         var connectionsRepository = new SqliteConnectionsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
         var client = await connectionsRepository.CreateDownloadClientAsync(new CreateDownloadClientRequest(
             "External qBittorrent", "qbittorrent", "localhost", 8080, null, null, null, "movies", "tv", null, 1, true), CancellationToken.None);
         var librariesRepository = new SqliteLibrariesRepository(storage.Factory, time);
         var service = new DownloadClientTelemetryService(
-            repository, librariesRepository, connectionsRepository, null!, null!, time, null!, null!, null!, null!);
+            settingsRepository, healthRepository, librariesRepository, connectionsRepository, null!, null!, time, null!, null!, null!, null!);
 
         var result = await service.ExecuteActionAsync(
             client.Id,
@@ -44,22 +45,22 @@ public sealed class DownloadHealthGrabGuardTests
         using var storage = TestStorage.Create();
         var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-13T00:00:00Z"));
         await new PlatformSchemaInitializer(storage.Factory, new SqliteDatabaseMigrator(storage.Factory, time), NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
-        var repository = new SqlitePlatformSettingsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
+        var healthRepository = new SqliteDownloadHealthRepository(storage.Factory, time);
         var connectionsRepository = new SqliteConnectionsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
         var client = await connectionsRepository.CreateDownloadClientAsync(new CreateDownloadClientRequest(
             "External qBittorrent", "qbittorrent", "localhost", 8080, null, null, "C:\\Downloads", "movies", "tv", null, 1, true), CancellationToken.None);
         var observation = new DownloadHealthObservation(client.Id, "queue-1", "Example.Movie.2026.1080p", "client-stalled", "critical", "Client failure.");
 
-        await repository.RecordDownloadHealthObservationsAsync([observation], CancellationToken.None);
+        await healthRepository.RecordDownloadHealthObservationsAsync([observation], CancellationToken.None);
         time = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-13T00:31:00Z"));
-        repository = new SqlitePlatformSettingsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
-        await repository.RecordDownloadHealthObservationsAsync([observation], CancellationToken.None);
+        healthRepository = new SqliteDownloadHealthRepository(storage.Factory, time);
+        await healthRepository.RecordDownloadHealthObservationsAsync([observation], CancellationToken.None);
         time = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-13T01:02:00Z"));
-        repository = new SqlitePlatformSettingsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
-        await repository.RecordDownloadHealthObservationsAsync([observation], CancellationToken.None);
+        healthRepository = new SqliteDownloadHealthRepository(storage.Factory, time);
+        await healthRepository.RecordDownloadHealthObservationsAsync([observation], CancellationToken.None);
 
         var service = new DownloadClientGrabService(
-            repository, connectionsRepository, null!, null!, null!, null!, null!, null!, time);
+            healthRepository, connectionsRepository, null!, null!, null!, null!, null!, null!, time);
         var result = await service.GrabAsync(client.Id, new DownloadClientGrabRequest(
             "Example Movie 2026 1080p", "https://fixture.invalid/release", "movies", "movies", "Fixture source"), CancellationToken.None);
 
@@ -76,7 +77,8 @@ public sealed class DownloadHealthGrabGuardTests
         var migrator = new SqliteDatabaseMigrator(storage.Factory, time);
         await new PlatformSchemaInitializer(storage.Factory, migrator, NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
         await new JobsSchemaInitializer(storage.Factory, migrator, NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
-        var repository = new SqlitePlatformSettingsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
+        var settingsRepository = new SqlitePlatformSettingsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
+        var healthRepository = new SqliteDownloadHealthRepository(storage.Factory, time);
         var connectionsRepository = new SqliteConnectionsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
         var librariesRepository = new SqliteLibrariesRepository(storage.Factory, time);
         var library = await librariesRepository.CreateLibraryAsync(new CreateLibraryRequest(
@@ -92,7 +94,7 @@ public sealed class DownloadHealthGrabGuardTests
         await dispatches.RecordDetectionAsync(dispatchId, "queue-arrival", 1024, CancellationToken.None);
 
         var service = new DownloadClientTelemetryService(
-            repository, librariesRepository, connectionsRepository, null!, null!, time, null!, jobs, dispatches, jobs);
+            settingsRepository, healthRepository, librariesRepository, connectionsRepository, null!, null!, time, null!, jobs, dispatches, jobs);
         var finding = new DownloadHealthFinding("critical", "client-stalled", "Stalled", "No progress", "Review", false, false, StrikeCount: 3);
         var item = new DownloadQueueItem("queue-arrival", client.Id, client.Name, client.Protocol, "movies", "Arrival", "Arrival.2016.1080p.WEB",
             "deluno-movies", DownloadQueueStatuses.Stalled, 15, 0, 0, 1024, 128, 0, "Fixture", null, time.GetUtcNow(), HealthFindings: [finding]);
@@ -118,12 +120,12 @@ public sealed class DownloadHealthGrabGuardTests
         using var storage = TestStorage.Create();
         var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-14T00:00:00Z"));
         await new PlatformSchemaInitializer(storage.Factory, new SqliteDatabaseMigrator(storage.Factory, time), NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
-        var repository = new SqlitePlatformSettingsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
+        var healthRepository = new SqliteDownloadHealthRepository(storage.Factory, time);
         var connectionsRepository = new SqliteConnectionsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
         var client = await connectionsRepository.CreateDownloadClientAsync(new CreateDownloadClientRequest(
             "Untested qBittorrent", "qbittorrent", "localhost", 8080, null, null, null, "movies", "tv", null, 1, true), CancellationToken.None);
         var service = new DownloadClientGrabService(
-            repository, connectionsRepository, null!, null!, null!, null!, null!, null!, time);
+            healthRepository, connectionsRepository, null!, null!, null!, null!, null!, null!, time);
 
         var result = await service.GrabAsync(client.Id, new DownloadClientGrabRequest(
             "Example Movie 2026 1080p", "https://fixture.invalid/release", "movies", "movies", "Fixture source"), CancellationToken.None);
