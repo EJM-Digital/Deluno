@@ -891,19 +891,5 @@ public sealed class SqliteConnectionsRepository(
     }
 
     private static string NormalizeDownloadProtocol(string? value)
-    {
-        var normalized = value?.Trim().ToLowerInvariant();
-        return normalized switch
-        {
-            "qbittorrent" => "qbittorrent",
-            "sabnzbd" => "sabnzbd",
-            "nzbget" => "nzbget",
-            "transmission" => "transmission",
-            "deluge" => "deluge",
-            "custom" => "custom",
-            "usenet" => "usenet",
-            "torrent" => "torrent",
-            _ => "qbittorrent"
-        };
-    }
+        => DownloadClientProtocolCatalog.NormalizeOrThrow(value);
 }

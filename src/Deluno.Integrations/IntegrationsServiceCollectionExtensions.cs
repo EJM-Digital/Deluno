@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Deluno.Integrations.DownloadClients;
+using Deluno.Integrations.DownloadClients.Clients;
 using Deluno.Integrations.Metadata;
 using Deluno.Integrations.Processors;
 using Deluno.Integrations.Search;
@@ -22,6 +23,13 @@ public static class IntegrationsServiceCollectionExtensions
         services.AddHttpClient("indexers", client => client.Timeout = TimeSpan.FromSeconds(10));
         services.AddHttpClient("download-clients", client => client.Timeout = TimeSpan.FromSeconds(8));
         services.AddHttpClient("processor-connections", client => client.Timeout = TimeSpan.FromSeconds(10));
+        services.AddSingleton<IDownloadClient, QbittorrentDownloadClient>();
+        services.AddSingleton<IDownloadClient, SabnzbdDownloadClient>();
+        services.AddSingleton<IDownloadClient, NzbGetDownloadClient>();
+        services.AddSingleton<IDownloadClient, TransmissionDownloadClient>();
+        services.AddSingleton<IDownloadClient, DelugeDownloadClient>();
+        services.AddSingleton<IDownloadClient, UTorrentDownloadClient>();
+        services.AddSingleton<IDownloadClientRegistry, DownloadClientRegistry>();
         services.AddScoped<IDownloadClientTelemetryService, DownloadClientTelemetryService>();
         services.AddScoped<IDownloadClientGrabService, DownloadClientGrabService>();
         services.AddScoped<IDownloadClientWebhookService, DownloadClientWebhookService>();

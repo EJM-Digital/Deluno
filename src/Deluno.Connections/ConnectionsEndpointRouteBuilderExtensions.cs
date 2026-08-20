@@ -430,6 +430,14 @@ public static class ConnectionsEndpointRouteBuilderExtensions
                 return denied;
             }
 
+            if (request.Protocol is not null && !DownloadClientProtocolCatalog.IsAccepted(request.Protocol))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["protocol"] = [$"Choose a supported download client protocol: {DownloadClientProtocolCatalog.SupportedProtocols}."]
+                });
+            }
+
             var item = await repository.UpdateDownloadClientAsync(id, request, cancellationToken);
             if (item is not null)
             {
@@ -533,6 +541,11 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             errors["name"] = ["Give this download client a name."];
         }
 
+        if (!DownloadClientProtocolCatalog.IsAccepted(request.Protocol))
+        {
+            errors["protocol"] = [$"Choose a supported download client protocol: {DownloadClientProtocolCatalog.SupportedProtocols}."];
+        }
+
         return errors;
     }
 
@@ -624,15 +637,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         };
 
     private static string NormalizeDownloadProtocol(string? value)
-        => value?.Trim().ToLowerInvariant() switch
-        {
-            "sabnzbd" => "sabnzbd",
-            "transmission" => "transmission",
-            "deluge" => "deluge",
-            "nzbget" => "nzbget",
-            "utorrent" => "utorrent",
-            _ => "qbittorrent"
-        };
+        => DownloadClientProtocolCatalog.NormalizeOrThrow(value);
 
     private static async Task<IntegrationHealthCheckResult> TestIndexerWithResilienceAsync(
         IndexerItem item,
