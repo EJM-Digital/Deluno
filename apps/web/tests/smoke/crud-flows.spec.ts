@@ -8,6 +8,9 @@
  * against label/placeholder changes.
  */
 import { expect, test } from "@playwright/test";
+import { mkdirSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { fallbackCredentials } from "../helpers/auth-helper";
 
 let credentials: { username: string; password: string } | null = null;
@@ -409,6 +412,112 @@ test.describe("indexer and download client CRUD", () => {
       expect(updated.port).toBe(8080);           // port preserved (null patch)
     } finally {
       await page.request.delete(`/api/download-clients/${client.id}`, { headers: authHeaders() });
+    }
+  });
+});
+
+test.describe("library editing", () => {
+  let credentials: { username: string; password: string } | null = null;
+  let authToken: string | null = null;
+  const seededRoot = path.join(os.tmpdir(), "deluno-playwright-libraries");
+
+  test.beforeAll(async ({ request }) => {
+    mkdirSync(seededRoot, { recursive: true });
+    const status = await request.get("/api/auth/bootstrap-status");
+    const bootstrapState = status.ok() ? (await status.json()) as { requiresSetup?: boolean } : {};
+    if (bootstrapState.requiresSetup) {
+      const bootstrap = await request.post("/api/auth/bootstrap", { data: fallbackCredentials });
+      if (bootstrap.ok()) {
+        credentials = fallbackCredentials;
+        return;
+      }
+    }
+    const login = await request.post("/api/auth/login", { data: { username: fallbackCredentials.username, password: fallbackCredentials.password } });
+    if (login.ok()) credentials = fallbackCredentials;
+    else if (process.env.DELUNO_E2E_USERNAME && process.env.DELUNO_E2E_PASSWORD) {
+      credentials = { username: process.env.DELUNO_E2E_USERNAME, password: process.env.DELUNO_E2E_PASSWORD };
+    }
+  });
+
+  test.beforeEach(async ({ page }) => {
+    test.skip(!credentials, "Set DELUNO_E2E_USERNAME and DELUNO_E2E_PASSWORD to run CRUD tests against an existing install.");
+    await page.goto("/login");
+    await page.getByLabel(/username/i).fill(credentials!.username);
+    await page.getByLabel("Password", { exact: true }).fill(credentials!.password);
+    await page.getByRole("button", { name: /sign in/i }).click();
+    await expect(page).not.toHaveURL(/\/login/);
+    authToken = await page.evaluate(() => sessionStorage.getItem("deluno-auth-token"));
+  });
+
+  function authHeaders(): Record<string, string> {
+    return authToken ? { Authorization: `Bearer ${authToken}` } : {};
+  }
+
+  async function seedLibrary(page: import("@playwright/test").Page) {
+    const name = `Smoke-Library-${Date.now()}`;
+    const response = await page.request.post("/api/libraries", {
+      headers: authHeaders(),
+      data: {
+        name, mediaType: "movies", purpose: "Main library", rootPath: seededRoot,
+        autoSearchEnabled: false, missingSearchEnabled: true, upgradeSearchEnabled: true,
+        searchIntervalHours: 12, retryDelayHours: 6, maxItemsPerRun: 10
+      }
+    });
+    expect(response.ok(), `POST /api/libraries failed: ${response.status()}`).toBe(true);
+    return { name, library: await response.json() as { id: string } };
+  }
+
+  async function libraries(page: import("@playwright/test").Page) {
+    const response = await page.request.get("/api/libraries", { headers: authHeaders() });
+    expect(response.ok()).toBe(true);
+    return await response.json() as Array<{ id: string; name: string; rootPath: string; downloadsPath?: string | null }>;
+  }
+
+  test("persists rename and both managed folders from the library drawer", async ({ page }) => {
+    const { name, library } = await seedLibrary(page);
+    const renamed = `${name}-renamed`;
+    const movedRoot = path.join(seededRoot, "moved");
+    const downloadsRoot = path.join(seededRoot, "completed");
+    mkdirSync(movedRoot, { recursive: true });
+    mkdirSync(downloadsRoot, { recursive: true });
+    try {
+      await page.goto("/settings/libraries");
+      await page.getByText(name, { exact: true }).click();
+      await page.getByLabel("Library name").fill(renamed);
+      await page.getByLabel("Library folder").fill(movedRoot);
+      await page.getByLabel("Completed downloads folder").fill(downloadsRoot);
+      await page.getByRole("button", { name: "Save library" }).click();
+      await expect(page.getByText(renamed, { exact: true }).first()).toBeVisible();
+      await expect.poll(async () => (await libraries(page)).find((item) => item.id === library.id)).toMatchObject({ name: renamed, rootPath: movedRoot, downloadsPath: downloadsRoot });
+    } finally {
+      await page.request.delete(`/api/libraries/${library.id}`, { headers: authHeaders() });
+    }
+  });
+
+  test("removes a library only after the explicit confirmation", async ({ page }) => {
+    const { name, library } = await seedLibrary(page);
+    await page.goto("/settings/libraries");
+    await page.getByText(name, { exact: true }).click();
+    await page.getByRole("button", { name: /remove/i }).click();
+    await page.getByRole("button", { name: "Remove library" }).click();
+    await expect(page.getByText(name, { exact: true })).toHaveCount(0);
+    await expect.poll(async () => (await libraries(page)).some((item) => item.id === library.id)).toBe(false);
+  });
+
+  test("asks before leaving an edited library", async ({ page }) => {
+    test.setTimeout(60_000);
+    const { name, library } = await seedLibrary(page);
+    try {
+      await page.goto("/settings/libraries");
+      await page.getByText(name, { exact: true }).click();
+      await page.getByLabel("Library name").fill(`${name}-draft`);
+      await page.locator('a[href="/settings/general"]').first().evaluate((link: HTMLAnchorElement) => link.click());
+      const dialog = page.getByRole("dialog", { name: "Discard unsaved changes?" });
+      await expect(dialog).toBeVisible();
+      await dialog.getByRole("button", { name: "Discard", exact: true }).click();
+      await expect(page).toHaveURL(/\/settings\/general$/);
+    } finally {
+      await page.request.delete(`/api/libraries/${library.id}`, { headers: authHeaders() });
     }
   });
 });
