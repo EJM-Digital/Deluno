@@ -10,7 +10,7 @@
  * /api/movies/import-recovery, /api/series/import-recovery;
  * POST /api/jobs/retry-failed.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { RefreshCw } from "lucide-react";
 import {
@@ -40,6 +40,7 @@ import { RouteSkeleton } from "../components/shell/skeleton";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { toast } from "../components/shell/toaster";
+import { useVisibleInterval } from "../hooks/use-visible-interval";
 
 interface ActivityLoaderData {
   activity: ActivityEventItem[];
@@ -71,12 +72,8 @@ export function ActivityPage() {
   const [openEventId, setOpenEventId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // The page is a live view, so it refreshes itself. `revalidate` is stable, so
-  // this sets one interval up rather than tearing it down on every tick.
-  useEffect(() => {
-    const timer = window.setInterval(() => revalidator.revalidate(), 10_000);
-    return () => window.clearInterval(timer);
-  }, [revalidator]);
+  // Active work needs a short refresh, but hidden tabs must not contend with it.
+  useVisibleInterval(() => revalidator.revalidate(), 10_000);
 
   if (!loaderData) return <RouteSkeleton />;
   const { activity, dispatches, jobs, movieRecovery, seriesRecovery } = loaderData;

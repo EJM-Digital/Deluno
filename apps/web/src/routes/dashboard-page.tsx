@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
 import {
   AlertTriangle,
@@ -44,6 +44,8 @@ import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_T
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { MetricChart, type MetricPoint } from "../components/ui/metric-chart";
 import { useLiveSeries } from "../hooks/use-live-series";
+import { useCoalescedRevalidate, useVisibleInterval } from "../hooks/use-visible-interval";
+import { useSignalREvent, useSignalRResync } from "../lib/use-signalr";
 import { RouteSkeleton } from "../components/shell/skeleton";
 
 interface OutcomeSeries {
@@ -190,19 +192,33 @@ export async function dashboardLoader(): Promise<DashboardLoaderData> {
 export function DashboardPage() {
   const data = useLoaderData() as DashboardLoaderData | undefined;
   const navigate = useNavigate();
+  const revalidator = useRevalidator();
+  const [liveSpeedMbps, setLiveSpeedMbps] = useState(() => data?.speedMbps ?? 0);
+
+  // A slow safety net, not the primary live-update path. Realtime gaps must
+  // degrade to a visible refetch rather than silently leaving stale data.
+  useVisibleInterval(() => revalidator.revalidate(), 60_000);
+  const nudge = useCoalescedRevalidate(() => revalidator.revalidate(), 5_000);
+  useSignalREvent("SearchRunCompleted", nudge);
+  useSignalREvent("HealthChanged", nudge);
+  useSignalREvent("QueueItemAdded", nudge);
+  useSignalREvent("QueueItemRemoved", nudge);
+  useSignalREvent("QueueItemStatusChanged", nudge);
+  useSignalREvent("ImportStateChanged", nudge);
+  useSignalRResync(() => revalidator.revalidate());
+  useSignalREvent("DownloadProgress", (event) => setLiveSpeedMbps(event.speedMbps));
+
+  useEffect(() => {
+    setLiveSpeedMbps(data?.speedMbps ?? 0);
+  }, [data?.speedMbps]);
+
+  // Progress events move the sparkline without reloading the whole dashboard.
+  const speedSeries = useLiveSeries(Number(liveSpeedMbps.toFixed(2)), { samples: 60 });
+
   if (!data) return <RouteSkeleton />;
 
   const healthIssues = data.indexerHealth.filter((item) => item.status !== "healthy").length;
-  const revalidator = useRevalidator();
   const topDownload = data.activeDownloads[0];
-
-  // Speed only exists as "right now", so the page samples what it is already
-  // polling. Five seconds keeps the line moving without hammering the API.
-  const speedSeries = useLiveSeries(Number(data.speedMbps.toFixed(2)), { samples: 60 });
-  useEffect(() => {
-    const timer = window.setInterval(() => revalidator.revalidate(), 5_000);
-    return () => window.clearInterval(timer);
-  }, [revalidator]);
   const upcomingGroups = groupDashboardUpcoming(data.upcoming);
   const setupProgress = data.setupProgress;
 
@@ -294,14 +310,14 @@ export function DashboardPage() {
         {/* Live, and labelled as such: this is sampled in the browser, not stored. */}
         <MetricChart
           label="Download speed"
-          value={data.speedMbps > 0 ? `${data.speedMbps.toFixed(1)} MB/s` : "Idle"}
+          value={liveSpeedMbps > 0 ? `${liveSpeedMbps.toFixed(1)} MB/s` : "Idle"}
           help={
             data.activeDownloadCount > 0
               ? `${data.activeDownloadCount} transfer${data.activeDownloadCount === 1 ? "" : "s"} in flight`
               : "nothing downloading"
           }
           series={speedSeries.length ? speedSeries : [{ date: new Date().toISOString(), value: 0 }]}
-          tone={data.speedMbps > 0 ? "success" : "primary"}
+          tone={liveSpeedMbps > 0 ? "success" : "primary"}
           footer={speedSeries.length > 1 ? "since you opened this page" : "waiting for a second reading"}
         />
         {data.metrics ? (

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useVisibleInterval } from "./use-visible-interval";
 
 export interface Notification {
   id: string;
@@ -162,14 +163,9 @@ export function useNotifications() {
     fetchNotifications();
     fetchUnreadCount();
     fetchPreferences();
-
-    // Poll for new notifications every 10 seconds
-    const interval = setInterval(() => {
-      fetchUnreadCount();
-    }, 10000);
-
-    return () => clearInterval(interval);
   }, [fetchNotifications, fetchUnreadCount, fetchPreferences]);
+
+  useVisibleInterval(() => void fetchUnreadCount(), 10_000);
 
   return {
     notifications,
