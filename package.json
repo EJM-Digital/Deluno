@@ -8,6 +8,7 @@
     "dev:web": "npm --workspace apps/web run dev",
     "build:web": "npm --workspace apps/web run build",
     "test:web": "npm --workspace apps/web run test:smoke",
+    "test:unit:web": "npm --workspace apps/web run test:unit",
     "preview:web": "npm --workspace apps/web run preview",
     "check:metadata-gateway": "npm --prefix services/metadata-gateway run check && npm --prefix services/metadata-gateway test",
     "ci:check": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/ci-check.ps1",
