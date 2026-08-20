@@ -2357,12 +2357,32 @@ function ProgressiveGrid({
 }) {
   const parentRef = useRef<HTMLDivElement | null>(null);
   const [columns, setColumns] = useState(4);
-  useEffect(() => {
-    const updateColumns = () => setColumns(window.innerWidth < 640 ? 2 : window.innerWidth < 1024 ? 3 : 4);
+  const gridMin = GRID_MIN_BY_DENSITY[density][cardSize];
+
+  useLayoutEffect(() => {
+    const container = parentRef.current;
+    if (!container) return;
+
+    const updateColumns = () => {
+      // Resolve the density-aware CSS values in the same element that owns the
+      // grid. `getComputedStyle` exposes custom properties as expressions, so a
+      // hidden probe is the reliable way to obtain their computed pixel values.
+      const probe = document.createElement("div");
+      probe.style.cssText = `position:absolute;visibility:hidden;pointer-events:none;min-width:${gridMin};margin-left:var(--library-grid-gap);`;
+      container.appendChild(probe);
+      const minimumCardWidth = probe.getBoundingClientRect().width;
+      const gap = Number.parseFloat(getComputedStyle(probe).marginLeft) || 0;
+      probe.remove();
+
+      const nextColumns = Math.max(1, Math.floor((container.clientWidth + gap) / (minimumCardWidth + gap)));
+      setColumns((current) => current === nextColumns ? current : nextColumns);
+    };
+
     updateColumns();
-    window.addEventListener("resize", updateColumns);
-    return () => window.removeEventListener("resize", updateColumns);
-  }, []);
+    const observer = new ResizeObserver(updateColumns);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [gridMin]);
   const rowCount = Math.ceil(items.length / columns);
   const virtualizer = useVirtualizer({ count: rowCount, getScrollElement: () => parentRef.current, estimateSize: () => cardSize === "lg" ? 440 : cardSize === "sm" ? 245 : 340, overscan: 3 });
   const virtualRows = virtualizer.getVirtualItems();
@@ -2378,7 +2398,7 @@ function ProgressiveGrid({
         <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
           {virtualRows.map((row) => (
             <div key={row.key} ref={virtualizer.measureElement} data-index={row.index} className="absolute left-0 top-0 w-full" style={{ transform: `translateY(${row.start}px)` }}>
-              <div className="stagger grid gap-[var(--library-grid-gap)] pb-[var(--library-grid-gap)]" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+              <div className="stagger grid gap-[var(--library-grid-gap)] pb-[var(--library-grid-gap)]" style={{ gridTemplateColumns: `repeat(${columns}, minmax(${gridMin}, 1fr))` }}>
                 {items.slice(row.index * columns, (row.index + 1) * columns).map((item) => (
                   <PosterCard key={item.id} item={item} size={cardSize} density={density} displayOptions={displayOptions} selected={selectedIds.includes(item.id)} onSelect={() => onSelect(item)} onToggle={() => onToggle(item.id)} />
                 ))}
