@@ -338,6 +338,40 @@ public sealed class ExistingLibraryImportServiceTests
         Assert.Equal(6, finished.Run.SkippedCount);
     }
 
+    [Fact]
+    public async Task Real_release_folder_names_import_as_clean_titles()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-20T08:00:00Z"));
+        await InitializeAsync(storage, timeProvider);
+
+        var rootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(rootPath);
+        foreach (var release in new[]
+                 {
+                     "Arrival.2016.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS",
+                     "Conclave.2024.2160p.UHD.BRRip.HEVC.TrueHD.Atmos.7.1-PENGUIN",
+                     "Old.Film.1998.DVDRip.XviD.AC3.2.0.PROPER.REPACK.INTERNAL-CLASSIC"
+                 })
+        {
+            var folder = Path.Combine(rootPath, release);
+            Directory.CreateDirectory(folder);
+            await File.WriteAllTextAsync(Path.Combine(folder, $"{release}.mkv"), string.Empty);
+        }
+
+        var libraries = new SqliteLibrariesRepository(storage.Factory, timeProvider);
+        var libraryId = await CreateLibraryAsync(libraries, rootPath, "movies");
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, libraries, movies);
+
+        var run = await service.StartAsync(libraryId, CancellationToken.None);
+        Assert.NotNull(run);
+        await DrainAsync(service, run.Run.Id);
+
+        var imported = await movies.ListAsync(CancellationToken.None);
+        Assert.Equal(["Arrival", "Conclave", "Old Film"], imported.Select(item => item.Title).OrderBy(title => title).ToArray());
+    }
+
     private static async Task<int> DrainAsync(IExistingLibraryImportService service, string runId)
     {
         var slices = 0;

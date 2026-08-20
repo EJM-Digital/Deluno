@@ -62,7 +62,7 @@ public sealed class ExistingLibraryImportService(
     private static readonly Regex EpisodeNumberPattern = new(@"S(?<season>\d{1,2})(?<episodes>(?:E\d{1,2})+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex MultiEpisodeSegmentPattern = new(@"E(?<episode>\d{1,2})", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex CleanupTokensPattern = new(
-        @"\b(remux|bluray|blu-ray|bdrip|web[-\s]?dl|webrip|web|hdtv|sdtv|dvd|x264|x265|hevc|av1|720p|1080p|2160p)\b",
+        @"(?<![A-Za-z0-9])(?:remux|blu[-\s]?ray|bdrip|brrip|web[-\s]?dl|webrip|web|hdtv|sdtv|dvd|dvdrip|proper|repack|internal|hdr|sdr|uhd|4k|x264|x265|h[-\s]?264|h[-\s]?265|hevc|avc|av1|xvid|divx|mpeg[-\s]?2|vp9|truehd|atmos|dts(?:[-\s]?(?:hd(?:[-\s]?ma)?|x))?|e[-\s]?ac[-\s]?3|ddp|dd\+|eac3|ac[-\s]?3|dd|flac|opus|aac|mp3|[1-9][\s-][0-2]|480p|720p|1080p|2160p)(?![A-Za-z0-9])",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public async Task<LibraryImportRunProgress?> StartAsync(string libraryId, CancellationToken cancellationToken)
@@ -633,7 +633,16 @@ public sealed class ExistingLibraryImportService(
 
     private static DetectedLibraryItem ParseTitle(string raw)
     {
-        var normalized = raw
+        // A hyphen in a film title is meaningful, so only remove a release
+        // group when the filename parser recognises the final token as one.
+        // The same release name still reaches the catalogue repository through
+        // FilePath, where these facts are persisted independently of the title.
+        var facts = MediaFileNameFacts.Parse(raw);
+        var titleCandidate = string.IsNullOrWhiteSpace(facts.ReleaseGroup)
+            ? raw
+            : Regex.Replace(raw, $@"-{Regex.Escape(facts.ReleaseGroup)}$", string.Empty, RegexOptions.IgnoreCase);
+
+        var normalized = titleCandidate
             .Replace('.', ' ')
             .Replace('_', ' ')
             .Trim();
