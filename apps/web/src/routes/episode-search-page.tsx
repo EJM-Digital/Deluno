@@ -26,7 +26,6 @@ import {
   ListTable
 } from "../components/ui/list-card";
 import { PageToolbar } from "../components/ui/page-toolbar";
-import { RouteSkeleton } from "../components/shell/skeleton";
 import { Select } from "../components/ui/select";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { toast } from "../components/shell/toaster";
@@ -59,14 +58,13 @@ export async function episodeSearchLoader(): Promise<EpisodeSearchLoaderData> {
 type Filter = "all" | "aired" | "monitored" | "never-searched";
 
 export function EpisodeSearchPage() {
-  const data = useLoaderData() as EpisodeSearchLoaderData | undefined;
+  const data = useLoaderData() as EpisodeSearchLoaderData;
   const navigate = useNavigate();
   const revalidator = useRevalidator();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [busy, setBusy] = useState<string | null>(null);
 
-  if (!data) return <RouteSkeleton />;
   const { episodes } = data;
 
   const now = Date.now();

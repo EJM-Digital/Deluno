@@ -49,7 +49,6 @@ import {
   ListTable
 } from "../components/ui/list-card";
 import { PageToolbar } from "../components/ui/page-toolbar";
-import { RouteSkeleton } from "../components/shell/skeleton";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { Select } from "../components/ui/select";
 import { SummaryStrip } from "../components/ui/summary-strip";
@@ -101,8 +100,7 @@ export async function showDetailLoader({
 }
 
 export function ShowDetailPage() {
-  const loaderData = useLoaderData() as ShowDetailLoaderData | undefined;
-  if (!loaderData) return <RouteSkeleton />;
+  const loaderData = useLoaderData() as ShowDetailLoaderData;
   const { activity, decisions, dispatches, importRecovery, inventory, libraries, origins, removalPreview, searchHistory, series, wanted } = loaderData;
   const navigate = useNavigate();
   const revalidator = useRevalidator();

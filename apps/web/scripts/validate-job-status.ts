@@ -13,16 +13,13 @@ import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Job status strings that must not be hardcoded
+// Job status comparisons that must use the shared helpers. The frontend has many
+// unrelated `status` fields (download dispatches, health, migration audits, and
+// search-cycle state), so this deliberately targets the job records themselves.
+const STATUSES = "queued|running|completed|failed";
 const FORBIDDEN_PATTERNS = [
-  /"queued"/g,
-  /'queued'/g,
-  /"running"/g,
-  /'running'/g,
-  /"completed"/g,
-  /'completed'/g,
-  /"failed"/g,
-  /'failed'/g
+  new RegExp(`\\b(?:job|j)\\.status\\s*(===|!==)\\s*["'](${STATUSES})["']`, "g"),
+  new RegExp(`["'](${STATUSES})["']\\s*(===|!==)\\s*\\b(?:job|j)\\.status`, "g")
 ];
 
 // File patterns to check

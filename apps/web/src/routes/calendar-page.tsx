@@ -26,7 +26,6 @@ import {
   ListTable
 } from "../components/ui/list-card";
 import { PageToolbar } from "../components/ui/page-toolbar";
-import { RouteSkeleton } from "../components/shell/skeleton";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { wantedStatusPresentation } from "../lib/media-status-presentation";
@@ -97,14 +96,12 @@ interface CalendarEntry {
 }
 
 export function CalendarPage() {
-  const loaderData = useLoaderData() as CalendarLoaderData | undefined;
+  const loaderData = useLoaderData() as CalendarLoaderData;
   const navigate = useNavigate();
   const revalidator = useRevalidator();
   const [scope, setScope] = useState<Scope>("month");
   const [view, setView] = useState<View>("grid");
   const [offset, setOffset] = useState(0);
-
-  if (!loaderData) return <RouteSkeleton />;
 
   const entries = useMemo(() => buildEntries(loaderData), [loaderData]);
   const range = useMemo(() => buildRange(scope, offset), [scope, offset]);

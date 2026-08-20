@@ -11,7 +11,6 @@ import { Input } from "../components/ui/input";
 import { PresetField } from "../components/ui/preset-field";
 import { authedFetch } from "../lib/use-auth";
 import { fetchJson, type ApiKeyItem, type CreatedApiKeyResponse } from "../lib/api";
-import { RouteSkeleton } from "../components/shell/skeleton";
 
 interface SystemApiLoaderData {
   apiKeys: ApiKeyItem[];
@@ -23,8 +22,7 @@ export async function systemApiLoader(): Promise<SystemApiLoaderData> {
 }
 
 export function SystemApiPage() {
-  const loaderData = useLoaderData() as SystemApiLoaderData | undefined;
-  if (!loaderData) return <RouteSkeleton />;
+  const loaderData = useLoaderData() as SystemApiLoaderData;
   const apiKeys = loaderData.apiKeys;
   const revalidator = useRevalidator();
   const save = useSaveStatus();

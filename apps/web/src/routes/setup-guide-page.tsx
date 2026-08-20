@@ -48,7 +48,6 @@ import { Badge } from "../components/ui/badge";
 import { Chip } from "../components/ui/chip";
 import { ListCard, ListCell, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { SummaryStrip } from "../components/ui/summary-strip";
-import { RouteSkeleton } from "../components/shell/skeleton";
 
 type StepId = "mode" | "folders" | "quality" | "services" | "finish";
 
@@ -231,8 +230,7 @@ export async function setupGuideLoader(): Promise<SetupGuideLoaderData> {
 }
 
 export function SetupGuidePage() {
-  const loaderData = useLoaderData() as SetupGuideLoaderData | undefined;
-  if (!loaderData) return <RouteSkeleton />;
+  const loaderData = useLoaderData() as SetupGuideLoaderData;
   const data = loaderData;
   const navigate = useNavigate();
   const [params] = useSearchParams();
