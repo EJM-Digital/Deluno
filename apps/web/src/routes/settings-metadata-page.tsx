@@ -7,7 +7,7 @@
  *   ListCard  refresh jobs        (one row per maintenance command)
  *   PageFooter (pinned: status · Discard · Save)
  *
- * Contracts: PUT /api/settings, POST /api/metadata/test,
+ * Contracts: PATCH /api/settings, POST /api/metadata/test,
  * POST /api/movies/metadata/jobs, POST /api/series/metadata/jobs.
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
@@ -33,7 +33,8 @@ import {
   type PlatformSettingsSnapshot,
   type QualityProfileItem
 } from "../lib/api";
-import { authedFetch } from "../lib/use-auth";
+import type { PlatformSettingsPatch } from "../lib/api/settings";
+import { useApiMutation } from "../lib/use-api-mutation";
 
 const COUNTRY_OPTIONS = [
   { label: "Australia (AU)", value: "AU" },
@@ -108,6 +109,7 @@ interface MetadataForm {
 export function SettingsMetadataPage() {
   const { libraries, metadataStatus, settings } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
+  const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
 
   const [savedForm, setSavedForm] = useState<MetadataForm>(() => formFrom(settings));
   const [form, setForm] = useState<MetadataForm>(savedForm);
@@ -136,18 +138,12 @@ export function SettingsMetadataPage() {
     if (saveState === "saving") return;
     setSaveState("saving");
     try {
-      const response = await authedFetch("/api/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...settings,
-          metadataCertificationCountry: form.certificationCountry,
-          metadataLanguage: form.language,
-          metadataNfoEnabled: form.nfoEnabled,
-          metadataArtworkEnabled: form.artworkEnabled
-        })
+      await settingsMutation.mutate({
+        metadataCertificationCountry: form.certificationCountry,
+        metadataLanguage: form.language,
+        metadataNfoEnabled: form.nfoEnabled,
+        metadataArtworkEnabled: form.artworkEnabled
       });
-      if (!response.ok) throw new Error("Metadata settings could not be saved.");
       setSavedForm(form);
       setSaveState("saved");
       setMessage("Saved just now");
@@ -224,7 +220,7 @@ export function SettingsMetadataPage() {
       <ListCard title="What Deluno saves" count="Language, region, and the files kept beside your media">
         <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
           <FieldRow>
-            <Field label="Details language" help="Preferred language for titles, descriptions, and release information.">
+            <Field label="Details language" help="Preferred language for titles, descriptions, and release information." error={settingsMutation.fieldErrors.metadataLanguage}>
               <PresetField
                 value={form.language}
                 onChange={(value) => setForm((current) => ({ ...current, language: value }))}
@@ -233,7 +229,7 @@ export function SettingsMetadataPage() {
                 customPlaceholder="IETF language tag, e.g. pt-BR"
               />
             </Field>
-            <Field label="Ratings region" help="Country used for certification ratings and rating filters.">
+            <Field label="Ratings region" help="Country used for certification ratings and rating filters." error={settingsMutation.fieldErrors.metadataCertificationCountry}>
               <PresetField
                 value={form.certificationCountry}
                 onChange={(value) => setForm((current) => ({ ...current, certificationCountry: value }))}

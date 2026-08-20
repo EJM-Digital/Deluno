@@ -359,4 +359,37 @@ public sealed class PlatformSettingsPersistenceTests
         Assert.False(paused.AutoStartJobs);
         Assert.True(resumed.AutoStartJobs);
     }
+
+    [Fact]
+    public async Task Settings_patch_preserves_a_value_changed_after_the_callers_snapshot_was_loaded()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-05-01T01:02:03Z"));
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var repository = new SqlitePlatformSettingsRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
+        var staleSnapshot = await repository.GetAsync(CancellationToken.None);
+
+        await repository.SaveAsync(
+            PlatformSettingsPatchMerger.Apply(
+                staleSnapshot,
+                new PatchPlatformSettingsRequest(AppInstanceName: "Changed in General")),
+            CancellationToken.None);
+
+        // The second save represents a different settings page. Its PATCH
+        // starts from a fresh server snapshot, not the stale loader payload.
+        var currentSnapshot = await repository.GetAsync(CancellationToken.None);
+        await repository.SaveAsync(
+            PlatformSettingsPatchMerger.Apply(
+                currentSnapshot,
+                new PatchPlatformSettingsRequest(UiTheme: "dark")),
+            CancellationToken.None);
+
+        var loaded = await repository.GetAsync(CancellationToken.None);
+        Assert.Equal("Changed in General", loaded.AppInstanceName);
+        Assert.Equal("dark", loaded.UiTheme);
+    }
 }

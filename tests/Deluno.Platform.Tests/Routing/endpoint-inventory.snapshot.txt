@@ -135,6 +135,7 @@ GET /api/v1/import-recovery/movies/
 GET /api/v1/import-recovery/series/
 GET /api/v1/import-resolutions/
 GET /health
+PATCH /api/settings/
 POST /api/api-keys/
 POST /api/auth/bootstrap
 POST /api/auth/login

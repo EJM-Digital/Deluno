@@ -12,7 +12,7 @@
  * rather than as a separate browsable tab.
  *
  * Contracts: GET/POST /api/custom-formats, PUT/DELETE /api/custom-formats/{id},
- * POST /api/custom-formats/dry-run, PUT /api/settings.
+ * POST /api/custom-formats/dry-run, PATCH /api/settings.
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
@@ -49,6 +49,8 @@ import {
   type QualityProfileItem
 } from "../lib/api";
 import { settingsOverviewLoader } from "./settings-overview-page";
+import type { PlatformSettingsPatch } from "../lib/api/settings";
+import { useApiMutation } from "../lib/use-api-mutation";
 import { authedFetch } from "../lib/use-auth";
 
 const TABS = configurationNavAreas.find((area) => area.label === "Media plans")?.items ?? [];
@@ -119,6 +121,7 @@ type DrawerMode =
 export function SettingsCustomFormatsPage() {
   const { customFormats, settings } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
+  const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
   const [busy, setBusy] = useState<string | null>(null);
 
   const split = useMediaTypeSplit(customFormats, (format) => format.mediaType);
@@ -323,20 +326,13 @@ export function SettingsCustomFormatsPage() {
     if (safeguardState === "saving") return;
     setSafeguardState("saving");
     try {
-      const response = await authedFetch("/api/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...settings,
+      await settingsMutation.mutate({
           searchScoringMode: safeguards.scoringMode,
           releaseNeverGrabPatterns: safeguards.neverGrab.join("\n")
-        })
       });
-      if (!response.ok) throw new Error("Could not save safeguards.");
       setSavedSafeguards(safeguards);
       setSafeguardState("saved");
       setSafeguardMessage("Saved just now");
-      revalidator.revalidate();
     } catch (error) {
       setSafeguardState("error");
       setSafeguardMessage(error instanceof Error ? error.message : "Could not save");

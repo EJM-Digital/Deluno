@@ -6,7 +6,7 @@
  *   Drawer    (Basics · Delivery · Delete)
  *
  * Contracts: GET/POST /api/notification-webhooks,
- * PUT/DELETE /api/notification-webhooks/{id}, POST …/{id}/test, PUT /api/settings.
+ * PUT/DELETE /api/notification-webhooks/{id}, POST …/{id}/test, PATCH /api/settings.
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
@@ -24,6 +24,8 @@ import { Select } from "../components/ui/select";
 import { Switch, SwitchRow } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
 import { fetchJson, type NotificationWebhookItem, type PlatformSettingsSnapshot } from "../lib/api";
+import type { PlatformSettingsPatch } from "../lib/api/settings";
+import { useApiMutation } from "../lib/use-api-mutation";
 import { authedFetch } from "../lib/use-auth";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 
@@ -61,6 +63,7 @@ export async function settingsNotificationsLoader(): Promise<LoaderData> {
 export function SettingsNotificationsPage() {
   const { settings, webhooks } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
+  const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
   const sorted = useMemo(() => [...webhooks].sort((a, b) => a.name.localeCompare(b.name)), [webhooks]);
 
   const [mode, setMode] = useState<DrawerMode>({ kind: "closed" });
@@ -182,8 +185,7 @@ export function SettingsNotificationsPage() {
 
   async function toggleGlobal(enabled: boolean) {
     await run("global", async () => {
-      const response = await authedFetch("/api/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...settings, enableNotifications: enabled }) });
-      if (!response.ok) throw new Error("Could not update notifications.");
+      await settingsMutation.mutate({ enableNotifications: enabled });
     });
   }
 

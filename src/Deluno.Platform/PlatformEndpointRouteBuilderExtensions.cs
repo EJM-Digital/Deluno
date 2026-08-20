@@ -73,6 +73,32 @@ public static class PlatformEndpointRouteBuilderExtensions
             return Results.Ok(snapshot);
         });
 
+        settings.MapPatch(string.Empty, async (
+            HttpContext httpContext,
+            [FromBody] PatchPlatformSettingsRequest request,
+            IPlatformSettingsRepository repository,
+            IRealtimeEventPublisher realtimeEventPublisher,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var current = await repository.GetAsync(cancellationToken);
+            var merged = PlatformSettingsPatchMerger.Apply(current, request);
+            var errors = ValidateSettings(merged);
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            var snapshot = await repository.SaveAsync(merged, cancellationToken);
+            await realtimeEventPublisher.PublishEntityChangedAsync("Settings", "settings", cancellationToken);
+            return Results.Ok(snapshot);
+        });
+
         settings.MapPut("/automation", async (
             HttpContext httpContext,
             [FromBody] UpdateGlobalAutomationRequest request,

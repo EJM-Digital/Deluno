@@ -7,10 +7,10 @@
  *   ListCard  default views (movies, TV)
  *   PageFooter (pinned: status · Discard · Save)
  *
- * Contracts: PUT /api/settings.
+ * Contracts: PATCH /api/settings.
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { useLoaderData, useRevalidator } from "react-router-dom";
+import { useLoaderData } from "react-router-dom";
 import { Field } from "../components/ui/field";
 import { ListCard } from "../components/ui/list-card";
 import { PageFooter } from "../components/ui/page-footer";
@@ -23,7 +23,8 @@ import { densityDisplayName, isDensity, useDensity, type Density } from "../lib/
 import type { DrawerSaveState } from "../components/ui/drawer";
 import { settingsOverviewLoader } from "./settings-overview-page";
 import type { LibraryItem, PlatformSettingsSnapshot, QualityProfileItem } from "../lib/api";
-import { authedFetch } from "../lib/use-auth";
+import type { PlatformSettingsPatch } from "../lib/api/settings";
+import { useApiMutation } from "../lib/use-api-mutation";
 
 /** One line each — the four presets differ by degree, so a paragraph apiece said nothing. */
 const DENSITY_OPTIONS: { value: Density; label: string; help: string }[] = [
@@ -50,7 +51,7 @@ interface UiForm {
 
 export function SettingsUiPage() {
   const { settings } = useLoaderData() as LoaderData;
-  const revalidator = useRevalidator();
+  const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
   const { density, setDensity } = useDensity();
 
   const [savedForm, setSavedForm] = useState<UiForm>(() => formFrom(settings));
@@ -83,22 +84,15 @@ export function SettingsUiPage() {
     if (state === "saving") return;
     setSaveState("saving");
     try {
-      const response = await authedFetch("/api/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...settings,
-          uiTheme: form.theme,
-          uiDensity: form.density,
-          defaultMovieView: form.movieView,
-          defaultShowView: form.showView
-        })
+      await settingsMutation.mutate({
+        uiTheme: form.theme,
+        uiDensity: form.density,
+        defaultMovieView: form.movieView,
+        defaultShowView: form.showView
       });
-      if (!response.ok) throw new Error("Interface settings could not be saved.");
       setSavedForm(form);
       setSaveState("saved");
       setMessage("Saved just now");
-      revalidator.revalidate();
     } catch (error) {
       setSaveState("error");
       setMessage(error instanceof Error ? error.message : "Could not save");

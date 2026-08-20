@@ -1,0 +1,48 @@
+namespace Deluno.Platform.Contracts;
+
+/// <summary>
+/// Updates only the settings supplied by the caller. A null value leaves the
+/// current setting unchanged; send an empty string when an optional string
+/// should be cleared.
+/// </summary>
+public sealed record PatchPlatformSettingsRequest(
+    string? AppInstanceName = null,
+    string? MovieRootPath = null,
+    string? SeriesRootPath = null,
+    string? DownloadsPath = null,
+    string? IncompleteDownloadsPath = null,
+    bool? AutoStartJobs = null,
+    bool? EnableNotifications = null,
+    bool? RenameOnImport = null,
+    bool? UseHardlinks = null,
+    bool? CleanupEmptyFolders = null,
+    bool? RemoveCompletedDownloads = null,
+    bool? UnmonitorWhenCutoffMet = null,
+    string? MovieFolderFormat = null,
+    string? SeriesFolderFormat = null,
+    string? EpisodeFileFormat = null,
+    string? HostBindAddress = null,
+    int? HostPort = null,
+    string? UrlBase = null,
+    bool? RequireAuthentication = null,
+    string? UiTheme = null,
+    string? UiDensity = null,
+    string? DefaultMovieView = null,
+    string? DefaultShowView = null,
+    bool? MetadataNfoEnabled = null,
+    bool? MetadataArtworkEnabled = null,
+    string? MetadataCertificationCountry = null,
+    string? MetadataLanguage = null,
+    string? MetadataProviderMode = null,
+    string? MetadataBrokerUrl = null,
+    string? MetadataTmdbApiKey = null,
+    string? MetadataOmdbApiKey = null,
+    string? ReleaseNeverGrabPatterns = null,
+    string? SearchScoringMode = null,
+    int? ImportRecoveryRetentionDays = null,
+    string? MdbListApiKey = null,
+    int? DownloadHealthStrikeThreshold = null,
+    bool? CleanupBlockReleaseAfterThreshold = null,
+    bool? CleanupQueueReplacementAfterThreshold = null,
+    bool? CleanupRemoveClientEntryAfterThreshold = null,
+    bool? CleanupPurgePayloadAfterThreshold = null);
