@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using Deluno.Infrastructure.Storage;
@@ -21,6 +22,7 @@ public sealed class SqliteSecurityRepository(
     TimeProvider timeProvider)
     : ISecurityRepository
 {
+    private readonly ConcurrentDictionary<string, DateTimeOffset> lastUsedWrites = new();
     // Pre-computed hash used to ensure constant-time response when a username is not found,
     // preventing timing-based username enumeration attacks.
     private static readonly string DummyPasswordHash =
@@ -219,6 +221,16 @@ public sealed class SqliteSecurityRepository(
         var item = ReadApiKey(reader);
         await reader.DisposeAsync();
 
+        var now = timeProvider.GetUtcNow();
+        var due = !lastUsedWrites.TryGetValue(item.Id, out var previous) ||
+                  now - previous >= TimeSpan.FromMinutes(1);
+        if (!due)
+        {
+            return item;
+        }
+
+        lastUsedWrites[item.Id] = now;
+
         using var update = connection.CreateCommand();
         update.CommandText =
             """
@@ -227,7 +239,6 @@ public sealed class SqliteSecurityRepository(
                 updated_utc = @updatedUtc
             WHERE id = @id;
             """;
-        var now = timeProvider.GetUtcNow();
         AddParameter(update, "@id", item.Id);
         AddParameter(update, "@lastUsedUtc", now.ToString("O"));
         AddParameter(update, "@updatedUtc", now.ToString("O"));

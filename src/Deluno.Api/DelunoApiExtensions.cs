@@ -5,6 +5,7 @@ using Deluno.Api.Health;
 using Deluno.Api.Monitoring;
 using Deluno.Api.Updates;
 using Deluno.Infrastructure.Storage;
+using Deluno.Security;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -29,9 +30,13 @@ public static class DelunoApiExtensions
         return services;
     }
 
-    public static IEndpointRouteBuilder MapDelunoApi(this IEndpointRouteBuilder endpoints)
+    public static IEndpointRouteBuilder MapDelunoApi(
+        this IEndpointRouteBuilder endpoints,
+        bool includeOperationalEndpoints = true)
     {
-        endpoints.MapGet("/health", () => Results.Ok(DelunoReadinessService.Live()));
+        endpoints.MapGet("/health", () => Results.Ok(DelunoReadinessService.Live()))
+            .AllowAnonymous()
+            .WithMetadata(new DelunoPublicEndpointAttribute());
 
         var api = endpoints.MapGroup("/api");
 
@@ -42,7 +47,9 @@ public static class DelunoApiExtensions
             architecture = "sqlite-first modular monolith"
         }));
 
-        api.MapGet("/health/live", () => Results.Ok(DelunoReadinessService.Live()));
+        api.MapGet("/health/live", () => Results.Ok(DelunoReadinessService.Live()))
+            .AllowAnonymous()
+            .WithMetadata(new DelunoPublicEndpointAttribute());
 
         api.MapGet("/health/ready", async (
             IDelunoReadinessService readiness,
@@ -54,7 +61,9 @@ public static class DelunoApiExtensions
                 statusCode: result.Ready
                     ? StatusCodes.Status200OK
                     : StatusCodes.Status503ServiceUnavailable);
-        });
+        })
+            .AllowAnonymous()
+            .WithMetadata(new DelunoPublicEndpointAttribute());
 
         api.MapGet("/manifest", (IOptions<StoragePathOptions> storage) => Results.Ok(new
         {
@@ -62,10 +71,15 @@ public static class DelunoApiExtensions
             storageRoot = storage.Value.DataRoot,
             modules = DelunoSystemManifest.Modules,
             databases = DelunoStorageLayout.Databases
-        }));
+        }))
+            .RequireAuthorization(DelunoAuthorizationPolicies.Read);
         api.MapDelunoMonitoringEndpoints();
 
-        endpoints.MapDownloadDispatchesEndpoints();
+        if (includeOperationalEndpoints)
+        {
+            endpoints.MapDownloadDispatchesEndpoints();
+        }
+
         endpoints.MapDelunoDashboardMetricsEndpoints();
 
         return endpoints;

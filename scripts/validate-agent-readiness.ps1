@@ -124,8 +124,7 @@ foreach ($entry in $invariantFiles) {
 # endpoints; if they diverge, the binary that ships in the Velopack
 # installer (built from the tray) silently lacks features the Docker image has.
 $hostWiringRequiredCalls = @(
-    "AddDelunoPlatformSecrets",
-    "MapDelunoSecretsDiagnostics"
+    "AddDelunoPlatformSecrets"
 )
 $hostWiringFiles = @(
     @{ Path = "src\Deluno.Host\Program.cs"; Label = "src/Deluno.Host/Program.cs" },
@@ -140,6 +139,30 @@ foreach ($entry in $hostWiringFiles) {
         if (-not $content.Contains($call)) {
             Add-Failure "Host-wiring parity: $($entry.Label) is missing required call '$call'."
         }
+    }
+}
+
+$hostEndpointMapPath = Join-Path $Root "src\Deluno.Host\DelunoApplicationEndpointMapping.cs"
+$hostProgramPath = Join-Path $Root "src\Deluno.Host\Program.cs"
+if (-not (Test-Path -LiteralPath $hostEndpointMapPath -PathType Leaf)) {
+    Add-Failure "Host-wiring parity: missing shared endpoint map src/Deluno.Host/DelunoApplicationEndpointMapping.cs."
+} else {
+    $hostEndpointMap = Get-Content -LiteralPath $hostEndpointMapPath -Raw
+    if (-not $hostEndpointMap.Contains("MapDelunoSecretsDiagnostics")) {
+        Add-Failure "Host-wiring parity: shared endpoint map is missing required call 'MapDelunoSecretsDiagnostics'."
+    }
+}
+
+if ((Test-Path -LiteralPath $hostProgramPath -PathType Leaf) -and
+    -not (Get-Content -LiteralPath $hostProgramPath -Raw).Contains("MapDelunoApplicationEndpoints")) {
+    Add-Failure "Host-wiring parity: src/Deluno.Host/Program.cs must use the shared endpoint map."
+}
+
+foreach ($trayPath in @("apps\windows-tray\DelunoServer.cs", "apps\windows-tray\ServiceHost.cs")) {
+    $path = Join-Path $Root $trayPath
+    if ((Test-Path -LiteralPath $path -PathType Leaf) -and
+        -not (Get-Content -LiteralPath $path -Raw).Contains("MapDelunoSecretsDiagnostics")) {
+        Add-Failure "Host-wiring parity: $trayPath is missing required call 'MapDelunoSecretsDiagnostics'."
     }
 }
 

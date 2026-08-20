@@ -10,8 +10,8 @@ namespace Deluno.Security;
 
 public static class UserAuthorization
 {
-    private const string UserItemKey = "deluno.user";
-    private const string ApiKeyItemKey = "deluno.apiKey";
+    internal const string UserItemKey = "deluno.user";
+    internal const string ApiKeyItemKey = "deluno.apiKey";
     private const string UserTokenPurpose = "Deluno.UserAccessToken.v1";
     private static readonly TimeSpan DefaultAccessTokenLifetime = TimeSpan.FromHours(12);
 
@@ -70,6 +70,11 @@ public static class UserAuthorization
         ISecurityRepository repository,
         CancellationToken cancellationToken)
     {
+        if (TryReadApiKey(httpContext, out _) || TryReadUserItem(httpContext, out _))
+        {
+            return null;
+        }
+
         var apiKey = ReadApiKey(httpContext);
         if (!string.IsNullOrWhiteSpace(apiKey))
         {
@@ -150,6 +155,11 @@ public static class UserAuthorization
 
     public static bool TryReadUser(HttpContext httpContext, out UserItem? item)
     {
+        if (TryReadUserItem(httpContext, out item))
+        {
+            return true;
+        }
+
         item = null;
         var token = ReadToken(httpContext);
         if (string.IsNullOrWhiteSpace(token))
@@ -194,6 +204,18 @@ public static class UserAuthorization
         {
             return false;
         }
+    }
+
+    private static bool TryReadUserItem(HttpContext httpContext, out UserItem? item)
+    {
+        item = null;
+        if (httpContext.Items.TryGetValue(UserItemKey, out var value) && value is UserItem user)
+        {
+            item = user;
+            return true;
+        }
+
+        return false;
     }
 
     private static string? ReadToken(HttpContext httpContext)

@@ -12,7 +12,8 @@ public static class MetadataEndpointRouteBuilderExtensions
 {
     public static IEndpointRouteBuilder MapDelunoMetadataEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var metadata = endpoints.MapGroup("/api/metadata");
+        var metadata = endpoints.MapGroup("/api/metadata")
+            .RequireAuthorization(DelunoAuthorizationPolicies.Write);
 
         metadata.MapGet("/status", async (
             HttpContext httpContext,
@@ -113,7 +114,9 @@ public static class MetadataEndpointRouteBuilderExtensions
                 item.ContentType,
                 enableRangeProcessing: true,
                 lastModified: File.GetLastWriteTimeUtc(item.FilePath));
-        });
+        })
+            .AllowAnonymous()
+            .WithMetadata(new DelunoPublicEndpointAttribute());
 
         var broker = metadata.MapGroup("/broker");
 

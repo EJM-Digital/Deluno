@@ -39,9 +39,9 @@ public static class PlatformEndpointRouteBuilderExtensions
 {
     public static IEndpointRouteBuilder MapDelunoPlatformEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var settings = endpoints.MapGroup("/api/settings");
-        var auth = endpoints.MapGroup("/api/auth");
-        var apiKeys = endpoints.MapGroup("/api/api-keys");
+        var write = endpoints.MapGroup(string.Empty)
+            .RequireAuthorization(DelunoAuthorizationPolicies.Write);
+        var settings = write.MapGroup("/api/settings");
 
         settings.MapGet(string.Empty, async (IPlatformSettingsRepository repository, CancellationToken cancellationToken) =>
         {
@@ -91,8 +91,8 @@ public static class PlatformEndpointRouteBuilderExtensions
             return Results.Ok(snapshot);
         });
 
-        var tags = endpoints.MapGroup("/api/tags");
-        var migration = endpoints.MapGroup("/api/migration");
+        var tags = write.MapGroup("/api/tags");
+        var migration = write.MapGroup("/api/migration");
 
         migration.MapPost("/preview", async (
             HttpContext httpContext,
@@ -151,7 +151,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             return report is null ? Results.NotFound() : Results.Ok(report);
         });
 
-        var setup = endpoints.MapGroup("/api/setup");
+        var setup = write.MapGroup("/api/setup");
 
         setup.MapGet("/progress", async (
             HttpContext httpContext,
@@ -313,7 +313,7 @@ public static class PlatformEndpointRouteBuilderExtensions
         });
 
 
-        endpoints.MapPost("/api/destination-rules/resolve", async (
+        write.MapPost("/api/destination-rules/resolve", async (
             [FromBody] DestinationResolutionRequest request,
             IPlatformSettingsRepository repository,
             ILibrariesRepository librariesRepository,
@@ -325,7 +325,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             return Results.Ok(result);
         });
 
-        endpoints.MapPost("/api/libraries/{id}/search-now", async (
+        write.MapPost("/api/libraries/{id}/search-now", async (
             string id,
             HttpContext httpContext,
             ILibrariesRepository repository,
@@ -350,7 +350,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             return requested ? Results.Accepted() : Results.NotFound();
         });
 
-        endpoints.MapPost("/api/libraries/{id}/skip-cycle", async (
+        write.MapPost("/api/libraries/{id}/skip-cycle", async (
             string id,
             HttpContext httpContext,
             ILibrariesRepository repository,
@@ -380,7 +380,7 @@ public static class PlatformEndpointRouteBuilderExtensions
         // work runs far longer than any HTTP request should live, so the POST
         // only starts the run and hands back its position; the worker advances
         // it, and the GET below is what a progress display reads.
-        endpoints.MapPost("/api/libraries/{id}/import-existing", async (
+        write.MapPost("/api/libraries/{id}/import-existing", async (
             string id,
             HttpContext httpContext,
             [FromServices] IExistingLibraryImportService importService,
@@ -417,7 +417,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             return Results.Accepted($"/api/libraries/{id}/import-existing", progress);
         });
 
-        endpoints.MapGet("/api/libraries/{id}/import-existing", async (
+        write.MapGet("/api/libraries/{id}/import-existing", async (
             string id,
             HttpContext httpContext,
             [FromServices] IExistingLibraryImportService importService,
@@ -433,7 +433,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             return progress is null ? Results.NotFound() : Results.Ok(progress);
         });
 
-        endpoints.MapPost("/api/libraries/{id}/import-existing/pause", async (
+        write.MapPost("/api/libraries/{id}/import-existing/pause", async (
             string id,
             HttpContext httpContext,
             [FromServices] IExistingLibraryImportService importService,
@@ -449,7 +449,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             return progress is null ? Results.NotFound() : Results.Accepted(null, progress);
         });
 
-        endpoints.MapPost("/api/libraries/{id}/import-existing/resume", async (
+        write.MapPost("/api/libraries/{id}/import-existing/resume", async (
             string id,
             HttpContext httpContext,
             [FromServices] IExistingLibraryImportService importService,
@@ -472,7 +472,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             return Results.Accepted(null, progress);
         });
 
-        endpoints.MapPost("/api/libraries/{id}/import-existing/cancel", async (
+        write.MapPost("/api/libraries/{id}/import-existing/cancel", async (
             string id,
             HttpContext httpContext,
             [FromServices] IExistingLibraryImportService importService,
@@ -490,7 +490,7 @@ public static class PlatformEndpointRouteBuilderExtensions
 
         // What the run set aside rather than guessing at. Capped, because a bad
         // library could produce one of these per title.
-        endpoints.MapGet("/api/libraries/{id}/import-existing/issues", async (
+        write.MapGet("/api/libraries/{id}/import-existing/issues", async (
             string id,
             int? take,
             HttpContext httpContext,
@@ -508,7 +508,8 @@ public static class PlatformEndpointRouteBuilderExtensions
         });
 
 
-        var integrations = endpoints.MapGroup("/api/integrations");
+        var integrations = endpoints.MapGroup("/api/integrations")
+            .RequireAuthorization(DelunoAuthorizationPolicies.Imports);
 
         // What Deluno is currently holding back, and for how long. A throttle
         // that works is indistinguishable from a hang unless somebody can see
