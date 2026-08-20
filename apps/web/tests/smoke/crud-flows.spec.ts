@@ -243,6 +243,52 @@ test.describe("indexer and download client CRUD", () => {
     }
   });
 
+  test("shows when Deluno is proactively pacing an indexer", async ({ page }, testInfo) => {
+    const uniqueName = `Smoke-Pacing-${Date.now()}`;
+    const host = "pacing-indexer.example.test";
+    const createResp = await page.request.post("/api/indexers", {
+      data: {
+        name: uniqueName,
+        protocol: "rss",
+        privacy: "public",
+        baseUrl: `https://${host}/feed.rss`,
+        priority: 10,
+        categories: "",
+        isEnabled: true
+      },
+      headers: authHeaders()
+    });
+    expect(createResp.ok(), `POST /api/indexers failed: ${createResp.status()}`).toBe(true);
+    const indexer = await createResp.json() as { id: string };
+
+    try {
+      const snapshot = { hosts: [{ host, waiting: 2, grantedCount: 4, refusedCount: 0, totalWaitedSeconds: 3.5, nextPermitInSeconds: 1.2 }] };
+      await page.addInitScript((nextSnapshot) => {
+        const originalFetch = window.fetch.bind(window);
+        window.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+          const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+          if (new URL(url, window.location.origin).pathname === "/api/integrations/outbound-throttle") {
+            return Promise.resolve(new Response(JSON.stringify(nextSnapshot), { headers: { "Content-Type": "application/json" } }));
+          }
+          return originalFetch(input, init);
+        }) as typeof window.fetch;
+      }, snapshot);
+
+      await page.goto("/indexers");
+      const row = page.getByRole("row").filter({ hasText: uniqueName });
+      if (testInfo.project.name !== "mobile") {
+        await expect(row.getByText("2 requests waiting", { exact: true })).toBeVisible();
+        await expect(row.getByText(`Deluno is pacing ${host}`, { exact: true })).toBeVisible();
+      }
+
+      await row.click();
+      const drawer = page.getByRole("dialog", { name: uniqueName });
+      await expect(drawer.getByText(`Deluno is waiting on ${host} before sending 2 requests.`, { exact: true })).toBeVisible();
+    } finally {
+      await page.request.delete(`/api/indexers/${indexer.id}`, { headers: authHeaders() });
+    }
+  });
+
   // ── Download client CRUD ──────────────────────────────────────────────────
 
   test("download client created via API appears on the indexers page", async ({ page }) => {
