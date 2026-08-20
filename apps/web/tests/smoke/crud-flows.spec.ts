@@ -246,6 +246,33 @@ test.describe("indexer and download client CRUD", () => {
     }
   });
 
+  test("editing an indexer in the drawer keeps its identity", async ({ page }) => {
+    const name = `Smoke-IndexerDrawer-${Date.now()}`;
+    const updatedUrl = "https://after-indexer.example.test/feed.rss";
+    const create = await page.request.post("/api/indexers", {
+      data: { name, protocol: "rss", privacy: "public", baseUrl: "https://before-indexer.example.test/feed.rss", priority: 10, categories: "", tags: "", mediaScope: "movies", isEnabled: true },
+      headers: authHeaders()
+    });
+    expect(create.ok()).toBe(true);
+    const indexer = await create.json() as { id: string };
+
+    try {
+      await page.goto("/indexers/indexers");
+      await page.getByRole("row").filter({ hasText: name }).click();
+      const drawer = page.getByRole("dialog", { name });
+      await expect(drawer.getByLabel("URL")).toHaveValue("https://before-indexer.example.test/feed.rss");
+      await drawer.getByLabel("URL").fill(updatedUrl);
+      const update = page.waitForRequest((request) => request.method() === "PUT" && new URL(request.url()).pathname === `/api/indexers/${indexer.id}`);
+      await drawer.getByRole("button", { name: "Save indexer" }).click();
+      await update;
+      const list = await page.request.get("/api/indexers", { headers: authHeaders() });
+      expect(list.ok()).toBe(true);
+      expect((await list.json() as Array<{ id: string; baseUrl: string }>).find((item) => item.id === indexer.id)).toMatchObject({ id: indexer.id, baseUrl: updatedUrl });
+    } finally {
+      await page.request.delete(`/api/indexers/${indexer.id}`, { headers: authHeaders() });
+    }
+  });
+
   test("shows when Deluno is proactively pacing an indexer", async ({ page }, testInfo) => {
     const uniqueName = `Smoke-Pacing-${Date.now()}`;
     const host = "pacing-indexer.example.test";
@@ -412,6 +439,64 @@ test.describe("indexer and download client CRUD", () => {
       expect(updated.port).toBe(8080);           // port preserved (null patch)
     } finally {
       await page.request.delete(`/api/download-clients/${client.id}`, { headers: authHeaders() });
+    }
+  });
+
+  test("editing a download client in the drawer keeps its identity", async ({ page }) => {
+    const name = `Smoke-ClientDrawer-${Date.now()}`;
+    const updatedHost = "after-client.example.test";
+    const create = await page.request.post("/api/download-clients", {
+      data: { name, protocol: "qbittorrent", host: "before-client.example.test", port: 8080, username: null, password: null, endpointUrl: null, moviesCategory: "smoke-movies", tvCategory: "smoke-tv", categoryTemplate: null, priority: 1, isEnabled: true },
+      headers: authHeaders()
+    });
+    expect(create.ok()).toBe(true);
+    const client = await create.json() as { id: string };
+
+    try {
+      await page.goto("/indexers/download-clients");
+      await page.getByRole("row").filter({ hasText: name }).click();
+      const drawer = page.getByRole("dialog", { name });
+      await expect(drawer.getByLabel("Custom host / IP")).toHaveValue("before-client.example.test");
+      await drawer.getByLabel("Custom host / IP").fill(updatedHost);
+      const update = page.waitForRequest((request) => request.method() === "PUT" && new URL(request.url()).pathname === `/api/download-clients/${client.id}`);
+      await drawer.getByRole("button", { name: "Save client" }).click();
+      await update;
+      const list = await page.request.get("/api/download-clients", { headers: authHeaders() });
+      expect(list.ok()).toBe(true);
+      expect((await list.json() as Array<{ id: string; host: string }>).find((item) => item.id === client.id)).toMatchObject({ id: client.id, host: updatedHost });
+    } finally {
+      await page.request.delete(`/api/download-clients/${client.id}`, { headers: authHeaders() });
+    }
+  });
+
+  test("editing a quality profile in the drawer keeps its identity", async ({ page }) => {
+    const name = `Smoke-ProfileDrawer-${Date.now()}`;
+    const renamed = `${name}-renamed`;
+    const qualityModel = await page.request.get("/api/quality-model", { headers: authHeaders() });
+    expect(qualityModel.ok()).toBe(true);
+    const tier = (await qualityModel.json() as { tiers: Array<{ name: string }> }).tiers[0]?.name;
+    expect(tier).toBeTruthy();
+    const create = await page.request.post("/api/quality-profiles", {
+      data: { name, mediaType: "movies", cutoffQuality: tier, allowedQualities: tier, customFormatIds: "", upgradeUntilCutoff: true, upgradeUnknownItems: false },
+      headers: authHeaders()
+    });
+    expect(create.ok()).toBe(true);
+    const profile = await create.json() as { id: string };
+
+    try {
+      await page.goto("/settings/profiles");
+      await page.getByRole("row").filter({ hasText: name }).click();
+      const drawer = page.getByRole("dialog", { name });
+      await expect(drawer.getByLabel("Profile name")).toHaveValue(name);
+      await drawer.getByLabel("Profile name").fill(renamed);
+      const update = page.waitForRequest((request) => request.method() === "PUT" && new URL(request.url()).pathname === `/api/quality-profiles/${profile.id}`);
+      await drawer.getByRole("button", { name: "Save profile" }).click();
+      await update;
+      const list = await page.request.get("/api/quality-profiles", { headers: authHeaders() });
+      expect(list.ok()).toBe(true);
+      expect((await list.json() as Array<{ id: string; name: string }>).find((item) => item.id === profile.id)).toMatchObject({ id: profile.id, name: renamed });
+    } finally {
+      await page.request.delete(`/api/quality-profiles/${profile.id}`, { headers: authHeaders() });
     }
   });
 });
