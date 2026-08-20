@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useState, type FormEvent } from "react";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { BookOpenText, Copy, KeyRound, LoaderCircle, ShieldCheck, Trash2 } from "lucide-react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
@@ -8,6 +8,7 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable } from "../components/ui/list-card";
 import { Input } from "../components/ui/input";
+import { Field } from "../components/ui/field";
 import { PresetField } from "../components/ui/preset-field";
 import { authedFetch } from "../lib/use-auth";
 import { fetchJson, type ApiKeyItem, type CreatedApiKeyResponse } from "../lib/api";
@@ -127,19 +128,22 @@ export function SystemApiPage() {
           ) : null}
 
             <form className="grid gap-[var(--grid-gap)]" onSubmit={handleCreate}>
-              <Field label="Key name">
+              <Field
+                label="Key name"
+                help="Use a human name that tells you where the key is used. Example: dashboard, mobile app, Home Assistant, backup script."
+              >
                 <Input
                   value={name}
                   onChange={(event) => setName(event.target.value)}
                   placeholder="External automation"
                   required
                 />
-                <p className="density-help mt-2 text-muted-foreground">
-                  Use a human name that tells you where the key is used. Example: dashboard, mobile app, Home Assistant, backup script.
-                </p>
               </Field>
 
-              <Field label="Access">
+              <Field
+                label="Access"
+                help="Scope names are stored now so we can enforce fine-grained permissions later without changing existing keys."
+              >
                 <PresetField
                   value={scopes}
                   onChange={setScopes}
@@ -151,9 +155,6 @@ export function SystemApiPage() {
                   customLabel="Custom scopes"
                   customPlaceholder="read, queue, imports"
                 />
-                <p className="density-help mt-2 text-muted-foreground">
-                  Scope names are stored now so we can enforce fine-grained permissions later without changing existing keys.
-                </p>
               </Field>
 
               <div className="rounded-xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.75)]">
@@ -284,15 +285,6 @@ curl -H "Authorization: Bearer deluno_..." http://127.0.0.1:5099/api/integration
         busy={deletingId !== null}
         onConfirm={confirmDelete}
       />
-    </div>
-  );
-}
-
-function Field({ children, label }: { children: ReactNode; label: string }) {
-  return (
-    <div className="density-field rounded-xl border border-hairline bg-surface-1">
-      <p className="density-label uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
-      <div style={{ marginTop: "var(--field-label-gap)" }}>{children}</div>
     </div>
   );
 }

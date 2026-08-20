@@ -42,7 +42,9 @@ import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { Checkbox } from "../components/ui/checkbox";
 import { PathInput } from "../components/ui/path-input";
+import { Select } from "../components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Chip } from "../components/ui/chip";
@@ -899,11 +901,11 @@ function ServicesStep({
             ))}
           </div>
           <Input value={form.indexerName} onChange={(event) => patch({ indexerName: event.target.value })} placeholder="Primary indexer" />
-          <select value={form.indexerProtocol} onChange={(event) => patch({ indexerProtocol: event.target.value as GuideForm["indexerProtocol"] })} className="density-control-text h-[var(--control-height)] rounded-xl border border-hairline bg-surface-2 px-3 text-foreground outline-none">
+          <Select value={form.indexerProtocol} onChange={(event) => patch({ indexerProtocol: event.target.value as GuideForm["indexerProtocol"] })}>
             <option value="torznab">Torznab</option>
             <option value="newznab">Newznab (Usenet indexer)</option>
             <option value="rss">RSS feed</option>
-          </select>
+          </Select>
           <Input value={form.indexerUrl} onChange={(event) => patch({ indexerUrl: event.target.value })} placeholder="https://indexer.example/api" />
           <Input value={form.indexerApiKey} onChange={(event) => patch({ indexerApiKey: event.target.value })} placeholder="API key, if required" />
           <ServiceTestButton
@@ -940,14 +942,14 @@ function ServicesStep({
             ))}
           </div>
           <Input value={form.clientName} onChange={(event) => patch({ clientName: event.target.value })} placeholder="Primary download client" />
-          <select value={form.clientProtocol} onChange={(event) => patch({ clientProtocol: event.target.value as GuideForm["clientProtocol"], clientPort: defaultClientPort(event.target.value) })} className="density-control-text h-[var(--control-height)] rounded-xl border border-hairline bg-surface-2 px-3 text-foreground outline-none">
+          <Select value={form.clientProtocol} onChange={(event) => patch({ clientProtocol: event.target.value as GuideForm["clientProtocol"], clientPort: defaultClientPort(event.target.value) })}>
             <option value="qbittorrent">qBittorrent</option>
             <option value="sabnzbd">SABnzbd</option>
             <option value="transmission">Transmission</option>
             <option value="deluge">Deluge</option>
             <option value="nzbget">NZBGet</option>
             <option value="utorrent">uTorrent</option>
-          </select>
+          </Select>
           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_120px]">
             <Input value={form.clientHost} onChange={(event) => patch({ clientHost: event.target.value })} placeholder="localhost or docker host" />
             <Input value={form.clientPort} onChange={(event) => patch({ clientPort: event.target.value })} placeholder="8080" />
@@ -1083,10 +1085,9 @@ function FinishStep({
             inputMode="numeric"
           />
           <label className="flex h-[var(--control-height)] items-center gap-2 rounded-xl border border-hairline bg-surface-2 px-3 text-sm font-semibold text-foreground">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={form.firstTitleMonitored}
-              onChange={(event) => patch({ firstTitleMonitored: event.target.checked })}
+              onCheckedChange={(firstTitleMonitored) => patch({ firstTitleMonitored })}
             />
             Monitor
           </label>

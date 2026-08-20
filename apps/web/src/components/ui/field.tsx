@@ -42,6 +42,18 @@ interface FieldProps {
   children: ReactNode;
 }
 
+export function Label({ htmlFor, className, children, ...props }: React.LabelHTMLAttributes<HTMLLabelElement>) {
+  return (
+    <label
+      {...props}
+      htmlFor={htmlFor}
+      className={cn("text-[length:var(--type-body-sm)] font-medium leading-tight text-foreground", className)}
+    >
+      {children}
+    </label>
+  );
+}
+
 export function Field({ label, help, error, hideLabel = false, optional = false, className, children }: FieldProps) {
   const id = useId();
   const helpId = help || error ? `${id}-help` : undefined;
@@ -51,17 +63,14 @@ export function Field({ label, help, error, hideLabel = false, optional = false,
   return (
     <FieldContext.Provider value={value}>
       <div className={cn("grid min-w-0 content-start gap-1.5", className)}>
-        <label
+        <Label
           id={labelId}
           htmlFor={id}
-          className={cn(
-            "text-[length:var(--type-body-sm)] font-medium leading-tight text-foreground",
-            hideLabel && "sr-only"
-          )}
+          className={hideLabel ? "sr-only" : undefined}
         >
           {label}
           {optional ? <span className="ml-1 font-normal text-muted-foreground">· optional</span> : null}
-        </label>
+        </Label>
         {children}
         {error ? (
           <p id={helpId} role="alert" className="text-[length:var(--type-caption)] leading-snug text-destructive">

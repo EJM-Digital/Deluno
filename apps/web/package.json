@@ -12,7 +12,8 @@
     "check:orphans": "knip --include files,dependencies",
     "validate:job-status": "ts-node scripts/validate-job-status.ts",
     "validate:ui-spacing": "ts-node scripts/validate-ui-spacing.ts",
-    "prebuild": "npm run lint && npm run validate:ui-spacing && npm run validate:job-status"
+    "validate:ui-primitives": "ts-node scripts/validate-ui-primitives.ts",
+    "prebuild": "npm run lint && npm run validate:ui-spacing && npm run validate:ui-primitives && npm run validate:job-status"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.2.8",

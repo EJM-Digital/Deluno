@@ -55,8 +55,12 @@ import { LibraryGridSkeleton } from "../shell/skeleton";
 import { toast } from "../shell/toaster";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
 import { ConfirmDialog } from "../ui/confirm-dialog";
+import { Field } from "../ui/field";
 import { Input } from "../ui/input";
+import { Select } from "../ui/select";
+import { SwitchRow } from "../ui/switch";
 
 type Variant = "movies" | "shows";
 type QuickFilter =
@@ -1842,11 +1846,9 @@ export function LibraryView({
               <form onSubmit={handleCreate} className="flex flex-col gap-3 border-t border-hairline bg-surface-1/70 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="inline-flex min-h-[1.25rem] items-center gap-2 text-sm text-muted-foreground">
                   <label className="inline-flex select-none items-center gap-2">
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={createForm.monitored}
-                      onChange={(event) => setCreateForm((current) => ({ ...current, monitored: event.target.checked }))}
-                      className="accent-primary"
+                      onCheckedChange={(monitored) => setCreateForm((current) => ({ ...current, monitored }))}
                     />
                     Monitor and search automatically
                   </label>
@@ -2158,8 +2160,8 @@ export function LibraryView({
             </div>
 
             <div className="grid gap-[var(--grid-gap)] md:grid-cols-2">
-              <BulkField label="Operation" description="Choose the bulk action to run.">
-                <select
+              <Field label="Operation" help="Choose the bulk action to run.">
+                <Select
                   value={bulkOperation}
                   onChange={(event) => {
                     setBulkOperation(event.target.value as BulkWorkflowOperation);
@@ -2167,7 +2169,6 @@ export function LibraryView({
                     setBulkError(null);
                     setBulkRenamePreview([]);
                   }}
-                  className="density-control-text h-[var(--control-height)] w-full rounded-[10px] border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none"
                 >
                   <option value="monitoring">Monitor or unmonitor</option>
                   <option value="quality">Set quality profile</option>
@@ -2175,70 +2176,67 @@ export function LibraryView({
                   <option value="tags">Apply tags</option>
                   <option value="search">Search now</option>
                   <option value="renamePreview">Rename preview</option>
-                </select>
-              </BulkField>
+                </Select>
+              </Field>
 
               {bulkOperation === "monitoring" ? (
-                <BulkField label="Monitoring state" description="Apply monitored or unmonitored to the selection.">
-                  <select
+                <Field label="Monitoring state" help="Apply monitored or unmonitored to the selection.">
+                  <Select
                     value={bulkMonitored ? "true" : "false"}
                     onChange={(event) => setBulkMonitored(event.target.value === "true")}
-                    className="density-control-text h-[var(--control-height)] w-full rounded-[10px] border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none"
                   >
                     <option value="true">Monitored</option>
                     <option value="false">Unmonitored</option>
-                  </select>
-                </BulkField>
+                  </Select>
+                </Field>
               ) : null}
 
               {bulkOperation === "quality" ? (
-                <BulkField label="Quality profile" description="Set one quality profile for all selected titles.">
-                  <select
+                <Field label="Quality profile" help="Set one quality profile for all selected titles.">
+                  <Select
                     value={bulkQualityProfileId}
                     onChange={(event) => setBulkQualityProfileId(event.target.value)}
-                    className="density-control-text h-[var(--control-height)] w-full rounded-[10px] border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none"
                   >
                     <option value="">Choose profile</option>
                     {bulkQualityProfiles.map((item) => (
                       <option key={item.id} value={item.id}>{item.name}</option>
                     ))}
-                  </select>
-                </BulkField>
+                  </Select>
+                </Field>
               ) : null}
 
               {bulkOperation === "reassignLibrary" ? (
-                <BulkField label="Destination library" description="Reassign selected titles to a different library/root.">
-                  <select
+                <Field label="Destination library" help="Reassign selected titles to a different library/root.">
+                  <Select
                     value={bulkTargetLibraryId}
                     onChange={(event) => setBulkTargetLibraryId(event.target.value)}
-                    className="density-control-text h-[var(--control-height)] w-full rounded-[10px] border border-hairline bg-surface-2 px-[var(--field-pad-x)] text-foreground outline-none"
                   >
                     <option value="">Choose library</option>
                     {bulkLibraries.map((item) => (
                       <option key={item.id} value={item.id}>{item.name}</option>
                     ))}
-                  </select>
-                </BulkField>
+                  </Select>
+                </Field>
               ) : null}
 
               {bulkOperation === "tags" ? (
-                <BulkField label="Tags" description="Comma-separated tags to apply to all selected titles.">
+                <Field label="Tags" help="Comma-separated tags to apply to all selected titles.">
                   <Input
                     value={bulkTagsInput}
                     onChange={(event) => setBulkTagsInput(event.target.value)}
                     placeholder="e.g. favorites, weekend, 4k"
                   />
-                </BulkField>
+                </Field>
               ) : null}
 
               {bulkOperation === "renamePreview" ? (
-                <BulkField label="Template (optional)" description="Preview generated folder names before rename workflows.">
+                <Field label="Template (optional)" help="Preview generated folder names before rename workflows.">
                   <Input
                     value={bulkRenameTemplate}
                     onChange={(event) => setBulkRenameTemplate(event.target.value)}
                     placeholder={variant === "movies" ? "{Movie Title} ({Release Year})" : "{Series Title} ({Series Year})"}
                   />
-                </BulkField>
+                </Field>
               ) : null}
             </div>
 
@@ -2928,33 +2926,12 @@ function LibraryTable({
   );
 }
 
-/* Premium circle checkbox for table rows */
 function TableCheckbox({ checked, indeterminate, onChange }: {
   checked: boolean;
   indeterminate?: boolean;
   onChange: () => void;
 }) {
-  return (
-    <button
-      type="button"
-      onClick={onChange}
-      className={cn(
-        "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-all duration-200",
-        checked || indeterminate
-          ? "border-primary bg-gradient-to-br from-primary to-[hsl(var(--primary-2))] text-primary-foreground shadow-[0_0_8px_hsl(var(--primary)/0.5)]"
-          : "border-border/60 bg-background hover:border-primary/50 dark:bg-white/[0.04]"
-      )}
-      aria-label={checked ? "Deselect" : "Select"}
-    >
-      {checked ? (
-        <svg width="7" height="6" viewBox="0 0 7 6" fill="none">
-          <path d="M1 3L2.8 4.8L6 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-      ) : indeterminate ? (
-        <span className="h-0.5 w-2 rounded-full bg-primary" />
-      ) : null}
-    </button>
-  );
+  return <Checkbox checked={checked} indeterminate={indeterminate} onCheckedChange={onChange} aria-label={checked ? "Deselect" : "Select"} />;
 }
 
 /* ══════════════════════════════════════════════════════
@@ -3188,11 +3165,11 @@ function ControlRail({
                   <SectionLabel>What each poster shows</SectionLabel>
                   <p className="mt-1 text-[length:var(--type-caption)] text-muted-foreground">Keep the essentials visible; turn on extra metadata only when it helps your workflow.</p>
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                    <DisplayToggle label="Title" description="The movie or series name" checked={displayOptions.showTitle} onChange={(checked) => setDisplayOptions({ ...displayOptions, showTitle: checked })} />
-                    <DisplayToggle label="Year & monitoring" description="Release year and monitored state" checked={displayOptions.showMeta} onChange={(checked) => setDisplayOptions({ ...displayOptions, showMeta: checked })} />
-                    <DisplayToggle label="Availability" description="Missing, downloading, or imported" checked={displayOptions.showStatusPill} onChange={(checked) => setDisplayOptions({ ...displayOptions, showStatusPill: checked })} />
-                    <DisplayToggle label="Quality" description="Current or target quality" checked={displayOptions.showQualityBadge} onChange={(checked) => setDisplayOptions({ ...displayOptions, showQualityBadge: checked })} />
-                    <DisplayToggle label="Rating" description="The preferred metadata score" checked={displayOptions.showRating} onChange={(checked) => setDisplayOptions({ ...displayOptions, showRating: checked })} />
+                    <SwitchRow label="Title" description="The movie or series name" checked={displayOptions.showTitle} onCheckedChange={(showTitle) => setDisplayOptions({ ...displayOptions, showTitle })} />
+                    <SwitchRow label="Year & monitoring" description="Release year and monitored state" checked={displayOptions.showMeta} onCheckedChange={(showMeta) => setDisplayOptions({ ...displayOptions, showMeta })} />
+                    <SwitchRow label="Availability" description="Missing, downloading, or imported" checked={displayOptions.showStatusPill} onCheckedChange={(showStatusPill) => setDisplayOptions({ ...displayOptions, showStatusPill })} />
+                    <SwitchRow label="Quality" description="Current or target quality" checked={displayOptions.showQualityBadge} onCheckedChange={(showQualityBadge) => setDisplayOptions({ ...displayOptions, showQualityBadge })} />
+                    <SwitchRow label="Rating" description="The preferred metadata score" checked={displayOptions.showRating} onCheckedChange={(showRating) => setDisplayOptions({ ...displayOptions, showRating })} />
                   </div>
                 </div>
               </div>
@@ -3428,43 +3405,6 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
     <p className="text-[length:var(--type-caption)] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
       {children}
     </p>
-  );
-}
-
-function BulkField({
-  label,
-  description,
-  children
-}: {
-  label: string;
-  description: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-2">
-      <p className="text-sm font-medium text-foreground">{label}</p>
-      <p className="text-xs text-muted-foreground">{description}</p>
-      {children}
-    </div>
-  );
-}
-
-function DisplayToggle({
-  label,
-  description,
-  checked,
-  onChange
-}: {
-  label: string;
-  description: string;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <label className={cn("flex cursor-pointer items-start gap-2.5 rounded-xl border px-3 py-2.5 transition", checked ? "border-primary/25 bg-primary/[0.06]" : "border-hairline bg-background/45 hover:border-primary/20")}>
-      <input className="mt-0.5 accent-[hsl(var(--primary))]" type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
-      <span className="min-w-0"><span className="block text-[length:var(--type-caption)] font-semibold text-foreground">{label}</span><span className="mt-0.5 block text-[length:var(--type-micro)] leading-snug text-muted-foreground">{description}</span></span>
-    </label>
   );
 }
 

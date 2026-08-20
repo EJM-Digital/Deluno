@@ -45,6 +45,8 @@ import { Button } from "../components/ui/button";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { Input } from "../components/ui/input";
 import { PathInput } from "../components/ui/path-input";
+import { Select } from "../components/ui/select";
+import { SwitchRow } from "../components/ui/switch";
 import { Chip, type ChipProps } from "../components/ui/chip";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { SummaryStrip } from "../components/ui/summary-strip";
@@ -556,23 +558,21 @@ function BackupCard({
         <div className="rounded-xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.7)]">
           <p className="text-sm font-semibold text-foreground">Automatic schedule</p>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            <label className="flex items-center gap-2 text-sm text-foreground">
-              <input
-                type="checkbox"
-                checked={settings.enabled}
-                onChange={(event) => setSettings((current) => ({ ...current, enabled: event.target.checked }))}
-              />
-              Enable scheduled backups
-            </label>
-            <select
+            <SwitchRow
+              label="Enable scheduled backups"
+              checked={settings.enabled}
+              onCheckedChange={(enabled) => setSettings((current) => ({ ...current, enabled }))}
+            />
+            <Select
               value={settings.frequency}
               onChange={(event) => setSettings((current) => ({ ...current, frequency: event.target.value }))}
-              className="density-control-text h-[var(--control-height-sm)] rounded-[10px] border border-hairline bg-surface-2 px-3 text-foreground outline-none"
+              options={[
+                { value: "daily", label: "Daily" },
+                { value: "weekly", label: "Weekly" },
+                { value: "monthly", label: "Monthly" }
+              ]}
             >
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
-            </select>
+            </Select>
             <Input
               type="time"
               value={settings.timeOfDay}
@@ -777,28 +777,25 @@ function UpgradeCard({ status }: { status: UpdateStatusResponse }) {
         {preferences ? (
           <div className="rounded-xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.7)] space-y-3">
             <p className="text-sm font-semibold text-foreground">Update behavior</p>
-            <select
+            <Select
               value={preferences.mode}
               onChange={(event) => setPreferences((currentValue) => currentValue ? { ...currentValue, mode: event.target.value } : currentValue)}
-              className="density-control-text h-[var(--control-height-sm)] w-full rounded-[10px] border border-hairline bg-surface-2 px-3 text-foreground outline-none"
               disabled={busyAction === "prefs"}
-            >
-              <option value="notify-only">Notify only</option>
-              <option value="download-background">Download in background</option>
-              <option value="download-apply-on-restart">Download and apply on next restart</option>
-            </select>
+              options={[
+                { value: "notify-only", label: "Notify only" },
+                { value: "download-background", label: "Download in background" },
+                { value: "download-apply-on-restart", label: "Download and apply on next restart" }
+              ]}
+            />
             <p className="text-xs text-muted-foreground">
               {updateModeDescription(preferences.mode)}
             </p>
-            <label className="flex items-center gap-2 text-sm text-foreground">
-              <input
-                type="checkbox"
-                checked={preferences.autoCheck}
-                onChange={(event) => setPreferences((currentValue) => currentValue ? { ...currentValue, autoCheck: event.target.checked } : currentValue)}
-                disabled={busyAction === "prefs"}
-              />
-              Check for updates automatically
-            </label>
+            <SwitchRow
+              label="Check for updates automatically"
+              checked={preferences.autoCheck}
+              onCheckedChange={(autoCheck) => setPreferences((currentValue) => currentValue ? { ...currentValue, autoCheck } : currentValue)}
+              disabled={busyAction === "prefs"}
+            />
             <Button
               type="button"
               variant="outline"
