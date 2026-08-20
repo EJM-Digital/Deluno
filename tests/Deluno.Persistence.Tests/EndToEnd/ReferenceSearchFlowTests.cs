@@ -56,7 +56,7 @@ public sealed class ReferenceSearchFlowTests
         var first = planner.BuildPlanAsync("Dune Part Two", 2024, "movies", null, "WEB 1080p", sources, cancellationToken: CancellationToken.None);
         var second = planner.BuildPlanAsync("Dune Part Two", 2024, "movies", null, "WEB 1080p", sources, cancellationToken: CancellationToken.None);
 
-        await Task.WhenAny(Task.WhenAll(first, second), Task.Delay(50));
+        await handler.WaitForFirstRequestAsync(CancellationToken.None);
         Assert.Equal(1, handler.RequestCount);
 
         time.Advance(TimeSpan.FromSeconds(10));
@@ -140,12 +140,20 @@ public sealed class ReferenceSearchFlowTests
 
     private sealed class TorznabFixtureHandler : HttpMessageHandler
     {
+        private readonly TaskCompletionSource firstRequest = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         public string Query { get; private set; } = string.Empty;
         public int RequestCount { get; private set; }
+
+        public async Task WaitForFirstRequestAsync(CancellationToken cancellationToken)
+        {
+            await firstRequest.Task.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken);
+        }
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             RequestCount++;
+            firstRequest.TrySetResult();
             Query = request.RequestUri?.Query ?? string.Empty;
             const string feed = """
                 <?xml version="1.0" encoding="UTF-8"?>

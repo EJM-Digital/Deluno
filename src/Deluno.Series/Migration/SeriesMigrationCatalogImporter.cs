@@ -22,8 +22,6 @@ public sealed class SeriesMigrationCatalogImporter(ISeriesCatalogRepository repo
         var libraries = request.Libraries.Where(library => library.MediaType == MediaType).ToArray();
         var applied = new List<MigrationAppliedItem>();
         var warnings = new List<string>();
-        var existingIds = (await repository.ListAsync(cancellationToken)).Select(item => item.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
-
         foreach (var title in titles)
         {
             var library = ResolveLibrary(title, libraries);
@@ -33,6 +31,16 @@ public sealed class SeriesMigrationCatalogImporter(ISeriesCatalogRepository repo
                 continue;
             }
 
+            // Do a narrow indexed lookup per incoming title. Loading every
+            // existing show is O(library size) even when this migration only
+            // contains a handful of records.
+            var existingId = await repository.FindExistingIdAsync(
+                title.Title,
+                title.Year,
+                title.ImdbId,
+                title.MetadataProvider,
+                title.MetadataProviderId,
+                cancellationToken);
             var series = await repository.AddAsync(new CreateSeriesRequest(
                 title.Title,
                 title.Year,
@@ -40,7 +48,7 @@ public sealed class SeriesMigrationCatalogImporter(ISeriesCatalogRepository repo
                 title.Monitored,
                 title.MetadataProvider,
                 title.MetadataProviderId), cancellationToken);
-            var alreadyPresent = !existingIds.Add(series.Id);
+            var alreadyPresent = existingId is not null;
             await repository.EnsureWantedStateAsync(
                 series.Id,
                 library.Id,
