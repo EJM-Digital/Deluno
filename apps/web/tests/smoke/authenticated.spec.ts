@@ -47,6 +47,12 @@ test.describe("authenticated app smoke", () => {
     await expect(page).not.toHaveURL(/\/login/);
   });
 
+  test("keeps the browser fetch implementation native after sign-in", async ({ page }) => {
+    await expect
+      .poll(() => page.evaluate(() => window.fetch.toString()))
+      .toContain("[native code]");
+  });
+
   for (const path of [
     "/",
     "/movies",

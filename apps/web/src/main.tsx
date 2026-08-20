@@ -7,14 +7,6 @@ import { AuthProvider } from "./lib/use-auth";
 import { router } from "./router";
 import "./index.css";
 
-// Lock Deluno to one product accent. Status colour now carries semantic meaning.
-document.documentElement.setAttribute("data-accent", "cobalt");
-try {
-  window.localStorage.removeItem("deluno-accent");
-} catch {
-  /* ignore storage failures */
-}
-
 // Register PWA service worker (production only)
 if ("serviceWorker" in navigator && import.meta.env.PROD) {
   window.addEventListener("load", () => {

@@ -112,41 +112,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(false);
   }, []);
 
-  useEffect(() => {
-    const originalFetch = window.fetch.bind(window);
-
-    window.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
-      const requestUrl =
-        typeof input === "string"
-          ? input
-          : input instanceof URL
-            ? input.toString()
-            : input.url;
-
-      const isApiRequest =
-        requestUrl.startsWith("/api/") ||
-        requestUrl.startsWith("/hubs/") ||
-        requestUrl.startsWith(`${window.location.origin}/api/`) ||
-        requestUrl.startsWith(`${window.location.origin}/hubs/`);
-
-      if (!isApiRequest) {
-        return originalFetch(input, init);
-      }
-
-      const headers = new Headers(init?.headers);
-      const nextToken = token ?? readStored().token;
-      if (nextToken && !headers.has("Authorization")) {
-        headers.set("Authorization", `Bearer ${nextToken}`);
-      }
-
-      return originalFetch(input, { ...init, headers }).then(handleUnauthorizedResponse);
-    }) as typeof window.fetch;
-
-    return () => {
-      window.fetch = originalFetch;
-    };
-  }, [token]);
-
   const login = useCallback(async (username: string, password: string) => {
     const res = await fetch("/api/auth/login", {
       method: "POST",
@@ -205,7 +170,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     clearStored();
     redirectToLogin();
-  }, []);
+  }, [token]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
