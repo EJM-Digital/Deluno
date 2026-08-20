@@ -1,0 +1,19 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "tests/**/*.spec.ts",
+    "scripts/serve-smoke-preview.mjs",
+    "public/sw.js"
+  ],
+  "project": [
+    "src/**/*.{ts,tsx}",
+    "tests/**/*.{ts,tsx}",
+    "scripts/**/*.{ts,mjs}"
+  ],
+  "ignoreDependencies": [
+    "@fontsource-variable/inter",
+    "@fontsource-variable/jetbrains-mono",
+    "eslint",
+    "ts-node"
+  ]
+}
