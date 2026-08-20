@@ -741,6 +741,19 @@ export interface IndexerItem {
   updatedUtc: string;
 }
 
+export interface OutboundThrottleHostState {
+  host: string;
+  waiting: number;
+  grantedCount: number;
+  refusedCount: number;
+  totalWaitedSeconds: number;
+  nextPermitInSeconds: number;
+}
+
+export interface OutboundThrottleSnapshot {
+  hosts: OutboundThrottleHostState[];
+}
+
 export interface NotificationWebhookItem {
   id: string;
   name: string;

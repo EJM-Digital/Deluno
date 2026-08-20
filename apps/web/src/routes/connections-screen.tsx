@@ -8,7 +8,8 @@
  * Contracts (unchanged): GET/POST /api/indexers, PUT/DELETE /api/indexers/{id},
  * POST /api/indexers/{id}/test|reset-circuit; GET/POST /api/download-clients,
  * PUT/DELETE /api/download-clients/{id}, POST /api/download-clients/{id}/test,
- * path-mappings CRUD; GET/PUT /api/libraries/{id}/routing; PUT /api/settings.
+ * path-mappings CRUD; GET/PUT /api/libraries/{id}/routing; PUT /api/settings;
+ * GET /api/integrations/outbound-throttle.
  * Queue actions and import previews live on Transfers.
  */
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
@@ -24,6 +25,8 @@ import {
   type IndexerItem,
   type LibraryItem,
   type LibraryRoutingSnapshot,
+  type OutboundThrottleHostState,
+  type OutboundThrottleSnapshot,
   type PlatformSettingsSnapshot
 } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
@@ -122,15 +125,17 @@ interface LoaderData {
   routing: LibraryRoutingSnapshot[];
   settings: PlatformSettingsSnapshot;
   telemetry: DownloadTelemetryOverview | null;
+  outboundThrottle: OutboundThrottleSnapshot;
 }
 
 export async function indexersLoader(): Promise<LoaderData> {
-  const [indexers, clients, libraries, settings, telemetry] = await Promise.all([
+  const [indexers, clients, libraries, settings, telemetry, outboundThrottle] = await Promise.all([
     fetchJson<IndexerItem[]>("/api/indexers"),
     fetchJson<DownloadClientItem[]>("/api/download-clients"),
     fetchJson<LibraryItem[]>("/api/libraries"),
     fetchJson<PlatformSettingsSnapshot>("/api/settings"),
-    fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry").catch(() => null)
+    fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry").catch(() => null),
+    fetchJson<OutboundThrottleSnapshot>("/api/integrations/outbound-throttle").catch(() => ({ hosts: [] }))
   ]);
   const routing = await Promise.all(
     libraries.map((lib) =>
@@ -140,7 +145,7 @@ export async function indexersLoader(): Promise<LoaderData> {
   const pathMappings = (
     await Promise.all(clients.map((client) => fetchJson<DownloadClientPathMappingItem[]>(`/api/download-clients/${client.id}/path-mappings`).catch(() => [])))
   ).flat();
-  return { clients, pathMappings, indexers, libraries, routing, settings, telemetry };
+  return { clients, pathMappings, indexers, libraries, routing, settings, telemetry, outboundThrottle };
 }
 
 /* ============================================================ helpers */
@@ -174,6 +179,18 @@ function scopeLabel(scope: string | null | undefined) {
 
 function protocolLabel(protocol: string) {
   return CLIENT_PRESETS.find((preset) => preset.protocol === protocol)?.label ?? INDEXER_PRESETS.find((preset) => preset.protocol === protocol)?.label ?? protocol;
+}
+
+function indexerHost(baseUrl: string) {
+  try {
+    return new URL(baseUrl).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function formatSeconds(seconds: number) {
+  return seconds < 1 ? "less than a second" : `${Math.ceil(seconds)} second${seconds >= 1.01 ? "s" : ""}`;
 }
 
 async function send(url: string, method: string, body?: unknown, failure = "Request failed.") {
@@ -264,12 +281,35 @@ type DrawerState =
 /* ============================================================== page */
 
 export function IndexersPage() {
-  const { clients, pathMappings, indexers, libraries, routing, settings, telemetry } = useLoaderData() as LoaderData;
+  const { clients, pathMappings, indexers, libraries, routing, settings, telemetry, outboundThrottle } = useLoaderData() as LoaderData;
   const location = useLocation();
   const revalidator = useRevalidator();
   const lastTelemetryRefresh = useRef(0);
+  const [liveOutboundThrottle, setLiveOutboundThrottle] = useState(outboundThrottle);
 
   const section: Section = location.pathname.endsWith("/download-clients") ? "clients" : location.pathname.endsWith("/library-routing") ? "routing" : "indexers";
+
+  useEffect(() => {
+    setLiveOutboundThrottle(outboundThrottle);
+  }, [outboundThrottle]);
+
+  useEffect(() => {
+    if (section !== "indexers") return;
+
+    let mounted = true;
+    const refresh = () => {
+      void fetchJson<OutboundThrottleSnapshot>("/api/integrations/outbound-throttle")
+        .then((snapshot) => {
+          if (mounted) setLiveOutboundThrottle(snapshot);
+        })
+        .catch(() => undefined);
+    };
+    const interval = window.setInterval(refresh, 5000);
+    return () => {
+      mounted = false;
+      window.clearInterval(interval);
+    };
+  }, [section]);
 
   useSignalREvent("DownloadProgress", () => {
     const now = Date.now();
@@ -280,6 +320,7 @@ export function IndexersPage() {
   });
 
   const telemetryByClient = useMemo(() => new Map<string, DownloadClientTelemetrySnapshot>(telemetry?.clients.map((item) => [item.clientId, item]) ?? []), [telemetry]);
+  const throttleByHost = useMemo(() => new Map<string, OutboundThrottleHostState>(liveOutboundThrottle.hosts.map((item) => [item.host.toLowerCase(), item])), [liveOutboundThrottle]);
   const mappingsByClient = useMemo(() => {
     const map = new Map<string, DownloadClientPathMappingItem[]>();
     for (const mapping of pathMappings) map.set(mapping.downloadClientId, [...(map.get(mapping.downloadClientId) ?? []), mapping]);
@@ -306,6 +347,7 @@ export function IndexersPage() {
   const [newMapping, setNewMapping] = useState({ remotePath: "", localPath: "" });
 
   const editingIndexer = drawer.kind === "indexer" && drawer.id ? indexers.find((item) => item.id === drawer.id) ?? null : null;
+  const editingIndexerThrottle = editingIndexer ? throttleByHost.get(indexerHost(editingIndexer.baseUrl) ?? "") ?? null : null;
   const editingClient = drawer.kind === "client" && drawer.id ? clients.find((item) => item.id === drawer.id) ?? null : null;
   const routingLibrary = drawer.kind === "routing" ? libraries.find((item) => item.id === drawer.libraryId) ?? null : null;
 
@@ -572,15 +614,17 @@ export function IndexersPage() {
               }
             />
           ) : (
-            <ListTable columns={[{ label: "Name" }, { label: "Protocol" }, { label: "Used for" }, { label: "Last test" }, { label: "Status", width: LIST_TRACK.status, mobile: true }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]}>
+            <ListTable columns={[{ label: "Name" }, { label: "Protocol" }, { label: "Used for" }, { label: "Last test" }, { label: "Pacing" }, { label: "Status", width: LIST_TRACK.status, mobile: true }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]}>
               {indexers.map((item) => {
                 const chip = healthChip(item);
+                const throttle = throttleByHost.get(indexerHost(item.baseUrl) ?? "");
                 return (
                   <ListRow key={item.id} onClick={() => openIndexer(item)} selected={drawer.kind === "indexer" && drawer.id === item.id}>
                     <ListNameCell name={item.name} sub={item.baseUrl} />
                     <ListCell primary={protocolLabel(item.protocol)} secondary={item.privacy === "private" ? "Private" : "Public"} />
                     <ListCell primary={scopeLabel(item.mediaScope)} secondary={`Priority ${item.priority}`} />
                     <ListCell numeric primary={relative(item.lastHealthTestUtc)} secondary={item.consecutiveFailures > 0 ? `${item.consecutiveFailures} consecutive failure${item.consecutiveFailures === 1 ? "" : "s"}` : item.lastHealthLatencyMs != null ? `${item.lastHealthLatencyMs} ms` : item.lastHealthMessage ?? "—"} />
+                    <ListCell primary={<span aria-live="polite">{throttle?.waiting ? `${throttle.waiting} request${throttle.waiting === 1 ? "" : "s"} waiting` : throttle?.nextPermitInSeconds ? `Next in ${formatSeconds(throttle.nextPermitInSeconds)}` : "Ready"}</span>} secondary={throttle ? `Deluno is pacing ${throttle.host}` : "No recent requests"} />
                     <ListCell mobile>
                       <Chip tone={chip.tone}>{chip.label}</Chip>
                     </ListCell>
@@ -715,6 +759,7 @@ export function IndexersPage() {
             form={indexerForm}
             setForm={setIndexerForm}
             editing={editingIndexer}
+            throttle={editingIndexerThrottle}
             errors={fieldErrors}
             clearError={(key) => setFieldErrors((current) => ({ ...current, [key]: "" }))}
             showKey={showKey}
@@ -797,6 +842,7 @@ function IndexerDrawerBody({
   form,
   setForm,
   editing,
+  throttle,
   errors,
   clearError,
   showKey,
@@ -811,6 +857,7 @@ function IndexerDrawerBody({
   form: IndexerForm;
   setForm: (updater: (current: IndexerForm) => IndexerForm) => void;
   editing: IndexerItem | null;
+  throttle: OutboundThrottleHostState | null;
   errors: Record<string, string>;
   clearError: (key: string) => void;
   showKey: boolean;
@@ -888,6 +935,8 @@ function IndexerDrawerBody({
           <dl className="grid grid-cols-[120px_1fr] items-center gap-x-[var(--grid-gap)] gap-y-2 text-[length:var(--type-body-sm)]">
             <dt className="text-muted-foreground">Last test</dt>
             <dd className="flex items-center gap-2"><Chip tone={chip.tone}>{chip.label}</Chip><span className="text-muted-foreground">{relative(editing.lastHealthTestUtc)}{editing.lastHealthLatencyMs != null ? ` · ${editing.lastHealthLatencyMs} ms` : ""}</span></dd>
+            <dt className="text-muted-foreground">Pacing</dt>
+            <dd aria-live="polite" className="text-foreground">{throttle?.waiting ? `Deluno is waiting on ${throttle.host} before sending ${throttle.waiting} request${throttle.waiting === 1 ? "" : "s"}.` : throttle?.nextPermitInSeconds ? `Deluno will send the next request to ${throttle.host} in about ${formatSeconds(throttle.nextPermitInSeconds)}.` : "No request is waiting. Deluno will still follow this indexer's safe request interval."}</dd>
             {editing.lastHealthMessage ? (<><dt className="text-muted-foreground">Message</dt><dd className="text-foreground">{editing.lastHealthMessage}</dd></>) : null}
             {editing.consecutiveFailures > 0 ? (<><dt className="text-muted-foreground">Failures</dt><dd className="text-warning">{editing.consecutiveFailures} in a row{editing.disabledReason ? ` — ${editing.disabledReason}` : ""}</dd></>) : null}
           </dl>
