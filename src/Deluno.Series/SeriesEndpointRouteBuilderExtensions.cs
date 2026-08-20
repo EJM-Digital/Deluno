@@ -2398,7 +2398,10 @@ public static class SeriesEndpointRouteBuilderExtensions
             result.ExternalUrl,
             result.ImdbId,
             JsonSerializer.Serialize(result),
-            cancellationToken);
+            cancellationToken,
+            result.RuntimeMinutes,
+            result.Popularity,
+            result.VoteCount);
     }
 
     private sealed record ReleaseGrabRequest(

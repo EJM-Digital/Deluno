@@ -54,7 +54,10 @@ public sealed class MoviesMetadataRefreshJobHandler(
             match.ExternalUrl,
             match.ImdbId,
             JsonSerializer.Serialize(match, JobPayloads.Options),
-            cancellationToken);
+            cancellationToken,
+            match.RuntimeMinutes,
+            match.Popularity,
+            match.VoteCount);
 
         await activityFeedRepository.RecordActivityAsync(
             "metadata.movie.refreshed",

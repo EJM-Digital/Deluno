@@ -61,7 +61,13 @@ $ErrorActionPreference = 'Stop'
 # what this fixture is for is volume.
 $adjectives = @('Silent', 'Crimson', 'Hollow', 'Northern', 'Broken', 'Golden', 'Distant', 'Quiet', 'Iron', 'Pale')
 $nouns = @('Harbour', 'Signal', 'Winter', 'Machine', 'Orchard', 'Circuit', 'Meridian', 'Lantern', 'Current', 'Archive')
+# Real release names carry more than a resolution: the codec, the audio layout
+# and the release group are all read from them, so a fixture that omits them
+# exercises none of that parsing.
 $qualities = @('1080p.BluRay', '2160p.WEB-DL', '720p.HDTV', '1080p.WEBRip')
+$videoCodecs = @('x264', 'x265', 'H.264', 'AV1', 'XviD')
+$audio = @('DTS-HD.MA.5.1', 'TrueHD.Atmos.7.1', 'DDP5.1', 'AAC2.0', 'AC3.5.1')
+$groups = @('SPARKS', 'NTb', 'FLUX', 'TERMiNAL', 'CMRG')
 
 if (Test-Path $Path) {
     $existing = @(Get-ChildItem -LiteralPath $Path -Force)
@@ -91,7 +97,7 @@ $started = Get-Date
 for ($index = 1; $index -le $Movies; $index++) {
     $year = 1950 + ($index % 76)
     $quality = $qualities[$index % $qualities.Count]
-    $name = "$(Get-Title $index).$year.$quality"
+    $name = "$(Get-Title $index).$year.$quality.$($videoCodecs[$index % $videoCodecs.Count]).$($audio[$index % $audio.Count])-$($groups[$index % $groups.Count])"
     $folder = Join-Path $Path $name
     New-Item -ItemType Directory -Path $folder -Force | Out-Null
     New-EmptyFile (Join-Path $folder "$name.mkv")
@@ -113,7 +119,8 @@ for ($index = 1; $index -le $Series; $index++) {
 
         for ($episode = 1; $episode -le $EpisodesPerSeason; $episode++) {
             $quality = $qualities[($index + $episode) % $qualities.Count]
-            $fileName = "{0}.S{1:D2}E{2:D2}.{3}.mkv" -f $showName, $season, $episode, $quality
+            $fileName = "{0}.S{1:D2}E{2:D2}.{3}.{4}.{5}-{6}.mkv" -f $showName, $season, $episode, $quality,
+                $videoCodecs[$episode % $videoCodecs.Count], $audio[$episode % $audio.Count], $groups[$episode % $groups.Count]
             New-EmptyFile (Join-Path $seasonFolder $fileName)
         }
     }

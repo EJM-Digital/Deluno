@@ -92,7 +92,10 @@ public interface IMovieCatalogRepository
         string? externalUrl,
         string? imdbId,
         string? metadataJson,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        int? runtimeMinutes = null,
+        double? popularity = null,
+        int? voteCount = null);
 
     Task<MovieWantedSummary> GetWantedSummaryAsync(CancellationToken cancellationToken);
 

@@ -38,4 +38,23 @@ public sealed record MovieListItem(
     /// records them.
     /// </summary>
     long? FileSizeBytes = null,
-    string? CurrentQuality = null);
+    string? CurrentQuality = null,
+    /// <summary>
+    /// What the file is, and what the title is.
+    ///
+    /// Populated by the paged catalogue query. The list has always shown a size
+    /// column, a codec column and sorts for runtime, popularity and votes, and
+    /// read every one of them from a metadata blob that never carried them. The
+    /// file-shaped ones come from the file name, the title-shaped ones from the
+    /// provider, and the bitrate from dividing one by the other — which is why
+    /// it says "approximate" and is not stored.
+    /// </summary>
+    string? FilePath = null,
+    string? VideoCodec = null,
+    string? AudioCodec = null,
+    string? AudioChannels = null,
+    string? ReleaseGroup = null,
+    int? RuntimeMinutes = null,
+    double? Popularity = null,
+    int? VoteCount = null,
+    double? ApproximateBitrateMbps = null);

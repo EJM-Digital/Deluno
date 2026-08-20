@@ -52,7 +52,10 @@ public sealed class SeriesMetadataRefreshJobHandler(
             match.ExternalUrl,
             match.ImdbId,
             JsonSerializer.Serialize(match, JobPayloads.Options),
-            cancellationToken);
+            cancellationToken,
+            match.RuntimeMinutes,
+            match.Popularity,
+            match.VoteCount);
 
         // Re-syncing the catalogue on the schedule is how an episode announced
         // after the show was added ever becomes known. Without it the inventory

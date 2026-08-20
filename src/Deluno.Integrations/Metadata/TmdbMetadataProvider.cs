@@ -862,7 +862,10 @@ public sealed class TmdbMetadataProvider(
             Ratings: ratings,
             Genres: ResolveGenreNames(mediaType, item.GenreIds),
             ImdbId: externalIds.ImdbId,
-            ExternalUrl: BuildTmdbUrl(mediaType, item.Id));
+            ExternalUrl: BuildTmdbUrl(mediaType, item.Id),
+            // A search result carries no runtime; the detail lookup does.
+            Popularity: item.Popularity,
+            VoteCount: item.VoteCount);
     }
 
     private async Task<MetadataSearchResult?> GetDetailsByIdAsync(
@@ -922,7 +925,10 @@ public sealed class TmdbMetadataProvider(
                     member.Name!,
                     member.Character,
                     string.IsNullOrWhiteSpace(member.ProfilePath) ? null : $"https://image.tmdb.org/t/p/w185{member.ProfilePath}"))
-                .ToArray() ?? []);
+                .ToArray() ?? [],
+            RuntimeMinutes: detail.Runtime ?? detail.EpisodeRunTime?.FirstOrDefault(minutes => minutes > 0),
+            Popularity: detail.Popularity,
+            VoteCount: detail.VoteCount);
     }
 
     /// <summary>
@@ -1615,6 +1621,7 @@ public sealed class TmdbMetadataProvider(
         [property: JsonPropertyName("first_air_date")] string? FirstAirDate,
         [property: JsonPropertyName("vote_average")] double? VoteAverage,
         [property: JsonPropertyName("vote_count")] int? VoteCount,
+        [property: JsonPropertyName("popularity")] double? Popularity,
         [property: JsonPropertyName("genre_ids")] IReadOnlyList<int>? GenreIds);
 
     private sealed record TmdbExternalIds(
@@ -1633,6 +1640,11 @@ public sealed class TmdbMetadataProvider(
         [property: JsonPropertyName("first_air_date")] string? FirstAirDate,
         [property: JsonPropertyName("vote_average")] double? VoteAverage,
         [property: JsonPropertyName("vote_count")] int? VoteCount,
+        [property: JsonPropertyName("popularity")] double? Popularity,
+        // A film has one runtime; a show has a runtime per episode, and TMDB
+        // returns a list of them because it varies. The first is the useful one.
+        [property: JsonPropertyName("runtime")] int? Runtime,
+        [property: JsonPropertyName("episode_run_time")] IReadOnlyList<int>? EpisodeRunTime,
         [property: JsonPropertyName("genres")] IReadOnlyList<TmdbGenre>? Genres,
         [property: JsonPropertyName("external_ids")] TmdbExternalIds? ExternalIds,
         [property: JsonPropertyName("credits")] TmdbCredits? Credits);
