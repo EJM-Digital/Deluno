@@ -1,0 +1,124 @@
+using System.Globalization;
+using System.Net;
+using System.Net.Http.Json;
+using System.Text;
+using Deluno.Connections.Contracts;
+
+namespace Deluno.Integrations.DownloadClients;
+
+internal static class DownloadClientHelpers
+{
+    internal static Uri? ResolveEndpoint(DownloadClientItem client)
+    {
+        if (!string.IsNullOrWhiteSpace(client.EndpointUrl) &&
+            Uri.TryCreate(EnsureTrailingSlash(client.EndpointUrl), UriKind.Absolute, out var endpoint))
+        {
+            return endpoint;
+        }
+
+        if (string.IsNullOrWhiteSpace(client.Host)) return null;
+        var scheme = client.Host.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? string.Empty : "http://";
+        var port = client.Port is > 0 ? $":{client.Port}" : string.Empty;
+        return Uri.TryCreate(EnsureTrailingSlash($"{scheme}{client.Host}{port}"), UriKind.Absolute, out var uri) ? uri : null;
+    }
+
+    internal static string BuildResilienceKey(DownloadClientItem client, string purpose)
+    {
+        var endpoint = ResolveEndpoint(client);
+        var address = endpoint is null
+            ? "unconfigured"
+            : $"{endpoint.Scheme}://{endpoint.Host}:{endpoint.Port}{endpoint.AbsolutePath.TrimEnd('/')}";
+        return $"download-client:{client.Id}:{client.Protocol}:{purpose}:{address}";
+    }
+
+    internal static string ResolveCategory(DownloadClientItem client, DownloadClientGrabRequest request)
+        => !string.IsNullOrWhiteSpace(request.Category)
+            ? request.Category
+            : request.MediaType == "tv"
+                ? client.TvCategory ?? client.CategoryTemplate ?? "tv"
+                : client.MoviesCategory ?? client.CategoryTemplate ?? "movies";
+
+    internal static string InferMediaType(DownloadClientItem client, string? category)
+    {
+        if (string.IsNullOrWhiteSpace(category)) return "movies";
+        if (!string.IsNullOrWhiteSpace(client.TvCategory) && string.Equals(category, client.TvCategory, StringComparison.OrdinalIgnoreCase)) return "tv";
+        if (!string.IsNullOrWhiteSpace(client.MoviesCategory) && string.Equals(category, client.MoviesCategory, StringComparison.OrdinalIgnoreCase)) return "movies";
+        var normalized = category.Trim().ToLowerInvariant();
+        return normalized.Contains("sonarr") || normalized.Contains("series") || normalized.Contains("show") || normalized.Contains("tv") ? "tv" : "movies";
+    }
+
+    internal static string EnsureTrailingSlash(string value) => value.EndsWith('/') ? value : $"{value}/";
+
+    internal static string BuildQuery(IEnumerable<KeyValuePair<string, string>> values)
+        => string.Join("&", values.Select(pair => $"{Uri.EscapeDataString(pair.Key)}={Uri.EscapeDataString(pair.Value)}"));
+
+    internal static void AddBasicAuth(HttpClient http, DownloadClientItem client)
+    {
+        if (string.IsNullOrWhiteSpace(client.Username) && string.IsNullOrWhiteSpace(client.Secret)) return;
+        var raw = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{client.Username ?? string.Empty}:{client.Secret ?? string.Empty}"));
+        http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", raw);
+    }
+
+    internal static NetworkCredential? BuildCredential(DownloadClientItem client)
+        => string.IsNullOrWhiteSpace(client.Username) && string.IsNullOrWhiteSpace(client.Secret)
+            ? null
+            : new NetworkCredential(client.Username ?? string.Empty, client.Secret ?? string.Empty);
+
+    internal static async Task<string> GetUTorrentTokenAsync(HttpClient http, CancellationToken cancellationToken)
+    {
+        var html = await http.GetStringAsync("gui/token.html", cancellationToken);
+        var start = html.IndexOf('>');
+        var end = html.LastIndexOf('<');
+        return start >= 0 && end > start ? html[(start + 1)..end].Trim() : string.Empty;
+    }
+
+    internal static async Task<T?> PostJsonAsync<T>(HttpClient http, Uri uri, object payload, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsJsonAsync(uri, payload, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<T>(cancellationToken);
+    }
+
+    internal static DownloadClientGrabResult GrabSuccess(DownloadClientItem client, DownloadClientGrabRequest request, string message)
+        => new(client.Id, request.ReleaseName, true, "sent", message);
+
+    internal static DownloadClientGrabResult GrabFailure(DownloadClientItem client, DownloadClientGrabRequest request, string message)
+        => new(client.Id, request.ReleaseName, false, "failed", message);
+
+    internal static DownloadClientActionResult MissingAddress(DownloadClientItem client, string queueItemId, string action)
+        => new(client.Id, queueItemId, action, false, "Client address is missing.");
+
+    internal static DownloadClientActionResult Unsupported(DownloadClientItem client, string queueItemId, string action, string label)
+        => new(client.Id, queueItemId, action, false, $"{label} does not support this action.");
+
+    internal static DownloadClientActionResult ActionSuccess(DownloadClientItem client, string queueItemId, string action, string message)
+        => new(client.Id, queueItemId, action, true, message);
+
+    internal static string CleanReleaseTitle(string value) => value.Replace('.', ' ').Replace('_', ' ').Replace('-', ' ').Trim();
+
+    internal static string? ChoosePath(params string?[] values) => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim();
+
+    internal static string? ResolveDownloadPath(string? directory, string? name)
+    {
+        var cleanDirectory = directory?.Trim();
+        var cleanName = name?.Trim();
+        if (string.IsNullOrWhiteSpace(cleanDirectory)) return null;
+        if (string.IsNullOrWhiteSpace(cleanName)) return cleanDirectory;
+        if (cleanName.Contains('\\') || cleanName.Contains('/')) return cleanName;
+        var separator = cleanDirectory.Contains('\\') ? "\\" : "/";
+        return cleanDirectory.EndsWith('\\') || cleanDirectory.EndsWith('/') ? $"{cleanDirectory}{cleanName}" : $"{cleanDirectory}{separator}{cleanName}";
+    }
+
+    internal static DateTimeOffset FromUnix(long? value) => value is > 0 ? DateTimeOffset.FromUnixTimeSeconds(value.Value) : DateTimeOffset.UtcNow;
+
+    internal static int ParseId(string value) => int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) ? parsed : 0;
+
+    internal static string NormalizeTextStatus(string? status, double? progress)
+    {
+        var normalized = status?.ToLowerInvariant() ?? string.Empty;
+        if ((progress ?? 0) >= 99.9 || normalized.Contains("complete") || normalized.Contains("seeding")) return DownloadQueueStatuses.ImportReady;
+        if (normalized.Contains("pause") || normalized.Contains("queue")) return DownloadQueueStatuses.Queued;
+        if (normalized.Contains("error") || normalized.Contains("fail") || normalized.Contains("stalled")) return DownloadQueueStatuses.Stalled;
+        return DownloadQueueStatuses.Downloading;
+    }
+}

@@ -1,16 +1,17 @@
 using Deluno.Integrations.DownloadClients;
+using Deluno.Integrations.DownloadClients.Clients;
 
 namespace Deluno.Persistence.Tests.Integrations;
 
 public sealed class DownloadClientTelemetryProfilesTests
 {
     [Theory]
-    [InlineData("qbittorrent", true, true, true, "form")]
+    [InlineData("qbittorrent", false, true, true, "form")]
     [InlineData("sabnzbd", true, true, false, "api-key")]
     [InlineData("nzbget", true, true, false, "basic")]
-    [InlineData("transmission", true, true, true, "basic")]
-    [InlineData("deluge", true, true, true, "password")]
-    [InlineData("utorrent", true, false, true, "basic-token")]
+    [InlineData("transmission", false, true, true, "basic")]
+    [InlineData("deluge", false, true, true, "password")]
+    [InlineData("utorrent", false, false, true, "basic-token")]
     public void ResolveCapabilities_ReturnsExpectedProtocolSupport(
         string protocol,
         bool supportsHistory,
@@ -18,7 +19,8 @@ public sealed class DownloadClientTelemetryProfilesTests
         bool supportsRecheck,
         string authMode)
     {
-        var capabilities = DownloadClientTelemetryProfiles.ResolveCapabilities(protocol);
+        Assert.True(Registry().TryGet(protocol, out var client));
+        var capabilities = client.Capabilities;
 
         Assert.True(capabilities.SupportsQueue);
         Assert.Equal(supportsHistory, capabilities.SupportsHistory);
@@ -30,17 +32,13 @@ public sealed class DownloadClientTelemetryProfilesTests
     }
 
     [Fact]
-    public void ResolveCapabilities_ReturnsClosedProfileForUnknownProtocol()
+    public void Registry_rejects_unknown_protocols_and_lists_supported_protocols()
     {
-        var capabilities = DownloadClientTelemetryProfiles.ResolveCapabilities("custom");
+        var registry = Registry();
 
-        Assert.False(capabilities.SupportsQueue);
-        Assert.False(capabilities.SupportsHistory);
-        Assert.False(capabilities.SupportsPauseResume);
-        Assert.False(capabilities.SupportsRemove);
-        Assert.False(capabilities.SupportsRecheck);
-        Assert.False(capabilities.SupportsImportPath);
-        Assert.Equal("unknown", capabilities.AuthMode);
+        Assert.False(registry.TryGet("custom", out _));
+        Assert.False(registry.TryGet("nonsense", out _));
+        Assert.Equal(["deluge", "nzbget", "qbittorrent", "sabnzbd", "transmission", "utorrent"], registry.KnownProtocols);
     }
 
     [Theory]
@@ -66,13 +64,20 @@ public sealed class DownloadClientTelemetryProfilesTests
         string? errorMessage,
         string expected)
     {
-        var status = DownloadClientTelemetryProfiles.NormalizeStatus(
-            protocol,
-            nativeStatus,
-            progress,
-            errorCode,
-            errorMessage);
+        Assert.True(Registry().TryGet(protocol, out var client));
+        var status = client.NormalizeStatus(nativeStatus, progress, errorCode, errorMessage);
 
         Assert.Equal(expected, status);
     }
+
+    private static IDownloadClientRegistry Registry()
+        => new DownloadClientRegistry(
+        [
+            new QbittorrentDownloadClient(),
+            new SabnzbdDownloadClient(null!),
+            new NzbGetDownloadClient(null!),
+            new TransmissionDownloadClient(null!),
+            new DelugeDownloadClient(null!),
+            new UTorrentDownloadClient()
+        ]);
 }

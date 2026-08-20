@@ -73,6 +73,19 @@ public sealed class DownloadClientPersistenceTests
     }
 
     [Fact]
+    public async Task CreateDownloadClientAsync_rejects_an_unknown_protocol_instead_of_rewriting_it()
+    {
+        using var storage = TestStorage.Create();
+        var repo = await CreateRepositoryAsync(storage);
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() => repo.CreateDownloadClientAsync(
+            BaseCreateRequest() with { Protocol = "nonsense" }, CancellationToken.None));
+
+        Assert.Contains("supported download client protocol", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("qbittorrent", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task CreateDownloadClientAsync_multiple_clients_are_all_listed()
     {
         using var storage = TestStorage.Create();
