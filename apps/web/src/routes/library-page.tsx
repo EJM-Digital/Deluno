@@ -1,62 +1,24 @@
 import { useLoaderData, useNavigation, useRevalidator } from "react-router-dom";
 import { LibraryView } from "../components/app/library-view";
-import {
-  fetchJson,
-  type MetadataProviderStatus,
-  type MovieListItem,
-  type MovieWantedSummary,
-  type SeriesListItem,
-  type SeriesWantedSummary
-} from "../lib/api";
-import type { MediaItem } from "../lib/media-types";
-import { adaptMovieItems, adaptSeriesItems } from "../lib/ui-adapters";
+import { fetchJson, type MetadataProviderStatus } from "../lib/api";
 import { LibraryGridSkeleton } from "../components/shell/skeleton";
 
-async function loadMovieItems(): Promise<MediaItem[]> {
-  const [items, wanted] = await Promise.all([
-    fetchJson<MovieListItem[]>("/api/movies"),
-    fetchJson<MovieWantedSummary>("/api/movies/wanted")
-  ]);
-
-  return adaptMovieItems(items, wanted);
-}
-
-async function loadShowItems(): Promise<MediaItem[]> {
-  const [items, wanted] = await Promise.all([
-    fetchJson<SeriesListItem[]>("/api/series"),
-    fetchJson<SeriesWantedSummary>("/api/series/wanted")
-  ]);
-
-  return adaptSeriesItems(items, wanted);
-}
-
 export async function moviesLoader() {
-  const [items, metadataStatus] = await Promise.all([
-    loadMovieItems(),
-    fetchJson<MetadataProviderStatus>("/api/metadata/status").catch(() => null)
-  ]);
-
-  return { items, metadataStatus };
+  return { metadataStatus: await fetchJson<MetadataProviderStatus>("/api/metadata/status").catch(() => null) };
 }
 
 export async function showsLoader() {
-  const [items, metadataStatus] = await Promise.all([
-    loadShowItems(),
-    fetchJson<MetadataProviderStatus>("/api/metadata/status").catch(() => null)
-  ]);
-
-  return { items, metadataStatus };
+  return { metadataStatus: await fetchJson<MetadataProviderStatus>("/api/metadata/status").catch(() => null) };
 }
 
 export function MoviesPage() {
-  const loaderData = useLoaderData() as { items: MediaItem[]; metadataStatus: MetadataProviderStatus | null } | undefined;
+  const loaderData = useLoaderData() as { metadataStatus: MetadataProviderStatus | null } | undefined;
   const navigation = useNavigation();
   const revalidator = useRevalidator();
   if (!loaderData) return <LibraryLoadingShell title="Movies" />;
   return (
     <LibraryView
       variant="movies"
-      items={loaderData.items}
       metadataStatus={loaderData.metadataStatus}
       isRouteLoading={navigation.state !== "idle"}
       onReload={() => revalidator.revalidate()}
@@ -65,14 +27,13 @@ export function MoviesPage() {
 }
 
 export function ShowsPage() {
-  const loaderData = useLoaderData() as { items: MediaItem[]; metadataStatus: MetadataProviderStatus | null } | undefined;
+  const loaderData = useLoaderData() as { metadataStatus: MetadataProviderStatus | null } | undefined;
   const navigation = useNavigation();
   const revalidator = useRevalidator();
   if (!loaderData) return <LibraryLoadingShell title="TV Shows" />;
   return (
     <LibraryView
       variant="shows"
-      items={loaderData.items}
       metadataStatus={loaderData.metadataStatus}
       isRouteLoading={navigation.state !== "idle"}
       onReload={() => revalidator.revalidate()}

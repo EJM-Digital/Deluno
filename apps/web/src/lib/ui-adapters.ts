@@ -97,7 +97,7 @@ export function adaptMovieItems(items: MovieListItem[], wanted: MovieWantedSumma
       type: "movie",
       poster: item.posterUrl,
       backdrop: item.backdropUrl,
-      quality: wantedItem?.currentQuality ?? wantedItem?.targetQuality ?? null,
+      quality: item.currentQuality ?? wantedItem?.currentQuality ?? wantedItem?.targetQuality ?? null,
       // A title without a file is Missing whether or not it is monitored.
       // Monitoring is a separate automation preference and must never become
       // the visible availability state.
@@ -108,7 +108,7 @@ export function adaptMovieItems(items: MovieListItem[], wanted: MovieWantedSumma
             ? "downloaded"
             : "missing",
       monitored: item.monitored,
-      sizeGb: readNumber(meta, "sizeGb", "sizeGB", "sizeOnDiskGb"),
+      sizeGb: item.fileSizeBytes != null ? item.fileSizeBytes / 1024 / 1024 / 1024 : readNumber(meta, "sizeGb", "sizeGB", "sizeOnDiskGb"),
       rating: item.rating,
       ratings: item.ratings ?? [],
       genres,
@@ -120,13 +120,13 @@ export function adaptMovieItems(items: MovieListItem[], wanted: MovieWantedSumma
       nextEligibleSearchUtc: wantedItem?.nextEligibleSearchUtc,
       currentQuality: wantedItem?.currentQuality,
       targetQuality: wantedItem?.targetQuality,
-      bitrateMbps: readNumber(meta, "bitrateMbps", "bitrate"),
-      releaseGroup: readString(meta, "releaseGroup"),
+      bitrateMbps: item.approximateBitrateMbps ?? readNumber(meta, "bitrateMbps", "bitrate"),
+      releaseGroup: item.releaseGroup ?? readString(meta, "releaseGroup"),
       tags: readStringArray(meta, "tags"),
       source: readString(meta, "source"),
-      codec: readString(meta, "codec", "videoCodec"),
-      audioCodec: readString(meta, "audioCodec"),
-      audioChannels: readString(meta, "audioChannels"),
+      codec: item.videoCodec ?? readString(meta, "codec", "videoCodec"),
+      audioCodec: item.audioCodec ?? readString(meta, "audioCodec"),
+      audioChannels: item.audioChannels ?? readString(meta, "audioChannels"),
       language: readString(meta, "language"),
       hdrFormat: readString(meta, "hdrFormat"),
       releaseStatus: wantedItem?.wantedStatus === "waiting"
@@ -142,19 +142,19 @@ export function adaptMovieItems(items: MovieListItem[], wanted: MovieWantedSumma
       inCinemas: readString(meta, "inCinemas"),
       originalLanguage: readString(meta, "originalLanguage"),
       originalTitle: item.originalTitle ?? item.title,
-      path: readString(meta, "path"),
+      path: item.filePath ?? readString(meta, "path"),
       qualityProfile: readString(meta, "qualityProfile"),
-      runtimeMinutes: readNumber(meta, "runtimeMinutes", "runtime"),
+      runtimeMinutes: item.runtimeMinutes ?? readNumber(meta, "runtimeMinutes", "runtime"),
       studio: readString(meta, "studio"),
       tmdbRating: readRating(item, "tmdb", item.rating),
-      tmdbVotes: readNumber(meta, "tmdbVotes"),
+      tmdbVotes: item.voteCount ?? readNumber(meta, "tmdbVotes"),
       imdbRating: readRating(item, "imdb", readNumber(meta, "imdbRating")),
       imdbVotes: readNumber(meta, "imdbVotes"),
       traktRating: readNumber(meta, "traktRating"),
       traktVotes: readNumber(meta, "traktVotes"),
       tomatoRating: readRating(item, "rotten_tomatoes", readNumber(meta, "tomatoRating")),
       tomatoVotes: readNumber(meta, "tomatoVotes"),
-      popularity: readNumber(meta, "popularity"),
+      popularity: item.popularity ?? readNumber(meta, "popularity"),
       keywords: readStringArray(meta, "keywords")
     };
   });
@@ -175,7 +175,7 @@ export function adaptSeriesItems(items: SeriesListItem[], wanted: SeriesWantedSu
       type: "show",
       poster: item.posterUrl,
       backdrop: item.backdropUrl,
-      quality: wantedItem?.currentQuality ?? wantedItem?.targetQuality ?? null,
+      quality: item.currentQuality ?? wantedItem?.currentQuality ?? wantedItem?.targetQuality ?? null,
       // A title without a file is Missing whether or not it is monitored.
       // Monitoring is a separate automation preference and must never become
       // the visible availability state.
@@ -186,7 +186,7 @@ export function adaptSeriesItems(items: SeriesListItem[], wanted: SeriesWantedSu
             ? "downloaded"
             : "missing",
       monitored: item.monitored,
-      sizeGb: readNumber(meta, "sizeGb", "sizeGB", "sizeOnDiskGb"),
+      sizeGb: item.fileSizeBytes != null ? item.fileSizeBytes / 1024 / 1024 / 1024 : readNumber(meta, "sizeGb", "sizeGB", "sizeOnDiskGb"),
       rating: item.rating,
       ratings: item.ratings ?? [],
       genres,
@@ -199,13 +199,13 @@ export function adaptSeriesItems(items: SeriesListItem[], wanted: SeriesWantedSu
       nextEligibleSearchUtc: wantedItem?.nextEligibleSearchUtc,
       currentQuality: wantedItem?.currentQuality,
       targetQuality: wantedItem?.targetQuality,
-      bitrateMbps: readNumber(meta, "bitrateMbps", "bitrate"),
-      releaseGroup: readString(meta, "releaseGroup"),
+      bitrateMbps: item.approximateBitrateMbps ?? readNumber(meta, "bitrateMbps", "bitrate"),
+      releaseGroup: item.releaseGroup ?? readString(meta, "releaseGroup"),
       tags: readStringArray(meta, "tags"),
       source: readString(meta, "source"),
-      codec: readString(meta, "codec", "videoCodec"),
-      audioCodec: readString(meta, "audioCodec"),
-      audioChannels: readString(meta, "audioChannels"),
+      codec: item.videoCodec ?? readString(meta, "codec", "videoCodec"),
+      audioCodec: item.audioCodec ?? readString(meta, "audioCodec"),
+      audioChannels: item.audioChannels ?? readString(meta, "audioChannels"),
       language: readString(meta, "language"),
       hdrFormat: readString(meta, "hdrFormat"),
       releaseStatus: wantedItem?.wantedStatus === "waiting"
@@ -221,19 +221,19 @@ export function adaptSeriesItems(items: SeriesListItem[], wanted: SeriesWantedSu
       inCinemas: readString(meta, "inCinemas"),
       originalLanguage: readString(meta, "originalLanguage"),
       originalTitle: item.originalTitle ?? item.title,
-      path: readString(meta, "path"),
+      path: item.filePath ?? readString(meta, "path"),
       qualityProfile: readString(meta, "qualityProfile"),
-      runtimeMinutes: readNumber(meta, "runtimeMinutes", "runtime"),
+      runtimeMinutes: item.runtimeMinutes ?? readNumber(meta, "runtimeMinutes", "runtime"),
       studio: readString(meta, "studio"),
       tmdbRating: readRating(item, "tmdb", item.rating),
-      tmdbVotes: readNumber(meta, "tmdbVotes"),
+      tmdbVotes: item.voteCount ?? readNumber(meta, "tmdbVotes"),
       imdbRating: readRating(item, "imdb", readNumber(meta, "imdbRating")),
       imdbVotes: readNumber(meta, "imdbVotes"),
       traktRating: readNumber(meta, "traktRating"),
       traktVotes: readNumber(meta, "traktVotes"),
       tomatoRating: readRating(item, "rotten_tomatoes", readNumber(meta, "tomatoRating")),
       tomatoVotes: readNumber(meta, "tomatoVotes"),
-      popularity: readNumber(meta, "popularity"),
+      popularity: item.popularity ?? readNumber(meta, "popularity"),
       keywords: readStringArray(meta, "keywords")
     };
   });

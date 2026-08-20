@@ -39,6 +39,17 @@ export interface MovieListItem {
   metadataUpdatedUtc: string | null;
   createdUtc: string;
   updatedUtc: string;
+  fileSizeBytes?: number | null;
+  currentQuality?: string | null;
+  filePath?: string | null;
+  videoCodec?: string | null;
+  audioCodec?: string | null;
+  audioChannels?: string | null;
+  releaseGroup?: string | null;
+  runtimeMinutes?: number | null;
+  popularity?: number | null;
+  voteCount?: number | null;
+  approximateBitrateMbps?: number | null;
 }
 
 export interface MovieImportRecoveryCase {
@@ -121,6 +132,33 @@ export interface SeriesListItem {
   metadataUpdatedUtc: string | null;
   createdUtc: string;
   updatedUtc: string;
+  fileSizeBytes?: number | null;
+  currentQuality?: string | null;
+  filePath?: string | null;
+  videoCodec?: string | null;
+  audioCodec?: string | null;
+  audioChannels?: string | null;
+  releaseGroup?: string | null;
+  runtimeMinutes?: number | null;
+  popularity?: number | null;
+  voteCount?: number | null;
+  approximateBitrateMbps?: number | null;
+}
+
+export interface CatalogueFacets {
+  all: number;
+  monitored: number;
+  unmonitored: number;
+  downloaded: number;
+  missing: number;
+  upgrades: number;
+}
+
+export interface CataloguePage<T> {
+  items: T[];
+  nextPageToken: string | null;
+  totalCount: number | null;
+  facets: CatalogueFacets | null;
 }
 
 export interface SeriesImportRecoveryCase {

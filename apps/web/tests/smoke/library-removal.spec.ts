@@ -27,9 +27,9 @@ test.describe("library removal", () => {
     await dialog.getByRole("button", { name: "Remove from Deluno", exact: true }).click();
 
     await expect(page.getByText(title, { exact: true })).toHaveCount(0);
-    const list = await page.request.get("/api/movies", { headers });
-    const movies = await list.json() as Array<{ title: string }>;
-    expect(movies.some((movie) => movie.title === title)).toBe(false);
+    const list = await page.request.get(`/api/movies/page?search=${encodeURIComponent(title)}`, { headers });
+    const movies = await list.json() as { items: Array<{ title: string }> };
+    expect(movies.items.some((movie) => movie.title === title)).toBe(false);
   });
 
   test("offers deliberate removal choices and removes a movie and TV show from their detail pages", async ({ page }) => {

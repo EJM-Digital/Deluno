@@ -77,7 +77,6 @@ Current gap:
 
 Implemented endpoints:
 
-- `GET /api/movies`
 - `GET /api/movies/import-recovery`
 - `GET /api/movies/wanted`
 - `GET /api/movies/search-history`
@@ -118,7 +117,6 @@ Current gaps:
 
 Implemented endpoints:
 
-- `GET /api/series`
 - `GET /api/series/import-recovery`
 - `GET /api/series/wanted`
 - `GET /api/series/inventory`
@@ -315,13 +313,10 @@ percent of the work as if it were all of it.
   once per filter rather than once per page.
 - `sort` is one of `added` (default), `title`, `year`, `rating`; each has an index
   behind it. `status` is one of `all`, `monitored`, `unmonitored`, `downloaded`,
-  `missing`. `pageSize` is clamped to 200.
-- Rows carry `fileSizeBytes` and `currentQuality`, which the unpaged list never sent.
-
-`GET /api/movies` and `GET /api/series` still return the entire catalogue and have no
-size control at all — 12.4 MB for 20,505 movies, measured. They are what the library
-view still uses; they go when it moves onto the paged endpoint, and until then nothing
-new should be built on them.
+  `missing`, or `upgrades`. `pageSize` is clamped to 200.
+- Rows carry `fileSizeBytes` and `currentQuality`, plus file path, codecs, audio
+  details, release group, runtime, popularity, votes, and derived bitrate. The legacy
+  unbounded catalogue routes were removed; consumers must use this paged contract.
 
 ### Outbound pacing
 

@@ -19,6 +19,7 @@ import {
   type IndexerItem,
   type LibraryItem,
   type LibraryAutomationStateItem,
+  type CataloguePage,
   type MovieListItem,
   type MovieWantedSummary,
   type PlatformSettingsSnapshot,
@@ -72,7 +73,6 @@ interface DashboardLoaderData {
   indexerHealth: IndexerHealthItem[];
   indexerHealthPercent: number | null;
   configuredLibraryCount: number;
-  librarySizeTb: string;
   missingCount: number;
   movieCount: number;
   movieMissingCount: number;
@@ -119,10 +119,10 @@ export async function dashboardLoader(): Promise<DashboardLoaderData> {
     capturedUtc: new Date().toISOString()
   };
 
-  const [movieItems, movieWanted, showItems, showWanted, telemetry, indexers, clients, libraries, automation, searchCycles, retryWindows, upcomingEpisodes, setupProgress, settings, policySets, qualityProfiles] = await Promise.all([
-    fetchJson<MovieListItem[]>("/api/movies").catch((): MovieListItem[] => []),
+  const [moviePage, movieWanted, showPage, showWanted, telemetry, indexers, clients, libraries, automation, searchCycles, retryWindows, upcomingEpisodes, setupProgress, settings, policySets, qualityProfiles] = await Promise.all([
+    fetchJson<CataloguePage<MovieListItem>>("/api/movies/page?pageSize=14&sort=added&direction=desc").catch((): CataloguePage<MovieListItem> => ({ items: [], nextPageToken: null, totalCount: 0, facets: null })),
     fetchJson<MovieWantedSummary>("/api/movies/wanted").catch(() => emptyMovieWanted),
-    fetchJson<SeriesListItem[]>("/api/series").catch((): SeriesListItem[] => []),
+    fetchJson<CataloguePage<SeriesListItem>>("/api/series/page?pageSize=14&sort=added&direction=desc").catch((): CataloguePage<SeriesListItem> => ({ items: [], nextPageToken: null, totalCount: 0, facets: null })),
     fetchJson<SeriesWantedSummary>("/api/series/wanted").catch(() => emptySeriesWanted),
     fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry").catch(() => emptyTelemetry),
     fetchJson<IndexerItem[]>("/api/indexers").catch((): IndexerItem[] => []),
@@ -143,13 +143,12 @@ export async function dashboardLoader(): Promise<DashboardLoaderData> {
     fetchJson<QualityProfileItem[]>("/api/quality-profiles").catch((): QualityProfileItem[] => [])
   ]);
 
-  const adaptedMovies = adaptMovieItems(movieItems, movieWanted);
-  const adaptedShows = adaptSeriesItems(showItems, showWanted);
+  const adaptedMovies = adaptMovieItems(moviePage.items, movieWanted);
+  const adaptedShows = adaptSeriesItems(showPage.items, showWanted);
   const allItems = [...adaptedMovies, ...adaptedShows];
   const activeDownloads = adaptTelemetryDownloads(telemetry);
   const indexerHealth = adaptIndexerHealth(indexers, clients);
-  const librarySizeGb = allItems.reduce((sum, item) => sum + (item.sizeGb ?? 0), 0);
-  const monitoredCount = allItems.filter((item) => item.monitored).length;
+  const monitoredCount = (moviePage.facets?.monitored ?? 0) + (showPage.facets?.monitored ?? 0);
   const healthyCount = indexerHealth.filter((item) => item.status === "healthy").length;
 
   // A dashboard that cannot draw its charts still has to render, so a failed
@@ -164,17 +163,13 @@ export async function dashboardLoader(): Promise<DashboardLoaderData> {
     indexerHealth,
     indexerHealthPercent: indexerHealth.length ? Math.round((healthyCount / indexerHealth.length) * 100) : null,
     configuredLibraryCount: libraries.length,
-    librarySizeTb: (librarySizeGb / 1024).toFixed(1),
     missingCount: movieWanted.missingCount + showWanted.missingCount,
-    movieCount: adaptedMovies.length,
+    movieCount: moviePage.totalCount ?? 0,
     movieMissingCount: movieWanted.missingCount,
     monitoredCount,
-    recentlyAdded: allItems
-      .slice()
-      .sort((left, right) => right.added.localeCompare(left.added))
-      .slice(0, 14),
-    totalCount: allItems.length,
-    showCount: adaptedShows.length,
+    recentlyAdded: [...adaptedMovies, ...adaptedShows].slice(0, 14),
+    totalCount: (moviePage.totalCount ?? 0) + (showPage.totalCount ?? 0),
+    showCount: showPage.totalCount ?? 0,
     showMissingCount: showWanted.missingCount,
     upcoming: buildDashboardUpcoming(upcomingEpisodes, showWanted, movieWanted),
     upgradeCount: movieWanted.upgradeCount + showWanted.upgradeCount,
@@ -272,7 +267,7 @@ export function DashboardPage() {
           {
             label: "In your library",
             value: data.totalCount.toLocaleString(),
-            help: data.totalCount > 0 ? `${data.movieCount} movies · ${data.showCount} shows · ${data.librarySizeTb} TB` : data.configuredLibraryCount > 0 ? "no media yet" : "no library set up yet"
+            help: data.totalCount > 0 ? `${data.movieCount} movies · ${data.showCount} shows` : data.configuredLibraryCount > 0 ? "no media yet" : "no library set up yet"
           },
           { label: "Being watched for", value: data.monitoredCount.toLocaleString(), help: "Deluno keeps looking for these" },
           {
@@ -838,7 +833,6 @@ function emptyDashboardData(): DashboardLoaderData {
     indexerHealth: [],
     indexerHealthPercent: null,
     configuredLibraryCount: 0,
-    librarySizeTb: "0.0",
     missingCount: 0,
     movieCount: 0,
     movieMissingCount: 0,
