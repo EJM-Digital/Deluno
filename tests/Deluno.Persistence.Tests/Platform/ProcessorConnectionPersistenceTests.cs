@@ -17,7 +17,7 @@ public sealed class ProcessorConnectionPersistenceTests
             storage.Factory,
             new SqliteDatabaseMigrator(storage.Factory, clock),
             NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
-        var repository = new SqlitePlatformSettingsRepository(storage.Factory, clock, TestSecretProtection.Create(storage));
+        var repository = new SqliteProcessorRepository(storage.Factory, clock, TestSecretProtection.Create(storage));
 
         var created = await repository.CreateProcessorConnectionAsync(
             new CreateProcessorConnectionRequest(

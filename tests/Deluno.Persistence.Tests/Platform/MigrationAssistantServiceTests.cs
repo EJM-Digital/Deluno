@@ -236,11 +236,11 @@ public sealed class MigrationAssistantServiceTests
         await new PlatformSchemaInitializer(storage.Factory, migrator, NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
         await new MoviesSchemaInitializer(storage.Factory, migrator, NullLogger<MoviesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
         await new SeriesSchemaInitializer(storage.Factory, migrator, NullLogger<SeriesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
-        var platform = new SqlitePlatformSettingsRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
+        var migrationRepository = new SqliteMigrationAuditRepository(storage.Factory, timeProvider);
         var librariesRepository = new SqliteLibrariesRepository(storage.Factory, timeProvider);
         var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
         var series = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
-        var service = new MigrationAssistantService(platform, librariesRepository, CreateQualityRepository(storage), CreateConnectionsRepository(storage), CreateIntakeRepository(storage),
+        var service = new MigrationAssistantService(migrationRepository, librariesRepository, CreateQualityRepository(storage), CreateConnectionsRepository(storage), CreateIntakeRepository(storage),
         [
             new MovieMigrationCatalogImporter(movies),
             new SeriesMigrationCatalogImporter(series)
@@ -386,12 +386,11 @@ public sealed class MigrationAssistantServiceTests
             new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T00:00:00Z")));
     }
 
-    private static SqlitePlatformSettingsRepository CreateRepository(TestStorage storage)
+    private static SqliteMigrationAuditRepository CreateRepository(TestStorage storage)
     {
-        return new SqlitePlatformSettingsRepository(
+        return new SqliteMigrationAuditRepository(
             storage.Factory,
-            new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T00:00:00Z")),
-            TestSecretProtection.Create(storage));
+            new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T00:00:00Z")));
     }
 
     private static SqliteLibrariesRepository CreateLibrariesRepository(TestStorage storage)

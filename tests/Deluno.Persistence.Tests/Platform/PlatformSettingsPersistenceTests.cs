@@ -222,7 +222,7 @@ public sealed class PlatformSettingsPersistenceTests
             new SqliteDatabaseMigrator(storage.Factory, timeProvider),
             NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
 
-        var repository = new SqlitePlatformSettingsRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
+        var repository = new SqliteDownloadHealthRepository(storage.Factory, timeProvider);
         var observation = new DownloadHealthObservation("client-1", "queue-1", "Example.Movie.2026.1080p", "no-throughput", "warning", "0 MB/s");
 
         var first = Assert.Single(await repository.RecordDownloadHealthObservationsAsync([observation], CancellationToken.None));
@@ -233,10 +233,10 @@ public sealed class PlatformSettingsPersistenceTests
         Assert.False(await repository.IsDownloadReleaseBlockedAsync("client-1", "Example Movie 2026 1080p", CancellationToken.None));
 
         timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-13T01:31:00Z"));
-        repository = new SqlitePlatformSettingsRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
+        repository = new SqliteDownloadHealthRepository(storage.Factory, timeProvider);
         await repository.RecordDownloadHealthObservationsAsync([observation], CancellationToken.None);
         timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-13T02:02:00Z"));
-        repository = new SqlitePlatformSettingsRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
+        repository = new SqliteDownloadHealthRepository(storage.Factory, timeProvider);
         var third = Assert.Single(await repository.RecordDownloadHealthObservationsAsync([observation], CancellationToken.None));
 
         Assert.Equal(3, third.StrikeCount);

@@ -14,7 +14,7 @@ using Deluno.Connections.Data;
 namespace Deluno.Integrations.DownloadClients;
 
 public sealed class DownloadClientGrabService(
-    IPlatformSettingsRepository platformRepository,
+    IDownloadHealthRepository platformRepository,
     IConnectionsRepository connectionsRepository,
     IDownloadClientRegistry downloadClientRegistry,
     IIntegrationResiliencePolicy resiliencePolicy,

@@ -15,7 +15,7 @@ public static class DownloadClientEndpointRouteBuilderExtensions
     {
         endpoints.MapGet("/api/download-health", async (
             HttpContext httpContext,
-            IPlatformSettingsRepository platformRepository,
+            IDownloadHealthRepository platformRepository,
             int? pageSize,
             string? pageToken,
             CancellationToken cancellationToken) =>
@@ -70,7 +70,7 @@ public static class DownloadClientEndpointRouteBuilderExtensions
             string kind,
             HttpContext httpContext,
             [FromBody] IgnoreDownloadHealthFindingRequest request,
-            IPlatformSettingsRepository platformRepository,
+            IDownloadHealthRepository platformRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);

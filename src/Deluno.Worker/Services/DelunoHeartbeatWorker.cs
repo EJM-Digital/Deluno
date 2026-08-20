@@ -241,6 +241,7 @@ public sealed class DelunoHeartbeatWorker(
             // ticks on an idle install get no further than the next few lines.
             var jobQueueRepository = services.GetRequiredService<IJobQueueRepository>();
             var platformSettingsRepository = services.GetRequiredService<IPlatformSettingsRepository>();
+            var processorRepository = services.GetRequiredService<IProcessorRepository>();
             var librariesRepository = services.GetRequiredService<ILibrariesRepository>();
 
             // The gate goes first. It used to be the fourth thing that
@@ -297,7 +298,7 @@ public sealed class DelunoHeartbeatWorker(
 
                 await workPlanner.PlanImportAutomationAsync(
                     jobScheduler,
-                    platformSettingsRepository,
+                    processorRepository,
                     librariesRepository,
                     downloadClientTelemetryService,
                     processorConnectionService,

@@ -39,6 +39,9 @@ public static class DelunoApplicationEndpointMapping
         writeEndpoints.MapDelunoApi(includeOperationalEndpoints: false);
         systemEndpoints.MapDelunoBackupEndpoints();
         endpoints.MapDelunoPlatformEndpoints();
+        endpoints.MapDelunoMigrationEndpoints();
+        writeEndpoints.MapDelunoLibraryActionEndpoints();
+        endpoints.MapDelunoExternalIntegrationEndpoints();
         writeEndpoints.MapDelunoQuality();
         endpoints.MapDelunoConnections();
         writeEndpoints.MapDelunoLibraries();

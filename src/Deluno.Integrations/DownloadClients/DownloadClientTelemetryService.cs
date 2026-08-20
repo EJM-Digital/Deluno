@@ -18,6 +18,7 @@ namespace Deluno.Integrations.DownloadClients;
 
 public sealed class DownloadClientTelemetryService(
     IPlatformSettingsRepository platformRepository,
+    IDownloadHealthRepository healthRepository,
     ILibrariesRepository librariesRepository,
     IConnectionsRepository connectionsRepository,
     IJobQueueRepository jobQueueRepository,
@@ -252,7 +253,7 @@ public sealed class DownloadClientTelemetryService(
             .SelectMany(entry => entry.Findings.Select(finding => new DownloadHealthObservation(
                 entry.Item.ClientId, entry.Item.Id, entry.Item.ReleaseName, finding.Kind, finding.Severity, finding.Evidence)))
             .ToArray();
-        var records = await platformRepository.RecordDownloadHealthObservationsAsync(observations, cancellationToken);
+        var records = await healthRepository.RecordDownloadHealthObservationsAsync(observations, cancellationToken);
         var recordsByFinding = records.ToDictionary(
             record => $"{record.ClientId}\u001f{record.QueueItemId}\u001f{record.Kind}",
             StringComparer.OrdinalIgnoreCase);

@@ -153,8 +153,6 @@ that hardened into limits.
 - Broaden SignalR import/recovery events and deepen exact client-item import outcome records.
 - Expand per-client history adapters and mark queue-derived history distinctly.
 - Expand architecture validation beyond high-signal project-reference checks.
-- Break up oversized endpoint registration surfaces, especially `PlatformEndpointRouteBuilderExtensions`.
-  (Partly addressed: 4,033 → 3,281 LOC as Security, Notifications and Intake moved out.)
 - Resolve ownership of in-flight `Deluno.Library` and `Deluno.Search` seams.
 - Keep docs free of old `C:\Users\User\Deluno` workspace paths.
 
@@ -214,6 +212,12 @@ that hardened into limits.
   the auth check, including a dead per-request resolution in the host middleware.
 - Lifted shared SQLite plumbing (`SqliteRecordHelpers`) and domain normalisers
   (`DelunoValueNormalizers`) out of the Platform god-repository.
+- **The platform route and settings repositories still mixed unrelated seams.**
+  Added an endpoint inventory snapshot, split route registration into settings /
+  setup / tags, migration, library actions, and external integrations, and split
+  persistence into settings, download-health, processor, and migration-audit
+  repositories. Final files are 304 and 676 lines respectively; the checked-in
+  inventory remains unchanged.
 
 ## Closed
 

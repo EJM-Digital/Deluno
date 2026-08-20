@@ -14,7 +14,7 @@ using Deluno.Connections.Data;
 namespace Deluno.Platform.Migration;
 
 public sealed class MigrationAssistantService(
-    IPlatformSettingsRepository repository,
+    IMigrationAuditRepository repository,
     ILibrariesRepository librariesRepository,
     IQualityRepository qualityRepository,
     IConnectionsRepository connectionsRepository,

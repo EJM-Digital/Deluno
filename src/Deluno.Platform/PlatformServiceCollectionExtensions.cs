@@ -11,6 +11,9 @@ public static class PlatformServiceCollectionExtensions
     public static IServiceCollection AddDelunoPlatformModule(this IServiceCollection services)
     {
         services.AddSingleton<IPlatformSettingsRepository, SqlitePlatformSettingsRepository>();
+        services.AddSingleton<IDownloadHealthRepository, SqliteDownloadHealthRepository>();
+        services.AddSingleton<IProcessorRepository, SqliteProcessorRepository>();
+        services.AddSingleton<IMigrationAuditRepository, SqliteMigrationAuditRepository>();
         services.AddSingleton<IMigrationAssistantService, MigrationAssistantService>();
         services.AddHostedService<PlatformSchemaInitializer>();
         return services;
