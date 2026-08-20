@@ -21,7 +21,18 @@ public sealed record MetadataSearchResult(
     // "not out yet", which is what an availability rule needs to decide.
     DateOnly? InCinemasDate = null,
     DateOnly? DigitalReleaseDate = null,
-    DateOnly? PhysicalReleaseDate = null);
+    DateOnly? PhysicalReleaseDate = null,
+    /// <summary>
+    /// Runtime, popularity and vote count.
+    ///
+    /// The library list has always offered sorting on all three and never had
+    /// any of them: they were read from a metadata blob that did not carry
+    /// them, so every title compared as zero. Runtime earns its place twice
+    /// over — it is also the denominator that turns a file size into a bitrate.
+    /// </summary>
+    int? RuntimeMinutes = null,
+    double? Popularity = null,
+    int? VoteCount = null);
 
 /// <summary>
 /// When a film can actually be obtained. A cinema date is not an availability

@@ -459,7 +459,15 @@ public sealed class SqliteSeriesCatalogRepository(
             s.created_utc,
             s.updated_utc,
             (SELECT MAX(w.file_size_bytes) FROM series_wanted_state w WHERE w.series_id = s.id) AS file_size_bytes,
-            (SELECT w.current_quality FROM series_wanted_state w WHERE w.series_id = s.id AND w.current_quality IS NOT NULL LIMIT 1) AS current_quality
+            (SELECT w.current_quality FROM series_wanted_state w WHERE w.series_id = s.id AND w.current_quality IS NOT NULL LIMIT 1) AS current_quality,
+            (SELECT w.file_path FROM series_wanted_state w WHERE w.series_id = s.id AND w.file_path IS NOT NULL LIMIT 1) AS file_path,
+            (SELECT w.video_codec FROM series_wanted_state w WHERE w.series_id = s.id AND w.video_codec IS NOT NULL LIMIT 1) AS video_codec,
+            (SELECT w.audio_codec FROM series_wanted_state w WHERE w.series_id = s.id AND w.audio_codec IS NOT NULL LIMIT 1) AS audio_codec,
+            (SELECT w.audio_channels FROM series_wanted_state w WHERE w.series_id = s.id AND w.audio_channels IS NOT NULL LIMIT 1) AS audio_channels,
+            (SELECT w.release_group FROM series_wanted_state w WHERE w.series_id = s.id AND w.release_group IS NOT NULL LIMIT 1) AS release_group,
+            s.runtime_minutes,
+            s.popularity,
+            s.vote_count
         """;
 
     /// <summary>
@@ -517,13 +525,27 @@ public sealed class SqliteSeriesCatalogRepository(
             using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
+                var fileSizeBytes = reader.IsDBNull(19) ? (long?)null : reader.GetInt64(19);
+                var runtimeMinutes = reader.IsDBNull(26) ? (int?)null : reader.GetInt32(26);
+
                 items.Add(ReadSeries(reader) with
                 {
-                    FileSizeBytes = reader.IsDBNull(19) ? null : reader.GetInt64(19),
-                    CurrentQuality = reader.IsDBNull(20) ? null : reader.GetString(20)
+                    FileSizeBytes = fileSizeBytes,
+                    CurrentQuality = reader.IsDBNull(20) ? null : reader.GetString(20),
+                    FilePath = reader.IsDBNull(21) ? null : reader.GetString(21),
+                    VideoCodec = reader.IsDBNull(22) ? null : reader.GetString(22),
+                    AudioCodec = reader.IsDBNull(23) ? null : reader.GetString(23),
+                    AudioChannels = reader.IsDBNull(24) ? null : reader.GetString(24),
+                    ReleaseGroup = reader.IsDBNull(25) ? null : reader.GetString(25),
+                    RuntimeMinutes = runtimeMinutes,
+                    Popularity = reader.IsDBNull(27) ? null : reader.GetDouble(27),
+                    VoteCount = reader.IsDBNull(28) ? null : reader.GetInt32(28),
+                    // Derived here rather than stored, so it cannot go stale
+                    // against either the file or the runtime it comes from.
+                    ApproximateBitrateMbps = MediaFileFacts.ApproximateBitrateMbps(fileSizeBytes, runtimeMinutes)
                 });
 
-                lastSortValue = CatalogueKeyset.ReadSortValue(reader, 21);
+                lastSortValue = CatalogueKeyset.ReadSortValue(reader, 29);
             }
         }
 
@@ -698,7 +720,10 @@ public sealed class SqliteSeriesCatalogRepository(
         string? externalUrl,
         string? imdbId,
         string? metadataJson,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int? runtimeMinutes = null,
+        double? popularity = null,
+        int? voteCount = null)
     {
         var now = timeProvider.GetUtcNow();
 
@@ -722,12 +747,20 @@ public sealed class SqliteSeriesCatalogRepository(
                 genres = @genres,
                 external_url = @externalUrl,
                 metadata_json = @metadataJson,
+                -- COALESCE: a provider that does not answer for one of these
+                -- must not blank a value an earlier refresh did answer for.
+                runtime_minutes = COALESCE(@runtimeMinutes, runtime_minutes),
+                popularity = COALESCE(@popularity, popularity),
+                vote_count = COALESCE(@voteCount, vote_count),
                 metadata_updated_utc = @metadataUpdatedUtc,
                 updated_utc = @updatedUtc
             WHERE id = @id;
             """;
 
         AddParameter(command, "@id", id);
+        AddParameter(command, "@runtimeMinutes", runtimeMinutes);
+        AddParameter(command, "@popularity", popularity);
+        AddParameter(command, "@voteCount", voteCount);
         AddParameter(command, "@imdbId", NormalizeExternalId(imdbId));
         AddParameter(command, "@metadataProvider", NormalizeExternalId(metadataProvider));
         AddParameter(command, "@metadataProviderId", NormalizeExternalId(metadataProviderId));
@@ -1312,6 +1345,10 @@ public sealed class SqliteSeriesCatalogRepository(
 
         var normalizedTitle = title.Trim();
         var normalizedFilePath = NormalizeText(filePath);
+        // What the file name says about the file. Read here rather than at each
+        // call site so every path that records a file — an existing-library
+        // import, a completed download — gets it, and gets it the same way.
+        var fileFacts = MediaFileNameFacts.Parse(filePath);
         string? seriesId = null;
 
         using (var lookup = connection.CreateCommand())
@@ -1381,12 +1418,14 @@ public sealed class SqliteSeriesCatalogRepository(
             INSERT INTO series_wanted_state (
                 series_id, library_id, wanted_status, wanted_reason, has_file, quality_cutoff_met,
                 current_quality, target_quality, file_path, file_size_bytes, imported_utc, last_verified_utc,
-                missing_since_utc, last_search_utc, next_eligible_search_utc, last_search_result, updated_utc
+                missing_since_utc, last_search_utc, next_eligible_search_utc, last_search_result, updated_utc,
+                video_codec, audio_codec, audio_channels, release_group
             )
             VALUES (
                 @seriesId, @libraryId, @wantedStatus, @wantedReason, 1, @qualityCutoffMet,
                 @currentQuality, @targetQuality, @filePath, @fileSizeBytes, @importedUtc, @lastVerifiedUtc,
-                NULL, NULL, NULL, 'Imported from your existing library.', @updatedUtc
+                NULL, NULL, NULL, 'Imported from your existing library.', @updatedUtc,
+                @videoCodec, @audioCodec, @audioChannels, @releaseGroup
             )
             ON CONFLICT(series_id, library_id) DO UPDATE SET
                 wanted_status = excluded.wanted_status,
@@ -1401,10 +1440,20 @@ public sealed class SqliteSeriesCatalogRepository(
                 last_verified_utc = excluded.last_verified_utc,
                 missing_detected_utc = NULL,
                 last_search_result = excluded.last_search_result,
+                -- The file replaced the one that was there, so its facts
+                -- replace the old ones outright rather than merging.
+                video_codec = excluded.video_codec,
+                audio_codec = excluded.audio_codec,
+                audio_channels = excluded.audio_channels,
+                release_group = excluded.release_group,
                 updated_utc = excluded.updated_utc;
             """;
 
         AddParameter(wanted, "@seriesId", seriesId);
+        AddParameter(wanted, "@videoCodec", fileFacts.VideoCodec);
+        AddParameter(wanted, "@audioCodec", fileFacts.AudioCodec);
+        AddParameter(wanted, "@audioChannels", fileFacts.AudioChannels);
+        AddParameter(wanted, "@releaseGroup", fileFacts.ReleaseGroup);
         AddParameter(wanted, "@libraryId", libraryId);
         AddParameter(wanted, "@wantedStatus", NormalizeWantedStatus(wantedStatus));
         AddParameter(wanted, "@wantedReason", wantedReason.Trim());

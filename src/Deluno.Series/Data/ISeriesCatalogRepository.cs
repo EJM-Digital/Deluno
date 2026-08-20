@@ -92,7 +92,10 @@ public interface ISeriesCatalogRepository
         string? externalUrl,
         string? imdbId,
         string? metadataJson,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        int? runtimeMinutes = null,
+        double? popularity = null,
+        int? voteCount = null);
 
     Task<int> UpdateEpisodeMonitoredAsync(IReadOnlyList<string> episodeIds, bool monitored, CancellationToken cancellationToken);
 
