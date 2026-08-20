@@ -26,7 +26,8 @@ public static class SecurityEndpointRouteBuilderExtensions
         // use rather than credential guessing.
         var login = endpoints.MapGroup("/api/auth")
             .RequireRateLimiting(DelunoRateLimitPolicies.Login);
-        var apiKeys = endpoints.MapGroup("/api/api-keys");
+        var apiKeys = endpoints.MapGroup("/api/api-keys")
+            .RequireAuthorization(DelunoAuthorizationPolicies.System);
 
         login.MapPost("/login", async (
             [FromBody] LoginRequest request,
@@ -51,7 +52,9 @@ public static class SecurityEndpointRouteBuilderExtensions
             }
 
             return Results.Ok(UserAuthorization.IssueLoginResponse(dataProtectionProvider, timeProvider, login));
-        });
+        })
+            .AllowAnonymous()
+            .WithMetadata(new DelunoPublicEndpointAttribute());
 
         auth.MapGet("/bootstrap-status", async (
             [FromServices] ISecurityRepository repository,
@@ -59,7 +62,9 @@ public static class SecurityEndpointRouteBuilderExtensions
         {
             var requiresSetup = await repository.RequiresBootstrapAsync(cancellationToken);
             return Results.Ok(new BootstrapStatusResponse(RequiresSetup: requiresSetup));
-        });
+        })
+            .AllowAnonymous()
+            .WithMetadata(new DelunoPublicEndpointAttribute());
 
         auth.MapPost("/bootstrap", async (
             [FromBody] BootstrapUserRequest request,
@@ -84,7 +89,9 @@ public static class SecurityEndpointRouteBuilderExtensions
 
             var created = await repository.BootstrapUserAsync(request, cancellationToken);
             return Results.Ok(UserAuthorization.IssueLoginResponse(dataProtectionProvider, timeProvider, created));
-        });
+        })
+            .AllowAnonymous()
+            .WithMetadata(new DelunoPublicEndpointAttribute());
 
         auth.MapPost("/logout", async (
             HttpContext httpContext,
@@ -104,7 +111,8 @@ public static class SecurityEndpointRouteBuilderExtensions
 
             await repository.RevokeUserAccessTokensAsync(user.Id, cancellationToken);
             return Results.NoContent();
-        });
+        })
+            .RequireAuthorization(DelunoAuthorizationPolicies.Read);
 
         auth.MapPut("/password", async (
             HttpContext httpContext,
@@ -144,7 +152,8 @@ public static class SecurityEndpointRouteBuilderExtensions
             }
 
             return Results.NoContent();
-        });
+        })
+            .RequireAuthorization(DelunoAuthorizationPolicies.Read);
 
         apiKeys.MapGet(string.Empty, async (
             HttpContext httpContext,

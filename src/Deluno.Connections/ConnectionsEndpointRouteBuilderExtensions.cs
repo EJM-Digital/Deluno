@@ -31,9 +31,11 @@ public static class ConnectionsEndpointRouteBuilderExtensions
 {
     public static IEndpointRouteBuilder MapDelunoConnectionsEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var connections = endpoints.MapGroup("/api/connections");
+        var connections = endpoints.MapGroup("/api/connections")
+            .RequireAuthorization(DelunoAuthorizationPolicies.Write);
 
-        var indexers = endpoints.MapGroup("/api/indexers");
+        var indexers = endpoints.MapGroup("/api/indexers")
+            .RequireAuthorization(DelunoAuthorizationPolicies.Write);
 
         indexers.MapGet(string.Empty, async ([FromServices] IConnectionsRepository repository, CancellationToken cancellationToken) =>
         {
@@ -242,7 +244,8 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             return item is null ? Results.NotFound() : Results.Ok(item);
         });
 
-        var downloadClients = endpoints.MapGroup("/api/download-clients");
+        var downloadClients = endpoints.MapGroup("/api/download-clients")
+            .RequireAuthorization(DelunoAuthorizationPolicies.Queue);
 
         downloadClients.MapGet(string.Empty, async ([FromServices] IConnectionsRepository repository, CancellationToken cancellationToken) =>
         {

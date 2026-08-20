@@ -2,6 +2,8 @@ using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
 using Deluno.Api;
 using Deluno.Api.Backup;
+using Deluno.Api.Downloads;
+using Deluno.Api.ImportRecovery;
 using Deluno.Api.Monitoring;
 using Deluno.Contracts;
 using Deluno.Filesystem;
@@ -24,6 +26,7 @@ using Deluno.Security.Hardening;
 using Deluno.Realtime;
 using Deluno.Series;
 using Deluno.Worker;
+using Deluno.Host;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.OpenApi.Models;
 using System.Diagnostics;
@@ -230,6 +233,8 @@ app.UseRateLimiter();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.UseDelunoCorrelation();
+app.UseAuthentication();
+app.UseAuthorization();
 app.Use(async (context, next) =>
 {
     var path = context.Request.Path;
@@ -239,41 +244,6 @@ app.Use(async (context, next) =>
         path.StartsWithSegments("/hubs", StringComparison.OrdinalIgnoreCase))
     {
         context.Response.Headers.CacheControl = "no-store";
-    }
-
-    await next();
-});
-app.Use(async (context, next) =>
-{
-    var path = context.Request.Path;
-
-    var requiresAuthentication =
-        (path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase) &&
-         !path.Equals("/api/auth/login", StringComparison.OrdinalIgnoreCase) &&
-         !path.Equals("/api/auth/bootstrap-status", StringComparison.OrdinalIgnoreCase) &&
-         !path.Equals("/api/auth/bootstrap", StringComparison.OrdinalIgnoreCase) &&
-         !path.StartsWithSegments("/api/health", StringComparison.OrdinalIgnoreCase) &&
-         !path.StartsWithSegments("/api/metadata/artwork", StringComparison.OrdinalIgnoreCase)) ||
-        path.StartsWithSegments("/hubs", StringComparison.OrdinalIgnoreCase);
-
-    if (!requiresAuthentication)
-    {
-        await next();
-        return;
-    }
-
-    var denied = await UserAuthorization.RequireAuthenticatedAsync(context, context.RequestAborted);
-    if (denied is not null)
-    {
-        await denied.ExecuteAsync(context);
-        return;
-    }
-
-    var scopeDenied = UserAuthorization.RequireApiScope(context, ResolveRequiredApiScopes(path, context.Request.Method));
-    if (scopeDenied is not null)
-    {
-        await scopeDenied.ExecuteAsync(context);
-        return;
     }
 
     await next();
@@ -314,53 +284,7 @@ app.UseSwaggerUI(options =>
     options.DocumentTitle = "Deluno API docs";
 });
 
-app.MapDelunoApi();
-app.MapDelunoBackupEndpoints();
-app.MapDelunoPlatformEndpoints();
-app.MapDelunoQuality();
-app.MapDelunoConnections();
-app.MapDelunoLibraries();
-app.MapDelunoSecurityEndpoints();
-app.MapDelunoNotificationEndpoints();
-app.MapDelunoIntakeEndpoints();
-app.MapDelunoSecretsDiagnostics();
-app.MapDelunoMoviesEndpoints();
-app.MapDelunoSeriesEndpoints();
-app.MapDelunoJobsEndpoints();
-app.MapDelunoDownloadClientIntegrationEndpoints();
-app.MapDelunoSearchEndpoints();
-app.MapDelunoMetadataEndpoints();
-app.MapDelunoFilesystemEndpoints();
-app.MapDelunoRealtime();
+app.MapDelunoApplicationEndpoints();
 app.MapFallbackToFile("index.html");
 
 app.Run();
-
-static string[] ResolveRequiredApiScopes(PathString path, string method)
-{
-    var isRead = HttpMethods.IsGet(method) || HttpMethods.IsHead(method) || HttpMethods.IsOptions(method);
-
-    if (isRead)
-    {
-        return ["read"];
-    }
-
-    if (path.StartsWithSegments("/api/download-clients", StringComparison.OrdinalIgnoreCase) ||
-        path.StartsWithSegments("/api/download-dispatches", StringComparison.OrdinalIgnoreCase))
-    {
-        return ["queue"];
-    }
-
-    if (path.StartsWithSegments("/api/filesystem/import", StringComparison.OrdinalIgnoreCase) ||
-        path.StartsWithSegments("/api/integrations", StringComparison.OrdinalIgnoreCase))
-    {
-        return ["imports", "queue"];
-    }
-
-    if (path.StartsWithSegments("/api/backups", StringComparison.OrdinalIgnoreCase))
-    {
-        return ["system"];
-    }
-
-    return ["write"];
-}

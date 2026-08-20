@@ -24,12 +24,14 @@ public static class ApiVersioning
         {
             var path = context.Request.Path;
             if (path.StartsWithSegments("/api", out var rest) &&
-                rest.StartsWithSegments($"/{DelunoApiVersion.Current}", out var withoutVersion))
+                rest.StartsWithSegments($"/{DelunoApiVersion.Current}", out var withoutVersion) &&
+                !HasDedicatedVersionedRoute(rest))
             {
                 context.Request.Path = "/api" + withoutVersion;
             }
             else if (path.StartsWithSegments("/api", out var other) &&
-                     Regex.IsMatch(other.Value ?? string.Empty, "^/v[0-9]+(/|$)"))
+                     Regex.IsMatch(other.Value ?? string.Empty, "^/v[0-9]+(/|$)") &&
+                     !HasDedicatedVersionedRoute(other))
             {
                 context.Response.StatusCode = StatusCodes.Status400BadRequest;
                 context.Response.ContentType = "application/json";
@@ -42,4 +44,15 @@ public static class ApiVersioning
             await next();
         });
     }
+
+    // These operational endpoints deliberately use a versioned route because
+    // their unversioned names are already occupied by legacy dashboard data.
+    // Keep their canonical /api/v1 path intact; other v1 routes remain aliases
+    // for the unversioned API above.
+    private static bool HasDedicatedVersionedRoute(PathString path)
+        => path.StartsWithSegments("/v1/download-dispatches", StringComparison.OrdinalIgnoreCase) ||
+           path.StartsWithSegments("/v1/import-resolutions", StringComparison.OrdinalIgnoreCase) ||
+           path.StartsWithSegments("/v1/dispatch-alerts", StringComparison.OrdinalIgnoreCase) ||
+           path.StartsWithSegments("/v1/dispatch-metrics", StringComparison.OrdinalIgnoreCase) ||
+           path.StartsWithSegments("/v1/import-recovery", StringComparison.OrdinalIgnoreCase);
 }
