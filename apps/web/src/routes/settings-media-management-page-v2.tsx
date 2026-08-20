@@ -5,7 +5,7 @@
  *   Processing     → ListCard of libraries → drawer (workflow per library),
  *                    plus optional completion callbacks as their own list.
  *
- * Contracts: PUT /api/settings, PUT /api/libraries/{id}/workflow,
+ * Contracts: PATCH /api/settings, PUT /api/libraries/{id}/workflow,
  * GET/POST/DELETE /api/integrations/processors/connections (+ /{id}/test).
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
@@ -28,6 +28,8 @@ import { librarySetupNavItems } from "../components/app/settings-shell";
 import { toast } from "../components/shell/toaster";
 import { settingsOverviewLoader } from "./settings-overview-page";
 import { fetchJson, type LibraryItem, type PlatformSettingsSnapshot, type ProcessorConnectionItem, type ProcessorConnectionTestResult, type QualityProfileItem } from "../lib/api";
+import type { PlatformSettingsPatch } from "../lib/api/settings";
+import { useApiMutation } from "../lib/use-api-mutation";
 import { authedFetch } from "../lib/use-auth";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 
@@ -68,7 +70,7 @@ export function SettingsMediaManagementPage() {
 
 function FileHandlingPage() {
   const { settings } = useLoaderData() as LoaderData;
-  const revalidator = useRevalidator();
+  const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
   const [saved, setSaved] = useState(settings);
   const [form, setForm] = useState(settings);
   const [saveState, setSaveState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
@@ -86,12 +88,19 @@ function FileHandlingPage() {
     if (state === "saving") return;
     setSaveState("saving");
     try {
-      const response = await authedFetch("/api/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
-      if (!response.ok) throw new Error("File handling could not be saved.");
+      await settingsMutation.mutate({
+        movieFolderFormat: form.movieFolderFormat,
+        seriesFolderFormat: form.seriesFolderFormat,
+        episodeFileFormat: form.episodeFileFormat,
+        renameOnImport: form.renameOnImport,
+        useHardlinks: form.useHardlinks,
+        cleanupEmptyFolders: form.cleanupEmptyFolders,
+        unmonitorWhenCutoffMet: form.unmonitorWhenCutoffMet,
+        downloadsPath: form.downloadsPath ?? ""
+      });
       setSaved(form);
       setSaveState("saved");
       setMessage("Saved just now");
-      revalidator.revalidate();
     } catch (error) {
       setSaveState("error");
       setMessage(error instanceof Error ? error.message : "Could not save");

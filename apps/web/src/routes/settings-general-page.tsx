@@ -6,10 +6,10 @@
  *   ListCard  instance and host (page form)
  *   PageFooter (pinned: status · Discard · Save)
  *
- * Contracts: PUT /api/settings.
+ * Contracts: PATCH /api/settings.
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { useLoaderData, useRevalidator } from "react-router-dom";
+import { useLoaderData } from "react-router-dom";
 import { Field, FieldRow } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { ListCard } from "../components/ui/list-card";
@@ -22,7 +22,8 @@ import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import type { DrawerSaveState } from "../components/ui/drawer";
 import { settingsOverviewLoader } from "./settings-overview-page";
 import type { LibraryItem, PlatformSettingsSnapshot, QualityProfileItem } from "../lib/api";
-import { authedFetch } from "../lib/use-auth";
+import type { PlatformSettingsPatch } from "../lib/api/settings";
+import { useApiMutation } from "../lib/use-api-mutation";
 
 interface LoaderData {
   libraries: LibraryItem[];
@@ -41,7 +42,7 @@ interface GeneralForm {
 
 export function SettingsGeneralPage() {
   const { settings } = useLoaderData() as LoaderData;
-  const revalidator = useRevalidator();
+  const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
 
   const [savedForm, setSavedForm] = useState<GeneralForm>(() => formFrom(settings));
   const [form, setForm] = useState<GeneralForm>(savedForm);
@@ -70,22 +71,15 @@ export function SettingsGeneralPage() {
     if (state === "saving") return;
     setSaveState("saving");
     try {
-      const response = await authedFetch("/api/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...settings,
-          appInstanceName: form.appInstanceName.trim(),
-          hostBindAddress: form.hostBindAddress.trim(),
-          hostPort: Number(form.hostPort || 5099),
-          urlBase: form.urlBase.trim()
-        })
+      await settingsMutation.mutate({
+        appInstanceName: form.appInstanceName.trim(),
+        hostBindAddress: form.hostBindAddress.trim(),
+        hostPort: Number(form.hostPort || 5099),
+        urlBase: form.urlBase.trim()
       });
-      if (!response.ok) throw new Error("General settings could not be saved.");
       setSavedForm(form);
       setSaveState("saved");
       setMessage(hostChanged ? "Saved — restart Deluno to move to the new address" : "Saved just now");
-      revalidator.revalidate();
     } catch (error) {
       setSaveState("error");
       setMessage(error instanceof Error ? error.message : "Could not save");
@@ -107,7 +101,7 @@ export function SettingsGeneralPage() {
 
       <ListCard title="Instance and host" count="How this installation names and serves itself">
         <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
-          <Field label="Instance name" help="Shown in the topbar and in notifications, so you can tell two installations apart.">
+          <Field label="Instance name" help="Shown in the topbar and in notifications, so you can tell two installations apart." error={settingsMutation.fieldErrors.appInstanceName}>
             <Input
               value={form.appInstanceName}
               onChange={(event) => setForm((current) => ({ ...current, appInstanceName: event.target.value }))}
@@ -116,7 +110,7 @@ export function SettingsGeneralPage() {
             />
           </Field>
           <FieldRow>
-            <Field label="Bind address" help="Use the local address unless you need to reach Deluno from another machine.">
+            <Field label="Bind address" help="Use the local address unless you need to reach Deluno from another machine." error={settingsMutation.fieldErrors.hostBindAddress}>
               <PresetField
                 value={form.hostBindAddress}
                 onChange={(value) => setForm((current) => ({ ...current, hostBindAddress: value }))}
@@ -129,7 +123,7 @@ export function SettingsGeneralPage() {
                 customPlaceholder="IP address or hostname"
               />
             </Field>
-            <Field label="Port" help="Must not clash with another service on this machine.">
+            <Field label="Port" help="Must not clash with another service on this machine." error={settingsMutation.fieldErrors.hostPort}>
               <PresetField
                 inputType="number"
                 value={form.hostPort}
@@ -145,7 +139,7 @@ export function SettingsGeneralPage() {
               />
             </Field>
           </FieldRow>
-          <Field label="URL base" optional help="Path prefix when Deluno sits behind a reverse proxy. Leave blank when it serves from the root.">
+          <Field label="URL base" optional help="Path prefix when Deluno sits behind a reverse proxy. Leave blank when it serves from the root." error={settingsMutation.fieldErrors.urlBase}>
             <PresetField
               value={form.urlBase}
               onChange={(value) => setForm((current) => ({ ...current, urlBase: value }))}

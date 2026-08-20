@@ -15,6 +15,8 @@ import {
   type OutboundThrottleSnapshot,
   type PlatformSettingsSnapshot
 } from "../lib/api";
+import type { PlatformSettingsPatch } from "../lib/api/settings";
+import { useApiMutation } from "../lib/use-api-mutation";
 import { authedFetch } from "../lib/use-auth";
 import { useSignalREvent } from "../lib/use-signalr";
 import { configurationNavAreas } from "../components/app/settings-shell";
@@ -80,6 +82,7 @@ export function IndexersPage() {
   const { clients, pathMappings, indexers, libraries, routing, settings, telemetry, outboundThrottle } = useLoaderData() as LoaderData;
   const location = useLocation();
   const revalidator = useRevalidator();
+  const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
   const lastTelemetryRefresh = useRef(0);
   const [liveOutboundThrottle, setLiveOutboundThrottle] = useState(outboundThrottle);
 
@@ -356,7 +359,7 @@ export function IndexersPage() {
     }
   }
   async function setRemovalPermission(allowed: boolean) {
-    await run("permission", () => send("/api/settings", "PUT", { ...settings, removeCompletedDownloads: allowed }, "Setting could not be saved."));
+    await run("permission", () => settingsMutation.mutate({ removeCompletedDownloads: allowed }));
   }
   async function addMapping(clientId: string) {
     if (!newMapping.remotePath.trim() || !newMapping.localPath.trim()) return;

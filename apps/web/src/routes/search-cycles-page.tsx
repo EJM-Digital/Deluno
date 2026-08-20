@@ -8,7 +8,7 @@
  *   ListCard  failed-download handling (page form, saved by PageFooter)
  *   ListCard  recent cycles
  *
- * Contracts: PUT /api/settings/automation, PUT /api/settings,
+ * Contracts: PUT /api/settings/automation, PATCH /api/settings,
  * PUT /api/libraries/{id}/automation, POST …/search-now, POST …/skip-cycle.
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
@@ -36,6 +36,8 @@ import {
   type PlatformSettingsSnapshot,
   type SearchCycleRunItem
 } from "../lib/api";
+import type { PlatformSettingsPatch } from "../lib/api/settings";
+import { useApiMutation } from "../lib/use-api-mutation";
 import { authedFetch } from "../lib/use-auth";
 
 const INTERVAL_OPTIONS = [
@@ -99,6 +101,7 @@ interface CleanupForm {
 export function SearchCyclesPage() {
   const { automationStates, libraries, settings, searchCycles } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
+  const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
 
   useVisibleInterval(() => revalidator.revalidate(), 10_000);
 
@@ -244,24 +247,17 @@ export function SearchCyclesPage() {
     if (cleanupState === "saving") return;
     setCleanupState("saving");
     try {
-      const response = await authedFetch("/api/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...settings,
+      await settingsMutation.mutate({
           downloadHealthStrikeThreshold: Math.max(1, Math.min(20, Number(cleanup.strikeThreshold || 3))),
           cleanupBlockReleaseAfterThreshold: cleanup.blockRelease,
           cleanupQueueReplacementAfterThreshold: cleanup.queueReplacement,
           cleanupRemoveClientEntryAfterThreshold: cleanup.removeClientEntry,
           cleanupPurgePayloadAfterThreshold: cleanup.purgePayload
-        })
       });
-      if (!response.ok) throw new Error("Could not save failed-download handling.");
       // Move the baseline first: the revalidation below is slower than the render.
       setSavedCleanup(cleanup);
       setCleanupState("saved");
       setCleanupMessage("Saved just now");
-      revalidator.revalidate();
     } catch (error) {
       setCleanupState("error");
       setCleanupMessage(error instanceof Error ? error.message : "Could not save");
