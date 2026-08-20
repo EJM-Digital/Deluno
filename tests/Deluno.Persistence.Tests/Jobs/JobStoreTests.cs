@@ -20,7 +20,8 @@ public sealed class JobStoreTests
             new SqliteDatabaseMigrator(storage.Factory, timeProvider),
             NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
 
-        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var realtime = new RecordingRealtimeEventPublisher();
+        var store = new SqliteJobStore(storage.Factory, timeProvider, realtime, new NullDownloadDispatchesRepository());
 
         var queued = await store.EnqueueAsync(
             new EnqueueJobRequest(
@@ -71,6 +72,14 @@ public sealed class JobStoreTests
         Assert.NotNull(stored.CompletedUtc);
         Assert.Null(stored.LeasedUntilUtc);
         Assert.Null(stored.LastError);
+        Assert.Equal(
+            [
+                ("AutomationState", "movies-main"),
+                ("AutomationState", "movies-main"),
+                ("AutomationState", "movies-main"),
+                ("AutomationState", "movies-main")
+            ],
+            realtime.Published);
     }
 
     [Fact]
@@ -261,7 +270,8 @@ public sealed class JobStoreTests
         using var storage = TestStorage.Create();
         var timeProvider = new MutableTimeProvider(DateTimeOffset.Parse("2026-05-14T01:00:00Z"));
         await InitializeJobsAsync(storage, timeProvider);
-        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var realtime = new RecordingRealtimeEventPublisher();
+        var store = new SqliteJobStore(storage.Factory, timeProvider, realtime, new NullDownloadDispatchesRepository());
 
         var library = new LibraryAutomationPlanItem(
             LibraryId: "movies-main",
@@ -288,6 +298,13 @@ public sealed class JobStoreTests
         Assert.Equal("idle", state.Status);
         Assert.NotNull(state.NextSearchUtc);
         Assert.Equal(timeProvider.GetUtcNow().AddHours(6), state.NextSearchUtc!.Value);
+        Assert.Equal(
+            [
+                ("AutomationState", "movies-main"),
+                ("AutomationState", "movies-main"),
+                ("AutomationState", "movies-main")
+            ],
+            realtime.Published);
     }
 
     [Fact]

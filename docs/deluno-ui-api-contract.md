@@ -58,18 +58,27 @@ Implemented SignalR hub:
 Implemented SignalR event names currently modeled in frontend/backend contracts:
 
 - `DownloadProgress`
-- `DownloadTelemetryChanged`
 - `QueueItemAdded`
 - `QueueItemRemoved`
+- `QueueItemStatusChanged`
 - `HealthChanged`
 - `ActivityEventAdded`
-- `SearchProgress`
-- `ImportStatus`
-- `AutomationStatus`
+- `SearchRunCompleted`
+- `ImportStateChanged`
+- `MovieChanged`
+- `SeriesChanged`
+- `LibraryChanged`
+- `SettingsChanged`
+- `QualityProfileChanged`
+- `PolicySetChanged`
+- `IntakeSourceChanged`
+- `AutomationStateChanged`
+- `IndexerChanged`
+- `DownloadClientChanged`
 
 Current gap:
 
-- the backend publisher contains broader event ambitions than the shared interface and current frontend subscriptions fully model
+- entity-change events carry only `{ id }`; consumers refetch state rather than applying a second serialized copy
 - import/recovery and wanted-state coverage is still incomplete and should not be assumed to be authoritative everywhere
 - monitoring export endpoints are intentionally unauthenticated only inside Deluno's authenticated API boundary (no public scrape endpoint)
 

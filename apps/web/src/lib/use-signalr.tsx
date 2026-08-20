@@ -28,6 +28,7 @@
  *   ActivityEventAdded      { id, message, category, severity, createdUtc }
  *   SearchRunCompleted      { libraryId, libraryName, mediaType, plannedCount, queuedCount, skippedCount, completedUtc }
  *   ImportStateChanged      { jobId, state, entityType, entityId, title, errorMessage, changedUtc }
+ *   *Changed                { id } (identity-only state-change family)
  */
 
 import {
@@ -102,6 +103,11 @@ export interface ImportStateChangedEvent {
   changedUtc: string;
 }
 
+/** Identity only: refetch the affected entity instead of trusting event data. */
+export interface EntityChangedEvent {
+  id: string;
+}
+
 type EventMap = {
   DownloadProgress: DownloadProgressEvent;
   QueueItemAdded: QueueItemAddedEvent;
@@ -111,6 +117,16 @@ type EventMap = {
   ActivityEventAdded: ActivityEventAddedEvent;
   SearchRunCompleted: SearchRunCompletedEvent;
   ImportStateChanged: ImportStateChangedEvent;
+  MovieChanged: EntityChangedEvent;
+  SeriesChanged: EntityChangedEvent;
+  LibraryChanged: EntityChangedEvent;
+  SettingsChanged: EntityChangedEvent;
+  QualityProfileChanged: EntityChangedEvent;
+  PolicySetChanged: EntityChangedEvent;
+  IntakeSourceChanged: EntityChangedEvent;
+  AutomationStateChanged: EntityChangedEvent;
+  IndexerChanged: EntityChangedEvent;
+  DownloadClientChanged: EntityChangedEvent;
 };
 
 export type SignalREventName = keyof EventMap;

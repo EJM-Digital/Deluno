@@ -24,6 +24,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Deluno.Quality.Contracts;
+using Deluno.Realtime;
 
 namespace Deluno.Movies;
 
@@ -224,6 +225,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] UpdateMovieMonitoringRequest request,
             IMovieCatalogRepository repository,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -245,6 +247,9 @@ public static class MoviesEndpointRouteBuilderExtensions
                 request.Monitored,
                 cancellationToken);
 
+            foreach (var movieId in request.MovieIds.Distinct(StringComparer.OrdinalIgnoreCase))
+                await realtimeEventPublisher.PublishEntityChangedAsync("Movie", movieId, cancellationToken);
+
             return Results.Ok(new { updated });
         });
 
@@ -254,6 +259,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             IMovieCatalogRepository repository,
             TimeProvider timeProvider,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -265,7 +271,9 @@ public static class MoviesEndpointRouteBuilderExtensions
 
             var deferredUntilUtc = timeProvider.GetUtcNow().AddHours(Math.Clamp(request.Hours ?? 24, 1, 720));
             var deferred = await repository.DeferWantedSearchAsync(id, request.LibraryId, deferredUntilUtc, cancellationToken);
-            return deferred ? Results.Ok(new { deferredUntilUtc }) : Results.NotFound();
+            if (!deferred) return Results.NotFound();
+            await realtimeEventPublisher.PublishEntityChangedAsync("Movie", id, cancellationToken);
+            return Results.Ok(new { deferredUntilUtc });
         });
 
         movies.MapPost("/{id}/automation/skip-once", async (
@@ -273,6 +281,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             [FromBody] SkipNextAutomationRequest request,
             HttpContext httpContext,
             IMovieCatalogRepository repository,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -283,7 +292,9 @@ public static class MoviesEndpointRouteBuilderExtensions
             }
 
             var skipped = await repository.SkipNextWantedSearchAsync(id, request.LibraryId, cancellationToken);
-            return skipped ? Results.Ok(new { message = "The next scheduled search will be skipped. Manual search remains available." }) : Results.NotFound();
+            if (!skipped) return Results.NotFound();
+            await realtimeEventPublisher.PublishEntityChangedAsync("Movie", id, cancellationToken);
+            return Results.Ok(new { message = "The next scheduled search will be skipped. Manual search remains available." });
         });
 
         movies.MapPost("/{id}/search", async (
@@ -291,6 +302,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             string? mode,
             HttpContext httpContext,
             IMovieCatalogRepository repository,
+            IRealtimeEventPublisher realtimeEventPublisher,
             ILibrariesRepository platformSettingsRepository,
             IQualityRepository qualityRepository,
             IJobQueueRepository jobQueueRepository,
@@ -464,6 +476,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IJobScheduler jobScheduler,
             IJobQueueRepository jobQueueRepository,
             IActivityFeedRepository activityFeedRepository,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -580,6 +593,9 @@ public static class MoviesEndpointRouteBuilderExtensions
                     results.Add(new BulkMovieItemResult(movieId, "Unknown", false, ex.Message));
                 }
             }
+
+            foreach (var result in results.Where(item => item.Succeeded).Select(item => item.MovieId).Distinct(StringComparer.OrdinalIgnoreCase))
+                await realtimeEventPublisher.PublishEntityChangedAsync("Movie", result, cancellationToken);
 
             return Results.Ok(new BulkMovieResponse(request.MovieIds.Count, successCount, failureCount, operation, results));
         });
@@ -831,6 +847,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             [FromBody] UpdateReplacementProtectionRequest request,
             HttpContext httpContext,
             IMovieCatalogRepository repository,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -857,6 +874,7 @@ public static class MoviesEndpointRouteBuilderExtensions
                 return Results.NotFound();
             }
 
+            await realtimeEventPublisher.PublishEntityChangedAsync("Movie", id, cancellationToken);
             return Results.NoContent();
         });
 
@@ -921,6 +939,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IMovieCatalogRepository repository,
             IMetadataProvider metadataProvider,
             IActivityFeedRepository activityFeedRepository,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -955,7 +974,9 @@ public static class MoviesEndpointRouteBuilderExtensions
                 movie.Id,
                 cancellationToken);
 
-            return updated is null ? Results.NotFound() : Results.Ok(updated);
+            if (updated is null) return Results.NotFound();
+            await realtimeEventPublisher.PublishEntityChangedAsync("Movie", updated.Id, cancellationToken);
+            return Results.Ok(updated);
         });
 
         movies.MapPost("/{id}/metadata/link", async (
@@ -965,6 +986,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IMovieCatalogRepository repository,
             IMetadataProvider metadataProvider,
             IActivityFeedRepository activityFeedRepository,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1007,7 +1029,9 @@ public static class MoviesEndpointRouteBuilderExtensions
                 movie.Id,
                 cancellationToken);
 
-            return updated is null ? Results.NotFound() : Results.Ok(updated);
+            if (updated is null) return Results.NotFound();
+            await realtimeEventPublisher.PublishEntityChangedAsync("Movie", updated.Id, cancellationToken);
+            return Results.Ok(updated);
         });
 
         movies.MapPost("/{id}/metadata/jobs", async (
@@ -1047,6 +1071,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             IMovieCatalogRepository repository,
             IActivityFeedRepository activityFeedRepository,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1093,7 +1118,9 @@ public static class MoviesEndpointRouteBuilderExtensions
                 movie.Id,
                 cancellationToken);
 
-            return updated is null ? Results.NotFound() : Results.Ok(updated);
+            if (updated is null) return Results.NotFound();
+            await realtimeEventPublisher.PublishEntityChangedAsync("Movie", updated.Id, cancellationToken);
+            return Results.Ok(updated);
         });
 
         movies.MapPost("/metadata/jobs", async (
@@ -1171,6 +1198,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             ILibrariesRepository platformSettingsRepository,
             IMediaDecisionService mediaDecisionService,
             IJobScheduler jobScheduler,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1222,6 +1250,7 @@ public static class MoviesEndpointRouteBuilderExtensions
                     RelatedEntityType: "movie",
                     RelatedEntityId: movie.Id),
                 cancellationToken);
+            await realtimeEventPublisher.PublishEntityChangedAsync("Movie", movie.Id, cancellationToken);
             return Results.Created($"/api/movies/{movie.Id}", movie);
         });
 
@@ -1237,6 +1266,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] BulkQualityProfileRequest request,
             IMovieCatalogRepository repository,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1267,6 +1297,7 @@ public static class MoviesEndpointRouteBuilderExtensions
                 if (await repository.UpdateQualityProfileAsync(id, request.QualityProfileId.Trim(), cancellationToken))
                 {
                     updated++;
+                    await realtimeEventPublisher.PublishEntityChangedAsync("Movie", id, cancellationToken);
                 }
             }
 
@@ -1334,6 +1365,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] BulkReassignLibraryRequest request,
             IMovieCatalogRepository repository,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1361,6 +1393,10 @@ public static class MoviesEndpointRouteBuilderExtensions
             var count = await repository.ReassignLibraryAsync(
                 request.MovieIds, request.FromLibraryId, request.ToLibraryId, cancellationToken);
 
+            if (count > 0)
+                foreach (var movieId in request.MovieIds.Distinct(StringComparer.OrdinalIgnoreCase))
+                    await realtimeEventPublisher.PublishEntityChangedAsync("Movie", movieId, cancellationToken);
+
             return Results.Ok(new { reassigned = count });
         });
 
@@ -1368,6 +1404,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] BulkTagsRequest request,
             IMovieCatalogRepository repository,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1411,6 +1448,7 @@ public static class MoviesEndpointRouteBuilderExtensions
                     JsonSerializer.Serialize(metadata),
                     cancellationToken);
                 updated++;
+                await realtimeEventPublisher.PublishEntityChangedAsync("Movie", movie.Id, cancellationToken);
             }
 
             return Results.Ok(new { updated, tags = normalizedTags });

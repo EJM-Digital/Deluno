@@ -2,7 +2,7 @@ using Deluno.Realtime;
 
 namespace Deluno.Persistence.Tests.Support;
 
-internal sealed class NullRealtimeEventPublisher : IRealtimeEventPublisher
+internal class NullRealtimeEventPublisher : IRealtimeEventPublisher
 {
     public Task PublishHealthChangedAsync(
         string source,
@@ -111,7 +111,7 @@ internal sealed class NullRealtimeEventPublisher : IRealtimeEventPublisher
         CancellationToken cancellationToken)
         => Task.CompletedTask;
 
-    public Task PublishEntityChangedAsync(
+    public virtual Task PublishEntityChangedAsync(
         string entityType,
         string entityId,
         CancellationToken cancellationToken)

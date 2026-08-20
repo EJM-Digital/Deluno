@@ -22,10 +22,6 @@ work) — see `628fa52`.
   load with no way for a client to detect the gap; `onreconnected` only updates
   a status badge and never refetches. Until this exists, subscribing instead of
   polling is *less* correct than polling.
-- Add entity change events — `MovieChanged`, `SeriesChanged`, `LibraryChanged`,
-  `SettingsChanged`, `QualityProfileChanged`, `PolicySetChanged`,
-  `IntakeSourceChanged`, `AutomationStateChanged`. Thirteen of the dashboard's
-  seventeen data sources have no event of any kind today.
 - Replace `Clients.All` with per-screen groups.
 - Move the frontend to an entity-keyed cache that hydrates from REST and
   invalidates on change events, instead of react-router loaders on intervals.
