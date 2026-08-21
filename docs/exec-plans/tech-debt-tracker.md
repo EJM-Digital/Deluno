@@ -22,7 +22,7 @@ work) — see `628fa52`.
   load with no way for a client to detect the gap; `onreconnected` only updates
   a status badge and never refetches. Until this exists, subscribing instead of
   polling is *less* correct than polling.
-- Replace `Clients.All` with per-screen groups.
+- [x] Replace `Clients.All` with per-screen groups (#136).
 - Move the frontend to an entity-keyed cache that hydrates from REST and
   invalidates on change events, instead of react-router loaders on intervals.
 - Add a resume test that kills the connection mid-stream, replays, and asserts

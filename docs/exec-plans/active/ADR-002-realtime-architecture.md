@@ -171,8 +171,9 @@ about state.
 ### Groups
 
 Screens subscribe to what they show: `dashboard`, `library:{id}`, `queue`,
-`activity`. `Clients.All` becomes `Clients.Group(...)`. This also gives a natural
-seam if Deluno ever grows real multi-user scoping.
+`activity`. `Clients.All` becomes `Clients.Group(...)`. This was implemented in
+#136, including subject-aware resume replay and reconnect resubscription. It also
+gives a natural seam if Deluno ever grows real multi-user scoping.
 
 ### Client
 

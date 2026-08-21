@@ -92,6 +92,7 @@ public sealed class RealtimeResumeTests
         await using var first = fixture.Connect();
         first.On<RealtimeEnvelope>("RealtimeEvent", envelope => receivedBeforeDrop.Enqueue(envelope));
         await first.StartAsync();
+        await first.InvokeAsync("Subscribe", new[] { RealtimeGroups.Dashboard });
 
         for (var i = 0; i < 3; i++)
         {
@@ -110,8 +111,13 @@ public sealed class RealtimeResumeTests
 
         await using var second = fixture.Connect();
         await second.StartAsync();
+        await second.InvokeAsync("Subscribe", new[] { RealtimeGroups.Dashboard });
 
-        var result = await WaitForResumeAsync(second, lastSeqBeforeDrop, envelopes => envelopes.Count >= 3);
+        var result = await WaitForResumeAsync(
+            second,
+            lastSeqBeforeDrop,
+            new[] { RealtimeGroups.Dashboard },
+            envelopes => envelopes.Count >= 3);
 
         Assert.Equal(RealtimeResumeStatus.Replayed, result.Status);
         Assert.Equal([lastSeqBeforeDrop + 1, lastSeqBeforeDrop + 2, lastSeqBeforeDrop + 3], result.Envelopes.Select(e => e.Seq));
@@ -136,13 +142,14 @@ public sealed class RealtimeResumeTests
         await using var connection = fixture.Connect();
         connection.On<RealtimeEnvelope>("RealtimeEvent", envelope => received.Enqueue(envelope));
         await connection.StartAsync();
+        await connection.InvokeAsync("Subscribe", new[] { RealtimeGroups.Dashboard });
 
         await fixture.Publisher.PublishHealthChangedAsync("indexer", "healthy", "probe", CancellationToken.None);
         await WaitUntilAsync(() => received.Count >= 1);
 
         var latestSeq = received.Max(envelope => envelope.Seq);
 
-        var caughtUp = fixture.ResumeSource.Resume(latestSeq);
+        var caughtUp = fixture.ResumeSource.Resume(latestSeq, new[] { RealtimeGroups.Dashboard });
 
         Assert.Equal(RealtimeResumeStatus.CaughtUp, caughtUp.Status);
         Assert.Empty(caughtUp.Envelopes);
@@ -157,7 +164,7 @@ public sealed class RealtimeResumeTests
 
         await fixture.Publisher.PublishHealthChangedAsync("indexer", "healthy", "probe", CancellationToken.None);
 
-        var noHistory = fixture.ResumeSource.Resume(0);
+        var noHistory = fixture.ResumeSource.Resume(0, new[] { RealtimeGroups.Dashboard });
 
         Assert.Equal(RealtimeResumeStatus.ResyncRequired, noHistory.Status);
         Assert.Empty(noHistory.Envelopes);
@@ -174,17 +181,62 @@ public sealed class RealtimeResumeTests
             await fixture.Publisher.PublishHealthChangedAsync("indexer", "healthy", $"probe {i}", CancellationToken.None);
         }
 
-        await WaitUntilAsync(() => fixture.ResumeSource.Resume(1).Status == RealtimeResumeStatus.ResyncRequired);
+        await WaitUntilAsync(() => fixture.ResumeSource.Resume(1, new[] { RealtimeGroups.Dashboard }).Status == RealtimeResumeStatus.ResyncRequired);
 
-        var beyondWindow = fixture.ResumeSource.Resume(1);
+        var beyondWindow = fixture.ResumeSource.Resume(1, new[] { RealtimeGroups.Dashboard });
 
         Assert.Equal(RealtimeResumeStatus.ResyncRequired, beyondWindow.Status);
         Assert.Empty(beyondWindow.Envelopes);
     }
 
+    [Fact]
+    public async Task Connections_receive_only_events_for_their_subscribed_subjects()
+    {
+        await using var fixture = await StartAsync();
+
+        var queueEvents = new ConcurrentQueue<RealtimeEnvelope>();
+        var activityEvents = new ConcurrentQueue<RealtimeEnvelope>();
+        await using var queueConnection = fixture.Connect();
+        await using var activityConnection = fixture.Connect();
+        queueConnection.On<RealtimeEnvelope>("RealtimeEvent", envelope => queueEvents.Enqueue(envelope));
+        activityConnection.On<RealtimeEnvelope>("RealtimeEvent", envelope => activityEvents.Enqueue(envelope));
+        await queueConnection.StartAsync();
+        await activityConnection.StartAsync();
+        await queueConnection.InvokeAsync("Subscribe", new[] { RealtimeGroups.Queue });
+        await activityConnection.InvokeAsync("Subscribe", new[] { RealtimeGroups.Activity });
+
+        await fixture.Publisher.PublishDownloadProgressAsync(
+            "download-1",
+            "Arrival",
+            0.5,
+            12.5,
+            null,
+            "downloading",
+            CancellationToken.None);
+
+        await WaitUntilAsync(() => queueEvents.Count == 1);
+        await Task.Delay(100);
+
+        Assert.Single(queueEvents);
+        Assert.Empty(activityEvents);
+        Assert.Equal(RealtimeGroups.Queue, queueEvents.Single().Subject);
+    }
+
+    [Fact]
+    public async Task Hub_rejects_invalid_realtime_subjects()
+    {
+        await using var fixture = await StartAsync();
+        await using var connection = fixture.Connect();
+        await connection.StartAsync();
+
+        await Assert.ThrowsAsync<HubException>(() =>
+            connection.InvokeAsync("Subscribe", new[] { "settings" }));
+    }
+
     private static async Task<RealtimeResumeResult> WaitForResumeAsync(
         HubConnection connection,
         long lastSeq,
+        IReadOnlyCollection<string> subjects,
         Func<IReadOnlyList<RealtimeEnvelope>, bool> isConverged,
         int timeoutMs = 5000)
     {
@@ -192,7 +244,7 @@ public sealed class RealtimeResumeTests
         RealtimeResumeResult result;
         do
         {
-            result = await connection.InvokeAsync<RealtimeResumeResult>("Resume", lastSeq);
+            result = await connection.InvokeAsync<RealtimeResumeResult>("Resume", lastSeq, subjects);
             if (isConverged(result.Envelopes))
             {
                 return result;

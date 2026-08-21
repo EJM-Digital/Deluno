@@ -37,6 +37,7 @@ public sealed class SignalRRealtimeEventPublisher(
     {
         Enqueue(
             "HealthChanged",
+            RealtimeGroups.Dashboard,
             new
             {
                 source,
@@ -57,6 +58,7 @@ public sealed class SignalRRealtimeEventPublisher(
     {
         Enqueue(
             "DownloadProgress",
+            RealtimeGroups.Queue,
             new
             {
                 id,
@@ -79,6 +81,7 @@ public sealed class SignalRRealtimeEventPublisher(
     {
         Enqueue(
             "ActivityEventAdded",
+            RealtimeGroups.Activity,
             new
             {
                 id,
@@ -99,6 +102,7 @@ public sealed class SignalRRealtimeEventPublisher(
     {
         Enqueue(
             "QueueItemAdded",
+            RealtimeGroups.Queue,
             new
             {
                 id,
@@ -113,6 +117,7 @@ public sealed class SignalRRealtimeEventPublisher(
     {
         Enqueue(
             "QueueItemRemoved",
+            RealtimeGroups.Queue,
             new
             {
                 id
@@ -128,6 +133,7 @@ public sealed class SignalRRealtimeEventPublisher(
     {
         Enqueue(
             "QueueItemStatusChanged",
+            RealtimeGroups.Queue,
             new
             {
                 id,
@@ -149,6 +155,7 @@ public sealed class SignalRRealtimeEventPublisher(
     {
         Enqueue(
             "SearchRunCompleted",
+            RealtimeGroups.Library(libraryId),
             new
             {
                 libraryId,
@@ -174,6 +181,7 @@ public sealed class SignalRRealtimeEventPublisher(
     {
         Enqueue(
             "ImportStateChanged",
+            RealtimeGroups.Queue,
             new
             {
                 jobId,
@@ -196,6 +204,7 @@ public sealed class SignalRRealtimeEventPublisher(
     {
         Enqueue(
             "DispatchGrabAttempt",
+            RealtimeGroups.Queue,
             new
             {
                 dispatchId,
@@ -217,6 +226,7 @@ public sealed class SignalRRealtimeEventPublisher(
     {
         Enqueue(
             "DispatchGrabCompleted",
+            RealtimeGroups.Queue,
             new
             {
                 dispatchId,
@@ -238,6 +248,7 @@ public sealed class SignalRRealtimeEventPublisher(
     {
         Enqueue(
             "DispatchDetected",
+            RealtimeGroups.Queue,
             new
             {
                 dispatchId,
@@ -257,6 +268,7 @@ public sealed class SignalRRealtimeEventPublisher(
     {
         Enqueue(
             "DispatchImportStarted",
+            RealtimeGroups.Queue,
             new
             {
                 dispatchId,
@@ -277,6 +289,7 @@ public sealed class SignalRRealtimeEventPublisher(
     {
         Enqueue(
             "DispatchImportCompleted",
+            RealtimeGroups.Queue,
             new
             {
                 dispatchId,
@@ -294,8 +307,13 @@ public sealed class SignalRRealtimeEventPublisher(
         string entityId,
         CancellationToken cancellationToken)
     {
+        var subject = string.Equals(entityType, "Library", StringComparison.OrdinalIgnoreCase)
+            ? RealtimeGroups.Library(entityId)
+            : RealtimeGroups.Dashboard;
+
         Enqueue(
             $"{entityType}Changed",
+            subject,
             new
             {
                 id = entityId
@@ -310,7 +328,7 @@ public sealed class SignalRRealtimeEventPublisher(
             AddToResumeWindow(envelope);
             try
             {
-                await hubContext.Clients.All.SendAsync("RealtimeEvent", envelope, stoppingToken);
+                await hubContext.Clients.Group(envelope.Subject).SendAsync("RealtimeEvent", envelope, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -331,11 +349,12 @@ public sealed class SignalRRealtimeEventPublisher(
     /// it. That eviction then shows up as a genuine, detectable gap in the
     /// resume window instead of silently renumbering later events.
     /// </summary>
-    private void Enqueue(string eventName, object payload)
+    private void Enqueue(string eventName, string subject, object payload)
     {
         var envelope = new RealtimeEnvelope(
             Interlocked.Increment(ref _seq),
             eventName,
+            subject,
             timeProvider.GetUtcNow().ToString("O"),
             payload);
 
@@ -360,7 +379,7 @@ public sealed class SignalRRealtimeEventPublisher(
         }
     }
 
-    public RealtimeResumeResult Resume(long lastSeq)
+    public RealtimeResumeResult Resume(long lastSeq, IReadOnlyCollection<string> subjects)
     {
         lock (_ringLock)
         {
@@ -380,7 +399,9 @@ public sealed class SignalRRealtimeEventPublisher(
                 return new RealtimeResumeResult(RealtimeResumeStatus.ResyncRequired, []);
             }
 
-            var missed = _ring.Where(envelope => envelope.Seq > lastSeq).ToArray();
+            var missed = _ring
+                .Where(envelope => envelope.Seq > lastSeq && subjects.Contains(envelope.Subject, StringComparer.Ordinal))
+                .ToArray();
             return new RealtimeResumeResult(RealtimeResumeStatus.Replayed, missed);
         }
     }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { Link, useLoaderData, useNavigate } from "react-router-dom";
 import {
@@ -46,7 +46,7 @@ import { SummaryStrip } from "../components/ui/summary-strip";
 import { MetricChart, type MetricPoint } from "../components/ui/metric-chart";
 import { useLiveSeries } from "../hooks/use-live-series";
 import { useCoalescedRevalidate } from "../hooks/use-visible-interval";
-import { useSignalREvent, useSignalRResync } from "../lib/use-signalr";
+import { RealtimeGroups, useSignalREvent, useSignalRResync } from "../lib/use-signalr";
 
 interface OutcomeSeries {
   succeeded: MetricPoint[];
@@ -291,6 +291,10 @@ export function DashboardPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [liveSpeedMbps, setLiveSpeedMbps] = useState(() => data.speedMbps);
+  const librarySubjects = useMemo(
+    () => data.sources.libraries.map((library) => RealtimeGroups.Library(library.id)),
+    [data.sources.libraries]
+  );
   const invalidate = useCallback((keys: ReadonlyArray<readonly string[]>) => {
     keys.forEach((queryKey) => { void queryClient.invalidateQueries({ queryKey }); });
   }, [queryClient]);
@@ -298,24 +302,24 @@ export function DashboardPage() {
   // Action events can arrive in a burst; coalesce their broad fallback refresh.
   // The 60-second visible-only query heartbeat remains the safety net.
   const nudge = useCoalescedRevalidate(() => { void queryClient.invalidateQueries(); }, 5_000);
-  useSignalREvent("SearchRunCompleted", nudge);
-  useSignalREvent("HealthChanged", nudge);
-  useSignalREvent("QueueItemAdded", nudge);
-  useSignalREvent("QueueItemRemoved", nudge);
-  useSignalREvent("QueueItemStatusChanged", nudge);
-  useSignalREvent("ImportStateChanged", nudge);
-  useSignalREvent("MovieChanged", () => invalidate([["movies"], ["movies", "wanted"], ["dashboard-metrics"]]));
-  useSignalREvent("SeriesChanged", () => invalidate([["series"], ["series", "wanted"], ["series", "upcoming"], ["dashboard-metrics"]]));
-  useSignalREvent("LibraryChanged", () => invalidate([["libraries"], ["library-automation"]]));
-  useSignalREvent("SettingsChanged", () => invalidate([["settings"], ["setup-progress"]]));
-  useSignalREvent("QualityProfileChanged", () => invalidate([["quality-profiles"], ["setup-progress"]]));
-  useSignalREvent("PolicySetChanged", () => invalidate([["policy-sets"], ["setup-progress"]]));
-  useSignalREvent("IntakeSourceChanged", () => invalidate([["setup-progress"]]));
-  useSignalREvent("AutomationStateChanged", () => invalidate([["library-automation"], ["search-cycles"], ["search-retry-windows"]]));
-  useSignalREvent("IndexerChanged", () => invalidate([["indexers"], ["dashboard-metrics"]]));
-  useSignalREvent("DownloadClientChanged", () => invalidate([["download-clients"], ["telemetry"], ["dashboard-metrics"]]));
+  useSignalREvent("SearchRunCompleted", librarySubjects, nudge);
+  useSignalREvent("HealthChanged", RealtimeGroups.Dashboard, nudge);
+  useSignalREvent("QueueItemAdded", RealtimeGroups.Queue, nudge);
+  useSignalREvent("QueueItemRemoved", RealtimeGroups.Queue, nudge);
+  useSignalREvent("QueueItemStatusChanged", RealtimeGroups.Queue, nudge);
+  useSignalREvent("ImportStateChanged", RealtimeGroups.Queue, nudge);
+  useSignalREvent("MovieChanged", RealtimeGroups.Dashboard, () => invalidate([["movies"], ["movies", "wanted"], ["dashboard-metrics"]]));
+  useSignalREvent("SeriesChanged", RealtimeGroups.Dashboard, () => invalidate([["series"], ["series", "wanted"], ["series", "upcoming"], ["dashboard-metrics"]]));
+  useSignalREvent("LibraryChanged", librarySubjects, () => invalidate([["libraries"], ["library-automation"]]));
+  useSignalREvent("SettingsChanged", RealtimeGroups.Dashboard, () => invalidate([["settings"], ["setup-progress"]]));
+  useSignalREvent("QualityProfileChanged", RealtimeGroups.Dashboard, () => invalidate([["quality-profiles"], ["setup-progress"]]));
+  useSignalREvent("PolicySetChanged", RealtimeGroups.Dashboard, () => invalidate([["policy-sets"], ["setup-progress"]]));
+  useSignalREvent("IntakeSourceChanged", RealtimeGroups.Dashboard, () => invalidate([["setup-progress"]]));
+  useSignalREvent("AutomationStateChanged", RealtimeGroups.Dashboard, () => invalidate([["library-automation"], ["search-cycles"], ["search-retry-windows"]]));
+  useSignalREvent("IndexerChanged", RealtimeGroups.Dashboard, () => invalidate([["indexers"], ["dashboard-metrics"]]));
+  useSignalREvent("DownloadClientChanged", RealtimeGroups.Dashboard, () => invalidate([["download-clients"], ["telemetry"], ["dashboard-metrics"]]));
   useSignalRResync(() => { void queryClient.invalidateQueries(); });
-  useSignalREvent("DownloadProgress", (event) => setLiveSpeedMbps(event.speedMbps));
+  useSignalREvent("DownloadProgress", RealtimeGroups.Queue, (event) => setLiveSpeedMbps(event.speedMbps));
 
   useEffect(() => {
     setLiveSpeedMbps(data.speedMbps);
