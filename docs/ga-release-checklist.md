@@ -47,7 +47,7 @@ Exit criteria:
 
 - [ ] RC1 defects are fixed and linked in issue #78.
 - [ ] Installer/upgrade/rollback matrix is rerun and passes (#81).
-- [ ] 14-day soak starts with daily checks recorded (#82).
+- [ ] 14-day soak starts with daily checks recorded ([#82](https://github.com/jampat000/Deluno/issues/82)); follow [the soak plan](soak-plan.md).
 - [ ] Backup/restore drill succeeds on a second machine profile (#83).
 - [ ] RC2 release notes draft exists and matches shipped behavior.
 
