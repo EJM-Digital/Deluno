@@ -11,6 +11,7 @@ using Deluno.Integrations.Search;
 using Deluno.Integrations.Metadata;
 using Deluno.Libraries.Contracts;
 using Deluno.Libraries.Data;
+using Deluno.Media;
 using Deluno.Platform.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform;
@@ -1509,6 +1510,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             [FromBody] ReleaseGrabRequest request,
             HttpContext httpContext,
             ISeriesCatalogRepository repository,
+            IMediaStateRepository mediaStateRepository,
             IPlatformSettingsRepository platformSettingsRepository,
             ILibrariesRepository librariesRepository,
             IQualityRepository qualityRepository,
@@ -1525,177 +1527,62 @@ public static class SeriesEndpointRouteBuilderExtensions
                 return denied;
             }
 
-            var seriesItem = await repository.GetByIdAsync(id, cancellationToken);
-            if (seriesItem is null)
+            var result = await MediaGrabHandler.ExecuteAsync(
+                MediaKind.Series,
+                id,
+                new MediaReleaseGrabRequest(
+                    request.ReleaseName,
+                    request.IndexerId,
+                    request.IndexerName,
+                    request.DownloadUrl,
+                    request.CandidateQuality,
+                    request.SizeBytes,
+                    request.Seeders,
+                    request.Force,
+                    request.OverrideReason),
+                mediaStateRepository,
+                platformSettingsRepository,
+                librariesRepository,
+                qualityRepository,
+                jobQueueRepository,
+                acquisitionPipeline,
+                downloadClientGrabService,
+                activityFeedRepository,
+                timeProvider,
+                (seriesId, libraryId, triggerKind, outcome, now, nextEligibleUtc, lastSearchResult, releaseName, indexerName, detailsJson, cancellationToken) =>
+                    repository.RecordSearchAttemptAsync(
+                        seriesId,
+                        null,
+                        libraryId,
+                        triggerKind,
+                        outcome,
+                        now,
+                        nextEligibleUtc,
+                        lastSearchResult,
+                        releaseName,
+                        indexerName,
+                        detailsJson,
+                        cancellationToken),
+                cancellationToken);
+
+            if (result.NotFound)
             {
                 return Results.NotFound();
             }
 
-            var validation = ValidateReleaseGrab(request);
-            if (validation.Count > 0)
+            if (result.ValidationErrors is not null)
             {
-                return Results.ValidationProblem(validation);
+                return Results.ValidationProblem(result.ValidationErrors);
             }
-
-            var wanted = await repository.GetWantedSummaryAsync(cancellationToken);
-            var wantedItem = wanted.RecentItems.FirstOrDefault(item => item.SeriesId == id);
-            if (wantedItem is null || string.IsNullOrWhiteSpace(wantedItem.LibraryId))
-            {
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["seriesId"] = ["This series is not currently linked to a searchable library."]
-                });
-            }
-
-            var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
-            var library = libraries.FirstOrDefault(item => item.Id == wantedItem.LibraryId);
-            if (library is null)
-            {
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["libraryId"] = ["Deluno could not find the linked library for this series."]
-                });
-            }
-
-            var routing = await librariesRepository.GetLibraryRoutingAsync(library.Id, cancellationToken);
-            var downloadClient = routing?.DownloadClients.OrderBy(item => item.Priority).FirstOrDefault();
-            if (downloadClient is null)
-            {
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["downloadClient"] = ["Link a download client to this library before grabbing a release."]
-                });
-            }
-
-            var platformSettings = await platformSettingsRepository.GetAsync(cancellationToken);
-            var forceOverride = request.Force == true;
-            var overrideReason = string.IsNullOrWhiteSpace(request.OverrideReason)
-                ? "User manually forced this release from search results."
-                : request.OverrideReason.Trim();
-            var customFormats = await ResolveCustomFormatsAsync(qualityRepository, library.QualityProfileId, cancellationToken);
-            var sourcePriorityScore = routing?.Sources
-                .FirstOrDefault(item => string.Equals(item.IndexerId, request.IndexerId, StringComparison.OrdinalIgnoreCase)) is { } source
-                    ? Math.Max(0, 200 - source.Priority)
-                    : 0;
-            var selectedDecision = acquisitionPipeline.EvaluateSelectedRelease(
-                new AcquisitionSelectedReleaseRequest(
-                    request.ReleaseName.Trim(),
-                    request.IndexerId?.Trim(),
-                    request.IndexerName?.Trim(),
-                    request.DownloadUrl!.Trim(),
-                    wantedItem.CurrentQuality,
-                    wantedItem.TargetQuality,
-                    request.CandidateQuality?.Trim(),
-                    request.SizeBytes,
-                    request.Seeders,
-                    sourcePriorityScore,
-                    customFormats,
-                    ForceOverride: forceOverride,
-                    OverrideReason: forceOverride ? overrideReason : null,
-                    PreventLowerQualityReplacements: wantedItem.PreventLowerQualityReplacements,
-                    ScoringMode: platformSettings.SearchScoringMode));
-            if (!selectedDecision.CanDispatch)
-            {
-                var hint = selectedDecision.RequiresOverride
-                    ? " Use force override if you still want this exact release."
-                    : string.Empty;
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["force"] = [$"{selectedDecision.Reason}{hint}"]
-                });
-            }
-
-            var grabResult = await downloadClientGrabService.GrabAsync(
-                downloadClient.DownloadClientId,
-                new DownloadClientGrabRequest(
-                    request.ReleaseName.Trim(),
-                    request.DownloadUrl!.Trim(),
-                    "tv",
-                    "tv",
-                    request.IndexerName?.Trim()),
-                cancellationToken);
-
-            var auditPayload = new
-            {
-                selectedRelease = request,
-                decision = selectedDecision,
-                forceOverride,
-                overrideReason = forceOverride ? overrideReason : null,
-                grabResult
-            };
-
-            await jobQueueRepository.RecordDownloadDispatchAsync(
-                library.Id,
-                "tv",
-                "series",
-                seriesItem.Id,
-                request.ReleaseName.Trim(),
-                string.IsNullOrWhiteSpace(request.IndexerName) ? "Manual selection" : request.IndexerName.Trim(),
-                downloadClient.DownloadClientId,
-                downloadClient.DownloadClientName,
-                grabResult.Status,
-                JsonSerializer.Serialize(auditPayload),
-                grabResponseCode: grabResult.Succeeded ? 200 : 400,
-                grabFailureCode: null,
-                cancellationToken: cancellationToken);
-
-            var now = timeProvider.GetUtcNow();
-            await repository.RecordSearchAttemptAsync(
-                seriesItem.Id,
-                null,
-                library.Id,
-                forceOverride ? "manual-force-grab" : "manual-grab",
-                grabResult.Status == "sent" ? "matched" : "checked",
-                now,
-                now.AddHours(Math.Max(1, library.RetryDelayHours)),
-                forceOverride ? $"{grabResult.Message} Force override: {overrideReason}" : grabResult.Message,
-                request.ReleaseName.Trim(),
-                request.IndexerName?.Trim(),
-                JsonSerializer.Serialize(auditPayload),
-                cancellationToken);
-
-            await activityFeedRepository.RecordActivityAsync(
-                forceOverride ? "series.release.force-grabbed" : "series.release.grabbed",
-                forceOverride
-                    ? $"{seriesItem.Title} release was force grabbed and sent to {downloadClient.DownloadClientName}."
-                    : $"{seriesItem.Title} release was manually selected and sent to {downloadClient.DownloadClientName}.",
-                JsonSerializer.Serialize(auditPayload),
-                null,
-                "series",
-                seriesItem.Id,
-                cancellationToken);
-
-            await activityFeedRepository.RecordDecisionAsync(
-                new DecisionExplanationPayload(
-                    Scope: forceOverride ? "series.grab.force" : "series.grab.manual",
-                    Status: grabResult.Status,
-                    Reason: forceOverride
-                        ? $"User override selected {request.ReleaseName.Trim()}: {overrideReason}"
-                        : selectedDecision.Reason,
-                    Inputs: new Dictionary<string, string?>
-                    {
-                        ["releaseName"] = request.ReleaseName.Trim(),
-                        ["indexerName"] = request.IndexerName?.Trim(),
-                        ["downloadClientId"] = downloadClient.DownloadClientId,
-                        ["downloadClientName"] = downloadClient.DownloadClientName,
-                        ["policyVersion"] = selectedDecision.PolicyVersion,
-                        ["forceOverride"] = forceOverride.ToString()
-                    },
-                    Outcome: grabResult.Message,
-                    Alternatives: selectedDecision.Alternatives),
-                null,
-                "series",
-                seriesItem.Id,
-                cancellationToken);
 
             return Results.Ok(new
             {
-                releaseName = request.ReleaseName.Trim(),
-                indexerName = request.IndexerName?.Trim(),
-                forceOverride,
-                overrideReason = forceOverride ? overrideReason : null,
-                dispatchStatus = grabResult.Status,
-                dispatchMessage = grabResult.Message
+                result.ReleaseName,
+                result.IndexerName,
+                result.ForceOverride,
+                result.OverrideReason,
+                result.DispatchStatus,
+                result.DispatchMessage
             });
         });
 
@@ -2418,27 +2305,6 @@ public static class SeriesEndpointRouteBuilderExtensions
             cancellationToken);
 
         return metadata;
-    }
-
-    private static Dictionary<string, string[]> ValidateReleaseGrab(ReleaseGrabRequest request)
-    {
-        var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
-
-        if (string.IsNullOrWhiteSpace(request.ReleaseName))
-        {
-            errors["releaseName"] = ["Choose a release before sending it to a download client."];
-        }
-
-        if (string.IsNullOrWhiteSpace(request.DownloadUrl))
-        {
-            errors["downloadUrl"] = ["This release does not include a downloadable URL. Choose a different release or check the indexer configuration."];
-        }
-        else if (!Uri.TryCreate(request.DownloadUrl, UriKind.Absolute, out _))
-        {
-            errors["downloadUrl"] = ["The selected release has an invalid download URL."];
-        }
-
-        return errors;
     }
 
     private static string BuildEpisodeSearchTitle(string title, int seasonNumber, int episodeNumber)
