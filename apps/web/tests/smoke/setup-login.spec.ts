@@ -123,4 +123,29 @@ test.describe("first-run and auth screens", () => {
     await expect(page.getByText("Enter a download client host before testing.")).toBeVisible();
     await expect(page.getByPlaceholder("localhost or docker host")).toBeVisible();
   });
+
+  test("guided setup does not mark the baseline ready without tested acquisition services", async ({ page }) => {
+    await page.route("**/api/indexers", async (route) => {
+      await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+    });
+    await page.route("**/api/download-clients", async (route) => {
+      await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+    });
+    await authenticateAndNavigate(page, "/setup-guide");
+    await page.getByRole("button", { name: /5 Start/ }).click();
+
+    await expect(page.getByRole("button", { name: "Create baseline" })).toBeDisabled();
+    await expect(page.getByText("Test at least one search source and one download client before Deluno can be marked operationally ready.")).toBeVisible();
+  });
+
+  test("setup overview shows the complete ordered journey and keeps import lists optional", async ({ page }) => {
+    await authenticateAndNavigate(page, "/settings");
+
+    await expect(page.getByRole("heading", { name: "Setup overview" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Find & download" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "First acquisition" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Discover media" })).toBeVisible();
+    await expect(page.getByText(/Optionally configure import lists/)).toBeVisible();
+    await expect(page.getByText(/required steps complete/)).toBeVisible();
+  });
 });

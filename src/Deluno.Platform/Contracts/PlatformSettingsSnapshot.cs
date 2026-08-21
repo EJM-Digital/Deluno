@@ -42,4 +42,5 @@ public sealed record PlatformSettingsSnapshot(
     bool CleanupBlockReleaseAfterThreshold = true,
     bool CleanupQueueReplacementAfterThreshold = true,
     bool CleanupRemoveClientEntryAfterThreshold = false,
-    bool CleanupPurgePayloadAfterThreshold = false);
+    bool CleanupPurgePayloadAfterThreshold = false,
+    bool WorkflowVerified = false);

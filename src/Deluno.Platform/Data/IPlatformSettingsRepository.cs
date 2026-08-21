@@ -31,6 +31,9 @@ public interface IPlatformSettingsRepository
         bool isEnabled,
         CancellationToken cancellationToken);
 
+    Task<PlatformSettingsSnapshot> MarkWorkflowVerifiedAsync(
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<TagItem>> ListTagsAsync(CancellationToken cancellationToken);
 
     Task<TagItem> CreateTagAsync(

@@ -292,6 +292,8 @@ export function SetupGuidePage() {
     (canCreateMovies || canCreateTv) &&
     hasQualityChoice &&
     hasReleaseRuleChoice &&
+    hasReadyIndexer &&
+    hasReadyClient &&
     !indexerConnectionRequested &&
     !clientConnectionRequested;
 
@@ -371,12 +373,12 @@ export function SetupGuidePage() {
       } else if (!hasQualityChoice || !hasReleaseRuleChoice) {
         setError("Choose a picture quality and release preference before finishing simple setup.");
         setStepIndex(2);
-      } else if (indexerConnectionRequested || clientConnectionRequested) {
-        setError(indexerConnectionRequested && clientConnectionRequested
-          ? "Test the search source and download destination before Deluno saves and routes them. Or clear either connection to finish a manual-only setup."
-          : indexerConnectionRequested
-            ? "Test the search source before Deluno saves and routes it. Or clear it to finish a manual-only setup."
-            : "Test the download destination before Deluno saves and routes it. Or clear it to finish a manual-only setup.");
+      } else if (!hasReadyIndexer || !hasReadyClient || indexerConnectionRequested || clientConnectionRequested) {
+        setError(!hasReadyIndexer && !hasReadyClient
+          ? "Test at least one search source and one download client before Deluno can be marked operationally ready."
+          : !hasReadyIndexer
+            ? "Test at least one search source before Deluno can be marked operationally ready."
+            : "Test at least one download client before Deluno can be marked operationally ready.");
         setStepIndex(3);
       }
       return;
@@ -516,8 +518,8 @@ export function SetupGuidePage() {
               Get Deluno working first. Tune it later.
             </p>
             <p className="mt-3 max-w-4xl text-[length:var(--type-body)] leading-relaxed text-muted-foreground">
-              This sets up everything you need to get started: media folders, quality settings, and optional search providers and download clients.
-              Advanced users can skip this and configure everything manually.
+              This sets up the complete acquisition path: media folders, quality settings, a tested search source, and a tested download client.
+              Advanced users can skip the guide, but the setup overview will keep the installation incomplete until the acquisition path is ready.
             </p>
             <SummaryStrip
               className="mt-4"
@@ -603,7 +605,7 @@ export function SetupGuidePage() {
             form={form}
             patch={patch}
             canFinish={canFinish}
-            connectionTestsRequired={indexerConnectionRequested || clientConnectionRequested}
+            connectionTestsRequired={!hasReadyIndexer || !hasReadyClient || indexerConnectionRequested || clientConnectionRequested}
             result={result}
                 error={error}
                 rollbackMessage={rollbackMessage}
@@ -877,7 +879,7 @@ function ServicesStep({
 }) {
   return (
     <div className="grid gap-[var(--grid-gap)] xl:grid-cols-2">
-      <FieldShell icon={RadioTower} label="Search source" copy="Optional. Connect a search provider now, or skip this and add one later.">
+      <FieldShell icon={RadioTower} label="Search source" copy="Required for operational readiness. Connect and test the source Deluno will use to find releases.">
         <div className="grid gap-3">
           <PresetRadioGroup
             label="Search source presets"
@@ -918,7 +920,7 @@ function ServicesStep({
         </div>
       </FieldShell>
 
-      <FieldShell icon={DownloadCloud} label="Download client" copy="Optional but recommended. External clients stay responsible for downloading; Deluno orchestrates and imports.">
+      <FieldShell icon={DownloadCloud} label="Download client" copy="Required for operational readiness. The external client owns downloading; Deluno orchestrates, observes, and imports.">
         <div className="grid gap-3">
           <PresetRadioGroup
             label="Download client presets"
@@ -1044,7 +1046,7 @@ function FinishStep({
       {!canFinish ? (
         <p className="rounded-xl border border-warning/25 bg-warning/10 p-4 text-sm text-warning">
           {connectionTestsRequired
-            ? "Test each connection you entered before Deluno saves it. Clear a connection to continue with a manual-only setup."
+            ? "Test at least one search source and one download client before Deluno can be marked operationally ready."
             : "Choose at least one library root folder, picture quality, and release preference before Deluno can create the baseline."}
         </p>
       ) : null}
@@ -1343,14 +1345,14 @@ function buildImportPreviewRows(form: GuideForm) {
   return [
     {
       label: "Search",
-      value: form.indexerUrl.trim() ? form.indexerName || form.indexerProtocol : "Add source later",
+      value: form.indexerUrl.trim() ? form.indexerName || form.indexerProtocol : "Search source required",
       copy: form.indexerUrl.trim()
         ? `Uses ${form.indexerProtocol.toUpperCase()} categories for ${form.mediaIntent === "both" ? "movies and TV" : form.mediaIntent}.`
-        : "Deluno can create the library now and wait until a source is connected."
+        : "Deluno cannot be marked operationally ready until a search source is configured and tested."
     },
     {
       label: "Download",
-      value: form.clientHost.trim() ? form.clientName || form.clientProtocol : "No client yet",
+      value: form.clientHost.trim() ? form.clientName || form.clientProtocol : "Download client required",
       copy: form.clientHost.trim()
         ? `Routes to ${form.clientProtocol} with deluno-movies and deluno-tv categories.`
         : "Approved releases will not be sent anywhere until a download client is configured."

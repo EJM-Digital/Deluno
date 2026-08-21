@@ -9,6 +9,10 @@ Deluno keeps product, architecture, and repo-state context in the repository so 
 - `QUALITY_SCORE.md`: current quality posture and highest-interest gaps.
 - `repo-change-history.md`: commit-by-commit and subsystem-by-subsystem summary of what changed from the last shared baseline.
 - `deluno-capability-map.md`: product capability target and current direction.
+- `DELUNO_END_TO_END_WORKFLOW.md`: canonical final-state media workflow and
+  evidence requirements.
+- `DELUNO_SETUP_ORDER.md`: ordered setup journey and readiness model derived
+  from that workflow.
 - `deluno-frontend-backend-map.md`: user-facing IA and backend ownership map.
 - `deluno-ui-api-contract.md`: implemented UI-facing API contract and active gaps.
 - `external-integration-api.md`: external automation and refine-before-import surface.

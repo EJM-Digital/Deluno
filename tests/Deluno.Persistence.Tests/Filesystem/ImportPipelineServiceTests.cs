@@ -84,6 +84,7 @@ public sealed class ImportPipelineServiceTests
         Assert.True(File.Exists(destinationPath));
         Assert.Equal(new FileInfo(sourcePath).Length, new FileInfo(destinationPath).Length);
         Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(destinationPath)!, "*.deluno-*"));
+        Assert.False((await platform.GetAsync(CancellationToken.None)).WorkflowVerified);
 
         var movie = Assert.Single(await movies.ListAsync(CancellationToken.None));
         Assert.Equal("Arrival", movie.Title);
@@ -346,6 +347,7 @@ public sealed class ImportPipelineServiceTests
         Assert.Equal(
             [(dispatchId, "Interstellar.2014.WEB.1080p", "movies")],
             realtime.DispatchImportsStarted);
+        Assert.True((await platform.GetAsync(CancellationToken.None)).WorkflowVerified);
 
         var resolutions = await importResolutions.GetDispatchResolutionsAsync(dispatchId, CancellationToken.None);
         Assert.Single(resolutions);

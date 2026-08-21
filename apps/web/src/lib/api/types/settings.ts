@@ -60,6 +60,7 @@ export interface PlatformSettingsSnapshot {
   cleanupQueueReplacementAfterThreshold: boolean;
   cleanupRemoveClientEntryAfterThreshold: boolean;
   cleanupPurgePayloadAfterThreshold: boolean;
+  workflowVerified: boolean;
   updatedUtc: string;
 }
 
@@ -152,5 +153,6 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   cleanupQueueReplacementAfterThreshold: true,
   cleanupRemoveClientEntryAfterThreshold: false,
   cleanupPurgePayloadAfterThreshold: false,
+  workflowVerified: false,
   updatedUtc: new Date(0).toISOString()
 };

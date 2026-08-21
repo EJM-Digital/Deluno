@@ -1,6 +1,7 @@
 import type {
   DownloadClientItem,
   IndexerItem,
+  IntakeSourceItem,
   LibraryItem,
   PlatformSettingsSnapshot,
   PolicySetItem,
@@ -8,23 +9,26 @@ import type {
 } from "./api";
 
 export type SetupAttentionTone = "success" | "warn" | "info" | "neutral";
+export type SetupReadiness = "not-ready" | "acquisition-ready" | "automation-ready" | "operationally-ready";
 
 export interface SetupStatusInput {
   libraries: LibraryItem[];
   downloadClients: DownloadClientItem[];
   indexers: IndexerItem[];
+  intakeSources?: IntakeSourceItem[];
   policySets: PolicySetItem[];
   qualityProfiles: QualityProfileItem[];
   settings: PlatformSettingsSnapshot;
 }
 
 export interface SetupStatusStep {
-  id: "library" | "connections" | "media-plans" | "automation";
+  id: "library" | "media-plans" | "connections" | "automation" | "workflow" | "discovery";
   number: number;
   title: string;
   description: string;
   status: string;
   complete: boolean;
+  optional: boolean;
   to: string;
   action: string;
   attentionTitle: string;
@@ -45,7 +49,9 @@ export interface SetupStatusModel {
   attentionItems: SetupAttentionItem[];
   completedCount: number;
   totalCount: number;
+  optionalConfiguredCount: number;
   isComplete: boolean;
+  readiness: SetupReadiness;
   summary: string;
 }
 
@@ -60,6 +66,12 @@ export function buildSetupStatus(input: SetupStatusInput): SetupStatusModel {
   const movieLibraries = input.libraries.filter((library) => library.mediaType === "movies").length;
   const tvLibraries = input.libraries.filter((library) => library.mediaType === "tv").length;
   const autoLibraries = input.libraries.filter((library) => library.autoSearchEnabled).length;
+  const configuredLibraries = input.libraries.filter((library) => Boolean(library.rootPath?.trim())).length;
+  const enabledIntakeSources = (input.intakeSources ?? []).filter((source) => source.isEnabled);
+  const hasHealthyIndexer = healthyIndexers.length > 0;
+  const hasHealthyClient = healthyClients.length > 0;
+  const connectionsReady = hasHealthyIndexer && hasHealthyClient;
+  const automationReady = input.settings.autoStartJobs && autoLibraries > 0;
 
   const steps: SetupStatusStep[] = [
     {
@@ -68,62 +80,88 @@ export function buildSetupStatus(input: SetupStatusInput): SetupStatusModel {
       title: "Library & storage",
       description: "Create your movie and TV libraries, choose their folders, then set naming and import behaviour.",
       status:
-        input.libraries.length === 0
+        configuredLibraries === 0
           ? "Not configured"
           : `${plural(movieLibraries, "movie library")} - ${plural(tvLibraries, "TV library")}`,
-      complete: input.libraries.length > 0,
+      complete: configuredLibraries > 0,
+      optional: false,
       to: "/settings/libraries",
-      action: input.libraries.length === 0 ? "Configure library" : "Review library",
+      action: configuredLibraries === 0 ? "Configure library" : "Review library",
       attentionTitle: "Library not configured",
       attentionText: "Create at least one movie or TV library and choose its final folder."
     },
     {
-      id: "connections",
+      id: "media-plans",
       number: 2,
-      title: "Connections",
-      description: "Connect the search sources that find releases and the download clients that receive approved downloads.",
-      status:
-        enabledIndexers.length === 0 || enabledClients.length === 0
-          ? missingConnectionStatus(enabledIndexers.length, enabledClients.length)
-          : `${healthyIndexers.length}/${enabledIndexers.length} search sources healthy - ${healthyClients.length}/${enabledClients.length} download clients healthy`,
-      complete: enabledIndexers.length > 0 && enabledClients.length > 0,
-      to: "/indexers",
-      action: enabledIndexers.length === 0 || enabledClients.length === 0 ? "Configure connections" : "Review connections",
-      attentionTitle: "Connections incomplete",
-      attentionText: missingConnectionDetail(enabledIndexers.length, enabledClients.length)
+      title: "Media Plan",
+      description: "Choose the quality, size, release, and upgrade behaviour Deluno will follow.",
+      status: activePlans > 0 ? `${plural(activePlans, "active Media Plan")} - ${plural(input.qualityProfiles.length, "quality profile")}` : "No active Media Plan",
+      complete: activePlans > 0,
+      optional: false,
+      to: "/settings/policy-sets",
+      action: activePlans > 0 ? "Review Media Plan" : "Choose Media Plan",
+      attentionTitle: "No Media Plan selected",
+      attentionText: "Choose a Media Plan so Deluno knows which releases to accept, hold, reject, and upgrade."
     },
     {
-      id: "media-plans",
+      id: "connections",
       number: 3,
-      title: "Media Plans",
-      description: "Choose the Media Plan Deluno follows for quality, size, releases, and upgrades.",
-      status:
-        activePlans > 0
-          ? `${plural(activePlans, "active Media Plan")} - ${plural(input.qualityProfiles.length, "quality profile")}`
-          : "No active Media Plan",
-      complete: activePlans > 0,
-      to: "/settings/policy-sets",
-      action: activePlans > 0 ? "Review Media Plans" : "Choose Media Plan",
-      attentionTitle: "No Media Plan selected",
-      attentionText: "Choose a default Media Plan so Deluno knows the quality, size, release, and upgrade rules to follow."
+      title: "Find & download",
+      description: "Connect and test the search sources that find releases and the download clients that receive approved work.",
+      status: connectionStatus(enabledIndexers.length, healthyIndexers.length, enabledClients.length, healthyClients.length),
+      complete: connectionsReady,
+      optional: false,
+      to: "/indexers",
+      action: connectionsReady ? "Review connections" : "Configure connections",
+      attentionTitle: "Acquisition connections not ready",
+      attentionText: missingConnectionDetail(healthyIndexers.length, healthyClients.length)
     },
     {
       id: "automation",
       number: 4,
       title: "Automation & recovery",
       description: "Decide when Deluno searches, upgrades, retries failed downloads, and alerts you when decisions need attention.",
-      status: input.settings.autoStartJobs
-        ? `${plural(autoLibraries, "library automation setting")} active`
-        : "Background automation is paused",
-      complete: input.settings.autoStartJobs,
+      status: automationStatus(input.settings.autoStartJobs, autoLibraries),
+      complete: automationReady,
+      optional: false,
       to: "/settings/automation",
-      action: input.settings.autoStartJobs ? "Review automation" : "Configure automation",
-      attentionTitle: "Automation paused",
-      attentionText: "Turn background automation on when you want scheduled searches, upgrades, retries, and recovery checks to run."
+      action: automationReady ? "Review automation" : "Configure automation",
+      attentionTitle: "Automation is not ready",
+      attentionText: automationAttentionText(input.settings.autoStartJobs, autoLibraries)
+    },
+    {
+      id: "workflow",
+      number: 5,
+      title: "First acquisition",
+      description: "Run one complete search, dispatch, download, import, and catalogue flow before calling setup operationally ready.",
+      status: input.settings.workflowVerified ? "End-to-end acquisition verified" : "First end-to-end acquisition not verified",
+      complete: input.settings.workflowVerified,
+      optional: false,
+      to: "/movies",
+      action: input.settings.workflowVerified ? "Review first flow" : "Run first acquisition",
+      attentionTitle: "First workflow not verified",
+      attentionText: "Add or choose a title, dispatch a release, and verify that the completed download imports into the library."
+    },
+    {
+      id: "discovery",
+      number: 6,
+      title: "Discover media",
+      description: "Optionally configure import lists or watchlists with provenance, exclusions, and reviewable sync results.",
+      status: enabledIntakeSources.length > 0 ? `${plural(enabledIntakeSources.length, "import list")} enabled` : "Optional - not configured",
+      complete: enabledIntakeSources.length > 0,
+      optional: true,
+      to: "/settings/lists",
+      action: enabledIntakeSources.length > 0 ? "Review import lists" : "Configure import lists",
+      attentionTitle: "Import lists are optional",
+      attentionText: "Add import lists only if you want Deluno to discover titles for you. Manual title entry remains available."
     }
   ];
 
-  const attentionItems: SetupAttentionItem[] = steps
+  const requiredSteps = steps.filter((step) => !step.optional);
+  const completedCount = requiredSteps.filter((step) => step.complete).length;
+  const totalCount = requiredSteps.length;
+  const optionalConfiguredCount = steps.filter((step) => step.optional && step.complete).length;
+  const attentionItems: SetupAttentionItem[] = requiredSteps
     .filter((step) => !step.complete)
     .map((step) => ({
       id: step.id,
@@ -134,7 +172,7 @@ export function buildSetupStatus(input: SetupStatusInput): SetupStatusModel {
       tone: "warn"
     }));
 
-  if (enabledIndexers.length > 0 && enabledClients.length > 0 && unhealthyIndexers + unhealthyClients > 0) {
+  if (connectionsReady && unhealthyIndexers + unhealthyClients > 0) {
     attentionItems.push({
       id: "connection-health",
       title: "Connection health needs review",
@@ -145,35 +183,59 @@ export function buildSetupStatus(input: SetupStatusInput): SetupStatusModel {
     });
   }
 
-  const nextStep = steps.find((step) => !step.complete) ?? null;
-  const completedCount = steps.filter((step) => step.complete).length;
+  const nextStep = requiredSteps.find((step) => !step.complete) ?? null;
+  const isComplete = completedCount === totalCount;
+  const readiness: SetupReadiness = !steps[0].complete || !steps[1].complete || !connectionsReady
+    ? "not-ready"
+    : !automationReady
+      ? "acquisition-ready"
+      : !input.settings.workflowVerified
+        ? "automation-ready"
+        : "operationally-ready";
 
   return {
     steps,
     attentionItems,
     completedCount,
-    totalCount: steps.length,
-    isComplete: completedCount === steps.length,
+    totalCount,
+    optionalConfiguredCount,
+    isComplete,
+    readiness,
     summary: nextStep
       ? `Start with step ${nextStep.number}: ${nextStep.title}.`
-      : attentionItems.length > 0
-        ? "Core setup is complete. Review connection health before relying on automation."
-        : "Core setup complete. No setup items need attention."
+      : optionalConfiguredCount > 0
+        ? "Operational setup complete. Your import lists are also configured."
+        : "Operational setup complete. Import lists are optional and can be added later."
   };
 }
 
-function missingConnectionStatus(enabledIndexers: number, enabledClients: number) {
+function connectionStatus(enabledIndexers: number, healthyIndexers: number, enabledClients: number, healthyClients: number) {
   if (enabledIndexers === 0 && enabledClients === 0) return "Search sources and download clients still need to be connected";
-  if (enabledIndexers === 0) return "Search sources still need to be connected";
-  return "Download clients still need to be connected";
+  if (healthyIndexers === 0 && healthyClients === 0) return "Search sources and download clients need a successful connection test";
+  if (healthyIndexers === 0) return "A healthy search source still needs to be connected";
+  if (healthyClients === 0) return "A healthy download client still needs to be connected";
+  return `${healthyIndexers}/${enabledIndexers} search sources healthy - ${healthyClients}/${enabledClients} download clients healthy`;
 }
 
-function missingConnectionDetail(enabledIndexers: number, enabledClients: number) {
-  if (enabledIndexers === 0 && enabledClients === 0) {
-    return "Add at least one search source and one download client before Deluno can find and send releases.";
+function missingConnectionDetail(healthyIndexers: number, healthyClients: number) {
+  if (healthyIndexers === 0 && healthyClients === 0) {
+    return "Add and test at least one search source and one download client before Deluno can find and send releases.";
   }
-  if (enabledIndexers === 0) return "Add at least one enabled search source so Deluno can find releases.";
-  return "Add at least one enabled download client so Deluno can send approved releases.";
+  if (healthyIndexers === 0) return "Add and test at least one enabled search source so Deluno can find releases.";
+  return "Add and test at least one enabled download client so Deluno can send approved releases.";
+}
+
+function automationStatus(autoStartJobs: boolean, autoLibraries: number) {
+  if (!autoStartJobs) return "Background automation is paused";
+  if (autoLibraries === 0) return "No library automation is enabled";
+  return `${plural(autoLibraries, "library automation setting")} active`;
+}
+
+function automationAttentionText(autoStartJobs: boolean, autoLibraries: number) {
+  if (!autoStartJobs) return "Turn background automation on when you want scheduled searches, upgrades, retries, and recovery checks to run.";
+  return autoLibraries === 0
+    ? "Enable missing or upgrade searches on at least one library so Deluno can operate the configured acquisition plan."
+    : "Review the automation and recovery settings before relying on scheduled acquisition.";
 }
 
 function formatHealthParts(unhealthyIndexers: number, unhealthyClients: number) {
