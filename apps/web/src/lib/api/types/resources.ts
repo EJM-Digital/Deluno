@@ -542,6 +542,7 @@ export interface DownloadClientTelemetrySnapshot {
   queue: DownloadQueueItem[];
   history: DownloadClientHistoryItem[];
   capturedUtc: string;
+  historyTruncated: boolean;
 }
 
 export interface DownloadTelemetryOverview {

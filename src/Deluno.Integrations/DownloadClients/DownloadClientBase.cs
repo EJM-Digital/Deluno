@@ -43,7 +43,9 @@ public abstract class DownloadClientBase : IDownloadClient
         string health,
         string? message,
         IReadOnlyList<DownloadClientHistoryItem>? history = null)
-        => new(
+    {
+        var historyItems = (history ?? CreateHistoryFromQueue(client, queue, capturedUtc)).ToArray();
+        return new(
             ClientId: client.Id,
             ClientName: client.Name,
             Protocol: client.Protocol,
@@ -53,8 +55,10 @@ public abstract class DownloadClientBase : IDownloadClient
             Capabilities: Capabilities,
             Summary: Summarize(queue),
             Queue: queue,
-            History: history ?? CreateHistoryFromQueue(client, queue, capturedUtc),
-            CapturedUtc: capturedUtc);
+            History: historyItems.Take(DownloadClientTelemetryLimits.HistoryWindow).ToArray(),
+            CapturedUtc: capturedUtc,
+            HistoryTruncated: historyItems.Length > DownloadClientTelemetryLimits.HistoryWindow);
+    }
 
     protected static IReadOnlyList<DownloadClientHistoryItem> CreateHistoryFromQueue(
         DownloadClientItem client,
@@ -63,7 +67,6 @@ public abstract class DownloadClientBase : IDownloadClient
         => queue
             .Where(item => item.Status is DownloadQueueStatuses.Completed or DownloadQueueStatuses.ImportReady || !string.IsNullOrWhiteSpace(item.ErrorMessage))
             .OrderByDescending(item => item.AddedUtc)
-            .Take(30)
             .Select(item => new DownloadClientHistoryItem(
                 item.Id, client.Id, client.Name, client.Protocol, item.MediaType, item.Title,
                 item.ReleaseName, item.Category,

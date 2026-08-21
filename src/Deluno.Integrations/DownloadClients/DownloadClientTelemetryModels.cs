@@ -16,6 +16,14 @@ public static class DownloadQueueStatuses
     public const string Completed = "completed";
 }
 
+internal static class DownloadClientTelemetryLimits
+{
+    // The history drawer is a recent-activity view, not an archive. Dispatch
+    // history in jobs.db is the archive, so one explicit window protects every
+    // client adapter without silently varying by protocol.
+    public const int HistoryWindow = 200;
+}
+
 public sealed record DownloadTelemetrySummary(
     int ActiveCount,
     int QueuedCount,
@@ -101,7 +109,8 @@ public sealed record DownloadClientTelemetrySnapshot(
     DownloadTelemetrySummary Summary,
     IReadOnlyList<DownloadQueueItem> Queue,
     IReadOnlyList<DownloadClientHistoryItem> History,
-    DateTimeOffset CapturedUtc);
+    DateTimeOffset CapturedUtc,
+    bool HistoryTruncated = false);
 
 public sealed record DownloadTelemetryOverview(
     DownloadTelemetrySummary Summary,

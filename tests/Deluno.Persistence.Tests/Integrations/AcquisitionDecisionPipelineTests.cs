@@ -87,6 +87,30 @@ public sealed class AcquisitionDecisionPipelineTests
     }
 
     [Fact]
+    public async Task PlanAsync_explains_every_candidate_without_a_twelve_item_cap()
+    {
+        var candidates = Enumerable.Range(1, 20)
+            .Select(index => Candidate("eligible", meetsCutoff: false, qualityDelta: 0) with
+            {
+                ReleaseName = $"Dune.Part.Two.2024.Release-{index:00}"
+            })
+            .ToArray();
+        var pipeline = new AcquisitionDecisionPipeline(
+            new StubPlanner(new MediaSearchPlan(candidates[0], candidates, "candidates")));
+
+        var plan = await pipeline.PlanAsync(new AcquisitionDecisionRequest(
+            "Dune Part Two",
+            2024,
+            "movies",
+            null,
+            "WEB 1080p",
+            Sources: [Source()],
+            DownloadClients: [DownloadClient()]));
+
+        Assert.Equal(candidates.Length, plan.Alternatives.Count);
+    }
+
+    [Fact]
     public void EvaluateSelectedRelease_requires_force_for_unsafe_manual_release()
     {
         var pipeline = new AcquisitionDecisionPipeline(new StubPlanner(new MediaSearchPlan(null, [], "")));

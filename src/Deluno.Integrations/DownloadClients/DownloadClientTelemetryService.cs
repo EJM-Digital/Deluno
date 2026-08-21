@@ -225,7 +225,9 @@ public sealed class DownloadClientTelemetryService(
         string health,
         string? message,
         IReadOnlyList<DownloadClientHistoryItem>? history = null)
-        => new(
+    {
+        var historyItems = (history ?? CreateHistoryFromQueue(client, queue, capturedUtc)).ToArray();
+        return new(
             ClientId: client.Id,
             ClientName: client.Name,
             Protocol: client.Protocol,
@@ -237,8 +239,10 @@ public sealed class DownloadClientTelemetryService(
                 : new DownloadClientTelemetryCapabilities(false, false, false, false, false, false, "unknown"),
             Summary: Summarize(queue),
             Queue: queue,
-            History: history ?? CreateHistoryFromQueue(client, queue, capturedUtc),
-            CapturedUtc: capturedUtc);
+            History: historyItems.Take(DownloadClientTelemetryLimits.HistoryWindow).ToArray(),
+            CapturedUtc: capturedUtc,
+            HistoryTruncated: historyItems.Length > DownloadClientTelemetryLimits.HistoryWindow);
+    }
 
     private async Task<DownloadClientTelemetrySnapshot> AttachHealthFindingsAsync(
         DownloadClientTelemetrySnapshot snapshot,
@@ -514,13 +518,15 @@ public sealed class DownloadClientTelemetryService(
             return snapshot;
         }
 
+        var historyItems = snapshot.History
+            .Concat(dispatchHistory)
+            .OrderByDescending(item => item.CompletedUtc)
+            .ToArray();
+
         return snapshot with
         {
-            History = snapshot.History
-                .Concat(dispatchHistory)
-                .OrderByDescending(item => item.CompletedUtc)
-                .Take(50)
-                .ToArray()
+            History = historyItems.Take(DownloadClientTelemetryLimits.HistoryWindow).ToArray(),
+            HistoryTruncated = snapshot.HistoryTruncated || historyItems.Length > DownloadClientTelemetryLimits.HistoryWindow
         };
     }
 
@@ -725,7 +731,6 @@ public sealed class DownloadClientTelemetryService(
         return queue
             .Where(item => item.Status is DownloadQueueStatuses.Completed or DownloadQueueStatuses.ImportReady || !string.IsNullOrWhiteSpace(item.ErrorMessage))
             .OrderByDescending(item => item.AddedUtc)
-            .Take(30)
             .Select(item => new DownloadClientHistoryItem(
                 Id: item.Id,
                 ClientId: client.Id,
