@@ -3,6 +3,7 @@ using Deluno.Infrastructure.Storage.Migrations;
 using Deluno.Jobs.Data;
 using Deluno.Libraries.Contracts;
 using Deluno.Libraries.Data;
+using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Platform.Contracts;
@@ -215,7 +216,13 @@ public sealed class ImportPipelineServiceTests
             CancellationToken.None);
 
         Assert.True(repair.Repaired);
-        Assert.Empty(await movies.ListTrackedFilesAsync(issue.LibraryId, CancellationToken.None));
+        var remainingTrackedFiles = new List<MovieTrackedFileItem>();
+        await foreach (var file in movies.StreamTrackedFilesAsync(issue.LibraryId, CancellationToken.None))
+        {
+            remainingTrackedFiles.Add(file);
+        }
+
+        Assert.Empty(remainingTrackedFiles);
     }
 
     [Fact]

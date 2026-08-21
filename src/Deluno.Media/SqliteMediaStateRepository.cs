@@ -727,6 +727,52 @@ public sealed class SqliteMediaStateRepository(
         return new MediaImportResult(mediaId, created);
     }
 
+    public async IAsyncEnumerable<MediaTrackedFileItem> StreamTrackedFilesAsync(
+        MediaKind kind,
+        string libraryId,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var map = MediaTableMap.For(kind);
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            map.DatabaseName,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT
+                w.{map.WantedMediaIdColumn},
+                w.library_id,
+                {map.EntryAlias}.title,
+                {map.EntryAlias}.{map.YearColumn},
+                w.file_path,
+                w.file_size_bytes,
+                w.imported_utc,
+                w.last_verified_utc
+            FROM {map.WantedTable} w
+            INNER JOIN {map.EntryTable} {map.EntryAlias}
+                ON {map.EntryAlias}.id = w.{map.WantedMediaIdColumn}
+            WHERE w.library_id = @libraryId
+              AND w.has_file = 1
+              AND w.file_path IS NOT NULL
+            ORDER BY {map.EntryAlias}.title COLLATE NOCASE, {map.EntryAlias}.id;
+            """;
+        AddParameter(command, "@libraryId", libraryId);
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            yield return new MediaTrackedFileItem(
+                MediaId: reader.GetString(0),
+                LibraryId: reader.GetString(1),
+                Title: reader.GetString(2),
+                Year: reader.IsDBNull(3) ? null : reader.GetInt32(3),
+                FilePath: reader.GetString(4),
+                FileSizeBytes: reader.IsDBNull(5) ? null : reader.GetInt64(5),
+                ImportedUtc: reader.IsDBNull(6) ? null : ParseTimestamp(reader.GetString(6)),
+                LastVerifiedUtc: reader.IsDBNull(7) ? null : ParseTimestamp(reader.GetString(7)));
+        }
+    }
+
     public async Task<MediaEntryDetails?> GetByIdAsync(
         MediaKind kind,
         string id,

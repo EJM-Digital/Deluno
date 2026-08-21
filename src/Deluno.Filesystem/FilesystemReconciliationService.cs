@@ -41,9 +41,22 @@ public sealed class FilesystemReconciliationService(
         {
             cancellationToken.ThrowIfCancellationRequested();
             var rootPath = Path.GetFullPath(library.RootPath);
-            var tracked = await ListTrackedFilesAsync(library, cancellationToken);
-            issues.AddRange(FindMissingTrackedFiles(library, tracked));
-            issues.AddRange(FindOrphanFiles(library, rootPath, tracked));
+            var knownTrackedPaths = new HashSet<string>(
+                OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+
+            await foreach (var tracked in StreamTrackedFilesAsync(library, cancellationToken))
+            {
+                var fullPath = Path.GetFullPath(tracked.Path);
+                if (File.Exists(tracked.Path))
+                {
+                    knownTrackedPaths.Add(fullPath);
+                    continue;
+                }
+
+                issues.Add(CreateMissingTrackedFileIssue(library, tracked));
+            }
+
+            issues.AddRange(FindOrphanFiles(library, rootPath, knownTrackedPaths));
             issues.AddRange(FindPartialImportArtifacts(library, rootPath));
         }
 
@@ -132,83 +145,79 @@ public sealed class FilesystemReconciliationService(
         return new FilesystemReconciliationRepairResult(false, action, "This repair action is not supported for the selected reconciliation issue.");
     }
 
-    private async Task<IReadOnlyList<TrackedFile>> ListTrackedFilesAsync(
+    private async IAsyncEnumerable<TrackedFile> StreamTrackedFilesAsync(
         LibraryItem library,
-        CancellationToken cancellationToken)
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
     {
         if (NormalizeMediaType(library.MediaType) == "tv")
         {
-            var tracked = await seriesCatalogRepository.ListTrackedFilesAsync(library.Id, cancellationToken);
-            return tracked.Select(item => new TrackedFile(
-                MediaType: "tv",
-                LibraryId: item.LibraryId,
-                EntityId: item.SeriesId,
-                EpisodeId: item.EpisodeId,
-                Title: item.EpisodeId is null
-                    ? item.Title
-                    : $"{item.Title} S{item.SeasonNumber:00}E{item.EpisodeNumber:00}",
-                Path: item.FilePath,
-                FileSizeBytes: item.FileSizeBytes)).ToArray();
-        }
-
-        var movies = await movieCatalogRepository.ListTrackedFilesAsync(library.Id, cancellationToken);
-        return movies.Select(item => new TrackedFile(
-            MediaType: "movies",
-            LibraryId: item.LibraryId,
-            EntityId: item.MovieId,
-            EpisodeId: null,
-            Title: item.ReleaseYear is null ? item.Title : $"{item.Title} ({item.ReleaseYear})",
-            Path: item.FilePath,
-            FileSizeBytes: item.FileSizeBytes)).ToArray();
-    }
-
-    private static IEnumerable<FilesystemReconciliationIssue> FindMissingTrackedFiles(
-        LibraryItem library,
-        IReadOnlyList<TrackedFile> tracked)
-    {
-        foreach (var item in tracked)
-        {
-            if (File.Exists(item.Path))
+            await foreach (var item in seriesCatalogRepository.StreamTrackedFilesAsync(
+                               library.Id,
+                               cancellationToken))
             {
-                continue;
+                yield return new TrackedFile(
+                    MediaType: "tv",
+                    LibraryId: item.LibraryId,
+                    EntityId: item.SeriesId,
+                    EpisodeId: item.EpisodeId,
+                    Title: item.EpisodeId is null
+                        ? item.Title
+                        : $"{item.Title} S{item.SeasonNumber:00}E{item.EpisodeNumber:00}",
+                    Path: item.FilePath,
+                    FileSizeBytes: item.FileSizeBytes);
             }
 
-            yield return new FilesystemReconciliationIssue(
-                Id: EncodeIssueToken("missingTrackedFile", item.MediaType, library.Id, item.EntityId, item.EpisodeId, item.Path),
-                Kind: "missingTrackedFile",
-                Severity: "critical",
-                MediaType: item.MediaType,
-                LibraryId: library.Id,
-                LibraryName: library.Name,
-                Path: item.Path,
-                Title: item.Title,
-                Summary: "The database says this item has a file, but the tracked path is missing from disk.",
-                RecommendedAction: "Mark it missing so search/import can recover, or restore the file manually before running reconciliation again.",
-                RepairActions: ["mark-missing"],
-                EntityId: item.EntityId,
-                EpisodeId: item.EpisodeId,
-                ExpectedSizeBytes: item.FileSizeBytes);
+            yield break;
+        }
+
+        await foreach (var item in movieCatalogRepository.StreamTrackedFilesAsync(
+                           library.Id,
+                           cancellationToken))
+        {
+            yield return new TrackedFile(
+                MediaType: "movies",
+                LibraryId: item.LibraryId,
+                EntityId: item.MovieId,
+                EpisodeId: null,
+                Title: item.ReleaseYear is null ? item.Title : $"{item.Title} ({item.ReleaseYear})",
+                Path: item.FilePath,
+                FileSizeBytes: item.FileSizeBytes);
         }
     }
+
+    private static FilesystemReconciliationIssue CreateMissingTrackedFileIssue(
+        LibraryItem library,
+        TrackedFile item)
+        => new(
+            Id: EncodeIssueToken("missingTrackedFile", item.MediaType, library.Id, item.EntityId, item.EpisodeId, item.Path),
+            Kind: "missingTrackedFile",
+            Severity: "critical",
+            MediaType: item.MediaType,
+            LibraryId: library.Id,
+            LibraryName: library.Name,
+            Path: item.Path,
+            Title: item.Title,
+            Summary: "The database says this item has a file, but the tracked path is missing from disk.",
+            RecommendedAction: "Mark it missing so search/import can recover, or restore the file manually before running reconciliation again.",
+            RepairActions: ["mark-missing"],
+            EntityId: item.EntityId,
+            EpisodeId: item.EpisodeId,
+            ExpectedSizeBytes: item.FileSizeBytes);
 
     private static IEnumerable<FilesystemReconciliationIssue> FindOrphanFiles(
         LibraryItem library,
         string rootPath,
-        IReadOnlyList<TrackedFile> tracked)
+        IReadOnlySet<string> knownTrackedPaths)
     {
         if (!Directory.Exists(rootPath))
         {
             yield break;
         }
 
-        var known = tracked
-            .Select(item => Path.GetFullPath(item.Path))
-            .ToHashSet(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
-
         foreach (var path in EnumerateFilesSafe(rootPath).Where(IsVideoFile))
         {
             var fullPath = Path.GetFullPath(path);
-            if (known.Contains(fullPath) || IsDelunoArtifact(fullPath))
+            if (knownTrackedPaths.Contains(fullPath) || IsDelunoArtifact(fullPath))
             {
                 continue;
             }

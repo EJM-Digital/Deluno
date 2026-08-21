@@ -129,6 +129,16 @@ public sealed record MediaExistingImportRequest(
 
 public sealed record MediaImportResult(string Id, bool Created);
 
+public sealed record MediaTrackedFileItem(
+    string MediaId,
+    string LibraryId,
+    string Title,
+    int? Year,
+    string FilePath,
+    long? FileSizeBytes,
+    DateTimeOffset? ImportedUtc,
+    DateTimeOffset? LastVerifiedUtc);
+
 public interface IMediaStateRepository
 {
     Task<MediaWantedSummary> GetWantedSummaryAsync(MediaKind kind, CancellationToken cancellationToken);
@@ -215,6 +225,11 @@ public interface IMediaStateRepository
         MediaExistingImportRequest request,
         System.Data.Common.DbConnection connection,
         System.Data.Common.DbTransaction transaction,
+        CancellationToken cancellationToken);
+
+    IAsyncEnumerable<MediaTrackedFileItem> StreamTrackedFilesAsync(
+        MediaKind kind,
+        string libraryId,
         CancellationToken cancellationToken);
 
     Task<Deluno.Contracts.MediaDailyMetrics> GetDailyMetricsAsync(

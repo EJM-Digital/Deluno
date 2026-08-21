@@ -1862,17 +1862,38 @@ public sealed class SqliteSeriesCatalogRepository(
         return created;
     }
 
-    public async Task<IReadOnlyList<SeriesTrackedFileItem>> ListTrackedFilesAsync(
+    public async IAsyncEnumerable<SeriesTrackedFileItem> StreamTrackedFilesAsync(
         string libraryId,
-        CancellationToken cancellationToken)
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var items = new List<SeriesTrackedFileItem>();
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Series,
             cancellationToken);
 
-        using (var series = connection.CreateCommand())
+        if (sharedMediaStateRepository is not null)
         {
+            await foreach (var item in sharedMediaStateRepository.StreamTrackedFilesAsync(
+                               MediaKind.Series,
+                               libraryId,
+                               cancellationToken))
+            {
+                yield return new SeriesTrackedFileItem(
+                    SeriesId: item.MediaId,
+                    EpisodeId: null,
+                    LibraryId: item.LibraryId,
+                    Title: item.Title,
+                    StartYear: item.Year,
+                    SeasonNumber: null,
+                    EpisodeNumber: null,
+                    FilePath: item.FilePath,
+                    FileSizeBytes: item.FileSizeBytes,
+                    ImportedUtc: item.ImportedUtc,
+                    LastVerifiedUtc: item.LastVerifiedUtc);
+            }
+        }
+        else
+        {
+            using var series = connection.CreateCommand();
             series.CommandText =
                 """
                 SELECT
@@ -1889,14 +1910,14 @@ public sealed class SqliteSeriesCatalogRepository(
                 WHERE w.library_id = @libraryId
                   AND w.has_file = 1
                   AND w.file_path IS NOT NULL
-                ORDER BY s.title COLLATE NOCASE;
+                ORDER BY s.title COLLATE NOCASE, s.id;
                 """;
             AddParameter(series, "@libraryId", libraryId);
 
             using var reader = await series.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
-                items.Add(new SeriesTrackedFileItem(
+                yield return new SeriesTrackedFileItem(
                     SeriesId: reader.GetString(0),
                     EpisodeId: null,
                     LibraryId: reader.GetString(1),
@@ -1907,7 +1928,7 @@ public sealed class SqliteSeriesCatalogRepository(
                     FilePath: reader.GetString(4),
                     FileSizeBytes: reader.IsDBNull(5) ? null : reader.GetInt64(5),
                     ImportedUtc: reader.IsDBNull(6) ? null : ParseTimestamp(reader.GetString(6)),
-                    LastVerifiedUtc: reader.IsDBNull(7) ? null : ParseTimestamp(reader.GetString(7))));
+                    LastVerifiedUtc: reader.IsDBNull(7) ? null : ParseTimestamp(reader.GetString(7)));
             }
         }
 
@@ -1940,7 +1961,7 @@ public sealed class SqliteSeriesCatalogRepository(
             using var reader = await episodes.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
-                items.Add(new SeriesTrackedFileItem(
+                yield return new SeriesTrackedFileItem(
                     SeriesId: reader.GetString(0),
                     EpisodeId: reader.GetString(1),
                     LibraryId: reader.GetString(2),
@@ -1951,11 +1972,9 @@ public sealed class SqliteSeriesCatalogRepository(
                     FilePath: reader.GetString(7),
                     FileSizeBytes: reader.IsDBNull(8) ? null : reader.GetInt64(8),
                     ImportedUtc: reader.IsDBNull(9) ? null : ParseTimestamp(reader.GetString(9)),
-                    LastVerifiedUtc: reader.IsDBNull(10) ? null : ParseTimestamp(reader.GetString(10))));
+                    LastVerifiedUtc: reader.IsDBNull(10) ? null : ParseTimestamp(reader.GetString(10)));
             }
         }
-
-        return items;
     }
 
     public async Task<bool> MarkTrackedFileMissingAsync(
