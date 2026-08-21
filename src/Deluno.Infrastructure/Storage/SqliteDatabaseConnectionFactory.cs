@@ -39,10 +39,47 @@ public sealed class SqliteDatabaseConnectionFactory(IOptions<StoragePathOptions>
             requiresInitialization = !InitializedPaths.ContainsKey(databasePath);
         }
 
+        try
+        {
+            return await OpenConfiguredConnectionAsync(
+                databasePath,
+                SqliteOpenMode.ReadWriteCreate,
+                requiresInitialization,
+                cancellationToken);
+        }
+        finally
+        {
+            initializationLock?.Release();
+        }
+    }
+
+    public async ValueTask<DbConnection> OpenReadOnlyConnectionAsync(
+        string databaseName,
+        CancellationToken cancellationToken = default)
+    {
+        var databasePath = GetDatabasePath(databaseName);
+        if (!InitializedPaths.ContainsKey(databasePath) || !File.Exists(databasePath))
+        {
+            await using var writableConnection = await OpenConnectionAsync(databaseName, cancellationToken);
+        }
+
+        return await OpenConfiguredConnectionAsync(
+            databasePath,
+            SqliteOpenMode.ReadOnly,
+            applyInitializationPragmas: false,
+            cancellationToken);
+    }
+
+    private static async Task<DbConnection> OpenConfiguredConnectionAsync(
+        string databasePath,
+        SqliteOpenMode mode,
+        bool applyInitializationPragmas,
+        CancellationToken cancellationToken)
+    {
         var connectionStringBuilder = new SqliteConnectionStringBuilder
         {
             DataSource = databasePath,
-            Mode = SqliteOpenMode.ReadWriteCreate,
+            Mode = mode,
 
             // Private cache, deliberately. Shared cache serialises connections
             // inside the process behind table-level locks and raises
@@ -59,68 +96,46 @@ public sealed class SqliteDatabaseConnectionFactory(IOptions<StoragePathOptions>
             DefaultTimeout = 30
         };
 
+        var connection = new SqliteConnection(connectionStringBuilder.ToString());
+        await connection.OpenAsync(cancellationToken);
+
         try
         {
-            var connection = new SqliteConnection(connectionStringBuilder.ToString());
-            await connection.OpenAsync(cancellationToken);
+            using var command = connection.CreateCommand();
 
-            try
+            // Per-connection pragmas. These do not persist in the file, so
+            // every connection has to set them. journal_mode and
+            // wal_autocheckpoint are intentionally absent from the read-only
+            // path because SQLite cannot change them there.
+            command.CommandText = applyInitializationPragmas
+                ? """
+                  PRAGMA busy_timeout = 5000;
+                  PRAGMA journal_mode = WAL;
+                  PRAGMA wal_autocheckpoint = 2000;
+                  PRAGMA synchronous = NORMAL;
+                  PRAGMA temp_store = MEMORY;
+                  PRAGMA cache_size = -16000;
+                  PRAGMA mmap_size = 268435456;
+                  """
+                : """
+                  PRAGMA busy_timeout = 5000;
+                  PRAGMA synchronous = NORMAL;
+                  PRAGMA temp_store = MEMORY;
+                  PRAGMA cache_size = -16000;
+                  PRAGMA mmap_size = 268435456;
+                  """;
+            await command.ExecuteNonQueryAsync(cancellationToken);
+            if (applyInitializationPragmas)
             {
-                using var command = connection.CreateCommand();
-
-                // Per-connection pragmas. These do not persist in the file, so
-                // every connection has to set them:
-                //   busy_timeout  wait rather than fail when another connection
-                //                 holds the write lock
-                //   synchronous   NORMAL is the correct pairing for WAL: durable
-                //                 across process crash, and only at risk from a
-                //                 power cut mid-checkpoint
-                //   temp_store    sorts and temp b-trees in RAM, not on disk
-                //   cache_size    negative means KiB, so this is 16 MiB per
-                //                 connection instead of SQLite's 2 MiB default
-                //   mmap_size     256 MiB of memory-mapped reads. Backed by the
-                //                 OS page cache, so it is shared between every
-                //                 connection to the same file rather than costing
-                //                 this much per connection.
-                //
-                // journal_mode and wal_autocheckpoint persist in the database
-                // file, so they are only worth setting the first time we open it.
-                // A larger autocheckpoint trades WAL size for far fewer
-                // checkpoint stalls on the writer.
-                command.CommandText = requiresInitialization
-                    ? """
-                      PRAGMA busy_timeout = 5000;
-                      PRAGMA journal_mode = WAL;
-                      PRAGMA wal_autocheckpoint = 2000;
-                      PRAGMA synchronous = NORMAL;
-                      PRAGMA temp_store = MEMORY;
-                      PRAGMA cache_size = -16000;
-                      PRAGMA mmap_size = 268435456;
-                      """
-                    : """
-                      PRAGMA busy_timeout = 5000;
-                      PRAGMA synchronous = NORMAL;
-                      PRAGMA temp_store = MEMORY;
-                      PRAGMA cache_size = -16000;
-                      PRAGMA mmap_size = 268435456;
-                      """;
-                await command.ExecuteNonQueryAsync(cancellationToken);
-                if (requiresInitialization)
-                {
-                    InitializedPaths.TryAdd(databasePath, 0);
-                }
-
-                return connection;
+                InitializedPaths.TryAdd(databasePath, 0);
             }
-            catch
-            {
-                await connection.DisposeAsync();
-                throw;
-            }
+
+            return connection;
         }
-        finally
+        catch
         {
-            initializationLock?.Release();
+            await connection.DisposeAsync();
+            throw;
         }
     }
 }

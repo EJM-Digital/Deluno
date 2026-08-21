@@ -2265,11 +2265,26 @@ public sealed class SqliteJobStore(
             RelatedEntityId: relatedEntityId,
             CreatedUtc: now);
 
+        var recorded = await RecordActivityBatchAsync([activity], cancellationToken);
+        return recorded[0];
+    }
+
+    public async Task<IReadOnlyList<ActivityEventItem>> RecordActivityBatchAsync(
+        IReadOnlyList<ActivityEventItem> activities,
+        CancellationToken cancellationToken)
+    {
+        if (activities.Count == 0)
+        {
+            return [];
+        }
+
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Jobs,
             cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
         using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText =
             """
             INSERT INTO activity_events (
@@ -2280,24 +2295,41 @@ public sealed class SqliteJobStore(
             );
             """;
 
-        AddParameter(command, "@id", activity.Id);
-        AddParameter(command, "@category", activity.Category);
-        AddParameter(command, "@message", activity.Message);
-        AddParameter(command, "@detailsJson", activity.DetailsJson);
-        AddParameter(command, "@relatedJobId", activity.RelatedJobId);
-        AddParameter(command, "@relatedEntityType", activity.RelatedEntityType);
-        AddParameter(command, "@relatedEntityId", activity.RelatedEntityId);
-        AddParameter(command, "@createdUtc", activity.CreatedUtc.ToString("O"));
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        AddParameter(command, "@id", null);
+        AddParameter(command, "@category", null);
+        AddParameter(command, "@message", null);
+        AddParameter(command, "@detailsJson", null);
+        AddParameter(command, "@relatedJobId", null);
+        AddParameter(command, "@relatedEntityType", null);
+        AddParameter(command, "@relatedEntityId", null);
+        AddParameter(command, "@createdUtc", null);
+        foreach (var activity in activities)
+        {
+            command.Parameters["@id"].Value = activity.Id;
+            command.Parameters["@category"].Value = activity.Category;
+            command.Parameters["@message"].Value = activity.Message;
+            command.Parameters["@detailsJson"].Value = (object?)activity.DetailsJson ?? DBNull.Value;
+            command.Parameters["@relatedJobId"].Value = (object?)activity.RelatedJobId ?? DBNull.Value;
+            command.Parameters["@relatedEntityType"].Value = (object?)activity.RelatedEntityType ?? DBNull.Value;
+            command.Parameters["@relatedEntityId"].Value = (object?)activity.RelatedEntityId ?? DBNull.Value;
+            command.Parameters["@createdUtc"].Value = activity.CreatedUtc.ToString("O");
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
 
-        await realtimeEventPublisher.PublishActivityEventAddedAsync(
-            activity.Id,
-            activity.Message,
-            activity.Category,
-            SeverityForCategory(activity.Category),
-            activity.CreatedUtc.ToString("O"),
-            cancellationToken);
-        return activity;
+        await transaction.CommitAsync(cancellationToken);
+
+        foreach (var activity in activities)
+        {
+            await realtimeEventPublisher.PublishActivityEventAddedAsync(
+                activity.Id,
+                activity.Message,
+                activity.Category,
+                SeverityForCategory(activity.Category),
+                activity.CreatedUtc.ToString("O"),
+                cancellationToken);
+        }
+
+        return activities;
     }
 
     private static async Task InsertJobAsync(

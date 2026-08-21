@@ -425,6 +425,32 @@ public sealed class JobStoreTests
     }
 
     [Fact]
+    public async Task RecordActivityBatchAsync_commits_all_events_and_single_event_delegates_to_it()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T04:00:00Z"));
+        await InitializeJobsAsync(storage, timeProvider);
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+
+        var batch = new[]
+        {
+            new ActivityEventItem("batch-one", "test.batch", "First activity", null, null, null, null, timeProvider.GetUtcNow()),
+            new ActivityEventItem("batch-two", "test.batch", "Second activity", null, null, null, null, timeProvider.GetUtcNow().AddSeconds(1))
+        };
+
+        var recorded = await store.RecordActivityBatchAsync(batch, CancellationToken.None);
+        var single = await store.RecordActivityAsync("test.single", "Single activity", null, null, null, null, CancellationToken.None);
+        var activities = await store.ListActivityAsync(10, null, null, CancellationToken.None);
+
+        Assert.Equal(batch, recorded);
+        Assert.Equal("single", single.Category.Split('.').Last());
+        Assert.Equal(3, activities.Count);
+        Assert.Contains(activities, activity => activity.Id == "batch-one");
+        Assert.Contains(activities, activity => activity.Id == "batch-two");
+        Assert.Contains(activities, activity => activity.Id == single.Id);
+    }
+
+    [Fact]
     public async Task TryClaimScheduledPassAsync_only_the_first_caller_within_the_interval_claims_the_pass()
     {
         using var storage = TestStorage.Create();

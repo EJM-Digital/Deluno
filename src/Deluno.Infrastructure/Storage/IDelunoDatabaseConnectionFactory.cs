@@ -9,4 +9,8 @@ public interface IDelunoDatabaseConnectionFactory
     ValueTask<DbConnection> OpenConnectionAsync(
         string databaseName,
         CancellationToken cancellationToken = default);
+
+    ValueTask<DbConnection> OpenReadOnlyConnectionAsync(
+        string databaseName,
+        CancellationToken cancellationToken = default);
 }

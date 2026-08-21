@@ -129,15 +129,20 @@ opaque token; screen windows load one page.
 
 ### Structural ceilings to make explicit
 
-- **SQLite allows one writer per database file** — note *per file*. Deluno runs
-  five (`platform`, `movies`, `series`, `jobs`, `cache`), so there are already
-  five independent writers, and WAL means readers never block them. This was
-  previously written up as a global ceiling; it is not one, and it was not the
-  bottleneck — `Cache=Shared` was. Remaining headroom, in order of value:
-  split the highest-churn tables into their own file (a `dispatches.db` would
-  take the heaviest writes off `jobs.db`), batch writes into fewer transactions,
-  and open read paths with `Mode=ReadOnly`. Worth measuring and stating a real
-  number rather than assuming.
+- **SQLite write headroom — measured and resolved in #143 (2026-08-21).** The
+  five files are independent writer domains; WAL and private connection caches
+  keep readers from blocking those writers. Ten-second runs at 1/2/4/8/16/24
+  writers produced these ranges, with zero `SQLITE_BUSY` or `SQLITE_LOCKED`:
+  `platform` 39,207–44,469 single / 285,300–355,790 batched rows/s; `movies`
+  38,350–42,578 / 298,700–367,680; `series` 38,752–43,163 / 281,210–363,300;
+  `jobs` 38,804–42,176 / 293,170–355,560; `cache` 31,278–33,240 /
+  264,200–301,240. The machine, disk, date, and full benchmark remain in
+  `docs/ARCHITECTURE.md`.
+- **No `dispatches.db` split is needed from this measurement.** `jobs.db` showed
+  no lock pressure and no observed production peak within the issue's 3× split
+  threshold; keep the five-file layout and revisit only when production demand
+  supplies that evidence. Activity writes now batch in one transaction, and the
+  measured monitoring/routing reads use read-only connections.
 - **One job leased per lane tick, three fixed lanes.** Concurrency is a
   consequence of the loop shape rather than a setting.
 - **`Clients.All` broadcast** — every event to every connection, so realtime

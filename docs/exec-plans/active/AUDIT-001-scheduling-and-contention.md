@@ -30,7 +30,7 @@ finding is reasoning from code rather than measurement, it says so.
 | 7 | Three lanes contend on one `jobs.db` writer | Medium | measured |
 | 8 | Cleanup/retry throttles are per-process instance fields | Medium | code |
 | 9 | `LeaseNextAsync` relies on an implicit write to avoid a deferred-transaction upgrade | Medium | code |
-| 10 | `Cache=Shared` is set alongside WAL | Low–Medium | code |
+| 10 | `Cache=Private` is set alongside WAL | Low–Medium | resolved in #143 |
 
 ---
 
@@ -234,22 +234,21 @@ throwing under contention.
 This should be an explicit `BeginTransaction(deferred: false)` so the guarantee
 is stated rather than inherited.
 
-### 10. `Cache=Shared` alongside WAL — code
+### 10. `Cache=Private` alongside WAL — resolved in #143
 
-`SqliteDatabaseConnectionFactory` sets `Cache = SqliteCacheMode.Shared` together
-with `journal_mode=WAL`, `busy_timeout=5000`, `synchronous=NORMAL`.
+`SqliteDatabaseConnectionFactory` sets `Cache = SqliteCacheMode.Private` together
+with `journal_mode=WAL`, `busy_timeout=5000`, `synchronous=NORMAL`, and a
+30-second command timeout.
 
-WAL, busy_timeout and synchronous=NORMAL are the right choices. Shared cache is
-the odd one out: it adds table-level locking between connections in the same
-process and can surface `SQLITE_LOCKED`, which `busy_timeout` does **not** retry
-— it only covers `SQLITE_BUSY`. Shared cache exists mainly to let in-memory
-databases be shared between connections; for file-backed WAL databases it
-generally reduces concurrency rather than improving it.
+Private cache is deliberate: shared cache adds table-level locking between
+connections in the same process and can surface `SQLITE_LOCKED`, which
+`busy_timeout` does **not** retry — it only covers `SQLITE_BUSY`. For file-backed
+WAL databases, private cache lets readers and the writer run concurrently.
 
-Flagged rather than asserted: no `SQLITE_LOCKED` has been observed in the logs,
-and this needs a load test to confirm it matters here. Note also that
-`DefaultTimeout = 5` (seconds) and `busy_timeout = 5000` (ms) are set to the same
-5-second budget, so a command blocked on a lock races its own command timeout.
+The #143 write-throughput benchmark exercised all five database files at 1, 2,
+4, 8, 16, and 24 concurrent writers, with both single-row and 100-row
+transactions. It observed zero `SQLITE_BUSY` and zero `SQLITE_LOCKED`; the
+hardware, ranges, and methodology are recorded in `docs/ARCHITECTURE.md`.
 
 ---
 
@@ -285,9 +284,11 @@ The findings split cleanly by cost and risk.
   and 3). This is the largest win available and the one that most changes how
   the frontend is written. Paginating `/api/movies` and `/api/series` matters
   regardless, since those two responses scale with the user's library.
-- Load-test `Cache=Shared` before changing it (finding 10).
+- Retain private cache and the measured SQLite headroom (finding 10, resolved
+  in #143).
 
-None of this was changed. ADR-001 Step 1 is mid-flight (Security, Notifications
-and Intake are extracted; Quality, Connections and Libraries are not), and
-touching the worker while the module split is in progress would violate the
-plan's own rule about one concern per commit.
+The SQLite cache finding was resolved in #143. The remaining findings in this
+audit were not changed here. ADR-001 Step 1 is mid-flight (Security,
+Notifications and Intake are extracted; Quality, Connections and Libraries are
+not), and touching the worker while the module split is in progress would
+violate the plan's own rule about one concern per commit.

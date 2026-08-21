@@ -63,7 +63,7 @@ public sealed class MonitoringService(
     {
         var pageSize = query.Page.BoundedPageSize;
         var token = DelunoPageToken.Decode(query.Page.PageToken, 2);
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+        await using var connection = await databaseConnectionFactory.OpenReadOnlyConnectionAsync(
             DelunoDatabaseNames.Jobs,
             cancellationToken);
 
@@ -215,7 +215,7 @@ public sealed class MonitoringService(
         DateTimeOffset sinceUtc,
         CancellationToken cancellationToken)
     {
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+        await using var connection = await databaseConnectionFactory.OpenReadOnlyConnectionAsync(
             DelunoDatabaseNames.Jobs,
             cancellationToken);
 
@@ -341,7 +341,7 @@ public sealed class MonitoringService(
         DateTimeOffset sinceUtc,
         CancellationToken cancellationToken)
     {
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+        await using var connection = await databaseConnectionFactory.OpenReadOnlyConnectionAsync(
             DelunoDatabaseNames.Jobs,
             cancellationToken);
 
