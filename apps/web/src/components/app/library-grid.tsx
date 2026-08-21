@@ -343,7 +343,7 @@ export function PosterArtwork({
       )}
       aria-label={`${title} artwork unavailable`}
     >
-      <span className={cn("px-2 font-display font-semibold tracking-tight", compact ? "text-[10px]" : "text-sm")}>
+      <span className={cn("px-2 font-display font-semibold tracking-tight", compact ? "text-[length:var(--type-micro)]" : "text-sm")}>
         {title.slice(0, 2).toUpperCase()}
       </span>
     </div>

@@ -11,6 +11,7 @@ import {
 } from "../lib/api";
 import { buildSetupStatus, type SetupStatusStep } from "../lib/setup-status";
 import { SettingsShell } from "../components/app/settings-shell";
+import { Card } from "../components/ui/card";
 
 interface SettingsOverviewLoaderData {
   libraries: LibraryItem[];
@@ -44,7 +45,7 @@ export function SettingsOverviewPage() {
 
   return (
     <SettingsShell title="Setup overview" description="Set up Deluno once in this order. Detailed configuration is available from the sidebar when you need it.">
-      <section aria-labelledby="setup-status-heading" className="overflow-hidden rounded-2xl border border-hairline bg-card shadow-card dark:border-white/[0.07]">
+      <Card as="section" aria-labelledby="setup-status-heading" className="dark:border-white/[0.07]">
         <div className="flex flex-col gap-3 border-b border-hairline px-[var(--tile-pad)] py-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.14em] text-primary">Your media setup</p>
@@ -58,7 +59,7 @@ export function SettingsOverviewPage() {
         <div className="divide-y divide-hairline">
           {setupSteps.map((step) => <SetupJourneyStep key={step.number} {...step} current={nextStep?.number === step.number} />)}
         </div>
-      </section>
+      </Card>
     </SettingsShell>
   );
 }
@@ -93,8 +94,8 @@ function SetupJourneyStep({
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="font-semibold text-foreground">{title}</h3>
-          {complete ? <span className="inline-flex items-center gap-1 rounded-full bg-success/12 px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.1em] text-success">Done</span> : null}
-          {current ? <span className="rounded-full bg-primary/12 px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.1em] text-primary">Next</span> : null}
+          {complete ? <span className="inline-flex items-center gap-1 rounded-full bg-success/12 px-2 py-0.5 text-[length:var(--type-caption)] font-bold uppercase tracking-[0.1em] text-success">Done</span> : null}
+          {current ? <span className="rounded-full bg-primary/12 px-2 py-0.5 text-[length:var(--type-caption)] font-bold uppercase tracking-[0.1em] text-primary">Next</span> : null}
         </div>
         <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">{description}</p>
         <p className={complete ? "mt-2 text-sm font-medium text-success" : "mt-2 text-sm font-medium text-muted-foreground"}>{status}</p>

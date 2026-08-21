@@ -718,7 +718,7 @@ function DownloadSummaryRow({ download }: { download: ActiveDownload }) {
         </span>
       </span>
       <span className="text-left sm:text-right">
-        <span className="block font-mono text-[13px] font-semibold text-foreground">{Math.round(download.progress)}%</span>
+        <span className="block font-mono text-[length:var(--type-body-sm)] font-semibold text-foreground">{Math.round(download.progress)}%</span>
         <span className="block text-[length:var(--type-caption)] text-muted-foreground">{download.speedMbps.toFixed(1)} MB/s - {download.etaMinutes > 0 ? `${download.etaMinutes} min left` : "finishing"}</span>
       </span>
     </Link>

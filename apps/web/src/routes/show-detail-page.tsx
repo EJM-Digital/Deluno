@@ -552,12 +552,12 @@ export function ShowDetailPage() {
               </p>
               {cast.length > 0 ? (
                 <section className="mt-5 border-t border-white/10 pt-4">
-                  <div className="flex items-center justify-between gap-3"><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Starring</p><span className="text-[11px] text-muted-foreground">{cast.length} credited</span></div>
+                  <div className="flex items-center justify-between gap-3"><p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.18em] text-muted-foreground">Starring</p><span className="text-[length:var(--type-caption)] text-muted-foreground">{cast.length} credited</span></div>
                   <div className="mt-3 flex flex-wrap gap-x-5 gap-y-3">
                     {cast.slice(0, 6).map((person) => (
                       <div key={`${person.name}-${person.character ?? ""}`} className="flex min-w-0 items-center gap-2.5">
                         {person.profileUrl ? <img src={person.profileUrl} alt="" className="h-10 w-10 shrink-0 rounded-full border border-white/15 bg-surface-2 object-cover shadow-lg" /> : <div className="h-10 w-10 shrink-0 rounded-full border border-white/15 bg-surface-2" />}
-                        <span className="max-w-28 min-w-0 leading-tight"><span className="block truncate text-xs font-semibold text-foreground">{person.name}</span>{person.character ? <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">{person.character}</span> : null}</span>
+                        <span className="max-w-28 min-w-0 leading-tight"><span className="block truncate text-xs font-semibold text-foreground">{person.name}</span>{person.character ? <span className="mt-0.5 block truncate text-[length:var(--type-caption)] text-muted-foreground">{person.character}</span> : null}</span>
                       </div>
                     ))}
                   </div>
@@ -565,7 +565,7 @@ export function ShowDetailPage() {
               ) : null}
             </div>
             <aside className="w-full self-center rounded-xl border border-white/10 bg-card/80 p-4 backdrop-blur-sm">
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Ratings &amp; IDs</p>
+              <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.18em] text-muted-foreground">Ratings &amp; IDs</p>
               <p className="mt-1 text-xs text-muted-foreground">The metadata Deluno is using</p>
               <div className="mt-3"><RatingStrip ratings={series.ratings} fallbackRating={series.rating} /></div>
               <div className="mt-4 space-y-2 border-t border-hairline pt-4 text-sm">

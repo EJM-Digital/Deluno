@@ -107,25 +107,25 @@ export function OnboardingBanner({
             <h2 className="font-display text-lg font-bold tracking-tight text-foreground">
               Build your media library
             </h2>
-            <span className="tabular text-[12px] text-muted-foreground">
+            <span className="tabular text-[length:var(--type-caption)] text-muted-foreground">
               {completedCount}/{steps.length} complete
             </span>
           </div>
-          <p className="mt-0.5 text-[13px] text-muted-foreground">
+          <p className="mt-0.5 text-[length:var(--type-body-sm)] text-muted-foreground">
             Tell Deluno what kind of library you want. It will create the folders, media plan, release rules, routing, and first library baseline.
           </p>
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <Link
               to="/setup-guide"
-              className="inline-flex h-[var(--control-height-sm)] items-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-semibold text-primary-foreground shadow-glow transition hover:-translate-y-0.5"
+              className="inline-flex h-[var(--control-height-sm)] items-center gap-2 rounded-xl bg-primary px-4 text-[length:var(--type-body-sm)] font-semibold text-primary-foreground shadow-glow transition hover:-translate-y-0.5"
             >
               Build my setup
               <ArrowRight className="h-3.5 w-3.5" />
             </Link>
             <Link
               to="/settings"
-              className="inline-flex h-[var(--control-height-sm)] items-center rounded-xl border border-hairline bg-card px-4 text-[13px] font-semibold text-muted-foreground transition hover:text-foreground"
+              className="inline-flex h-[var(--control-height-sm)] items-center rounded-xl border border-hairline bg-card px-4 text-[length:var(--type-body-sm)] font-semibold text-muted-foreground transition hover:text-foreground"
             >
               Open library setup
             </Link>
@@ -143,7 +143,7 @@ export function OnboardingBanner({
                     step.done && "opacity-70"
                   )}
                 >
-                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold tabular">
+                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[length:var(--type-micro)] font-bold tabular">
                     {step.done ? (
                       <CheckCircle2 className="h-5 w-5 text-success" />
                     ) : (
@@ -153,13 +153,13 @@ export function OnboardingBanner({
                   <span className="min-w-0 flex-1">
                     <span
                       className={cn(
-                        "block text-[13px] font-semibold text-foreground",
+                        "block text-[length:var(--type-body-sm)] font-semibold text-foreground",
                         step.done && "line-through decoration-muted-foreground/40"
                       )}
                     >
                       {i + 1}. {step.label}
                     </span>
-                    <span className="mt-0.5 block text-[11.5px] text-muted-foreground">
+                    <span className="mt-0.5 block text-[length:var(--type-caption)] text-muted-foreground">
                       {step.hint}
                     </span>
                   </span>

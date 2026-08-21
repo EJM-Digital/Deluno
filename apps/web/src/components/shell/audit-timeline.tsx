@@ -190,7 +190,7 @@ export function AuditTimeline({ events, liveEvents = [], maxVisible = 200 }: Aud
             value={query}
             onChange={(e) => { setQuery(e.target.value); setShowCount(50); }}
             placeholder="Search events…"
-            className="h-9 pl-8 text-[13px]"
+            className="h-9 pl-8 text-[length:var(--type-body-sm)]"
           />
         </Field>
 
@@ -226,7 +226,7 @@ export function AuditTimeline({ events, liveEvents = [], maxVisible = 200 }: Aud
       </div>
 
       {/* Counter */}
-      <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+      <p className="text-[length:var(--type-caption)] uppercase tracking-[0.16em] text-muted-foreground">
         {filtered.length} event{filtered.length !== 1 ? "s" : ""}
         {(query || catFilter !== "all" || sevFilter !== "all") ? " matching current filters" : ""}
       </p>
@@ -267,13 +267,13 @@ export function AuditTimeline({ events, liveEvents = [], maxVisible = 200 }: Aud
                 {/* Content */}
                 <div className="min-w-0 flex-1 pt-1">
                   <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-0.5">
-                    <p className="text-[13.5px] font-medium leading-snug text-foreground">
+                    <p className="text-[length:var(--type-body-sm)] font-medium leading-snug text-foreground">
                       {event.message}
                     </p>
                     <div className="flex shrink-0 items-center gap-2">
                       <span
                         className={cn(
-                          "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+                          "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[length:var(--type-micro)] font-semibold uppercase tracking-wider",
                           sev.bg, sev.text
                         )}
                       >
@@ -283,20 +283,20 @@ export function AuditTimeline({ events, liveEvents = [], maxVisible = 200 }: Aud
                     </div>
                   </div>
 
-                  <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+                  <div className="mt-0.5 flex items-center gap-2 text-[length:var(--type-caption)] text-muted-foreground">
                     <span className="rounded-full border border-hairline px-1.5 py-0.5 capitalize">
                       {event.category}
                     </span>
                     <span title={absoluteTime(event.createdUtc)}>{relativeTime(event.createdUtc)}</span>
                     <span className="opacity-50">·</span>
-                    <span className="font-mono text-[10px]">{absoluteTime(event.createdUtc)}</span>
+                    <span className="font-mono text-[length:var(--type-micro)]">{absoluteTime(event.createdUtc)}</span>
                   </div>
 
                   {event.detail ? (
                     <button
                       type="button"
                       onClick={() => toggleExpand(event.id)}
-                      className="mt-1.5 flex items-center gap-1 text-[11.5px] text-muted-foreground hover:text-foreground"
+                      className="mt-1.5 flex items-center gap-1 text-[length:var(--type-caption)] text-muted-foreground hover:text-foreground"
                     >
                       <ChevronDown
                         className={cn("h-3 w-3 transition-transform", isExp && "rotate-180")}
@@ -306,7 +306,7 @@ export function AuditTimeline({ events, liveEvents = [], maxVisible = 200 }: Aud
                   ) : null}
 
                   {isExp && event.detail ? (
-                    <pre className="mt-2 rounded-xl border border-hairline bg-surface-2 p-3 font-mono text-[11.5px] text-foreground/80 whitespace-pre-wrap">
+                    <pre className="mt-2 rounded-xl border border-hairline bg-surface-2 p-3 font-mono text-[length:var(--type-caption)] text-foreground/80 whitespace-pre-wrap">
                       {event.detail}
                     </pre>
                   ) : null}
@@ -327,7 +327,7 @@ export function AuditTimeline({ events, liveEvents = [], maxVisible = 200 }: Aud
           <button
             type="button"
             onClick={() => setShowCount((n) => n + 50)}
-            className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-hairline py-3 text-[12.5px] text-muted-foreground transition hover:border-primary/30 hover:text-foreground"
+            className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-hairline py-3 text-[length:var(--type-caption)] text-muted-foreground transition hover:border-primary/30 hover:text-foreground"
           >
             <ChevronDown className="h-4 w-4" />
             Load {Math.min(50, filtered.length - showCount)} more events
@@ -352,7 +352,7 @@ function FilterChip({
       type="button"
       onClick={onClick}
       className={cn(
-        "rounded-full border px-2.5 py-0.5 text-[11.5px] font-medium transition-all select-none",
+        "rounded-full border px-2.5 py-0.5 text-[length:var(--type-caption)] font-medium transition-all select-none",
         active
           ? "border-primary/40 bg-primary/10 text-foreground shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.2)]"
           : "border-hairline bg-surface-1 text-muted-foreground hover:border-primary/25 hover:text-foreground"

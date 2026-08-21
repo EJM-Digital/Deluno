@@ -1034,7 +1034,7 @@ function FinishStep({
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           {buildImportPreviewRows(form).map((row) => (
             <div key={row.label} className="rounded-xl border border-hairline bg-background/35 p-3">
-              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{row.label}</p>
+              <p className="text-[length:var(--type-caption)] font-bold uppercase tracking-[0.16em] text-muted-foreground">{row.label}</p>
               <p className="mt-1 text-sm font-semibold text-foreground">{row.value}</p>
               <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{row.copy}</p>
             </div>
@@ -1142,7 +1142,7 @@ function FinishStep({
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-semibold text-foreground">{item.title}</span>
                   <span className="mt-0.5 block text-xs text-muted-foreground">{item.year ?? "Unknown year"} · {item.provider.toUpperCase()}</span>
-                  {item.rating ? <span className="mt-1 block font-mono text-[11px] text-primary">{item.rating.toFixed(1)} rating</span> : null}
+                  {item.rating ? <span className="mt-1 block font-mono text-[length:var(--type-caption)] text-primary">{item.rating.toFixed(1)} rating</span> : null}
                 </span>
               </button>
             ))}

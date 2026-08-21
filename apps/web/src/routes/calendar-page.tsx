@@ -14,6 +14,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { fetchJson } from "../lib/api";
 import { cn } from "../lib/utils";
 import { Button } from "../components/ui/button";
+import { Card } from "../components/ui/card";
 import { Chip } from "../components/ui/chip";
 import { ListGroupHeader } from "../components/ui/media-type-split";
 import {
@@ -185,7 +186,7 @@ export function CalendarPage() {
       />
 
       {view === "grid" ? (
-        <section className="overflow-hidden rounded-2xl border border-hairline bg-card shadow-card dark:border-white/[0.07]">
+        <Card as="section" className="dark:border-white/[0.07]">
           <header className="flex min-h-[var(--list-header-height)] items-center gap-3 border-b border-hairline px-[var(--card-pad-x)]">
             <h2 className="text-[length:var(--type-card-title)] font-semibold leading-none text-foreground">{range.label}</h2>
             <span className="text-[length:var(--type-caption)] text-muted-foreground">
@@ -253,7 +254,7 @@ export function CalendarPage() {
               </div>
             ))}
           </div>
-        </section>
+        </Card>
       ) : (
       <ListCard
         title="Schedule"

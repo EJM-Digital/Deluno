@@ -1,16 +1,20 @@
 import * as React from "react";
 import { cn } from "../../lib/utils";
 
-export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return (
-    <div
-      className={cn(
-        "relative overflow-hidden rounded-2xl border border-hairline bg-card shadow-card",
-        className
-      )}
-      {...props}
-    />
-  );
+type CardProps =
+  | (React.HTMLAttributes<HTMLDivElement> & { as?: "div" })
+  | (React.FormHTMLAttributes<HTMLFormElement> & { as: "form" })
+  | (React.HTMLAttributes<HTMLElement> & { as: "section" });
+
+export function Card({ as = "div", className, ...props }: CardProps) {
+  const Component = as as React.ElementType;
+  return React.createElement(Component, {
+    ...props,
+    className: cn(
+      "relative overflow-hidden rounded-2xl border border-hairline bg-card shadow-card",
+      className
+    )
+  });
 }
 
 export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {

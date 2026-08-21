@@ -81,12 +81,12 @@ export function LibraryCreateDialog({
                   {metadataResults.slice(0, 6).map((result) => {
                     const isSelected = selectedMetadataResults.some((selected) => sameMetadataResult(selected, result));
                     return <button key={`${result.provider}:${result.providerId}`} type="button" onClick={() => onSelectResult(result)} className={cn("flex min-w-0 gap-3 rounded-xl border bg-surface-1 p-3 text-left transition hover:border-primary/45 hover:bg-primary/5", isSelected ? "border-primary/70 bg-primary/10 ring-1 ring-primary/25" : "border-hairline")} title={`Select ${result.title}`}>
-                      {result.posterUrl ? <img src={result.posterUrl} alt="" className="h-24 w-16 shrink-0 rounded-lg bg-muted object-cover" /> : <div className="flex h-24 w-16 shrink-0 items-center justify-center rounded-lg bg-muted text-[11px] text-muted-foreground">No art</div>}
+                      {result.posterUrl ? <img src={result.posterUrl} alt="" className="h-24 w-16 shrink-0 rounded-lg bg-muted object-cover" /> : <div className="flex h-24 w-16 shrink-0 items-center justify-center rounded-lg bg-muted text-[length:var(--type-caption)] text-muted-foreground">No art</div>}
                       <span className="min-w-0 self-center">
                         <span className="block truncate text-sm font-semibold text-foreground">{result.title}</span>
                         <span className="mt-1 block text-xs text-muted-foreground">{result.year ?? "Unknown year"} · TMDb</span>
                         {result.rating ? <span className="mt-2 block font-mono text-xs text-primary">{result.rating.toFixed(1)} rating</span> : null}
-                        {isSelected ? <span className="mt-1 inline-flex rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary">Selected</span> : <span className="mt-1 block text-[10px] text-muted-foreground">Click to select</span>}
+                        {isSelected ? <span className="mt-1 inline-flex rounded-full bg-primary/15 px-2 py-0.5 text-[length:var(--type-micro)] font-semibold text-primary">Selected</span> : <span className="mt-1 block text-[length:var(--type-micro)] text-muted-foreground">Click to select</span>}
                       </span>
                     </button>;
                   })}

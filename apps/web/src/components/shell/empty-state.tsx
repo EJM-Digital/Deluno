@@ -89,7 +89,7 @@ export function EmptyState({
           {title}
         </h3>
         {description ? (
-          <p className="text-balance text-[13px] leading-relaxed text-muted-foreground">
+          <p className="text-balance text-[length:var(--type-body-sm)] leading-relaxed text-muted-foreground">
             {description}
           </p>
         ) : null}
@@ -103,7 +103,7 @@ export function EmptyState({
       ) : null}
 
       {learnMore ? (
-        <div className="relative z-10 mt-3 text-[11.5px] text-muted-foreground/80">
+        <div className="relative z-10 mt-3 text-[length:var(--type-caption)] text-muted-foreground/80">
           {learnMore}
         </div>
       ) : null}

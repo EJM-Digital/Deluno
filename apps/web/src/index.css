@@ -1035,6 +1035,8 @@ html {
   --type-title-lg: clamp(calc(32px * var(--font-scale)), calc(2.2vw * var(--font-scale)), calc(42px * var(--font-scale)));
   --type-title-xl: clamp(calc(40px * var(--font-scale)), calc(3vw * var(--font-scale)), calc(56px * var(--font-scale)));
   --type-display: clamp(calc(48px * var(--font-scale)), calc(4vw * var(--font-scale)), calc(72px * var(--font-scale)));
+  --type-hero-sm: clamp(calc(2rem * var(--font-scale)), calc(1.4rem * var(--font-scale) + 2.2vw * var(--font-scale)), calc(2.75rem * var(--font-scale)));
+  --type-hero-lg: clamp(calc(2.25rem * var(--font-scale)), calc(1.2rem * var(--font-scale) + 4vw * var(--font-scale)), calc(4rem * var(--font-scale)));
 
   --metric-value-size: calc(48px * var(--font-scale));
   --metric-unit-size: calc(18px * var(--font-scale));
@@ -1111,22 +1113,30 @@ html[data-density="compact"] {
   --density-scale: 0.84;
   --font-scale: 0.88;
   --content-max-width: calc(1840px * var(--density-scale));
+  --type-hero-sm: clamp(calc(2rem * var(--font-scale)), calc(1.4rem * var(--font-scale) + 2.2vw * var(--font-scale)), calc(2.75rem * var(--font-scale)));
+  --type-hero-lg: clamp(calc(2.25rem * var(--font-scale)), calc(1.2rem * var(--font-scale) + 4vw * var(--font-scale)), calc(4rem * var(--font-scale)));
 }
 
 html[data-density="comfortable"] {
   --density-scale: 1;
   --font-scale: 1;
+  --type-hero-sm: clamp(calc(2rem * var(--font-scale)), calc(1.4rem * var(--font-scale) + 2.2vw * var(--font-scale)), calc(2.75rem * var(--font-scale)));
+  --type-hero-lg: clamp(calc(2.25rem * var(--font-scale)), calc(1.2rem * var(--font-scale) + 4vw * var(--font-scale)), calc(4rem * var(--font-scale)));
 }
 
 html[data-density="spacious"] {
   --density-scale: 1.12;
   --font-scale: 1.12;
+  --type-hero-sm: clamp(calc(2rem * var(--font-scale)), calc(1.4rem * var(--font-scale) + 2.2vw * var(--font-scale)), calc(2.75rem * var(--font-scale)));
+  --type-hero-lg: clamp(calc(2.25rem * var(--font-scale)), calc(1.2rem * var(--font-scale) + 4vw * var(--font-scale)), calc(4rem * var(--font-scale)));
 }
 
 html[data-density="expanded"] {
   --density-scale: 1.22;
   --font-scale: 1.22;
   --content-max-width: calc(2180px * var(--density-scale));
+  --type-hero-sm: clamp(calc(2rem * var(--font-scale)), calc(1.4rem * var(--font-scale) + 2.2vw * var(--font-scale)), calc(2.75rem * var(--font-scale)));
+  --type-hero-lg: clamp(calc(2.25rem * var(--font-scale)), calc(1.2rem * var(--font-scale) + 4vw * var(--font-scale)), calc(4rem * var(--font-scale)));
 }
 
 /* The desktop sidebar is visible from Tailwind's `lg` breakpoint (1024px).

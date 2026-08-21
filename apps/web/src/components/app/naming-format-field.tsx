@@ -130,7 +130,7 @@ export function NamingFormatField({
                 <span className="flex min-w-0 items-center gap-2">
                   <span className="truncate text-sm font-semibold text-foreground">{preset.label}</span>
                   {recommended ? (
-                    <span className="rounded-full border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                    <span className="rounded-full border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[length:var(--type-micro)] font-semibold uppercase tracking-wide text-primary">
                       Recommended
                     </span>
                   ) : null}
