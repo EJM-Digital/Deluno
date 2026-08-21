@@ -1301,7 +1301,7 @@ public sealed class SqliteMovieCatalogRepository(
         return created;
     }
 
-    private static async Task<bool> ImportExistingCoreAsync(
+    private async Task<bool> ImportExistingCoreAsync(
         System.Data.Common.DbConnection connection,
         System.Data.Common.DbTransaction transaction,
         string libraryId,
@@ -1309,6 +1309,28 @@ public sealed class SqliteMovieCatalogRepository(
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
+        if (sharedMediaStateRepository is not null)
+        {
+            var result = await sharedMediaStateRepository.ImportExistingAsync(
+                MediaKind.Movie,
+                libraryId,
+                new MediaExistingImportRequest(
+                    request.Title,
+                    request.ReleaseYear,
+                    request.WantedStatus,
+                    request.WantedReason,
+                    request.CurrentQuality,
+                    request.TargetQuality,
+                    request.QualityCutoffMet,
+                    request.UnmonitorWhenCutoffMet,
+                    request.FilePath,
+                    request.FileSizeBytes),
+                connection,
+                transaction,
+                cancellationToken);
+            return result.Created;
+        }
+
         var normalizedTitle = request.Title.Trim();
         var normalizedFilePath = NormalizeText(request.FilePath);
         // What the file name says about the file. Read here rather than at each

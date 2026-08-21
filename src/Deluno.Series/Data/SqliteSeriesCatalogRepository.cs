@@ -1522,7 +1522,7 @@ public sealed class SqliteSeriesCatalogRepository(
         return created;
     }
 
-    private static async Task<bool> ImportExistingCoreAsync(
+    private async Task<bool> ImportExistingCoreAsync(
         System.Data.Common.DbConnection connection,
         System.Data.Common.DbTransaction transaction,
         string libraryId,
@@ -1540,70 +1540,97 @@ public sealed class SqliteSeriesCatalogRepository(
         // import, a completed download — gets it, and gets it the same way.
         var fileFacts = MediaFileNameFacts.Parse(filePath);
         string? seriesId = null;
-
-        using (var lookup = connection.CreateCommand())
-        {
-            lookup.Transaction = transaction;
-            lookup.CommandText =
-                """
-                SELECT id
-                FROM series_entries
-                WHERE lower(title) = lower(@title)
-                  AND ((start_year IS NULL AND @startYear IS NULL) OR start_year = @startYear)
-                LIMIT 1;
-                """;
-
-            AddParameter(lookup, "@title", normalizedTitle);
-            AddParameter(lookup, "@startYear", startYear);
-
-            seriesId = await lookup.ExecuteScalarAsync(cancellationToken) as string;
-        }
-
         var created = false;
-        if (string.IsNullOrWhiteSpace(seriesId))
+
+        if (sharedMediaStateRepository is null)
         {
-            seriesId = Guid.CreateVersion7().ToString("N");
-            created = true;
+            using (var lookup = connection.CreateCommand())
+            {
+                lookup.Transaction = transaction;
+                lookup.CommandText =
+                    """
+                    SELECT id
+                    FROM series_entries
+                    WHERE lower(title) = lower(@title)
+                      AND ((start_year IS NULL AND @startYear IS NULL) OR start_year = @startYear)
+                    LIMIT 1;
+                    """;
 
-            using var insert = connection.CreateCommand();
-            insert.Transaction = transaction;
-            insert.CommandText =
-                """
-                INSERT INTO series_entries (
-                    id, title, start_year, imdb_id, monitored, created_utc, updated_utc
-                )
-                VALUES (
-                    @id, @title, @startYear, NULL, @monitored, @createdUtc, @updatedUtc
-                );
-                """;
+                AddParameter(lookup, "@title", normalizedTitle);
+                AddParameter(lookup, "@startYear", startYear);
 
-            AddParameter(insert, "@id", seriesId);
-            AddParameter(insert, "@title", normalizedTitle);
-            AddParameter(insert, "@startYear", startYear);
-            AddParameter(insert, "@monitored", unmonitorWhenCutoffMet && qualityCutoffMet ? 0 : 1);
-            AddParameter(insert, "@createdUtc", now.ToString("O"));
-            AddParameter(insert, "@updatedUtc", now.ToString("O"));
-            await insert.ExecuteNonQueryAsync(cancellationToken);
+                seriesId = await lookup.ExecuteScalarAsync(cancellationToken) as string;
+            }
+
+            if (string.IsNullOrWhiteSpace(seriesId))
+            {
+                seriesId = Guid.CreateVersion7().ToString("N");
+                created = true;
+
+                using var insert = connection.CreateCommand();
+                insert.Transaction = transaction;
+                insert.CommandText =
+                    """
+                    INSERT INTO series_entries (
+                        id, title, start_year, imdb_id, monitored, created_utc, updated_utc
+                    )
+                    VALUES (
+                        @id, @title, @startYear, NULL, @monitored, @createdUtc, @updatedUtc
+                    );
+                    """;
+
+                AddParameter(insert, "@id", seriesId);
+                AddParameter(insert, "@title", normalizedTitle);
+                AddParameter(insert, "@startYear", startYear);
+                AddParameter(insert, "@monitored", unmonitorWhenCutoffMet && qualityCutoffMet ? 0 : 1);
+                AddParameter(insert, "@createdUtc", now.ToString("O"));
+                AddParameter(insert, "@updatedUtc", now.ToString("O"));
+                await insert.ExecuteNonQueryAsync(cancellationToken);
+            }
+            else if (unmonitorWhenCutoffMet && qualityCutoffMet)
+            {
+                using var unmonitor = connection.CreateCommand();
+                unmonitor.Transaction = transaction;
+                unmonitor.CommandText =
+                    """
+                    UPDATE series_entries
+                    SET monitored = 0,
+                        updated_utc = @updatedUtc
+                    WHERE id = @seriesId;
+                    """;
+                AddParameter(unmonitor, "@seriesId", seriesId);
+                AddParameter(unmonitor, "@updatedUtc", now.ToString("O"));
+                await unmonitor.ExecuteNonQueryAsync(cancellationToken);
+            }
         }
-        else if (unmonitorWhenCutoffMet && qualityCutoffMet)
+        else
         {
-            using var unmonitor = connection.CreateCommand();
-            unmonitor.Transaction = transaction;
-            unmonitor.CommandText =
-                """
-                UPDATE series_entries
-                SET monitored = 0,
-                    updated_utc = @updatedUtc
-                WHERE id = @seriesId;
-                """;
-            AddParameter(unmonitor, "@seriesId", seriesId);
-            AddParameter(unmonitor, "@updatedUtc", now.ToString("O"));
-            await unmonitor.ExecuteNonQueryAsync(cancellationToken);
+            var result = await sharedMediaStateRepository.ImportExistingAsync(
+                MediaKind.Series,
+                libraryId,
+                new MediaExistingImportRequest(
+                    title,
+                    startYear,
+                    wantedStatus,
+                    wantedReason,
+                    currentQuality,
+                    targetQuality,
+                    qualityCutoffMet,
+                    unmonitorWhenCutoffMet,
+                    filePath,
+                    fileSizeBytes),
+                connection,
+                transaction,
+                cancellationToken);
+            seriesId = result.Id;
+            created = result.Created;
         }
 
-        using var wanted = connection.CreateCommand();
-        wanted.Transaction = transaction;
-        wanted.CommandText =
+        if (sharedMediaStateRepository is null)
+        {
+            using var wanted = connection.CreateCommand();
+            wanted.Transaction = transaction;
+            wanted.CommandText =
             """
             INSERT INTO series_wanted_state (
                 series_id, library_id, wanted_status, wanted_reason, has_file, quality_cutoff_met,
@@ -1639,23 +1666,24 @@ public sealed class SqliteSeriesCatalogRepository(
                 updated_utc = excluded.updated_utc;
             """;
 
-        AddParameter(wanted, "@seriesId", seriesId);
-        AddParameter(wanted, "@videoCodec", fileFacts.VideoCodec);
-        AddParameter(wanted, "@audioCodec", fileFacts.AudioCodec);
-        AddParameter(wanted, "@audioChannels", fileFacts.AudioChannels);
-        AddParameter(wanted, "@releaseGroup", fileFacts.ReleaseGroup);
-        AddParameter(wanted, "@libraryId", libraryId);
-        AddParameter(wanted, "@wantedStatus", NormalizeWantedStatus(wantedStatus));
-        AddParameter(wanted, "@wantedReason", wantedReason.Trim());
-        AddParameter(wanted, "@currentQuality", currentQuality);
-        AddParameter(wanted, "@targetQuality", targetQuality);
-        AddParameter(wanted, "@qualityCutoffMet", qualityCutoffMet ? 1 : 0);
-        AddParameter(wanted, "@filePath", normalizedFilePath);
-        AddParameter(wanted, "@fileSizeBytes", fileSizeBytes);
-        AddParameter(wanted, "@importedUtc", normalizedFilePath is null ? null : now.ToString("O"));
-        AddParameter(wanted, "@lastVerifiedUtc", normalizedFilePath is null ? null : now.ToString("O"));
-        AddParameter(wanted, "@updatedUtc", now.ToString("O"));
-        await wanted.ExecuteNonQueryAsync(cancellationToken);
+            AddParameter(wanted, "@seriesId", seriesId);
+            AddParameter(wanted, "@videoCodec", fileFacts.VideoCodec);
+            AddParameter(wanted, "@audioCodec", fileFacts.AudioCodec);
+            AddParameter(wanted, "@audioChannels", fileFacts.AudioChannels);
+            AddParameter(wanted, "@releaseGroup", fileFacts.ReleaseGroup);
+            AddParameter(wanted, "@libraryId", libraryId);
+            AddParameter(wanted, "@wantedStatus", NormalizeWantedStatus(wantedStatus));
+            AddParameter(wanted, "@wantedReason", wantedReason.Trim());
+            AddParameter(wanted, "@currentQuality", currentQuality);
+            AddParameter(wanted, "@targetQuality", targetQuality);
+            AddParameter(wanted, "@qualityCutoffMet", qualityCutoffMet ? 1 : 0);
+            AddParameter(wanted, "@filePath", normalizedFilePath);
+            AddParameter(wanted, "@fileSizeBytes", fileSizeBytes);
+            AddParameter(wanted, "@importedUtc", normalizedFilePath is null ? null : now.ToString("O"));
+            AddParameter(wanted, "@lastVerifiedUtc", normalizedFilePath is null ? null : now.ToString("O"));
+            AddParameter(wanted, "@updatedUtc", now.ToString("O"));
+            await wanted.ExecuteNonQueryAsync(cancellationToken);
+        }
 
         if (episodes is { Count: > 0 })
         {

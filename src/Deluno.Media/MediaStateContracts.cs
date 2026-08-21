@@ -115,6 +115,20 @@ public sealed record MediaEntryDetails(
     DateTimeOffset CreatedUtc,
     DateTimeOffset UpdatedUtc);
 
+public sealed record MediaExistingImportRequest(
+    string Title,
+    int? Year,
+    string WantedStatus,
+    string WantedReason,
+    string? CurrentQuality,
+    string? TargetQuality,
+    bool QualityCutoffMet,
+    bool UnmonitorWhenCutoffMet,
+    string? FilePath,
+    long? FileSizeBytes);
+
+public sealed record MediaImportResult(string Id, bool Created);
+
 public interface IMediaStateRepository
 {
     Task<MediaWantedSummary> GetWantedSummaryAsync(MediaKind kind, CancellationToken cancellationToken);
@@ -193,6 +207,14 @@ public interface IMediaStateRepository
     Task<MediaEntryDetails?> GetByIdAsync(
         MediaKind kind,
         string id,
+        CancellationToken cancellationToken);
+
+    Task<MediaImportResult> ImportExistingAsync(
+        MediaKind kind,
+        string libraryId,
+        MediaExistingImportRequest request,
+        System.Data.Common.DbConnection connection,
+        System.Data.Common.DbTransaction transaction,
         CancellationToken cancellationToken);
 
     Task<Deluno.Contracts.MediaDailyMetrics> GetDailyMetricsAsync(

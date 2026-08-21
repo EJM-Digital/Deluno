@@ -593,6 +593,140 @@ public sealed class SqliteMediaStateRepository(
             ?? throw new InvalidOperationException("The media entry could not be read after insertion.");
     }
 
+    public async Task<MediaImportResult> ImportExistingAsync(
+        MediaKind kind,
+        string libraryId,
+        MediaExistingImportRequest request,
+        System.Data.Common.DbConnection connection,
+        System.Data.Common.DbTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        var map = MediaTableMap.For(kind);
+        var normalizedTitle = request.Title.Trim();
+        if (normalizedTitle.Length == 0)
+        {
+            throw new ArgumentException("A media title is required.", nameof(request));
+        }
+
+        var normalizedFilePath = NormalizeText(request.FilePath);
+        var fileFacts = MediaFileNameFacts.Parse(request.FilePath);
+        var now = timeProvider.GetUtcNow().ToString("O");
+        string? mediaId;
+
+        using (var lookup = connection.CreateCommand())
+        {
+            lookup.Transaction = transaction;
+            lookup.CommandText = $"""
+                SELECT id
+                FROM {map.EntryTable}
+                WHERE lower(title) = lower(@title)
+                  AND (({map.YearColumn} IS NULL AND @year IS NULL) OR {map.YearColumn} = @year)
+                LIMIT 1;
+                """;
+            AddParameter(lookup, "@title", normalizedTitle);
+            AddParameter(lookup, "@year", request.Year);
+            mediaId = await lookup.ExecuteScalarAsync(cancellationToken) as string;
+        }
+
+        var created = false;
+        if (string.IsNullOrWhiteSpace(mediaId))
+        {
+            mediaId = Guid.CreateVersion7().ToString("N");
+            created = true;
+
+            using var insert = connection.CreateCommand();
+            insert.Transaction = transaction;
+            insert.CommandText = $"""
+                INSERT INTO {map.EntryTable} (
+                    id, title, {map.YearColumn}, imdb_id, monitored, created_utc, updated_utc
+                )
+                VALUES (
+                    @id, @title, @year, NULL, @monitored, @createdUtc, @updatedUtc
+                );
+                """;
+            AddParameter(insert, "@id", mediaId);
+            AddParameter(insert, "@title", normalizedTitle);
+            AddParameter(insert, "@year", request.Year);
+            AddParameter(
+                insert,
+                "@monitored",
+                request.UnmonitorWhenCutoffMet && request.QualityCutoffMet ? 0 : 1);
+            AddParameter(insert, "@createdUtc", now);
+            AddParameter(insert, "@updatedUtc", now);
+            await insert.ExecuteNonQueryAsync(cancellationToken);
+        }
+        else if (request.UnmonitorWhenCutoffMet && request.QualityCutoffMet)
+        {
+            using var unmonitor = connection.CreateCommand();
+            unmonitor.Transaction = transaction;
+            unmonitor.CommandText = $"""
+                UPDATE {map.EntryTable}
+                SET monitored = 0,
+                    updated_utc = @updatedUtc
+                WHERE id = @mediaId;
+                """;
+            AddParameter(unmonitor, "@mediaId", mediaId);
+            AddParameter(unmonitor, "@updatedUtc", now);
+            await unmonitor.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        using var wanted = connection.CreateCommand();
+        wanted.Transaction = transaction;
+        wanted.CommandText = $"""
+            INSERT INTO {map.WantedTable} (
+                {map.WantedMediaIdColumn}, library_id, wanted_status, wanted_reason, has_file, quality_cutoff_met,
+                current_quality, target_quality, file_path, file_size_bytes, imported_utc, last_verified_utc,
+                missing_since_utc, last_search_utc, next_eligible_search_utc, last_search_result, updated_utc,
+                prevent_lower_quality_replacements, quality_delta_last_decision,
+                video_codec, audio_codec, audio_channels, release_group
+            )
+            VALUES (
+                @mediaId, @libraryId, @wantedStatus, @wantedReason, 1, @qualityCutoffMet,
+                @currentQuality, @targetQuality, @filePath, @fileSizeBytes, @importedUtc, @lastVerifiedUtc,
+                NULL, NULL, NULL, 'Imported from your existing library.', @updatedUtc,
+                1, 0,
+                @videoCodec, @audioCodec, @audioChannels, @releaseGroup
+            )
+            ON CONFLICT({map.WantedMediaIdColumn}, library_id) DO UPDATE SET
+                wanted_status = excluded.wanted_status,
+                wanted_reason = excluded.wanted_reason,
+                has_file = 1,
+                current_quality = excluded.current_quality,
+                target_quality = excluded.target_quality,
+                quality_cutoff_met = excluded.quality_cutoff_met,
+                file_path = excluded.file_path,
+                file_size_bytes = excluded.file_size_bytes,
+                imported_utc = COALESCE({map.WantedTable}.imported_utc, excluded.imported_utc),
+                last_verified_utc = excluded.last_verified_utc,
+                missing_detected_utc = NULL,
+                last_search_result = excluded.last_search_result,
+                video_codec = excluded.video_codec,
+                audio_codec = excluded.audio_codec,
+                audio_channels = excluded.audio_channels,
+                release_group = excluded.release_group,
+                updated_utc = excluded.updated_utc;
+            """;
+        AddParameter(wanted, "@mediaId", mediaId);
+        AddParameter(wanted, "@libraryId", libraryId);
+        AddParameter(wanted, "@wantedStatus", NormalizeWantedStatus(request.WantedStatus));
+        AddParameter(wanted, "@wantedReason", request.WantedReason.Trim());
+        AddParameter(wanted, "@currentQuality", request.CurrentQuality);
+        AddParameter(wanted, "@targetQuality", request.TargetQuality);
+        AddParameter(wanted, "@qualityCutoffMet", request.QualityCutoffMet ? 1 : 0);
+        AddParameter(wanted, "@filePath", normalizedFilePath);
+        AddParameter(wanted, "@fileSizeBytes", request.FileSizeBytes);
+        AddParameter(wanted, "@importedUtc", normalizedFilePath is null ? null : now);
+        AddParameter(wanted, "@lastVerifiedUtc", normalizedFilePath is null ? null : now);
+        AddParameter(wanted, "@updatedUtc", now);
+        AddParameter(wanted, "@videoCodec", fileFacts.VideoCodec);
+        AddParameter(wanted, "@audioCodec", fileFacts.AudioCodec);
+        AddParameter(wanted, "@audioChannels", fileFacts.AudioChannels);
+        AddParameter(wanted, "@releaseGroup", fileFacts.ReleaseGroup);
+        await wanted.ExecuteNonQueryAsync(cancellationToken);
+
+        return new MediaImportResult(mediaId, created);
+    }
+
     public async Task<MediaEntryDetails?> GetByIdAsync(
         MediaKind kind,
         string id,

@@ -1,4 +1,5 @@
 using Deluno.Infrastructure.Storage.Migrations;
+using Deluno.Contracts;
 using Deluno.Media;
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
@@ -278,6 +279,77 @@ public sealed class MediaStateRepositoryTests
             Assert.Equal("102", created.MetadataProviderId);
             Assert.Equal("Created overview", created.Overview);
             Assert.Equal(8.5, created.Rating);
+        }
+    }
+
+    [Theory]
+    [InlineData(MediaKind.Movie)]
+    [InlineData(MediaKind.Series)]
+    public async Task Engine_repositories_route_existing_import_through_shared_store(MediaKind kind)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(new DateTimeOffset(2026, 8, 21, 5, 0, 0, TimeSpan.Zero));
+        await InitializeSchemaAsync(storage, timeProvider, kind);
+        var shared = new SqliteMediaStateRepository(storage.Factory, timeProvider);
+
+        if (kind == MediaKind.Movie)
+        {
+            var repository = new SqliteMovieCatalogRepository(storage.Factory, timeProvider, shared);
+            var created = await repository.ImportExistingBatchAsync(
+                "library-movies",
+                [
+                    new ExistingMovieImportRequest(
+                        "Imported movie",
+                        2016,
+                        "covered",
+                        "Imported from disk.",
+                        "Bluray-1080p",
+                        "Bluray-1080p",
+                        QualityCutoffMet: true,
+                        UnmonitorWhenCutoffMet: false,
+                        @"D:\Media\Imported movie (2016)\Imported.movie.2016.1080p.BluRay.x264-GROUP.mkv",
+                        1024)
+                ],
+                CancellationToken.None);
+
+            Assert.Equal(1, created);
+            var item = Assert.Single(
+                (await repository.ListPageAsync(new CatalogueQuery(), CancellationToken.None)).Items);
+            Assert.Equal("Imported movie", item.Title);
+            Assert.True(item.HasFile);
+            Assert.Equal("H.264", item.VideoCodec);
+            Assert.Equal("GROUP", item.ReleaseGroup);
+        }
+        else
+        {
+            var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider, shared);
+            var created = await repository.ImportExistingBatchAsync(
+                "library-series",
+                [
+                    new ExistingSeriesImportRequest(
+                        "Imported series",
+                        2019,
+                        "covered",
+                        "Imported from disk.",
+                        "WEB-1080p",
+                        "WEB-1080p",
+                        QualityCutoffMet: false,
+                        UnmonitorWhenCutoffMet: false,
+                        @"D:\Media\Imported series (2019)\Imported.series.S01E01.1080p.WEB-DL.mkv",
+                        2048,
+                        [
+                            new ImportedEpisodeItem(1, 1, true, @"D:\Media\Imported series\S01E01.mkv", 1024),
+                            new ImportedEpisodeItem(1, 2, true, @"D:\Media\Imported series\S01E02.mkv", 1024)
+                        ])
+                ],
+                CancellationToken.None);
+
+            Assert.Equal(1, created);
+            var series = Assert.Single(await repository.ListAsync(CancellationToken.None));
+            var detail = await repository.GetInventoryDetailAsync(series.Id, CancellationToken.None);
+            Assert.NotNull(detail);
+            Assert.Equal(2, detail.EpisodeCount);
+            Assert.Equal(2, detail.ImportedEpisodeCount);
         }
     }
 
