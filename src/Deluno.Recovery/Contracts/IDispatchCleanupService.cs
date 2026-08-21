@@ -1,4 +1,4 @@
-namespace Deluno.Jobs.Data;
+namespace Deluno.Recovery.Contracts;
 
 public interface IDispatchCleanupService
 {

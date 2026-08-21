@@ -1,36 +1,31 @@
-namespace Deluno.Jobs.Contracts;
+using Deluno.Contracts;
 
-public sealed record RetryPolicy(
-    string FailureKind,
-    int MaxRetries,
-    TimeSpan InitialDelay,
-    double BackoffMultiplier,
-    TimeSpan MaxDelay);
+namespace Deluno.Recovery.Policies;
 
-public static class RetryPolicies
+public sealed class RetryPolicyCatalog : IRetryPolicyCatalog
 {
-    public static readonly RetryPolicy GrabTimeout = new(
+    public RetryPolicy GrabTimeout { get; } = new(
         FailureKind: "grab-timeout",
         MaxRetries: 3,
         InitialDelay: TimeSpan.FromMinutes(30),
         BackoffMultiplier: 2.0,
         MaxDelay: TimeSpan.FromHours(4));
 
-    public static readonly RetryPolicy DetectionTimeout = new(
+    private RetryPolicy DetectionTimeout { get; } = new(
         FailureKind: "detection-timeout",
         MaxRetries: 2,
         InitialDelay: TimeSpan.FromHours(1),
         BackoffMultiplier: 2.0,
         MaxDelay: TimeSpan.FromHours(6));
 
-    public static readonly RetryPolicy ImportFailed = new(
+    private RetryPolicy ImportFailed { get; } = new(
         FailureKind: "import-failed",
         MaxRetries: 1,
         InitialDelay: TimeSpan.FromHours(6),
         BackoffMultiplier: 1.0,
         MaxDelay: TimeSpan.FromHours(6));
 
-    public static RetryPolicy GetPolicyForKind(string failureKind) => failureKind switch
+    public RetryPolicy GetPolicyForKind(string failureKind) => failureKind switch
     {
         "grab-timeout" => GrabTimeout,
         "detection-timeout" => DetectionTimeout,
@@ -38,7 +33,7 @@ public static class RetryPolicies
         _ => new RetryPolicy(failureKind, MaxRetries: 0, InitialDelay: TimeSpan.Zero, BackoffMultiplier: 1.0, MaxDelay: TimeSpan.Zero)
     };
 
-    public static TimeSpan CalculateNextRetryDelay(int attemptNumber, RetryPolicy policy)
+    public TimeSpan CalculateNextRetryDelay(int attemptNumber, RetryPolicy policy)
     {
         if (attemptNumber <= 0 || attemptNumber > policy.MaxRetries)
             return TimeSpan.Zero;

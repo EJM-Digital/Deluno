@@ -1,24 +1,19 @@
 using System.Text.Json;
+using Deluno.Contracts;
 using Deluno.Jobs.Contracts;
+using Deluno.Jobs.Data;
+using Deluno.Recovery.Contracts;
+using Deluno.Recovery.Policies;
 using Microsoft.Extensions.Logging;
 
-namespace Deluno.Jobs.Data;
-
-public interface IDownloadRetryService
-{
-    Task<DownloadRetryResult> RunRetryPassAsync(CancellationToken cancellationToken);
-}
-
-public sealed record DownloadRetryResult(
-    int RetriedCount,
-    int SkippedCount,
-    string Summary);
+namespace Deluno.Recovery.Services;
 
 public sealed class DownloadRetryService(
     IDownloadDispatchesRepository dispatchesRepository,
     IJobScheduler jobScheduler,
     TimeProvider timeProvider,
-    ILogger<DownloadRetryService> logger)
+    ILogger<DownloadRetryService> logger,
+    IRetryPolicyCatalog retryPolicyCatalog)
     : IDownloadRetryService
 {
     private const int BatchLimit = 50;
@@ -44,7 +39,7 @@ public sealed class DownloadRetryService(
                 }
 
                 var failureCode = dispatch.GrabFailureCode ?? "unknown";
-                var policy = RetryPolicies.GetPolicyForKind(failureCode);
+                var policy = retryPolicyCatalog.GetPolicyForKind(failureCode);
 
                 if (policy.MaxRetries == 0)
                 {
@@ -65,7 +60,7 @@ public sealed class DownloadRetryService(
                     continue;
                 }
 
-                var nextDelay = RetryPolicies.CalculateNextRetryDelay(nextRetryNumber, policy);
+                var nextDelay = retryPolicyCatalog.CalculateNextRetryDelay(nextRetryNumber, policy);
                 var nextRetryEligible = now.Add(nextDelay);
 
                 var jobPayload = JsonSerializer.Serialize(new

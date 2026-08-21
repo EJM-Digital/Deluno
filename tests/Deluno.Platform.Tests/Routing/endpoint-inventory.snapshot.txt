@@ -26,8 +26,6 @@ DELETE /api/series/import-recovery/{id}
 DELETE /api/setup/draft
 DELETE /api/tags/{id}
 DELETE /api/v1/download-dispatches/{dispatchId}
-DELETE /api/v1/import-recovery/movies/{caseId}
-DELETE /api/v1/import-recovery/series/{caseId}
 GET /api/
 GET /api/activity
 GET /api/api-keys/
@@ -131,8 +129,6 @@ GET /api/v1/dispatch-metrics/
 GET /api/v1/download-dispatches/
 GET /api/v1/download-dispatches/unresolved
 GET /api/v1/download-dispatches/{dispatchId}
-GET /api/v1/import-recovery/movies/
-GET /api/v1/import-recovery/series/
 GET /api/v1/import-resolutions/
 GET /health
 PATCH /api/settings/
@@ -248,12 +244,6 @@ POST /api/updates/restart-now
 POST /api/v1/dispatch-alerts/{alertId}/acknowledge
 POST /api/v1/download-dispatches/poll
 POST /api/v1/download-dispatches/{dispatchId}/retry
-POST /api/v1/import-recovery/movies/{caseId}/dismiss
-POST /api/v1/import-recovery/movies/{caseId}/re-search
-POST /api/v1/import-recovery/movies/{caseId}/resolve
-POST /api/v1/import-recovery/series/{caseId}/dismiss
-POST /api/v1/import-recovery/series/{caseId}/re-search
-POST /api/v1/import-recovery/series/{caseId}/resolve
 PUT /api/auth/password
 PUT /api/backups/settings
 PUT /api/custom-formats/{id}

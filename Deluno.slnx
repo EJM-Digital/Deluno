@@ -19,6 +19,7 @@
     <Project Path="src/Deluno.Platform/Deluno.Platform.csproj" />
     <Project Path="src/Deluno.Quality/Deluno.Quality.csproj" />
     <Project Path="src/Deluno.Realtime/Deluno.Realtime.csproj" />
+    <Project Path="src/Deluno.Recovery/Deluno.Recovery.csproj" />
     <Project Path="src/Deluno.Security/Deluno.Security.csproj" />
     <Project Path="src/Deluno.Series/Deluno.Series.csproj" />
     <Project Path="src/Deluno.Worker/Deluno.Worker.csproj" />

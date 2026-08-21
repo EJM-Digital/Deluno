@@ -1,7 +1,6 @@
 using Deluno.Api;
 using Deluno.Api.Backup;
 using Deluno.Api.Downloads;
-using Deluno.Api.ImportRecovery;
 using Deluno.Connections;
 using Deluno.Filesystem;
 using Deluno.Integrations.DownloadClients;
@@ -56,8 +55,6 @@ public static class DelunoApplicationEndpointMapping
         writeEndpoints.MapDelunoSearchEndpoints();
         endpoints.MapDelunoMetadataEndpoints();
         importsEndpoints.MapDelunoFilesystemEndpoints();
-        importsEndpoints.MapMovieImportRecoveryEndpoints();
-        importsEndpoints.MapSeriesImportRecoveryEndpoints();
         queueEndpoints.MapDownloadDispatchesEndpoints();
         readEndpoints.MapDelunoRealtime();
         return endpoints;

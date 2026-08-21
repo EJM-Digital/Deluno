@@ -11,5 +11,6 @@
     <ProjectReference Include="..\Deluno.Platform\Deluno.Platform.csproj" />
     <ProjectReference Include="..\Deluno.Quality\Deluno.Quality.csproj" />
     <ProjectReference Include="..\Deluno.Realtime\Deluno.Realtime.csproj" />
+    <ProjectReference Include="..\Deluno.Recovery\Deluno.Recovery.csproj" />
   </ItemGroup>
 </Project>

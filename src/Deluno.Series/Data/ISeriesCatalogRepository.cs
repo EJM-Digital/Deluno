@@ -1,9 +1,10 @@
 using Deluno.Contracts;
 using Deluno.Series.Contracts;
+using Deluno.Recovery.Contracts;
 
 namespace Deluno.Series.Data;
 
-public interface ISeriesCatalogRepository
+public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionRepository
 {
     Task<SeriesListItem> AddAsync(CreateSeriesRequest request, CancellationToken cancellationToken);
 
@@ -231,8 +232,6 @@ public interface ISeriesCatalogRepository
     Task<SeriesImportRecoveryCase?> ResolveImportRecoveryCaseAsync(string id, string status, CancellationToken cancellationToken);
 
     Task AddImportRecoveryEventAsync(string caseId, string eventKind, string message, string? metadataJson, CancellationToken cancellationToken);
-
-    Task<int> CleanupImportRecoveryCasesAsync(DateTimeOffset olderThan, CancellationToken cancellationToken);
 
     Task<SeriesWantedItem?> GetSeriesWantedStateAsync(
         string seriesId,

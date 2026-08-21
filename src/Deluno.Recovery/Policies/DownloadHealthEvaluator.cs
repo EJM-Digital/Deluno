@@ -1,21 +1,23 @@
-namespace Deluno.Integrations.DownloadClients;
+using Deluno.Contracts;
+
+namespace Deluno.Recovery.Policies;
 
 /// <summary>
 /// Produces explainable, conservative health signals from a single telemetry snapshot.
 /// It intentionally has no side effects: retention and removal require a separate,
 /// audited policy and explicit user approval.
 /// </summary>
-public static class DownloadHealthEvaluator
+public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
 {
     private static readonly TimeSpan NoThroughputWindow = TimeSpan.FromMinutes(30);
     private static readonly TimeSpan ExcessiveEta = TimeSpan.FromDays(7);
     private static readonly string[] SuspiciousExtensions = [".bat", ".cmd", ".exe", ".js", ".lnk", ".ps1", ".scr", ".url", ".vbs"];
 
-    public static IReadOnlyList<DownloadHealthFinding> Evaluate(DownloadQueueItem item, DateTimeOffset capturedUtc)
+    public IReadOnlyList<RecoveryHealthFinding> Evaluate(RecoveryQueueSnapshot item, DateTimeOffset capturedUtc)
     {
-        var findings = new List<DownloadHealthFinding>();
+        var findings = new List<RecoveryHealthFinding>();
 
-        if (item.Status == DownloadQueueStatuses.Stalled || !string.IsNullOrWhiteSpace(item.ErrorMessage))
+        if (item.Status == "stalled" || !string.IsNullOrWhiteSpace(item.ErrorMessage))
         {
             findings.Add(new(
                 Severity: "critical",
@@ -27,7 +29,7 @@ public static class DownloadHealthEvaluator
                 CanSafelyRemove: false));
         }
 
-        if (item.Status == DownloadQueueStatuses.ImportFailed)
+        if (item.Status == "importFailed")
         {
             findings.Add(new(
                 Severity: "critical",
@@ -39,7 +41,7 @@ public static class DownloadHealthEvaluator
                 CanSafelyRemove: false));
         }
 
-        if (item.Status == DownloadQueueStatuses.ProcessingFailed)
+        if (item.Status == "processingFailed")
         {
             findings.Add(new(
                 Severity: "critical",
@@ -51,7 +53,7 @@ public static class DownloadHealthEvaluator
                 CanSafelyRemove: false));
         }
 
-        if (item.Status is DownloadQueueStatuses.ImportReady or DownloadQueueStatuses.ImportQueued && string.IsNullOrWhiteSpace(item.SourcePath))
+        if (item.Status is "importReady" or "importQueued" && string.IsNullOrWhiteSpace(item.SourcePath))
         {
             findings.Add(new(
                 Severity: "warning",
@@ -63,7 +65,7 @@ public static class DownloadHealthEvaluator
                 CanSafelyRemove: false));
         }
 
-        if (item.Status == DownloadQueueStatuses.Downloading &&
+        if (item.Status == "downloading" &&
             item.SpeedMbps <= 0 &&
             capturedUtc - item.AddedUtc >= NoThroughputWindow)
         {
