@@ -25,4 +25,8 @@ public interface IActivityFeedRepository
         string? relatedEntityType,
         string? relatedEntityId,
         CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<ActivityEventItem>> RecordActivityBatchAsync(
+        IReadOnlyList<ActivityEventItem> activities,
+        CancellationToken cancellationToken);
 }

@@ -38,6 +38,7 @@ public sealed class DownloadDispatchPollingService(
 
         var unresolvedDispatches = await QueryUnresolvedDispatchesAsync(connection, cancellationToken);
         report = report with { UnresolvedDispatchesChecked = unresolvedDispatches.Count };
+        var recoveryActivities = new List<ActivityEventItem>();
 
         foreach (var dispatch in unresolvedDispatches)
         {
@@ -80,7 +81,7 @@ public sealed class DownloadDispatchPollingService(
                     await RecordGrabTimeoutRecoveryAsync(
                         dispatch,
                         recoveryHandler,
-                        activityFeedRepository,
+                        recoveryActivities,
                         alertRepository,
                         cancellationToken);
                     report = report with { GrabTimeoutsDetected = report.GrabTimeoutsDetected + 1, RecoveryCasesRecorded = report.RecoveryCasesRecorded + 1 };
@@ -94,7 +95,7 @@ public sealed class DownloadDispatchPollingService(
                     await RecordDetectionTimeoutRecoveryAsync(
                         dispatch,
                         recoveryHandler,
-                        activityFeedRepository,
+                        recoveryActivities,
                         alertRepository,
                         cancellationToken);
                     report = report with { DetectionTimeoutsDetected = report.DetectionTimeoutsDetected + 1, RecoveryCasesRecorded = report.RecoveryCasesRecorded + 1 };
@@ -108,7 +109,7 @@ public sealed class DownloadDispatchPollingService(
                     await RecordImportTimeoutRecoveryAsync(
                         dispatch,
                         recoveryHandler,
-                        activityFeedRepository,
+                        recoveryActivities,
                         alertRepository,
                         cancellationToken);
                     report = report with { ImportTimeoutsDetected = report.ImportTimeoutsDetected + 1, RecoveryCasesRecorded = report.RecoveryCasesRecorded + 1 };
@@ -119,11 +120,16 @@ public sealed class DownloadDispatchPollingService(
                 await RecordImportFailureRecoveryAsync(
                     dispatch,
                     recoveryHandler,
-                    activityFeedRepository,
+                    recoveryActivities,
                     alertRepository,
                     cancellationToken);
                 report = report with { ImportFailuresDetected = report.ImportFailuresDetected + 1, RecoveryCasesRecorded = report.RecoveryCasesRecorded + 1 };
             }
+        }
+
+        if (recoveryActivities.Count > 0)
+        {
+            await activityFeedRepository.RecordActivityBatchAsync(recoveryActivities, cancellationToken);
         }
 
         await ArchiveSuccessfulDispatchesAsync(connection, cancellationToken);
@@ -179,7 +185,7 @@ public sealed class DownloadDispatchPollingService(
     private async Task RecordGrabTimeoutRecoveryAsync(
         UnresolvedDispatch dispatch,
         IDispatchRecoveryHandler recoveryHandler,
-        IActivityFeedRepository activityFeedRepository,
+        ICollection<ActivityEventItem> recoveryActivities,
         IDispatchAlertRepository alertRepository,
         CancellationToken cancellationToken)
     {
@@ -201,14 +207,12 @@ public sealed class DownloadDispatchPollingService(
             detailsJson,
             cancellationToken);
 
-        await activityFeedRepository.RecordActivityAsync(
+        recoveryActivities.Add(CreateRecoveryActivity(
             "download.grab.timeout",
             $"{title} was not detected in {dispatch.DownloadClientName} after {GrabTimeout.TotalHours:F0} hours.",
             detailsJson,
-            null,
             "download",
-            dispatch.Id,
-            cancellationToken);
+            dispatch.Id));
 
         await alertRepository.CreateAlertAsync(
             dispatch.Id,
@@ -231,7 +235,7 @@ public sealed class DownloadDispatchPollingService(
     private async Task RecordDetectionTimeoutRecoveryAsync(
         UnresolvedDispatch dispatch,
         IDispatchRecoveryHandler recoveryHandler,
-        IActivityFeedRepository activityFeedRepository,
+        ICollection<ActivityEventItem> recoveryActivities,
         IDispatchAlertRepository alertRepository,
         CancellationToken cancellationToken)
     {
@@ -255,14 +259,12 @@ public sealed class DownloadDispatchPollingService(
             detailsJson,
             cancellationToken);
 
-        await activityFeedRepository.RecordActivityAsync(
+        recoveryActivities.Add(CreateRecoveryActivity(
             "download.detection.timeout",
             $"{title} was detected but never imported after {DetectionTimeout.TotalHours:F0} hours.",
             detailsJson,
-            null,
             "download",
-            dispatch.Id,
-            cancellationToken);
+            dispatch.Id));
 
         await alertRepository.CreateAlertAsync(
             dispatch.Id,
@@ -285,7 +287,7 @@ public sealed class DownloadDispatchPollingService(
     private async Task RecordImportTimeoutRecoveryAsync(
         UnresolvedDispatch dispatch,
         IDispatchRecoveryHandler recoveryHandler,
-        IActivityFeedRepository activityFeedRepository,
+        ICollection<ActivityEventItem> recoveryActivities,
         IDispatchAlertRepository alertRepository,
         CancellationToken cancellationToken)
     {
@@ -309,14 +311,12 @@ public sealed class DownloadDispatchPollingService(
             detailsJson,
             cancellationToken);
 
-        await activityFeedRepository.RecordActivityAsync(
+        recoveryActivities.Add(CreateRecoveryActivity(
             "download.import.timeout",
             $"{title} import was detected but never completed after {ImportTimeout.TotalHours:F0} hours.",
             detailsJson,
-            null,
             "download",
-            dispatch.Id,
-            cancellationToken);
+            dispatch.Id));
 
         await alertRepository.CreateAlertAsync(
             dispatch.Id,
@@ -339,7 +339,7 @@ public sealed class DownloadDispatchPollingService(
     private async Task RecordImportFailureRecoveryAsync(
         UnresolvedDispatch dispatch,
         IDispatchRecoveryHandler recoveryHandler,
-        IActivityFeedRepository activityFeedRepository,
+        ICollection<ActivityEventItem> recoveryActivities,
         IDispatchAlertRepository alertRepository,
         CancellationToken cancellationToken)
     {
@@ -370,14 +370,12 @@ public sealed class DownloadDispatchPollingService(
             detailsJson,
             cancellationToken);
 
-        await activityFeedRepository.RecordActivityAsync(
+        recoveryActivities.Add(CreateRecoveryActivity(
             "download.import.failed",
             $"{title} import failed: {failureReason}",
             detailsJson,
-            null,
             "download",
-            dispatch.Id,
-            cancellationToken);
+            dispatch.Id));
 
         await alertRepository.CreateAlertAsync(
             dispatch.Id,
@@ -399,6 +397,24 @@ public sealed class DownloadDispatchPollingService(
             detailsJson,
             timeProvider.GetUtcNow(),
             cancellationToken);
+    }
+
+    private ActivityEventItem CreateRecoveryActivity(
+        string category,
+        string message,
+        string? detailsJson,
+        string relatedEntityType,
+        string relatedEntityId)
+    {
+        return new ActivityEventItem(
+            Id: Guid.CreateVersion7().ToString("N"),
+            Category: category,
+            Message: message,
+            DetailsJson: detailsJson,
+            RelatedJobId: null,
+            RelatedEntityType: relatedEntityType,
+            RelatedEntityId: relatedEntityId,
+            CreatedUtc: timeProvider.GetUtcNow());
     }
 
     private async Task ArchiveSuccessfulDispatchesAsync(DbConnection connection, CancellationToken cancellationToken)

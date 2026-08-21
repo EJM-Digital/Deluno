@@ -87,7 +87,7 @@ public sealed class IntelligentRoutingService(
     private async Task<IntelligentRoutingSnapshot> ComputeSnapshotAsync(CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+        await using var connection = await databaseConnectionFactory.OpenReadOnlyConnectionAsync(
             DelunoDatabaseNames.Jobs,
             cancellationToken);
 
@@ -189,7 +189,7 @@ public sealed class IntelligentRoutingService(
         DateTimeOffset endUtc,
         CancellationToken cancellationToken)
     {
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+        await using var connection = await databaseConnectionFactory.OpenReadOnlyConnectionAsync(
             DelunoDatabaseNames.Jobs,
             cancellationToken);
 
@@ -224,7 +224,7 @@ public sealed class IntelligentRoutingService(
         DateTimeOffset endUtc,
         CancellationToken cancellationToken)
     {
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+        await using var connection = await databaseConnectionFactory.OpenReadOnlyConnectionAsync(
             DelunoDatabaseNames.Jobs,
             cancellationToken);
 

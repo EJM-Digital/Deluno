@@ -115,6 +115,39 @@ processor, and migration-audit persistence. The endpoint inventory test in
 are moved. See `docs/exec-plans/active/ADR-001-module-boundaries.md` for the
 boundary rules and ownership decisions.
 
+## Storage And Write Capacity
+
+Deluno uses five SQLite database files, each with its own writer: `platform.db`
+owns settings, credentials, notifications, and audit; `movies.db` owns the movie
+catalogue and import state; `series.db` owns shows, episodes, and import state;
+`jobs.db` owns schedules, leases, activity, dispatches, and heartbeats; and
+`cache.db` owns provider payloads and transient normalization artifacts. SQLite
+serialises writes per file, not globally, and WAL with private connection caches
+allows readers to run alongside that file's writer.
+
+The opt-in `SqliteWriteThroughput` benchmark ran on 2026-08-21 from a temporary
+data root on an ASUS system with an AMD Ryzen 7 9800X3D (16 logical processors),
+61.7 GiB RAM, and a Samsung SSD 990 PRO 4TB on NTFS. Each result below is the
+range across 1, 2, 4, 8, 16, and 24 concurrent writers during ten-second runs;
+the synthetic table uses the same connection factory and WAL/private-cache
+settings as the application. Every run recorded zero `SQLITE_BUSY` or
+`SQLITE_LOCKED` errors.
+
+| Database | One row per transaction | 100 rows per transaction | Highest p99 commit latency |
+| --- | ---: | ---: | ---: |
+| `platform.db` | 39,207–44,469 rows/s | 285,300–355,790 rows/s | 2.533 ms |
+| `movies.db` | 38,350–42,578 rows/s | 298,700–367,680 rows/s | 2.578 ms |
+| `series.db` | 38,752–43,163 rows/s | 281,210–363,300 rows/s | 2.560 ms |
+| `jobs.db` | 38,804–42,176 rows/s | 293,170–355,560 rows/s | 2.562 ms |
+| `cache.db` | 31,278–33,240 rows/s | 264,200–301,240 rows/s | 10.297 ms |
+
+The measurement does not justify a sixth `dispatches.db`: `jobs.db` sustained
+roughly 39–42k single-row writes/s with no lock pressure, and this repository
+has no observed production peak within the issue's three-times decision threshold
+that would justify cross-database joins. The five-file layout stays in place;
+the activity writer now batches events in one transaction, while measured hot
+read paths can use read-only connections.
+
 ## Validation Hooks
 
 - `npm.cmd run validate:agents` checks documentation and high-signal architecture guardrails.
