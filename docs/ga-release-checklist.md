@@ -21,17 +21,13 @@ Execution artifacts:
 ## Hard Gates (Must Pass)
 
 - Windows release artifacts are complete and installable.
+- 1.x Windows release artifacts are signed and their signatures verify as valid.
 - Install/upgrade/rollback matrix passes on clean Windows environments.
 - No open `P0` or `P1` release-blocking issues.
 - Full regression gates pass on candidate commit:
   - `npm run ci:check`
   - `dotnet test Deluno.slnx --configuration Release`
   - `npm run test:web`
-
-Recommended (not blocking for current GA):
-
-- Windows code-signing certificate configured in CI.
-- Signed app and setup binaries.
 
 ## RC1 Checklist
 
