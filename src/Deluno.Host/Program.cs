@@ -232,6 +232,7 @@ app.UseRouting();
 app.UseRateLimiter();
 app.UseDefaultFiles();
 app.UseStaticFiles();
+app.UseDelunoApiUnmatchedPathGuard();
 app.UseDelunoCorrelation();
 app.UseAuthentication();
 app.UseAuthorization();
@@ -285,6 +286,18 @@ app.UseSwaggerUI(options =>
 });
 
 app.MapDelunoApplicationEndpoints();
-app.MapFallbackToFile("index.html");
+app.MapFallback(async context =>
+{
+    if (context.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase))
+    {
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+
+    var indexPath = Path.Combine(
+        app.Environment.WebRootPath ?? app.Environment.ContentRootPath,
+        "index.html");
+    await context.Response.SendFileAsync(indexPath);
+});
 
 app.Run();
