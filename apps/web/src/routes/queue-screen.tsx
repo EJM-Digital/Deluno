@@ -17,7 +17,7 @@
  * /api/integrations/processors/handoffs; POST …/queue/actions, …/jobs/retry-failed,
  * …/handoffs/{id}/retry, /api/filesystem/import/{preview,jobs,execute}.
  */
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { Loader2, Pause, Play, RefreshCw, RotateCw, Trash2, Upload } from "lucide-react";
 import {
@@ -55,6 +55,7 @@ import { SegmentedControl } from "../components/ui/segmented-control";
 import { Select } from "../components/ui/select";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { toast } from "../components/shell/toaster";
+import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 
 type QueueAction = "pause" | "resume" | "delete" | "recheck";
 
@@ -118,6 +119,22 @@ export function QueuePage() {
   const { telemetry, dispatches, movieRecovery, seriesRecovery, settings, jobs, healthRecords, processorHandoffs } =
     useLoaderData() as QueueLoaderData;
   const revalidator = useRevalidator();
+  const lastDispatchRefresh = useRef(0);
+
+  const scheduleDispatchRefresh = () => {
+    const now = Date.now();
+    if (revalidator.state !== "idle" || now - lastDispatchRefresh.current < 5_000) return;
+    lastDispatchRefresh.current = now;
+    revalidator.revalidate();
+  };
+
+  useSignalREvent("DispatchGrabCompleted", RealtimeGroups.Queue, scheduleDispatchRefresh);
+  useSignalREvent("DispatchDetected", RealtimeGroups.Queue, scheduleDispatchRefresh);
+  useSignalREvent("DispatchImportStarted", RealtimeGroups.Queue, scheduleDispatchRefresh);
+  useSignalREvent("DispatchImportCompleted", RealtimeGroups.Queue, scheduleDispatchRefresh);
+  useSignalREvent("DispatchGrabAttempt", RealtimeGroups.Queue, (event) => {
+    toast.info(`Sent "${event.releaseName}" to ${event.clientName}`);
+  });
 
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [drawer, setDrawer] = useState<DrawerMode>(null);

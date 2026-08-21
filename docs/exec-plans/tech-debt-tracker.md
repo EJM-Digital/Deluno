@@ -13,10 +13,10 @@ work) — see `628fa52`.
 
 ## Open — realtime (`ADR-002-realtime-architecture.md`)
 
-- Wire the five orphaned events. The backend publishes `DispatchDetected`,
-  `DispatchGrabAttempt`, `DispatchGrabCompleted`, `DispatchImportStarted` and
-  `DispatchImportCompleted`; `use-signalr.tsx` registers handlers for eight of
-  thirteen names, so these reach nobody.
+- [x] Wire the five dispatch lifecycle events (#135). The queue and activity
+  screens consume the backend's `DispatchDetected`, `DispatchGrabAttempt`,
+  `DispatchGrabCompleted`, `DispatchImportStarted` and `DispatchImportCompleted`
+  events with throttled refreshes and a grab-attempt toast.
 - Add sequence numbers and a resume window to the realtime envelope. The
   publisher's bounded channel is `DropOldest`, so events are discarded under
   load with no way for a client to detect the gap; `onreconnected` only updates

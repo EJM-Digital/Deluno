@@ -95,7 +95,7 @@ internal class NullRealtimeEventPublisher : IRealtimeEventPublisher
         CancellationToken cancellationToken)
         => Task.CompletedTask;
 
-    public Task PublishDispatchImportStartedAsync(
+    public virtual Task PublishDispatchImportStartedAsync(
         string dispatchId,
         string releaseName,
         string mediaType,

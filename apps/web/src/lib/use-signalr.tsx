@@ -28,6 +28,11 @@
  *   ActivityEventAdded      { id, message, category, severity, createdUtc }
  *   SearchRunCompleted      { libraryId, libraryName, mediaType, plannedCount, queuedCount, skippedCount, completedUtc }
  *   ImportStateChanged      { jobId, state, entityType, entityId, title, errorMessage, changedUtc }
+ *   DispatchGrabAttempt     { dispatchId, releaseName, clientId, clientName, timestamp }
+ *   DispatchGrabCompleted   { dispatchId, releaseName, clientId, succeeded, message, timestamp }
+ *   DispatchDetected        { dispatchId, releaseName, torrentHash, downloadedBytes, timestamp }
+ *   DispatchImportStarted   { dispatchId, releaseName, mediaType, timestamp }
+ *   DispatchImportCompleted { dispatchId, releaseName, succeeded, importedPath, failureReason, timestamp }
  *   *Changed                { id } (identity-only state-change family)
  */
 
@@ -109,6 +114,47 @@ export interface EntityChangedEvent {
   id: string;
 }
 
+export interface DispatchGrabAttemptEvent {
+  dispatchId: string;
+  releaseName: string;
+  clientId: string;
+  clientName: string;
+  timestamp: string;
+}
+
+export interface DispatchGrabCompletedEvent {
+  dispatchId: string;
+  releaseName: string;
+  clientId: string;
+  succeeded: boolean;
+  message: string | null;
+  timestamp: string;
+}
+
+export interface DispatchDetectedEvent {
+  dispatchId: string;
+  releaseName: string;
+  torrentHash: string | null;
+  downloadedBytes: number | null;
+  timestamp: string;
+}
+
+export interface DispatchImportStartedEvent {
+  dispatchId: string;
+  releaseName: string;
+  mediaType: string;
+  timestamp: string;
+}
+
+export interface DispatchImportCompletedEvent {
+  dispatchId: string;
+  releaseName: string;
+  succeeded: boolean;
+  importedPath: string | null;
+  failureReason: string | null;
+  timestamp: string;
+}
+
 type EventMap = {
   DownloadProgress: DownloadProgressEvent;
   QueueItemAdded: QueueItemAddedEvent;
@@ -118,6 +164,11 @@ type EventMap = {
   ActivityEventAdded: ActivityEventAddedEvent;
   SearchRunCompleted: SearchRunCompletedEvent;
   ImportStateChanged: ImportStateChangedEvent;
+  DispatchGrabAttempt: DispatchGrabAttemptEvent;
+  DispatchGrabCompleted: DispatchGrabCompletedEvent;
+  DispatchDetected: DispatchDetectedEvent;
+  DispatchImportStarted: DispatchImportStartedEvent;
+  DispatchImportCompleted: DispatchImportCompletedEvent;
   MovieChanged: EntityChangedEvent;
   SeriesChanged: EntityChangedEvent;
   LibraryChanged: EntityChangedEvent;
