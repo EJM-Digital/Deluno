@@ -1,6 +1,6 @@
 # Windows RC Validation Matrix
 
-Updated: 2026-08-15
+Updated: 2026-08-21
 
 This matrix is the execution guide for issue #81.
 Use it for RC1 and RC2 only after a reproducible candidate artifact is available.
@@ -36,6 +36,8 @@ Profile definitions:
 - `Clean A`: no prior Deluno install
 - `Upgrade B`: existing `v0.1.x` packaged install with realistic data
 - `Rollback C`: same as Upgrade B, with forced update-failure simulation
+- `Clean D`: clean Windows 11 24H2 or later VM with Smart App Control in
+  enforcement mode (`VerifiedAndReputablePolicyState = 1`)
 
 Record for each run:
 
@@ -171,6 +173,45 @@ This was an intentionally corrupted **staged package** in a disposable VM,
 with a checkpoint captured before the simulation. It validates the actual
 Velopack apply/restart recovery path; no production release asset was changed.
 
+## Scenario 4: Smart App Control Enforcement (Clean D)
+
+Goal:
+
+- verify that the signed published candidate can install and launch on a clean
+  Windows 11 machine where Smart App Control enforcement is enabled
+
+Precondition:
+
+- a signed, published candidate is available; unsigned local builds are not
+  valid evidence for this scenario
+- before installation, confirm that
+  `(Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy").VerifiedAndReputablePolicyState`
+  returns `1`
+
+Steps:
+
+1. Capture the SAC state and Windows version before installation.
+2. Verify the downloaded setup executable's SHA-256 against
+   `SHA256SUMS.txt` and confirm `Get-AuthenticodeSignature` reports `Valid`.
+3. Run the signed `*Setup*.exe` on the clean VM.
+4. Record whether installation completes and Deluno launches, or SAC blocks
+   either action.
+5. If blocked, capture the Windows block dialog and the signer details; do not
+   disable SAC or bypass the warning on the evidence VM.
+
+Pass criteria:
+
+- the signed setup executable installs successfully
+- Deluno launches after installation and the first health check is usable
+- the update screen reports the expected packaged install kind and candidate
+  channel
+
+### Recorded result — pending signed candidate
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| SAC-enforcing clean Windows 11 install and first launch | NOT RUN | Blocked until a signed published candidate and Clean D VM are available |
+
 ## Evidence Capture Requirements
 
 Capture for each scenario:
@@ -197,4 +238,5 @@ Use this block in issue #81:
 | Fresh install | Clean A | PASS/FAIL | <link> | |
 | Upgrade 0.1.x -> RC | Upgrade B | PASS/FAIL | <link> | |
 | Failed apply rollback | Rollback C | PASS/FAIL | <link> | |
+| SAC enforcement | Clean D | NOT RUN | pending signed candidate and VM | |
 ```
