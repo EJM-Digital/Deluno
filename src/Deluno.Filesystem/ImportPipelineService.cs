@@ -31,7 +31,8 @@ public sealed partial class ImportPipelineService(
     IOutboundNotificationService? outboundNotificationService,
     IImportResolutionsRepository? importResolutionsRepository,
     IDownloadDispatchesRepository? downloadDispatchesRepository,
-    ILogger<ImportPipelineService> logger)
+    ILogger<ImportPipelineService> logger,
+    Deluno.Realtime.IRealtimeEventPublisher? realtimeEventPublisher)
     : IImportPipelineService
 {
     private static readonly HashSet<string> SupportedVideoExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -53,6 +54,22 @@ public sealed partial class ImportPipelineService(
         var rules = await librariesRepository.ListDestinationRulesAsync(cancellationToken);
         var preview = await EnrichPreviewWithMediaProbeAsync(ResolveImportPreview(request.Preview, settings, rules), cancellationToken);
         var mediaType = NormalizeMediaType(request.Preview.MediaType);
+
+        if (realtimeEventPublisher is not null &&
+            downloadDispatchesRepository is not null &&
+            !string.IsNullOrWhiteSpace(request.DispatchId))
+        {
+            var dispatch = await downloadDispatchesRepository.GetDispatchAsync(request.DispatchId, cancellationToken);
+            if (dispatch is not null)
+            {
+                await realtimeEventPublisher.PublishDispatchImportStartedAsync(
+                    dispatch.Id,
+                    dispatch.ReleaseName,
+                    mediaType,
+                    cancellationToken);
+            }
+        }
+
         var extension = Path.GetExtension(preview.DestinationPath);
 
         if (!SupportedVideoExtensions.Contains(extension))

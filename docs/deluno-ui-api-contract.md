@@ -65,6 +65,11 @@ Implemented SignalR event names currently modeled in frontend/backend contracts:
 - `ActivityEventAdded`
 - `SearchRunCompleted`
 - `ImportStateChanged`
+- `DispatchGrabAttempt`
+- `DispatchGrabCompleted`
+- `DispatchDetected`
+- `DispatchImportStarted`
+- `DispatchImportCompleted`
 - `MovieChanged`
 - `SeriesChanged`
 - `LibraryChanged`

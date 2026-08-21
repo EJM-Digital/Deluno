@@ -10,7 +10,7 @@
  * /api/movies/import-recovery, /api/series/import-recovery;
  * POST /api/jobs/retry-failed.
  */
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { RefreshCw } from "lucide-react";
 import {
@@ -40,6 +40,7 @@ import { SegmentedControl } from "../components/ui/segmented-control";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { toast } from "../components/shell/toaster";
 import { useVisibleInterval } from "../hooks/use-visible-interval";
+import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 
 interface ActivityLoaderData {
   activity: ActivityEventItem[];
@@ -66,6 +67,7 @@ export async function activityLoader(): Promise<ActivityLoaderData> {
 export function ActivityPage() {
   const loaderData = useLoaderData() as ActivityLoaderData;
   const revalidator = useRevalidator();
+  const lastDispatchRefresh = useRef(0);
   const [section, setSection] = useState<Section>("jobs");
   const [openJobId, setOpenJobId] = useState<string | null>(null);
   const [openEventId, setOpenEventId] = useState<string | null>(null);
@@ -73,6 +75,16 @@ export function ActivityPage() {
 
   // Active work needs a short refresh, but hidden tabs must not contend with it.
   useVisibleInterval(() => revalidator.revalidate(), 10_000);
+
+  const scheduleDispatchRefresh = () => {
+    const now = Date.now();
+    if (revalidator.state !== "idle" || now - lastDispatchRefresh.current < 5_000) return;
+    lastDispatchRefresh.current = now;
+    revalidator.revalidate();
+  };
+
+  useSignalREvent("DispatchDetected", RealtimeGroups.Queue, scheduleDispatchRefresh);
+  useSignalREvent("DispatchImportCompleted", RealtimeGroups.Queue, scheduleDispatchRefresh);
 
   const { activity, dispatches, jobs, movieRecovery, seriesRecovery } = loaderData;
 

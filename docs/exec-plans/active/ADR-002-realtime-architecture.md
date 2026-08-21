@@ -44,12 +44,15 @@ loader makes:
 Nothing fires when a movie is added. A perfectly wired client would still have
 to poll for most of the page, because there is nothing to listen to.
 
-### 2. Five published events reach nobody
+### 2. Dispatch lifecycle events are consumed (#135)
 
-The backend publishes thirteen names. `apps/web/src/lib/use-signalr.tsx`
-registers handlers for eight. `DispatchDetected`, `DispatchGrabAttempt`,
-`DispatchGrabCompleted`, `DispatchImportStarted` and `DispatchImportCompleted`
-are sent to clients that never listen for them.
+The backend publishes thirteen action names and the frontend now models all of
+them. The Queue screen refreshes for `DispatchGrabCompleted`, `DispatchDetected`,
+`DispatchImportStarted` and `DispatchImportCompleted`, while
+`DispatchGrabAttempt` produces a user-facing toast without causing a refetch.
+The Activity screen refreshes its dispatch/import view for detection and import
+completion. `ImportPipelineService` now publishes the previously missing
+`DispatchImportStarted` event when a dispatch-backed import begins.
 
 ### 3. The stream is lossy and cannot be resumed
 

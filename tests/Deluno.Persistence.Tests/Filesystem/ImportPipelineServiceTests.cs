@@ -280,7 +280,9 @@ public sealed class ImportPipelineServiceTests
         await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
         await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
 
-        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var realtime = new RecordingRealtimeEventPublisher();
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, realtime, new NullDownloadDispatchesRepository());
+        var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
         var dispatchId = await jobStore.RecordDownloadDispatchAsync(
             libraryId: "movies-main",
             mediaType: "movies",
@@ -309,8 +311,9 @@ public sealed class ImportPipelineServiceTests
             new MediaDecisionService(new VersionedMediaPolicyEngine()),
             null, // IOutboundNotificationService — not needed in tests
             importResolutions,
-            null,
-            NullLogger<ImportPipelineService>.Instance);
+            dispatches,
+            NullLogger<ImportPipelineService>.Instance,
+            realtime);
 
         var result = await service.ExecuteAsync(
             new ImportExecuteRequest(
@@ -333,6 +336,9 @@ public sealed class ImportPipelineServiceTests
         Assert.True(result.Succeeded);
         Assert.NotNull(result.Response);
         Assert.True(result.Response.CatalogUpdated);
+        Assert.Equal(
+            [(dispatchId, "Interstellar.2014.WEB.1080p", "movies")],
+            realtime.DispatchImportsStarted);
 
         var resolutions = await importResolutions.GetDispatchResolutionsAsync(dispatchId, CancellationToken.None);
         Assert.Single(resolutions);
@@ -392,7 +398,8 @@ public sealed class ImportPipelineServiceTests
             null, // IOutboundNotificationService — not needed in tests
             new NullImportResolutionsRepository(),
             null,
-            NullLogger<ImportPipelineService>.Instance);
+            NullLogger<ImportPipelineService>.Instance,
+            null);
 
     private static FilesystemReconciliationService CreateReconciliationService(
         TestStorage storage,
