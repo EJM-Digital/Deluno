@@ -307,7 +307,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             string? mode,
             HttpContext httpContext,
             IMovieCatalogRepository repository,
-            IRealtimeEventPublisher realtimeEventPublisher,
+            IMediaStateRepository mediaStateRepository,
             ILibrariesRepository platformSettingsRepository,
             IQualityRepository qualityRepository,
             IJobQueueRepository jobQueueRepository,
@@ -323,145 +323,48 @@ public static class MoviesEndpointRouteBuilderExtensions
                 return denied;
             }
 
-            var movie = await repository.GetByIdAsync(id, cancellationToken);
-            if (movie is null)
+            var result = await MediaSearchHandler.ExecuteAsync(
+                MediaKind.Movie,
+                id,
+                mode,
+                mediaStateRepository,
+                platformSettingsRepository,
+                qualityRepository,
+                jobQueueRepository,
+                acquisitionPipeline,
+                downloadClientGrabService,
+                activityFeedRepository,
+                timeProvider,
+                (movieId, libraryId, triggerKind, outcome, now, nextEligibleUtc, lastSearchResult, releaseName, indexerName, detailsJson, cancellationToken) =>
+                    repository.RecordSearchAttemptAsync(
+                        movieId,
+                        libraryId,
+                        triggerKind,
+                        outcome,
+                        now,
+                        nextEligibleUtc,
+                        lastSearchResult,
+                        releaseName,
+                        indexerName,
+                        detailsJson,
+                        cancellationToken),
+                cancellationToken);
+
+            if (result.NotFound)
             {
                 return Results.NotFound();
             }
 
-            var wanted = await repository.GetWantedSummaryAsync(cancellationToken);
-            var wantedItem = wanted.RecentItems.FirstOrDefault(item => item.MovieId == id);
-            if (wantedItem is null || string.IsNullOrWhiteSpace(wantedItem.LibraryId))
-            {
-                return Results.Ok(new
-                {
-                    outcome = "blocked",
-                    summary = "This movie is not currently linked to a searchable library.",
-                    reason = MediaSearchReasons.NotSearchable,
-                    releaseName = (string?)null,
-                    indexerName = (string?)null,
-                    dispatchStatus = (string?)null,
-                    dispatchMessage = (string?)null,
-                    candidates = Array.Empty<object>()
-                });
-            }
-
-            var libraries = await platformSettingsRepository.ListLibrariesAsync(cancellationToken);
-            var library = libraries.FirstOrDefault(item => item.Id == wantedItem.LibraryId);
-            if (library is null)
-            {
-                return Results.Ok(new
-                {
-                    outcome = "blocked",
-                    summary = "Deluno could not find the linked library for this movie.",
-                    reason = MediaSearchReasons.LibraryMissing,
-                    releaseName = (string?)null,
-                    indexerName = (string?)null,
-                    dispatchStatus = (string?)null,
-                    dispatchMessage = (string?)null,
-                    candidates = Array.Empty<object>()
-                });
-            }
-
-            var routing = await platformSettingsRepository.GetLibraryRoutingAsync(library.Id, cancellationToken);
-            var now = timeProvider.GetUtcNow();
-            var customFormats = await ResolveCustomFormatsAsync(qualityRepository, library.QualityProfileId, cancellationToken);
-
-            var decisionPlan = await acquisitionPipeline.PlanAsync(
-                new AcquisitionDecisionRequest(
-                    movie.Title,
-                    movie.ReleaseYear,
-                    "movies",
-                    wantedItem.CurrentQuality,
-                    wantedItem.TargetQuality,
-                    routing?.Sources ?? [],
-                    routing?.DownloadClients ?? [],
-                    customFormats,
-                    PreviewOnly: string.Equals(mode, "preview", StringComparison.OrdinalIgnoreCase)),
-                cancellationToken);
-            var searchPlan = decisionPlan.SearchPlan;
-            var bestCandidate = searchPlan.BestCandidate;
-            var outcome = decisionPlan.Outcome;
-            DownloadClientGrabResult? grabResult = null;
-
-            if (decisionPlan.ShouldDispatch && decisionPlan.SelectedDownloadClient is not null && decisionPlan.DispatchRequest is not null)
-            {
-                var downloadClient = decisionPlan.SelectedDownloadClient;
-                grabResult = bestCandidate!.DownloadUrl is null
-                    ? new DownloadClientGrabResult(downloadClient.DownloadClientId, bestCandidate.ReleaseName, false, "planned", "No download URL was available.")
-                    : await downloadClientGrabService.GrabAsync(downloadClient.DownloadClientId, decisionPlan.DispatchRequest, cancellationToken);
-                await jobQueueRepository.RecordDownloadDispatchAsync(
-                    library.Id,
-                    "movies",
-                    "movie",
-                    movie.Id,
-                    bestCandidate!.ReleaseName,
-                    bestCandidate.IndexerName,
-                    downloadClient.DownloadClientId,
-                    downloadClient.DownloadClientName,
-                    grabResult.Status,
-                    JsonSerializer.Serialize(new { searchPlan, grabResult }),
-                    grabResponseCode: grabResult.Succeeded ? 200 : 400,
-                    grabFailureCode: null,
-                    cancellationToken: cancellationToken);
-            }
-
-            await repository.RecordSearchAttemptAsync(
-                movie.Id,
-                library.Id,
-                "manual",
-                outcome,
-                now,
-                now.AddHours(Math.Max(1, library.RetryDelayHours)),
-                decisionPlan.SearchResult,
-                bestCandidate?.ReleaseName,
-                bestCandidate?.IndexerName,
-                searchPlan.Candidates.Count == 0 ? null : JsonSerializer.Serialize(searchPlan),
-                cancellationToken);
-
-            await activityFeedRepository.RecordDecisionAsync(
-                new DecisionExplanationPayload(
-                    Scope: "movie.search",
-                    Status: outcome,
-                    Reason: decisionPlan.SearchResult,
-                    Inputs: new Dictionary<string, string?>
-                    {
-                        ["title"] = movie.Title,
-                        ["year"] = movie.ReleaseYear?.ToString(),
-                        ["libraryId"] = library.Id,
-                        ["sourceCount"] = decisionPlan.SourceCount.ToString(),
-                        ["downloadClientCount"] = decisionPlan.DownloadClientCount.ToString(),
-                        ["policyVersion"] = decisionPlan.PolicyVersion,
-                        ["mode"] = string.Equals(mode, "preview", StringComparison.OrdinalIgnoreCase) ? "preview" : "manual"
-                    },
-                    Outcome: grabResult is null
-                        ? searchPlan.Summary
-                        : $"{grabResult.Status}: {grabResult.Message}",
-                    Alternatives: decisionPlan.Alternatives),
-                null,
-                "movie",
-                movie.Id,
-                cancellationToken);
-
-            await activityFeedRepository.RecordActivityAsync(
-                "movie.search.manual",
-                $"{movie.Title} was searched manually from the Deluno workspace.",
-                null,
-                null,
-                "movie",
-                movie.Id,
-                cancellationToken);
-
             return Results.Ok(new
             {
-                outcome,
-                summary = searchPlan.Summary,
-                reason = searchPlan.Reason,
-                releaseName = bestCandidate?.ReleaseName,
-                indexerName = bestCandidate?.IndexerName,
-                dispatchStatus = grabResult?.Status,
-                dispatchMessage = grabResult?.Message,
-                candidates = searchPlan.Candidates.Select(candidate => new
+                result.Outcome,
+                result.Summary,
+                result.Reason,
+                result.ReleaseName,
+                result.IndexerName,
+                result.DispatchStatus,
+                result.DispatchMessage,
+                candidates = result.Candidates.Select(candidate => new
                 {
                     candidate.ReleaseName,
                     candidate.IndexerName,
