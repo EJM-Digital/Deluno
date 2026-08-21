@@ -1,5 +1,9 @@
-namespace Deluno.Realtime;
+namespace Deluno.Contracts;
 
+/// <summary>
+/// Low-level event contract used by durable state and application modules to
+/// publish changes without depending on a transport implementation.
+/// </summary>
 public interface IRealtimeEventPublisher
 {
     Task PublishHealthChangedAsync(
@@ -100,10 +104,10 @@ public interface IRealtimeEventPublisher
 
     /// <summary>
     /// The generic entity-change family from ADR-002: identity, not the new
-    /// value, so the client invalidates <paramref name="entityType"/> +
+    /// value, so the client invalidates <paramref name="entityType"/> plus
     /// <paramref name="entityId"/> and refetches rather than trusting a
     /// second serialization of the object over the wire. The event name on
-    /// the wire is "{entityType}Changed" (e.g. "QualityProfileChanged").
+    /// the wire is "{entityType}Changed" (for example, "QualityProfileChanged").
     /// </summary>
     Task PublishEntityChangedAsync(
         string entityType,

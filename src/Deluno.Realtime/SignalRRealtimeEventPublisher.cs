@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Deluno.Infrastructure.Observability;
 using Deluno.Realtime.Hubs;
 using Microsoft.AspNetCore.SignalR;

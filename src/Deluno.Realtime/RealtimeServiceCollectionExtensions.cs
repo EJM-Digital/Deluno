@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Deluno.Realtime.Hubs;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;

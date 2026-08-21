@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using Deluno.Contracts;
 using Deluno.Realtime;
 using Deluno.Realtime.Hubs;
 using Microsoft.AspNetCore.Builder;

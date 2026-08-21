@@ -1,4 +1,4 @@
-using Deluno.Realtime;
+using Deluno.Contracts;
 
 namespace Deluno.Persistence.Tests.Support;
 

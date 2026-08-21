@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Deluno.Contracts;
 using Deluno.Infrastructure.Observability;
 using Deluno.Jobs.Data;
 using Deluno.Jobs.Decisions;
@@ -32,7 +33,7 @@ public sealed partial class ImportPipelineService(
     IImportResolutionsRepository? importResolutionsRepository,
     IDownloadDispatchesRepository? downloadDispatchesRepository,
     ILogger<ImportPipelineService> logger,
-    Deluno.Realtime.IRealtimeEventPublisher? realtimeEventPublisher)
+    IRealtimeEventPublisher? realtimeEventPublisher)
     : IImportPipelineService
 {
     private static readonly HashSet<string> SupportedVideoExtensions = new(StringComparer.OrdinalIgnoreCase)

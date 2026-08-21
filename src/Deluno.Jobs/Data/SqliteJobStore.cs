@@ -7,7 +7,6 @@ using Deluno.Infrastructure.Observability;
 using Deluno.Infrastructure.Storage;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Decisions;
-using Deluno.Realtime;
 using Microsoft.Data.Sqlite;
 
 namespace Deluno.Jobs.Data;

@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Deluno.Contracts;
 using Deluno.Infrastructure.Resilience;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
@@ -21,7 +22,7 @@ public sealed class DownloadClientGrabService(
     IJobScheduler jobScheduler,
     IDownloadDispatchRepository dispatchRepository,
     IDownloadDispatchesRepository dispatchesRepository,
-    Deluno.Realtime.IRealtimeEventPublisher realtimeEventPublisher,
+    IRealtimeEventPublisher realtimeEventPublisher,
     TimeProvider timeProvider)
     : IDownloadClientGrabService
 {

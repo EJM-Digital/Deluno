@@ -4,6 +4,5 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Deluno.Infrastructure\Deluno.Infrastructure.csproj" />
-    <ProjectReference Include="..\Deluno.Realtime\Deluno.Realtime.csproj" />
   </ItemGroup>
 </Project>
