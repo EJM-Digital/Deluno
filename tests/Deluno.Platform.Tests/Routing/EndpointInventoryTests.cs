@@ -11,6 +11,7 @@ using Deluno.Movies;
 using Deluno.Notifications;
 using Deluno.Platform;
 using Deluno.Quality;
+using Deluno.Recovery;
 using Deluno.Realtime;
 using Deluno.Security;
 using Deluno.Series;
@@ -74,6 +75,7 @@ public sealed class EndpointInventoryTests
         builder.Services.AddDelunoMoviesModule();
         builder.Services.AddDelunoSeriesModule();
         builder.Services.AddDelunoJobsModule();
+        builder.Services.AddDelunoRecoveryModule();
         builder.Services.AddDelunoIntegrationsModule();
         builder.Services.AddDelunoFilesystemModule();
         builder.Services.AddDelunoRealtimeModule();

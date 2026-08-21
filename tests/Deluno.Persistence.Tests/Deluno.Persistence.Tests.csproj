@@ -32,6 +32,7 @@
     <ProjectReference Include="..\..\src\Deluno.Intake\Deluno.Intake.csproj" />
     <ProjectReference Include="..\..\src\Deluno.Platform\Deluno.Platform.csproj" />
     <ProjectReference Include="..\..\src\Deluno.Quality\Deluno.Quality.csproj" />
+    <ProjectReference Include="..\..\src\Deluno.Recovery\Deluno.Recovery.csproj" />
     <ProjectReference Include="..\..\src\Deluno.Realtime\Deluno.Realtime.csproj" />
     <ProjectReference Include="..\..\src\Deluno.Security\Deluno.Security.csproj" />
     <ProjectReference Include="..\..\src\Deluno.Series\Deluno.Series.csproj" />

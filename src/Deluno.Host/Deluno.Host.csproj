@@ -13,6 +13,7 @@
     <ProjectReference Include="..\Deluno.Movies\Deluno.Movies.csproj" />
     <ProjectReference Include="..\Deluno.Platform\Deluno.Platform.csproj" />
     <ProjectReference Include="..\Deluno.Realtime\Deluno.Realtime.csproj" />
+    <ProjectReference Include="..\Deluno.Recovery\Deluno.Recovery.csproj" />
     <ProjectReference Include="..\Deluno.Series\Deluno.Series.csproj" />
     <ProjectReference Include="..\Deluno.Worker\Deluno.Worker.csproj" />
   </ItemGroup>

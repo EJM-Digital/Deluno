@@ -1,7 +1,8 @@
-using Deluno.Jobs.Contracts;
+using Deluno.Jobs.Data;
+using Deluno.Recovery.Contracts;
 using Microsoft.Extensions.Logging;
 
-namespace Deluno.Jobs.Data;
+namespace Deluno.Recovery.Services;
 
 public sealed class DispatchCleanupService(
     IDownloadDispatchesRepository dispatchesRepository,

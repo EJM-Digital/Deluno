@@ -10,12 +10,13 @@ namespace Deluno.Jobs.Data;
 public sealed class DownloadDispatchPollingService(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
     TimeProvider timeProvider,
-    CompositeDispatchRecoveryHandler recoveryHandler,
+    IDispatchRecoveryHandler recoveryHandler,
     IActivityFeedRepository activityFeedRepository,
     IDownloadDispatchesRepository downloadDispatchesRepository,
     IDispatchAlertRepository alertRepository,
     IJobScheduler jobScheduler,
-    IRealtimeEventPublisher realtimeEventPublisher)
+    IRealtimeEventPublisher realtimeEventPublisher,
+    IRetryPolicyCatalog retryPolicyCatalog)
     : IDownloadDispatchPollingService
 {
     private static readonly TimeSpan GrabTimeout = TimeSpan.FromHours(2);
@@ -453,11 +454,11 @@ public sealed class DownloadDispatchPollingService(
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        var policy = RetryPolicies.GetPolicyForKind(failureKind);
+        var policy = retryPolicyCatalog.GetPolicyForKind(failureKind);
         if (policy.MaxRetries == 0)
             return;
 
-        var nextRetryDelay = RetryPolicies.CalculateNextRetryDelay(1, policy);
+        var nextRetryDelay = retryPolicyCatalog.CalculateNextRetryDelay(1, policy);
         var scheduledUtc = now.Add(nextRetryDelay);
 
         var retryPayload = JsonSerializer.Serialize(new

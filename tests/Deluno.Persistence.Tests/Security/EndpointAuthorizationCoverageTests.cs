@@ -1,7 +1,6 @@
 using Deluno.Api;
 using Deluno.Api.Backup;
 using Deluno.Api.Downloads;
-using Deluno.Api.ImportRecovery;
 using Deluno.Connections;
 using Deluno.Filesystem;
 using Deluno.Infrastructure;
@@ -17,6 +16,7 @@ using Deluno.Movies;
 using Deluno.Notifications;
 using Deluno.Platform;
 using Deluno.Quality;
+using Deluno.Recovery;
 using Deluno.Realtime;
 using Deluno.Security;
 using Deluno.Security.Hardening;
@@ -98,6 +98,7 @@ public sealed class EndpointAuthorizationCoverageTests
         builder.Services.AddDelunoMoviesModule();
         builder.Services.AddDelunoSeriesModule();
         builder.Services.AddDelunoJobsModule();
+        builder.Services.AddDelunoRecoveryModule();
         builder.Services.AddDelunoIntegrationsModule();
         builder.Services.AddScoped<TmdbMetadataProvider>();
         builder.Services.AddDelunoFilesystemModule();

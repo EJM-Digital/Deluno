@@ -23,7 +23,8 @@ public sealed class DownloadClientGrabService(
     IDownloadDispatchRepository dispatchRepository,
     IDownloadDispatchesRepository dispatchesRepository,
     IRealtimeEventPublisher realtimeEventPublisher,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IRetryPolicyCatalog retryPolicyCatalog)
     : IDownloadClientGrabService
 {
     public async Task<DownloadClientGrabResult> GrabAsync(
@@ -142,9 +143,9 @@ public sealed class DownloadClientGrabService(
         DownloadClientGrabRequest request,
         CancellationToken cancellationToken)
     {
-        var policy = RetryPolicies.GrabTimeout;
+        var policy = retryPolicyCatalog.GrabTimeout;
         var attemptCount = await dispatchRepository.IncrementAttemptCountAsync(dispatchId, cancellationToken);
-        var delay = RetryPolicies.CalculateNextRetryDelay(attemptCount, policy);
+        var delay = retryPolicyCatalog.CalculateNextRetryDelay(attemptCount, policy);
 
         if (delay == TimeSpan.Zero)
         {

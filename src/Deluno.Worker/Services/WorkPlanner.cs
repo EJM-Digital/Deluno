@@ -10,6 +10,7 @@ using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
+using Deluno.Recovery.Contracts;
 using Deluno.Series.Contracts;
 using Deluno.Series.Data;
 using Deluno.Worker.Intake;

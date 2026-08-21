@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.RateLimiting;
 using Deluno.Api;
 using Deluno.Api.Backup;
 using Deluno.Api.Downloads;
-using Deluno.Api.ImportRecovery;
 using Deluno.Api.Monitoring;
 using Deluno.Contracts;
 using Deluno.Filesystem;
@@ -21,6 +20,7 @@ using Deluno.Connections;
 using Deluno.Notifications;
 using Deluno.Platform;
 using Deluno.Quality;
+using Deluno.Recovery;
 using Deluno.Security;
 using Deluno.Security.Hardening;
 using Deluno.Realtime;
@@ -158,11 +158,11 @@ builder.Services.AddDelunoLibrariesModule();
 builder.Services.AddDelunoMoviesModule();
 builder.Services.AddDelunoSeriesModule();
 builder.Services.AddDelunoJobsModule();
+builder.Services.AddDelunoRecoveryModule();
 builder.Services.AddDelunoIntegrationsModule();
 builder.Services.AddDelunoFilesystemModule();
 builder.Services.AddDelunoRealtimeModule();
 builder.Services.AddDelunoWorkerModule();
-builder.Services.AddHostedService<Deluno.Host.ImportRecoveryCleanupService>();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {

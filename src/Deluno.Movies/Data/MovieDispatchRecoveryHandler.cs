@@ -1,10 +1,10 @@
-using Deluno.Jobs.Contracts;
+using Deluno.Contracts;
 using Deluno.Movies.Contracts;
 
 namespace Deluno.Movies.Data;
 
 public sealed class MovieDispatchRecoveryHandler(IMovieCatalogRepository catalogRepository)
-    : IDispatchRecoveryHandler
+    : IDispatchRecoveryHandlerComponent
 {
     public async Task HandleGrabTimeoutAsync(
         string title,

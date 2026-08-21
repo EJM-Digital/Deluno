@@ -1,9 +1,12 @@
+using Deluno.Contracts;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Infrastructure.Storage.Migrations;
 using Deluno.Infrastructure.Storage;
 using Microsoft.Extensions.Logging.Abstractions;
+using Deluno.Recovery.Policies;
+using Deluno.Recovery.Services;
 
 namespace Deluno.Persistence.Tests.Jobs;
 
@@ -95,7 +98,7 @@ public sealed class DownloadRetryServiceTests
         var dispatchesRepository = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
         var jobScheduler = new InMemoryJobScheduler();
         var retryService = new DownloadRetryService(
-            dispatchesRepository, jobScheduler, timeProvider, NullLogger<DownloadRetryService>.Instance);
+            dispatchesRepository, jobScheduler, timeProvider, NullLogger<DownloadRetryService>.Instance, new RetryPolicyCatalog());
 
         var dispatchId = Guid.CreateVersion7().ToString("N");
         var createdTime = now.Subtract(TimeSpan.FromHours(1));
@@ -141,7 +144,7 @@ public sealed class DownloadRetryServiceTests
         var dispatchesRepository = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
         var jobScheduler = new InMemoryJobScheduler();
         var retryService = new DownloadRetryService(
-            dispatchesRepository, jobScheduler, timeProvider, NullLogger<DownloadRetryService>.Instance);
+            dispatchesRepository, jobScheduler, timeProvider, NullLogger<DownloadRetryService>.Instance, new RetryPolicyCatalog());
 
         var dispatchId = Guid.CreateVersion7().ToString("N");
         var createdTime = now.Subtract(TimeSpan.FromHours(1));
@@ -226,7 +229,7 @@ public sealed class DownloadRetryServiceTests
         var dispatchesRepository = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
         var jobScheduler = new InMemoryJobScheduler();
         var retryService = new DownloadRetryService(
-            dispatchesRepository, jobScheduler, timeProvider, NullLogger<DownloadRetryService>.Instance);
+            dispatchesRepository, jobScheduler, timeProvider, NullLogger<DownloadRetryService>.Instance, new RetryPolicyCatalog());
 
         var dispatchId = Guid.CreateVersion7().ToString("N");
         var createdTime = now.Subtract(TimeSpan.FromHours(6));

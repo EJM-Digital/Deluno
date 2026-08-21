@@ -1,10 +1,10 @@
-using Deluno.Jobs.Contracts;
+using Deluno.Contracts;
 using Deluno.Series.Contracts;
 
 namespace Deluno.Series.Data;
 
 public sealed class SeriesDispatchRecoveryHandler(ISeriesCatalogRepository catalogRepository)
-    : IDispatchRecoveryHandler
+    : IDispatchRecoveryHandlerComponent
 {
     public async Task HandleGrabTimeoutAsync(
         string title,

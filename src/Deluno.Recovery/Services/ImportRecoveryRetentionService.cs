@@ -1,17 +1,16 @@
-using Deluno.Movies.Data;
 using Deluno.Platform.Data;
-using Deluno.Series.Data;
+using Deluno.Recovery.Contracts;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-namespace Deluno.Host;
+namespace Deluno.Recovery.Services;
 
-internal sealed class ImportRecoveryCleanupService(
-    IMovieCatalogRepository movieRepository,
-    ISeriesCatalogRepository seriesRepository,
+public sealed class ImportRecoveryRetentionService(
+    IMovieImportRecoveryRetentionRepository movieRepository,
+    ISeriesImportRecoveryRetentionRepository seriesRepository,
     IPlatformSettingsRepository platformSettingsRepository,
     TimeProvider timeProvider,
-    ILogger<ImportRecoveryCleanupService> logger)
+    ILogger<ImportRecoveryRetentionService> logger)
     : BackgroundService
 {
     private static readonly TimeSpan CleanupInterval = TimeSpan.FromHours(24);

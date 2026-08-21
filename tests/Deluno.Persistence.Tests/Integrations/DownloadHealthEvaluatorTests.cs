@@ -1,17 +1,20 @@
+using Deluno.Contracts;
 using Deluno.Integrations.DownloadClients;
+using Deluno.Recovery.Policies;
 
 namespace Deluno.Persistence.Tests.Integrations;
 
 public sealed class DownloadHealthEvaluatorTests
 {
     private static readonly DateTimeOffset CapturedUtc = new(2026, 8, 13, 0, 0, 0, TimeSpan.Zero);
+    private static readonly IRecoveryHealthEvaluator Evaluator = new DownloadHealthEvaluator();
 
     [Fact]
     public void Evaluate_StalledClientItem_ExplainsTheReversibleFirstAction()
     {
-        var findings = DownloadHealthEvaluator.Evaluate(CreateItem(
+        var findings = Evaluate(CreateItem(
             status: DownloadQueueStatuses.Stalled,
-            errorMessage: "Tracker timed out."), CapturedUtc);
+            errorMessage: "Tracker timed out."));
 
         var finding = Assert.Single(findings);
         Assert.Equal("client-stalled", finding.Kind);
@@ -24,9 +27,9 @@ public sealed class DownloadHealthEvaluatorTests
     [Fact]
     public void Evaluate_NoThroughputAfterThirtyMinutes_FlagsAReviewWithoutRemoval()
     {
-        var findings = DownloadHealthEvaluator.Evaluate(CreateItem(
+        var findings = Evaluate(CreateItem(
             addedUtc: CapturedUtc.AddMinutes(-31),
-            speedMbps: 0), CapturedUtc);
+            speedMbps: 0));
 
         var finding = Assert.Single(findings);
         Assert.Equal("no-throughput", finding.Kind);
@@ -38,9 +41,9 @@ public sealed class DownloadHealthEvaluatorTests
     [Fact]
     public void Evaluate_ImportReadyWithoutSourcePath_ExplainsWhyManualImportIsNotSafeYet()
     {
-        var findings = DownloadHealthEvaluator.Evaluate(CreateItem(
+        var findings = Evaluate(CreateItem(
             status: DownloadQueueStatuses.ImportReady,
-            sourcePath: null), CapturedUtc);
+            sourcePath: null));
 
         var finding = Assert.Single(findings);
         Assert.Equal("missing-import-path", finding.Kind);
@@ -50,7 +53,7 @@ public sealed class DownloadHealthEvaluatorTests
     [Fact]
     public void Evaluate_SuspiciousPayloadName_RequiresHumanVerification()
     {
-        var findings = DownloadHealthEvaluator.Evaluate(CreateItem(releaseName: "Example.Movie.2026.exe"), CapturedUtc);
+        var findings = Evaluate(CreateItem(releaseName: "Example.Movie.2026.exe"));
 
         var finding = Assert.Single(findings);
         Assert.Equal("suspicious-payload-name", finding.Kind);
@@ -62,10 +65,10 @@ public sealed class DownloadHealthEvaluatorTests
     [Fact]
     public void Evaluate_HealthyActiveDownload_HasNoFinding()
     {
-        var findings = DownloadHealthEvaluator.Evaluate(CreateItem(
+        var findings = Evaluate(CreateItem(
             addedUtc: CapturedUtc.AddMinutes(-5),
             speedMbps: 4.8,
-            etaSeconds: 3600), CapturedUtc);
+            etaSeconds: 3600));
 
         Assert.Empty(findings);
     }
@@ -77,7 +80,7 @@ public sealed class DownloadHealthEvaluatorTests
             status: DownloadQueueStatuses.Stalled,
             errorMessage: "Tracker timed out.",
             sourcePath: "D:\\downloads\\private\\example.mkv");
-        var finding = Assert.Single(DownloadHealthEvaluator.Evaluate(item, CapturedUtc));
+        var finding = Assert.Single(Evaluate(item));
 
         var preview = DownloadCleanupPreviewBuilder.Create(item with { HealthFindings = [finding] });
 
@@ -118,4 +121,25 @@ public sealed class DownloadHealthEvaluatorTests
             ErrorMessage: errorMessage,
             AddedUtc: addedUtc ?? CapturedUtc.AddMinutes(-10),
             SourcePath: sourcePath);
+
+    private static IReadOnlyList<DownloadHealthFinding> Evaluate(DownloadQueueItem item) =>
+        Evaluator.Evaluate(
+            new RecoveryQueueSnapshot(
+                item.Status,
+                item.ErrorMessage,
+                item.SourcePath,
+                item.SpeedMbps,
+                item.AddedUtc,
+                item.EtaSeconds,
+                item.ReleaseName),
+            CapturedUtc)
+        .Select(finding => new DownloadHealthFinding(
+            finding.Severity,
+            finding.Kind,
+            finding.Summary,
+            finding.Evidence,
+            finding.RecommendedAction,
+            finding.CanSafelyRetry,
+            finding.CanSafelyRemove))
+        .ToArray();
 }

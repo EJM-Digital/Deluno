@@ -1,9 +1,10 @@
 using Deluno.Contracts;
 using Deluno.Movies.Contracts;
+using Deluno.Recovery.Contracts;
 
 namespace Deluno.Movies.Data;
 
-public interface IMovieCatalogRepository
+public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionRepository
 {
     Task<MovieListItem> AddAsync(CreateMovieRequest request, CancellationToken cancellationToken);
 
@@ -207,8 +208,6 @@ public interface IMovieCatalogRepository
     Task<MovieImportRecoveryCase?> ResolveImportRecoveryCaseAsync(string id, string status, CancellationToken cancellationToken);
 
     Task AddImportRecoveryEventAsync(string caseId, string eventKind, string message, string? metadataJson, CancellationToken cancellationToken);
-
-    Task<int> CleanupImportRecoveryCasesAsync(DateTimeOffset olderThan, CancellationToken cancellationToken);
 
     Task<MovieWantedItem?> GetMovieWantedStateAsync(
         string movieId,

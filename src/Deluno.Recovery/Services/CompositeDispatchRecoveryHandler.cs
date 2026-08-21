@@ -1,8 +1,8 @@
-using Deluno.Jobs.Contracts;
+using Deluno.Contracts;
 
-namespace Deluno.Jobs.Data;
+namespace Deluno.Recovery.Services;
 
-public sealed class CompositeDispatchRecoveryHandler(IEnumerable<IDispatchRecoveryHandler> handlers)
+public sealed class CompositeDispatchRecoveryHandler(IEnumerable<IDispatchRecoveryHandlerComponent> handlers)
     : IDispatchRecoveryHandler
 {
     public async Task HandleGrabTimeoutAsync(

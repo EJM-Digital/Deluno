@@ -13,6 +13,7 @@ using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
+using Deluno.Contracts;
 
 namespace Deluno.Integrations.DownloadClients;
 
@@ -27,7 +28,8 @@ public sealed class DownloadClientTelemetryService(
     IIntegrationResiliencePolicy resiliencePolicy,
     IJobScheduler jobScheduler,
     IDownloadDispatchesRepository dispatchesRepository,
-    IActivityFeedRepository activityFeedRepository)
+    IActivityFeedRepository activityFeedRepository,
+    IRecoveryHealthEvaluator healthEvaluator)
     : IDownloadClientTelemetryService
 {
     public async Task<DownloadTelemetryOverview> GetOverviewAsync(CancellationToken cancellationToken)
@@ -251,7 +253,16 @@ public sealed class DownloadClientTelemetryService(
         CancellationToken cancellationToken)
     {
         var annotated = snapshot.Queue
-            .Select(item => (Item: item, Findings: DownloadHealthEvaluator.Evaluate(item, snapshot.CapturedUtc)))
+            .Select(item => (Item: item, Findings: healthEvaluator.Evaluate(
+                new RecoveryQueueSnapshot(
+                    item.Status,
+                    item.ErrorMessage,
+                    item.SourcePath,
+                    item.SpeedMbps,
+                    item.AddedUtc,
+                    item.EtaSeconds,
+                    item.ReleaseName),
+                snapshot.CapturedUtc)))
             .ToArray();
         var observations = annotated
             .SelectMany(entry => entry.Findings.Select(finding => new DownloadHealthObservation(
@@ -269,12 +280,17 @@ public sealed class DownloadClientTelemetryService(
                 HealthFindings = entry.Findings.Select(finding =>
                 {
                     recordsByFinding.TryGetValue($"{entry.Item.ClientId}\u001f{entry.Item.Id}\u001f{finding.Kind}", out var record);
-                    return finding with
-                    {
-                        StrikeCount = record?.StrikeCount ?? 0,
-                        CandidateBlocked = blockReleaseAfterThreshold && (record?.BlocksCandidate(snapshot.CapturedUtc, strikeThreshold) ?? false),
-                        IgnoredUntilUtc = record?.IgnoredUntilUtc
-                    };
+                    return new DownloadHealthFinding(
+                        finding.Severity,
+                        finding.Kind,
+                        finding.Summary,
+                        finding.Evidence,
+                        finding.RecommendedAction,
+                        finding.CanSafelyRetry,
+                        finding.CanSafelyRemove,
+                        StrikeCount: record?.StrikeCount ?? 0,
+                        CandidateBlocked: blockReleaseAfterThreshold && (record?.BlocksCandidate(snapshot.CapturedUtc, strikeThreshold) ?? false),
+                        IgnoredUntilUtc: record?.IgnoredUntilUtc);
                 }).ToArray()
             }).ToArray()
         };

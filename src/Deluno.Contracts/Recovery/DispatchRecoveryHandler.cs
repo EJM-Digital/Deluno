@@ -1,4 +1,4 @@
-namespace Deluno.Jobs.Contracts;
+namespace Deluno.Contracts;
 
 public interface IDispatchRecoveryHandler
 {
@@ -42,4 +42,8 @@ public interface IDispatchRecoveryHandler
         string importFailureMessage,
         string detailsJson,
         CancellationToken cancellationToken);
+}
+
+public interface IDispatchRecoveryHandlerComponent : IDispatchRecoveryHandler
+{
 }
