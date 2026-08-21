@@ -179,6 +179,25 @@ public sealed class PlatformSettingsPersistenceTests
     }
 
     [Fact]
+    public async Task WorkflowVerification_is_false_until_a_dispatched_import_marks_it_true()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-05-01T01:02:03Z"));
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var repository = new SqlitePlatformSettingsRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
+        Assert.False((await repository.GetAsync(CancellationToken.None)).WorkflowVerified);
+
+        var marked = await repository.MarkWorkflowVerifiedAsync(CancellationToken.None);
+
+        Assert.True(marked.WorkflowVerified);
+        Assert.True((await repository.GetAsync(CancellationToken.None)).WorkflowVerified);
+    }
+
+    [Fact]
     public async Task SetupDraft_persists_resumable_choices_without_credentials_and_can_be_cleared()
     {
         using var storage = TestStorage.Create();

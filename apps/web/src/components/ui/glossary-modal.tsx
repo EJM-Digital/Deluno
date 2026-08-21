@@ -87,11 +87,16 @@ export function GlossaryModal({ open, onOpenChange }: GlossaryModalProps) {
         className="fixed inset-0 bg-black/50 backdrop-blur-[2px]"
         onClick={() => onOpenChange(false)}
       />
-      <div className="relative z-50 w-full max-w-2xl max-h-[90dvh] rounded-2xl border border-hairline bg-card shadow-2xl overflow-hidden flex flex-col">
+      <div
+        className="relative z-50 w-full max-w-2xl max-h-[90dvh] rounded-2xl border border-hairline bg-card shadow-2xl overflow-hidden flex flex-col"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="glossary-title"
+      >
         <div className="flex items-center justify-between border-b border-hairline p-6">
           <div className="flex items-center gap-2">
             <HelpCircle className="h-5 w-5 text-primary" />
-            <h2 className="text-lg font-semibold">Glossary</h2>
+            <h2 id="glossary-title" className="text-lg font-semibold">Glossary</h2>
           </div>
           <button
             onClick={() => onOpenChange(false)}

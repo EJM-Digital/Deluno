@@ -2,6 +2,12 @@
 
 This is the product-quality gate for recommending Deluno as a safe, simpler replacement for the combined workflows of Radarr, Sonarr, SABnzbd/qBittorrent, Prowlarr, Huntarr, Configarr, Recyclarr, and CleanUpArr. It complements the GA execution checklist in `docs/ga-release-checklist.md`; it does not replace installer, release-candidate, or soak evidence.
 
+This is a final-state contract, not a v1/v2 split. Deluno is not considered
+ready because a partial surface resembles one of the tools above. The complete
+supported workflow must be configured, exercised, recoverable, explainable,
+and evidenced. The canonical workflow and setup journey are documented in
+`docs/DELUNO_END_TO_END_WORKFLOW.md` and `docs/DELUNO_SETUP_ORDER.md`.
+
 ## Decision rule
 
 Deluno is ready to recommend for a scenario only when the user can configure that scenario, understand what will happen, complete the expected flow, recover safely from failure, and inspect the evidence afterward. A passing build alone is never enough.

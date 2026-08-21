@@ -238,11 +238,12 @@ test.describe("dashboard workflow", () => {
     await authenticateAndNavigate(page, "/settings");
 
     await page.getByTitle("Open glossary").click();
-    await expect(page.getByRole("heading", { name: "Glossary" })).toBeVisible();
-    await expect(page.getByText("Media Plan", { exact: true })).toBeVisible();
-    await expect(page.getByText("Search Source", { exact: true })).toBeVisible();
-    await expect(page.getByText("Download Health & Cleanup", { exact: true })).toBeVisible();
-    await expect(page.getByText("Guide-backed Plan", { exact: true })).toBeVisible();
+    const glossary = page.getByRole("dialog", { name: "Glossary" });
+    await expect(glossary).toBeVisible();
+    await expect(glossary.getByText("Media Plan", { exact: true })).toBeVisible();
+    await expect(glossary.getByText("Search Source", { exact: true })).toBeVisible();
+    await expect(glossary.getByText("Download Health & Cleanup", { exact: true })).toBeVisible();
+    await expect(glossary.getByText("Guide-backed Plan", { exact: true })).toBeVisible();
   });
 
   test("starts a media plan from an understandable scenario", async ({ page }) => {

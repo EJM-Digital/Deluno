@@ -264,6 +264,11 @@ public sealed partial class ImportPipelineService(
                 settings.UnmonitorWhenCutoffMet,
                 cancellationToken);
 
+            if (catalogImportResult.CatalogUpdated && !string.IsNullOrWhiteSpace(request.DispatchId))
+            {
+                await platformRepository.MarkWorkflowVerifiedAsync(cancellationToken);
+            }
+
             if (importResolutionsRepository is not null && !string.IsNullOrEmpty(request.DispatchId) && catalogImportResult.CatalogUpdated && catalogImportResult.CatalogId is not null)
             {
                 await importResolutionsRepository.RecordSuccessAsync(

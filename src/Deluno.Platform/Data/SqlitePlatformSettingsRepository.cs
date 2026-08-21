@@ -242,6 +242,22 @@ public sealed class SqlitePlatformSettingsRepository(
         return CreateSnapshot(settings, roots);
     }
 
+    public async Task<PlatformSettingsSnapshot> MarkWorkflowVerifiedAsync(
+        CancellationToken cancellationToken)
+    {
+        var updatedUtc = timeProvider.GetUtcNow();
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "setup.workflowVerified", "true", updatedUtc, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        var settings = await ReadSettingsAsync(connection, cancellationToken);
+        var roots = await ReadRootsAsync(connection, cancellationToken);
+        return CreateSnapshot(settings, roots);
+    }
+
     public async Task<string?> GetMetadataProviderSecretAsync(string provider, CancellationToken cancellationToken)
     {
         var settingKey = provider.Trim().ToLowerInvariant() switch
@@ -433,7 +449,8 @@ public sealed class SqlitePlatformSettingsRepository(
             CleanupBlockReleaseAfterThreshold: !string.Equals(GetValue(settings, "cleanup.blockReleaseAfterThreshold"), "false", StringComparison.OrdinalIgnoreCase),
             CleanupQueueReplacementAfterThreshold: !string.Equals(GetValue(settings, "cleanup.queueReplacementAfterThreshold"), "false", StringComparison.OrdinalIgnoreCase),
             CleanupRemoveClientEntryAfterThreshold: string.Equals(GetValue(settings, "cleanup.removeClientEntryAfterThreshold"), "true", StringComparison.OrdinalIgnoreCase),
-            CleanupPurgePayloadAfterThreshold: string.Equals(GetValue(settings, "cleanup.purgePayloadAfterThreshold"), "true", StringComparison.OrdinalIgnoreCase));
+            CleanupPurgePayloadAfterThreshold: string.Equals(GetValue(settings, "cleanup.purgePayloadAfterThreshold"), "true", StringComparison.OrdinalIgnoreCase),
+            WorkflowVerified: string.Equals(GetValue(settings, "setup.workflowVerified"), "true", StringComparison.OrdinalIgnoreCase));
     }
 
     private static int ReadDownloadHealthStrikeThreshold(IReadOnlyDictionary<string, string> settings)

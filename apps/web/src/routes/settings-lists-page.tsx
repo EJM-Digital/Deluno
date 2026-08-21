@@ -28,7 +28,6 @@ import { Select } from "../components/ui/select";
 import { Switch, SwitchRow } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
 import {
-  fetchJson,
   type IntakeListApprovalResult,
   type IntakeListPreviewItem,
   type IntakeListPreviewResult,
@@ -88,8 +87,8 @@ interface ListForm {
 type DrawerMode = { kind: "closed" } | { kind: "create" } | { kind: "edit"; id: string };
 
 export async function settingsListsLoader(): Promise<LoaderData> {
-  const [overview, intakeSources] = await Promise.all([settingsOverviewLoader(), fetchJson<IntakeSourceItem[]>("/api/intake-sources")]);
-  return { ...overview, intakeSources };
+  const overview = await settingsOverviewLoader();
+  return { ...overview, intakeSources: overview.intakeSources };
 }
 
 export function SettingsListsPage() {
