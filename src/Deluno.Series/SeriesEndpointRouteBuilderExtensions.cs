@@ -406,9 +406,16 @@ public static class SeriesEndpointRouteBuilderExtensions
             var wantedItem = wanted.RecentItems.FirstOrDefault(item => item.SeriesId == id);
             if (wantedItem is null || string.IsNullOrWhiteSpace(wantedItem.LibraryId))
             {
-                return Results.ValidationProblem(new Dictionary<string, string[]>
+                return Results.Ok(new
                 {
-                    ["seriesId"] = ["This series is not currently linked to a searchable library."]
+                    outcome = "blocked",
+                    summary = "This series is not currently linked to a searchable library.",
+                    reason = MediaSearchReasons.NotSearchable,
+                    releaseName = (string?)null,
+                    indexerName = (string?)null,
+                    dispatchStatus = (string?)null,
+                    dispatchMessage = (string?)null,
+                    candidates = Array.Empty<object>()
                 });
             }
 
@@ -416,9 +423,16 @@ public static class SeriesEndpointRouteBuilderExtensions
             var library = libraries.FirstOrDefault(item => item.Id == wantedItem.LibraryId);
             if (library is null)
             {
-                return Results.ValidationProblem(new Dictionary<string, string[]>
+                return Results.Ok(new
                 {
-                    ["libraryId"] = ["Deluno could not find the linked library for this series."]
+                    outcome = "blocked",
+                    summary = "Deluno could not find the linked library for this series.",
+                    reason = MediaSearchReasons.LibraryMissing,
+                    releaseName = (string?)null,
+                    indexerName = (string?)null,
+                    dispatchStatus = (string?)null,
+                    dispatchMessage = (string?)null,
+                    candidates = Array.Empty<object>()
                 });
             }
 
@@ -516,6 +530,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             {
                 outcome,
                 summary = searchPlan.Summary,
+                reason = searchPlan.Reason,
                 releaseName = bestCandidate?.ReleaseName,
                 indexerName = bestCandidate?.IndexerName,
                 dispatchStatus = grabResult?.Status,
@@ -878,9 +893,16 @@ public static class SeriesEndpointRouteBuilderExtensions
             var wantedItem = wanted.RecentItems.FirstOrDefault(item => item.SeriesId == id);
             if (wantedItem is null || string.IsNullOrWhiteSpace(wantedItem.LibraryId))
             {
-                return Results.ValidationProblem(new Dictionary<string, string[]>
+                return Results.Ok(new
                 {
-                    ["seriesId"] = ["This series is not currently linked to a searchable library."]
+                    outcome = "blocked",
+                    reason = MediaSearchReasons.NotSearchable,
+                    searchedEpisodes = targetEpisodes.Count,
+                    matchedCount = 0,
+                    queuedCount = 0,
+                    sentCount = 0,
+                    plannedCount = 0,
+                    failedCount = 0
                 });
             }
 
@@ -888,9 +910,16 @@ public static class SeriesEndpointRouteBuilderExtensions
             var library = libraries.FirstOrDefault(item => item.Id == wantedItem.LibraryId);
             if (library is null)
             {
-                return Results.ValidationProblem(new Dictionary<string, string[]>
+                return Results.Ok(new
                 {
-                    ["libraryId"] = ["Deluno could not find the linked library for this series."]
+                    outcome = "blocked",
+                    reason = MediaSearchReasons.LibraryMissing,
+                    searchedEpisodes = targetEpisodes.Count,
+                    matchedCount = 0,
+                    queuedCount = 0,
+                    sentCount = 0,
+                    plannedCount = 0,
+                    failedCount = 0
                 });
             }
 
@@ -934,6 +963,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                 return Results.Ok(new
                 {
                     outcome = "blocked",
+                    reason = configuredSources == 0 ? MediaSearchReasons.NoIndexers : MediaSearchReasons.NoResults,
                     searchedEpisodes = targetEpisodes.Count,
                     matchedCount = 0,
                     queuedCount = 0
@@ -945,6 +975,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             var sentCount = 0;
             var plannedCount = 0;
             var failedCount = 0;
+            var searchReasons = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var episode in targetEpisodes)
             {
@@ -965,6 +996,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                 var searchPlan = decisionPlan.SearchPlan;
                 var bestCandidate = searchPlan.BestCandidate;
                 var outcome = decisionPlan.Outcome;
+                searchReasons.Add(searchPlan.Reason);
 
                 if (decisionPlan.ShouldDispatch && decisionPlan.SelectedDownloadClient is not null && decisionPlan.DispatchRequest is not null)
                 {
@@ -1081,6 +1113,9 @@ public static class SeriesEndpointRouteBuilderExtensions
             return Results.Ok(new
             {
                 outcome = matchedCount > 0 ? "matched" : "checked",
+                reason = matchedCount > 0
+                    ? MediaSearchReasons.Ok
+                    : searchReasons.FirstOrDefault(item => !string.Equals(item, MediaSearchReasons.Ok, StringComparison.OrdinalIgnoreCase)) ?? MediaSearchReasons.NoResults,
                 searchedEpisodes = targetEpisodes.Count,
                 matchedCount,
                 queuedCount,
@@ -1709,9 +1744,18 @@ public static class SeriesEndpointRouteBuilderExtensions
             var wantedItem = wanted.RecentItems.FirstOrDefault(item => item.SeriesId == id);
             if (wantedItem is null || string.IsNullOrWhiteSpace(wantedItem.LibraryId))
             {
-                return Results.ValidationProblem(new Dictionary<string, string[]>
+                return Results.Ok(new
                 {
-                    ["seriesId"] = ["This series is not currently linked to a searchable library."]
+                    outcome = "blocked",
+                    reason = MediaSearchReasons.NotSearchable,
+                    seasonNumber,
+                    searchedEpisodes = seasonEpisodes.Count,
+                    matchedCount = 0,
+                    queuedCount = 0,
+                    releaseName = (string?)null,
+                    indexerName = (string?)null,
+                    dispatchStatus = (string?)null,
+                    dispatchMessage = (string?)null
                 });
             }
 
@@ -1719,9 +1763,18 @@ public static class SeriesEndpointRouteBuilderExtensions
             var library = libraries.FirstOrDefault(item => item.Id == wantedItem.LibraryId);
             if (library is null)
             {
-                return Results.ValidationProblem(new Dictionary<string, string[]>
+                return Results.Ok(new
                 {
-                    ["libraryId"] = ["Deluno could not find the linked library for this series."]
+                    outcome = "blocked",
+                    reason = MediaSearchReasons.LibraryMissing,
+                    seasonNumber,
+                    searchedEpisodes = seasonEpisodes.Count,
+                    matchedCount = 0,
+                    queuedCount = 0,
+                    releaseName = (string?)null,
+                    indexerName = (string?)null,
+                    dispatchStatus = (string?)null,
+                    dispatchMessage = (string?)null
                 });
             }
 
@@ -1756,6 +1809,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                 return Results.Ok(new
                 {
                     outcome = "blocked",
+                    reason = configuredSources == 0 ? MediaSearchReasons.NoIndexers : MediaSearchReasons.NoResults,
                     seasonNumber,
                     searchedEpisodes = seasonEpisodes.Count,
                     matchedCount = 0,
@@ -1882,6 +1936,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             {
                 outcome,
                 seasonNumber,
+                reason = searchPlan.Reason,
                 searchedEpisodes = seasonEpisodes.Count,
                 matchedCount = searchPlan.BestCandidate is null ? 0 : seasonEpisodes.Count,
                 queuedCount = searchPlan.BestCandidate is null ? 0 : 1,

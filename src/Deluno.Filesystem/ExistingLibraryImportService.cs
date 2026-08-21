@@ -8,6 +8,7 @@ using Deluno.Movies.Data;
 using Deluno.Quality;
 using Deluno.Series.Contracts;
 using Deluno.Series.Data;
+using Microsoft.Extensions.Logging;
 
 namespace Deluno.Filesystem;
 
@@ -47,6 +48,7 @@ public sealed class ExistingLibraryImportService(
     ISeriesCatalogRepository seriesCatalogRepository,
     IMediaDecisionService mediaDecisionService,
     TimeProvider timeProvider,
+    ILogger<ExistingLibraryImportService> logger,
     LibraryImportSliceOptions? sliceOptions = null)
     : IExistingLibraryImportService
 {
@@ -488,7 +490,7 @@ public sealed class ExistingLibraryImportService(
     /// holds paths, not catalogue rows, and nothing below it is materialised —
     /// each entry is parsed, written and released as it is reached.
     /// </summary>
-    private static List<string> ListTopLevelEntries(string rootPath)
+    private List<string> ListTopLevelEntries(string rootPath)
     {
         var entries = new List<string>();
 
@@ -499,6 +501,7 @@ public sealed class ExistingLibraryImportService(
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            logger.LogWarning(ex, "Could not enumerate the existing-library import root {RootPath}.", rootPath);
             return entries;
         }
 
@@ -506,7 +509,7 @@ public sealed class ExistingLibraryImportService(
         return entries;
     }
 
-    private static DetectionResult DetectMovie(string entry)
+    private DetectionResult DetectMovie(string entry)
     {
         if (File.Exists(entry))
         {
@@ -528,6 +531,7 @@ public sealed class ExistingLibraryImportService(
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            logger.LogWarning(ex, "Could not read movie files under {EntryPath} during existing-library import.", entry);
             return new DetectionResult(null, new DetectionIssue("unreadable", ex.Message));
         }
 
@@ -547,7 +551,7 @@ public sealed class ExistingLibraryImportService(
             null);
     }
 
-    private static DetectionResult DetectSeries(string entry)
+    private DetectionResult DetectSeries(string entry)
     {
         if (File.Exists(entry))
         {
@@ -582,6 +586,7 @@ public sealed class ExistingLibraryImportService(
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            logger.LogWarning(ex, "Could not read series files under {EntryPath} during existing-library import.", entry);
             return new DetectionResult(null, new DetectionIssue("unreadable", ex.Message));
         }
 
@@ -616,10 +621,10 @@ public sealed class ExistingLibraryImportService(
     private static bool IsVideoFile(string path)
         => VideoExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
 
-    private static IEnumerable<string> EnumerateVideoFiles(string path)
+    private IEnumerable<string> EnumerateVideoFiles(string path)
         => Directory.EnumerateFiles(path, "*.*", SearchOption.AllDirectories).Where(IsVideoFile);
 
-    private static long? GetFileSize(string path)
+    private long? GetFileSize(string path)
     {
         try
         {
@@ -627,6 +632,7 @@ public sealed class ExistingLibraryImportService(
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            logger.LogDebug(ex, "Could not read the size of existing-library file {FilePath}.", path);
             return null;
         }
     }
@@ -664,7 +670,7 @@ public sealed class ExistingLibraryImportService(
         return new DetectedLibraryItem(string.IsNullOrWhiteSpace(normalized) ? raw.Trim() : normalized, year);
     }
 
-    private static IReadOnlyList<ImportedEpisodeItem> DetectEpisodes(IEnumerable<string> files)
+    private IReadOnlyList<ImportedEpisodeItem> DetectEpisodes(IEnumerable<string> files)
         => files
             .SelectMany(ExtractEpisodes)
             .Distinct()
@@ -672,7 +678,7 @@ public sealed class ExistingLibraryImportService(
             .ThenBy(item => item.EpisodeNumber)
             .ToArray();
 
-    private static IEnumerable<ImportedEpisodeItem> ExtractEpisodes(string filePath)
+    private IEnumerable<ImportedEpisodeItem> ExtractEpisodes(string filePath)
     {
         var fileName = Path.GetFileNameWithoutExtension(filePath);
         var match = EpisodeNumberPattern.Match(fileName);

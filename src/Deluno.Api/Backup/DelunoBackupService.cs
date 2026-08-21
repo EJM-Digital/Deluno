@@ -321,8 +321,9 @@ public sealed class DelunoBackupService(
                 CreatedUtc: createdUtc,
                 Reason: reason);
         }
-        catch
+        catch (Exception exception)
         {
+            logger.LogWarning(exception, "Could not read backup manifest from {BackupPath}.", file);
             return null;
         }
     }

@@ -30,6 +30,7 @@ import { Select } from "../components/ui/select";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { toast } from "../components/shell/toaster";
 import { wantedStatusPresentation } from "../lib/media-status-presentation";
+import { describeSearchReason } from "../lib/search-reasons";
 
 interface WantedEpisode {
   episodeId: string;
@@ -104,14 +105,23 @@ export function EpisodeSearchPage() {
         body: JSON.stringify({ episodeIds })
       });
       if (!response.ok) throw new Error("search-failed");
-      const payload = (await response.json()) as { searchedEpisodes?: number; matchedCount?: number };
+      const payload = (await response.json()) as { searchedEpisodes?: number; matchedCount?: number; reason?: string };
       const searched = payload.searchedEpisodes ?? episodeIds.length;
       const matched = payload.matchedCount ?? 0;
-      toast.success(
-        matched > 0
-          ? `Searched ${searched} episode${searched === 1 ? "" : "s"}, matched ${matched}.`
-          : `Searched ${searched} episode${searched === 1 ? "" : "s"}. Nothing matched yet.`
-      );
+      if (payload.reason && payload.reason !== "ok") {
+        const explained = describeSearchReason(payload.reason, `Searched ${searched} episode${searched === 1 ? "" : "s"}. Nothing matched yet.`);
+        const action = explained.action;
+        toast.info(explained.title, {
+          description: explained.description,
+          action: action ? { label: action.label, onClick: () => navigate(action.href) } : undefined
+        });
+      } else {
+        toast.success(
+          matched > 0
+            ? `Searched ${searched} episode${searched === 1 ? "" : "s"}, matched ${matched}.`
+            : `Searched ${searched} episode${searched === 1 ? "" : "s"}. Nothing matched yet.`
+        );
+      }
       revalidator.revalidate();
     } catch {
       toast.error("That episode search failed.");

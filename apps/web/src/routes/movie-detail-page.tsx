@@ -27,6 +27,7 @@ import {
   type MovieWantedSummary
 } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
+import { describeSearchReason } from "../lib/search-reasons";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
@@ -287,6 +288,7 @@ export function MovieDetailPage() {
         indexerName?: string | null;
         dispatchStatus?: string | null;
         dispatchMessage?: string | null;
+        reason?: string;
         candidates?: SearchPlanCandidate[];
       };
       const best = payload.releaseName ? `${payload.releaseName}${payload.indexerName ? ` via ${payload.indexerName}` : ""}` : null;
@@ -296,9 +298,25 @@ export function MovieDetailPage() {
         const found = payload.candidates?.length ?? 0;
         setSection("destination");
         if (found) toast.success(`${found} release${found === 1 ? "" : "s"} scored. Choose one below.`);
-        else toast.info(payload.summary ?? "No releases matched this film's media plan.");
+        else {
+          const explained = describeSearchReason(payload.reason, payload.summary ?? "No releases matched this film's media plan.");
+          const action = explained.action;
+          toast.info(explained.title, {
+            description: explained.description,
+            action: action ? { label: action.label, onClick: () => navigate(action.href) } : undefined
+          });
+        }
       } else {
-        toast.success(best ? `Deluno selected ${best} using this film's media plan.` : "Search finished with no accepted release.");
+        if (best) {
+          toast.success(`Deluno selected ${best} using this film's media plan.`);
+        } else {
+          const explained = describeSearchReason(payload.reason, "Search finished with no accepted release.");
+          const action = explained.action;
+          toast.info(explained.title, {
+            description: explained.description,
+            action: action ? { label: action.label, onClick: () => navigate(action.href) } : undefined
+          });
+        }
       }
       revalidator.revalidate();
     } catch {

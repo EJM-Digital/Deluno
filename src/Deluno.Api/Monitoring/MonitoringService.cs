@@ -7,6 +7,7 @@ using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Connections.Data;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Deluno.Api.Monitoring;
@@ -20,7 +21,8 @@ public sealed class MonitoringService(
     IOptions<StoragePathOptions> storageOptions,
     IApiLatencyTracker latencyTracker,
     IConfiguration configuration,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    ILogger<MonitoringService> logger)
     : IMonitoringService
 {
     public async Task<MonitoringDashboardSnapshot> GetDashboardAsync(CancellationToken cancellationToken)
@@ -367,7 +369,7 @@ public sealed class MonitoringService(
         return (total, failed, rate);
     }
 
-    private static MonitoringStorageSummary ReadStorageSummary(string dataRoot)
+    private MonitoringStorageSummary ReadStorageSummary(string dataRoot)
     {
         try
         {
@@ -394,10 +396,11 @@ public sealed class MonitoringService(
                 FreePercent: percent,
                 LowStorage: percent is not null && percent <= 12d);
         }
-        catch
+        catch (Exception exception)
         {
+            logger.LogWarning(exception, "Could not read storage information for {DataRoot}.", dataRoot);
             return new MonitoringStorageSummary(
-                DataRoot: Path.GetFullPath(dataRoot),
+                DataRoot: dataRoot,
                 TotalBytes: null,
                 FreeBytes: null,
                 FreePercent: null,

@@ -328,9 +328,16 @@ public static class MoviesEndpointRouteBuilderExtensions
             var wantedItem = wanted.RecentItems.FirstOrDefault(item => item.MovieId == id);
             if (wantedItem is null || string.IsNullOrWhiteSpace(wantedItem.LibraryId))
             {
-                return Results.ValidationProblem(new Dictionary<string, string[]>
+                return Results.Ok(new
                 {
-                    ["movieId"] = ["This movie is not currently linked to a searchable library."]
+                    outcome = "blocked",
+                    summary = "This movie is not currently linked to a searchable library.",
+                    reason = MediaSearchReasons.NotSearchable,
+                    releaseName = (string?)null,
+                    indexerName = (string?)null,
+                    dispatchStatus = (string?)null,
+                    dispatchMessage = (string?)null,
+                    candidates = Array.Empty<object>()
                 });
             }
 
@@ -338,9 +345,16 @@ public static class MoviesEndpointRouteBuilderExtensions
             var library = libraries.FirstOrDefault(item => item.Id == wantedItem.LibraryId);
             if (library is null)
             {
-                return Results.ValidationProblem(new Dictionary<string, string[]>
+                return Results.Ok(new
                 {
-                    ["libraryId"] = ["Deluno could not find the linked library for this movie."]
+                    outcome = "blocked",
+                    summary = "Deluno could not find the linked library for this movie.",
+                    reason = MediaSearchReasons.LibraryMissing,
+                    releaseName = (string?)null,
+                    indexerName = (string?)null,
+                    dispatchStatus = (string?)null,
+                    dispatchMessage = (string?)null,
+                    candidates = Array.Empty<object>()
                 });
             }
 
@@ -437,6 +451,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             {
                 outcome,
                 summary = searchPlan.Summary,
+                reason = searchPlan.Reason,
                 releaseName = bestCandidate?.ReleaseName,
                 indexerName = bestCandidate?.IndexerName,
                 dispatchStatus = grabResult?.Status,
