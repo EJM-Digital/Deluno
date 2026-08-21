@@ -419,6 +419,7 @@ public sealed class ExistingLibraryImportServiceTests
             series ?? new SqliteSeriesCatalogRepository(storage.Factory, timeProvider),
             new MediaDecisionService(new VersionedMediaPolicyEngine()),
             timeProvider,
+            NullLogger<ExistingLibraryImportService>.Instance,
             sliceOptions);
 
     private static async Task<string> CreateLibraryAsync(

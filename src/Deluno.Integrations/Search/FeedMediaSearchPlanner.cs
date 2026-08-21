@@ -70,6 +70,19 @@ public sealed class FeedMediaSearchPlanner(
             .ThenBy(pair => pair.indexer.Priority)
             .ToArray();
 
+        if (sourceIndexers.Length == 0)
+        {
+            logger.LogWarning(
+                "Search for {Title} has no enabled {MediaType} indexers linked to the library policy.",
+                title,
+                mediaType);
+            return new MediaSearchPlan(
+                BestCandidate: null,
+                Candidates: [],
+                Summary: $"No enabled {mediaType} indexers are linked to this library policy. Add or enable an indexer before searching for {title}.",
+                Reason: MediaSearchReasons.NoIndexers);
+        }
+
         var settings = await platformRepository.GetAsync(cancellationToken);
         var neverGrabPatterns = settings.ReleaseNeverGrabPatterns
             .Split(['\r', '\n', ','], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
@@ -86,7 +99,7 @@ public sealed class FeedMediaSearchPlanner(
         // unbounded number of outbound connections at once. Per-indexer
         // failures are already contained inside TrySearchIndexerAsync, so one
         // slow or broken indexer cannot fail the whole plan.
-        var searchResults = new IReadOnlyList<MediaSearchCandidate>[sourceIndexers.Length];
+        var searchResults = new IndexerSearchOutcome[sourceIndexers.Length];
         await Parallel.ForAsync(
             0,
             sourceIndexers.Length,
@@ -108,23 +121,27 @@ public sealed class FeedMediaSearchPlanner(
         var liveCandidates = new List<MediaSearchCandidate>();
         foreach (var result in searchResults)
         {
-            liveCandidates.AddRange(result);
-        }
-
-        if (sourceIndexers.Length == 0)
-        {
-            return new MediaSearchPlan(
-                BestCandidate: null,
-                Candidates: [],
-                Summary: $"No enabled {mediaType} indexers are linked to this library policy. Add or enable an indexer before searching for {title}.");
+            liveCandidates.AddRange(result.Candidates);
         }
 
         if (liveCandidates.Count == 0)
         {
+            var failedCount = searchResults.Count(result => result.Failed);
+            var reason = searchResults.All(result => result.CircuitOpen)
+                ? MediaSearchReasons.CircuitOpen
+                : failedCount == searchResults.Length
+                    ? MediaSearchReasons.AllIndexersFailed
+                    : MediaSearchReasons.NoResults;
+            logger.LogWarning(
+                "Search for {Title} queried {IndexerCount} indexers; {FailedCount} failed and none returned results.",
+                title,
+                sourceIndexers.Length,
+                failedCount);
             return new MediaSearchPlan(
                 BestCandidate: null,
                 Candidates: [],
-                Summary: $"No live feed results were returned for {title}. Check indexer health, categories, credentials, and network access.");
+                Summary: $"No live feed results were returned for {title}. Check indexer health, categories, credentials, and network access.",
+                Reason: reason);
         }
 
         var normalizedTarget = LibraryQualityDecider.NormalizeQuality(targetQuality) ?? "WEB 1080p";
@@ -142,10 +159,11 @@ public sealed class FeedMediaSearchPlanner(
             Candidates: ordered,
             Summary: best is null
                 ? $"No usable feed release was found for {title}."
-                : $"Best feed candidate is {best.ReleaseName} from {best.IndexerName} targeting {normalizedTarget}.");
+                : $"Best feed candidate is {best.ReleaseName} from {best.IndexerName} targeting {normalizedTarget}.",
+            Reason: best is null ? MediaSearchReasons.NoUsableRelease : MediaSearchReasons.Ok);
     }
 
-    private async Task<IReadOnlyList<MediaSearchCandidate>> TrySearchIndexerAsync(
+    private async Task<IndexerSearchOutcome> TrySearchIndexerAsync(
         IndexerItem indexer,
         LibrarySourceLinkItem source,
         string title,
@@ -162,7 +180,11 @@ public sealed class FeedMediaSearchPlanner(
     {
         if (!Uri.TryCreate(BuildSearchUrl(indexer, title, year, mediaType, seasonNumber, episodeNumber), UriKind.Absolute, out var uri))
         {
-            return [];
+            logger.LogWarning(
+                "Indexer {IndexerName} ({IndexerId}) has an unusable search URL; skipping.",
+                indexer.Name,
+                indexer.Id);
+            return new IndexerSearchOutcome([], Failed: true, CircuitOpen: false);
         }
 
         // Paced before the request, not after the indexer complains. Keyed on
@@ -188,7 +210,7 @@ public sealed class FeedMediaSearchPlanner(
                 uri.Host,
                 MaxIndexerThrottleWait);
 
-            return [];
+            return new IndexerSearchOutcome([], Failed: false, CircuitOpen: false);
         }
 
         if (waited > TimeSpan.FromSeconds(1))
@@ -218,24 +240,54 @@ public sealed class FeedMediaSearchPlanner(
                                 response.StatusCode);
                         }
 
-                        return Array.Empty<MediaSearchCandidate>();
+                        logger.LogWarning(
+                            "Indexer {IndexerName} ({IndexerId}) returned non-transient HTTP status {StatusCode}.",
+                            indexer.Name,
+                            indexer.Id,
+                            (int)response.StatusCode);
+                        return new IndexerSearchOutcome([], Failed: true, CircuitOpen: false);
                     }
 
                     await using var stream = await response.Content.ReadAsStreamAsync(token);
                     var document = await XDocument.LoadAsync(stream, LoadOptions.None, token);
                     var qualityModel = await qualityModelService.GetAsync(token);
-                    return ParseCandidates(document, indexer, source, currentQuality, targetQuality, customFormats, neverGrabPatterns, qualityModel, scoringMode, rankingModelService);
+                    return new IndexerSearchOutcome(
+                        ParseCandidates(document, indexer, source, currentQuality, targetQuality, customFormats, neverGrabPatterns, qualityModel, scoringMode, rankingModelService),
+                        Failed: false,
+                        CircuitOpen: false);
                 }
                 catch (Exception exception) when (exception is not HttpRequestException and not TaskCanceledException and not IOException)
                 {
-                    return Array.Empty<MediaSearchCandidate>();
+                    logger.LogWarning(
+                        exception,
+                        "Indexer {IndexerName} ({IndexerId}) returned a response Deluno could not read.",
+                        indexer.Name,
+                        indexer.Id);
+                    return new IndexerSearchOutcome([], Failed: true, CircuitOpen: false);
                 }
             },
             _ => IntegrationResilienceOutcome.Success,
             cancellationToken);
 
-        return result.Value ?? [];
+        if (result.CircuitOpen)
+        {
+            logger.LogInformation(
+                "Indexer {IndexerName} ({IndexerId}) search circuit is open; skipping until {RetryAfterUtc}.",
+                indexer.Name,
+                indexer.Id,
+                result.RetryAfterUtc);
+        }
+
+        return new IndexerSearchOutcome(
+            result.Value.Candidates ?? [],
+            Failed: result.Value.Failed || result.CircuitOpen || result.CircuitOpened || result.FailureMessage is not null,
+            CircuitOpen: result.CircuitOpen);
     }
+
+    private readonly record struct IndexerSearchOutcome(
+        IReadOnlyList<MediaSearchCandidate> Candidates,
+        bool Failed,
+        bool CircuitOpen);
 
     private static IReadOnlyList<MediaSearchCandidate> ParseCandidates(
         XDocument document,

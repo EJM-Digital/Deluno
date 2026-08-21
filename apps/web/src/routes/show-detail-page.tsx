@@ -29,6 +29,7 @@ import {
   type SeriesWantedSummary
 } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
+import { describeSearchReason } from "../lib/search-reasons";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
@@ -297,6 +298,7 @@ export function ShowDetailPage() {
         indexerName?: string | null;
         dispatchStatus?: string | null;
         dispatchMessage?: string | null;
+        reason?: string;
         candidates?: SearchPlanCandidate[];
       };
       const best = payload.releaseName ? `${payload.releaseName}${payload.indexerName ? ` via ${payload.indexerName}` : ""}` : null;
@@ -306,9 +308,25 @@ export function ShowDetailPage() {
         const found = payload.candidates?.length ?? 0;
         setSection("episodes");
         if (found) toast.success(`${found} release${found === 1 ? "" : "s"} scored. Choose one below.`);
-        else toast.info(payload.summary ?? "No releases matched this show's media plan.");
+        else {
+          const explained = describeSearchReason(payload.reason, payload.summary ?? "No releases matched this show's media plan.");
+          const action = explained.action;
+          toast.info(explained.title, {
+            description: explained.description,
+            action: action ? { label: action.label, onClick: () => navigate(action.href) } : undefined
+          });
+        }
       } else {
-        toast.success(best ? `Deluno selected ${best} using this show's media plan.` : "Search finished with no accepted release.");
+        if (best) {
+          toast.success(`Deluno selected ${best} using this show's media plan.`);
+        } else {
+          const explained = describeSearchReason(payload.reason, "Search finished with no accepted release.");
+          const action = explained.action;
+          toast.info(explained.title, {
+            description: explained.description,
+            action: action ? { label: action.label, onClick: () => navigate(action.href) } : undefined
+          });
+        }
       }
       revalidator.revalidate();
     } catch {
@@ -378,14 +396,24 @@ export function ShowDetailPage() {
         sentCount?: number;
         plannedCount?: number;
         failedCount?: number;
+        reason?: string;
       };
       const searched = payload.searchedEpisodes ?? episodeIds.length;
       const matched = payload.matchedCount ?? 0;
-      toast.success(
-        matched > 0
-          ? `Searched ${searched} episode${searched === 1 ? "" : "s"}, matched ${matched}. ${formatDispatchSummary(payload)}`
-          : `Searched ${searched} episode${searched === 1 ? "" : "s"}. Nothing matched yet.`
-      );
+      if (payload.reason && payload.reason !== "ok") {
+        const explained = describeSearchReason(payload.reason, `Searched ${searched} episode${searched === 1 ? "" : "s"}. Nothing matched yet.`);
+        const action = explained.action;
+        toast.info(explained.title, {
+          description: explained.description,
+          action: action ? { label: action.label, onClick: () => navigate(action.href) } : undefined
+        });
+      } else {
+        toast.success(
+          matched > 0
+            ? `Searched ${searched} episode${searched === 1 ? "" : "s"}, matched ${matched}. ${formatDispatchSummary(payload)}`
+            : `Searched ${searched} episode${searched === 1 ? "" : "s"}. Nothing matched yet.`
+        );
+      }
       revalidator.revalidate();
     } catch {
       toast.error("The episode search failed.");
@@ -406,14 +434,24 @@ export function ShowDetailPage() {
         seasonNumber?: number;
         dispatchStatus?: string | null;
         dispatchMessage?: string | null;
+        reason?: string;
       };
       const resolved = payload.seasonNumber ?? seasonNumber;
       const matched = payload.matchedCount ?? 0;
-      toast.success(
-        matched > 0
-          ? `${formatSeasonLabel(resolved)}: ${matched} episode match${matched === 1 ? "" : "es"}. ${formatDispatchSummary(payload)}`
-          : `${formatSeasonLabel(resolved)}: search finished with no matches.`
-      );
+      if (payload.reason && payload.reason !== "ok") {
+        const explained = describeSearchReason(payload.reason, `${formatSeasonLabel(resolved)}: search finished with no matches.`);
+        const action = explained.action;
+        toast.info(explained.title, {
+          description: explained.description,
+          action: action ? { label: action.label, onClick: () => navigate(action.href) } : undefined
+        });
+      } else {
+        toast.success(
+          matched > 0
+            ? `${formatSeasonLabel(resolved)}: ${matched} episode match${matched === 1 ? "" : "es"}. ${formatDispatchSummary(payload)}`
+            : `${formatSeasonLabel(resolved)}: search finished with no matches.`
+        );
+      }
       revalidator.revalidate();
     } catch {
       toast.error("The season search failed.");
