@@ -126,11 +126,28 @@ public static class BackupEndpointRouteBuilderExtensions
         });
 
         update.MapPost("/apply-on-restart", async (
+            IDelunoBackupService backupService,
             IUpdateOrchestrator orchestrator,
             CancellationToken cancellationToken) =>
         {
+            try
+            {
+                await backupService.CreateBackupAsync("pre-update", cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                var blocked = await orchestrator.GetStatusAsync(cancellationToken);
+                return Results.Ok(new UpdateActionResponse(
+                    Accepted: false,
+                    Message: $"Backup failed and staging was blocked: {ex.Message}",
+                    Status: blocked));
+            }
+
             var status = await orchestrator.PrepareApplyOnNextRestartAsync(cancellationToken);
-            return Results.Ok(new UpdateActionResponse(true, "Update is prepared for restart.", status));
+            return Results.Ok(new UpdateActionResponse(
+                Accepted: true,
+                Message: "Backup completed. Update is prepared for restart.",
+                Status: status));
         });
 
         update.MapPost("/restart-now", async (
