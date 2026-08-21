@@ -21,6 +21,29 @@ public sealed class SqliteSeriesCatalogRepository(
 
     public async Task<SeriesListItem> AddAsync(CreateSeriesRequest request, CancellationToken cancellationToken)
     {
+        if (sharedMediaStateRepository is not null)
+        {
+            var id = await sharedMediaStateRepository.AddAsync(
+                MediaKind.Series,
+                new MediaEntryCreate(
+                    request.Title!,
+                    request.StartYear,
+                    request.ImdbId,
+                    request.Monitored,
+                    request.MetadataProvider,
+                    request.MetadataProviderId,
+                    request.OriginalTitle,
+                    request.Overview,
+                    request.PosterUrl,
+                    request.BackdropUrl,
+                    request.Rating,
+                    request.Genres,
+                    request.ExternalUrl,
+                    request.MetadataJson),
+                cancellationToken);
+            return (await GetByIdAsync(id, cancellationToken))!;
+        }
+
         var now = timeProvider.GetUtcNow();
         var series = new SeriesListItem(
             Id: Guid.CreateVersion7().ToString("N"),

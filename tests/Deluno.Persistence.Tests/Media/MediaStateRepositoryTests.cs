@@ -198,6 +198,76 @@ public sealed class MediaStateRepositoryTests
         }
     }
 
+    [Theory]
+    [InlineData(MediaKind.Movie)]
+    [InlineData(MediaKind.Series)]
+    public async Task Engine_repositories_route_add_through_shared_store(MediaKind kind)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(new DateTimeOffset(2026, 8, 21, 5, 0, 0, TimeSpan.Zero));
+        await InitializeSchemaAsync(storage, timeProvider, kind);
+        var shared = new SqliteMediaStateRepository(storage.Factory, timeProvider);
+
+        if (kind == MediaKind.Movie)
+        {
+            var repository = new SqliteMovieCatalogRepository(storage.Factory, timeProvider, shared);
+            var created = await repository.AddAsync(
+                new CreateMovieRequest(
+                    "  Created movie  ",
+                    2026,
+                    "tt0000010",
+                    Monitored: false,
+                    MetadataProvider: "tmdb",
+                    MetadataProviderId: "101",
+                    OriginalTitle: "Created film",
+                    Overview: "Created overview",
+                    Rating: 8.5,
+                    Genres: "Drama",
+                    MetadataJson: "{\"source\":\"test\"}"),
+                CancellationToken.None);
+            var duplicate = await repository.AddAsync(
+                new CreateMovieRequest("created movie", 2026, "tt0000099"),
+                CancellationToken.None);
+
+            Assert.Equal(created.Id, duplicate.Id);
+            Assert.Equal("Created movie", created.Title);
+            Assert.False(created.Monitored);
+            Assert.Equal("tmdb", created.MetadataProvider);
+            Assert.Equal("101", created.MetadataProviderId);
+            Assert.Equal("Created overview", created.Overview);
+            Assert.Equal(8.5, created.Rating);
+        }
+        else
+        {
+            var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider, shared);
+            var created = await repository.AddAsync(
+                new CreateSeriesRequest(
+                    "  Created series  ",
+                    2026,
+                    "tt0000011",
+                    Monitored: false,
+                    MetadataProvider: "tmdb",
+                    MetadataProviderId: "102",
+                    OriginalTitle: "Created show",
+                    Overview: "Created overview",
+                    Rating: 8.5,
+                    Genres: "Drama",
+                    MetadataJson: "{\"source\":\"test\"}"),
+                CancellationToken.None);
+            var duplicate = await repository.AddAsync(
+                new CreateSeriesRequest("created series", 2026, "tt0000099"),
+                CancellationToken.None);
+
+            Assert.Equal(created.Id, duplicate.Id);
+            Assert.Equal("Created series", created.Title);
+            Assert.False(created.Monitored);
+            Assert.Equal("tmdb", created.MetadataProvider);
+            Assert.Equal("102", created.MetadataProviderId);
+            Assert.Equal("Created overview", created.Overview);
+            Assert.Equal(8.5, created.Rating);
+        }
+    }
+
     private static async Task InitializeSchemaAsync(
         TestStorage storage,
         TimeProvider timeProvider,

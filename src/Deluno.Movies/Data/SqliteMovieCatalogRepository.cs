@@ -21,6 +21,29 @@ public sealed class SqliteMovieCatalogRepository(
 
     public async Task<MovieListItem> AddAsync(CreateMovieRequest request, CancellationToken cancellationToken)
     {
+        if (sharedMediaStateRepository is not null)
+        {
+            var id = await sharedMediaStateRepository.AddAsync(
+                MediaKind.Movie,
+                new MediaEntryCreate(
+                    request.Title!,
+                    request.ReleaseYear,
+                    request.ImdbId,
+                    request.Monitored,
+                    request.MetadataProvider,
+                    request.MetadataProviderId,
+                    request.OriginalTitle,
+                    request.Overview,
+                    request.PosterUrl,
+                    request.BackdropUrl,
+                    request.Rating,
+                    request.Genres,
+                    request.ExternalUrl,
+                    request.MetadataJson),
+                cancellationToken);
+            return (await GetByIdAsync(id, cancellationToken))!;
+        }
+
         var now = timeProvider.GetUtcNow();
         var movie = new MovieListItem(
             Id: Guid.CreateVersion7().ToString("N"),

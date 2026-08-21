@@ -78,6 +78,22 @@ public sealed record MediaMetadataUpdate(
     double? Popularity,
     int? VoteCount);
 
+public sealed record MediaEntryCreate(
+    string Title,
+    int? Year,
+    string? ImdbId,
+    bool Monitored,
+    string? MetadataProvider,
+    string? MetadataProviderId,
+    string? OriginalTitle,
+    string? Overview,
+    string? PosterUrl,
+    string? BackdropUrl,
+    double? Rating,
+    string? Genres,
+    string? ExternalUrl,
+    string? MetadataJson);
+
 public interface IMediaStateRepository
 {
     Task<MediaWantedSummary> GetWantedSummaryAsync(MediaKind kind, CancellationToken cancellationToken);
@@ -146,6 +162,11 @@ public interface IMediaStateRepository
     Task<bool> UpdateMetadataAsync(
         MediaKind kind,
         MediaMetadataUpdate update,
+        CancellationToken cancellationToken);
+
+    Task<string> AddAsync(
+        MediaKind kind,
+        MediaEntryCreate entry,
         CancellationToken cancellationToken);
 
     Task<Deluno.Contracts.MediaDailyMetrics> GetDailyMetricsAsync(

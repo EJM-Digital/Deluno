@@ -497,6 +497,102 @@ public sealed class SqliteMediaStateRepository(
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
+    public async Task<string> AddAsync(
+        MediaKind kind,
+        MediaEntryCreate entry,
+        CancellationToken cancellationToken)
+    {
+        var map = MediaTableMap.For(kind);
+        var title = entry.Title.Trim();
+        if (title.Length == 0)
+        {
+            throw new ArgumentException("A media title is required.", nameof(entry));
+        }
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            map.DatabaseName,
+            cancellationToken);
+
+        var existingId = await FindEntryIdAsync(connection, map, entry, cancellationToken);
+        if (existingId is not null)
+        {
+            return existingId;
+        }
+
+        var id = Guid.CreateVersion7().ToString("N");
+        var now = timeProvider.GetUtcNow();
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            INSERT INTO {map.EntryTable} (
+                id,
+                title,
+                {map.YearColumn},
+                imdb_id,
+                monitored,
+                metadata_provider,
+                metadata_provider_id,
+                original_title,
+                overview,
+                poster_url,
+                backdrop_url,
+                rating,
+                genres,
+                external_url,
+                metadata_json,
+                metadata_updated_utc,
+                created_utc,
+                updated_utc
+            )
+            VALUES (
+                @id,
+                @title,
+                @year,
+                @imdbId,
+                @monitored,
+                @metadataProvider,
+                @metadataProviderId,
+                @originalTitle,
+                @overview,
+                @posterUrl,
+                @backdropUrl,
+                @rating,
+                @genres,
+                @externalUrl,
+                @metadataJson,
+                @metadataUpdatedUtc,
+                @createdUtc,
+                @updatedUtc
+            )
+            ON CONFLICT DO NOTHING;
+            """;
+
+        AddParameter(command, "@id", id);
+        AddParameter(command, "@title", title);
+        AddParameter(command, "@year", entry.Year);
+        AddParameter(command, "@imdbId", NormalizeExternalId(entry.ImdbId));
+        AddParameter(command, "@monitored", entry.Monitored ? 1 : 0);
+        AddParameter(command, "@metadataProvider", NormalizeExternalId(entry.MetadataProvider));
+        AddParameter(command, "@metadataProviderId", NormalizeExternalId(entry.MetadataProviderId));
+        AddParameter(command, "@originalTitle", NormalizeText(entry.OriginalTitle));
+        AddParameter(command, "@overview", NormalizeText(entry.Overview));
+        AddParameter(command, "@posterUrl", NormalizeText(entry.PosterUrl));
+        AddParameter(command, "@backdropUrl", NormalizeText(entry.BackdropUrl));
+        AddParameter(command, "@rating", entry.Rating);
+        AddParameter(command, "@genres", NormalizeText(entry.Genres));
+        AddParameter(command, "@externalUrl", NormalizeText(entry.ExternalUrl));
+        AddParameter(command, "@metadataJson", NormalizeText(entry.MetadataJson));
+        AddParameter(
+            command,
+            "@metadataUpdatedUtc",
+            string.IsNullOrWhiteSpace(entry.MetadataProviderId) ? null : now.ToString("O"));
+        AddParameter(command, "@createdUtc", now.ToString("O"));
+        AddParameter(command, "@updatedUtc", now.ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+
+        return await FindEntryIdAsync(connection, map, entry, cancellationToken)
+            ?? throw new InvalidOperationException("The media entry could not be read after insertion.");
+    }
+
     public async Task<MediaDailyMetrics> GetDailyMetricsAsync(
         MediaKind kind,
         DateOnly fromDate,
@@ -627,6 +723,39 @@ public sealed class SqliteMediaStateRepository(
     {
         var normalized = value?.Trim();
         return string.IsNullOrWhiteSpace(normalized) ? null : normalized;
+    }
+
+    private static async Task<string?> FindEntryIdAsync(
+        DbConnection connection,
+        MediaTableMap map,
+        MediaEntryCreate entry,
+        CancellationToken cancellationToken)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT id
+            FROM {map.EntryTable}
+            WHERE
+                (@imdbId IS NOT NULL AND imdb_id = @imdbId)
+                OR (
+                    @metadataProvider IS NOT NULL
+                    AND @metadataProviderId IS NOT NULL
+                    AND metadata_provider = @metadataProvider
+                    AND metadata_provider_id = @metadataProviderId
+                )
+                OR (
+                    lower(title) = lower(@title)
+                    AND COALESCE({map.YearColumn}, -1) = COALESCE(@year, -1)
+                )
+            ORDER BY created_utc ASC
+            LIMIT 1;
+            """;
+        AddParameter(command, "@imdbId", NormalizeExternalId(entry.ImdbId));
+        AddParameter(command, "@metadataProvider", NormalizeExternalId(entry.MetadataProvider));
+        AddParameter(command, "@metadataProviderId", NormalizeExternalId(entry.MetadataProviderId));
+        AddParameter(command, "@title", entry.Title.Trim());
+        AddParameter(command, "@year", entry.Year);
+        return await command.ExecuteScalarAsync(cancellationToken) is string id ? id : null;
     }
 
     private static DateTimeOffset ParseTimestamp(string value)
