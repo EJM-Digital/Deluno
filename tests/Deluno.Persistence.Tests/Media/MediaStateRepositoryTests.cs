@@ -130,6 +130,74 @@ public sealed class MediaStateRepositoryTests
         Assert.Equal(kind == MediaKind.Series ? 1 : 0, summary.UnmatchedCount);
     }
 
+    [Theory]
+    [InlineData(MediaKind.Movie)]
+    [InlineData(MediaKind.Series)]
+    public async Task Engine_repositories_route_metadata_updates_through_shared_store(MediaKind kind)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(new DateTimeOffset(2026, 8, 21, 5, 0, 0, TimeSpan.Zero));
+        await InitializeSchemaAsync(storage, timeProvider, kind);
+        var shared = new SqliteMediaStateRepository(storage.Factory, timeProvider);
+
+        if (kind == MediaKind.Movie)
+        {
+            var repository = new SqliteMovieCatalogRepository(storage.Factory, timeProvider, shared);
+            var movie = await repository.AddAsync(
+                new CreateMovieRequest("Before", 2026, "tt0000003"),
+                CancellationToken.None);
+
+            var updated = await repository.UpdateMetadataAsync(
+                movie.Id,
+                "tmdb",
+                "123",
+                "After",
+                "Updated overview",
+                "poster.jpg",
+                "backdrop.jpg",
+                8.5,
+                "Drama",
+                "https://example.test/movie",
+                "tt0000004",
+                "{\"ratings\":[]}",
+                CancellationToken.None);
+
+            Assert.NotNull(updated);
+            Assert.Equal("Before", updated.Title);
+            Assert.Equal("Updated overview", updated.Overview);
+            Assert.Equal("tt0000004", updated.ImdbId);
+            Assert.Equal("tmdb", updated.MetadataProvider);
+        }
+        else
+        {
+            var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider, shared);
+            var series = await repository.AddAsync(
+                new CreateSeriesRequest("Before", 2026, "tt0000005"),
+                CancellationToken.None);
+
+            var updated = await repository.UpdateMetadataAsync(
+                series.Id,
+                "tmdb",
+                "456",
+                "After",
+                "Updated overview",
+                "poster.jpg",
+                "backdrop.jpg",
+                8.5,
+                "Drama",
+                "https://example.test/series",
+                "tt0000006",
+                "{\"ratings\":[]}",
+                CancellationToken.None);
+
+            Assert.NotNull(updated);
+            Assert.Equal("Before", updated.Title);
+            Assert.Equal("Updated overview", updated.Overview);
+            Assert.Equal("tt0000006", updated.ImdbId);
+            Assert.Equal("tmdb", updated.MetadataProvider);
+        }
+    }
+
     private static async Task InitializeSchemaAsync(
         TestStorage storage,
         TimeProvider timeProvider,
