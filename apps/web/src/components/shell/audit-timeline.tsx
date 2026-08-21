@@ -25,6 +25,7 @@ import {
   XCircle
 } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { Field } from "../ui/field";
 import { Input } from "../ui/input";
 import { Select } from "../ui/select";
 import type { ActivityEventItem } from "../../lib/api";
@@ -183,15 +184,15 @@ export function AuditTimeline({ events, liveEvents = [], maxVisible = 200 }: Aud
     <div className="flex flex-col gap-[var(--grid-gap)]">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[180px]">
-          <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+        <Field label="Search events" hideLabel className="relative min-w-[180px] flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
             onChange={(e) => { setQuery(e.target.value); setShowCount(50); }}
             placeholder="Search events…"
             className="h-9 pl-8 text-[13px]"
           />
-        </div>
+        </Field>
 
         {/* Category filter */}
         <div className="flex flex-wrap gap-1">
@@ -210,16 +211,18 @@ export function AuditTimeline({ events, liveEvents = [], maxVisible = 200 }: Aud
         </div>
 
         {/* Severity filter */}
-        <Select
-          value={sevFilter}
-          onChange={(e) => { setSevFilter(e.target.value as Severity | "all"); setShowCount(50); }}
-        >
-          <option value="all">All severities</option>
-          <option value="info">Info</option>
-          <option value="success">Success</option>
-          <option value="warning">Warning</option>
-          <option value="error">Error</option>
-        </Select>
+        <Field label="Severity" hideLabel>
+          <Select
+            value={sevFilter}
+            onChange={(e) => { setSevFilter(e.target.value as Severity | "all"); setShowCount(50); }}
+          >
+            <option value="all">All severities</option>
+            <option value="info">Info</option>
+            <option value="success">Success</option>
+            <option value="warning">Warning</option>
+            <option value="error">Error</option>
+          </Select>
+        </Field>
       </div>
 
       {/* Counter */}

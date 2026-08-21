@@ -45,6 +45,7 @@ import { densityDisplayName } from "../lib/use-density";
 import { Button } from "../components/ui/button";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import type { DrawerSaveState } from "../components/ui/drawer";
+import { Field } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { PageFooter } from "../components/ui/page-footer";
 import { PathInput } from "../components/ui/path-input";
@@ -590,37 +591,42 @@ function BackupCard({
               checked={settings.enabled}
               onCheckedChange={(enabled) => setSettings((current) => ({ ...current, enabled }))}
             />
-            <Select
-              value={settings.frequency}
-              onChange={(event) => setSettings((current) => ({ ...current, frequency: event.target.value }))}
-              options={[
-                { value: "daily", label: "Daily" },
-                { value: "weekly", label: "Weekly" },
-                { value: "monthly", label: "Monthly" }
-              ]}
-            >
-            </Select>
-            <Input
-              type="time"
-              value={settings.timeOfDay}
-              onChange={(event) => setSettings((current) => ({ ...current, timeOfDay: event.target.value }))}
-            />
-            <Input
-              type="number"
-              min={1}
-              max={100}
-              value={settings.retentionCount}
-              onChange={(event) => setSettings((current) => ({ ...current, retentionCount: Number(event.target.value || 7) }))}
-            />
+            <Field label="Backup frequency" hideLabel>
+              <Select
+                value={settings.frequency}
+                onChange={(event) => setSettings((current) => ({ ...current, frequency: event.target.value }))}
+                options={[
+                  { value: "daily", label: "Daily" },
+                  { value: "weekly", label: "Weekly" },
+                  { value: "monthly", label: "Monthly" }
+                ]}
+              />
+            </Field>
+            <Field label="Backup time" hideLabel>
+              <Input
+                type="time"
+                value={settings.timeOfDay}
+                onChange={(event) => setSettings((current) => ({ ...current, timeOfDay: event.target.value }))}
+              />
+            </Field>
+            <Field label="Backup retention count" hideLabel>
+              <Input
+                type="number"
+                min={1}
+                max={100}
+                value={settings.retentionCount}
+                onChange={(event) => setSettings((current) => ({ ...current, retentionCount: Number(event.target.value || 7) }))}
+              />
+            </Field>
           </div>
-          <div className="mt-2">
+          <Field label="Backup folder" hideLabel className="mt-2">
             <PathInput
               value={settings.backupFolder}
               onChange={(value) => setSettings((current) => ({ ...current, backupFolder: value }))}
               placeholder="Backup folder"
               browseTitle="Choose backup folder"
             />
-          </div>
+          </Field>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs text-muted-foreground">
               Next run: {settings.nextRunUtc ? formatWhen(settings.nextRunUtc) : "Not scheduled"} · Retains latest {settings.retentionCount} backup{settings.retentionCount === 1 ? "" : "s"}
@@ -636,15 +642,16 @@ function BackupCard({
           <p className="mt-2 rounded-lg border border-warning/35 bg-warning/10 px-3 py-2 text-xs leading-relaxed text-warning">
             Restore is intentionally a two-step flow: preview first, then restore only after Deluno confirms the archive contains a valid manifest.
           </p>
-          <Input
-            className="mt-3"
-            type="file"
-            accept=".zip,application/zip"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) void previewRestore(file);
-            }}
-          />
+          <Field label="Backup archive" hideLabel className="mt-3">
+            <Input
+              type="file"
+              accept=".zip,application/zip"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void previewRestore(file);
+              }}
+            />
+          </Field>
           {restorePreview ? (
             <div className="mt-3 rounded-xl border border-hairline bg-background/40 p-3 text-sm">
               <p className={restorePreview.valid ? "text-success" : "text-destructive"}>{restorePreview.message}</p>
@@ -846,16 +853,18 @@ function UpgradeCard({ status, children }: { status: UpdateStatusResponse; child
         {preferences ? (
           <div className="rounded-xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.7)] space-y-3">
             <p className="text-sm font-semibold text-foreground">Update behavior</p>
-            <Select
-              value={preferences.mode}
-              onChange={(event) => setPreferences((currentValue) => currentValue ? { ...currentValue, mode: event.target.value } : currentValue)}
-              disabled={busyAction === "prefs"}
-              options={[
-                { value: "notify-only", label: "Notify only" },
-                { value: "download-background", label: "Download in background" },
-                { value: "download-apply-on-restart", label: "Download and apply on next restart" }
-              ]}
-            />
+            <Field label="Update behavior" hideLabel>
+              <Select
+                value={preferences.mode}
+                onChange={(event) => setPreferences((currentValue) => currentValue ? { ...currentValue, mode: event.target.value } : currentValue)}
+                disabled={busyAction === "prefs"}
+                options={[
+                  { value: "notify-only", label: "Notify only" },
+                  { value: "download-background", label: "Download in background" },
+                  { value: "download-apply-on-restart", label: "Download and apply on next restart" }
+                ]}
+              />
+            </Field>
             <p className="text-xs text-muted-foreground">
               {updateModeDescription(preferences.mode)}
             </p>
