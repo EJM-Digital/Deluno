@@ -199,7 +199,7 @@ export function PathInput({
           <div className="border-b border-hairline px-[var(--tile-pad)] py-[calc(var(--tile-pad)*0.85)]">
             <div className="flex items-start justify-between gap-[var(--grid-gap)] pr-10">
               <div className="space-y-1">
-                <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Filesystem</p>
+                <p className="text-[length:var(--type-caption)] uppercase tracking-[0.18em] text-muted-foreground">Filesystem</p>
                 <h2 className="font-display text-xl font-semibold tracking-tight text-foreground">
                   {browseTitle}
                 </h2>
@@ -445,7 +445,7 @@ function DiagnosticBadge({ label, ok }: { label: string; ok: boolean }) {
   return (
     <span
       className={cn(
-        "rounded-full border px-2 py-0.5 text-[11px]",
+        "rounded-full border px-2 py-0.5 text-[length:var(--type-caption)]",
         ok
           ? "border-success/25 bg-success/10 text-success"
           : "border-hairline bg-surface-2 text-muted-foreground"

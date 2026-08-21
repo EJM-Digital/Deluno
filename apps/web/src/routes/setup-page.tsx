@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Eye, EyeOff, Loader2, UserPlus } from "lucide-react";
 import { Button } from "../components/ui/button";
+import { Card } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { useAuth } from "../lib/use-auth";
 
@@ -80,18 +81,19 @@ export function SetupPage() {
             <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">
               Set up Deluno
             </h1>
-            <p className="mt-1 text-[13px] text-muted-foreground">
+            <p className="mt-1 text-[length:var(--type-body-sm)] text-muted-foreground">
               Create the first user account for this Deluno install.
             </p>
           </div>
         </div>
 
-        <form
+        <Card
+          as="form"
           onSubmit={(event) => void handleSubmit(event)}
-          className="space-y-3 rounded-2xl border border-hairline bg-card/80 p-6 shadow-lg backdrop-blur dark:border-white/[0.06]"
+          className="space-y-3 bg-card/80 p-6 shadow-lg backdrop-blur dark:border-white/[0.06]"
         >
           {error ? (
-            <div className="flex items-start gap-2.5 rounded-xl border border-destructive/25 bg-destructive/8 px-3.5 py-3 text-[13px] text-destructive dark:bg-destructive/12">
+            <div className="flex items-start gap-2.5 rounded-xl border border-destructive/25 bg-destructive/8 px-3.5 py-3 text-[length:var(--type-body-sm)] text-destructive dark:bg-destructive/12">
               <svg className="mt-0.5 h-4 w-4 shrink-0" viewBox="0 0 16 16" fill="none">
                 <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.5" />
                 <path d="M8 5v3.5M8 10.5v.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -101,7 +103,7 @@ export function SetupPage() {
           ) : null}
 
           <div className="space-y-1.5">
-            <label htmlFor="setup-display-name" className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            <label htmlFor="setup-display-name" className="text-[length:var(--type-caption)] font-medium uppercase tracking-[0.14em] text-muted-foreground">
               Display name
             </label>
             <Input
@@ -117,7 +119,7 @@ export function SetupPage() {
           </div>
 
           <div className="space-y-1.5">
-            <label htmlFor="setup-username" className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            <label htmlFor="setup-username" className="text-[length:var(--type-caption)] font-medium uppercase tracking-[0.14em] text-muted-foreground">
               Username
             </label>
             <Input
@@ -133,7 +135,7 @@ export function SetupPage() {
           </div>
 
           <div className="space-y-1.5">
-            <label htmlFor="setup-password" className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            <label htmlFor="setup-password" className="text-[length:var(--type-caption)] font-medium uppercase tracking-[0.14em] text-muted-foreground">
               Password
             </label>
             <div className="relative">
@@ -163,7 +165,7 @@ export function SetupPage() {
           </div>
 
           <div className="space-y-1.5">
-            <label htmlFor="setup-confirm-password" className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            <label htmlFor="setup-confirm-password" className="text-[length:var(--type-caption)] font-medium uppercase tracking-[0.14em] text-muted-foreground">
               Confirm password
             </label>
             <Input
@@ -180,7 +182,7 @@ export function SetupPage() {
 
           <Button
             type="submit"
-            className="mt-1 h-[var(--control-height-lg)] w-full gap-2 text-[14px] font-semibold"
+            className="mt-1 h-[var(--control-height-lg)] w-full gap-2 text-[length:var(--type-body-sm)] font-semibold"
             disabled={
               busy ||
               !displayName.trim() ||
@@ -196,9 +198,9 @@ export function SetupPage() {
             )}
             {busy ? "Creating account…" : "Create account"}
           </Button>
-        </form>
+        </Card>
 
-        <p className="mt-5 text-center text-[12px] text-muted-foreground">
+        <p className="mt-5 text-center text-[length:var(--type-caption)] text-muted-foreground">
           After this step, Deluno will require sign-in for every session.
         </p>
       </div>

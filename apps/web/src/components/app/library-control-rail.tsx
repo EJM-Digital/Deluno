@@ -149,7 +149,7 @@ export function ControlRail({ label, facets, controls }: {
                   aria-label="Clear"
                   className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-muted-foreground/20 text-muted-foreground transition hover:bg-foreground/15 hover:text-foreground"
                 >
-                  <span className="text-[8.5px] font-bold leading-none">×</span>
+                  <span className="text-[length:var(--type-micro)] font-bold leading-none">×</span>
                 </button>
               ) : (
                 <kbd className="hidden shrink-0 rounded border border-hairline/70 bg-background/50 px-1.5 py-px font-mono text-[length:var(--library-badge-size)] text-muted-foreground/40 group-focus-within:hidden sm:block">

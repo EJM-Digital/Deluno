@@ -39,12 +39,12 @@ export function Toaster() {
         classNames: {
           toast:
             "group flex w-full items-start gap-3 rounded-xl border border-hairline bg-card/95 p-3 pr-8 text-sm text-foreground shadow-lg backdrop-blur dark:border-white/[0.06] dark:bg-card/90",
-          title: "text-[13px] font-semibold leading-snug tracking-tight text-foreground",
-          description: "mt-0.5 text-[12px] leading-snug text-muted-foreground",
+          title: "text-[length:var(--type-body-sm)] font-semibold leading-snug tracking-tight text-foreground",
+          description: "mt-0.5 text-[length:var(--type-caption)] leading-snug text-muted-foreground",
           actionButton:
-            "ml-auto inline-flex h-7 items-center gap-1 rounded-md bg-primary px-2.5 text-[11.5px] font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90",
+            "ml-auto inline-flex h-7 items-center gap-1 rounded-md bg-primary px-2.5 text-[length:var(--type-caption)] font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90",
           cancelButton:
-            "inline-flex h-7 items-center rounded-md border border-hairline bg-card px-2.5 text-[11.5px] font-medium text-muted-foreground transition hover:text-foreground",
+          "inline-flex h-7 items-center rounded-md border border-hairline bg-card px-2.5 text-[length:var(--type-caption)] font-medium text-muted-foreground transition hover:text-foreground",
           closeButton:
             "absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/70 transition hover:bg-muted/60 hover:text-foreground"
         }

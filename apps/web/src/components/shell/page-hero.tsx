@@ -97,7 +97,7 @@ export function PageHero({
             {eyebrow ? (
               <div className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 backdrop-blur-sm dark:border-primary/20">
                 {eyebrowIcon ?? <Sparkles className="h-3 w-3 text-primary" />}
-                <span className="text-[11px] font-semibold tracking-wide text-primary">
+                <span className="text-[length:var(--type-caption)] font-semibold tracking-wide text-primary">
                   {eyebrow}
                 </span>
               </div>
@@ -109,8 +109,8 @@ export function PageHero({
               className={cn(
                 "mt-4 text-balance font-display font-bold leading-[0.98] tracking-display text-foreground",
                 size === "sm"
-                  ? "text-[32px] sm:text-[40px] md:text-[44px]"
-                  : "text-[36px] sm:text-[48px] md:text-[56px] lg:text-[64px]"
+                  ? "text-[length:var(--type-hero-sm)]"
+                  : "text-[length:var(--type-hero-lg)]"
               )}
             >
               {title}
@@ -120,7 +120,7 @@ export function PageHero({
               <p
                 className={cn(
                   "mt-3 max-w-[min(68rem,100%)] text-balance leading-relaxed text-muted-foreground",
-                  size === "sm" ? "text-[14px]" : "text-[15px]"
+                  size === "sm" ? "text-[length:var(--type-body-sm)]" : "text-[length:var(--type-body)]"
                 )}
               >
                 {subtitle}

@@ -297,7 +297,7 @@ function MobileAreaRow({
                 to={item.to}
                 end={item.end}
                 className={({ isActive: routeIsActive }) => cn(
-                  "relative block rounded-lg px-3 py-1.5 text-[13px] font-medium transition before:absolute before:left-0 before:top-1/2 before:h-1 before:w-1 before:-translate-y-1/2 before:rounded-full",
+                  "relative block rounded-lg px-3 py-1.5 text-[length:var(--type-body-sm)] font-medium transition before:absolute before:left-0 before:top-1/2 before:h-1 before:w-1 before:-translate-y-1/2 before:rounded-full",
                   routeIsActive ? "bg-primary/10 text-primary before:bg-primary" : "text-muted-foreground before:bg-muted-foreground/35 hover:bg-muted/60 hover:text-foreground"
                 )}
               >

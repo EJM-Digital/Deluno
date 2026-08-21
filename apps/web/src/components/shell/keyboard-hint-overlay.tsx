@@ -61,7 +61,7 @@ export function KeyboardHintOverlay({
             <div className="grid gap-[var(--grid-gap)] sm:grid-cols-2">
               {groups.map(([group, list]) => (
                 <div key={group} className="space-y-2">
-                  <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                  <p className="text-[length:var(--type-caption)] uppercase tracking-[0.18em] text-muted-foreground">
                     {group}
                   </p>
                   <ul className="space-y-1.5">

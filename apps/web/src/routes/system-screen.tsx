@@ -343,14 +343,14 @@ function AutomationCard({
 
         {retryWindows.length ? (
           <div className="space-y-2">
-            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Searches held back until</p>
+            <p className="text-[length:var(--type-caption)] font-bold uppercase tracking-[0.16em] text-muted-foreground">Searches held back until</p>
             {retryWindows.slice(0, 4).map((item) => (
               <div key={`${item.entityType}:${item.entityId}:${item.actionKind}`} className="flex items-center justify-between gap-3 rounded-lg border border-hairline bg-background/40 px-3 py-2">
                 <div className="min-w-0">
                   <p className="truncate text-xs font-semibold text-foreground">{item.mediaType} / {item.actionKind}</p>
-                  <p className="text-[11px] text-muted-foreground">{item.lastResult || "Last search recorded"}</p>
+                  <p className="text-[length:var(--type-caption)] text-muted-foreground">{item.lastResult || "Last search recorded"}</p>
                 </div>
-                <span className="font-mono text-[11px] text-muted-foreground">{formatWhen(item.nextEligibleUtc)}</span>
+                <span className="font-mono text-[length:var(--type-caption)] text-muted-foreground">{formatWhen(item.nextEligibleUtc)}</span>
               </div>
             ))}
           </div>
@@ -358,12 +358,12 @@ function AutomationCard({
 
         {automation.length ? (
           <div className="space-y-2">
-            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Libraries</p>
+            <p className="text-[length:var(--type-caption)] font-bold uppercase tracking-[0.16em] text-muted-foreground">Libraries</p>
             {automation.slice(0, 5).map((item) => (
               <div key={item.libraryId} className="flex items-center justify-between gap-3 rounded-lg border border-hairline bg-background/40 px-3 py-2">
                 <div className="min-w-0">
                   <p className="truncate text-xs font-semibold text-foreground">{item.libraryName}</p>
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-[length:var(--type-caption)] text-muted-foreground">
                     {item.status}{item.nextSearchUtc ? ` / next ${formatWhen(item.nextSearchUtc)}` : ""}
                   </p>
                 </div>
@@ -390,7 +390,7 @@ function AutomationCard({
 function AutomationMetric({ label, value, compact = false }: { label: string; value: number | string; compact?: boolean }) {
   return (
     <div className="rounded-lg border border-hairline bg-background/35 px-3 py-2">
-      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
+      <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
       <p className={`${compact ? "text-lg" : "text-xl"} tabular font-display font-semibold text-foreground`}>{value}</p>
     </div>
   );
@@ -1067,10 +1067,10 @@ function HealthRow({ label, status }: { label: string; status: string }) {
 
   return (
     <div className="flex items-center justify-between rounded-xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.7)]">
-      <p className="text-[13px] text-foreground">{label}</p>
+      <p className="text-[length:var(--type-body-sm)] text-foreground">{label}</p>
       <span
         className={[
-          "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium",
+          "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[length:var(--type-caption)] font-medium",
           isHealthy
             ? "border-success/20 bg-success/10 text-success"
             : isDegraded
@@ -1096,7 +1096,7 @@ function JobStatusBadge({ status }: { status: string }) {
   return (
     <span
       className={[
-        "rounded-full border px-2.5 py-0.5 text-[10.5px] font-medium uppercase tracking-wide",
+        "rounded-full border px-2.5 py-0.5 text-[length:var(--type-micro)] font-medium uppercase tracking-wide",
         isRunning
           ? "border-primary/20 bg-primary/10 text-primary"
           : isQueued

@@ -59,7 +59,7 @@ export function AttentionBadge({
   return (
     <span
       className={cn(
-        "tabular inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[10px] font-semibold leading-none ring-1 ring-inset",
+        "tabular inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[length:var(--type-micro)] font-semibold leading-none ring-1 ring-inset",
         tone,
         className
       )}
@@ -92,7 +92,7 @@ export function StatusPill({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium",
+        "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[length:var(--type-caption)] font-medium",
         tone,
         className
       )}

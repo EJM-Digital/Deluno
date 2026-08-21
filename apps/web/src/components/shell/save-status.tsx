@@ -98,7 +98,7 @@ export function SaveStatus({ state, message, className }: SaveStatusProps) {
       role="status"
       aria-live="polite"
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border border-hairline bg-card/70 px-2.5 py-1 text-[11px] font-medium",
+        "inline-flex items-center gap-1.5 rounded-full border border-hairline bg-card/70 px-2.5 py-1 text-[length:var(--type-caption)] font-medium",
         "dark:border-white/[0.06] dark:bg-white/[0.03]",
         config.tone,
         className

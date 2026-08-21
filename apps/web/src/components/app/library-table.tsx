@@ -115,7 +115,7 @@ export function LibraryTable(
     <div ref={scrollRef} className="max-h-[calc(100dvh-260px)] overflow-auto">
       <table
         ref={tableRef}
-        className="data-table min-w-[900px] text-[13px]"
+        className="data-table min-w-[900px] text-[length:var(--type-body-sm)]"
         role="grid"
         aria-rowcount={items.length}
       >
@@ -181,7 +181,7 @@ export function LibraryTable(
                         <StatusDot status={item.status} />
                         <p className="truncate font-medium text-foreground">{item.title}</p>
                       </div>
-                      <p className="text-[11px] text-muted-foreground">
+                      <p className="text-[length:var(--type-caption)] text-muted-foreground">
                         {item.type === "movie" ? "Movie" : "TV"} · {item.year}
                         {item.monitored ? " · Monitored" : " · Not monitored"}
                       </p>
