@@ -386,6 +386,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             string? mode,
             HttpContext httpContext,
             ISeriesCatalogRepository repository,
+            IMediaStateRepository mediaStateRepository,
             ILibrariesRepository platformSettingsRepository,
             IQualityRepository qualityRepository,
             IJobQueueRepository jobQueueRepository,
@@ -401,146 +402,49 @@ public static class SeriesEndpointRouteBuilderExtensions
                 return denied;
             }
 
-            var seriesItem = await repository.GetByIdAsync(id, cancellationToken);
-            if (seriesItem is null)
+            var result = await MediaSearchHandler.ExecuteAsync(
+                MediaKind.Series,
+                id,
+                mode,
+                mediaStateRepository,
+                platformSettingsRepository,
+                qualityRepository,
+                jobQueueRepository,
+                acquisitionPipeline,
+                downloadClientGrabService,
+                activityFeedRepository,
+                timeProvider,
+                (seriesId, libraryId, triggerKind, outcome, now, nextEligibleUtc, lastSearchResult, releaseName, indexerName, detailsJson, cancellationToken) =>
+                    repository.RecordSearchAttemptAsync(
+                        seriesId,
+                        null,
+                        libraryId,
+                        triggerKind,
+                        outcome,
+                        now,
+                        nextEligibleUtc,
+                        lastSearchResult,
+                        releaseName,
+                        indexerName,
+                        detailsJson,
+                        cancellationToken),
+                cancellationToken);
+
+            if (result.NotFound)
             {
                 return Results.NotFound();
             }
 
-            var wanted = await repository.GetWantedSummaryAsync(cancellationToken);
-            var wantedItem = wanted.RecentItems.FirstOrDefault(item => item.SeriesId == id);
-            if (wantedItem is null || string.IsNullOrWhiteSpace(wantedItem.LibraryId))
-            {
-                return Results.Ok(new
-                {
-                    outcome = "blocked",
-                    summary = "This series is not currently linked to a searchable library.",
-                    reason = MediaSearchReasons.NotSearchable,
-                    releaseName = (string?)null,
-                    indexerName = (string?)null,
-                    dispatchStatus = (string?)null,
-                    dispatchMessage = (string?)null,
-                    candidates = Array.Empty<object>()
-                });
-            }
-
-            var libraries = await platformSettingsRepository.ListLibrariesAsync(cancellationToken);
-            var library = libraries.FirstOrDefault(item => item.Id == wantedItem.LibraryId);
-            if (library is null)
-            {
-                return Results.Ok(new
-                {
-                    outcome = "blocked",
-                    summary = "Deluno could not find the linked library for this series.",
-                    reason = MediaSearchReasons.LibraryMissing,
-                    releaseName = (string?)null,
-                    indexerName = (string?)null,
-                    dispatchStatus = (string?)null,
-                    dispatchMessage = (string?)null,
-                    candidates = Array.Empty<object>()
-                });
-            }
-
-            var routing = await platformSettingsRepository.GetLibraryRoutingAsync(library.Id, cancellationToken);
-            var now = timeProvider.GetUtcNow();
-            var customFormats = await ResolveCustomFormatsAsync(qualityRepository, library.QualityProfileId, cancellationToken);
-
-            var decisionPlan = await acquisitionPipeline.PlanAsync(
-                new AcquisitionDecisionRequest(
-                    seriesItem.Title,
-                    seriesItem.StartYear,
-                    "tv",
-                    wantedItem.CurrentQuality,
-                    wantedItem.TargetQuality,
-                    routing?.Sources ?? [],
-                    routing?.DownloadClients ?? [],
-                    customFormats,
-                    PreviewOnly: string.Equals(mode, "preview", StringComparison.OrdinalIgnoreCase)),
-                cancellationToken);
-            var searchPlan = decisionPlan.SearchPlan;
-            var bestCandidate = searchPlan.BestCandidate;
-            var outcome = decisionPlan.Outcome;
-            DownloadClientGrabResult? grabResult = null;
-
-            if (decisionPlan.ShouldDispatch && decisionPlan.SelectedDownloadClient is not null && decisionPlan.DispatchRequest is not null)
-            {
-                var downloadClient = decisionPlan.SelectedDownloadClient;
-                grabResult = bestCandidate!.DownloadUrl is null
-                    ? new DownloadClientGrabResult(downloadClient.DownloadClientId, bestCandidate.ReleaseName, false, "planned", "No download URL was available.")
-                    : await downloadClientGrabService.GrabAsync(downloadClient.DownloadClientId, decisionPlan.DispatchRequest, cancellationToken);
-                await jobQueueRepository.RecordDownloadDispatchAsync(
-                    library.Id,
-                    "tv",
-                    "series",
-                    seriesItem.Id,
-                    bestCandidate!.ReleaseName,
-                    bestCandidate.IndexerName,
-                    downloadClient.DownloadClientId,
-                    downloadClient.DownloadClientName,
-                    grabResult.Status,
-                    JsonSerializer.Serialize(new { searchPlan, grabResult }),
-                    grabResponseCode: grabResult.Succeeded ? 200 : 400,
-                    grabFailureCode: null,
-                    cancellationToken: cancellationToken);
-            }
-
-            await repository.RecordSearchAttemptAsync(
-                seriesItem.Id,
-                null,
-                library.Id,
-                "manual",
-                outcome,
-                now,
-                now.AddHours(Math.Max(1, library.RetryDelayHours)),
-                decisionPlan.SearchResult,
-                bestCandidate?.ReleaseName,
-                bestCandidate?.IndexerName,
-                searchPlan.Candidates.Count == 0 ? null : JsonSerializer.Serialize(searchPlan),
-                cancellationToken);
-
-            await activityFeedRepository.RecordDecisionAsync(
-                new DecisionExplanationPayload(
-                    Scope: "series.search",
-                    Status: outcome,
-                    Reason: decisionPlan.SearchResult,
-                    Inputs: new Dictionary<string, string?>
-                    {
-                        ["title"] = seriesItem.Title,
-                        ["year"] = seriesItem.StartYear?.ToString(),
-                        ["libraryId"] = library.Id,
-                        ["sourceCount"] = decisionPlan.SourceCount.ToString(),
-                        ["downloadClientCount"] = decisionPlan.DownloadClientCount.ToString(),
-                        ["policyVersion"] = decisionPlan.PolicyVersion,
-                        ["mode"] = string.Equals(mode, "preview", StringComparison.OrdinalIgnoreCase) ? "preview" : "manual"
-                    },
-                    Outcome: grabResult is null
-                        ? searchPlan.Summary
-                        : $"{grabResult.Status}: {grabResult.Message}",
-                    Alternatives: decisionPlan.Alternatives),
-                null,
-                "series",
-                seriesItem.Id,
-                cancellationToken);
-
-            await activityFeedRepository.RecordActivityAsync(
-                "series.search.manual",
-                $"{seriesItem.Title} was searched manually from the Deluno workspace.",
-                null,
-                null,
-                "series",
-                seriesItem.Id,
-                cancellationToken);
-
             return Results.Ok(new
             {
-                outcome,
-                summary = searchPlan.Summary,
-                reason = searchPlan.Reason,
-                releaseName = bestCandidate?.ReleaseName,
-                indexerName = bestCandidate?.IndexerName,
-                dispatchStatus = grabResult?.Status,
-                dispatchMessage = grabResult?.Message,
-                candidates = searchPlan.Candidates.Select(candidate => new
+                result.Outcome,
+                result.Summary,
+                result.Reason,
+                result.ReleaseName,
+                result.IndexerName,
+                result.DispatchStatus,
+                result.DispatchMessage,
+                candidates = result.Candidates.Select(candidate => new
                 {
                     candidate.ReleaseName,
                     candidate.IndexerName,
