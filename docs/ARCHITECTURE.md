@@ -1,6 +1,6 @@
 # Deluno Architecture
 
-Updated: 2026-05-13
+Updated: 2026-08-21
 
 Deluno is a single-user media automation app with separated movie and TV engines, external service orchestration, durable local state, and a growing operations layer around search, imports, health, and recovery.
 
@@ -8,7 +8,13 @@ Deluno is a single-user media automation app with separated movie and TV engines
 
 - `Deluno.Host`: composition root, endpoint registration, static frontend hosting.
 - `Deluno.Api`: host-level API concerns and readiness.
-- `Deluno.Platform`: settings, bootstrap, libraries, quality profiles, tags, API keys, routing, and the expanding app-services layer.
+- `Deluno.Platform`: shared settings, bootstrap, tags, migration, health, logging, and cross-module application orchestration.
+- `Deluno.Security`: authentication, users, API keys, authorization policies, and secret protection.
+- `Deluno.Notifications`: notification preferences, webhook persistence, and outbound notification delivery.
+- `Deluno.Intake`: intake sources, list exclusions and previews, and intake-origin contracts.
+- `Deluno.Connections`: indexers, download clients, protocol metadata, and connection health.
+- `Deluno.Libraries`: library definitions, routing, destination rules, library views, and import-run tracking.
+- `Deluno.Quality`: quality profiles, custom formats, policy sets, presets, and quality decisions.
 - `Deluno.Movies`: movie catalog, wanted state, search, grabs, metadata actions, and import recovery.
 - `Deluno.Series`: series catalog, episode state, wanted state, search, grabs, metadata actions, inventory, and import recovery.
 - `Deluno.Integrations`: indexers, metadata adapters, download clients, telemetry, grabs, webhooks, and normalized external orchestration.
@@ -19,32 +25,41 @@ Deluno is a single-user media automation app with separated movie and TV engines
 - `Deluno.Worker`: hosted background orchestration.
 - `Deluno.Contracts`: shared low-level contracts only.
 
-## In-Flight Supporting Modules
-
-The current working tree also contains early supporting namespaces that reflect direction more than settled ownership:
-
-- `Deluno.Library`: quality and episode-workflow service contracts
-- `Deluno.Search`: automation, health, and ranking service contracts
-
-These should be treated as in-flight seams until they are either:
-
-- adopted as stable modules with wiring and tests
-- or folded back into existing domain modules with clearer ownership
-
 ## Ownership Direction
 
 ### Platform
 
-Platform is no longer just generic settings storage.
+Platform owns shared application settings, bootstrap, tags, migration flows, system health and log surfaces, and
+cross-module orchestration. Domain-specific ownership belongs in the modules below rather than returning to this
+composition layer.
 
-It now owns or is growing into:
+### Security
 
-- authentication and bootstrap
-- libraries and routing
-- quality profiles, tags, custom formats, intake sources, policy sets, and destination rules
-- migration import flows
-- system health/log/job surfaces
-- analytics, cleanup, explanations, idempotency, observability, presets, resilience, and settings services
+Security owns authentication, bootstrap-user and API-key contracts, authorization policies, rate limits, and the
+secret-protection backends used for stored credentials. Other modules consume its authorization contracts; they do not
+reimplement credential handling.
+
+### Notifications
+
+Notifications owns notification preferences, webhook records, notification event contracts, and outbound delivery.
+Notification persistence remains in `platform.db` because it is app-level state, even though its code has a dedicated
+module.
+
+### Intake
+
+Intake owns list sources, exclusions, previews, source validation, and the contracts used to turn external intake into
+library candidates. It does not own movie or TV catalog state.
+
+### Connections
+
+Connections owns indexer and download-client configuration, protocol capability metadata, path mappings, and
+connection-level health/test operations. It normalizes external connection data before Jobs, Movies, Series, or the UI
+consume it.
+
+### Libraries And Quality
+
+Libraries owns library definitions, routing links, destination rules, library views, and import-run records. Quality
+owns quality profiles, custom formats, policy sets, presets, and the decisions that apply them to candidate media.
 
 ### Movies And Series
 
@@ -76,6 +91,16 @@ That now includes:
 - metadata provider fallback
 - search/result scoring support
 
+### Intake, Connections, Libraries, And Quality
+
+These modules are shared application seams, not alternate media engines. They may be consumed by both Movies and Series,
+but must not make either domain depend on the other:
+
+- Intake prepares source and candidate data.
+- Connections normalizes indexers and download clients.
+- Libraries resolves routing and destination policy.
+- Quality evaluates profiles, custom formats, and policy sets.
+
 ### Jobs, Realtime, And Operations
 
 Operational visibility is split intentionally:
@@ -87,6 +112,9 @@ Operational visibility is split intentionally:
 ## Boundary Rules
 
 - Movies and Series do not reference each other.
+- Security owns authentication and secret protection; feature modules consume its contracts.
+- Notifications owns outbound notification delivery; feature modules publish typed events.
+- Intake, Connections, Libraries, and Quality are shared seams and must remain domain-neutral.
 - Integrations stays domain-neutral and should not reference Movies, Series, or Filesystem directly for business logic.
 - Feature modules may depend on Platform, Jobs, Integrations, Infrastructure, or Contracts as needed.
 - Shared behavior should move to a shared module instead of crossing movie/series boundaries.

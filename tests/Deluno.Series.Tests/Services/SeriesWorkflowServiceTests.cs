@@ -132,7 +132,7 @@ public class SeriesWorkflowServiceTests
         var result = service.EvaluateCandidate(input);
 
         Assert.Equal("unknown", result.WantedStatus);
-        Assert.Contains("quality could not be detected", result.Reason.ToLower());
+        Assert.True(result.Reason?.Contains("quality could not be detected", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
