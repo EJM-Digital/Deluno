@@ -11,7 +11,7 @@
  *   - Dev mode: logs events to console when VITE_WS_DEBUG=1
  *
  * Every push arrives wrapped in an envelope carrying a monotonic sequence
- * number: `{ seq, name, at, data }`. On connect and on every reconnect the
+ * number and routing subject: `{ seq, name, subject, at, data }`. On connect and on every reconnect the
  * client sends its last-seen `seq` to the hub's `Resume` method. Inside the
  * resume window the gap replays and the client stays caught up; beyond it
  * (or with no prior seq) the hub answers `resync-required` and subscribers
@@ -35,6 +35,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useCallback,
@@ -132,10 +133,21 @@ type EventMap = {
 export type SignalREventName = keyof EventMap;
 export type SignalREventPayload<T extends SignalREventName> = EventMap[T];
 
+/** Subjects a screen can join for the lifetime of its event subscriptions. */
+export type RealtimeSubject = string | readonly string[];
+
+export const RealtimeGroups = {
+  Dashboard: "dashboard",
+  Queue: "queue",
+  Activity: "activity",
+  Library: (libraryId: string) => `library:${libraryId}`
+} as const;
+
 /** Wire shape for every push: a monotonic sequence, the event name, a timestamp, and its payload. */
 interface RealtimeEnvelope {
   seq: number;
   name: string;
+  subject: string;
   at: string;
   data: unknown;
 }
@@ -156,6 +168,7 @@ interface SignalRContextValue {
   /** Internal: subscribe to an event. Used by useSignalREvent. */
   subscribe<T extends SignalREventName>(
     event: T,
+    subjects: RealtimeSubject,
     handler: (payload: SignalREventPayload<T>) => void
   ): () => void;
   /** Internal: subscribe to "you may have missed events, refetch from REST". Used by useSignalRResync. */
@@ -170,6 +183,12 @@ const DEBUG = import.meta.env.VITE_WS_DEBUG === "1";
 
 type AnyHandler = (payload: unknown) => void;
 
+function normalizeSubjects(subjects: RealtimeSubject): string[] {
+  return typeof subjects === "string"
+    ? [subjects]
+    : [...new Set(subjects)];
+}
+
 export function SignalRProvider({
   children,
   accessToken
@@ -180,21 +199,48 @@ export function SignalRProvider({
   const [status, setStatus] = useState<SignalRStatus>("connecting");
   const handlersRef = useRef(new Map<string, Set<AnyHandler>>());
   const resyncHandlersRef = useRef(new Set<() => void>());
+  const subjectCountsRef = useRef(new Map<string, number>());
   const connectionRef = useRef<signalR.HubConnection | null>(null);
   /** Highest seq applied so far. Reset to 0 whenever the server tells us to resync. */
   const lastSeqRef = useRef(0);
 
+  const invokeSubjects = useCallback((method: "Subscribe" | "Unsubscribe", subjects: string[]) => {
+    const connection = connectionRef.current;
+    if (!connection || connection.state !== signalR.HubConnectionState.Connected || subjects.length === 0) return;
+    void connection.invoke(method, subjects).catch((error) => {
+      if (DEBUG) console.debug(`[WS] ${method.toLowerCase()} failed`, error);
+    });
+  }, []);
+
   const subscribe = useCallback(<T extends SignalREventName>(
     event: T,
+    subjects: RealtimeSubject,
     handler: (payload: SignalREventPayload<T>) => void
   ) => {
+    const requestedSubjects = normalizeSubjects(subjects);
     const map = handlersRef.current;
     if (!map.has(event)) map.set(event, new Set());
     map.get(event)!.add(handler as AnyHandler);
+    requestedSubjects.forEach((subject) => {
+      subjectCountsRef.current.set(subject, (subjectCountsRef.current.get(subject) ?? 0) + 1);
+    });
+    invokeSubjects("Subscribe", requestedSubjects);
+
     return () => {
       map.get(event)?.delete(handler as AnyHandler);
+      const removedSubjects: string[] = [];
+      requestedSubjects.forEach((subject) => {
+        const count = subjectCountsRef.current.get(subject) ?? 0;
+        if (count <= 1) {
+          subjectCountsRef.current.delete(subject);
+          removedSubjects.push(subject);
+        } else {
+          subjectCountsRef.current.set(subject, count - 1);
+        }
+      });
+      invokeSubjects("Unsubscribe", removedSubjects);
     };
-  }, []);
+  }, [invokeSubjects]);
 
   const subscribeResync = useCallback((handler: () => void) => {
     resyncHandlersRef.current.add(handler);
@@ -223,7 +269,11 @@ export function SignalRProvider({
      */
     const resume = async (connection: signalR.HubConnection) => {
       try {
-        const result = await connection.invoke<ResumeResult>("Resume", lastSeqRef.current);
+        const subjects = [...subjectCountsRef.current.keys()];
+        if (subjects.length > 0) {
+          await connection.invoke("Subscribe", subjects);
+        }
+        const result = await connection.invoke<ResumeResult>("Resume", lastSeqRef.current, subjects);
         if (result.status === "Replayed") {
           for (const envelope of result.envelopes) applyEnvelope(envelope);
         } else if (result.status === "ResyncRequired") {
@@ -294,21 +344,27 @@ export function useSignalRStatus(): SignalRStatus {
  * — no need to memoize it yourself.
  *
  * @example
- * useSignalREvent("DownloadProgress", (e) => setProgress(e.progress));
+ * useSignalREvent("DownloadProgress", RealtimeGroups.Queue, (e) => setProgress(e.progress));
  */
 export function useSignalREvent<T extends SignalREventName>(
   event: T,
+  subjects: RealtimeSubject,
   handler: (payload: SignalREventPayload<T>) => void
 ) {
   const ctx = useContext(SignalRContext);
+  const subjectKey = typeof subjects === "string" ? subjects : subjects.join("\u001f");
+  const stableSubjects = useMemo(
+    () => [...new Set(subjectKey ? subjectKey.split("\u001f") : [])],
+    [subjectKey]
+  );
   const handlerRef = useRef(handler);
   useEffect(() => { handlerRef.current = handler; });
 
   useEffect(() => {
     if (!ctx) return;
     const stable = (p: SignalREventPayload<T>) => handlerRef.current(p);
-    return ctx.subscribe(event, stable);
-  }, [ctx, event]);
+    return ctx.subscribe(event, stableSubjects, stable);
+  }, [ctx, event, stableSubjects]);
 }
 
 /**

@@ -18,7 +18,7 @@ import {
 import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
 import { authedFetch } from "../lib/use-auth";
-import { useSignalREvent } from "../lib/use-signalr";
+import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import { configurationNavAreas } from "../components/app/settings-shell";
 import { Button } from "../components/ui/button";
 import { Chip } from "../components/ui/chip";
@@ -110,7 +110,7 @@ export function IndexersPage() {
     };
   }, [section]);
 
-  useSignalREvent("DownloadProgress", () => {
+  useSignalREvent("DownloadProgress", RealtimeGroups.Queue, () => {
     const now = Date.now();
     if (revalidator.state === "idle" && now - lastTelemetryRefresh.current > 5000) {
       lastTelemetryRefresh.current = now;

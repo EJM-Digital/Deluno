@@ -20,7 +20,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../co
 import { AuditTimeline, type TimelineEvent } from "../components/shell/audit-timeline";
 import { SaveStatus, useSaveStatus } from "../components/shell/save-status";
 import { WsStatusBadge } from "../components/shell/ws-status-badge";
-import { useSignalREvent } from "../lib/use-signalr";
+import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import {
   emptyPlatformSettingsSnapshot,
   fetchJson, fetchPageItems,
@@ -102,7 +102,7 @@ export function SystemPage() {
 
   /* Live events prepended from WebSocket */
   const [liveEvents, setLiveEvents] = useState<TimelineEvent[]>([]);
-  useSignalREvent("ActivityEventAdded", (event) => {
+  useSignalREvent("ActivityEventAdded", RealtimeGroups.Activity, (event) => {
     setLiveEvents((prev) => [
       { id: event.id, message: event.message, category: event.category, severity: event.severity, createdUtc: event.createdUtc },
       ...prev.slice(0, 49)
@@ -110,8 +110,8 @@ export function SystemPage() {
   });
 
   const [liveActiveJobs, setLiveActiveJobs] = useState(activeJobs);
-  useSignalREvent("QueueItemAdded", () => setLiveActiveJobs((n) => n + 1));
-  useSignalREvent("QueueItemRemoved", () => setLiveActiveJobs((n) => Math.max(0, n - 1)));
+  useSignalREvent("QueueItemAdded", RealtimeGroups.Queue, () => setLiveActiveJobs((n) => n + 1));
+  useSignalREvent("QueueItemRemoved", RealtimeGroups.Queue, () => setLiveActiveJobs((n) => Math.max(0, n - 1)));
 
   // The timeline has its own tab; repeating all 500 events here made Health
   // three times taller than everything on it that actually answers "is it well?".

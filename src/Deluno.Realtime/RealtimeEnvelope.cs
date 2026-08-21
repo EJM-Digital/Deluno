@@ -4,7 +4,7 @@ namespace Deluno.Realtime;
 /// Wire shape for every realtime push: a monotonic sequence number, the
 /// event name, an ISO-8601 timestamp, and the event's own payload.
 /// </summary>
-public sealed record RealtimeEnvelope(long Seq, string Name, string At, object? Data);
+public sealed record RealtimeEnvelope(long Seq, string Name, string Subject, string At, object? Data);
 
 /// <summary>
 /// Outcome of a client asking to resume from its last known sequence number.
@@ -32,5 +32,5 @@ public sealed record RealtimeResumeResult(RealtimeResumeStatus Status, IReadOnly
 /// </summary>
 public interface IRealtimeResumeSource
 {
-    RealtimeResumeResult Resume(long lastSeq);
+    RealtimeResumeResult Resume(long lastSeq, IReadOnlyCollection<string> subjects);
 }
