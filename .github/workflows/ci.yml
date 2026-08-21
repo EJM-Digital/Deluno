@@ -12,15 +12,16 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  # A later push must not cancel verification of an earlier commit on main.
-  # Pull-request runs may still be superseded while an author is iterating.
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  # Use the PR number rather than the merge ref so successive pushes to the
+  # same PR always cancel the superseded run. Main remains non-cancellable.
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   agent-readiness:
     name: Agent readiness
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
       - name: Checkout
@@ -33,6 +34,7 @@ jobs:
   backend:
     name: Backend build and tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -60,9 +62,54 @@ jobs:
           path: "**/TestResults/*.trx"
           if-no-files-found: ignore
 
-  frontend:
-    name: Frontend build and smoke tests
+  frontend-quality:
+    name: Frontend quality
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Lint frontend
+        run: npm --workspace apps/web run lint
+
+      - name: Check for orphaned frontend modules
+        working-directory: apps/web
+        run: npm run check:orphans
+
+      - name: Build frontend
+        run: npm run build:web
+
+      - name: Run frontend unit tests
+        run: npm run test:unit:web
+
+  frontend-smoke:
+    name: Frontend smoke (${{ matrix.shard_id }}/4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - shard_id: 1
+            shard: "1/4"
+          - shard_id: 2
+            shard: "2/4"
+          - shard_id: 3
+            shard: "3/4"
+          - shard_id: 4
+            shard: "4/4"
 
     steps:
       - name: Checkout
@@ -79,6 +126,12 @@ jobs:
           node-version: 24
           cache: npm
 
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+
       - name: Restore backend dependencies
         run: dotnet restore Deluno.slnx
 
@@ -89,26 +142,16 @@ jobs:
         working-directory: apps/web
         run: npx playwright install --with-deps chromium
 
-      - name: Lint frontend
-        run: npm --workspace apps/web run lint
-
-      - name: Check for orphaned frontend modules
-        working-directory: apps/web
-        run: npm run check:orphans
-
       - name: Build frontend
         run: npm run build:web
 
-      - name: Run frontend unit tests
-        run: npm run test:unit:web
-
       - name: Run frontend smoke tests
-        run: npm run test:web
+        run: npm --workspace apps/web run test:smoke -- --shard=${{ matrix.shard }}
 
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.shard_id }}
           path: apps/web/playwright-report/
           if-no-files-found: ignore
