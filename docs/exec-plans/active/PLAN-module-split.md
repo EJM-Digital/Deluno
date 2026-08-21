@@ -166,7 +166,7 @@ quality, intake, notifications or security, and the gate is green.
 
 ---
 
-## Step 2 — one media engine
+## Step 2 — one media engine ✅ complete
 
 **Precondition — do not start without this.** `tests/Deluno.Series.Tests` exists
 and covers: episode catalogue sync (upsert without clobbering `has_file`,
@@ -206,6 +206,40 @@ Move one method at a time. After each, both engines must still pass their suites
   user input.
 - `ImportExistingAsync` differs meaningfully: the series version also writes
   episodes. That difference is real and must survive.
+
+### Completion record — 2026-08-21
+
+`Deluno.Media` now owns the shared media-state repository and the common
+search/grab workflows. The repository resolves the Movies and Series database
+and table identifiers from the closed `MediaKind` map; it never interpolates a
+request value into an identifier. The shared persistence covers catalogue
+creation and reads, metadata updates, wanted-state and eligibility, import
+recovery, existing-library imports, tracked-file streaming, daily metrics and
+the search history used by both engines. Movie and Series retain their typed
+adapters and their genuinely different persistence: Series continues to write
+episode rows during an existing-library import, while Movies retains release
+date and availability behavior.
+
+The manual grab, catalogue search and bulk-search handlers are also shared in
+`Deluno.Media`; the two endpoint modules provide only their media kind and
+engine-specific search-attempt adapter. The Series targeted episode-search
+route remains in `Deluno.Series` because it owns episode selection and records
+episode-shaped dispatches. The Jobs-to-Realtime dependency inversion was landed
+separately in PR #225 so the media extraction did not carry a transport
+boundary change.
+
+Verification completed before closing issue #118:
+
+- Release solution build and the full .NET suite passed, with the Series tests
+  covering episode sync, inventory, wanted-state and import behavior.
+- `npm run ci:check`, `npm run validate:agents` and `npm run test:web` passed.
+- The local app was started through `scripts/start-local-app.ps1`. A local
+  qBittorrent-compatible verifier and Torznab-compatible verifier were used
+  only as test endpoints because the development database has no configured
+  external clients. A movie grab returned `sent`, a Series grab returned
+  `sent`, and a targeted Series episode search returned `matched` with one
+  episode sent to the qBittorrent endpoint. The verifier recorded the expected
+  `POST /api/v2/torrents/add` requests.
 
 ---
 
