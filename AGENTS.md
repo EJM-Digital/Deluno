@@ -46,6 +46,15 @@ dotnet test Deluno.slnx --configuration Release
 npm run test:web
 ```
 
+Changes reach `main` through a pull request. Wait for every required GitHub
+check to pass, then manually squash-merge; `main` is not branch-protected on
+the current private free-plan repository, so never use auto-merge. A local
+pre-push hook is available; enable it once with:
+
+```powershell
+git config core.hooksPath .githooks
+```
+
 ## Mechanical Guardrails
 
 - Keep docs discoverable from this map or `docs/README.md`.

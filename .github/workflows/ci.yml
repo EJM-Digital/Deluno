@@ -13,7 +13,9 @@ permissions:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # A later push must not cancel verification of an earlier commit on main.
+  # Pull-request runs may still be superseded while an author is iterating.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   agent-readiness:
