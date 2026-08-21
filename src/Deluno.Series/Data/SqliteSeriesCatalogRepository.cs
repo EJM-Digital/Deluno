@@ -161,6 +161,37 @@ public sealed class SqliteSeriesCatalogRepository(
 
     public async Task<SeriesListItem?> GetByIdAsync(string id, CancellationToken cancellationToken)
     {
+        if (sharedMediaStateRepository is not null)
+        {
+            var entry = await sharedMediaStateRepository.GetByIdAsync(
+                MediaKind.Series,
+                id,
+                cancellationToken);
+            return entry is null
+                ? null
+                : new SeriesListItem(
+                    Id: entry.Id,
+                    Title: entry.Title,
+                    StartYear: entry.Year,
+                    ImdbId: entry.ImdbId,
+                    Monitored: entry.Monitored,
+                    HasFile: entry.HasFile,
+                    MetadataProvider: entry.MetadataProvider,
+                    MetadataProviderId: entry.MetadataProviderId,
+                    OriginalTitle: entry.OriginalTitle,
+                    Overview: entry.Overview,
+                    PosterUrl: entry.PosterUrl,
+                    BackdropUrl: entry.BackdropUrl,
+                    Rating: entry.Rating,
+                    Ratings: BuildRatings(entry.Rating, entry.MetadataJson),
+                    Genres: entry.Genres,
+                    ExternalUrl: entry.ExternalUrl,
+                    MetadataJson: entry.MetadataJson,
+                    MetadataUpdatedUtc: entry.MetadataUpdatedUtc,
+                    CreatedUtc: entry.CreatedUtc,
+                    UpdatedUtc: entry.UpdatedUtc);
+        }
+
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Series,
             cancellationToken);

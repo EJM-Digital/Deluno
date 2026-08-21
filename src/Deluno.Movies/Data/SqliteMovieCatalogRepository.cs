@@ -161,6 +161,46 @@ public sealed class SqliteMovieCatalogRepository(
 
     public async Task<MovieListItem?> GetByIdAsync(string id, CancellationToken cancellationToken)
     {
+        if (sharedMediaStateRepository is not null)
+        {
+            var entry = await sharedMediaStateRepository.GetByIdAsync(
+                MediaKind.Movie,
+                id,
+                cancellationToken);
+            if (entry is null)
+            {
+                return null;
+            }
+
+            var availability = await GetReleaseAvailabilityAsync(id, cancellationToken);
+            return new MovieListItem(
+                Id: entry.Id,
+                Title: entry.Title,
+                ReleaseYear: entry.Year,
+                ImdbId: entry.ImdbId,
+                Monitored: entry.Monitored,
+                HasFile: entry.HasFile,
+                MetadataProvider: entry.MetadataProvider,
+                MetadataProviderId: entry.MetadataProviderId,
+                OriginalTitle: entry.OriginalTitle,
+                Overview: entry.Overview,
+                PosterUrl: entry.PosterUrl,
+                BackdropUrl: entry.BackdropUrl,
+                Rating: entry.Rating,
+                Ratings: BuildRatings(entry.Rating, entry.MetadataJson),
+                Genres: entry.Genres,
+                ExternalUrl: entry.ExternalUrl,
+                MetadataJson: entry.MetadataJson,
+                MetadataUpdatedUtc: entry.MetadataUpdatedUtc,
+                CreatedUtc: entry.CreatedUtc,
+                UpdatedUtc: entry.UpdatedUtc,
+                InCinemasDate: availability.InCinemasDate,
+                DigitalReleaseDate: availability.DigitalReleaseDate,
+                PhysicalReleaseDate: availability.PhysicalReleaseDate,
+                MinimumAvailability: availability.MinimumAvailability,
+                IsAvailable: availability.IsAvailable);
+        }
+
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Movies,
             cancellationToken);
@@ -2316,6 +2356,53 @@ public sealed class SqliteMovieCatalogRepository(
                 ReadDate(reader, 19),
                 ReadDate(reader, 20),
                 ReadDate(reader, 21),
+                DateOnly.FromDateTime(DateTime.UtcNow)));
+    }
+
+    private async Task<(
+        DateOnly? InCinemasDate,
+        DateOnly? DigitalReleaseDate,
+        DateOnly? PhysicalReleaseDate,
+        string MinimumAvailability,
+        bool IsAvailable)> GetReleaseAvailabilityAsync(
+        string id,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT in_cinemas_date, digital_release_date, physical_release_date, minimum_availability
+            FROM movie_entries
+            WHERE id = @id
+            LIMIT 1;
+            """;
+        AddParameter(command, "@id", id);
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return (null, null, null, MovieAvailability.Normalize(null), true);
+        }
+
+        var inCinemasDate = ReadDate(reader, 0);
+        var digitalReleaseDate = ReadDate(reader, 1);
+        var physicalReleaseDate = ReadDate(reader, 2);
+        var minimumAvailability = MovieAvailability.Normalize(
+            reader.IsDBNull(3) ? null : reader.GetString(3));
+        return (
+            inCinemasDate,
+            digitalReleaseDate,
+            physicalReleaseDate,
+            minimumAvailability,
+            MovieAvailability.IsAvailable(
+                minimumAvailability,
+                inCinemasDate,
+                digitalReleaseDate,
+                physicalReleaseDate,
                 DateOnly.FromDateTime(DateTime.UtcNow)));
     }
 

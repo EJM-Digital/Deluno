@@ -94,6 +94,27 @@ public sealed record MediaEntryCreate(
     string? ExternalUrl,
     string? MetadataJson);
 
+public sealed record MediaEntryDetails(
+    string Id,
+    string Title,
+    int? Year,
+    string? ImdbId,
+    bool Monitored,
+    bool HasFile,
+    string? MetadataProvider,
+    string? MetadataProviderId,
+    string? OriginalTitle,
+    string? Overview,
+    string? PosterUrl,
+    string? BackdropUrl,
+    double? Rating,
+    string? Genres,
+    string? ExternalUrl,
+    string? MetadataJson,
+    DateTimeOffset? MetadataUpdatedUtc,
+    DateTimeOffset CreatedUtc,
+    DateTimeOffset UpdatedUtc);
+
 public interface IMediaStateRepository
 {
     Task<MediaWantedSummary> GetWantedSummaryAsync(MediaKind kind, CancellationToken cancellationToken);
@@ -167,6 +188,11 @@ public interface IMediaStateRepository
     Task<string> AddAsync(
         MediaKind kind,
         MediaEntryCreate entry,
+        CancellationToken cancellationToken);
+
+    Task<MediaEntryDetails?> GetByIdAsync(
+        MediaKind kind,
+        string id,
         CancellationToken cancellationToken);
 
     Task<Deluno.Contracts.MediaDailyMetrics> GetDailyMetricsAsync(

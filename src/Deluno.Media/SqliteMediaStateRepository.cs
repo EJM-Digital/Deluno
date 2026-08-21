@@ -593,6 +593,71 @@ public sealed class SqliteMediaStateRepository(
             ?? throw new InvalidOperationException("The media entry could not be read after insertion.");
     }
 
+    public async Task<MediaEntryDetails?> GetByIdAsync(
+        MediaKind kind,
+        string id,
+        CancellationToken cancellationToken)
+    {
+        var map = MediaTableMap.For(kind);
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            map.DatabaseName,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT
+                {map.EntryAlias}.id,
+                {map.EntryAlias}.title,
+                {map.EntryAlias}.{map.YearColumn},
+                {map.EntryAlias}.imdb_id,
+                {map.EntryAlias}.monitored,
+                COALESCE(MAX(w.has_file), 0),
+                {map.EntryAlias}.metadata_provider,
+                {map.EntryAlias}.metadata_provider_id,
+                {map.EntryAlias}.original_title,
+                {map.EntryAlias}.overview,
+                {map.EntryAlias}.poster_url,
+                {map.EntryAlias}.backdrop_url,
+                {map.EntryAlias}.rating,
+                {map.EntryAlias}.genres,
+                {map.EntryAlias}.external_url,
+                {map.EntryAlias}.metadata_json,
+                {map.EntryAlias}.metadata_updated_utc,
+                {map.EntryAlias}.created_utc,
+                {map.EntryAlias}.updated_utc
+            FROM {map.EntryTable} {map.EntryAlias}
+            LEFT JOIN {map.WantedTable} w ON w.{map.WantedMediaIdColumn} = {map.EntryAlias}.id
+            WHERE {map.EntryAlias}.id = @id
+            GROUP BY {map.EntryAlias}.id
+            LIMIT 1;
+            """;
+        AddParameter(command, "@id", id);
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken)
+            ? new MediaEntryDetails(
+                reader.GetString(0),
+                reader.GetString(1),
+                ReadNullableInt(reader, 2),
+                ReadNullableString(reader, 3),
+                reader.GetInt64(4) == 1,
+                reader.GetInt64(5) == 1,
+                ReadNullableString(reader, 6),
+                ReadNullableString(reader, 7),
+                ReadNullableString(reader, 8),
+                ReadNullableString(reader, 9),
+                ReadNullableString(reader, 10),
+                ReadNullableString(reader, 11),
+                reader.IsDBNull(12) ? null : reader.GetDouble(12),
+                ReadNullableString(reader, 13),
+                ReadNullableString(reader, 14),
+                ReadNullableString(reader, 15),
+                ReadNullableTimestamp(reader, 16),
+                ParseTimestamp(reader.GetString(17)),
+                ParseTimestamp(reader.GetString(18)))
+            : null;
+    }
+
     public async Task<MediaDailyMetrics> GetDailyMetricsAsync(
         MediaKind kind,
         DateOnly fromDate,

@@ -236,6 +236,19 @@ public sealed class MediaStateRepositoryTests
             Assert.Equal("101", created.MetadataProviderId);
             Assert.Equal("Created overview", created.Overview);
             Assert.Equal(8.5, created.Rating);
+
+            Assert.True(await repository.UpdateReleaseDatesAsync(
+                created.Id,
+                new DateOnly(2026, 8, 22),
+                new DateOnly(2026, 8, 23),
+                null,
+                CancellationToken.None));
+
+            var reloaded = await repository.GetByIdAsync(created.Id, CancellationToken.None);
+            Assert.NotNull(reloaded);
+            Assert.Equal(new DateOnly(2026, 8, 22), reloaded.InCinemasDate);
+            Assert.Equal(new DateOnly(2026, 8, 23), reloaded.DigitalReleaseDate);
+            Assert.Null(reloaded.PhysicalReleaseDate);
         }
         else
         {
