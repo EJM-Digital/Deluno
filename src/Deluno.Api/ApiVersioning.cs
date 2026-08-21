@@ -45,6 +45,25 @@ public static class ApiVersioning
         });
     }
 
+    public static IApplicationBuilder UseDelunoApiUnmatchedPathGuard(this IApplicationBuilder app)
+    {
+        return app.Use(async (context, next) =>
+        {
+            // The SPA fallback is useful for browser routes, but an unknown API
+            // path must remain an API 404 rather than returning index.html with
+            // HTTP 200. This keeps removed or mistyped endpoints discoverably
+            // absent.
+            if (context.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase) &&
+                context.GetEndpoint() is null)
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                return;
+            }
+
+            await next();
+        });
+    }
+
     // These operational endpoints deliberately use a versioned route because
     // their unversioned names are already occupied by legacy dashboard data.
     // Keep their canonical /api/v1 path intact; other v1 routes remain aliases
@@ -53,6 +72,5 @@ public static class ApiVersioning
         => path.StartsWithSegments("/v1/download-dispatches", StringComparison.OrdinalIgnoreCase) ||
            path.StartsWithSegments("/v1/import-resolutions", StringComparison.OrdinalIgnoreCase) ||
            path.StartsWithSegments("/v1/dispatch-alerts", StringComparison.OrdinalIgnoreCase) ||
-           path.StartsWithSegments("/v1/dispatch-metrics", StringComparison.OrdinalIgnoreCase) ||
-           path.StartsWithSegments("/v1/import-recovery", StringComparison.OrdinalIgnoreCase);
+           path.StartsWithSegments("/v1/dispatch-metrics", StringComparison.OrdinalIgnoreCase);
 }

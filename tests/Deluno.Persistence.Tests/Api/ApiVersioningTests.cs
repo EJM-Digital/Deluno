@@ -32,9 +32,15 @@ public sealed class ApiVersioningTests : IAsyncDisposable
                     {
                         app.UseDelunoApiVersioning();
                         app.UseRouting();
+                        app.UseDelunoApiUnmatchedPathGuard();
                         app.UseEndpoints(endpoints =>
                         {
                             endpoints.MapGet("/api/health/live", () => Results.Ok(new { status = "ok" }));
+                        });
+                        app.Run(async context =>
+                        {
+                            context.Response.StatusCode = StatusCodes.Status200OK;
+                            await context.Response.WriteAsync("SPA fallback");
                         });
                     });
             });
@@ -74,6 +80,14 @@ public sealed class ApiVersioningTests : IAsyncDisposable
         var body = await response.Content.ReadAsStringAsync();
         Assert.Contains("Unsupported API version", body);
         Assert.Contains("v1", body);
+    }
+
+    [Fact]
+    public async Task Removed_versioned_api_path_returns_404_instead_of_spa_html()
+    {
+        var response = await _client.GetAsync("/api/v1/import-recovery/movies/test-case");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     public async ValueTask DisposeAsync()
