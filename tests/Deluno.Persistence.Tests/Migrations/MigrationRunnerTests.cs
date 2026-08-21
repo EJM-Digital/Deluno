@@ -6,6 +6,7 @@ using Deluno.Jobs.Data;
 using Deluno.Movies.Data;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Platform.Data;
+using Deluno.Platform.Migrations;
 using Deluno.Series.Data;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -128,7 +129,7 @@ public sealed class MigrationRunnerTests
         Assert.Equal("series_media_facts", await ReadScalarAsync<string>(seriesConnection, "SELECT name FROM schema_migrations WHERE version = 12;"));
 
         await using var platformConnection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Platform);
-        Assert.Equal(20, await ReadScalarAsync<int>(platformConnection, "SELECT COUNT(*) FROM schema_migrations;"));
+        Assert.Equal(21, await ReadScalarAsync<int>(platformConnection, "SELECT COUNT(*) FROM schema_migrations;"));
         Assert.Equal("initial_schema", await ReadScalarAsync<string>(platformConnection, "SELECT name FROM schema_migrations WHERE version = 1;"));
         Assert.Equal("user_security_stamp", await ReadScalarAsync<string>(platformConnection, "SELECT name FROM schema_migrations WHERE version = 2;"));
         Assert.Equal("integration_health", await ReadScalarAsync<string>(platformConnection, "SELECT name FROM schema_migrations WHERE version = 3;"));
@@ -149,6 +150,7 @@ public sealed class MigrationRunnerTests
         Assert.Equal("library_media_plans", await ReadScalarAsync<string>(platformConnection, "SELECT name FROM schema_migrations WHERE version = 18;"));
         Assert.Equal("library_import_runs", await ReadScalarAsync<string>(platformConnection, "SELECT name FROM schema_migrations WHERE version = 19;"));
         Assert.Equal("indexer_request_interval", await ReadScalarAsync<string>(platformConnection, "SELECT name FROM schema_migrations WHERE version = 20;"));
+        Assert.Equal("repair_quality_profile_tier_names", await ReadScalarAsync<string>(platformConnection, "SELECT name FROM schema_migrations WHERE version = 21;"));
 
         await using var jobsConnection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Jobs);
         Assert.Equal(11, await ReadScalarAsync<int>(jobsConnection, "SELECT COUNT(*) FROM schema_migrations;"));
@@ -163,6 +165,76 @@ public sealed class MigrationRunnerTests
         Assert.Equal("decision_telemetry_tracking", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 9;"));
         Assert.Equal("archived_dispatch_tracking", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 10;"));
         Assert.Equal("worker_schedule_state", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 11;"));
+    }
+
+    [Fact]
+    public async Task Quality_profile_tier_repair_maps_aliases_deduplicates_in_order_and_leaves_clean_profiles_untouched()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T05:00:00Z"));
+        var migrator = new SqliteDatabaseMigrator(storage.Factory, timeProvider);
+        var migrationsBeforeRepair = PlatformDatabaseMigrations.All
+            .Where(migration => migration.Version < 21)
+            .ToArray();
+
+        await migrator.ApplyAsync(
+            DelunoDatabaseNames.Platform,
+            migrationsBeforeRepair,
+            CancellationToken.None);
+
+        await using (var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Platform))
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                INSERT INTO quality_profiles (
+                    id, name, media_type, sort_order, cutoff_quality, allowed_qualities,
+                    custom_format_ids, upgrade_until_cutoff, upgrade_unknown_items,
+                    created_utc, updated_utc
+                ) VALUES
+                    (
+                        'repair-me', 'Repair me', 'movies', 0, 'WEB-DL 1080p',
+                        'webdl-1080p, WEB-DL 1080p, Bluray 1080p, WEB 1080p, Bluray 1080p, Remux 4K, Remux 2160p',
+                        '', 1, 0, '2026-04-29T05:00:00Z', '2026-04-29T05:00:00Z'
+                    ),
+                    (
+                        'leave-me', 'Leave me', 'movies', 1, 'WEB 1080p',
+                        'WEB 1080p, Bluray 1080p',
+                        '', 1, 0, '2026-04-29T05:00:00Z', '2026-04-29T05:00:00Z'
+                    );
+                """;
+            await command.ExecuteNonQueryAsync();
+        }
+
+        await migrator.ApplyAsync(
+            DelunoDatabaseNames.Platform,
+            PlatformDatabaseMigrations.All,
+            CancellationToken.None);
+
+        await using var repairedConnection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Platform);
+        using var repairedCommand = repairedConnection.CreateCommand();
+        repairedCommand.CommandText =
+            """
+            SELECT allowed_qualities, cutoff_quality
+            FROM quality_profiles
+            WHERE id = @id;
+            """;
+        var idParameter = repairedCommand.CreateParameter();
+        idParameter.ParameterName = "@id";
+        idParameter.Value = "repair-me";
+        repairedCommand.Parameters.Add(idParameter);
+        using (var repairedReader = await repairedCommand.ExecuteReaderAsync())
+        {
+            Assert.True(await repairedReader.ReadAsync());
+            Assert.Equal("WEB 1080p, Bluray 1080p, Remux 2160p", repairedReader.GetString(0));
+            Assert.Equal("WEB 1080p", repairedReader.GetString(1));
+        }
+
+        repairedCommand.Parameters["@id"].Value = "leave-me";
+        using var cleanReader = await repairedCommand.ExecuteReaderAsync();
+        Assert.True(await cleanReader.ReadAsync());
+        Assert.Equal("WEB 1080p, Bluray 1080p", cleanReader.GetString(0));
+        Assert.Equal("WEB 1080p", cleanReader.GetString(1));
     }
 
     private static async Task<T> ReadScalarAsync<T>(DbConnection connection, string sql)
