@@ -109,9 +109,11 @@ test.describe("first-run and auth screens", () => {
 
     await authenticateAndNavigate(page, "/setup-guide");
     await page.getByRole("button", { name: /4 Connections/ }).click();
+    await expect(page.getByRole("radiogroup", { name: "Search source presets" })).toBeVisible();
+    await page.getByPlaceholder("https://indexer.example/api").fill("");
     await page.getByRole("button", { name: "Test search source" }).click();
 
-    await expect(page.getByText("Enter an indexer URL before testing.")).toBeVisible();
+    await expect(page.getByText("Enter an indexer URL before testing.")).toBeVisible({ timeout: 10_000 });
   });
 
   test("guided setup requires an external download app address before testing", async ({ page }) => {

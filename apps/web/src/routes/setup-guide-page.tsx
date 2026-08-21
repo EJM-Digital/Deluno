@@ -1,4 +1,4 @@
-import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLoaderData, useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -43,6 +43,7 @@ import { cn } from "../lib/utils";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Checkbox } from "../components/ui/checkbox";
+import { Field } from "../components/ui/field";
 import { PathInput } from "../components/ui/path-input";
 import { Select } from "../components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -651,7 +652,7 @@ export function SetupGuidePage() {
   );
 
   async function testIndexerConnection() {
-    if (!form.indexerUrl.trim() && data.indexers.length === 0) {
+    if (!form.indexerUrl.trim()) {
       setServiceTest((current) => ({ ...current, indexer: "failed", indexerMessage: "Enter an indexer URL before testing." }));
       return;
     }
@@ -677,7 +678,7 @@ export function SetupGuidePage() {
   }
 
   async function testClientConnection() {
-    if (!form.clientHost.trim() && data.clients.length === 0) {
+    if (!form.clientHost.trim()) {
       setServiceTest((current) => ({ ...current, client: "failed", clientMessage: "Enter a download client host before testing." }));
       return;
     }
@@ -878,36 +879,36 @@ function ServicesStep({
     <div className="grid gap-[var(--grid-gap)] xl:grid-cols-2">
       <FieldShell icon={RadioTower} label="Search source" copy="Optional. Connect a search provider now, or skip this and add one later.">
         <div className="grid gap-3">
-          <div className="grid gap-2 sm:grid-cols-2">
-            {INDEXER_SETUP_PRESETS.map((preset) => (
-              <button
-                key={preset.id}
-                type="button"
-                onClick={() => patch({
-                  indexerName: preset.label,
-                  indexerProtocol: preset.protocol,
-                  indexerUrl: preset.url
-                })}
-                className={cn(
-                  "rounded-xl border p-3 text-left transition hover:border-primary/35",
-                  form.indexerProtocol === preset.protocol && form.indexerName === preset.label
-                    ? "border-primary/45 bg-primary/10"
-                    : "border-hairline bg-background/35"
-                )}
-              >
-                <p className="text-sm font-semibold text-foreground">{preset.label}</p>
-                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{preset.copy}</p>
-              </button>
-            ))}
-          </div>
-          <Input value={form.indexerName} onChange={(event) => patch({ indexerName: event.target.value })} placeholder="Primary indexer" />
-          <Select value={form.indexerProtocol} onChange={(event) => patch({ indexerProtocol: event.target.value as GuideForm["indexerProtocol"] })}>
-            <option value="torznab">Torznab</option>
-            <option value="newznab">Newznab (Usenet indexer)</option>
-            <option value="rss">RSS feed</option>
-          </Select>
-          <Input value={form.indexerUrl} onChange={(event) => patch({ indexerUrl: event.target.value })} placeholder="https://indexer.example/api" />
-          <Input value={form.indexerApiKey} onChange={(event) => patch({ indexerApiKey: event.target.value })} placeholder="API key, if required" />
+          <PresetRadioGroup
+            label="Search source presets"
+            options={INDEXER_SETUP_PRESETS.map((preset) => ({
+              id: preset.id,
+              label: preset.label,
+              copy: preset.copy,
+              active: form.indexerProtocol === preset.protocol && form.indexerName === preset.label,
+              onSelect: () => patch({
+                indexerName: preset.label,
+                indexerProtocol: preset.protocol,
+                indexerUrl: preset.url
+              })
+            }))}
+          />
+          <Field label="Indexer name" hideLabel>
+            <Input value={form.indexerName} onChange={(event) => patch({ indexerName: event.target.value })} placeholder="Primary indexer" />
+          </Field>
+          <Field label="Indexer protocol" hideLabel>
+            <Select value={form.indexerProtocol} onChange={(event) => patch({ indexerProtocol: event.target.value as GuideForm["indexerProtocol"] })}>
+              <option value="torznab">Torznab</option>
+              <option value="newznab">Newznab (Usenet indexer)</option>
+              <option value="rss">RSS feed</option>
+            </Select>
+          </Field>
+          <Field label="Indexer URL" hideLabel>
+            <Input value={form.indexerUrl} onChange={(event) => patch({ indexerUrl: event.target.value })} placeholder="https://indexer.example/api" />
+          </Field>
+          <Field label="Indexer API key" hideLabel>
+            <Input value={form.indexerApiKey} onChange={(event) => patch({ indexerApiKey: event.target.value })} placeholder="API key, if required" />
+          </Field>
           <ServiceTestButton
             status={testState.indexer}
             message={testState.indexerMessage}
@@ -919,44 +920,48 @@ function ServicesStep({
 
       <FieldShell icon={DownloadCloud} label="Download client" copy="Optional but recommended. External clients stay responsible for downloading; Deluno orchestrates and imports.">
         <div className="grid gap-3">
-          <div className="grid gap-2 sm:grid-cols-2">
-            {CLIENT_SETUP_PRESETS.map((preset) => (
-              <button
-                key={preset.protocol}
-                type="button"
-                onClick={() => patch({
-                  clientName: preset.label,
-                  clientProtocol: preset.protocol,
-                  clientPort: preset.port
-                })}
-                className={cn(
-                  "rounded-xl border p-3 text-left transition hover:border-primary/35",
-                  form.clientProtocol === preset.protocol
-                    ? "border-primary/45 bg-primary/10"
-                    : "border-hairline bg-background/35"
-                )}
-              >
-                <p className="text-sm font-semibold text-foreground">{preset.label}</p>
-                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{preset.copy}</p>
-              </button>
-            ))}
-          </div>
-          <Input value={form.clientName} onChange={(event) => patch({ clientName: event.target.value })} placeholder="Primary download client" />
-          <Select value={form.clientProtocol} onChange={(event) => patch({ clientProtocol: event.target.value as GuideForm["clientProtocol"], clientPort: defaultClientPort(event.target.value) })}>
-            <option value="qbittorrent">qBittorrent</option>
-            <option value="sabnzbd">SABnzbd</option>
-            <option value="transmission">Transmission</option>
-            <option value="deluge">Deluge</option>
-            <option value="nzbget">NZBGet</option>
-            <option value="utorrent">uTorrent</option>
-          </Select>
+          <PresetRadioGroup
+            label="Download client presets"
+            options={CLIENT_SETUP_PRESETS.map((preset) => ({
+              id: preset.protocol,
+              label: preset.label,
+              copy: preset.copy,
+              active: form.clientProtocol === preset.protocol,
+              onSelect: () => patch({
+                clientName: preset.label,
+                clientProtocol: preset.protocol,
+                clientPort: preset.port
+              })
+            }))}
+          />
+          <Field label="Download client name" hideLabel>
+            <Input value={form.clientName} onChange={(event) => patch({ clientName: event.target.value })} placeholder="Primary download client" />
+          </Field>
+          <Field label="Download client protocol" hideLabel>
+            <Select value={form.clientProtocol} onChange={(event) => patch({ clientProtocol: event.target.value as GuideForm["clientProtocol"], clientPort: defaultClientPort(event.target.value) })}>
+              <option value="qbittorrent">qBittorrent</option>
+              <option value="sabnzbd">SABnzbd</option>
+              <option value="transmission">Transmission</option>
+              <option value="deluge">Deluge</option>
+              <option value="nzbget">NZBGet</option>
+              <option value="utorrent">uTorrent</option>
+            </Select>
+          </Field>
           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_120px]">
-            <Input value={form.clientHost} onChange={(event) => patch({ clientHost: event.target.value })} placeholder="localhost or docker host" />
-            <Input value={form.clientPort} onChange={(event) => patch({ clientPort: event.target.value })} placeholder="8080" />
+            <Field label="Download client host" hideLabel>
+              <Input value={form.clientHost} onChange={(event) => patch({ clientHost: event.target.value })} placeholder="localhost or docker host" />
+            </Field>
+            <Field label="Download client port" hideLabel>
+              <Input value={form.clientPort} onChange={(event) => patch({ clientPort: event.target.value })} placeholder="8080" />
+            </Field>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Input value={form.clientUsername} onChange={(event) => patch({ clientUsername: event.target.value })} placeholder="Username, if required" />
-            <Input value={form.clientPassword} onChange={(event) => patch({ clientPassword: event.target.value })} placeholder="Password/API key" type="password" />
+            <Field label="Download client username" hideLabel>
+              <Input value={form.clientUsername} onChange={(event) => patch({ clientUsername: event.target.value })} placeholder="Username, if required" />
+            </Field>
+            <Field label="Download client password or API key" hideLabel>
+              <Input value={form.clientPassword} onChange={(event) => patch({ clientPassword: event.target.value })} placeholder="Password/API key" type="password" />
+            </Field>
           </div>
           <ServiceTestButton
             status={testState.client}
@@ -1240,6 +1245,59 @@ function ServiceTestButton({
         </span>
       </div>
       {message ? <p className={cn("mt-2 text-xs leading-relaxed", tone)}>{message}</p> : null}
+    </div>
+  );
+}
+
+interface PresetRadioOption {
+  id: string;
+  label: string;
+  copy: string;
+  active: boolean;
+  onSelect: () => void;
+}
+
+function PresetRadioGroup({ label, options }: { label: string; options: PresetRadioOption[] }) {
+  const refs = useRef<Array<HTMLButtonElement | null>>([]);
+  const activeIndex = options.findIndex((option) => option.active);
+  const tabIndex = activeIndex >= 0 ? activeIndex : 0;
+
+  function moveFocus(index: number, direction: -1 | 1) {
+    if (options.length === 0) return;
+    const nextIndex = (index + direction + options.length) % options.length;
+    refs.current[nextIndex]?.focus();
+    options[nextIndex]?.onSelect();
+  }
+
+  return (
+    <div role="radiogroup" aria-label={label} className="grid gap-2 sm:grid-cols-2">
+      {options.map((option, index) => (
+        <button
+          key={option.id}
+          ref={(element) => { refs.current[index] = element; }}
+          type="button"
+          role="radio"
+          aria-checked={option.active}
+          tabIndex={index === tabIndex ? 0 : -1}
+          onClick={option.onSelect}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+              event.preventDefault();
+              moveFocus(index, 1);
+            } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+              event.preventDefault();
+              moveFocus(index, -1);
+            }
+          }}
+          className={cn(
+            "rounded-xl border p-3 text-left transition hover:border-primary/35",
+            option.active ? "border-primary/45 bg-primary/10" : "border-hairline bg-background/35"
+          )}
+        >
+          <p className="text-sm font-semibold text-foreground">{option.label}</p>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{option.copy}</p>
+        </button>
+      ))}
     </div>
   );
 }

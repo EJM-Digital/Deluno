@@ -121,20 +121,21 @@ export function LibraryTable(
       >
         <thead>
           <tr>
-            <th className="col-sticky w-10" style={{ minWidth: 40 }}>
+            <th scope="col" className="col-sticky w-10" style={{ minWidth: 40 }}>
               <TableCheckbox
                 checked={allSelected}
                 indeterminate={someSelected}
+                label="Select all rows"
                 onChange={onToggleAll}
               />
             </th>
-            <th className="col-sticky" style={{ left: 40, minWidth: 280 }}>Title</th>
-            <th className="hidden md:table-cell">Quality</th>
-            <th>Status</th>
-            <th className="hidden lg:table-cell">Genre</th>
-            <th className="num hidden lg:table-cell">Size</th>
-            <th className="num hidden md:table-cell">Rating</th>
-            <th className="hidden xl:table-cell">Added</th>
+            <th scope="col" className="col-sticky" style={{ left: 40, minWidth: 280 }}>Title</th>
+            <th scope="col" className="hidden md:table-cell">Quality</th>
+            <th scope="col">Status</th>
+            <th scope="col" className="hidden lg:table-cell">Genre</th>
+            <th scope="col" className="num hidden lg:table-cell">Size</th>
+            <th scope="col" className="num hidden md:table-cell">Rating</th>
+            <th scope="col" className="hidden xl:table-cell">Added</th>
           </tr>
         </thead>
         <tbody>
@@ -159,6 +160,7 @@ export function LibraryTable(
                 <td className="col-sticky" style={{ minWidth: 40 }}>
                   <TableCheckbox
                     checked={isSelected}
+                    label="Select row"
                     onChange={() => onToggle(item.id)}
                   />
                 </td>
@@ -215,11 +217,20 @@ export function LibraryTable(
   );
 }
 
-function TableCheckbox({ checked, indeterminate, onChange }: {
+function TableCheckbox({ checked, indeterminate, label, onChange }: {
   checked: boolean;
   indeterminate?: boolean;
+  label: string;
   onChange: () => void;
 }) {
-  return <Checkbox checked={checked} indeterminate={indeterminate} onCheckedChange={onChange} aria-label={checked ? "Deselect" : "Select"} />;
+  return (
+    <Checkbox
+      checked={checked}
+      indeterminate={indeterminate}
+      onCheckedChange={onChange}
+      aria-label={label}
+      aria-checked={indeterminate ? "mixed" : checked}
+    />
+  );
 }
 
