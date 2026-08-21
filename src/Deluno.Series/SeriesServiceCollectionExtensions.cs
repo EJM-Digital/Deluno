@@ -1,9 +1,11 @@
 using Deluno.Jobs.Contracts;
+using Deluno.Media;
 using Deluno.Series.Data;
 using Deluno.Series.Services;
 using Deluno.Platform.Migration;
 using Deluno.Series.Migration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Deluno.Series;
 
@@ -11,6 +13,7 @@ public static class SeriesServiceCollectionExtensions
 {
     public static IServiceCollection AddDelunoSeriesModule(this IServiceCollection services)
     {
+        services.TryAddSingleton<IMediaStateRepository, SqliteMediaStateRepository>();
         services.AddSingleton<ISeriesCatalogRepository, SqliteSeriesCatalogRepository>();
         services.AddSingleton<ISeriesWorkflowService, SeriesWorkflowService>();
         services.AddSingleton<IEpisodeWorkflowService, EpisodeWorkflowService>();

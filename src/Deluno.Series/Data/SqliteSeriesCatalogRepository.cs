@@ -4,6 +4,7 @@ using Deluno.Platform.Data;
 using System.Globalization;
 using System.Text.Json;
 using Deluno.Infrastructure.Storage;
+using Deluno.Media;
 using Deluno.Quality;
 using Deluno.Series.Contracts;
 using Microsoft.Data.Sqlite;
@@ -12,9 +13,12 @@ namespace Deluno.Series.Data;
 
 public sealed class SqliteSeriesCatalogRepository(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IMediaStateRepository? sharedMediaStateRepository = null)
     : ISeriesCatalogRepository
 {
+    private readonly IMediaStateRepository? sharedMediaStateRepository = sharedMediaStateRepository;
+
     public async Task<SeriesListItem> AddAsync(CreateSeriesRequest request, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
@@ -870,6 +874,19 @@ public sealed class SqliteSeriesCatalogRepository(
 
     public async Task<SeriesWantedSummary> GetWantedSummaryAsync(CancellationToken cancellationToken)
     {
+        if (sharedMediaStateRepository is not null)
+        {
+            var sharedSummary = await sharedMediaStateRepository.GetWantedSummaryAsync(
+                MediaKind.Series,
+                cancellationToken);
+            return new SeriesWantedSummary(
+                sharedSummary.TotalWanted,
+                sharedSummary.MissingCount,
+                sharedSummary.UpgradeCount,
+                sharedSummary.WaitingCount,
+                sharedSummary.RecentItems.Select(MapWanted).ToArray());
+        }
+
         var items = new List<SeriesWantedItem>();
         var totalWanted = 0;
         var missingCount = 0;
@@ -1108,6 +1125,14 @@ public sealed class SqliteSeriesCatalogRepository(
 
     public async Task<IReadOnlyList<SeriesSearchHistoryItem>> ListSearchHistoryAsync(CancellationToken cancellationToken)
     {
+        if (sharedMediaStateRepository is not null)
+        {
+            var sharedItems = await sharedMediaStateRepository.ListSearchHistoryAsync(
+                MediaKind.Series,
+                cancellationToken);
+            return sharedItems.Select(MapSearchHistory).ToArray();
+        }
+
         var items = new List<SeriesSearchHistoryItem>();
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -1168,6 +1193,18 @@ public sealed class SqliteSeriesCatalogRepository(
         bool ignoreRetryWindow,
         CancellationToken cancellationToken)
     {
+        if (sharedMediaStateRepository is not null)
+        {
+            var sharedItems = await sharedMediaStateRepository.ListEligibleWantedAsync(
+                MediaKind.Series,
+                libraryId,
+                take,
+                now,
+                ignoreRetryWindow,
+                cancellationToken);
+            return sharedItems.Select(MapWanted).ToArray();
+        }
+
         var items = new List<SeriesWantedItem>();
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -1230,6 +1267,15 @@ public sealed class SqliteSeriesCatalogRepository(
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
+        if (sharedMediaStateRepository is not null)
+        {
+            return await sharedMediaStateRepository.CountRetryDelayedWantedAsync(
+                MediaKind.Series,
+                libraryId,
+                now,
+                cancellationToken);
+        }
+
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Series,
             cancellationToken);
@@ -1264,6 +1310,22 @@ public sealed class SqliteSeriesCatalogRepository(
         bool qualityCutoffMet,
         CancellationToken cancellationToken)
     {
+        if (sharedMediaStateRepository is not null)
+        {
+            await sharedMediaStateRepository.EnsureWantedStateAsync(
+                MediaKind.Series,
+                seriesId,
+                libraryId,
+                wantedStatus,
+                wantedReason,
+                hasFile,
+                currentQuality,
+                targetQuality,
+                qualityCutoffMet,
+                cancellationToken);
+            return;
+        }
+
         var now = timeProvider.GetUtcNow();
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -1963,6 +2025,16 @@ public sealed class SqliteSeriesCatalogRepository(
         DateTimeOffset deferredUntilUtc,
         CancellationToken cancellationToken)
     {
+        if (sharedMediaStateRepository is not null)
+        {
+            return await sharedMediaStateRepository.DeferWantedSearchAsync(
+                MediaKind.Series,
+                seriesId,
+                libraryId,
+                deferredUntilUtc,
+                cancellationToken);
+        }
+
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Series, cancellationToken);
         using var command = connection.CreateCommand();
         command.CommandText =
@@ -1987,6 +2059,15 @@ public sealed class SqliteSeriesCatalogRepository(
         string libraryId,
         CancellationToken cancellationToken)
     {
+        if (sharedMediaStateRepository is not null)
+        {
+            return await sharedMediaStateRepository.SkipNextWantedSearchAsync(
+                MediaKind.Series,
+                seriesId,
+                libraryId,
+                cancellationToken);
+        }
+
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Series, cancellationToken);
         using var command = connection.CreateCommand();
         command.CommandText =
@@ -2010,6 +2091,15 @@ public sealed class SqliteSeriesCatalogRepository(
         string libraryId,
         CancellationToken cancellationToken)
     {
+        if (sharedMediaStateRepository is not null)
+        {
+            return await sharedMediaStateRepository.ConsumeSkipNextWantedSearchAsync(
+                MediaKind.Series,
+                seriesId,
+                libraryId,
+                cancellationToken);
+        }
+
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Series, cancellationToken);
         using var command = connection.CreateCommand();
         command.CommandText =
@@ -2034,6 +2124,17 @@ public sealed class SqliteSeriesCatalogRepository(
         bool upgradeUnknownItems,
         CancellationToken cancellationToken)
     {
+        if (sharedMediaStateRepository is not null)
+        {
+            return await sharedMediaStateRepository.ReevaluateLibraryWantedStateAsync(
+                MediaKind.Series,
+                libraryId,
+                cutoffQuality,
+                upgradeUntilCutoff,
+                upgradeUnknownItems,
+                cancellationToken);
+        }
+
         var items = new List<(string SeriesId, bool HasFile, string? CurrentQuality)>();
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -2789,6 +2890,15 @@ public sealed class SqliteSeriesCatalogRepository(
         DateOnly toDate,
         CancellationToken cancellationToken)
     {
+        if (sharedMediaStateRepository is not null)
+        {
+            return await sharedMediaStateRepository.GetDailyMetricsAsync(
+                MediaKind.Series,
+                fromDate,
+                toDate,
+                cancellationToken);
+        }
+
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Series,
             cancellationToken);
@@ -3294,6 +3404,42 @@ public sealed class SqliteSeriesCatalogRepository(
 
         return episodes;
     }
+
+    private static SeriesWantedItem MapWanted(MediaWantedItem item)
+        => new(
+            SeriesId: item.Id,
+            Title: item.Title,
+            StartYear: item.Year,
+            ImdbId: item.ImdbId,
+            LibraryId: item.LibraryId,
+            WantedStatus: item.WantedStatus,
+            WantedReason: item.WantedReason,
+            HasFile: item.HasFile,
+            CurrentQuality: item.CurrentQuality,
+            TargetQuality: item.TargetQuality,
+            QualityCutoffMet: item.QualityCutoffMet,
+            PreventLowerQualityReplacements: item.PreventLowerQualityReplacements,
+            LastQualityDeltaDecision: item.LastQualityDeltaDecision,
+            MissingSinceUtc: item.MissingSinceUtc,
+            LastSearchUtc: item.LastSearchUtc,
+            NextEligibleSearchUtc: item.NextEligibleSearchUtc,
+            LastSearchResult: item.LastSearchResult,
+            UpdatedUtc: item.UpdatedUtc);
+
+    private static SeriesSearchHistoryItem MapSearchHistory(MediaSearchHistoryItem item)
+        => new(
+            Id: item.Id,
+            SeriesId: item.MediaId,
+            EpisodeId: item.EpisodeId,
+            SeasonNumber: item.SeasonNumber,
+            EpisodeNumber: item.EpisodeNumber,
+            LibraryId: item.LibraryId,
+            TriggerKind: item.TriggerKind,
+            Outcome: item.Outcome,
+            ReleaseName: item.ReleaseName,
+            IndexerName: item.IndexerName,
+            DetailsJson: item.DetailsJson,
+            CreatedUtc: item.CreatedUtc);
 
     private static DateTimeOffset ParseTimestamp(string value)
     {

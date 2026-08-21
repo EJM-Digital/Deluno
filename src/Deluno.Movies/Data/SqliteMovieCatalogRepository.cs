@@ -4,6 +4,7 @@ using Deluno.Platform.Data;
 using System.Globalization;
 using System.Text.Json;
 using Deluno.Infrastructure.Storage;
+using Deluno.Media;
 using Deluno.Movies.Contracts;
 using Deluno.Quality;
 using Microsoft.Data.Sqlite;
@@ -12,9 +13,12 @@ namespace Deluno.Movies.Data;
 
 public sealed class SqliteMovieCatalogRepository(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IMediaStateRepository? sharedMediaStateRepository = null)
     : IMovieCatalogRepository
 {
+    private readonly IMediaStateRepository? sharedMediaStateRepository = sharedMediaStateRepository;
+
     public async Task<MovieListItem> AddAsync(CreateMovieRequest request, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
@@ -824,6 +828,19 @@ public sealed class SqliteMovieCatalogRepository(
 
     public async Task<MovieWantedSummary> GetWantedSummaryAsync(CancellationToken cancellationToken)
     {
+        if (sharedMediaStateRepository is not null)
+        {
+            var sharedSummary = await sharedMediaStateRepository.GetWantedSummaryAsync(
+                MediaKind.Movie,
+                cancellationToken);
+            return new MovieWantedSummary(
+                sharedSummary.TotalWanted,
+                sharedSummary.MissingCount,
+                sharedSummary.UpgradeCount,
+                sharedSummary.WaitingCount,
+                sharedSummary.RecentItems.Select(MapWanted).ToArray());
+        }
+
         var items = new List<MovieWantedItem>();
         var totalWanted = 0;
         var missingCount = 0;
@@ -886,6 +903,14 @@ public sealed class SqliteMovieCatalogRepository(
 
     public async Task<IReadOnlyList<MovieSearchHistoryItem>> ListSearchHistoryAsync(CancellationToken cancellationToken)
     {
+        if (sharedMediaStateRepository is not null)
+        {
+            var sharedItems = await sharedMediaStateRepository.ListSearchHistoryAsync(
+                MediaKind.Movie,
+                cancellationToken);
+            return sharedItems.Select(MapSearchHistory).ToArray();
+        }
+
         var items = new List<MovieSearchHistoryItem>();
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -927,6 +952,18 @@ public sealed class SqliteMovieCatalogRepository(
         bool ignoreRetryWindow,
         CancellationToken cancellationToken)
     {
+        if (sharedMediaStateRepository is not null)
+        {
+            var sharedItems = await sharedMediaStateRepository.ListEligibleWantedAsync(
+                MediaKind.Movie,
+                libraryId,
+                take,
+                now,
+                ignoreRetryWindow,
+                cancellationToken);
+            return sharedItems.Select(MapWanted).ToArray();
+        }
+
         var items = new List<MovieWantedItem>();
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -1001,6 +1038,15 @@ public sealed class SqliteMovieCatalogRepository(
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
+        if (sharedMediaStateRepository is not null)
+        {
+            return await sharedMediaStateRepository.CountRetryDelayedWantedAsync(
+                MediaKind.Movie,
+                libraryId,
+                now,
+                cancellationToken);
+        }
+
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Movies,
             cancellationToken);
@@ -1035,6 +1081,22 @@ public sealed class SqliteMovieCatalogRepository(
         bool qualityCutoffMet,
         CancellationToken cancellationToken)
     {
+        if (sharedMediaStateRepository is not null)
+        {
+            await sharedMediaStateRepository.EnsureWantedStateAsync(
+                MediaKind.Movie,
+                movieId,
+                libraryId,
+                wantedStatus,
+                wantedReason,
+                hasFile,
+                currentQuality,
+                targetQuality,
+                qualityCutoffMet,
+                cancellationToken);
+            return;
+        }
+
         var now = timeProvider.GetUtcNow();
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -1446,6 +1508,16 @@ public sealed class SqliteMovieCatalogRepository(
         DateTimeOffset deferredUntilUtc,
         CancellationToken cancellationToken)
     {
+        if (sharedMediaStateRepository is not null)
+        {
+            return await sharedMediaStateRepository.DeferWantedSearchAsync(
+                MediaKind.Movie,
+                movieId,
+                libraryId,
+                deferredUntilUtc,
+                cancellationToken);
+        }
+
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Movies, cancellationToken);
         using var command = connection.CreateCommand();
         command.CommandText =
@@ -1470,6 +1542,15 @@ public sealed class SqliteMovieCatalogRepository(
         string libraryId,
         CancellationToken cancellationToken)
     {
+        if (sharedMediaStateRepository is not null)
+        {
+            return await sharedMediaStateRepository.SkipNextWantedSearchAsync(
+                MediaKind.Movie,
+                movieId,
+                libraryId,
+                cancellationToken);
+        }
+
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Movies, cancellationToken);
         using var command = connection.CreateCommand();
         command.CommandText =
@@ -1493,6 +1574,15 @@ public sealed class SqliteMovieCatalogRepository(
         string libraryId,
         CancellationToken cancellationToken)
     {
+        if (sharedMediaStateRepository is not null)
+        {
+            return await sharedMediaStateRepository.ConsumeSkipNextWantedSearchAsync(
+                MediaKind.Movie,
+                movieId,
+                libraryId,
+                cancellationToken);
+        }
+
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Movies, cancellationToken);
         using var command = connection.CreateCommand();
         command.CommandText =
@@ -1517,6 +1607,17 @@ public sealed class SqliteMovieCatalogRepository(
         bool upgradeUnknownItems,
         CancellationToken cancellationToken)
     {
+        if (sharedMediaStateRepository is not null)
+        {
+            return await sharedMediaStateRepository.ReevaluateLibraryWantedStateAsync(
+                MediaKind.Movie,
+                libraryId,
+                cutoffQuality,
+                upgradeUntilCutoff,
+                upgradeUnknownItems,
+                cancellationToken);
+        }
+
         var items = new List<(string MovieId, bool HasFile, string? CurrentQuality)>();
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -2039,6 +2140,15 @@ public sealed class SqliteMovieCatalogRepository(
         DateOnly toDate,
         CancellationToken cancellationToken)
     {
+        if (sharedMediaStateRepository is not null)
+        {
+            return await sharedMediaStateRepository.GetDailyMetricsAsync(
+                MediaKind.Movie,
+                fromDate,
+                toDate,
+                cancellationToken);
+        }
+
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Movies,
             cancellationToken);
@@ -2428,6 +2538,39 @@ public sealed class SqliteMovieCatalogRepository(
 
         return await command.ExecuteNonQueryAsync(cancellationToken);
     }
+
+    private static MovieWantedItem MapWanted(MediaWantedItem item)
+        => new(
+            MovieId: item.Id,
+            Title: item.Title,
+            ReleaseYear: item.Year,
+            ImdbId: item.ImdbId,
+            LibraryId: item.LibraryId,
+            WantedStatus: item.WantedStatus,
+            WantedReason: item.WantedReason,
+            HasFile: item.HasFile,
+            CurrentQuality: item.CurrentQuality,
+            TargetQuality: item.TargetQuality,
+            QualityCutoffMet: item.QualityCutoffMet,
+            MissingSinceUtc: item.MissingSinceUtc,
+            LastSearchUtc: item.LastSearchUtc,
+            NextEligibleSearchUtc: item.NextEligibleSearchUtc,
+            LastSearchResult: item.LastSearchResult,
+            PreventLowerQualityReplacements: item.PreventLowerQualityReplacements,
+            LastQualityDeltaDecision: item.LastQualityDeltaDecision,
+            UpdatedUtc: item.UpdatedUtc);
+
+    private static MovieSearchHistoryItem MapSearchHistory(MediaSearchHistoryItem item)
+        => new(
+            Id: item.Id,
+            MovieId: item.MediaId,
+            LibraryId: item.LibraryId,
+            TriggerKind: item.TriggerKind,
+            Outcome: item.Outcome,
+            ReleaseName: item.ReleaseName,
+            IndexerName: item.IndexerName,
+            DetailsJson: item.DetailsJson,
+            CreatedUtc: item.CreatedUtc);
 
     private static string NormalizeWantedStatus(string? value)
     {
