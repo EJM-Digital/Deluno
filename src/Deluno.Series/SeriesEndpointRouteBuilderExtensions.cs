@@ -1214,7 +1214,7 @@ public static class SeriesEndpointRouteBuilderExtensions
         series.MapPost("/bulk/search", async (
             HttpContext httpContext,
             [FromBody] BulkSearchRequest request,
-            ISeriesCatalogRepository repository,
+            IMediaStateRepository mediaStateRepository,
             ILibrariesRepository platformSettingsRepository,
             IJobQueueRepository jobQueueRepository,
             CancellationToken cancellationToken) =>
@@ -1225,47 +1225,24 @@ public static class SeriesEndpointRouteBuilderExtensions
                 return denied;
             }
 
-            if (request.SeriesIds is not { Count: > 0 })
+            var result = await MediaBulkSearchHandler.ExecuteAsync(
+                MediaKind.Series,
+                request.SeriesIds,
+                mediaStateRepository,
+                platformSettingsRepository,
+                jobQueueRepository,
+                cancellationToken);
+
+            if (result.ValidationErrors is not null)
             {
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["seriesIds"] = ["Choose at least one series to search for."]
-                });
+                return Results.ValidationProblem(result.ValidationErrors);
             }
 
-            var wanted = await repository.GetWantedSummaryAsync(cancellationToken);
-            var libraryIds = wanted.RecentItems
-                .Where(item => request.SeriesIds.Contains(item.SeriesId, StringComparer.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(item.LibraryId))
-                .Select(item => item.LibraryId!)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
-
-            var libraries = await platformSettingsRepository.ListLibrariesAsync(cancellationToken);
-            var triggered = 0;
-            foreach (var libraryId in libraryIds)
+            return Results.Ok(new
             {
-                var library = libraries.FirstOrDefault(l => string.Equals(l.Id, libraryId, StringComparison.OrdinalIgnoreCase));
-                if (library is null)
-                {
-                    continue;
-                }
-
-                await jobQueueRepository.RequestLibrarySearchAsync(new LibraryAutomationPlanItem(
-                    LibraryId: library.Id,
-                    LibraryName: library.Name,
-                    MediaType: library.MediaType,
-                    AutoSearchEnabled: library.AutoSearchEnabled,
-                    MissingSearchEnabled: library.MissingSearchEnabled,
-                    UpgradeSearchEnabled: library.UpgradeSearchEnabled,
-                    SearchIntervalHours: library.SearchIntervalHours,
-                    RetryDelayHours: library.RetryDelayHours,
-                    MaxItemsPerRun: library.MaxItemsPerRun,
-                    SearchWindowStartHour: library.SearchWindowStartHour,
-                    SearchWindowEndHour: library.SearchWindowEndHour), cancellationToken);
-                triggered++;
-            }
-
-            return Results.Ok(new { searchesTriggered = triggered, libraryCount = libraryIds.Length });
+                searchesTriggered = result.SearchesTriggered,
+                libraryCount = result.LibraryCount
+            });
         });
 
         series.MapPost("/bulk/reassign-library", async (
