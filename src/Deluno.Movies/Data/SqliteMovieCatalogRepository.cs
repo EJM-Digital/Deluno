@@ -1683,6 +1683,21 @@ public sealed class SqliteMovieCatalogRepository(
 
     public async Task<MovieImportRecoverySummary> GetImportRecoverySummaryAsync(CancellationToken cancellationToken)
     {
+        if (sharedMediaStateRepository is not null)
+        {
+            var sharedSummary = await sharedMediaStateRepository.GetImportRecoverySummaryAsync(
+                MediaKind.Movie,
+                cancellationToken);
+            return new MovieImportRecoverySummary(
+                sharedSummary.OpenCount,
+                sharedSummary.QualityCount,
+                sharedSummary.UnmatchedCount,
+                sharedSummary.CorruptCount,
+                sharedSummary.DownloadFailedCount,
+                sharedSummary.ImportFailedCount,
+                sharedSummary.RecentCases.Select(MapImportRecoveryCase).ToArray());
+        }
+
         var openCases = new List<MovieImportRecoveryCase>();
         int openCount = 0;
 
@@ -2571,6 +2586,18 @@ public sealed class SqliteMovieCatalogRepository(
             IndexerName: item.IndexerName,
             DetailsJson: item.DetailsJson,
             CreatedUtc: item.CreatedUtc);
+
+    private static MovieImportRecoveryCase MapImportRecoveryCase(MediaImportRecoveryCase item)
+        => new(
+            Id: item.Id,
+            Title: item.Title,
+            FailureKind: item.FailureKind,
+            Status: item.Status,
+            Summary: item.Summary,
+            RecommendedAction: item.RecommendedAction,
+            DetailsJson: item.DetailsJson,
+            DetectedUtc: item.DetectedUtc,
+            ResolvedUtc: item.ResolvedUtc);
 
     private static string NormalizeWantedStatus(string? value)
     {

@@ -89,6 +89,47 @@ public sealed class MediaStateRepositoryTests
         Assert.Equal(1, metrics.TitlesAdded[now.ToString("yyyy-MM-dd")]);
     }
 
+    [Theory]
+    [InlineData(MediaKind.Movie)]
+    [InlineData(MediaKind.Series)]
+    public async Task Shared_store_reads_import_recovery_summary_for_both_media_kinds(MediaKind kind)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(new DateTimeOffset(2026, 8, 21, 5, 0, 0, TimeSpan.Zero));
+        await InitializeSchemaAsync(storage, timeProvider, kind);
+
+        if (kind == MediaKind.Movie)
+        {
+            var repository = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+            await repository.AddImportRecoveryCaseAsync(
+                new CreateMovieImportRecoveryCaseRequest(
+                    "Movie",
+                    "quality",
+                    "Below cutoff",
+                    "Review quality"),
+                CancellationToken.None);
+        }
+        else
+        {
+            var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+            await repository.AddImportRecoveryCaseAsync(
+                new CreateSeriesImportRecoveryCaseRequest(
+                    "Series",
+                    "unmatched",
+                    "No match",
+                    "Review the title"),
+                CancellationToken.None);
+        }
+
+        var summary = await new SqliteMediaStateRepository(storage.Factory, timeProvider)
+            .GetImportRecoverySummaryAsync(kind, CancellationToken.None);
+
+        Assert.Equal(1, summary.OpenCount);
+        Assert.Single(summary.RecentCases);
+        Assert.Equal(kind == MediaKind.Movie ? 1 : 0, summary.QualityCount);
+        Assert.Equal(kind == MediaKind.Series ? 1 : 0, summary.UnmatchedCount);
+    }
+
     private static async Task InitializeSchemaAsync(
         TestStorage storage,
         TimeProvider timeProvider,

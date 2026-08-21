@@ -2200,6 +2200,21 @@ public sealed class SqliteSeriesCatalogRepository(
 
     public async Task<SeriesImportRecoverySummary> GetImportRecoverySummaryAsync(CancellationToken cancellationToken)
     {
+        if (sharedMediaStateRepository is not null)
+        {
+            var sharedSummary = await sharedMediaStateRepository.GetImportRecoverySummaryAsync(
+                MediaKind.Series,
+                cancellationToken);
+            return new SeriesImportRecoverySummary(
+                sharedSummary.OpenCount,
+                sharedSummary.QualityCount,
+                sharedSummary.UnmatchedCount,
+                sharedSummary.CorruptCount,
+                sharedSummary.DownloadFailedCount,
+                sharedSummary.ImportFailedCount,
+                sharedSummary.RecentCases.Select(MapImportRecoveryCase).ToArray());
+        }
+
         var openCases = new List<SeriesImportRecoveryCase>();
         int openCount = 0;
 
@@ -3440,6 +3455,18 @@ public sealed class SqliteSeriesCatalogRepository(
             IndexerName: item.IndexerName,
             DetailsJson: item.DetailsJson,
             CreatedUtc: item.CreatedUtc);
+
+    private static SeriesImportRecoveryCase MapImportRecoveryCase(MediaImportRecoveryCase item)
+        => new(
+            Id: item.Id,
+            Title: item.Title,
+            FailureKind: item.FailureKind,
+            Status: item.Status,
+            Summary: item.Summary,
+            RecommendedAction: item.RecommendedAction,
+            DetailsJson: item.DetailsJson,
+            DetectedUtc: item.DetectedUtc,
+            ResolvedUtc: item.ResolvedUtc);
 
     private static DateTimeOffset ParseTimestamp(string value)
     {

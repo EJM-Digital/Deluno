@@ -384,6 +384,65 @@ public sealed class SqliteMediaStateRepository(
         return items;
     }
 
+    public async Task<MediaImportRecoverySummary> GetImportRecoverySummaryAsync(
+        MediaKind kind,
+        CancellationToken cancellationToken)
+    {
+        var map = MediaTableMap.For(kind);
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            map.DatabaseName,
+            cancellationToken);
+
+        using var countCommand = connection.CreateCommand();
+        countCommand.CommandText = $"SELECT COUNT(*) FROM {map.RecoveryTable} WHERE status = 'open';";
+        var openCount = Convert.ToInt32(
+            await countCommand.ExecuteScalarAsync(cancellationToken),
+            CultureInfo.InvariantCulture);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT
+                id,
+                title,
+                failure_kind,
+                status,
+                summary,
+                recommended_action,
+                details_json,
+                detected_utc,
+                resolved_utc
+            FROM {map.RecoveryTable}
+            WHERE status = 'open'
+            ORDER BY detected_utc DESC
+            LIMIT 12;
+            """;
+
+        var cases = new List<MediaImportRecoveryCase>();
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            cases.Add(new MediaImportRecoveryCase(
+                Id: reader.GetString(0),
+                Title: reader.GetString(1),
+                FailureKind: reader.GetString(2),
+                Status: reader.GetString(3),
+                Summary: reader.GetString(4),
+                RecommendedAction: reader.GetString(5),
+                DetailsJson: reader.IsDBNull(6) ? null : reader.GetString(6),
+                DetectedUtc: ParseTimestamp(reader.GetString(7)),
+                ResolvedUtc: reader.IsDBNull(8) ? null : ParseTimestamp(reader.GetString(8))));
+        }
+
+        return new MediaImportRecoverySummary(
+            OpenCount: openCount,
+            QualityCount: cases.Count(item => item.FailureKind == "quality"),
+            UnmatchedCount: cases.Count(item => item.FailureKind == "unmatched"),
+            CorruptCount: cases.Count(item => item.FailureKind == "corrupt"),
+            DownloadFailedCount: cases.Count(item => item.FailureKind == "downloadFailed"),
+            ImportFailedCount: cases.Count(item => item.FailureKind == "importFailed"),
+            RecentCases: cases);
+    }
+
     public async Task<MediaDailyMetrics> GetDailyMetricsAsync(
         MediaKind kind,
         DateOnly fromDate,
