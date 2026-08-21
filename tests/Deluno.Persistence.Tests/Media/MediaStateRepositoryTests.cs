@@ -93,6 +93,48 @@ public sealed class MediaStateRepositoryTests
     [Theory]
     [InlineData(MediaKind.Movie)]
     [InlineData(MediaKind.Series)]
+    public async Task Shared_store_lists_explicit_wanted_ids_outside_recent_summary_window(MediaKind kind)
+    {
+        using var storage = TestStorage.Create();
+        var now = new DateTimeOffset(2026, 8, 21, 5, 0, 0, TimeSpan.Zero);
+        var timeProvider = new FixedTimeProvider(now);
+        await InitializeSchemaAsync(storage, timeProvider, kind);
+
+        var repository = new SqliteMediaStateRepository(storage.Factory, timeProvider);
+        var mediaIds = new List<string>();
+        for (var index = 0; index < 30; index++)
+        {
+            var mediaId = await AddMediaAsync(storage, timeProvider, kind, index);
+            mediaIds.Add(mediaId);
+            await repository.EnsureWantedStateAsync(
+                kind,
+                mediaId,
+                "main",
+                "missing",
+                "No accepted file exists.",
+                hasFile: false,
+                currentQuality: null,
+                targetQuality: "WEB 1080p",
+                qualityCutoffMet: false,
+                CancellationToken.None);
+        }
+
+        var summary = await repository.GetWantedSummaryAsync(kind, CancellationToken.None);
+        Assert.Equal(25, summary.RecentItems.Count);
+        var outsideSummaryId = mediaIds.First(id => summary.RecentItems.All(item => item.Id != id));
+
+        var selected = await repository.ListWantedByIdsAsync(
+            kind,
+            [outsideSummaryId],
+            CancellationToken.None);
+
+        var item = Assert.Single(selected);
+        Assert.Equal(outsideSummaryId, item.Id);
+    }
+
+    [Theory]
+    [InlineData(MediaKind.Movie)]
+    [InlineData(MediaKind.Series)]
     public async Task Shared_store_reads_import_recovery_summary_for_both_media_kinds(MediaKind kind)
     {
         using var storage = TestStorage.Create();
@@ -402,18 +444,21 @@ public sealed class MediaStateRepositoryTests
     private static async Task<string> AddMediaAsync(
         TestStorage storage,
         TimeProvider timeProvider,
-        MediaKind kind)
+        MediaKind kind,
+        int? index = null)
     {
+        var suffix = index is null ? string.Empty : $" {index.Value}";
+        var externalId = index is null ? "0000001" : $"{index.Value + 1:0000000}";
         if (kind == MediaKind.Movie)
         {
             var movie = await new SqliteMovieCatalogRepository(storage.Factory, timeProvider).AddAsync(
-                new CreateMovieRequest("Shared movie", 2026, "tt0000001"),
+                new CreateMovieRequest($"Shared movie{suffix}", 2026, $"tt{externalId}"),
                 CancellationToken.None);
             return movie.Id;
         }
 
         var series = await new SqliteSeriesCatalogRepository(storage.Factory, timeProvider).AddAsync(
-            new CreateSeriesRequest("Shared series", 2026, "tt0000002"),
+            new CreateSeriesRequest($"Shared series{suffix}", 2026, $"tt{externalId}"),
             CancellationToken.None);
         return series.Id;
     }

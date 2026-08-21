@@ -77,6 +77,58 @@ public sealed class SqliteMediaStateRepository(
         return new MediaWantedSummary(totalWanted, missingCount, upgradeCount, waitingCount, items);
     }
 
+    public async Task<IReadOnlyList<MediaWantedItem>> ListWantedByIdsAsync(
+        MediaKind kind,
+        IReadOnlyList<string> mediaIds,
+        CancellationToken cancellationToken)
+    {
+        var ids = mediaIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (ids.Length == 0)
+        {
+            return [];
+        }
+
+        var map = MediaTableMap.For(kind);
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            map.DatabaseName,
+            cancellationToken);
+        var items = new List<MediaWantedItem>(ids.Length);
+
+        foreach (var chunk in ids.Chunk(400))
+        {
+            using var command = connection.CreateCommand();
+            var parameters = new string[chunk.Length];
+            for (var index = 0; index < chunk.Length; index++)
+            {
+                parameters[index] = $"@mediaId{index}";
+                AddParameter(command, parameters[index], chunk[index]);
+            }
+
+            command.CommandText = $"""
+                SELECT
+                    {map.EntryAlias}.id, {map.EntryAlias}.title, {map.EntryAlias}.{map.YearColumn}, {map.EntryAlias}.imdb_id,
+                    w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality,
+                    w.quality_cutoff_met, w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc,
+                    w.last_search_result, w.prevent_lower_quality_replacements, w.quality_delta_last_decision, w.updated_utc
+                FROM {map.WantedTable} w
+                INNER JOIN {map.EntryTable} {map.EntryAlias} ON {map.EntryAlias}.id = w.{map.WantedMediaIdColumn}
+                WHERE w.{map.WantedMediaIdColumn} IN ({string.Join(", ", parameters)})
+                ORDER BY {map.EntryAlias}.title ASC, {map.EntryAlias}.id ASC;
+                """;
+
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                items.Add(ReadWanted(reader));
+            }
+        }
+
+        return items;
+    }
+
     public async Task<IReadOnlyList<MediaWantedItem>> ListEligibleWantedAsync(
         MediaKind kind,
         string libraryId,

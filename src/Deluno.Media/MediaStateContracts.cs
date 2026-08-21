@@ -143,6 +143,16 @@ public interface IMediaStateRepository
 {
     Task<MediaWantedSummary> GetWantedSummaryAsync(MediaKind kind, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Reads wanted rows for an explicit selection in SQL. This keeps bulk
+    /// actions correct even when the selected titles are not in the bounded
+    /// recent-summary window.
+    /// </summary>
+    Task<IReadOnlyList<MediaWantedItem>> ListWantedByIdsAsync(
+        MediaKind kind,
+        IReadOnlyList<string> mediaIds,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<MediaWantedItem>> ListEligibleWantedAsync(
         MediaKind kind,
         string libraryId,
