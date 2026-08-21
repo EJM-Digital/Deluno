@@ -277,7 +277,9 @@ test.describe("dashboard workflow", () => {
 
     await expect(page.getByRole("heading", { name: "Import lists", exact: true }).first()).toBeVisible();
     await page.getByRole("button", { name: "New list" }).first().click();
-    await expect(page.getByRole("dialog", { name: "New import list" }).getByText(/Paste a public list URL/)).toBeVisible();
+    const drawer = page.getByRole("dialog", { name: "New import list" });
+    await expect(drawer.getByText(/Paste a public list URL/)).toBeVisible();
+    await expect(drawer.getByLabel("Check the list").locator('option[value="720"]')).toHaveText("Monthly");
   });
 
   test("uses a custom list URL for public MDbList lists without a separate provider", async ({ page }) => {

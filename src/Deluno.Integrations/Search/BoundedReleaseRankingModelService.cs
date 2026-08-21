@@ -50,7 +50,7 @@ public sealed class BoundedReleaseRankingModelService(IConfiguration configurati
     {
         var enabled = configuration.GetValue("Deluno:RankingModel:Enabled", false);
         var autoDispatchImpactEnabled = configuration.GetValue("Deluno:RankingModel:AutoDispatchImpactEnabled", false);
-        var maxAbsoluteBoost = Math.Clamp(configuration.GetValue("Deluno:RankingModel:MaxAbsoluteBoost", 28), 1, 60);
+        var maxAbsoluteBoost = Math.Clamp(configuration.GetValue("Deluno:RankingModel:MaxAbsoluteBoost", 28), 1, 1000);
         var mode = configuration["Deluno:RankingModel:Mode"] ?? "offline";
         var notes = autoDispatchImpactEnabled
             ? "Model boost can influence runtime ranking only; deterministic blocks still win."

@@ -50,7 +50,7 @@ public sealed class DelunoBackupService(
         state.Enabled = request.Enabled;
         state.Frequency = NormalizeFrequency(request.Frequency);
         state.TimeOfDay = NormalizeTimeOfDay(request.TimeOfDay);
-        state.RetentionCount = Math.Clamp(request.RetentionCount ?? state.RetentionCount, 1, 100);
+        state.RetentionCount = Math.Clamp(request.RetentionCount ?? state.RetentionCount, 1, 10000);
         state.BackupFolder = NormalizeBackupFolder(request.BackupFolder);
         state.NextRunUtc = CalculateNextRun(state, timeProvider.GetUtcNow());
         await WriteSettingsStateAsync(state, cancellationToken);
@@ -360,7 +360,7 @@ public sealed class DelunoBackupService(
         var state = await JsonSerializer.DeserializeAsync<BackupSettingsState>(stream, JsonOptions, cancellationToken) ?? new BackupSettingsState();
         state.Frequency = NormalizeFrequency(state.Frequency);
         state.TimeOfDay = NormalizeTimeOfDay(state.TimeOfDay);
-        state.RetentionCount = Math.Clamp(state.RetentionCount, 1, 100);
+        state.RetentionCount = Math.Clamp(state.RetentionCount, 1, 10000);
         state.BackupFolder = NormalizeBackupFolder(state.BackupFolder);
         if (state.Enabled && state.NextRunUtc is null)
         {

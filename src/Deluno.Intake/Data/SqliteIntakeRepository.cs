@@ -102,6 +102,7 @@ public sealed class SqliteIntakeRepository(
         var imdbId = NormalizeName(request.ImdbId);
         var year = NormalizeNullableYear(request.Year);
         var entryKey = BuildIntakeEntryKey(title, year, imdbId);
+        // A non-positive duration intentionally means no expiry; positive values are bounded to ten years.
         DateTimeOffset? expiresUtc = request.DurationDays is > 0
             ? now.AddDays(Math.Clamp(request.DurationDays.Value, 1, 3650))
             : null;

@@ -38,6 +38,35 @@ public sealed class IntegrationResiliencePolicyTests
     }
 
     [Fact]
+    public async Task Allows_more_than_the_old_five_attempt_ceiling()
+    {
+        var policy = CreatePolicy();
+        var calls = 0;
+
+        var result = await policy.ExecuteAsync(
+            new IntegrationResilienceRequest(
+                "integration:wide-attempts",
+                "integration.test",
+                MaxAttempts: 6,
+                FailureThreshold: 200,
+                InitialDelay: TimeSpan.Zero,
+                MaxDelay: TimeSpan.Zero),
+            _ =>
+            {
+                calls++;
+                return Task.FromResult(calls == 6 ? "ok" : "temporary-failure");
+            },
+            value => value == "ok"
+                ? IntegrationResilienceOutcome.Success
+                : IntegrationResilienceOutcome.RetryableFailure,
+            CancellationToken.None);
+
+        Assert.Equal("ok", result.Value);
+        Assert.Equal(6, result.Attempts);
+        Assert.Equal(6, calls);
+    }
+
+    [Fact]
     public async Task Opens_circuit_after_persistent_retryable_failures()
     {
         var timeProvider = new ManualTimeProvider(DateTimeOffset.Parse("2026-04-29T00:00:00Z"));

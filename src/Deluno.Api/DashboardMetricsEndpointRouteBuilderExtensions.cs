@@ -41,7 +41,7 @@ public static class DashboardMetricsEndpointRouteBuilderExtensions
                 return denied;
             }
 
-            var window = Math.Clamp(days ?? 30, 7, 365);
+            var window = Math.Clamp(days ?? 30, 1, 3650);
             var to = DateOnly.FromDateTime(DateTime.UtcNow);
             var from = to.AddDays(-(window - 1));
 

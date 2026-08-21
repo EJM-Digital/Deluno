@@ -65,7 +65,7 @@ public sealed class IntakeSourcePersistenceTests
                 MaximumAgeDays: 3650,
                 AllowedCertifications: "PG-13, R",
                 Audience: "any",
-                SyncIntervalHours: 12,
+                SyncIntervalHours: 720,
                 SearchOnAdd: true,
                 IsEnabled: true),
             CancellationToken.None);
@@ -76,7 +76,7 @@ public sealed class IntakeSourcePersistenceTests
         Assert.Equal(3650, created.MaximumAgeDays);
         Assert.Equal("PG-13, R", created.AllowedCertifications);
         Assert.Equal("any", created.Audience);
-        Assert.Equal(12, created.SyncIntervalHours);
+        Assert.Equal(720, created.SyncIntervalHours);
         Assert.Null(created.LastSyncUtc);
         Assert.Equal("never", created.LastSyncStatus);
 
@@ -95,7 +95,7 @@ public sealed class IntakeSourcePersistenceTests
                 MaximumAgeDays: 720,
                 AllowedCertifications: "R",
                 Audience: "adult",
-                SyncIntervalHours: 6,
+                SyncIntervalHours: 720,
                 SearchOnAdd: created.SearchOnAdd,
                 IsEnabled: created.IsEnabled),
             CancellationToken.None);
@@ -107,7 +107,11 @@ public sealed class IntakeSourcePersistenceTests
         Assert.Equal(720, updated.MaximumAgeDays);
         Assert.Equal("R", updated.AllowedCertifications);
         Assert.Equal("adult", updated.Audience);
-        Assert.Equal(6, updated.SyncIntervalHours);
+        Assert.Equal(720, updated.SyncIntervalHours);
+
+        var reloaded = await intakeRepository.GetIntakeSourceAsync(created.Id, CancellationToken.None);
+        Assert.NotNull(reloaded);
+        Assert.Equal(720, reloaded!.SyncIntervalHours);
 
         var synced = await intakeRepository.RecordIntakeSourceSyncResultAsync(
             created.Id,

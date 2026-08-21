@@ -152,8 +152,8 @@ public sealed class IntegrationResiliencePolicy(
         {
             Key = NormalizeKey(request.Key),
             Operation = string.IsNullOrWhiteSpace(request.Operation) ? "integration.call" : request.Operation.Trim(),
-            MaxAttempts = Math.Clamp(request.MaxAttempts, 1, 5),
-            FailureThreshold = Math.Clamp(request.FailureThreshold, 1, 20),
+            MaxAttempts = Math.Clamp(request.MaxAttempts, 1, 20),
+            FailureThreshold = Math.Clamp(request.FailureThreshold, 1, 200),
             InitialDelay = request.InitialDelay is { } initial && initial >= TimeSpan.Zero ? initial : DefaultInitialDelay,
             MaxDelay = request.MaxDelay is { } max && max >= TimeSpan.Zero ? max : DefaultMaxDelay,
             BreakDuration = request.BreakDuration is { } duration && duration > TimeSpan.Zero ? duration : DefaultBreakDuration

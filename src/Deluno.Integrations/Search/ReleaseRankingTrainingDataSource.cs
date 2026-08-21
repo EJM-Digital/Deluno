@@ -38,7 +38,7 @@ public sealed class SqliteReleaseRankingTrainingDataSource(
         DateTimeOffset? sinceUtc,
         CancellationToken cancellationToken)
     {
-        var take = Math.Clamp(maxRows, 100, 50000);
+        var take = Math.Clamp(maxRows, 500, 1000000);
         var rows = new List<ReleaseRankingTrainingRow>(Math.Min(take, 2000));
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(

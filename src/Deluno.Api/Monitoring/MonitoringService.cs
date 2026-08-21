@@ -275,8 +275,9 @@ public sealed class MonitoringService(
         CancellationToken cancellationToken)
     {
         var alerts = new List<MonitoringAlertItem>();
-        var storageThresholdPercent = Math.Clamp(configuration.GetValue("Deluno:Monitoring:LowStorageThresholdPercent", 12d), 1d, 40d);
-        var failureRateThresholdPercent = Math.Clamp(configuration.GetValue("Deluno:Monitoring:DispatchFailureRatePercent", 25d), 1d, 90d);
+        var storageThresholdPercent = Math.Clamp(configuration.GetValue("Deluno:Monitoring:LowStorageThresholdPercent", 12d), 1d, 95d);
+        var failureRateThresholdPercent = Math.Clamp(configuration.GetValue("Deluno:Monitoring:DispatchFailureRatePercent", 25d), 1d, 100d);
+        // Keep a minimum sample floor because a failure-rate alert from a handful of dispatches is noisy.
         var minSampleForErrorRate = Math.Clamp(configuration.GetValue("Deluno:Monitoring:MinDispatchSampleForFailureAlert", 20), 5, 500);
 
         if (storage.FreePercent is not null && storage.FreePercent <= storageThresholdPercent)
