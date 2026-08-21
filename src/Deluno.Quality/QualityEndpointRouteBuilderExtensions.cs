@@ -38,6 +38,7 @@ public static class QualityEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] CreateQualityProfileRequest request,
             [FromServices] IQualityRepository repository,
+            [FromServices] IQualityModelService qualityModelService,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
@@ -47,7 +48,8 @@ public static class QualityEndpointRouteBuilderExtensions
                 return denied;
             }
 
-            var errors = ValidateQualityProfile(request);
+            var model = await qualityModelService.GetAsync(cancellationToken);
+            var errors = ValidateQualityProfile(request, model.Tiers.Select(tier => tier.Name));
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
@@ -63,6 +65,7 @@ public static class QualityEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] UpdateQualityProfileRequest request,
             [FromServices] IQualityRepository repository,
+            [FromServices] IQualityModelService qualityModelService,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
@@ -72,7 +75,8 @@ public static class QualityEndpointRouteBuilderExtensions
                 return denied;
             }
 
-            var errors = ValidateQualityProfile(request);
+            var model = await qualityModelService.GetAsync(cancellationToken);
+            var errors = ValidateQualityProfile(request, model.Tiers.Select(tier => tier.Name));
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
@@ -357,7 +361,9 @@ public static class QualityEndpointRouteBuilderExtensions
         return endpoints;
     }
 
-    private static Dictionary<string, string[]> ValidateQualityProfile(CreateQualityProfileRequest request)
+    private static Dictionary<string, string[]> ValidateQualityProfile(
+        CreateQualityProfileRequest request,
+        IEnumerable<string> tierNames)
     {
         var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
 
@@ -372,15 +378,14 @@ public static class QualityEndpointRouteBuilderExtensions
             errors["mediaType"] = ["Choose whether this profile is for Movies or TV Shows."];
         }
 
-        if (string.IsNullOrWhiteSpace(request.CutoffQuality))
-        {
-            errors["cutoffQuality"] = ["Choose the quality Deluno should aim for."];
-        }
+        AddQualityTierErrors(errors, request.AllowedQualities, request.CutoffQuality, tierNames);
 
         return errors;
     }
 
-    private static Dictionary<string, string[]> ValidateQualityProfile(UpdateQualityProfileRequest request)
+    private static Dictionary<string, string[]> ValidateQualityProfile(
+        UpdateQualityProfileRequest request,
+        IEnumerable<string> tierNames)
     {
         var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
 
@@ -389,12 +394,46 @@ public static class QualityEndpointRouteBuilderExtensions
             errors["name"] = ["Give this quality profile a name."];
         }
 
-        if (string.IsNullOrWhiteSpace(request.CutoffQuality))
+        AddQualityTierErrors(errors, request.AllowedQualities, request.CutoffQuality, tierNames);
+
+        return errors;
+    }
+
+    private static void AddQualityTierErrors(
+        Dictionary<string, string[]> errors,
+        string? allowedQualities,
+        string? cutoffQuality,
+        IEnumerable<string> tierNames)
+    {
+        var knownTiers = tierNames
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => name.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var unknownAllowed = (allowedQualities ?? string.Empty)
+            .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Where(name => !knownTiers.Contains(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (unknownAllowed.Length > 0)
+        {
+            errors["allowedQualities"] =
+            [
+                $"Unknown quality tier(s): {string.Join(", ", unknownAllowed)}. Choose tiers from the quality model."
+            ];
+        }
+
+        if (string.IsNullOrWhiteSpace(cutoffQuality))
         {
             errors["cutoffQuality"] = ["Choose the quality Deluno should aim for."];
         }
-
-        return errors;
+        else if (!knownTiers.Contains(cutoffQuality.Trim()))
+        {
+            errors["cutoffQuality"] =
+            [
+                $"Unknown cutoff quality '{cutoffQuality.Trim()}'. Choose a tier from the quality model."
+            ];
+        }
     }
 
     private static Dictionary<string, string[]> ValidateCustomFormat(string? name)

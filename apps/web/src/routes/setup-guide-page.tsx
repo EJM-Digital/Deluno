@@ -138,14 +138,14 @@ const STEPS: { id: StepId; label: string; copy: string }[] = [
 const QUALITY_PRESETS = {
   balanced1080p: {
     label: "Balanced 1080p",
-    cutoff: "WEB-DL 1080p",
-    allowed: "WEB-DL 720p,WEBRip 720p,Bluray 720p,WEB-DL 1080p,WEBRip 1080p,Bluray 1080p",
+    cutoff: "WEB 1080p",
+    allowed: "WEB 720p,Bluray 720p,WEB 1080p,Bluray 1080p",
     copy: "Best default for most homes: good quality, reasonable size, broad compatibility."
   },
   premium4k: {
     label: "Premium 4K",
-    cutoff: "WEB-DL 2160p",
-    allowed: "WEB-DL 1080p,WEBRip 1080p,Bluray 1080p,WEB-DL 2160p,WEBRip 2160p,Bluray 2160p,Remux 2160p",
+    cutoff: "WEB 2160p",
+    allowed: "WEB 1080p,Bluray 1080p,WEB 2160p,Bluray 2160p,Remux 2160p",
     copy: "For larger displays and strong storage. Deluno still accepts 1080p while searching for better versions."
   }
 } as const;

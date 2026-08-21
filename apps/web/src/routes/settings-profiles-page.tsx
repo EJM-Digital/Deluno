@@ -31,6 +31,7 @@ import { toast } from "../components/shell/toaster";
 import { configurationNavAreas } from "../components/app/settings-shell";
 import {
   fetchJson,
+  readValidationProblem,
   type CustomFormatItem,
   type LibraryItem,
   type PlatformSettingsSnapshot,
@@ -115,7 +116,7 @@ export function SettingsProfilesPage() {
   const [fineTuneOpen, setFineTuneOpen] = useState(false);
   const [saveState, setSaveState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
-  const [errors, setErrors] = useState<{ name?: string; allowed?: string }>({});
+  const [errors, setErrors] = useState<{ name?: string; allowed?: string; cutoff?: string }>({});
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -240,7 +241,18 @@ export function SettingsProfilesPage() {
         upgradeUnknownItems: form.upgradeUnknownItems
       };
       const response = await authedFetch(mode.kind === "edit" ? `/api/quality-profiles/${mode.id}` : "/api/quality-profiles", { method: mode.kind === "edit" ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-      if (!response.ok) throw new Error(mode.kind === "edit" ? "Profile could not be saved." : "Profile could not be created.");
+      if (!response.ok) {
+        const problem = await readValidationProblem(response.clone());
+        const validationMessage = problem?.errors?.allowedQualities?.[0] ?? problem?.errors?.cutoffQuality?.[0];
+        if (problem?.errors?.allowedQualities?.[0] || problem?.errors?.cutoffQuality?.[0]) {
+          setErrors((current) => ({
+            ...current,
+            allowed: problem.errors?.allowedQualities?.[0] ?? current.allowed,
+            cutoff: problem.errors?.cutoffQuality?.[0] ?? current.cutoff
+          }));
+        }
+        throw new Error(validationMessage ?? (mode.kind === "edit" ? "Profile could not be saved." : "Profile could not be created."));
+      }
       const saved = (await response.json().catch(() => null)) as QualityProfileItem | null;
       if (mode.kind === "create" && saved) setMode({ kind: "edit", id: saved.id });
       const settled = saved ? formFrom(saved) : { ...form, name: payload.name };
@@ -401,8 +413,8 @@ export function SettingsProfilesPage() {
             <Field label="Add a tier" help="Most preferred at the top.">
               <Select value="" onChange={(event) => addTier(event.target.value)} placeholder={unusedTiers.length ? "Choose a tier" : "All tiers allowed"} options={unusedTiers.map((tier) => ({ value: tier.name, label: `${tier.name} · rank ${tier.rank}` }))} disabled={!unusedTiers.length} />
             </Field>
-            <Field label="Stop upgrading at" help="Deluno stops replacing files once this tier is reached.">
-              <Select value={form.cutoff} onChange={(event) => setForm((current) => ({ ...current, cutoff: event.target.value }))} placeholder="Choose a tier" options={allowedForDisplay.map((name) => ({ value: name, label: name }))} disabled={!form.allowed.length} />
+            <Field label="Stop upgrading at" error={errors.cutoff} help="Deluno stops replacing files once this tier is reached.">
+              <Select value={form.cutoff} onChange={(event) => { setErrors((current) => ({ ...current, cutoff: undefined })); setForm((current) => ({ ...current, cutoff: event.target.value })); }} placeholder="Choose a tier" options={allowedForDisplay.map((name) => ({ value: name, label: name }))} disabled={!form.allowed.length} />
             </Field>
           </FieldRow>
           <SwitchRow label="Upgrade until cutoff" description="Keep replacing files until the cutoff tier is reached." checked={form.upgradeUntilCutoff} onCheckedChange={(checked) => setForm((current) => ({ ...current, upgradeUntilCutoff: checked }))} />

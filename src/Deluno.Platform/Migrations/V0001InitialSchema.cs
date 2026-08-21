@@ -25,7 +25,8 @@ public static class PlatformDatabaseMigrations
         new V0017DownloadClientPathMappings(),
         new V0018LibraryMediaPlans(),
         new V0019LibraryImportRuns(),
-        new V0020IndexerRequestInterval()
+        new V0020IndexerRequestInterval(),
+        new V0021RepairQualityProfileTierNames()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration
