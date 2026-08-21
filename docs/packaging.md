@@ -85,8 +85,11 @@ Release assets include:
 Release gate expectations for tagged builds:
 
 - setup executable, portable zip, `SHA256SUMS.txt`, `*.full.nupkg`, and `releases.<channel>.json` are required before publishing the release
-- if a signing certificate is configured in CI, sign all distributed Windows executables (`artifacts/windows/bin/*.exe` and setup executables)
-- if artifacts are unsigned, some Windows environments (for example Smart App Control enforcement) may block execution entirely
+- 1.x tagged builds must sign all distributed Windows executables (`artifacts/windows/bin/*.exe` and setup executables), and the release gate must verify every signature as `Valid`
+- 0.x prereleases may remain unsigned when the release workflow permits them, but they are not valid evidence for a Windows GA install
+- a valid Authenticode signature proves that the artifact was signed and has not been altered; it does not by itself prove that Smart App Control will trust the signer
+- SAC enforcement may still block a validly signed first release unless the signer is EV, Microsoft-attested (for example Azure Trusted Signing), or has already established the required reputation; record the certificate type and trust path with the candidate evidence
+- never put the production signing certificate on a developer workstation just to make local `dotnet build` output run under SAC
 
 Current release channel for production users:
 

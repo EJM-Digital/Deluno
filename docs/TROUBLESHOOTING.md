@@ -187,6 +187,36 @@ Checks:
   - [https://www.microsoft.com/security/portal/submit.aspx/](https://www.microsoft.com/security/portal/submit.aspx/)
 - on Windows 11, check Smart App Control state (`Windows Security > App & browser control`): unsigned apps can be fully blocked when enforcement is on
 
+### Issue: Smart App Control Blocks a Signed Deluno Build
+
+Smart App Control (SAC) evaluates signer trust and reputation, not only whether
+an Authenticode signature is present. A signature that verifies as `Valid` can
+still be blocked on a clean Windows 11 24H2+ machine when the signer has not
+established the reputation SAC requires.
+
+Checks:
+
+- confirm the downloaded asset came from the official release and matches the
+  release `SHA256SUMS.txt`
+- confirm `Get-AuthenticodeSignature` reports `Status : Valid` and record the
+  signer certificate details without sharing private certificate material
+- check `Windows Security > App & browser control` and record whether Smart App
+  Control is in evaluation, audit, or enforcement mode
+- report the Deluno version, Windows version, signer subject, and the exact
+  asset that was blocked; do not replace a blocked release with an unsigned
+  build and call the install successful
+
+Developer note:
+
+- local `dotnet build` output is unsigned and may be blocked on a SAC-enforcing
+  development machine
+- use a disposable development VM with SAC disabled, or accept that local
+  binaries will not launch under SAC; do not install the production signing
+  certificate on a developer workstation
+- never disable SAC on a user's production machine as an installation remedy;
+  use a published build whose signer is EV, Microsoft-attested, or already
+  trusted by SAC
+
 ### Issue: Libraries Or Downloads Are Not Found On Windows
 
 Checks:
