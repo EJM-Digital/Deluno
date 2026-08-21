@@ -62,7 +62,7 @@ public static class DelunoValueNormalizers
         => NormalizeSyncIntervalHours(value ?? 24);
 
     public static int NormalizeSyncIntervalHours(int value)
-        => Math.Clamp(value <= 0 ? 24 : value, 1, 168);
+        => Math.Clamp(value <= 0 ? 24 : value, 1, 8760);
 
     public static string? NormalizePath(string? value)
     {

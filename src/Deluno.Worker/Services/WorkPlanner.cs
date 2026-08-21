@@ -13,6 +13,7 @@ using Deluno.Platform.Data;
 using Deluno.Series.Contracts;
 using Deluno.Series.Data;
 using Deluno.Worker.Intake;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Deluno.Worker.Services;
@@ -27,7 +28,8 @@ namespace Deluno.Worker.Services;
 /// </summary>
 public sealed class WorkPlanner(
     ILogger<WorkPlanner> logger,
-    IJobQueueRepository jobQueueRepository)
+    IJobQueueRepository jobQueueRepository,
+    IConfiguration configuration)
 {
     private static readonly JsonSerializerOptions PayloadJsonOptions = new()
     {
@@ -286,7 +288,8 @@ public sealed class WorkPlanner(
             return;
         }
 
-        var existingJobs = await jobQueueRepository.ListAsync(300, cancellationToken);
+        var maintenancePlanningBatchSize = configuration.GetValue("Deluno:Worker:MaintenancePlanningBatchSize", 600);
+        var existingJobs = await jobQueueRepository.ListAsync(maintenancePlanningBatchSize, cancellationToken);
         var knownImportSources = existingJobs
             .Where(job => job.JobType == "filesystem.import.execute")
             .Select(job => TryReadImportSourcePath(job.PayloadJson))

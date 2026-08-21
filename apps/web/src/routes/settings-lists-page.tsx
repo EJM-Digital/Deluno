@@ -55,7 +55,9 @@ const SYNC_OPTIONS = [
   { label: "Every 12 hours", value: "12" },
   { label: "Daily", value: "24" },
   { label: "Every 3 days", value: "72" },
-  { label: "Weekly", value: "168" }
+  { label: "Weekly", value: "168" },
+  { label: "Fortnightly", value: "336" },
+  { label: "Monthly", value: "720" }
 ];
 
 interface LoaderData {

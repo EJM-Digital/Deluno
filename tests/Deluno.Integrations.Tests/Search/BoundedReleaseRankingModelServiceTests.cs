@@ -76,4 +76,18 @@ public sealed class BoundedReleaseRankingModelServiceTests
         Assert.False(result.Applied);
         Assert.Equal(0, result.BoostPoints);
     }
+
+    [Fact]
+    public void Status_accepts_a_wide_configured_boost()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Deluno:RankingModel:MaxAbsoluteBoost"] = "900"
+            })
+            .Build();
+        var service = new BoundedReleaseRankingModelService(configuration);
+
+        Assert.Equal(900, service.GetStatus().MaxAbsoluteBoost);
+    }
 }

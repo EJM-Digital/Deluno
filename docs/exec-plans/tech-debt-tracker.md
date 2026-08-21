@@ -100,25 +100,27 @@ monitoring diagnostics, intake-source diagnostics, and the movie/series
 catalogues. Callers that need a complete result must intentionally walk the
 opaque token; screen windows load one page.
 
-### Configuration ceilings a user can hit
+### Configuration ceilings — resolved in #140
 
-- Dashboard metrics window clamped to 365 days — `DashboardMetricsEndpointRouteBuilderExtensions.cs:44`.
-  A user cannot ask for two years.
-- Sync interval clamped to 168 hours — `DelunoValueNormalizers.cs:60`. A list
-  cannot be synced less often than weekly.
-- Backup retention clamped to 100 — `DelunoBackupService.cs:53,362`.
-- List-exclusion duration clamped to 3,650 days — `SqliteIntakeRepository.cs:106`.
-- Retry attempts clamped to 5, circuit failure threshold to 20 —
-  `IntegrationResiliencePolicy.cs:155,156`.
-- Ranking model boost clamped to 60, training samples to 5,000 —
-  `BoundedReleaseRankingModelService.cs:53`, `MlNetReleaseRankingModelService.cs:113`.
-- Monitoring thresholds clamped to 40% storage / 90% failure rate —
-  `MonitoringService.cs:256,257`.
-- Worker reads a fixed 600 jobs per maintenance tick to plan metadata refresh.
-
-Each needs a decision: raise it, make it configurable, or keep it and document
-why. The point is that none of them is currently a decision — they are defaults
-that hardened into limits.
+- Dashboard metrics accepts a 1–3,650-day window; the response still echoes the
+  effective `days` value.
+- Sync intervals accept 1–8,760 hours, and the UI offers Fortnightly (336) and
+  Monthly (720).
+- Backup retention accepts 1–10,000 backups in both save and read normalization.
+- List exclusions keep a 3,650-day maximum because ten years covers the real
+  finite case; omitting or setting a non-positive duration remains the explicit
+  permanent-exclusion path.
+- Resilience requests accept up to 20 attempts and a 200-failure circuit
+  threshold; these are wide sanity bounds for caller-provided values.
+- Ranking configuration accepts a boost of up to 1,000, up to 100,000 minimum
+  training samples, and up to 1,000,000 training rows. The SQL source and model
+  service use the same 500–1,000,000 row range.
+- Monitoring accepts storage thresholds through 95% and failure-rate thresholds
+  through 100%. The 5-sample minimum remains because smaller samples make alerts
+  statistically noisy.
+- Maintenance planning reads `Deluno:Worker:MaintenancePlanningBatchSize`,
+  defaulting to 600, so the batch is visible and adjustable rather than hidden
+  in the planner.
 
 ### Structural ceilings to make explicit
 

@@ -110,9 +110,9 @@ public sealed class MlNetReleaseRankingModelService(
                 CompletedUtc: timeProvider.GetUtcNow());
         }
 
-        var minSamples = Math.Clamp(configuration.GetValue("Deluno:RankingModel:MinTrainingSamples", 60), 20, 5000);
+        var minSamples = Math.Clamp(configuration.GetValue("Deluno:RankingModel:MinTrainingSamples", 60), 20, 100000);
         var lookbackDays = Math.Clamp(configuration.GetValue("Deluno:RankingModel:TrainingLookbackDays", 120), 14, 730);
-        var maxRows = Math.Clamp(configuration.GetValue("Deluno:RankingModel:MaxTrainingRows", 15000), 500, 50000);
+        var maxRows = Math.Clamp(configuration.GetValue("Deluno:RankingModel:MaxTrainingRows", 15000), 500, 1000000);
         var sinceUtc = timeProvider.GetUtcNow().AddDays(-lookbackDays);
         var rows = await trainingDataSource.ListTrainingRowsAsync(maxRows, sinceUtc, cancellationToken);
 
@@ -320,7 +320,7 @@ public sealed class MlNetReleaseRankingModelService(
     {
         var enabled = configuration.GetValue("Deluno:RankingModel:Enabled", false);
         var autoDispatchImpactEnabled = configuration.GetValue("Deluno:RankingModel:AutoDispatchImpactEnabled", false);
-        var maxAbsoluteBoost = Math.Clamp(configuration.GetValue("Deluno:RankingModel:MaxAbsoluteBoost", 20), 1, 60);
+        var maxAbsoluteBoost = Math.Clamp(configuration.GetValue("Deluno:RankingModel:MaxAbsoluteBoost", 20), 1, 1000);
         var mode = configuration["Deluno:RankingModel:Mode"] ?? "offline";
         var notes = autoDispatchImpactEnabled
             ? "ML inference is active with bounded boost. Deterministic blocks always win."

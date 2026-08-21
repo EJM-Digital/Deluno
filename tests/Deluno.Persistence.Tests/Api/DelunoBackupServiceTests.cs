@@ -9,6 +9,27 @@ namespace Deluno.Persistence.Tests.Api;
 public sealed class DelunoBackupServiceTests
 {
     [Fact]
+    public async Task SaveSettings_persists_retention_above_the_old_ceiling()
+    {
+        using var storage = TempDataRoot.Create();
+        var service = CreateService(storage.Path, "2026-05-14T01:00:00Z");
+
+        var saved = await service.SaveSettingsAsync(
+            new UpdateBackupSettingsRequest(
+                Enabled: false,
+                Frequency: "daily",
+                TimeOfDay: "02:00",
+                RetentionCount: 500,
+                BackupFolder: null),
+            CancellationToken.None);
+
+        var loaded = await service.GetSettingsAsync(CancellationToken.None);
+
+        Assert.Equal(500, saved.RetentionCount);
+        Assert.Equal(500, loaded.RetentionCount);
+    }
+
+    [Fact]
     public async Task RestoreAsync_restores_backup_into_second_machine_profile_and_keeps_pre_restore_copy()
     {
         using var sourceRoot = TempDataRoot.Create();
