@@ -732,6 +732,30 @@ public sealed class SqliteSeriesCatalogRepository(
         double? popularity = null,
         int? voteCount = null)
     {
+        if (sharedMediaStateRepository is not null)
+        {
+            var updated = await sharedMediaStateRepository.UpdateMetadataAsync(
+                MediaKind.Series,
+                new MediaMetadataUpdate(
+                    id,
+                    metadataProvider,
+                    metadataProviderId,
+                    originalTitle,
+                    overview,
+                    posterUrl,
+                    backdropUrl,
+                    rating,
+                    genres,
+                    externalUrl,
+                    imdbId,
+                    metadataJson,
+                    runtimeMinutes,
+                    popularity,
+                    voteCount),
+                cancellationToken);
+            return updated ? await GetByIdAsync(id, cancellationToken) : null;
+        }
+
         var now = timeProvider.GetUtcNow();
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(

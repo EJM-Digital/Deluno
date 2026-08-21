@@ -61,6 +61,23 @@ public sealed record MediaImportRecoverySummary(
     int ImportFailedCount,
     IReadOnlyList<MediaImportRecoveryCase> RecentCases);
 
+public sealed record MediaMetadataUpdate(
+    string Id,
+    string? MetadataProvider,
+    string? MetadataProviderId,
+    string? OriginalTitle,
+    string? Overview,
+    string? PosterUrl,
+    string? BackdropUrl,
+    double? Rating,
+    string? Genres,
+    string? ExternalUrl,
+    string? ImdbId,
+    string? MetadataJson,
+    int? RuntimeMinutes,
+    double? Popularity,
+    int? VoteCount);
+
 public interface IMediaStateRepository
 {
     Task<MediaWantedSummary> GetWantedSummaryAsync(MediaKind kind, CancellationToken cancellationToken);
@@ -124,6 +141,11 @@ public interface IMediaStateRepository
 
     Task<MediaImportRecoverySummary> GetImportRecoverySummaryAsync(
         MediaKind kind,
+        CancellationToken cancellationToken);
+
+    Task<bool> UpdateMetadataAsync(
+        MediaKind kind,
+        MediaMetadataUpdate update,
         CancellationToken cancellationToken);
 
     Task<Deluno.Contracts.MediaDailyMetrics> GetDailyMetricsAsync(

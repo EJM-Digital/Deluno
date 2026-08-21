@@ -443,6 +443,60 @@ public sealed class SqliteMediaStateRepository(
             RecentCases: cases);
     }
 
+    public async Task<bool> UpdateMetadataAsync(
+        MediaKind kind,
+        MediaMetadataUpdate update,
+        CancellationToken cancellationToken)
+    {
+        var map = MediaTableMap.For(kind);
+        var now = timeProvider.GetUtcNow().ToString("O");
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            map.DatabaseName,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            UPDATE {map.EntryTable}
+            SET
+                imdb_id = COALESCE(@imdbId, imdb_id),
+                metadata_provider = @metadataProvider,
+                metadata_provider_id = @metadataProviderId,
+                original_title = @originalTitle,
+                overview = @overview,
+                poster_url = @posterUrl,
+                backdrop_url = @backdropUrl,
+                rating = @rating,
+                genres = @genres,
+                external_url = @externalUrl,
+                metadata_json = @metadataJson,
+                runtime_minutes = COALESCE(@runtimeMinutes, runtime_minutes),
+                popularity = COALESCE(@popularity, popularity),
+                vote_count = COALESCE(@voteCount, vote_count),
+                metadata_updated_utc = @metadataUpdatedUtc,
+                updated_utc = @updatedUtc
+            WHERE id = @id;
+            """;
+
+        AddParameter(command, "@id", update.Id);
+        AddParameter(command, "@runtimeMinutes", update.RuntimeMinutes);
+        AddParameter(command, "@popularity", update.Popularity);
+        AddParameter(command, "@voteCount", update.VoteCount);
+        AddParameter(command, "@imdbId", NormalizeExternalId(update.ImdbId));
+        AddParameter(command, "@metadataProvider", NormalizeExternalId(update.MetadataProvider));
+        AddParameter(command, "@metadataProviderId", NormalizeExternalId(update.MetadataProviderId));
+        AddParameter(command, "@originalTitle", NormalizeText(update.OriginalTitle));
+        AddParameter(command, "@overview", NormalizeText(update.Overview));
+        AddParameter(command, "@posterUrl", NormalizeText(update.PosterUrl));
+        AddParameter(command, "@backdropUrl", NormalizeText(update.BackdropUrl));
+        AddParameter(command, "@rating", update.Rating);
+        AddParameter(command, "@genres", NormalizeText(update.Genres));
+        AddParameter(command, "@externalUrl", NormalizeText(update.ExternalUrl));
+        AddParameter(command, "@metadataJson", NormalizeText(update.MetadataJson));
+        AddParameter(command, "@metadataUpdatedUtc", now);
+        AddParameter(command, "@updatedUtc", now);
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
     public async Task<MediaDailyMetrics> GetDailyMetricsAsync(
         MediaKind kind,
         DateOnly fromDate,
@@ -565,6 +619,15 @@ public sealed class SqliteMediaStateRepository(
             "waiting" => "waiting",
             _ => "missing"
         };
+
+    private static string? NormalizeExternalId(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToLowerInvariant();
+
+    private static string? NormalizeText(string? value)
+    {
+        var normalized = value?.Trim();
+        return string.IsNullOrWhiteSpace(normalized) ? null : normalized;
+    }
 
     private static DateTimeOffset ParseTimestamp(string value)
         => DateTimeOffset.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
