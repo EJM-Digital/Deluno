@@ -4,7 +4,6 @@ using Deluno.Libraries.Contracts;
 using Deluno.Libraries.Data;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
-using Deluno.Realtime;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;

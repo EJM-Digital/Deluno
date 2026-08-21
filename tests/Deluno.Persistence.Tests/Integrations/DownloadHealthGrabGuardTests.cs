@@ -1,7 +1,7 @@
 using Deluno.Infrastructure.Storage.Migrations;
+using Deluno.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Jobs.Data;
-using Deluno.Realtime;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;

@@ -1,5 +1,5 @@
+using Deluno.Contracts;
 using Deluno.Notifications.Contracts;
-using Deluno.Realtime;
 using Microsoft.Extensions.Hosting;
 
 namespace Deluno.Notifications;

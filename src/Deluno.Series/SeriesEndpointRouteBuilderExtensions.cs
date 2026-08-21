@@ -25,7 +25,6 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Deluno.Quality.Contracts;
-using Deluno.Realtime;
 
 namespace Deluno.Series;
 

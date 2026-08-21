@@ -1,5 +1,6 @@
 using System.Data.Common;
 using System.Text.Json;
+using Deluno.Contracts;
 using Deluno.Infrastructure.Storage;
 using Deluno.Jobs.Contracts;
 using Microsoft.Data.Sqlite;
@@ -14,7 +15,7 @@ public sealed class DownloadDispatchPollingService(
     IDownloadDispatchesRepository downloadDispatchesRepository,
     IDispatchAlertRepository alertRepository,
     IJobScheduler jobScheduler,
-    Deluno.Realtime.IRealtimeEventPublisher realtimeEventPublisher)
+    IRealtimeEventPublisher realtimeEventPublisher)
     : IDownloadDispatchPollingService
 {
     private static readonly TimeSpan GrabTimeout = TimeSpan.FromHours(2);
