@@ -81,12 +81,14 @@ export function DecisionExplanationList({ decisions }: { decisions: DecisionExpl
 
             {open.alternatives.length ? (
               <DrawerSection title="Alternatives" aside={`${open.alternatives.length} considered`}>
-                <DrawerFacts
-                  items={open.alternatives.map((alternative) => ({
-                    label: alternative.name,
-                    value: alternative.score === null ? alternative.status : `${alternative.status} · ${alternative.score}`
-                  }))}
-                />
+                <div className="max-h-72 overflow-y-auto pr-1">
+                  <DrawerFacts
+                    items={open.alternatives.map((alternative) => ({
+                      label: alternative.name,
+                      value: alternative.score === null ? alternative.status : `${alternative.status} · ${alternative.score}`
+                    }))}
+                  />
+                </div>
                 <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">
                   {open.alternatives[0]?.reason}
                 </p>

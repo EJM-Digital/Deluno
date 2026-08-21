@@ -16,4 +16,5 @@ public sealed record MediaSearchPlan(
     MediaSearchCandidate? BestCandidate,
     IReadOnlyList<MediaSearchCandidate> Candidates,
     string Summary,
-    string Reason = MediaSearchReasons.Ok);
+    string Reason = MediaSearchReasons.Ok,
+    bool CandidatesTruncatedByIndexer = false);

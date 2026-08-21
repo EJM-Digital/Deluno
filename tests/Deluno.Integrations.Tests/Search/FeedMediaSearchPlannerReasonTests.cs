@@ -87,6 +87,48 @@ public sealed class FeedMediaSearchPlannerReasonTests
         Assert.Empty(plan.Candidates);
     }
 
+    [Fact]
+    public async Task Feed_parser_keeps_every_returned_item_and_requests_a_protocol_limit()
+    {
+        var indexer = CreateIndexer("full-feed-indexer", "Full feed indexer");
+        var handler = new FixedFeedHandler(CreateFeed(45));
+
+        var plan = await CreatePlanner(
+            CreateConnections(indexer).Object,
+            handler).BuildPlanAsync(
+                "Example",
+                2026,
+                "movies",
+                null,
+                "WEB 1080p",
+                [CreateSource(indexer)],
+                cancellationToken: CancellationToken.None);
+
+        Assert.Equal(45, plan.Candidates.Count);
+        Assert.False(plan.CandidatesTruncatedByIndexer);
+        Assert.Contains("limit=100", handler.Query, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Full_indexer_page_is_reported_as_potentially_truncated()
+    {
+        var indexer = CreateIndexer("full-page-indexer", "Full page indexer");
+
+        var plan = await CreatePlanner(
+            CreateConnections(indexer).Object,
+            new FixedFeedHandler(CreateFeed(100))).BuildPlanAsync(
+                "Example",
+                2026,
+                "movies",
+                null,
+                "WEB 1080p",
+                [CreateSource(indexer)],
+                cancellationToken: CancellationToken.None);
+
+        Assert.Equal(100, plan.Candidates.Count);
+        Assert.True(plan.CandidatesTruncatedByIndexer);
+    }
+
     private static FeedMediaSearchPlanner CreatePlanner(
         IConnectionsRepository connections,
         HttpMessageHandler? handler = null,
@@ -210,6 +252,10 @@ public sealed class FeedMediaSearchPlannerReasonTests
             ImportRecoveryRetentionDays: 30,
             UpdatedUtc: DateTimeOffset.UtcNow);
 
+    private static string CreateFeed(int itemCount)
+        => $"<rss><channel>{string.Join(string.Empty, Enumerable.Range(1, itemCount).Select(index =>
+            $"<item><title>Example.Release.{index:00}.WEB.1080p</title><link>https://fixture.invalid/release/{index}</link></item>"))}</channel></rss>";
+
     private sealed class FixedClientFactory(HttpMessageHandler handler) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
@@ -217,11 +263,16 @@ public sealed class FeedMediaSearchPlannerReasonTests
 
     private sealed class FixedFeedHandler(string payload) : HttpMessageHandler
     {
+        public string Query { get; private set; } = string.Empty;
+
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-            => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Query = request.RequestUri?.Query ?? string.Empty;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(payload, Encoding.UTF8, "application/xml")
             });
+        }
     }
 
     private sealed class PassthroughResiliencePolicy : IIntegrationResiliencePolicy

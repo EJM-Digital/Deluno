@@ -79,12 +79,17 @@ item below is measured against:
   `AUDIT-001`. A capacity cap imposed by a timer.
 - **Realtime events are dropped at 1,000 queued** (`DropOldest`). Acceptable
   only once resume exists (`ADR-002`); until then it is silent data loss.
-- **Telemetry history is truncated at 50 / 30 / 30** —
-  `DownloadClientTelemetryService.cs:1061,1314,1366`.
-- **Decision explanations cap at 12 alternatives** —
-  `AcquisitionDecisionPipeline.cs:224`. This one caps only what is *explained*,
-  not what is *considered*, so it is a transparency limit rather than a
-  behavioural one — but the north star promises every decision is explainable.
+
+### Search and explanation completeness — resolved in #141
+
+- Feed searches request an explicit `limit=100` from the indexer and retain every
+  returned `<item>`; `MediaSearchPlan.CandidatesTruncatedByIndexer` reports when
+  the indexer returned a full page that may have more results.
+- Download-client telemetry uses one 200-entry recent-activity window across
+  adapter, queue, and dispatch paths, and `HistoryTruncated` tells callers when
+  that window was exceeded. The jobs database remains the archive.
+- Decision explanations retain every evaluated candidate, and the Alternatives
+  drawer scrolls within its available height so its count matches its rows.
 
 ### List pagination protocol
 

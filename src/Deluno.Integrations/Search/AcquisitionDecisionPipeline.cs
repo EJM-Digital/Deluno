@@ -225,7 +225,6 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
 
     private static IReadOnlyList<DecisionAlternativeExplanation> BuildDecisionAlternatives(MediaSearchPlan plan)
         => plan.Candidates
-            .Take(12)
             .Select(candidate => new DecisionAlternativeExplanation(
                 Name: candidate.ReleaseName,
                 Status: candidate.DecisionStatus,

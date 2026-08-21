@@ -24,6 +24,8 @@ public sealed class FeedMediaSearchPlanner(
     ILogger<FeedMediaSearchPlanner> logger)
     : IMediaSearchPlanner
 {
+    private const int IndexerResultLimit = 100;
+
     /// <summary>
     /// How many indexers are queried at once. This bounds outbound sockets,
     /// not how many indexers are searched — every matching indexer is always
@@ -160,7 +162,8 @@ public sealed class FeedMediaSearchPlanner(
             Summary: best is null
                 ? $"No usable feed release was found for {title}."
                 : $"Best feed candidate is {best.ReleaseName} from {best.IndexerName} targeting {normalizedTarget}.",
-            Reason: best is null ? MediaSearchReasons.NoUsableRelease : MediaSearchReasons.Ok);
+            Reason: best is null ? MediaSearchReasons.NoUsableRelease : MediaSearchReasons.Ok,
+            CandidatesTruncatedByIndexer: searchResults.Any(result => result.CandidatesTruncatedByIndexer));
     }
 
     private async Task<IndexerSearchOutcome> TrySearchIndexerAsync(
@@ -184,7 +187,7 @@ public sealed class FeedMediaSearchPlanner(
                 "Indexer {IndexerName} ({IndexerId}) has an unusable search URL; skipping.",
                 indexer.Name,
                 indexer.Id);
-            return new IndexerSearchOutcome([], Failed: true, CircuitOpen: false);
+            return new IndexerSearchOutcome([], CandidatesTruncatedByIndexer: false, Failed: true, CircuitOpen: false);
         }
 
         // Paced before the request, not after the indexer complains. Keyed on
@@ -210,7 +213,7 @@ public sealed class FeedMediaSearchPlanner(
                 uri.Host,
                 MaxIndexerThrottleWait);
 
-            return new IndexerSearchOutcome([], Failed: false, CircuitOpen: false);
+            return new IndexerSearchOutcome([], CandidatesTruncatedByIndexer: false, Failed: false, CircuitOpen: false);
         }
 
         if (waited > TimeSpan.FromSeconds(1))
@@ -245,14 +248,16 @@ public sealed class FeedMediaSearchPlanner(
                             indexer.Name,
                             indexer.Id,
                             (int)response.StatusCode);
-                        return new IndexerSearchOutcome([], Failed: true, CircuitOpen: false);
+                        return new IndexerSearchOutcome([], CandidatesTruncatedByIndexer: false, Failed: true, CircuitOpen: false);
                     }
 
                     await using var stream = await response.Content.ReadAsStreamAsync(token);
                     var document = await XDocument.LoadAsync(stream, LoadOptions.None, token);
                     var qualityModel = await qualityModelService.GetAsync(token);
+                    var parsed = ParseCandidates(document, indexer, source, currentQuality, targetQuality, customFormats, neverGrabPatterns, qualityModel, scoringMode, rankingModelService);
                     return new IndexerSearchOutcome(
-                        ParseCandidates(document, indexer, source, currentQuality, targetQuality, customFormats, neverGrabPatterns, qualityModel, scoringMode, rankingModelService),
+                        parsed.Candidates,
+                        parsed.CandidatesTruncatedByIndexer,
                         Failed: false,
                         CircuitOpen: false);
                 }
@@ -263,7 +268,7 @@ public sealed class FeedMediaSearchPlanner(
                         "Indexer {IndexerName} ({IndexerId}) returned a response Deluno could not read.",
                         indexer.Name,
                         indexer.Id);
-                    return new IndexerSearchOutcome([], Failed: true, CircuitOpen: false);
+                    return new IndexerSearchOutcome([], CandidatesTruncatedByIndexer: false, Failed: true, CircuitOpen: false);
                 }
             },
             _ => IntegrationResilienceOutcome.Success,
@@ -280,16 +285,18 @@ public sealed class FeedMediaSearchPlanner(
 
         return new IndexerSearchOutcome(
             result.Value.Candidates ?? [],
+            result.Value.CandidatesTruncatedByIndexer,
             Failed: result.Value.Failed || result.CircuitOpen || result.CircuitOpened || result.FailureMessage is not null,
             CircuitOpen: result.CircuitOpen);
     }
 
     private readonly record struct IndexerSearchOutcome(
         IReadOnlyList<MediaSearchCandidate> Candidates,
+        bool CandidatesTruncatedByIndexer,
         bool Failed,
         bool CircuitOpen);
 
-    private static IReadOnlyList<MediaSearchCandidate> ParseCandidates(
+    private static ParsedCandidates ParseCandidates(
         XDocument document,
         IndexerItem indexer,
         LibrarySourceLinkItem source,
@@ -299,14 +306,16 @@ public sealed class FeedMediaSearchPlanner(
         IReadOnlyList<string> neverGrabPatterns,
         QualityModelSnapshot qualityModel,
         string scoringMode,
-        IReleaseRankingModelService rankingModelService)
+        IReleaseRankingModelService rankingModelService,
+        int requestedLimit = IndexerResultLimit)
     {
         XNamespace torznab = "http://torznab.com/schemas/2015/feed";
         XNamespace newznab = "http://www.newznab.com/DTD/2010/feeds/attributes/";
         var normalizedTarget = LibraryQualityDecider.NormalizeQuality(targetQuality) ?? "WEB 1080p";
         var results = new List<MediaSearchCandidate>();
 
-        foreach (var item in document.Descendants("item").Take(30))
+        var feedItems = document.Descendants("item").ToArray();
+        foreach (var item in feedItems)
         {
             var releaseName = WebUtility.HtmlDecode(item.Element("title")?.Value?.Trim() ?? string.Empty);
             if (string.IsNullOrWhiteSpace(releaseName))
@@ -380,8 +389,12 @@ public sealed class FeedMediaSearchPlanner(
                 MatchedCustomFormats: matchedFormats));
         }
 
-        return results;
+        return new ParsedCandidates(results, feedItems.Length == requestedLimit);
     }
+
+    private readonly record struct ParsedCandidates(
+        IReadOnlyList<MediaSearchCandidate> Candidates,
+        bool CandidatesTruncatedByIndexer);
 
     private static string BuildSearchUrl(IndexerItem indexer, string title, int? year, string mediaType, int? seasonNumber, int? episodeNumber)
     {
@@ -408,6 +421,11 @@ public sealed class FeedMediaSearchPlanner(
         query["cat"] = string.IsNullOrWhiteSpace(indexer.Categories)
             ? isTv ? "5000" : "2000"
             : indexer.Categories.Replace(" ", string.Empty, StringComparison.Ordinal);
+
+        if (!query.ContainsKey("limit"))
+        {
+            query["limit"] = IndexerResultLimit.ToString(CultureInfo.InvariantCulture);
+        }
 
         if (!string.IsNullOrWhiteSpace(indexer.ApiKey) && !query.ContainsKey("apikey"))
         {
