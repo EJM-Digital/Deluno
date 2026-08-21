@@ -41,6 +41,26 @@ public sealed record MediaSearchHistoryItem(
     string? DetailsJson,
     DateTimeOffset CreatedUtc);
 
+public sealed record MediaImportRecoveryCase(
+    string Id,
+    string Title,
+    string FailureKind,
+    string Status,
+    string Summary,
+    string RecommendedAction,
+    string? DetailsJson,
+    DateTimeOffset DetectedUtc,
+    DateTimeOffset? ResolvedUtc);
+
+public sealed record MediaImportRecoverySummary(
+    int OpenCount,
+    int QualityCount,
+    int UnmatchedCount,
+    int CorruptCount,
+    int DownloadFailedCount,
+    int ImportFailedCount,
+    IReadOnlyList<MediaImportRecoveryCase> RecentCases);
+
 public interface IMediaStateRepository
 {
     Task<MediaWantedSummary> GetWantedSummaryAsync(MediaKind kind, CancellationToken cancellationToken);
@@ -99,6 +119,10 @@ public interface IMediaStateRepository
         CancellationToken cancellationToken);
 
     Task<IReadOnlyList<MediaSearchHistoryItem>> ListSearchHistoryAsync(
+        MediaKind kind,
+        CancellationToken cancellationToken);
+
+    Task<MediaImportRecoverySummary> GetImportRecoverySummaryAsync(
         MediaKind kind,
         CancellationToken cancellationToken);
 
