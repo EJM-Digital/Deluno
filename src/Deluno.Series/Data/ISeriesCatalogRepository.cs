@@ -170,7 +170,7 @@ public interface ISeriesCatalogRepository
         IReadOnlyList<ExistingSeriesImportRequest> requests,
         CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<SeriesTrackedFileItem>> ListTrackedFilesAsync(
+    IAsyncEnumerable<SeriesTrackedFileItem> StreamTrackedFilesAsync(
         string libraryId,
         CancellationToken cancellationToken);
 

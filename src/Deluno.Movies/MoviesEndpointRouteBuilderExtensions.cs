@@ -125,9 +125,13 @@ public static class MoviesEndpointRouteBuilderExtensions
             var trackedFiles = new List<TrackedLibraryFile>();
             foreach (var library in libraries)
             {
-                trackedFiles.AddRange((await repository.ListTrackedFilesAsync(library.Id, cancellationToken))
-                    .Where(file => string.Equals(file.MovieId, id, StringComparison.OrdinalIgnoreCase))
-                    .Select(file => new TrackedLibraryFile(file.LibraryId, file.FilePath)));
+                await foreach (var file in repository.StreamTrackedFilesAsync(library.Id, cancellationToken))
+                {
+                    if (string.Equals(file.MovieId, id, StringComparison.OrdinalIgnoreCase))
+                    {
+                        trackedFiles.Add(new TrackedLibraryFile(file.LibraryId, file.FilePath));
+                    }
+                }
             }
 
             return Results.Ok(LibraryMediaDeletion.Preview(trackedFiles, libraries));
@@ -1673,10 +1677,13 @@ public static class MoviesEndpointRouteBuilderExtensions
             var trackedFiles = new List<TrackedLibraryFile>();
             foreach (var library in libraries)
             {
-                var files = await repository.ListTrackedFilesAsync(library.Id, cancellationToken);
-                trackedFiles.AddRange(files
-                    .Where(file => string.Equals(file.MovieId, movie.Id, StringComparison.OrdinalIgnoreCase))
-                    .Select(file => new TrackedLibraryFile(file.LibraryId, file.FilePath)));
+                await foreach (var file in repository.StreamTrackedFilesAsync(library.Id, cancellationToken))
+                {
+                    if (string.Equals(file.MovieId, movie.Id, StringComparison.OrdinalIgnoreCase))
+                    {
+                        trackedFiles.Add(new TrackedLibraryFile(file.LibraryId, file.FilePath));
+                    }
+                }
             }
 
             var deletion = LibraryMediaDeletion.Delete(trackedFiles, libraries, cancellationToken);

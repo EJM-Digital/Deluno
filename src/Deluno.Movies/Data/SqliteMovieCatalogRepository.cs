@@ -1460,11 +1460,31 @@ public sealed class SqliteMovieCatalogRepository(
         return created;
     }
 
-    public async Task<IReadOnlyList<MovieTrackedFileItem>> ListTrackedFilesAsync(
+    public async IAsyncEnumerable<MovieTrackedFileItem> StreamTrackedFilesAsync(
         string libraryId,
-        CancellationToken cancellationToken)
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var items = new List<MovieTrackedFileItem>();
+        if (sharedMediaStateRepository is not null)
+        {
+            await foreach (var item in sharedMediaStateRepository.StreamTrackedFilesAsync(
+                               MediaKind.Movie,
+                               libraryId,
+                               cancellationToken))
+            {
+                yield return new MovieTrackedFileItem(
+                    MovieId: item.MediaId,
+                    LibraryId: item.LibraryId,
+                    Title: item.Title,
+                    ReleaseYear: item.Year,
+                    FilePath: item.FilePath,
+                    FileSizeBytes: item.FileSizeBytes,
+                    ImportedUtc: item.ImportedUtc,
+                    LastVerifiedUtc: item.LastVerifiedUtc);
+            }
+
+            yield break;
+        }
+
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Movies,
             cancellationToken);
@@ -1493,7 +1513,7 @@ public sealed class SqliteMovieCatalogRepository(
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            items.Add(new MovieTrackedFileItem(
+            yield return new MovieTrackedFileItem(
                 MovieId: reader.GetString(0),
                 LibraryId: reader.GetString(1),
                 Title: reader.GetString(2),
@@ -1501,10 +1521,8 @@ public sealed class SqliteMovieCatalogRepository(
                 FilePath: reader.GetString(4),
                 FileSizeBytes: reader.IsDBNull(5) ? null : reader.GetInt64(5),
                 ImportedUtc: reader.IsDBNull(6) ? null : ParseTimestamp(reader.GetString(6)),
-                LastVerifiedUtc: reader.IsDBNull(7) ? null : ParseTimestamp(reader.GetString(7))));
+                LastVerifiedUtc: reader.IsDBNull(7) ? null : ParseTimestamp(reader.GetString(7)));
         }
-
-        return items;
     }
 
     public async Task<bool> MarkTrackedFileMissingAsync(

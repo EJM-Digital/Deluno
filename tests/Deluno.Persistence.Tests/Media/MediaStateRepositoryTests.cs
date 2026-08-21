@@ -319,6 +319,18 @@ public sealed class MediaStateRepositoryTests
             Assert.True(item.HasFile);
             Assert.Equal("H.264", item.VideoCodec);
             Assert.Equal("GROUP", item.ReleaseGroup);
+
+            var streamed = new List<MediaTrackedFileItem>();
+            await foreach (var tracked in shared.StreamTrackedFilesAsync(
+                               MediaKind.Movie,
+                               "library-movies",
+                               CancellationToken.None))
+            {
+                streamed.Add(tracked);
+            }
+
+            Assert.Single(streamed);
+            Assert.Equal(item.Id, streamed[0].MediaId);
         }
         else
         {
@@ -350,6 +362,18 @@ public sealed class MediaStateRepositoryTests
             Assert.NotNull(detail);
             Assert.Equal(2, detail.EpisodeCount);
             Assert.Equal(2, detail.ImportedEpisodeCount);
+
+            var streamed = new List<MediaTrackedFileItem>();
+            await foreach (var tracked in shared.StreamTrackedFilesAsync(
+                               MediaKind.Series,
+                               "library-series",
+                               CancellationToken.None))
+            {
+                streamed.Add(tracked);
+            }
+
+            Assert.Single(streamed);
+            Assert.Equal(series.Id, streamed[0].MediaId);
         }
     }
 

@@ -148,7 +148,7 @@ public interface IMovieCatalogRepository
         IReadOnlyList<ExistingMovieImportRequest> requests,
         CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<MovieTrackedFileItem>> ListTrackedFilesAsync(
+    IAsyncEnumerable<MovieTrackedFileItem> StreamTrackedFilesAsync(
         string libraryId,
         CancellationToken cancellationToken);
 
