@@ -38,6 +38,7 @@ import { authedFetch } from "../lib/use-auth";
 import { buildSetupStatus, type SetupAttentionTone, type SetupStatusModel } from "../lib/setup-status";
 import { cn } from "../lib/utils";
 import { OnboardingBanner } from "../components/shell/onboarding-banner";
+import { SetupProgressLadder } from "../components/shell/setup-progress-ladder";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Chip } from "../components/ui/chip";
@@ -90,11 +91,6 @@ interface DashboardLoaderData {
   automation: LibraryAutomationStateItem[];
   searchCycles: SearchCycleRunItem[];
   retryWindows: SearchRetryWindowItem[];
-  onboarding: {
-    hasIndexer: boolean;
-    hasDownloadClient: boolean;
-    hasLibrary: boolean;
-  };
   setupProgress: SetupProgressItem;
   setupStatus: SetupStatusModel;
 }
@@ -222,11 +218,6 @@ function buildDashboardData(sources: DashboardSources): DashboardLoaderData {
     automation,
     searchCycles,
     retryWindows,
-    onboarding: {
-      hasIndexer: indexers.length > 0,
-      hasDownloadClient: clients.length > 0,
-      hasLibrary: libraries.length > 0
-    },
     setupProgress,
     setupStatus: buildSetupStatus({ downloadClients: clients, indexers, libraries, policySets, qualityProfiles, settings })
   };
@@ -379,12 +370,10 @@ export function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-[var(--page-gap)]">
-      {/* No toolbar. "Add a movie" / "Add a show" lived here and gave the dashboard
-          a 40px row holding two buttons that belong to Movies and TV — adding a title
-          is a library job, not a "what needs me now" job. The onboarding checklist
-          still links to it while a first title is the next step. */}
+      {/* The ladder is authoritative. The guided prompt below it is only an
+          optional assisted path and can be dismissed without changing status. */}
+      <SetupProgressLadder status={data.setupStatus} />
       <OnboardingBanner
-        state={data.onboarding}
         isSetupSuppressed={setupProgress.isSkipped || setupProgress.isCompleted}
         onDismiss={dismissOnboarding}
       />
@@ -975,11 +964,6 @@ function emptyDashboardData(): DashboardLoaderData {
     automation: [],
     searchCycles: [],
     retryWindows: [],
-    onboarding: {
-      hasIndexer: false,
-      hasDownloadClient: false,
-      hasLibrary: false
-    },
     setupProgress: {
       lastCompletedStep: 0,
       isSkipped: false,

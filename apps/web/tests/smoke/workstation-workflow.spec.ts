@@ -26,6 +26,8 @@ test.describe("dashboard workflow", () => {
     // the library sections say plainly that they are empty.
     await expect(page.getByRole("heading", { name: "Build your media library" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Build my setup" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Setup progress" })).toBeVisible();
+    await expect(page.getByRole("link", { name: /1\. Library & storage/ })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Recently added" })).toBeVisible();
     await expect(page.getByText("Nothing in the library yet", { exact: true })).toBeVisible();
   });

@@ -10,6 +10,7 @@ import type {
 
 export type SetupAttentionTone = "success" | "warn" | "info" | "neutral";
 export type SetupReadiness = "not-ready" | "acquisition-ready" | "automation-ready" | "operationally-ready";
+export type SetupStepState = "not-started" | "failed" | "complete";
 
 export interface SetupStatusInput {
   libraries: LibraryItem[];
@@ -28,6 +29,7 @@ export interface SetupStatusStep {
   description: string;
   status: string;
   complete: boolean;
+  state: SetupStepState;
   optional: boolean;
   to: string;
   action: string;
@@ -84,6 +86,7 @@ export function buildSetupStatus(input: SetupStatusInput): SetupStatusModel {
           ? "Not configured"
           : `${plural(movieLibraries, "movie library")} - ${plural(tvLibraries, "TV library")}`,
       complete: configuredLibraries > 0,
+      state: configuredLibraries > 0 ? "complete" : "not-started",
       optional: false,
       to: "/settings/libraries",
       action: configuredLibraries === 0 ? "Configure library" : "Review library",
@@ -97,6 +100,7 @@ export function buildSetupStatus(input: SetupStatusInput): SetupStatusModel {
       description: "Choose the quality, size, release, and upgrade behaviour Deluno will follow.",
       status: activePlans > 0 ? `${plural(activePlans, "active Media Plan")} - ${plural(input.qualityProfiles.length, "quality profile")}` : "No active Media Plan",
       complete: activePlans > 0,
+      state: activePlans > 0 ? "complete" : "not-started",
       optional: false,
       to: "/settings/policy-sets",
       action: activePlans > 0 ? "Review Media Plan" : "Choose Media Plan",
@@ -110,6 +114,7 @@ export function buildSetupStatus(input: SetupStatusInput): SetupStatusModel {
       description: "Connect and test the search sources that find releases and the download clients that receive approved work.",
       status: connectionStatus(enabledIndexers.length, healthyIndexers.length, enabledClients.length, healthyClients.length),
       complete: connectionsReady,
+      state: connectionsReady ? "complete" : connectionStepState(enabledIndexers.length, healthyIndexers.length, enabledClients.length, healthyClients.length),
       optional: false,
       to: "/indexers",
       action: connectionsReady ? "Review connections" : "Configure connections",
@@ -123,6 +128,7 @@ export function buildSetupStatus(input: SetupStatusInput): SetupStatusModel {
       description: "Decide when Deluno searches, upgrades, retries failed downloads, and alerts you when decisions need attention.",
       status: automationStatus(input.settings.autoStartJobs, autoLibraries),
       complete: automationReady,
+      state: automationReady ? "complete" : "not-started",
       optional: false,
       to: "/settings/automation",
       action: automationReady ? "Review automation" : "Configure automation",
@@ -136,6 +142,7 @@ export function buildSetupStatus(input: SetupStatusInput): SetupStatusModel {
       description: "Run one complete search, dispatch, download, import, and catalogue flow before calling setup operationally ready.",
       status: input.settings.workflowVerified ? "End-to-end acquisition verified" : "First end-to-end acquisition not verified",
       complete: input.settings.workflowVerified,
+      state: input.settings.workflowVerified ? "complete" : "not-started",
       optional: false,
       to: "/movies",
       action: input.settings.workflowVerified ? "Review first flow" : "Run first acquisition",
@@ -149,6 +156,7 @@ export function buildSetupStatus(input: SetupStatusInput): SetupStatusModel {
       description: "Optionally configure import lists or watchlists with provenance, exclusions, and reviewable sync results.",
       status: enabledIntakeSources.length > 0 ? `${plural(enabledIntakeSources.length, "import list")} enabled` : "Optional - not configured",
       complete: enabledIntakeSources.length > 0,
+      state: enabledIntakeSources.length > 0 ? "complete" : "not-started",
       optional: true,
       to: "/settings/lists",
       action: enabledIntakeSources.length > 0 ? "Review import lists" : "Configure import lists",
@@ -215,6 +223,14 @@ function connectionStatus(enabledIndexers: number, healthyIndexers: number, enab
   if (healthyIndexers === 0) return "A healthy search source still needs to be connected";
   if (healthyClients === 0) return "A healthy download client still needs to be connected";
   return `${healthyIndexers}/${enabledIndexers} search sources healthy - ${healthyClients}/${enabledClients} download clients healthy`;
+}
+
+function connectionStepState(enabledIndexers: number, healthyIndexers: number, enabledClients: number, healthyClients: number): SetupStepState {
+  const attemptedIndexer = enabledIndexers > 0;
+  const attemptedClient = enabledClients > 0;
+  const failedIndexer = attemptedIndexer && healthyIndexers === 0;
+  const failedClient = attemptedClient && healthyClients === 0;
+  return failedIndexer || failedClient ? "failed" : "not-started";
 }
 
 function missingConnectionDetail(healthyIndexers: number, healthyClients: number) {
