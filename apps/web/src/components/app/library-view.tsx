@@ -721,7 +721,7 @@ export function LibraryView({
         />
 
         <LibraryResults
-          isLoading={isRouteLoading || navigation.state !== "idle"}
+          isLoading={isRouteLoading || navigation.state !== "idle" || isCatalogueLoading}
           items={filtered}
           label={label}
           singular={singular}

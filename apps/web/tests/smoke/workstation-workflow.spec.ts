@@ -50,6 +50,28 @@ test.describe("dashboard workflow", () => {
     await expect(page.getByText("Saved library views", { exact: true })).toBeVisible();
   });
 
+  test("keeps the empty state hidden while the library catalogue is loading", async ({ page }) => {
+    await authenticateAndNavigate(page, "/");
+
+    let releaseCatalogueRequest!: () => void;
+    const catalogueRequestBlocked = new Promise<void>((resolve) => {
+      releaseCatalogueRequest = resolve;
+    });
+    await page.route("**/api/movies/page**", async (route) => {
+      await catalogueRequestBlocked;
+      await route.continue();
+    });
+
+    try {
+      await page.goto("/movies");
+      await expect(page.getByText("Your movies library is empty", { exact: true })).toHaveCount(0);
+      await expect(page.locator('[aria-busy="true"]')).toBeVisible();
+    } finally {
+      releaseCatalogueRequest();
+      await page.unroute("**/api/movies/page**");
+    }
+  });
+
   test("uses lifecycle status, not monitoring, for movie and TV poster markers", async ({ page }) => {
     await authenticateAndNavigate(page, "/movies");
     const token = await page.evaluate(() => sessionStorage.getItem("deluno-auth-token"));
