@@ -13,6 +13,21 @@ public static class FilesystemEndpointRouteBuilderExtensions
     {
         var filesystem = endpoints.MapGroup("/api/filesystem");
 
+        filesystem.MapPost("/native-folder-picker", async ([FromBody] NativeFolderPickerRequest request) =>
+        {
+            var result = await WindowsFolderPicker.PickAsync(request.InitialPath);
+            if (!result.Available)
+            {
+                return Results.Conflict(new
+                {
+                    message = result.Message ?? "The native folder picker is unavailable.",
+                    nativePickerUnavailable = true
+                });
+            }
+
+            return Results.Ok(new NativeFolderPickerResponse(result.Path, result.Cancelled));
+        });
+
         filesystem.MapGet("/directories", (string? path) =>
         {
             try
@@ -396,6 +411,10 @@ public sealed record DirectoryBrowseEntry(
     string? Description);
 
 public sealed record PathDiagnosticRequest(string? Path);
+
+public sealed record NativeFolderPickerRequest(string? InitialPath);
+
+public sealed record NativeFolderPickerResponse(string? Path, bool Cancelled);
 
 public sealed record PathDiagnosticResponse(
     string Path,

@@ -269,6 +269,11 @@ export interface DirectoryBrowseResponse {
   entries: DirectoryBrowseEntry[];
 }
 
+export interface NativeFolderPickerResponse {
+  path: string | null;
+  cancelled: boolean;
+}
+
 export interface PathDiagnosticResponse {
   path: string;
   normalizedPath: string;

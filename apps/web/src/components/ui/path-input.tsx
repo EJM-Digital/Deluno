@@ -13,7 +13,13 @@ import {
   TerminalSquare,
   XCircle
 } from "lucide-react";
-import { ApiRequestError, fetchJson, type DirectoryBrowseResponse, type PathDiagnosticResponse } from "../../lib/api";
+import {
+  ApiRequestError,
+  fetchJson,
+  type DirectoryBrowseResponse,
+  type NativeFolderPickerResponse,
+  type PathDiagnosticResponse
+} from "../../lib/api";
 import { cn } from "../../lib/utils";
 import { Button } from "./button";
 import { Input } from "./input";
@@ -44,6 +50,8 @@ export function PathInput({
   const [diagnostic, setDiagnostic] = useState<PathDiagnosticResponse | null>(null);
   const [diagnosticLoading, setDiagnosticLoading] = useState(false);
   const [diagnosticError, setDiagnosticError] = useState<string | null>(null);
+  const [nativePickerLoading, setNativePickerLoading] = useState(false);
+  const [advancedReason, setAdvancedReason] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -127,6 +135,36 @@ export function PathInput({
     handleSelect(nextPath);
   }
 
+  async function handleNativeBrowse() {
+    setNativePickerLoading(true);
+    setAdvancedReason(null);
+
+    try {
+      const response = await fetchJson<NativeFolderPickerResponse>("/api/filesystem/native-folder-picker", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ initialPath: value.trim() || null })
+      });
+
+      if (response.path && !response.cancelled) {
+        handleSelect(response.path);
+      }
+    } catch (pickerError) {
+      const unavailable =
+        pickerError instanceof ApiRequestError &&
+        (pickerError.status === 409 || pickerError.status === 501);
+
+      setAdvancedReason(
+        unavailable
+          ? "The Windows picker is unavailable in this session. Use the server browser or enter a path manually."
+          : "The Windows picker could not be opened. Use the server browser or enter a path manually."
+      );
+      setOpen(true);
+    } finally {
+      setNativePickerLoading(false);
+    }
+  }
+
   async function handleDiagnostic(pathValue = manualPath) {
     const nextPath = pathValue.trim();
     if (!nextPath) {
@@ -185,9 +223,28 @@ export function PathInput({
           {diagnosticLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <FolderCheck className="h-4 w-4" />}
           Check
         </Button>
-        <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => setOpen(true)}>
-          <FolderOpen className="h-4 w-4" />
-          Browse
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="shrink-0"
+          onClick={() => void handleNativeBrowse()}
+          disabled={nativePickerLoading}
+        >
+          {nativePickerLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <FolderOpen className="h-4 w-4" />}
+          Choose folder
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="shrink-0"
+          onClick={() => {
+            setAdvancedReason(null);
+            setOpen(true);
+          }}
+        >
+          Advanced
         </Button>
       </div>
       {diagnostic || diagnosticError ? (
@@ -213,6 +270,11 @@ export function PathInput({
                 </Button>
               ) : null}
             </div>
+            {advancedReason ? (
+              <p className="mt-3 rounded-xl border border-warning/25 bg-warning/10 px-3 py-2 text-sm text-warning">
+                {advancedReason}
+              </p>
+            ) : null}
           </div>
 
           <div className="border-b border-hairline px-[var(--tile-pad)] py-[calc(var(--tile-pad)*0.7)]">

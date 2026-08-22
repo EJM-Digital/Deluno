@@ -301,6 +301,16 @@ Current gaps:
 - there is no dedicated update-library endpoint yet beyond the specific sub-settings routes
 - routing preview/explanation payloads can still get richer
 
+## Filesystem Paths
+
+Implemented endpoints:
+
+- `GET /api/filesystem/directories?path=...` — server-visible drives and folders for advanced browsing
+- `POST /api/filesystem/native-folder-picker` — opens the native Windows folder picker when Deluno is running in an interactive desktop session
+- `POST /api/filesystem/path-diagnostics` — checks whether the Deluno server can read and write the selected path
+
+The native picker is available in the installed interactive Windows tray app and in an interactive Windows development host. It can select local folders, mapped drives, and UNC locations visible to the same Windows user session. When Deluno runs as a Windows service, in Docker, or on a non-Windows host, the endpoint reports that the picker is unavailable; the web UI then opens the advanced server browser and manual path entry instead. If the browser is remote, the native dialog belongs to the backend desktop session, so advanced browse or manual entry is the appropriate path. Server-side path visibility and permissions remain authoritative, especially for services and network shares.
+
 The metadata refresh endpoints select candidates in SQL and return **honest counts**:
 `enqueuedCount` is the batch primed now, `remainingCount` is what is still to go, and
 `message` phrases both for display. `forceAll` marks the whole library as wanting a
