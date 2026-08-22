@@ -370,13 +370,13 @@ export function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-[var(--page-gap)]">
-      {/* The ladder is authoritative. The guided prompt below it is only an
-          optional assisted path and can be dismissed without changing status. */}
-      <SetupProgressLadder status={data.setupStatus} />
+      {/* The guided prompt is the action-oriented entry point. The ladder below
+          it is authoritative and can be used after the prompt is dismissed. */}
       <OnboardingBanner
         isSetupSuppressed={setupProgress.isSkipped || setupProgress.isCompleted}
         onDismiss={dismissOnboarding}
       />
+      <SetupProgressLadder status={data.setupStatus} />
 
       <SummaryStrip
         cells={[
