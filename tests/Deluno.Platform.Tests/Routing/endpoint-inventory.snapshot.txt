@@ -156,6 +156,7 @@ POST /api/download-clients/{id}/test
 POST /api/filesystem/import/execute
 POST /api/filesystem/import/jobs
 POST /api/filesystem/import/preview
+POST /api/filesystem/native-folder-picker
 POST /api/filesystem/path-diagnostics
 POST /api/filesystem/reconciliation/repair
 POST /api/indexers/

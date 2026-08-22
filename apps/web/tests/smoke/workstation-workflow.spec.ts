@@ -18,6 +18,54 @@ test.describe("dashboard workflow", () => {
     await expect(page.getByText("Can’t find it? Add it manually", { exact: true })).toBeVisible();
   });
 
+  test("falls back to advanced server browsing when the native folder picker is unavailable", async ({ page }) => {
+    await authenticateAndNavigate(page, "/settings/libraries");
+    await page.getByRole("button", { name: "New library", exact: true }).first().click();
+
+    const drawer = page.getByRole("dialog", { name: "New library" });
+    await expect(drawer).toBeVisible();
+    await page.route("**/api/filesystem/native-folder-picker", async (route) => {
+      await route.fulfill({
+        status: 409,
+        contentType: "application/json",
+        body: JSON.stringify({ message: "The native folder picker is unavailable in this session." })
+      });
+    });
+
+    try {
+      await drawer.getByRole("button", { name: "Choose folder", exact: true }).first().click();
+
+      const advancedBrowser = page.getByRole("dialog", { name: "Choose movies library folder" });
+      await expect(advancedBrowser).toBeVisible();
+      await expect(advancedBrowser.getByText("The Windows picker is unavailable in this session.", { exact: false })).toBeVisible();
+      await expect(advancedBrowser.getByText("Server browse", { exact: true })).toBeVisible();
+      await expect(advancedBrowser.getByRole("button", { name: "Roots", exact: true })).toBeVisible();
+    } finally {
+      await page.unroute("**/api/filesystem/native-folder-picker");
+    }
+  });
+
+  test("applies a folder returned by the native picker", async ({ page }) => {
+    await authenticateAndNavigate(page, "/settings/libraries");
+    await page.getByRole("button", { name: "New library", exact: true }).first().click();
+
+    const drawer = page.getByRole("dialog", { name: "New library" });
+    await page.route("**/api/filesystem/native-folder-picker", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ path: "C:\\Media\\Movies", cancelled: false })
+      });
+    });
+
+    try {
+      await drawer.getByRole("button", { name: "Choose folder", exact: true }).first().click();
+      await expect(drawer.getByRole("textbox", { name: "Library folder" })).toHaveValue("C:\\Media\\Movies");
+    } finally {
+      await page.unroute("**/api/filesystem/native-folder-picker");
+    }
+  });
+
   test("shows real empty-state information instead of invented dashboard activity", async ({ page }) => {
     await authenticateAndNavigate(page, "/");
 
