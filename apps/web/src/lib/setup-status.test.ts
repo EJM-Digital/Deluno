@@ -11,6 +11,7 @@ describe("setup status", () => {
     const status = buildSetupStatus(input());
     expect(status).toMatchObject({ completedCount: 0, totalCount: 5, isComplete: false, readiness: "not-ready", summary: "Start with step 1: Library & storage." });
     expect(status.steps.map((step) => step.id)).toEqual(["library", "media-plans", "connections", "automation", "workflow", "discovery"]);
+    expect(status.steps.map((step) => step.state)).toEqual(["not-started", "not-started", "not-started", "not-started", "not-started", "not-started"]);
     expect(status.attentionItems.map((item) => item.id)).toEqual(["library", "media-plans", "connections", "automation", "workflow"]);
   });
 
@@ -24,7 +25,7 @@ describe("setup status", () => {
       settings: { autoStartJobs: true, workflowVerified: false } as PlatformSettingsSnapshot
     });
     const status = buildSetupStatus(configured);
-    expect(status.steps.find((step) => step.id === "connections")).toMatchObject({ complete: false });
+    expect(status.steps.find((step) => step.id === "connections")).toMatchObject({ complete: false, state: "failed" });
     expect(status.readiness).toBe("not-ready");
     expect(status.attentionItems.map((item) => item.id)).toContain("connections");
   });
