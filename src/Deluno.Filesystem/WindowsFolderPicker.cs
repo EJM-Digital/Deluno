@@ -11,6 +11,7 @@ internal static class WindowsFolderPicker
     private const int BrowseCallbackInitialized = 1;
     private const uint BrowseSetSelectionW = 0x0466;
     private const uint CoInitializeApartmentThreaded = 0x2;
+    private const int ShowWindowNormal = 1;
 
     public static Task<WindowsFolderPickerResult> PickAsync(string? initialPath)
     {
@@ -28,10 +29,11 @@ internal static class WindowsFolderPicker
 
         var completion = new TaskCompletionSource<WindowsFolderPickerResult>(
             TaskCreationOptions.RunContinuationsAsynchronously);
+        var ownerWindow = GetForegroundWindow();
 
         try
         {
-            var thread = new Thread(() => ShowPicker(initialPath, completion))
+            var thread = new Thread(() => ShowPicker(initialPath, ownerWindow, completion))
             {
                 IsBackground = true,
                 Name = "Deluno Windows folder picker"
@@ -50,6 +52,7 @@ internal static class WindowsFolderPicker
 
     private static void ShowPicker(
         string? initialPath,
+        IntPtr ownerWindow,
         TaskCompletionSource<WindowsFolderPickerResult> completion)
     {
         IntPtr displayName = IntPtr.Zero;
@@ -66,15 +69,15 @@ internal static class WindowsFolderPicker
             displayName = Marshal.AllocHGlobal(32768 * sizeof(char));
             title = Marshal.StringToCoTaskMemUni("Choose a folder for Deluno");
 
-            BrowseCallback? callback = null;
+            BrowseCallback callback = SetInitialPath;
             if (!string.IsNullOrWhiteSpace(initialPath))
             {
                 initialPathPointer = Marshal.StringToCoTaskMemUni(initialPath.Trim());
-                callback = SetInitialPath;
             }
 
             var browseInfo = new BrowseInfo
             {
+                HwndOwner = ownerWindow,
                 PszDisplayName = displayName,
                 LpszTitle = title,
                 UlFlags = BrowseReturnOnlyFileSystemDirs | BrowseForNewDialogStyle | BrowseForEditBox,
@@ -136,7 +139,16 @@ internal static class WindowsFolderPicker
 
     private static int SetInitialPath(IntPtr windowHandle, uint message, IntPtr _, IntPtr data)
     {
-        if (message == BrowseCallbackInitialized && data != IntPtr.Zero)
+        if (message != BrowseCallbackInitialized)
+        {
+            return 0;
+        }
+
+        ShowWindow(windowHandle, ShowWindowNormal);
+        BringWindowToTop(windowHandle);
+        SetForegroundWindow(windowHandle);
+
+        if (data != IntPtr.Zero)
         {
             SendMessage(windowHandle, BrowseSetSelectionW, IntPtr.Zero, data);
         }
@@ -177,6 +189,21 @@ internal static class WindowsFolderPicker
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern IntPtr SendMessage(IntPtr windowHandle, uint message, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ShowWindow(IntPtr windowHandle, int command);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool BringWindowToTop(IntPtr windowHandle);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetForegroundWindow(IntPtr windowHandle);
 }
 
 internal sealed record WindowsFolderPickerResult(
