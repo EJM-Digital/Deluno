@@ -280,14 +280,18 @@ export function SetupGuidePage() {
   const hasReadyClient = data.clients.some((item) => item.isEnabled && item.healthStatus === "healthy") || serviceTest.client === "passed";
   const indexerConnectionRequested = Boolean(form.indexerUrl.trim()) && !hasReadyIndexer;
   const clientConnectionRequested = Boolean(form.clientHost.trim()) && !hasReadyClient;
-  const canFinish =
-    (canCreateMovies || canCreateTv) &&
-    hasQualityChoice &&
-    hasReleaseRuleChoice &&
-    hasReadyIndexer &&
-    hasReadyClient &&
-    !indexerConnectionRequested &&
-    !clientConnectionRequested;
+  // What the baseline itself needs: somewhere to put media, and the quality
+  // and release decisions that shape every later choice. Connections are not
+  // in this list on purpose — requiring a passing indexer *and* client test
+  // meant a user without a download client installed could never finish the
+  // simple path at all, which is not something Sonarr or Radarr demand. The
+  // readiness ladder already carries "configured but not operationally
+  // ready", so an untested install can finish and connect later (#246).
+  const canFinish = (canCreateMovies || canCreateTv) && hasQualityChoice && hasReleaseRuleChoice;
+  // A connection typed in but never proven is different from one never
+  // attempted: warn about it rather than silently baking in something broken.
+  const connectionsUnproven =
+    !hasReadyIndexer || !hasReadyClient || indexerConnectionRequested || clientConnectionRequested;
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -362,16 +366,9 @@ export function SetupGuidePage() {
       if (!canCreateMovies && !canCreateTv) {
         setError("Choose at least one Movies or TV root folder before finishing simple setup.");
         setStepIndex(1);
-      } else if (!hasQualityChoice || !hasReleaseRuleChoice) {
+      } else {
         setError("Choose a picture quality and release preference before finishing simple setup.");
         setStepIndex(2);
-      } else if (!hasReadyIndexer || !hasReadyClient || indexerConnectionRequested || clientConnectionRequested) {
-        setError(!hasReadyIndexer && !hasReadyClient
-          ? "Test at least one search source and one download client before Deluno can be marked operationally ready."
-          : !hasReadyIndexer
-            ? "Test at least one search source before Deluno can be marked operationally ready."
-            : "Test at least one download client before Deluno can be marked operationally ready.");
-        setStepIndex(3);
       }
       return;
     }
@@ -597,7 +594,7 @@ export function SetupGuidePage() {
             form={form}
             patch={patch}
             canFinish={canFinish}
-            connectionTestsRequired={!hasReadyIndexer || !hasReadyClient || indexerConnectionRequested || clientConnectionRequested}
+            connectionTestsRequired={connectionsUnproven}
             result={result}
                 error={error}
                 rollbackMessage={rollbackMessage}
@@ -633,7 +630,18 @@ export function SetupGuidePage() {
                   <ArrowRight className="h-4 w-4" />
                 </Button>
               ) : (
-                <Button type="submit" disabled={busy || !canFinish}>
+                <Button
+                  type="submit"
+                  disabled={busy || !canFinish}
+                  // A disabled primary button must say why it is disabled,
+                  // next to the button — the amber banner alone read as
+                  // advice rather than the reason (#246).
+                  title={canFinish
+                    ? "Create the libraries, profiles and rules you chose"
+                    : !canCreateMovies && !canCreateTv
+                      ? "Choose a Movies or TV root folder first"
+                      : "Choose a picture quality and release preference first"}
+                >
                   {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Rocket className="h-4 w-4" />}
                   Create baseline
                 </Button>
@@ -1034,9 +1042,14 @@ function FinishStep({
       </div>
       {!canFinish ? (
         <p className="rounded-xl border border-warning/25 bg-warning/10 p-4 text-sm text-warning">
-          {connectionTestsRequired
-            ? "Test at least one search source and one download client before Deluno can be marked operationally ready."
-            : "Choose at least one library root folder, picture quality, and release preference before Deluno can create the baseline."}
+          Choose at least one library root folder, picture quality, and release preference before Deluno can create the baseline.
+        </p>
+      ) : connectionTestsRequired ? (
+        // Not a blocker: the baseline can be created now and connected later.
+        // Say what it means rather than reading like a requirement (#246).
+        <p className="rounded-xl border border-hairline bg-surface-1 p-4 text-sm text-muted-foreground">
+          You can create the baseline now. Deluno will not be operationally ready until a search source and a download
+          client are connected and tested — the dashboard keeps that step waiting for you.
         </p>
       ) : null}
       {error ? <p className="rounded-xl border border-destructive/25 bg-destructive/10 p-4 text-sm text-destructive">{error}</p> : null}
