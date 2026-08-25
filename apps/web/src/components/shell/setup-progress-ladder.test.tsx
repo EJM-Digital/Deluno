@@ -65,6 +65,6 @@ describe("setup progress ladder", () => {
 
     expect(screen.getByRole("region", { name: "Setup progress" })).toBeVisible();
     expect(screen.getByText("Complete your Deluno setup")).toBeVisible();
-    expect(screen.getByText("2/5 required steps complete")).toBeVisible();
+    expect(screen.getByText("2/5 steps complete")).toBeVisible();
   });
 });
