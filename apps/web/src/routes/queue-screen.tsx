@@ -43,7 +43,7 @@ import {
 } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
 import { resolveImportSourcePath } from "../lib/import-source";
-import { JOB_STATUS, isJobActive } from "../lib/job-status-constants";
+import { JOB_STATUS, isJobActive, isJobDeadLettered, isJobFailed, type JobStatus } from "../lib/job-status-constants";
 import { downloadQueueStatuses, isImportReadyStatus, isProcessingStatus, queueStatusLabel } from "../lib/download-telemetry";
 import { Button } from "../components/ui/button";
 import { Chip, type ChipProps } from "../components/ui/chip";
@@ -182,7 +182,9 @@ export function QueuePage() {
   const queueAttention = queue.filter(
     (item) => item.status === downloadQueueStatuses.stalled || Boolean(item.errorMessage) || Boolean(item.healthFindings?.length)
   );
-  const failedImportJobs = importJobs.filter((job) => job.status === JOB_STATUS.FAILED);
+  // Dead-lettered jobs are failed and out of retries: they are exactly what
+  // "Retry N failed" exists for, and were previously excluded (#249).
+  const failedImportJobs = importJobs.filter((job) => isJobFailed(job.status as JobStatus));
   const activeImportJobs = importJobs.filter((job) => isJobActive(job.status as never)).length;
   const activeProcessorHandoffs = processorHandoffs.filter((handoff) => !isProcessorTerminal(handoff.status));
   const failedProcessorHandoffs = processorHandoffs.filter((handoff) => isProcessorFailure(handoff.status) || Boolean(handoff.failureMessage));
@@ -1027,14 +1029,15 @@ function queueChip(item: DownloadQueueItem): { tone: NonNullable<ChipProps["tone
 }
 
 function importJobStage(job: JobQueueItem) {
-  if (job.status === JOB_STATUS.FAILED) return "Import failed";
+  if (isJobDeadLettered(job.status as JobStatus)) return "Import gave up";
+  if (isJobFailed(job.status as JobStatus)) return "Import failed";
   if (job.status === JOB_STATUS.COMPLETED) return "Imported and named";
   if (job.status === JOB_STATUS.RUNNING) return "Writing to library";
   return "Waiting to import";
 }
 
 function importJobTone(job: JobQueueItem): NonNullable<ChipProps["tone"]> {
-  if (job.status === JOB_STATUS.FAILED) return "bad";
+  if (isJobFailed(job.status as JobStatus)) return "bad";
   if (isJobActive(job.status as never)) return "info";
   return "ok";
 }
@@ -1229,7 +1232,7 @@ function buildActivity({
       kind: "import",
       name: info?.title || jobTitle(job),
       sub: "Import",
-      detail: job.status === JOB_STATUS.FAILED
+      detail: isJobFailed(job.status as JobStatus)
         ? job.lastError ?? "The import failed."
         : job.status === JOB_STATUS.COMPLETED
           ? `Imported${importedName}`
@@ -1237,7 +1240,7 @@ function buildActivity({
             ? `Importing${importedName}`
             : `Import ${job.status}`,
       extra: info?.destinationPath ?? (job.attempts > 1 ? `Attempt ${job.attempts}` : undefined),
-      tone: job.status === JOB_STATUS.FAILED ? "bad" : isJobActive(job.status as never) ? "info" : "ok",
+      tone: isJobFailed(job.status as JobStatus) ? "bad" : isJobActive(job.status as never) ? "info" : "ok",
       status: job.status,
       whenUtc: job.completedUtc ?? job.startedUtc ?? job.createdUtc
     });

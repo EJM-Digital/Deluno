@@ -24,7 +24,7 @@ import { WsStatusBadge } from "../components/shell/ws-status-badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { getGlobalShortcuts } from "../lib/command-registry";
-import { useAttention } from "../lib/use-attention";
+import { attentionTotal, type AttentionSnapshot, useAttention } from "../lib/use-attention";
 import { useAuth, type UserProfile } from "../lib/use-auth";
 import { DENSITY_LABELS, DensityProvider, useDensity, type Density } from "../lib/use-density";
 import { SignalRProvider } from "../lib/use-signalr";
@@ -255,6 +255,7 @@ function DesktopSidebar({
 }) {
   const { changePassword } = useAuth();
   const { pathname } = useLocation();
+  const needsAttention = attentionTotal(attention);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -344,26 +345,27 @@ function DesktopSidebar({
       {/*
         The headline used to be hardcoded to "All systems normal" and sat directly
         above a line reporting failed jobs — it claimed health while showing the
-        opposite. It now follows the same signal the line below it reads.
+        opposite. It now follows the same signal the line below it reads, and
+        that signal covers everything that needs a person (failed and
+        dead-lettered jobs, unhealthy search sources), not failed jobs alone —
+        it used to say "All good" beside a dead-lettered import (#250).
       */}
       <div className="mt-3 rounded-lg border border-sidebar-border bg-sidebar-accent/45 p-3">
         <div className="flex items-center gap-2">
           <span
             className={cn(
               "h-2 w-2 shrink-0 rounded-full",
-              attention.failedJobs > 0
+              needsAttention > 0
                 ? "bg-warning shadow-[0_0_12px_hsl(var(--warning)/0.8)]"
                 : "bg-success shadow-[0_0_12px_hsl(var(--success)/0.8)]"
             )}
           />
           <span className="density-nowrap text-[length:var(--type-body-sm)] font-semibold text-foreground">
-            {attention.failedJobs > 0 ? "Needs a look" : "All good"}
+            {needsAttention > 0 ? "Needs a look" : "All good"}
           </span>
         </div>
         <p className="mt-2 text-[length:var(--shell-subtle-size)] text-muted-foreground">
-          {attention.failedJobs > 0
-            ? `${attention.failedJobs} failed job${attention.failedJobs !== 1 ? "s" : ""}`
-            : "Nothing needs you"}
+          {needsAttention > 0 ? attentionSummary(attention) : "Nothing needs you"}
         </p>
       </div>
 
@@ -835,6 +837,19 @@ function ContentTopbar({
       </span>
     </header>
   );
+}
+
+/** What the pill says when something needs a person — the specific thing, not a total. */
+function attentionSummary(attention: AttentionSnapshot): string {
+  const parts: string[] = [];
+  if (attention.failedJobs > 0) {
+    const gaveUp = attention.deadLetteredJobs > 0 ? ` (${attention.deadLetteredJobs} gave up)` : "";
+    parts.push(`${attention.failedJobs} failed job${attention.failedJobs === 1 ? "" : "s"}${gaveUp}`);
+  }
+  if (attention.indexerAlerts > 0) {
+    parts.push(`${attention.indexerAlerts} search source${attention.indexerAlerts === 1 ? "" : "s"} unhealthy`);
+  }
+  return parts.join(" · ");
 }
 
 function attentionCount(attention: ReturnType<typeof useAttention>, key: "none" | "movies" | "tv" | "indexers" | "activity") {
