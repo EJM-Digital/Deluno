@@ -1652,17 +1652,22 @@ public static class SeriesEndpointRouteBuilderExtensions
                     decisionPlan.SearchResult,
                     searchPlan.BestCandidate?.ReleaseName,
                     searchPlan.BestCandidate?.IndexerName,
+                    // The route's `seasonNumber` and `episode.SeasonNumber` differ
+                    // only by case, and System.Text.Json refuses to bind two such
+                    // members to one constructor parameter — it threw on every
+                    // season search, so the endpoint always returned 500 (#285).
+                    // The per-episode value is the accurate one and the route
+                    // value was redundant: seasonEpisodes is already filtered to
+                    // that season.
                     searchPlan.Candidates.Count == 0
                         ? JsonSerializer.Serialize(new
                         {
-                            seasonNumber,
                             episode.EpisodeId,
                             episode.SeasonNumber,
                             episode.EpisodeNumber
                         })
                         : JsonSerializer.Serialize(new
                         {
-                            seasonNumber,
                             episode.EpisodeId,
                             episode.SeasonNumber,
                             episode.EpisodeNumber,
