@@ -38,9 +38,22 @@ public sealed class FfprobeMediaProbeService : IMediaProbeService
         startInfo.ArgumentList.Add("-show_streams");
         startInfo.ArgumentList.Add(path);
 
+        Process? started;
         try
         {
-            using var process = Process.Start(startInfo);
+            started = Process.Start(startInfo);
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            // A missing binary is an environment state, not a bad file. The
+            // contract is "validate with ffprobe when available" — an install
+            // without FFmpeg must import unvalidated, not fail every import.
+            return Unavailable("ffprobe was not found. Install FFmpeg or set DELUNO_FFPROBE_PATH to enable stream validation.");
+        }
+
+        try
+        {
+            using var process = started;
             if (process is null)
             {
                 return Unavailable("ffprobe could not be started.");
