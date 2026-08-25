@@ -50,6 +50,8 @@ interface MetricChartProps {
   zeroBased?: boolean;
   /** Replaces the date range — for a series whose window is not calendar days. */
   footer?: string;
+  /** What to say when the whole window is zero. Defaults to "No {label} in the last N days". */
+  emptyLabel?: string;
   /**
    * Taller, with gridlines and the peak called out. A sparkline says "roughly
    * this shape"; a reader asking how many and when needs an axis to read
@@ -68,6 +70,7 @@ export function MetricChart({
   tone = "primary",
   zeroBased = true,
   footer,
+  emptyLabel,
   size = "sm",
   className
 }: MetricChartProps) {
@@ -97,11 +100,26 @@ export function MetricChart({
   const area = `${line} ${WIDTH},${height} 0,${height}`;
   const compareLine = compare ? project(compare.series).join(" ") : null;
 
-  // A chart needs enough readings to say something. One or two points drew a
-  // hairline with a single spike against the right edge — it read as broken
-  // rather than calm, and told the user nothing (#262). Below that bar the
-  // tile is just its value and help line, sized to its content.
-  const hasStory = points.length >= 3 && points.some((point) => point.value !== points[0].value);
+  // Two different situations used to collapse into "draw nothing", which left
+  // cards at wildly different heights in the same row — 109px beside 250px —
+  // and made a quiet metric look like a broken one.
+  //
+  //   · too few readings  → there is genuinely no shape to draw yet, so the
+  //     plot area says so. (The original #262 complaint: two points drew a
+  //     hairline with a spike against the right edge and read as broken.)
+  //   · a full window that never moved → that IS the shape. A flat line across
+  //     thirty days is an honest answer, and nothing like a spike.
+  //
+  // Either way the plot area is always reserved, so every chart card is the
+  // same height as its neighbours.
+  const hasEnoughReadings = points.length >= 3;
+  // A window where nothing ever happened draws a flat line hard against the
+  // bottom of an otherwise empty box — accurate, and completely dead to look
+  // at. Saying it in words is the same fact, legible, and the card keeps its
+  // height either way.
+  const nothingHappened =
+    points.every((point) => point.value === 0) &&
+    (!compare || compare.series.every((point) => point.value === 0));
   const [lastX, lastY] = (projected.at(-1) ?? "0,0").split(",").map(Number);
   const active = activeIndex === null ? null : points[activeIndex] ?? null;
   const compareActive = activeIndex === null ? null : compare?.series[activeIndex] ?? null;
@@ -119,7 +137,7 @@ export function MetricChart({
   return (
     <section
       className={cn(
-        "overflow-hidden rounded-2xl border border-hairline bg-card shadow-card dark:border-white/[0.07]",
+        "flex h-full flex-col overflow-hidden rounded-2xl border border-hairline bg-card shadow-card dark:border-white/[0.07]",
         className
       )}
     >
@@ -128,7 +146,15 @@ export function MetricChart({
           {label}
         </span>
         {compare ? (
-          <span className={cn("text-[length:var(--type-caption)] font-medium", TONE[compare.tone].text)}>
+          // Zero failures is good news, so it is not painted in an alarm
+          // colour. Three red zeros across a healthy row read as three
+          // problems at a glance, which is the opposite of what they mean.
+          <span
+            className={cn(
+              "text-[length:var(--type-caption)] font-medium",
+              compareTotal > 0 ? TONE[compare.tone].text : "text-muted-foreground"
+            )}
+          >
             {compareTotal} {compare.label.toLowerCase()}
           </span>
         ) : null}
@@ -143,7 +169,7 @@ export function MetricChart({
         ) : null}
       </div>
 
-      {hasStory ? (
+      {hasEnoughReadings && !nothingHappened ? (
         <div
           ref={plotRef}
           className="relative mt-2 cursor-crosshair focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
@@ -273,7 +299,18 @@ export function MetricChart({
             </>
           ) : null}
         </div>
-      ) : null}
+      ) : (
+        <div
+          className="mt-2 flex items-center justify-center border-t border-hairline"
+          style={{ height }}
+        >
+          <span className="text-[length:var(--type-micro)] text-muted-foreground">
+            {hasEnoughReadings
+              ? emptyLabel ?? `No ${label.toLowerCase()} in the last ${points.length} days`
+              : "not enough history yet"}
+          </span>
+        </div>
+      )}
 
       {/* Announced separately: the visual readout is aria-hidden because it is
           a duplicate of this, positioned. */}
@@ -281,20 +318,14 @@ export function MetricChart({
         {active ? `${formatDay(active.date)}: ${active.value} ${label.toLowerCase()}` : ""}
       </span>
 
-      <footer className={cn("flex items-center justify-between gap-2 px-[var(--card-pad-x)] py-1.5", hasStory && "border-t border-hairline")}>
+      <footer className="mt-auto flex items-center justify-between gap-2 border-t border-hairline px-[var(--card-pad-x)] py-1.5">
         {footer ? (
           <span className="truncate text-[length:var(--type-micro)] text-muted-foreground">{footer}</span>
-        ) : hasStory ? (
+        ) : (
           <>
             <span className="text-[length:var(--type-micro)] text-muted-foreground">{formatDay(points[0]?.date)}</span>
             <span className="text-[length:var(--type-micro)] text-muted-foreground">{formatDay(points[points.length - 1]?.date)}</span>
           </>
-        ) : (
-          // Without a chart there is no range to caption; saying the window
-          // once here keeps the row's tiles telling the same time story.
-          <span className="text-[length:var(--type-micro)] text-muted-foreground">
-            {points.length > 1 ? `${formatDay(points[0]?.date)} – ${formatDay(points[points.length - 1]?.date)}` : "not enough history yet"}
-          </span>
         )}
       </footer>
     </section>

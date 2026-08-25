@@ -543,7 +543,7 @@ export function DashboardPage() {
       {/* Below the fold on purpose: history and reference, not the live board.
           Charts at the large size here — this is where someone comes to read a
           trend, not to glance at one. */}
-      <div className="grid items-start gap-[var(--grid-gap)] md:grid-cols-2">
+      <div className="grid gap-[var(--grid-gap)] md:grid-cols-2">
         <LibraryComposition
           onDisk={Math.max(0, data.totalCount - data.missingCount - data.upgradeCount)}
           missing={data.missingCount}

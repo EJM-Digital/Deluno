@@ -110,7 +110,7 @@ export function LibraryComposition({
           </div>
         </div>
 
-        <dl className="grid min-w-0 flex-1 gap-1">
+        <dl className="flex min-w-0 flex-1 flex-col justify-center gap-1">
           {arcs.map((arc) => (
             <Link
               key={arc.label}
