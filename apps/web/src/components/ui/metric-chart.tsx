@@ -140,7 +140,7 @@ export function MetricChart({
                 <stop offset="100%" stopColor={TONE[tone].fill} stopOpacity="0" />
               </linearGradient>
             </defs>
-            <polygon points={area} fill={`url(#${gradientId})`} />
+            <polygon points={area} fill={`url(#${gradientId})`} className="metric-chart-area" />
             <polyline
               points={line}
               fill="none"
@@ -149,6 +149,10 @@ export function MetricChart({
               strokeLinejoin="round"
               strokeLinecap="round"
               vectorEffect="non-scaling-stroke"
+              // Drawn on, left to right, once. A chart that appears fully
+              // formed reads as a picture; one that draws reads as a reading.
+              className="metric-chart-line"
+              pathLength={1}
             />
             {compareLine ? (
               <polyline

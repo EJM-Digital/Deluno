@@ -11,6 +11,13 @@ import { Button } from "../ui/button";
 
 type LibraryResultsProps = {
   isLoading: boolean;
+  /**
+   * Whether a load for the current query has ever completed. "Empty" is a
+   * conclusion, not a default: without this the view announced an empty library
+   * the moment `isLoading` blinked false between two fetches, which is both a
+   * flash of the wrong answer and a lie while a request is still in flight.
+   */
+  hasLoadedOnce: boolean;
   items: MediaItem[];
   label: string;
   singular: string;
@@ -35,12 +42,12 @@ type LibraryResultsProps = {
 };
 
 export function LibraryResults({
-  isLoading, items, label, singular, libraryCount, hasActiveFilter, view, cardSize, density, displayOptions, selectedIds,
+  isLoading, hasLoadedOnce, items, label, singular, libraryCount, hasActiveFilter, view, cardSize, density, displayOptions, selectedIds,
   keyBust, isLoadingMore, hasPreviousPage, hasNextPage, onOpenCreate,
   onClearFilters, onSelect, onToggle, onToggleAll, onPreviousPage, onNextPage,
 }: LibraryResultsProps) {
   return <>
-    {isLoading && items.length === 0 ? (
+    {(isLoading || !hasLoadedOnce) && items.length === 0 ? (
       <GlassTile className="p-[var(--tile-pad)]"><LibraryGridSkeleton count={20} /></GlassTile>
     ) : items.length === 0 && hasActiveFilter ? (
       <EmptyState

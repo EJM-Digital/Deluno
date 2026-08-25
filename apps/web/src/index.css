@@ -1487,6 +1487,58 @@ html .text-\[64px\] {
   to   { transform: translateX(160%)  skewX(-12deg); }
 }
 
+/* A mote travelling along a pipeline connector (components/app/acquisition-pipeline.tsx).
+   Only applied while that stage actually holds work, so a still board means a
+   still pipeline rather than an animation nobody wired up. */
+@keyframes flow {
+  0%   { transform: translateX(0);    opacity: 0; }
+  15%  { opacity: 1; }
+  85%  { opacity: 1; }
+  100% { transform: translateX(1.5rem); opacity: 0; }
+}
+
+/* ── METRIC CHART DRAW-IN (components/ui/metric-chart.tsx) ──────────
+   The trace draws itself once, left to right, and the fill follows it in. The
+   line uses pathLength="1" so one dash length covers any series regardless of
+   how many points it has. Purely presentational: the geometry is already
+   correct on the first frame, so a reader who never sees the animation — or
+   who has asked for less motion — loses nothing. */
+@keyframes metric-draw {
+  from { stroke-dashoffset: 1; }
+  to   { stroke-dashoffset: 0; }
+}
+
+@keyframes metric-fill {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .metric-chart-line {
+    stroke-dasharray: 1;
+    animation: metric-draw 900ms var(--ease-emphasis) both;
+  }
+
+  .metric-chart-area {
+    animation: metric-fill 900ms var(--ease-standard) 200ms both;
+  }
+}
+
+/* ── LIVE ARRIVAL (components/app/activity-ticker.tsx) ──────────────
+   A row that has just streamed in lights briefly and settles. Runs once, on
+   mount, and only for rows that came over the wire — the seeded backlog is not
+   news. The row is fully legible on the first frame; this only draws the eye. */
+@keyframes activity-arrival {
+  from { background-color: hsl(var(--primary) / 0.14); }
+  to   { background-color: transparent; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .activity-arrival {
+    animation: activity-arrival 1600ms var(--ease-standard) both;
+  }
+}
+
 /* ── DUAL-THUMB RANGE (components/ui/range-slider.tsx) ──────────────
    Two range inputs stacked over one track. The inputs are transparent and
    pointer-transparent; only their thumbs take pointer events, so whichever

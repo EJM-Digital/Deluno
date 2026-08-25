@@ -1,26 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
+import { ChevronRight } from "lucide-react";
 import { Link, useLoaderData, useNavigate } from "react-router-dom";
-import {
-  AlertTriangle,
-  ArrowUpRight,
-  Calendar,
-  Download,
-  HardDrive,
-  RadioTower,
-  Sparkles
-} from "lucide-react";
 import type { ActiveDownload, IndexerHealthItem, MediaItem } from "../lib/media-types";
 import { MEDIA_STATUS_PRESENTATION, mediaStatusIsActive } from "../lib/media-status-presentation";
 import {
   emptyPlatformSettingsSnapshot,
   fetchJson, fetchPageItems,
+  type ActivityEventItem,
   type DownloadClientItem,
   type DownloadTelemetryOverview,
   type IndexerItem,
   type LibraryItem,
   type LibraryAutomationStateItem,
   type CataloguePage,
+  type MonitoringDashboardSnapshot,
   type MovieListItem,
   type MovieWantedSummary,
   type PlatformSettingsSnapshot,
@@ -37,16 +31,18 @@ import { adaptIndexerHealth, adaptMovieItems, adaptSeriesItems, adaptTelemetryDo
 import { authedFetch } from "../lib/use-auth";
 import { buildSetupStatus, type SetupAttentionTone, type SetupStatusModel } from "../lib/setup-status";
 import { cn } from "../lib/utils";
+import { AcquisitionPipeline } from "../components/app/acquisition-pipeline";
+import { ActivityTicker } from "../components/app/activity-ticker";
+import { DashboardHero } from "../components/app/dashboard-hero";
+import { SystemPulse } from "../components/app/system-pulse";
 import { OnboardingBanner } from "../components/shell/onboarding-banner";
 import { SetupProgressLadder } from "../components/shell/setup-progress-ladder";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { Chip } from "../components/ui/chip";
-import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
-import { SummaryStrip } from "../components/ui/summary-strip";
+import { ListCard, ListEmpty } from "../components/ui/list-card";
 import { MetricChart, type MetricPoint } from "../components/ui/metric-chart";
-import { useLiveSeries } from "../hooks/use-live-series";
 import { useCoalescedRevalidate } from "../hooks/use-visible-interval";
+import { StatusLed, type LedTone } from "../components/ui/status-led";
 import { RealtimeGroups, useSignalREvent, useSignalRResync } from "../lib/use-signalr";
 
 interface OutcomeSeries {
@@ -70,6 +66,10 @@ interface DashboardMetrics {
 interface DashboardLoaderData {
   sources: DashboardSources;
   metrics: DashboardMetrics | null;
+  /** Operational state — readiness, storage, service health, latency. */
+  monitoring: MonitoringDashboardSnapshot | null;
+  /** Seeds the live ticker so it is populated before the first push arrives. */
+  activity: ActivityEventItem[];
   /** Combined client throughput right now, in MB/s. */
   speedMbps: number;
   activeDownloads: ActiveDownload[];
@@ -115,6 +115,8 @@ interface DashboardSources {
   policySets: PolicySetItem[];
   qualityProfiles: QualityProfileItem[];
   metrics: DashboardMetrics | null;
+  monitoring: MonitoringDashboardSnapshot | null;
+  activity: ActivityEventItem[];
 }
 
 function emptyDashboardSources(): DashboardSources {
@@ -127,7 +129,7 @@ function emptyDashboardSources(): DashboardSources {
     indexers: [], clients: [], libraries: [], automation: [], searchCycles: [], retryWindows: [], upcomingEpisodes: [],
     setupProgress: EMPTY_SETUP_PROGRESS,
     settings: emptyPlatformSettingsSnapshot,
-    policySets: [], qualityProfiles: [], metrics: null
+    policySets: [], qualityProfiles: [], metrics: null, monitoring: null, activity: []
   };
 }
 
@@ -143,7 +145,6 @@ interface DashboardUpcomingItem {
   startsAt: string;
 }
 
-const EMPTY_SERIES: MetricPoint[] = [];
 const EMPTY_MOVIE_WANTED: MovieWantedSummary = { totalWanted: 0, missingCount: 0, upgradeCount: 0, waitingCount: 0, recentItems: [] };
 const EMPTY_SERIES_WANTED: SeriesWantedSummary = { totalWanted: 0, missingCount: 0, upgradeCount: 0, waitingCount: 0, recentItems: [] };
 const EMPTY_TELEMETRY: DownloadTelemetryOverview = {
@@ -173,14 +174,18 @@ export async function dashboardLoader(): Promise<DashboardLoaderData> {
     fetchJson<QualityProfileItem[]>("/api/quality-profiles").catch((): QualityProfileItem[] => [])
   ]);
 
-  // A dashboard that cannot draw its charts still has to render, so a failed
-  // metrics call degrades to no charts rather than an error page.
-  const metrics = await fetchJson<DashboardMetrics>("/api/dashboard/metrics?days=30").catch(() => null);
+  // A dashboard that cannot draw its charts or read its own health still has to
+  // render, so these degrade to a stated gap rather than an error page.
+  const [metrics, monitoring, activity] = await Promise.all([
+    fetchJson<DashboardMetrics>("/api/dashboard/metrics?days=30").catch(() => null),
+    fetchJson<MonitoringDashboardSnapshot>("/api/monitoring/dashboard").catch(() => null),
+    fetchPageItems<ActivityEventItem>("/api/activity?pageSize=10").catch((): ActivityEventItem[] => [])
+  ]);
 
   return buildDashboardData({
     moviePage, movieWanted, showPage, showWanted, telemetry, indexers, clients,
     libraries, automation, searchCycles, retryWindows, upcomingEpisodes,
-    setupProgress, settings, policySets, qualityProfiles, metrics
+    setupProgress, settings, policySets, qualityProfiles, metrics, monitoring, activity
   });
 }
 
@@ -188,7 +193,7 @@ function buildDashboardData(sources: DashboardSources): DashboardLoaderData {
   const {
     moviePage, movieWanted, showPage, showWanted, telemetry, indexers, clients,
     libraries, automation, searchCycles, retryWindows, upcomingEpisodes,
-    setupProgress, settings, policySets, qualityProfiles, metrics
+    setupProgress, settings, policySets, qualityProfiles, metrics, monitoring, activity
   } = sources;
   const adaptedMovies = adaptMovieItems(moviePage.items, movieWanted);
   const adaptedShows = adaptSeriesItems(showPage.items, showWanted);
@@ -200,6 +205,8 @@ function buildDashboardData(sources: DashboardSources): DashboardLoaderData {
   return {
     sources,
     metrics,
+    monitoring,
+    activity,
     speedMbps: telemetry.summary.totalSpeedMbps,
     activeDownloads,
     // Downloading means downloading. Counting import-ready items here made
@@ -238,9 +245,23 @@ const DASHBOARD_REFRESH = {
   refetchIntervalInBackground: false
 } as const;
 
+/**
+ * Health moves on its own clock. Realtime nudges already invalidate this along
+ * with everything else, so the interval is only the floor for the things no
+ * event announces — a drive filling up, a client that quietly stopped
+ * answering. Twice the shared heartbeat, and no faster: the readiness check
+ * behind it writes a probe file, so polling it hard would be a real cost for
+ * numbers that do not move in seconds.
+ */
+const MONITORING_REFRESH = {
+  staleTime: 30_000,
+  refetchInterval: 30_000,
+  refetchIntervalInBackground: false
+} as const;
+
 function useDashboardData(initial: DashboardLoaderData) {
   const source = initial.sources;
-  const [moviePage, movieWanted, showPage, showWanted, telemetry, indexers, clients, libraries, automation, searchCycles, retryWindows, upcomingEpisodes, setupProgress, settings, policySets, qualityProfiles, metrics] = useQueries({
+  const [moviePage, movieWanted, showPage, showWanted, telemetry, indexers, clients, libraries, automation, searchCycles, retryWindows, upcomingEpisodes, setupProgress, settings, policySets, qualityProfiles, metrics, monitoring, activity] = useQueries({
     queries: [
       { ...DASHBOARD_REFRESH, queryKey: ["movies"], queryFn: () => fetchJson<CataloguePage<MovieListItem>>("/api/movies/page?pageSize=14&sort=added&direction=desc").catch(() => emptyDashboardSources().moviePage), initialData: source.moviePage },
       { ...DASHBOARD_REFRESH, queryKey: ["movies", "wanted"], queryFn: () => fetchJson<MovieWantedSummary>("/api/movies/wanted").catch(() => EMPTY_MOVIE_WANTED), initialData: source.movieWanted },
@@ -258,7 +279,9 @@ function useDashboardData(initial: DashboardLoaderData) {
       { ...DASHBOARD_REFRESH, queryKey: ["settings"], queryFn: () => fetchJson<PlatformSettingsSnapshot>("/api/settings").catch(() => emptyPlatformSettingsSnapshot), initialData: source.settings },
       { ...DASHBOARD_REFRESH, queryKey: ["policy-sets"], queryFn: () => fetchJson<PolicySetItem[]>("/api/policy-sets").catch(() => []), initialData: source.policySets },
       { ...DASHBOARD_REFRESH, queryKey: ["quality-profiles"], queryFn: () => fetchJson<QualityProfileItem[]>("/api/quality-profiles").catch(() => []), initialData: source.qualityProfiles },
-      { ...DASHBOARD_REFRESH, queryKey: ["dashboard-metrics"], queryFn: () => fetchJson<DashboardMetrics>("/api/dashboard/metrics?days=30").catch(() => null), initialData: source.metrics }
+      { ...DASHBOARD_REFRESH, queryKey: ["dashboard-metrics"], queryFn: () => fetchJson<DashboardMetrics>("/api/dashboard/metrics?days=30").catch(() => null), initialData: source.metrics },
+      { ...MONITORING_REFRESH, queryKey: ["monitoring-dashboard"], queryFn: () => fetchJson<MonitoringDashboardSnapshot>("/api/monitoring/dashboard").catch(() => null), initialData: source.monitoring },
+      { ...DASHBOARD_REFRESH, queryKey: ["activity", "dashboard"], queryFn: () => fetchPageItems<ActivityEventItem>("/api/activity?pageSize=10").catch(() => []), initialData: source.activity }
     ]
   });
 
@@ -279,7 +302,9 @@ function useDashboardData(initial: DashboardLoaderData) {
     settings: settings.data ?? source.settings,
     policySets: policySets.data ?? source.policySets,
     qualityProfiles: qualityProfiles.data ?? source.qualityProfiles,
-    metrics: metrics.data ?? source.metrics
+    metrics: metrics.data ?? source.metrics,
+    monitoring: monitoring.data ?? source.monitoring,
+    activity: activity.data ?? source.activity
   });
 }
 
@@ -323,16 +348,29 @@ export function DashboardPage() {
     setLiveSpeedMbps(data.speedMbps);
   }, [data.speedMbps]);
 
-  // Progress events move the sparkline without reloading the whole dashboard.
-  const speedSeries = useLiveSeries(Number(liveSpeedMbps.toFixed(2)), { samples: 60 });
-
+  // Progress events feed the wave directly; it keeps its own rolling window on
+  // an animation clock, so there is no series to accumulate here any more.
   const healthIssues = data.indexerHealth.filter((item) => item.status !== "healthy").length;
-  const topDownload = data.activeDownloads[0];
   const upcomingGroups = groupDashboardUpcoming(data.upcoming);
   const setupProgress = data.setupProgress;
+  const heroState = describeSystem(data, healthIssues);
 
-  /** Everything that wants a decision from you, in one list, most urgent first. */
+  /**
+   * Everything that wants a decision from you, in one list, most urgent first.
+   * Monitoring alerts lead: a failing readiness check or a drive about to fill
+   * outranks a missing episode, and until now they were only visible in System.
+   */
   const attention = [
+    ...(data.monitoring?.alerts ?? []).map((alert) => ({
+      id: `alert:${alert.code}`,
+      // The endpoint returns open alerts only, so every one of them is asking
+      // for something — there is no "suggestion" tier here.
+      tone: "warn" as SetupAttentionTone,
+      title: alert.summary,
+      text: alert.details,
+      href: "/system",
+      action: "Open System"
+    })),
     ...data.setupStatus.attentionItems.map((item) => ({
       id: `setup:${item.id}`,
       tone: item.tone,
@@ -385,64 +423,125 @@ export function DashboardPage() {
       />
       <SetupProgressLadder status={data.setupStatus} />
 
-      <SummaryStrip
-        cells={[
+      {/* The opening statement: how the whole system is, at a glance. */}
+      <DashboardHero
+        headline={heroState.headline}
+        detail={heroState.detail}
+        tone={heroState.tone}
+        speedMbps={liveSpeedMbps}
+        transferCount={data.activeDownloadCount}
+        stats={[
           {
             label: "In your library",
-            value: data.totalCount.toLocaleString(),
-            help: data.totalCount > 0 ? `${data.movieCount} movies · ${data.showCount} shows` : data.configuredLibraryCount > 0 ? "no media yet" : "no library set up yet"
+            value: data.totalCount,
+            help: data.totalCount > 0 ? `${data.movieCount} movies · ${data.showCount} shows` : data.configuredLibraryCount > 0 ? "no media yet" : "no library set up yet",
+            href: "/movies"
           },
-          { label: "Being watched for", value: data.monitoredCount.toLocaleString(), help: "Deluno keeps looking for these" },
-          {
-            label: "Downloading",
-            value: data.activeDownloadCount.toString(),
-            help: data.activeDownloadCount > 0
-              ? `${data.speedMbps.toFixed(1)} MB/s`
-              : data.importReadyCount > 0
-                ? `${data.importReadyCount} waiting to import`
-                : "nothing in flight"
-          },
+          { label: "Watching for", value: data.monitoredCount, help: "Deluno keeps looking for these", href: "/search-cycles" },
           {
             label: "Still missing",
-            value: data.missingCount.toString(),
-            // "1 / nothing waiting" contradicted itself: the help line spoke
-            // about upgrades while the value spoke about missing titles (#258).
-            help: data.missingCount === 0
-              ? "nothing missing"
-              : data.upgradeCount
-                ? `plus ${data.upgradeCount} could be upgraded`
-                : "Deluno is searching on schedule",
-            tone: data.missingCount > 0 ? "warning" : undefined
+            value: data.missingCount,
+            help: data.missingCount === 0 ? "nothing missing" : "no acceptable release yet",
+            tone: data.missingCount > 0 ? "warn" : "default",
+            href: "/search-cycles/missing"
           },
           {
-            label: "Connections",
-            value: data.indexerHealthPercent === null ? "—" : `${data.indexerHealthPercent}%`,
-            help: data.indexerHealth.length === 0 ? "none set up yet" : healthIssues > 0 ? `${healthIssues} need a look` : "all responding",
-            tone: data.indexerHealth.length && healthIssues > 0 ? "warning" : undefined
+            label: "Could be upgraded",
+            value: data.upgradeCount,
+            help: data.upgradeCount === 0 ? "everything meets its profile" : "a better release would be accepted",
+            href: "/search-cycles/upgrades"
           }
         ]}
       />
 
-      {/* items-start: a tile without a chart is shorter, and stretching it to
-          match its neighbours just moves the empty space inside the card (#262). */}
-      <div className="grid items-start gap-[var(--grid-gap)] md:grid-cols-2 xl:grid-cols-3">
-        {/* Live, and labelled as such: this is sampled in the browser, not stored. */}
-        <MetricChart
-          label="Download speed"
-          value={liveSpeedMbps > 0 ? `${liveSpeedMbps.toFixed(1)} MB/s` : "Idle"}
-          help={
-            data.activeDownloadCount > 0
-              ? `${data.activeDownloadCount} transfer${data.activeDownloadCount === 1 ? "" : "s"} in flight`
-              : data.importReadyCount > 0
-                ? `${data.importReadyCount} waiting to import`
-                : "nothing downloading"
-          }
-          series={speedSeries.length ? speedSeries : [{ date: new Date().toISOString(), value: 0 }]}
-          tone={liveSpeedMbps > 0 ? "success" : "primary"}
-          footer={speedSeries.length > 1 ? "since you opened this page" : "waiting for a second reading"}
+      {/* THE PANE. Two grid rows carrying everything that answers "what is
+          happening and what needs me", sized to sit on one screen: health and
+          decisions above, then the three live panels. Each list panel caps its
+          own height and scrolls inside itself, so one busy panel cannot push
+          the rest of the board off the bottom of the page (#270). */}
+      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-3">
+        <SystemPulse snapshot={data.monitoring} className="xl:col-span-2" />
+
+        <ListCard
+          title="Needs you"
+          count={attention.length === 0 ? "nothing right now" : `${attention.length}`}
+          className="xl:row-span-1"
+        >
+          {attention.length === 0 ? (
+            <ListEmpty title="Nothing needs a decision" description="Deluno will raise anything that wants your attention here." />
+          ) : (
+            <div className="max-h-[164px] overflow-y-auto">
+              {attention.map((item) => (
+                <Link
+                  key={item.id}
+                  to={item.href}
+                  className="flex min-h-[52px] items-center gap-2.5 border-b border-hairline px-[var(--card-pad-x)] py-2 transition-colors last:border-b-0 hover:bg-primary/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                >
+                  <StatusLed tone={item.tone === "warn" ? "warn" : item.tone === "success" ? "ok" : "info"} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[length:var(--type-body-sm)] font-medium text-foreground">{item.title}</span>
+                    <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{item.text}</span>
+                  </span>
+                  <ChevronRight aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                </Link>
+              ))}
+            </div>
+          )}
+        </ListCard>
+      </div>
+
+      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-3">
+        <AcquisitionPipeline
+          summary={data.sources.telemetry.summary}
+          performance={data.monitoring?.performance}
+          inFlight={data.activeDownloads}
         />
-        {data.metrics ? (
-          <>
+
+        <ActivityTicker seed={data.activity} limit={6} />
+
+        <ListCard
+          // This card carries episode air dates *and* scheduled search retries,
+          // including for movies — so "Airing soon / Show / Episode" filed a
+          // film under a TV heading with an episode of "Retry" (#258).
+          title="Coming up"
+          count="next 72 hours"
+          actions={
+            <Button asChild type="button" variant="outline" size="sm">
+              <Link to="/calendar">Schedule</Link>
+            </Button>
+          }
+        >
+          {upcomingGroups.length === 0 ? (
+            <ListEmpty title="Nothing scheduled" description="Air dates and release dates appear here as Deluno learns them." />
+          ) : (
+            <div className="max-h-[232px] overflow-y-auto">
+              {upcomingGroups.flatMap((group) =>
+                group.entries.slice(0, 3).map((entry) => (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    onClick={() => navigate(entry.href)}
+                    className="flex min-h-[52px] w-full items-center gap-2.5 border-b border-hairline px-[var(--card-pad-x)] py-2 text-left transition-colors last:border-b-0 hover:bg-primary/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[length:var(--type-body-sm)] font-medium text-foreground">{entry.title}</span>
+                      <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{entry.episode}</span>
+                    </span>
+                    <span className="shrink-0 text-right">
+                      <span className="block text-[length:var(--type-caption)] font-medium text-foreground">{group.day}</span>
+                      <span className="block text-[length:var(--type-micro)] tabular-nums text-muted-foreground">{entry.dateLabel}</span>
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </ListCard>
+      </div>
+
+      {/* Below the fold on purpose: history and reference, not the live board. */}
+      {data.metrics ? (
+        <div className="grid items-start gap-[var(--grid-gap)] md:grid-cols-2 xl:grid-cols-3">
           <MetricChart
             label="Library"
             value={String(data.metrics.librarySize.at(-1)?.value ?? 0)}
@@ -459,99 +558,15 @@ export function DashboardPage() {
             compare={{ series: data.metrics.searches.failed, label: "no match", tone: "warning" }}
             tone="success"
           />
-          </>
-        ) : null}
-      </div>
-
-      {attention.length > 0 ? (
-        <ListCard title="Worth a look" count={`${attention.length} ${attention.length === 1 ? "thing needs" : "things need"} a decision from you`}>
-          <ListTable columns={[{ label: "What" }, { label: "Why", width: "minmax(0,2fr)" }, { label: "Go", width: "150px", mobile: true, srOnly: true }]} chevron={false}>
-            {attention.map((item) => (
-              <ListRow key={item.id}>
-                <ListNameCell name={item.title} sub={toneWord(item.tone)} />
-                <ListCell primary={item.text} />
-                <ListCell mobile align="end">
-                  <Button asChild type="button" variant="outline" size="sm">
-                    <Link to={item.href}>{item.action}</Link>
-                  </Button>
-                </ListCell>
-              </ListRow>
-            ))}
-          </ListTable>
-        </ListCard>
-      ) : null}
-
-      {data.activeDownloads.length ? (
-        <ListCard
-          // "Downloading now" listed finished-but-not-imported work too, so a
-          // completed transfer sat here at 100% and 0.0 MB/s as if stuck. The
-          // card covers the whole in-flight pipeline, so it says so, and each
-          // row states which stage it is actually at (#258).
-          title="In flight"
-          count={data.activeDownloadCount > 0
-            ? `${data.activeDownloadCount} downloading${data.importReadyCount > 0 ? ` · ${data.importReadyCount} waiting to import` : ""}`
-            : `${data.importReadyCount} waiting to import`}
-          actions={
-            <Button asChild type="button" variant="outline" size="sm">
-              <Link to="/queue">Open Transfers</Link>
-            </Button>
-          }
-        >
-          <ListTable columns={[{ label: "Release" }, { label: "Progress", width: "minmax(0,1.2fr)" }, { label: "Speed / left" }, { label: "From" }]} chevron={false}>
-            {data.activeDownloads.slice(0, 6).map((download) => {
-              const finished = download.progress >= 100 || download.speedMbps <= 0;
-              return (
-                <ListRow key={download.id}>
-                  <ListNameCell name={download.title} sub={download.quality ?? "Unknown quality"} />
-                  <ListCell>
-                    <span aria-hidden className="block h-1.5 w-full overflow-hidden rounded-full bg-surface-3">
-                      <span
-                        className={cn("block h-full rounded-full", finished ? "bg-success/70" : "bg-primary")}
-                        style={{ width: `${Math.min(100, Math.max(0, download.progress))}%` }}
-                      />
-                    </span>
-                    <span className="mt-1 block text-[length:var(--type-caption)] tabular-nums text-muted-foreground">
-                      {finished ? "Downloaded" : `${Math.round(download.progress)}%`}
-                    </span>
-                  </ListCell>
-                  <ListCell
-                    numeric
-                    primary={finished ? "Waiting to import" : `${download.speedMbps.toFixed(1)} MB/s`}
-                    secondary={!finished && download.etaMinutes > 0 ? `${download.etaMinutes} min left` : undefined}
-                  />
-                  <ListCell primary={download.indexer} secondary={download.peers ? `${download.peers} peers` : undefined} />
-                </ListRow>
-              );
-            })}
-          </ListTable>
-        </ListCard>
-      ) : null}
-
-      {upcomingGroups.length ? (
-        <ListCard
-          // This card carries episode air dates *and* scheduled search
-          // retries, including for movies — so "Airing soon / Show / Episode"
-          // filed a film under a TV heading with an episode of "Retry" (#258).
-          title="Coming up"
-          count="The next 72 hours"
-          actions={
-            <Button asChild type="button" variant="outline" size="sm">
-              <Link to="/calendar">Open Schedule</Link>
-            </Button>
-          }
-        >
-          <ListTable columns={[{ label: "Title" }, { label: "What", width: "minmax(0,1.4fr)" }, { label: "When", width: "170px", mobile: true }]}>
-            {upcomingGroups.flatMap((group) =>
-              group.entries.slice(0, 3).map((entry) => (
-                <ListRow key={entry.id} onClick={() => navigate(entry.href)}>
-                  <ListNameCell name={entry.title} sub={entry.network} />
-                  <ListCell primary={entry.episode} />
-                  <ListCell numeric mobile primary={group.day} secondary={entry.dateLabel} />
-                </ListRow>
-              ))
-            )}
-          </ListTable>
-        </ListCard>
+          <MetricChart
+            label="Grabs"
+            value={sumSeries(data.metrics.grabs).toLocaleString()}
+            help={`sent to a download client in ${data.metrics.days} days`}
+            series={data.metrics.grabs}
+            compare={{ series: data.metrics.importFailures, label: "failed to import", tone: "danger" }}
+            tone="primary"
+          />
+        </div>
       ) : null}
 
       <ListCard
@@ -581,179 +596,81 @@ export function DashboardPage() {
           </div>
         )}
       </ListCard>
-
-      {data.indexerHealth.length ? (
-        <ListCard
-          title="Connections"
-          count={healthIssues ? `${healthIssues} of ${data.indexerHealth.length} need a look` : "all responding"}
-          actions={
-            <Button asChild type="button" variant="outline" size="sm">
-              <Link to="/indexers">Open Connections</Link>
-            </Button>
-          }
-        >
-          <ListTable columns={[{ label: "Connection" }, { label: "Response", width: "minmax(0,1fr)" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]} chevron={false}>
-            {data.indexerHealth.map((item) => (
-              <ListRow key={item.id}>
-                <ListNameCell name={item.name} />
-                <ListCell numeric primary={item.responseMs === null ? "—" : `${item.responseMs} ms`} />
-                <ListCell mobile>
-                  <Chip tone={item.status === "healthy" ? "ok" : item.status === "degraded" ? "warn" : "bad"}>{item.status}</Chip>
-                </ListCell>
-              </ListRow>
-            ))}
-          </ListTable>
-        </ListCard>
-      ) : null}
     </div>
   );
 }
 
-function toneWord(tone: SetupAttentionTone) {
-  if (tone === "warn") return "Needs attention";
-  if (tone === "success") return "Done";
-  return "Suggestion";
-}
+/**
+ * The one sentence at the top of the pane. Ranked by what would stop Deluno
+ * working, so the headline is always the most consequential true statement —
+ * never a cheerful default sitting above a broken system.
+ */
+function describeSystem(data: DashboardLoaderData, healthIssues: number): { headline: string; detail: string; tone: LedTone } {
+  const services = data.monitoring?.services;
+  const readiness = data.monitoring?.readiness;
 
-function MetricPlane({
-  label,
-  value,
-  unit,
-  meta,
-  icon: Icon,
-  tone,
-  visual
-}: {
-  label: string;
-  value: string;
-  unit?: string;
-  meta: string;
-  icon: typeof HardDrive;
-  tone: "primary" | "success" | "warn" | "info" | "neutral";
-  visual?: React.ReactNode;
-}) {
-  return (
-    <article
-      className={cn(
-        "group relative min-h-[var(--metric-plane-min-height)] min-w-0 overflow-hidden rounded-xl border border-hairline bg-card p-[var(--tile-pad)] shadow-card",
-        "transition duration-200 hover:border-primary/30 hover:shadow-lg dark:border-white/[0.06]"
-      )}
-    >
-      <AmbientTone tone={tone} />
-      <div className="relative flex h-full flex-col justify-between">
-        <div className="flex min-w-0 items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="density-nowrap text-[length:var(--metric-label-size)] font-bold uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
-            <div className="mt-3 flex min-w-0 items-end gap-1.5">
-              <span className="density-nowrap tabular font-display text-[length:var(--metric-value-size)] font-bold leading-none tracking-display text-foreground">
-                {value}
-              </span>
-              {unit ? <span className="pb-1 text-[length:var(--metric-unit-size)] font-semibold text-muted-foreground">{unit}</span> : null}
-            </div>
-          </div>
-          <span className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border", toneClass(tone, "icon"))}>
-            <Icon className="h-[var(--shell-icon-size)] w-[var(--shell-icon-size)]" strokeWidth={1.9} />
-          </span>
-        </div>
-        <div>
-          {visual ? <div className="mb-2">{visual}</div> : null}
-          <p className="truncate text-[length:var(--metric-meta-size)] font-medium text-muted-foreground">{meta}</p>
-        </div>
-      </div>
-    </article>
-  );
-}
+  if (readiness && !readiness.ready) {
+    return {
+      headline: "Deluno is not ready",
+      detail: `${readiness.failedChecks} of ${readiness.totalChecks} readiness checks are failing. Nothing will be searched or imported until they pass.`,
+      tone: "danger"
+    };
+  }
 
-function RenderPanel({
-  children,
-  className
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <section className={cn("relative self-start overflow-hidden rounded-xl border border-hairline bg-card p-[var(--tile-pad)] shadow-card dark:border-white/[0.06]", className)}>
-      {children}
-    </section>
-  );
-}
+  if (data.monitoring?.storage.lowStorage) {
+    return {
+      headline: "Running out of space",
+      detail: "The drive holding your library is nearly full. Imports will start failing before it is completely gone.",
+      tone: "danger"
+    };
+  }
 
-function PanelHeader({
-  eyebrow,
-  title,
-  action,
-  icon: Icon
-}: {
-  eyebrow: string;
-  title: string;
-  action?: React.ReactNode;
-  icon?: typeof Sparkles;
-}) {
-  return (
-    <div className="mb-[var(--grid-gap)] flex items-start justify-between gap-[var(--grid-gap)]">
-      <div className="min-w-0">
-        <p className="flex items-center gap-2 text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-          {Icon ? <Icon className="h-3.5 w-3.5 text-primary" /> : null}
-          {eyebrow}
-        </p>
-        <h2 className="mt-1 font-display text-[length:var(--type-title-sm)] font-semibold tracking-tight text-foreground">{title}</h2>
-      </div>
-      {action ? <div className="shrink-0">{action}</div> : null}
-    </div>
-  );
-}
+  if (services && services.failedJobs > 0) {
+    return {
+      headline: `${services.failedJobs} ${services.failedJobs === 1 ? "job has" : "jobs have"} failed`,
+      detail: "Deluno stopped retrying these. Open Activity to see what happened and put them back in the queue.",
+      tone: "warn"
+    };
+  }
 
-function DecisionRow({
-  title,
-  text,
-  tone,
-  href,
-  action
-}: {
-  title: string;
-  text: string;
-  tone: SetupAttentionTone;
-  href: string;
-  action?: string;
-}) {
-  return (
-    <Link to={href} className="group relative block overflow-hidden rounded-lg border border-hairline bg-surface-1/70 p-4 transition hover:border-primary/30 hover:bg-primary/5">
-      <AmbientTone tone={tone} subtle />
-      <div className="relative flex gap-3">
-        <span className={cn("mt-1 h-2.5 w-2.5 shrink-0 rounded-full", toneClass(tone, "dot"))} />
-        <span className="min-w-0">
-          <span className="block text-[length:var(--type-body-sm)] font-semibold text-foreground">{title}</span>
-          <span className="mt-1 block text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">{text}</span>
-          {action ? (
-            <span className="mt-3 inline-flex items-center gap-1 text-[length:var(--type-micro)] font-bold uppercase tracking-[0.12em] text-primary">
-              {action}
-              <ArrowUpRight className="h-3 w-3" />
-            </span>
-          ) : null}
-        </span>
-      </div>
-    </Link>
-  );
-}
+  if (healthIssues > 0) {
+    return {
+      headline: `${healthIssues} ${healthIssues === 1 ? "connection needs" : "connections need"} a look`,
+      detail: "A search source or download client is not answering, so releases cannot be found or sent anywhere.",
+      tone: "warn"
+    };
+  }
 
-function DownloadSummaryRow({ download }: { download: ActiveDownload }) {
-  return (
-    <Link to="/queue" className="grid gap-3 px-[var(--tile-pad)] py-3 transition hover:bg-primary/5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-      <span className="min-w-0">
-        <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{download.title}</span>
-        <span className="mt-1 block text-[length:var(--type-caption)] text-muted-foreground">
-          {download.quality ?? "Quality not reported"} - {download.indexer || "source not reported"}
-        </span>
-        <span className="mt-2 block h-1.5 overflow-hidden rounded-full bg-muted/60">
-          <span className="block h-full rounded-full bg-primary" style={{ width: `${Math.max(0, Math.min(100, download.progress))}%` }} />
-        </span>
-      </span>
-      <span className="text-left sm:text-right">
-        <span className="block text-[length:var(--type-body-sm)] font-semibold tabular-nums text-foreground">{Math.round(download.progress)}%</span>
-        <span className="block text-[length:var(--type-caption)] text-muted-foreground">{download.speedMbps.toFixed(1)} MB/s - {download.etaMinutes > 0 ? `${download.etaMinutes} min left` : "finishing"}</span>
-      </span>
-    </Link>
-  );
+  if (data.activeDownloadCount > 0 || data.importReadyCount > 0) {
+    const parts = [
+      data.activeDownloadCount > 0 ? `${data.activeDownloadCount} downloading` : null,
+      data.importReadyCount > 0 ? `${data.importReadyCount} waiting to import` : null
+    ].filter(Boolean);
+    return {
+      headline: "Working on it",
+      detail: `${parts.join(" · ")}. Everything else is watched and up to date.`,
+      tone: "ok"
+    };
+  }
+
+  if (data.totalCount === 0) {
+    return {
+      // Deliberately not "Nothing in the library yet" — that sentence already
+      // belongs to the Recently added card lower down, and saying it twice on
+      // one screen reads as a bug rather than emphasis.
+      headline: "Ready and waiting",
+      detail: "Deluno is set up and idle. Add a movie or a show and it will start watching for releases straight away.",
+      tone: "idle"
+    };
+  }
+
+  return {
+    headline: "Everything is running",
+    detail: data.missingCount > 0
+      ? `${data.monitoredCount.toLocaleString()} titles are being watched for, and ${data.missingCount} of them have no acceptable release yet.`
+      : `${data.monitoredCount.toLocaleString()} titles are being watched for and nothing is missing.`,
+    tone: "ok"
+  };
 }
 
 function PosterPreview({ item }: { item: MediaItem }) {
@@ -801,78 +718,8 @@ function Artwork({
   );
 }
 
-function HealthRow({ item }: { item: IndexerHealthItem }) {
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-hairline bg-surface-1/70 px-3 py-2.5">
-      <span className="min-w-0">
-        <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{item.name}</span>
-        <span className="block text-[length:var(--type-caption)] text-muted-foreground">
-          {item.responseMs === null ? "Never checked" : `${item.responseMs} ms`}
-        </span>
-      </span>
-      <span className="flex items-center gap-2 text-[length:var(--type-caption)] font-semibold capitalize text-muted-foreground">
-        <span className={cn("h-2.5 w-2.5 rounded-full", healthDot(item.status))} />
-        {item.status}
-      </span>
-    </div>
-  );
-}
-
-function EmptyPanelText({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="rounded-lg border border-dashed border-hairline bg-surface-1/60 p-4 text-[length:var(--type-body-sm)] text-muted-foreground">
-      {children}
-    </div>
-  );
-}
-
-function AmbientTone({ tone, subtle = false }: { tone: "primary" | "success" | "warn" | "info" | "neutral"; subtle?: boolean }) {
-  if (tone === "neutral") return null;
-  const color = {
-    primary: "hsl(var(--primary))",
-    success: "hsl(var(--success))",
-    warn: "hsl(var(--warning))",
-    info: "hsl(var(--info))"
-  }[tone];
-  return (
-    <span
-      aria-hidden
-      className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full blur-3xl"
-      style={{ background: color, opacity: subtle ? 0.06 : 0.1 }}
-    />
-  );
-}
-
-function toneClass(tone: "primary" | "success" | "warn" | "info" | "neutral", part: "icon" | "dot") {
-  if (part === "dot") {
-    return {
-      primary: "bg-primary shadow-[0_0_10px_hsl(var(--primary)/0.6)]",
-      success: "bg-success shadow-[0_0_10px_hsl(var(--success)/0.6)]",
-      warn: "bg-warning shadow-[0_0_10px_hsl(var(--warning)/0.6)]",
-      info: "bg-info shadow-[0_0_10px_hsl(var(--info)/0.6)]",
-      neutral: "bg-muted-foreground"
-    }[tone];
-  }
-
-  return {
-    primary: "border-primary/20 bg-primary/12 text-primary",
-    success: "border-success/20 bg-success/12 text-success",
-    warn: "border-warning/25 bg-warning/12 text-warning",
-    info: "border-info/25 bg-info/12 text-info",
-    neutral: "border-hairline bg-muted/40 text-muted-foreground"
-  }[tone];
-}
-
 function statusDot(status: MediaItem["status"]) {
   return cn(MEDIA_STATUS_PRESENTATION[status].dot, mediaStatusIsActive(status) && "animate-pulse");
-}
-
-function healthDot(status: IndexerHealthItem["status"]) {
-  return {
-    healthy: "bg-success shadow-[0_0_10px_hsl(var(--success)/0.6)]",
-    degraded: "bg-warning shadow-[0_0_10px_hsl(var(--warning)/0.6)]",
-    down: "bg-destructive shadow-[0_0_10px_hsl(var(--destructive)/0.6)]"
-  }[status];
 }
 
 function shortQuality(value: string | null) {
@@ -908,24 +755,24 @@ function buildDashboardUpcoming(
 
   const retryItems = [
     ...seriesWanted.recentItems
-      .filter((item) => item.nextEligibleSearchUtc)
+      .filter(isDueForRetry)
       .map((item) => ({
         id: `series-retry-${item.seriesId}`,
         time: new Date(item.nextEligibleSearchUtc!).getTime(),
         title: item.title,
-        episode: "Search retry",
+        episode: retryIntent(item.wantedStatus),
         network: item.wantedReason,
         poster: null,
         href: `/tv/${item.seriesId}`,
         startsAt: item.nextEligibleSearchUtc!
       })),
     ...movieWanted.recentItems
-      .filter((item) => item.nextEligibleSearchUtc)
+      .filter(isDueForRetry)
       .map((item) => ({
         id: `movie-retry-${item.movieId}`,
         time: new Date(item.nextEligibleSearchUtc!).getTime(),
         title: item.title,
-        episode: "Search retry",
+        episode: retryIntent(item.wantedStatus),
         network: item.wantedReason,
         poster: null,
         href: `/movies/${item.movieId}`,
@@ -948,6 +795,20 @@ function buildDashboardUpcoming(
   return [...episodeItems, ...retryItems]
     .sort((left, right) => new Date(left.startsAt).getTime() - new Date(right.startsAt).getTime())
     .slice(0, 12);
+}
+
+/**
+ * A retry window outlives the reason it was opened. A title that has since been
+ * satisfied still carries `nextEligibleSearchUtc`, and listing it produced the
+ * contradiction "Search retry — this movie already meets your target quality"
+ * (#270). Only `missing` and `upgrade` titles are still being looked for.
+ */
+function isDueForRetry(item: { wantedStatus: string; nextEligibleSearchUtc: string | null }) {
+  return Boolean(item.nextEligibleSearchUtc) && (item.wantedStatus === "missing" || item.wantedStatus === "upgrade");
+}
+
+function retryIntent(wantedStatus: string) {
+  return wantedStatus === "upgrade" ? "Looking for a better release" : "Looking for this title";
 }
 
 function groupDashboardUpcoming(items: DashboardUpcomingItem[]) {
@@ -980,48 +841,6 @@ function formatDashboardDay(date: Date) {
 
 function formatDashboardTime(date: Date) {
   return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-}
-
-function emptyDashboardData(): DashboardLoaderData {
-  return {
-    sources: emptyDashboardSources(),
-    metrics: null,
-    speedMbps: 0,
-    activeDownloads: [],
-    activeDownloadCount: 0,
-    importReadyCount: 0,
-    indexerHealth: [],
-    indexerHealthPercent: null,
-    configuredLibraryCount: 0,
-    missingCount: 0,
-    movieCount: 0,
-    movieMissingCount: 0,
-    monitoredCount: 0,
-    recentlyAdded: [],
-    totalCount: 0,
-    showCount: 0,
-    showMissingCount: 0,
-    upcoming: [],
-    upgradeCount: 0,
-    waitingCount: 0,
-    automation: [],
-    searchCycles: [],
-    retryWindows: [],
-    setupProgress: {
-      lastCompletedStep: 0,
-      isSkipped: false,
-      isCompleted: false,
-      updatedUtc: new Date(0).toISOString()
-    },
-    setupStatus: buildSetupStatus({
-      downloadClients: [],
-      indexers: [],
-      libraries: [],
-      policySets: [],
-      qualityProfiles: [],
-      settings: emptyPlatformSettingsSnapshot
-    })
-  };
 }
 
 /** Totals a day series. */

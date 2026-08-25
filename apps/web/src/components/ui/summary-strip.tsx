@@ -12,6 +12,7 @@
  * Sits directly under the PageToolbar. Wraps to two columns on narrow screens.
  */
 import * as React from "react";
+import { Link } from "react-router-dom";
 import { cn } from "../../lib/utils";
 
 export interface SummaryCell {
@@ -21,12 +22,25 @@ export interface SummaryCell {
   help?: React.ReactNode;
   /** Colours the value only — the strip never changes its own background. */
   tone?: "warning" | "danger" | "success";
+  /**
+   * Where this number is dealt with. A summary that states a problem should
+   * lead to the page that fixes it rather than leaving the reader to find it.
+   */
+  href?: string;
+  /** 0–1. A proportion the number alone cannot show, such as free space. */
+  fill?: number;
 }
 
 const toneClass: Record<NonNullable<SummaryCell["tone"]>, string> = {
   warning: "text-warning",
   danger: "text-destructive",
   success: "text-success"
+};
+
+const barClass: Record<NonNullable<SummaryCell["tone"]>, string> = {
+  warning: "bg-warning",
+  danger: "bg-destructive",
+  success: "bg-success"
 };
 
 export function SummaryStrip({ cells, className }: { cells: SummaryCell[]; className?: string }) {
@@ -38,33 +52,59 @@ export function SummaryStrip({ cells, className }: { cells: SummaryCell[]; class
         className
       )}
     >
-      {cells.map((cell, index) => (
-        <div
-          key={index}
-          className={cn(
-            "border-hairline px-[var(--card-pad-x)] py-3",
-            // Cells divide left-to-right on wide screens and form a grid on narrow ones,
-            // so the trailing edges never draw a border against the card edge.
-            "border-b border-r last:border-r-0 md:border-b-0",
-            index === cells.length - 2 && cells.length % 2 === 0 && "md:border-r"
-          )}
-        >
-          <span className="block text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-            {cell.label}
-          </span>
-          <span
+      {cells.map((cell, index) => {
+        const body = (
+          <>
+            <span className="block text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+              {cell.label}
+            </span>
+            <span
+              className={cn(
+                "mt-1 block text-[length:var(--type-title-sm)] font-semibold tabular-nums leading-tight",
+                cell.tone ? toneClass[cell.tone] : "text-foreground"
+              )}
+            >
+              {cell.value}
+            </span>
+            {cell.help !== undefined ? (
+              <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{cell.help}</span>
+            ) : null}
+            {cell.fill !== undefined ? (
+              <span aria-hidden className="mt-1.5 block h-1 w-full overflow-hidden rounded-full bg-surface-3">
+                <span
+                  className={cn("block h-full rounded-full", cell.tone ? barClass[cell.tone] : "bg-primary")}
+                  style={{ width: `${Math.min(100, Math.max(0, cell.fill * 100))}%` }}
+                />
+              </span>
+            ) : null}
+          </>
+        );
+
+        const cellClass = cn(
+          "border-hairline px-[var(--card-pad-x)] py-3",
+          // Cells divide left-to-right on wide screens and form a grid on narrow ones,
+          // so the trailing edges never draw a border against the card edge.
+          "border-b border-r last:border-r-0 md:border-b-0",
+          index === cells.length - 2 && cells.length % 2 === 0 && "md:border-r"
+        );
+
+        return cell.href ? (
+          <Link
+            key={index}
+            to={cell.href}
             className={cn(
-              "mt-1 block text-[length:var(--type-title-sm)] font-semibold tabular-nums leading-tight",
-              cell.tone ? toneClass[cell.tone] : "text-foreground"
+              cellClass,
+              "block transition-colors hover:bg-primary/[0.06] focus-visible:relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             )}
           >
-            {cell.value}
-          </span>
-          {cell.help !== undefined ? (
-            <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{cell.help}</span>
-          ) : null}
-        </div>
-      ))}
+            {body}
+          </Link>
+        ) : (
+          <div key={index} className={cellClass}>
+            {body}
+          </div>
+        );
+      })}
     </div>
   );
 }
