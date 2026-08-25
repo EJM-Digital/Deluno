@@ -1,27 +1,25 @@
 /**
- * Media plans — reference implementation of the list → drawer grammar.
+ * Library Profiles — reusable profiles attached to one or more libraries.
  *
- *   PageToolbar (tabs · New plan)
+ *   PageToolbar (tabs · New library profile)
  *   ListCard (rows: name · quality · releases · used by · status · on · ›)
- *   Drawer  (Basics · Quality & size · Releases [Fine-tune] · Used by · Delete)
+ *   Drawer  (profile identity · quality target · release choices · exclusions · libraries)
  *
  * API contracts are unchanged: POST/PUT/DELETE /api/policy-sets and
  * PUT /api/libraries/{id}/media-plan.
  */
-import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { useLoaderData, useRevalidator } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useLocation, useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
 import { Plus } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Chip } from "../components/ui/chip";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
-import { Disclosure } from "../components/ui/disclosure";
 import { Drawer, DrawerDanger, DrawerFooter, DrawerSection, type DrawerSaveState } from "../components/ui/drawer";
 import { Field, FieldRow } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
-import { PageToolbar } from "../components/ui/page-toolbar";
+import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
 import { ListGroupHeader, MediaTypeFilter, useMediaTypeSplit } from "../components/ui/media-type-split";
-import { PresetField } from "../components/ui/preset-field";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { Select } from "../components/ui/select";
 import { Switch, SwitchRow } from "../components/ui/switch";
@@ -39,31 +37,10 @@ import {
 } from "../lib/api";
 import { settingsOverviewLoader } from "./settings-overview-page";
 import { authedFetch } from "../lib/use-auth";
-import { MEDIA_PLAN_STARTERS } from "../lib/media-plan-starters";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { cn } from "../lib/utils";
 
-const OVERRIDE_INTERVAL_OPTIONS = [
-  { label: "Use library default", value: "" },
-  { label: "Off / manual only", value: "0" },
-  { label: "Every hour", value: "1" },
-  { label: "Every 3 hours", value: "3" },
-  { label: "Every 6 hours", value: "6" },
-  { label: "Every 12 hours", value: "12" },
-  { label: "Daily", value: "24" }
-];
-
-const OVERRIDE_RETRY_OPTIONS = [
-  { label: "Use library default", value: "" },
-  { label: "No delay", value: "0" },
-  { label: "1 hour", value: "1" },
-  { label: "3 hours", value: "3" },
-  { label: "6 hours", value: "6" },
-  { label: "12 hours", value: "12" },
-  { label: "Daily", value: "24" }
-];
-
-const PLAN_TABS = configurationNavAreas.find((area) => area.label === "Media plans")?.items ?? [];
+const PLAN_TABS = configurationNavAreas.find((area) => area.label === "Quality Profiles")?.items ?? [];
 
 interface SettingsPolicySetsLoaderData {
   libraries: LibraryItem[];
@@ -110,6 +87,16 @@ export async function settingsPolicySetsLoader(): Promise<SettingsPolicySetsLoad
 export function SettingsPolicySetsPage() {
   const { libraries, qualityProfiles, customFormats, destinationRules, policySets } = useLoaderData() as SettingsPolicySetsLoaderData;
   const revalidator = useRevalidator();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const planHandoff = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return {
+      libraryId: params.get("libraryId"),
+      returnTo: params.get("returnTo")
+    };
+  }, [location.search]);
+  const planHandoffOpened = useRef<string | null>(null);
 
   /* ------------------------------------------------------------ list */
   const [filter, setFilter] = useState("");
@@ -143,11 +130,10 @@ export function SettingsPolicySetsPage() {
   const [initialForm, setInitialForm] = useState<PolicySetFormState>(emptyForm);
   const [targetLibraryIds, setTargetLibraryIds] = useState<string[]>([]);
   const [initialTargetIds, setInitialTargetIds] = useState<string[]>([]);
-  const [starterId, setStarterId] = useState("");
-  const [fineTuneOpen, setFineTuneOpen] = useState(false);
   const [saveState, setSaveState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
+  const [qualityProfileError, setQualityProfileError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -161,18 +147,16 @@ export function SettingsPolicySetsPage() {
   );
   const footerState: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
 
-  const blocker = useUnsavedChanges(dirty);
+  useUnsavedChanges(dirty);
 
   // Any edit clears a stale saved/error status.
   useEffect(() => {
     if (dirty && (saveState === "saved" || saveState === "error")) setSaveState(undefined);
   }, [dirty, saveState]);
 
-  const availableProfiles = useMemo(() => qualityProfiles.filter((profile) => profile.mediaType === form.mediaType), [qualityProfiles, form.mediaType]);
   const availableDestinationRules = useMemo(() => destinationRules.filter((rule) => rule.mediaType === form.mediaType), [destinationRules, form.mediaType]);
   const availableCustomFormats = useMemo(() => customFormats.filter((format) => format.mediaType === form.mediaType), [customFormats, form.mediaType]);
   const matchingLibraries = useMemo(() => libraries.filter((library) => library.mediaType === form.mediaType), [libraries, form.mediaType]);
-  const selectedProfile = availableProfiles.find((profile) => profile.id === form.qualityProfileId);
 
   function openCreate() {
     const next = emptyForm();
@@ -181,13 +165,12 @@ export function SettingsPolicySetsPage() {
     setInitialForm(next);
     setTargetLibraryIds([]);
     setInitialTargetIds([]);
-    setStarterId("");
-    setFineTuneOpen(false);
     setSaveState(undefined);
     setNameError(null);
+    setQualityProfileError(null);
   }
 
-  function openEdit(plan: PolicySetItem) {
+  const openEdit = useCallback((plan: PolicySetItem) => {
     const next = formFromPlan(plan);
     const assigned = (librariesByPlan.get(plan.id) ?? []).map((library) => library.id);
     setMode({ kind: "edit", id: plan.id });
@@ -195,11 +178,31 @@ export function SettingsPolicySetsPage() {
     setInitialForm(next);
     setTargetLibraryIds(assigned);
     setInitialTargetIds(assigned);
-    setStarterId("");
-    setFineTuneOpen(false);
     setSaveState(undefined);
     setNameError(null);
-  }
+    setQualityProfileError(null);
+  }, [librariesByPlan]);
+
+  useEffect(() => {
+    if (mode.kind !== "closed" || !planHandoff.libraryId || planHandoffOpened.current === planHandoff.libraryId) return;
+    const library = libraries.find((item) => item.id === planHandoff.libraryId);
+    if (!library) return;
+    planHandoffOpened.current = library.id;
+    const assignedPlan = library.defaultPolicySetId ? policySets.find((plan) => plan.id === library.defaultPolicySetId) : null;
+    if (assignedPlan) {
+      openEdit(assignedPlan);
+      return;
+    }
+    const next = emptyForm(library.mediaType === "tv" ? "tv" : "movies");
+    setMode({ kind: "create" });
+    setForm(next);
+    setInitialForm(next);
+    setTargetLibraryIds([library.id]);
+    setInitialTargetIds([library.id]);
+    setSaveState(undefined);
+    setNameError(null);
+    setQualityProfileError(null);
+  }, [libraries, mode.kind, openEdit, planHandoff.libraryId, policySets]);
 
   function closeDrawer() {
     setMode({ kind: "closed" });
@@ -211,30 +214,20 @@ export function SettingsPolicySetsPage() {
     else closeDrawer();
   }
 
-  function applyStarter(id: string) {
-    setStarterId(id);
-    const starter = MEDIA_PLAN_STARTERS.find((item) => item.id === id);
-    if (!starter) {
-      setForm(emptyForm());
-      setTargetLibraryIds([]);
-      return;
-    }
-    setForm({ ...emptyForm(), ...starter.values });
-    const matches = libraries.filter((library) => library.mediaType === starter.values.mediaType);
-    setTargetLibraryIds(matches.length === 1 && matches[0] ? [matches[0].id] : []);
-  }
-
   function setMediaType(mediaType: "movies" | "tv") {
     if (mediaType === form.mediaType) return;
     setTargetLibraryIds([]);
-    setForm((current) => ({ ...current, mediaType, qualityProfileId: "", destinationRuleId: "", customFormatIds: [] }));
+    setQualityProfileError(null);
+    setForm((current) => ({ ...current, mediaType, qualityProfileId: "", customFormatIds: [], destinationRuleId: "" }));
   }
 
-  function toggleCustomFormat(id: string) {
-    setForm((current) => ({
-      ...current,
-      customFormatIds: current.customFormatIds.includes(id) ? current.customFormatIds.filter((item) => item !== id) : [...current.customFormatIds, id]
-    }));
+  function selectReleasePreference(id: string) {
+    if (!id) return;
+    setForm((current) => ({ ...current, customFormatIds: current.customFormatIds.includes(id) ? current.customFormatIds : [...current.customFormatIds, id] }));
+  }
+
+  function removeReleasePreference(id: string) {
+    setForm((current) => ({ ...current, customFormatIds: current.customFormatIds.filter((item) => item !== id) }));
   }
 
   function toggleTargetLibrary(id: string, on: boolean) {
@@ -246,10 +239,15 @@ export function SettingsPolicySetsPage() {
     event.preventDefault();
     if (!isOpen || busy) return;
     if (!form.name.trim()) {
-      setNameError("Give the plan a name.");
+      setNameError("Give this library profile a name.");
+      return;
+    }
+    if (!form.qualityProfileId) {
+      setQualityProfileError("Choose a Quality Profile first.");
       return;
     }
     setNameError(null);
+    setQualityProfileError(null);
     setBusy(true);
     setSaveState("saving");
 
@@ -257,13 +255,14 @@ export function SettingsPolicySetsPage() {
     const planId = mode.kind === "edit" ? mode.id : null;
 
     try {
+      const allFormatIds = [...new Set(form.customFormatIds)];
       const response = await authedFetch(isEditing ? `/api/policy-sets/${planId}` : "/api/policy-sets", {
         method: isEditing ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(toPayload(form))
+        body: JSON.stringify(toPayload(form, form.qualityProfileId, allFormatIds))
       });
       if (!response.ok) {
-        throw new Error(isEditing ? "Media plan could not be updated." : "Media plan could not be created.");
+        throw new Error(isEditing ? "Library profile could not be updated." : "Library profile could not be created.");
       }
       const saved = (await response.json()) as PolicySetItem;
 
@@ -275,7 +274,11 @@ export function SettingsPolicySetsPage() {
       ]);
       const failed = outcomes.filter((outcome) => !outcome.ok).map((outcome) => libraries.find((library) => library.id === outcome.id)?.name ?? outcome.id);
 
-      const savedForm = formFromPlan(saved);
+      const savedForm: PolicySetFormState = {
+        ...form,
+        qualityProfileId: saved.qualityProfileId ?? form.qualityProfileId,
+        customFormatIds: allFormatIds
+      };
       setForm(savedForm);
       setInitialForm(savedForm);
       const settledTargets = targetLibraryIds.filter((id) => !failed.includes(libraries.find((library) => library.id === id)?.name ?? id));
@@ -287,10 +290,14 @@ export function SettingsPolicySetsPage() {
       // outcomes that happen away from the drawer.
       if (failed.length) {
         setSaveState("error");
-        setSaveMessage(`Plan saved, but not applied to ${failed.join(", ")}`);
+        setSaveMessage(`Profile saved, but not attached to ${failed.join(", ")}`);
       } else {
         setSaveState("saved");
-        setSaveMessage(isEditing ? "Saved just now" : "Plan created");
+        setSaveMessage(isEditing ? "Saved just now" : "Library profile created");
+      }
+      if (!failed.length && !isEditing && planHandoff.returnTo === "library" && planHandoff.libraryId) {
+        navigate(`/settings/libraries?libraryId=${encodeURIComponent(planHandoff.libraryId)}`, { replace: true });
+        return;
       }
       revalidator.revalidate();
     } catch (error) {
@@ -306,15 +313,15 @@ export function SettingsPolicySetsPage() {
     setBusy(true);
     try {
       const response = await authedFetch(`/api/policy-sets/${mode.id}`, { method: "DELETE" });
-      if (!response.ok && response.status !== 204) throw new Error("Media plan could not be removed.");
-      toast.success("Media plan removed");
+      if (!response.ok && response.status !== 204) throw new Error("Library profile could not be removed.");
+      toast.success("Library profile removed");
       setConfirmDelete(false);
       setInitialForm(form);
       setInitialTargetIds(targetLibraryIds);
       closeDrawer();
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Media plan could not be removed.");
+      toast.error(error instanceof Error ? error.message : "Library profile could not be removed.");
     } finally {
       setBusy(false);
     }
@@ -326,7 +333,7 @@ export function SettingsPolicySetsPage() {
       const response = await authedFetch(`/api/policy-sets/${plan.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(toPayload({ ...formFromPlan(plan), isEnabled }))
+        body: JSON.stringify(toPayload({ ...formFromPlan(plan), isEnabled }, plan.qualityProfileId, splitCsv(plan.customFormatIds)))
       });
       if (!response.ok) throw new Error(`Could not ${isEnabled ? "enable" : "pause"} ${plan.name}.`);
       if (mode.kind === "edit" && mode.id === plan.id && !dirty) {
@@ -336,7 +343,7 @@ export function SettingsPolicySetsPage() {
       }
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Media plan could not be updated.");
+      toast.error(error instanceof Error ? error.message : "Library profile could not be updated.");
     } finally {
       setTogglingId(null);
     }
@@ -344,40 +351,38 @@ export function SettingsPolicySetsPage() {
 
   /* ---------------------------------------------------------- render */
   const usedByCount = (planId: string) => librariesByPlan.get(planId)?.length ?? 0;
-  const drawerTitle = mode.kind === "create" ? "New media plan" : editingPlan?.name ?? (form.name || "Media plan");
+  const drawerTitle = mode.kind === "create" ? "New library profile" : editingPlan?.name ?? (form.name || "Library Profiles");
   const drawerDescription =
     mode.kind === "create"
-      ? "Pick a starter or begin blank, then save."
-      : `Media plan · ${form.mediaType === "tv" ? "TV" : "Movies"} · ${describeUsage(usedByCount(editingPlan?.id ?? ""))}`;
+      ? "Create a reusable profile, then attach it to one or more libraries."
+      : `Library Profile · ${form.mediaType === "tv" ? "TV" : "Movies"} · ${describeUsage(usedByCount(editingPlan?.id ?? ""))}`;
 
   return (
     <div className="grid gap-[var(--page-gap)]">
       <PageToolbar
         tabs={PLAN_TABS}
+        accent="blue"
         actions={
           <>
             <MediaTypeFilter value={split.scope} onValueChange={split.setScope} counts={split.counts} />
-            <Button type="button" onClick={openCreate}>
-              <Plus className="h-4 w-4" />
-              New plan
-            </Button>
+            <PageToolbarAction onClick={openCreate}>New library profile</PageToolbarAction>
           </>
         }
       />
 
       <ListCard
-        title="Media plans"
-        count={`${policySets.length} ${policySets.length === 1 ? "plan" : "plans"} · ${policySets.filter((plan) => plan.isEnabled).length} enabled`}
-        filter={policySets.length > 3 ? { value: filter, onChange: setFilter, placeholder: "Filter plans" } : undefined}
+        title="Library Profiles"
+        count={`${policySets.length} ${policySets.length === 1 ? "profile" : "profiles"} · ${policySets.filter((plan) => plan.isEnabled).length} enabled · combines existing settings for each library`}
+        filter={policySets.length > 3 ? { value: filter, onChange: setFilter, placeholder: "Filter library profiles" } : undefined}
       >
         {policySets.length === 0 ? (
           <ListEmpty
-            title="No media plans yet"
-            description="A plan is the single source of truth for quality, size, releases, upgrades and search timing. Each library follows one by default."
+            title="No library profiles yet"
+            description="A Library Profile combines an existing Quality Profile, Release Preferences and destination rule, then attaches them to one or more libraries."
             actions={
               <Button type="button" size="sm" onClick={openCreate}>
                 <Plus className="h-3.5 w-3.5" />
-                New plan
+                New library profile
               </Button>
             }
           />
@@ -393,7 +398,7 @@ export function SettingsPolicySetsPage() {
             ]}
           >
             {split.visibleCount === 0 ? (
-              <ListEmpty title="No plans match" description={filter ? `Nothing matches “${filter}”.` : "No plans for this media type yet."} />
+              <ListEmpty title="No profiles match" description={filter ? `Nothing matches “${filter}”.` : "No library profile for this media type yet."} />
             ) : (
               split.groups.flatMap((group) => [
                 split.showGroups && split.scope === "all" ? <ListGroupHeader key={group.key} label={group.label} count={group.items.length} /> : null,
@@ -407,10 +412,10 @@ export function SettingsPolicySetsPage() {
                   <ListRow key={plan.id} onClick={() => openEdit(plan)} selected={mode.kind === "edit" && mode.id === plan.id}>
                     <ListNameCell
                       name={plan.name}
-                      sub={[plan.mediaType === "tv" ? "TV" : "Movies", `upgrades ${plan.upgradeUntilCutoff ? "on" : "off"}`, plan.notes?.trim() || null].filter(Boolean).join(" · ")}
+                      sub={[plan.mediaType === "tv" ? "TV" : "Movies", plan.notes?.trim() || null].filter(Boolean).join(" · ")}
                     />
                     <ListCell
-                      primary={plan.qualityProfileName ?? <span className="text-muted-foreground">Choose later</span>}
+                      primary={plan.qualityProfileName ?? <span className="text-muted-foreground">Not chosen yet</span>}
                       secondary={profile ? `Stops at ${profile.cutoffQuality}` : plan.destinationRuleName ? `Folder: ${plan.destinationRuleName}` : "Library default folder"}
                     />
                     <ListCell
@@ -459,31 +464,21 @@ export function SettingsPolicySetsPage() {
         title={drawerTitle}
         description={drawerDescription}
         onSubmit={handleSubmit}
+        className="sm:w-[min(48rem,100vw)]"
         footer={
           <DrawerFooter
             state={footerState}
             message={saveMessage}
-            saveLabel={mode.kind === "create" ? "Create plan" : "Save plan"}
+            saveLabel={mode.kind === "create" ? "Create library profile" : "Save library profile"}
             onCancel={requestClose}
             disabled={busy}
           />
         }
       >
-        {mode.kind === "create" ? (
-          <DrawerSection title="Start from">
-            <Field label="Starter" help="Defaults are editable templates, not locked presets. Everything below can be changed.">
-              <Select
-                value={starterId}
-                onChange={(event) => applyStarter(event.target.value)}
-                options={[{ value: "", label: "Blank plan" }, ...MEDIA_PLAN_STARTERS.map((starter) => ({ value: starter.id, label: starter.title.replace(/^Default:\s*/, "") }))]}
-              />
-            </Field>
-          </DrawerSection>
-        ) : null}
-
-        <DrawerSection title="Basics">
+        <div className="grid gap-3 py-3">
+        <DrawerSection title="Profile details" className="min-w-0 rounded-[12px] border border-primary/20 bg-primary/5 px-4 !py-4 border-b-0">
           <FieldRow>
-            <Field label="Plan name" error={nameError}>
+            <Field label="Name" error={nameError}>
               <Input
                 value={form.name}
                 onChange={(event) => {
@@ -507,127 +502,93 @@ export function SettingsPolicySetsPage() {
           </FieldRow>
           <SwitchRow
             label="Enabled"
-            description="Libraries using this plan follow it for new searches and upgrades."
+            description="Libraries attached to this profile use these quality and release choices."
             checked={form.isEnabled}
             onCheckedChange={(checked) => setForm((current) => ({ ...current, isEnabled: checked }))}
           />
+          <Field label="Profile note" optional help="A private reminder about what this profile is for. It does not change searching or quality decisions.">
+            <Textarea
+              value={form.notes}
+              onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
+              placeholder="For example: 4K movies for the lounge TV"
+              rows={2}
+            />
+          </Field>
         </DrawerSection>
 
-        <DrawerSection title="Quality & size">
-          <FieldRow>
-            <Field
-              label="Quality profile"
-              help={
-                selectedProfile
-                  ? `${selectedProfile.allowedQualities.split(",").map((value) => value.trim()).filter(Boolean).join(" → ")} · stops at ${selectedProfile.cutoffQuality}`
-                  : availableProfiles.length
-                    ? "Which release tiers are allowed and where upgrades stop."
-                    : `No ${form.mediaType === "tv" ? "TV" : "movie"} quality profiles yet — create one under Quality profiles.`
-              }
-            >
-              <Select
-                value={form.qualityProfileId}
-                onChange={(event) => setForm((current) => ({ ...current, qualityProfileId: event.target.value }))}
-                placeholder="Choose later"
-                options={availableProfiles.map((profile) => ({ value: profile.id, label: profile.name }))}
-              />
-            </Field>
-            <Field label="Final folder" help="Only when this plan needs a different destination.">
-              <Select
-                value={form.destinationRuleId}
-                onChange={(event) => setForm((current) => ({ ...current, destinationRuleId: event.target.value }))}
-                placeholder="Library default"
-                options={availableDestinationRules.map((rule) => ({ value: rule.id, label: rule.name }))}
-              />
-            </Field>
-          </FieldRow>
-          <SwitchRow
-            label="Upgrade until cutoff"
-            description="Keep replacing files until the profile's target tier is reached."
-            checked={form.upgradeUntilCutoff}
-            onCheckedChange={(checked) => setForm((current) => ({ ...current, upgradeUntilCutoff: checked }))}
-          />
-        </DrawerSection>
-
-        <DrawerSection
-          title="Releases"
-          aside={form.customFormatIds.length ? `${form.customFormatIds.length} ${form.customFormatIds.length === 1 ? "rule" : "rules"} selected` : undefined}
-        >
-          {availableCustomFormats.length ? (
-            <div role="group" aria-label="Release preferences" className="flex flex-wrap gap-1.5">
-              {availableCustomFormats.map((format) => {
-                const active = form.customFormatIds.includes(format.id);
-                return (
-                  <button
-                    key={format.id}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => toggleCustomFormat(format.id)}
-                    className={cn(
-                      "inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[length:var(--type-caption)] font-medium transition-colors",
-                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      active
-                        ? "border-primary/40 bg-primary/12 text-primary"
-                        : "border-hairline bg-surface-2 text-muted-foreground hover:border-primary/30 hover:text-foreground"
-                    )}
-                  >
-                    {format.name}
-                    <span className={cn("tabular-nums", active ? "text-primary/80" : "text-muted-foreground/70")}>
-                      {format.score >= 0 ? `+${format.score}` : format.score}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="text-[length:var(--type-caption)] text-muted-foreground">
-              No release preferences for {form.mediaType === "tv" ? "TV" : "movies"} yet — the quality profile decides on its own.
+        <DrawerSection title="Settings to use" className="min-w-0 rounded-[12px] border border-success/20 bg-success/5 px-4 !py-4 border-b-0">
+          <p className="text-[length:var(--type-caption)] text-muted-foreground">
+            Select the settings you created in the tabs above. This page only combines them into one profile for your libraries.
+          </p>
+          <Field label="Quality Profile" help="Choose the quality, cutoff and file-size behaviour this profile should use.">
+            <Select
+              value={form.qualityProfileId}
+              onChange={(event) => {
+                setQualityProfileError(null);
+                setForm((current) => ({ ...current, qualityProfileId: event.target.value }));
+              }}
+              placeholder="Choose a Quality Profile"
+              options={qualityProfiles.filter((profile) => profile.mediaType === form.mediaType).map((profile) => ({ value: profile.id, label: profile.name }))}
+              aria-invalid={qualityProfileError ? "true" : undefined}
+            />
+          </Field>
+          {qualityProfileError ? <p role="alert" className="text-[length:var(--type-caption)] text-destructive">{qualityProfileError}</p> : null}
+          {form.qualityProfileId ? (
+            <p className="-mt-1 text-[length:var(--type-caption)] text-muted-foreground">
+              {qualityProfiles.find((profile) => profile.id === form.qualityProfileId)?.cutoffQuality
+                ? `Stops at ${qualityProfiles.find((profile) => profile.id === form.qualityProfileId)?.cutoffQuality}. Size Rules are applied automatically.`
+                : "This Quality Profile controls the accepted quality and cutoff."}
             </p>
-          )}
-          <Disclosure title="Fine-tune" summary="Search interval, retry delay, notes" open={fineTuneOpen} onOpenChange={setFineTuneOpen}>
-            <FieldRow>
-              <Field label="Search schedule" help="How often to search for this plan instead of the library default.">
-                <PresetField
-                  inputType="number"
-                  value={form.searchIntervalOverrideHours}
-                  onChange={(value) => setForm((current) => ({ ...current, searchIntervalOverrideHours: value }))}
-                  options={OVERRIDE_INTERVAL_OPTIONS}
-                  customLabel="Custom interval"
-                  customPlaceholder="Hours"
-                />
-              </Field>
-              <Field label="Try again after" help="How long to wait before retrying a failed search.">
-                <PresetField
-                  inputType="number"
-                  value={form.retryDelayOverrideHours}
-                  onChange={(value) => setForm((current) => ({ ...current, retryDelayOverrideHours: value }))}
-                  options={OVERRIDE_RETRY_OPTIONS}
-                  customLabel="Custom retry delay"
-                  customPlaceholder="Hours"
-                />
-              </Field>
-            </FieldRow>
-            <Field label="Notes" optional>
-              <Textarea
-                value={form.notes}
-                onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
-                placeholder="Why this plan exists, or what it's tuned for."
-                rows={3}
-              />
-            </Field>
-          </Disclosure>
+          ) : null}
+          <div className="rounded-[10px] border border-hairline bg-surface-2/60 px-3 py-2 text-[length:var(--type-caption)] text-muted-foreground">
+            Size Rules are shared by Deluno and are applied through the selected Quality Profile. Edit them from the Size Rules tab.
+          </div>
+          <Field label="Release Preferences" optional help="Choose the release rules created under Release Preferences. You can select more than one.">
+            {form.customFormatIds.length ? (
+              <div role="list" aria-label="Selected release preferences" className="mb-2 grid gap-1.5">
+                {form.customFormatIds.map((id) => {
+                  const format = availableCustomFormats.find((item) => item.id === id);
+                  if (!format) return null;
+                  return (
+                    <div key={id} role="listitem" className="flex items-center justify-between gap-2 rounded-[9px] border border-hairline bg-surface-2 px-2.5 py-2">
+                      <span className="min-w-0 truncate text-[length:var(--type-body-sm)] font-medium text-foreground">{format.name}</span>
+                      <Button type="button" size="sm" variant="ghost" onClick={() => removeReleasePreference(id)}>Remove</Button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+            <Select
+              value=""
+              onChange={(event) => selectReleasePreference(event.target.value)}
+              placeholder={availableCustomFormats.length ? "Choose a Release Preference" : "Create Release Preferences first"}
+              disabled={!availableCustomFormats.length}
+              options={availableCustomFormats.filter((format) => !form.customFormatIds.includes(format.id)).map((format) => ({ value: format.id, label: format.name }))}
+            />
+          </Field>
+          <Field label="Final Destination" optional help="Leave this on the library folder unless you created a separate destination rule.">
+            <Select
+              value={form.destinationRuleId}
+              onChange={(event) => setForm((current) => ({ ...current, destinationRuleId: event.target.value }))}
+              placeholder="Use the library folder"
+              options={availableDestinationRules.map((rule) => ({ value: rule.id, label: rule.name }))}
+            />
+          </Field>
         </DrawerSection>
 
-        <DrawerSection title="Used by" aside={targetLibraryIds.length ? describeUsage(targetLibraryIds.length) : undefined}>
+        <DrawerSection title="Select libraries to use this profile" aside={targetLibraryIds.length ? describeUsage(targetLibraryIds.length) : "None selected"} className="min-w-0 rounded-[12px] border border-info/25 bg-info/5 px-4 !py-4 border-b-0">
+          <p className="text-[length:var(--type-caption)] text-muted-foreground">
+            Choose the libraries that should use this profile. Their library rows will show the profile in Media Management.
+          </p>
           {matchingLibraries.length ? (
-            <div className="grid gap-2">
+            <div className="mt-3 grid gap-3">
               {matchingLibraries.map((library) => {
                 const on = targetLibraryIds.includes(library.id);
                 const otherPlan = !on && library.defaultPolicySetId && library.defaultPolicySetId !== editingPlan?.id
                   ? policySets.find((plan) => plan.id === library.defaultPolicySetId)?.name
                   : null;
                 return (
-                  <div key={library.id} className="flex min-h-10 items-center justify-between gap-[var(--grid-gap)] rounded-[10px] border border-hairline px-[var(--field-pad-x)]">
+                  <div key={library.id} className={cn("flex min-h-10 items-center justify-between gap-[var(--grid-gap)] rounded-[10px] border px-[var(--field-pad-x)] py-2 transition-colors", on ? "border-info/35 bg-info/10" : "border-hairline bg-surface-2/30 hover:border-info/25")}>
                     <label htmlFor={`use-${library.id}`} className="min-w-0 cursor-pointer">
                       <span className="block truncate text-[length:var(--type-body-sm)] font-medium text-foreground">{library.name}</span>
                       <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">
@@ -641,17 +602,17 @@ export function SettingsPolicySetsPage() {
               })}
             </div>
           ) : (
-            <p className="text-[length:var(--type-caption)] text-muted-foreground">
-              No {form.mediaType === "tv" ? "TV" : "movie"} libraries yet. Create one under Library setup, then assign this plan there or here.
+            <p className="mt-3 text-[length:var(--type-caption)] text-muted-foreground">
+              No {form.mediaType === "tv" ? "TV" : "movie"} libraries yet. Create one under Media Management first.
             </p>
           )}
         </DrawerSection>
 
         {mode.kind === "edit" ? (
-          <DrawerSection>
+          <DrawerSection className="min-w-0 !py-4 border-b-0">
             <DrawerDanger
-              title="Delete this plan"
-              description="Libraries using it fall back to their direct quality profile."
+              title="Delete this Library Profile"
+              description="Libraries using it will need another Library Profile."
               action={
                 <Button type="button" variant="destructive" size="sm" onClick={() => setConfirmDelete(true)} disabled={busy}>
                   Delete
@@ -660,36 +621,31 @@ export function SettingsPolicySetsPage() {
             />
           </DrawerSection>
         ) : null}
+        </div>
       </Drawer>
 
       <ConfirmDialog
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
         title={`Delete “${editingPlan?.name ?? form.name}”?`}
-        description={`${describeUsage(targetLibraryIds.length, "library uses", "libraries use")} this plan. They will fall back to their direct quality profile. This can't be undone.`}
-        confirmLabel="Delete plan"
+        description={`${describeUsage(targetLibraryIds.length, "library uses", "libraries use")} this Library Profile. They will need another profile. This can't be undone.`}
+        confirmLabel="Delete Library Profile"
         busy={busy}
         onConfirm={() => void handleDelete()}
       />
 
       <ConfirmDialog
-        open={confirmDiscard || blocker.state === "blocked"}
+        open={confirmDiscard}
         onOpenChange={(open) => {
           if (open) return;
           setConfirmDiscard(false);
-          if (blocker.state === "blocked") blocker.reset();
         }}
         title="Discard unsaved changes?"
-        description="Your edits to this plan haven't been saved."
+        description="Your edits to this Library Profile haven't been saved."
         confirmLabel="Discard"
         onConfirm={() => {
           setConfirmDiscard(false);
-          if (blocker.state === "blocked") {
-            setMode({ kind: "closed" });
-            blocker.proceed();
-          } else {
-            closeDrawer();
-          }
+          closeDrawer();
         }}
       />
     </div>
@@ -698,10 +654,10 @@ export function SettingsPolicySetsPage() {
 
 /* ---------------------------------------------------------------- utils */
 
-function emptyForm(): PolicySetFormState {
+function emptyForm(mediaType: "movies" | "tv" = "movies"): PolicySetFormState {
   return {
     name: "",
-    mediaType: "movies",
+    mediaType,
     qualityProfileId: "",
     destinationRuleId: "",
     customFormatIds: [],
@@ -714,9 +670,11 @@ function emptyForm(): PolicySetFormState {
 }
 
 function formFromPlan(plan: PolicySetItem): PolicySetFormState {
+  const mediaType = plan.mediaType === "tv" ? "tv" : "movies";
   return {
+    ...emptyForm(mediaType),
     name: plan.name,
-    mediaType: plan.mediaType === "tv" ? "tv" : "movies",
+    mediaType,
     qualityProfileId: plan.qualityProfileId ?? "",
     destinationRuleId: plan.destinationRuleId ?? "",
     customFormatIds: splitCsv(plan.customFormatIds),
@@ -728,15 +686,18 @@ function formFromPlan(plan: PolicySetItem): PolicySetFormState {
   };
 }
 
-function toPayload(form: PolicySetFormState) {
+function toPayload(form: PolicySetFormState, qualityProfileId: string | null, customFormatIds: string[]) {
   return {
-    ...form,
     name: form.name.trim(),
-    qualityProfileId: form.qualityProfileId || null,
+    mediaType: form.mediaType,
+    qualityProfileId,
     destinationRuleId: form.destinationRuleId || null,
-    customFormatIds: form.customFormatIds.join(", "),
+    customFormatIds: customFormatIds.join(", "),
     searchIntervalOverrideHours: form.searchIntervalOverrideHours ? Number(form.searchIntervalOverrideHours) : null,
-    retryDelayOverrideHours: form.retryDelayOverrideHours ? Number(form.retryDelayOverrideHours) : null
+    retryDelayOverrideHours: form.retryDelayOverrideHours ? Number(form.retryDelayOverrideHours) : null,
+    upgradeUntilCutoff: form.upgradeUntilCutoff,
+    isEnabled: form.isEnabled,
+    notes: form.notes.trim() || null
   };
 }
 
@@ -770,8 +731,8 @@ function sameIds(a: string[], b: string[]) {
   return b.every((id) => set.has(id));
 }
 
-function splitCsv(value: string) {
-  return value
+function splitCsv(value: string | null | undefined) {
+  return (value ?? "")
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);

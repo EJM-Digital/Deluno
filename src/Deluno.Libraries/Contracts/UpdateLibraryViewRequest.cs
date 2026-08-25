@@ -1,6 +1,7 @@
 namespace Deluno.Libraries.Contracts;
 
 public sealed record UpdateLibraryViewRequest(
+    string? LibraryId,
     string Name,
     string QuickFilter,
     string SortField,

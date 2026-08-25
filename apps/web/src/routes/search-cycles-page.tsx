@@ -1,5 +1,5 @@
 /**
- * Automation & recovery — list → drawer plus one page-level form.
+ * Automation & Recovery — list → drawer plus one page-level form.
  *
  *   PageToolbar (Resume/Pause automation)
  *   SummaryStrip (automation · searching · due · source checks · sent)
@@ -12,7 +12,7 @@
  * PUT /api/libraries/{id}/automation, POST …/search-now, POST …/skip-cycle.
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { useLoaderData, useRevalidator } from "react-router-dom";
+import { useLoaderData, useLocation, useNavigate, useRevalidator } from "react-router-dom";
 import { Loader2, Pause, Play, SkipForward, Zap } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Chip, type ChipProps } from "../components/ui/chip";
@@ -27,6 +27,7 @@ import { PresetField } from "../components/ui/preset-field";
 import { Select } from "../components/ui/select";
 import { Switch, SwitchRow } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
+import { automationNavItems } from "../components/app/settings-shell";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { useVisibleInterval } from "../hooks/use-visible-interval";
 import {
@@ -34,6 +35,7 @@ import {
   type LibraryAutomationStateItem,
   type LibraryItem,
   type PlatformSettingsSnapshot,
+  type QualityModelSnapshot,
   type SearchCycleRunItem
 } from "../lib/api";
 import type { PlatformSettingsPatch } from "../lib/api/settings";
@@ -65,18 +67,20 @@ const HOUR_OPTIONS = Array.from({ length: 24 }, (_, hour) => ({ value: String(ho
 interface LoaderData {
   automationStates: LibraryAutomationStateItem[];
   libraries: LibraryItem[];
+  qualityModel: QualityModelSnapshot;
   settings: PlatformSettingsSnapshot;
   searchCycles: SearchCycleRunItem[];
 }
 
 export async function searchCyclesLoader(): Promise<LoaderData> {
-  const [automationStates, libraries, settings, searchCycles] = await Promise.all([
+  const [automationStates, libraries, qualityModel, settings, searchCycles] = await Promise.all([
     fetchPageItems<LibraryAutomationStateItem>("/api/library-automation?pageSize=50"),
     fetchJson<LibraryItem[]>("/api/libraries"),
+    fetchJson<QualityModelSnapshot>("/api/quality-model"),
     fetchJson<PlatformSettingsSnapshot>("/api/settings"),
     fetchPageItems<SearchCycleRunItem>("/api/search-cycles?pageSize=50")
   ]);
-  return { automationStates, libraries, settings, searchCycles };
+  return { automationStates, libraries, qualityModel, settings, searchCycles };
 }
 
 interface AutomationForm {
@@ -99,13 +103,20 @@ interface CleanupForm {
 }
 
 export function SearchCyclesPage() {
-  const { automationStates, libraries, settings, searchCycles } = useLoaderData() as LoaderData;
+  const { automationStates, libraries, qualityModel: loadedQualityModel, settings, searchCycles } = useLoaderData() as LoaderData;
+  const location = useLocation();
+  const navigate = useNavigate();
   const revalidator = useRevalidator();
   const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
 
   useVisibleInterval(() => revalidator.revalidate(), 10_000);
 
-  const split = useMediaTypeSplit(libraries, (library) => library.mediaType);
+  const view = location.pathname.endsWith("/missing") ? "missing" : location.pathname.endsWith("/upgrades") ? "upgrades" : location.pathname.endsWith("/failed-downloads") ? "failed" : "overview";
+  const scheduleLibraries = useMemo(
+    () => view === "missing" ? libraries.filter((library) => library.missingSearchEnabled) : view === "upgrades" ? libraries.filter((library) => library.upgradeSearchEnabled) : libraries,
+    [libraries, view]
+  );
+  const split = useMediaTypeSplit(scheduleLibraries, (library) => library.mediaType);
   const stateByLibrary = useMemo(() => new Map(automationStates.map((state) => [state.libraryId, state])), [automationStates]);
   const running = automationStates.filter((state) => state.status === "running").length;
   const due = automationStates.filter((state) => state.status !== "paused" && (!state.nextSearchUtc || new Date(state.nextSearchUtc) <= new Date())).length;
@@ -199,6 +210,16 @@ export function SearchCyclesPage() {
     setDrawerState(undefined);
   }
 
+  useEffect(() => {
+    if (drawerId !== null) return;
+    const libraryId = new URLSearchParams(location.search).get("libraryId");
+    if (!libraryId) return;
+    const library = libraries.find((item) => item.id === libraryId);
+    if (!library) return;
+    openLibrary(library);
+    navigate(location.pathname, { replace: true });
+  }, [drawerId, libraries, location.pathname, location.search, navigate]);
+
   async function submitDrawer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!editing || busy) return;
@@ -224,10 +245,14 @@ export function SearchCyclesPage() {
   // a save — long enough for the effect below to wipe "Saved just now" off the footer.
   const [savedCleanup, setSavedCleanup] = useState<CleanupForm>(() => cleanupFrom(settings));
   const [cleanup, setCleanup] = useState<CleanupForm>(savedCleanup);
+  const [savedQualityModel, setSavedQualityModel] = useState(loadedQualityModel);
+  const [qualityModel, setQualityModel] = useState(loadedQualityModel);
   const [cleanupState, setCleanupState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
   const [cleanupMessage, setCleanupMessage] = useState<string | null>(null);
 
   const cleanupDirty = !same(cleanup, savedCleanup);
+  const qualityDirty = !same(qualityModel, savedQualityModel);
+  const automationDirty = cleanupDirty || qualityDirty;
   const settingsCleanup = useMemo(() => cleanupFrom(settings), [settings]);
   useEffect(() => {
     // Adopt server state only when the user has nothing unsaved in this form.
@@ -236,26 +261,35 @@ export function SearchCyclesPage() {
     setCleanup(settingsCleanup);
   }, [cleanupDirty, savedCleanup, settingsCleanup]);
 
-  const cleanupFooter: DrawerSaveState = cleanupState === "saving" ? "saving" : cleanupDirty ? "dirty" : cleanupState ?? "clean";
-  useUnsavedChanges(cleanupDirty || drawerDirty);
+  const cleanupFooter: DrawerSaveState = cleanupState === "saving" ? "saving" : automationDirty ? "dirty" : cleanupState ?? "clean";
+  useUnsavedChanges(automationDirty || drawerDirty);
   useEffect(() => {
-    if (cleanupDirty && (cleanupState === "saved" || cleanupState === "error")) setCleanupState(undefined);
-  }, [cleanupDirty, cleanupState]);
+    if (automationDirty && (cleanupState === "saved" || cleanupState === "error")) setCleanupState(undefined);
+  }, [automationDirty, cleanupState]);
 
   async function submitCleanup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (cleanupState === "saving") return;
     setCleanupState("saving");
     try {
-      await settingsMutation.mutate({
-          downloadHealthStrikeThreshold: Math.max(1, Math.min(20, Number(cleanup.strikeThreshold || 3))),
-          cleanupBlockReleaseAfterThreshold: cleanup.blockRelease,
-          cleanupQueueReplacementAfterThreshold: cleanup.queueReplacement,
-          cleanupRemoveClientEntryAfterThreshold: cleanup.removeClientEntry,
-          cleanupPurgePayloadAfterThreshold: cleanup.purgePayload
-      });
+      const [, nextQualityModel] = await Promise.all([
+        settingsMutation.mutate({
+            downloadHealthStrikeThreshold: Math.max(1, Math.min(20, Number(cleanup.strikeThreshold || 3))),
+            cleanupBlockReleaseAfterThreshold: cleanup.blockRelease,
+            cleanupQueueReplacementAfterThreshold: cleanup.queueReplacement,
+            cleanupRemoveClientEntryAfterThreshold: cleanup.removeClientEntry,
+            cleanupPurgePayloadAfterThreshold: cleanup.purgePayload
+        }),
+        fetchJson<QualityModelSnapshot>("/api/quality-model", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tiers: loadedQualityModel.tiers, upgradeStop: qualityModel.upgradeStop })
+        })
+      ]);
       // Move the baseline first: the revalidation below is slower than the render.
       setSavedCleanup(cleanup);
+      setSavedQualityModel(nextQualityModel);
+      setQualityModel(nextQualityModel);
       setCleanupState("saved");
       setCleanupMessage("Saved just now");
     } catch (error) {
@@ -270,6 +304,8 @@ export function SearchCyclesPage() {
   return (
     <form onSubmit={submitCleanup} className="flex flex-col gap-[var(--page-gap)]" noValidate>
       <PageToolbar
+        tabs={automationNavItems}
+        accent="orange"
         actions={
           <>
             <MediaTypeFilter value={split.scope} onValueChange={split.setScope} counts={split.counts} />
@@ -281,19 +317,34 @@ export function SearchCyclesPage() {
         }
       />
 
-      <SummaryStrip
-        cells={[
-          { label: "Automation", value: paused ? "Paused" : "Running", help: paused ? "Queued work is held safely" : "Deluno searches on schedule", tone: paused ? "warning" : undefined },
-          { label: "Searching now", value: String(running), help: running ? "libraries mid-cycle" : "nothing running" },
-          { label: "Due", value: String(due), help: due ? "libraries ready for a cycle" : "all caught up" },
-          { label: "Source checks", value: cycleCost.apiCalls.toLocaleString(), help: "in the last 50 cycles" },
-          { label: "Sent to downloads", value: formatBytes(cycleCost.queuedBytes), help: "in the last 50 cycles" }
-        ]}
-      />
+      {view === "overview" ? (
+        <SummaryStrip
+          cells={[
+            { label: "Automation", value: paused ? "Paused" : "Running", help: paused ? "Queued work is held safely" : "Deluno searches on schedule", tone: paused ? "warning" : undefined },
+            { label: "Searching now", value: String(running), help: running ? "libraries mid-cycle" : "nothing running" },
+            { label: "Due", value: String(due), help: due ? "libraries ready for a cycle" : "all caught up" },
+            { label: "Source checks", value: cycleCost.apiCalls.toLocaleString(), help: "in the last 50 cycles" },
+            { label: "Sent to downloads", value: formatBytes(cycleCost.queuedBytes), help: "in the last 50 cycles" }
+          ]}
+        />
+      ) : null}
 
-      <ListCard title="Library schedules" count={libraries.length ? `${libraries.length} ${libraries.length === 1 ? "library" : "libraries"}` : undefined}>
-        {libraries.length === 0 ? (
-          <ListEmpty title="No libraries yet" description="Automation runs per library: create one and Deluno will search it for missing files and upgrades on a schedule." />
+      {view === "upgrades" ? (
+        <ListCard title="Upgrade searches" count="When Deluno should keep looking for a better release">
+          <div className="p-[var(--card-pad-x)]">
+            <SwitchRow
+              label="Stop searching once the cutoff is met"
+              description="Deluno keeps the title monitored, but stops looking for a better release after it reaches the quality level you chose."
+              checked={qualityModel.upgradeStop.stopWhenCutoffMet}
+              onCheckedChange={(checked) => setQualityModel((current) => ({ ...current, upgradeStop: { ...current.upgradeStop, stopWhenCutoffMet: checked } }))}
+            />
+          </div>
+        </ListCard>
+      ) : null}
+
+      {view !== "failed" ? <ListCard title={view === "missing" ? "Missing search schedules" : view === "upgrades" ? "Upgrade search schedules" : "Library schedules"} count={scheduleLibraries.length ? `${scheduleLibraries.length} ${scheduleLibraries.length === 1 ? "library" : "libraries"}` : undefined}>
+        {scheduleLibraries.length === 0 ? (
+          <ListEmpty title={libraries.length === 0 ? "No libraries yet" : view === "missing" ? "No libraries search for missing titles" : "No libraries search for upgrades"} description={libraries.length === 0 ? "Create a library first, then Deluno can search it on a schedule." : "Open a library's automation settings to turn this search on."} />
         ) : (
           <ListTable columns={[{ label: "Library" }, { label: "Searches for" }, { label: "Schedule" }, { label: "Next / last" }, { label: "Status", width: LIST_TRACK.status, mobile: true }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]}>
             {split.groups.flatMap((group) => [
@@ -302,12 +353,17 @@ export function SearchCyclesPage() {
               const state = stateByLibrary.get(library.id);
               const chip = automationChip(library, state, paused);
               const kinds = [library.missingSearchEnabled ? "Missing" : null, library.upgradeSearchEnabled ? "Upgrades" : null].filter(Boolean).join(" · ") || "Nothing selected";
+              const schedule = [
+                library.missingSearchEnabled ? `Missing every ${library.searchIntervalHours} h` : null,
+                library.upgradeSearchEnabled ? `Upgrades every ${library.searchIntervalHours} h` : null
+              ].filter(Boolean).join(" · ") || "Off";
+              const nextSearch = nextSearchLabel(view, library, state);
               return (
                 <ListRow key={library.id} onClick={() => openLibrary(library)} selected={drawerId === library.id}>
                   <ListNameCell name={library.name} sub={library.mediaType === "tv" ? "TV shows" : "Movies"} />
                   <ListCell primary={kinds} secondary={`Up to ${library.maxItemsPerRun} per run`} />
-                  <ListCell primary={`Every ${library.searchIntervalHours} h`} secondary={library.searchWindowStartHour !== null && library.searchWindowEndHour !== null ? `Only ${pad(library.searchWindowStartHour)}:00–${pad(library.searchWindowEndHour)}:00` : "Any time of day"} />
-                  <ListCell numeric primary={state?.nextSearchUtc ? untilLabel(state.nextSearchUtc) : <span className="text-muted-foreground">—</span>} secondary={state?.lastError ? state.lastError : state?.lastCompletedUtc ? `Last ran ${agoLabel(state.lastCompletedUtc)}` : "Not run yet"} />
+                  <ListCell primary={schedule} secondary={library.searchWindowStartHour !== null && library.searchWindowEndHour !== null ? `Only ${pad(library.searchWindowStartHour)}:00–${pad(library.searchWindowEndHour)}:00` : "Any time of day · each schedule runs independently"} />
+                  <ListCell numeric primary={nextSearch ?? <span className="text-muted-foreground">—</span>} secondary={state?.lastError ? state.lastError : state?.lastCompletedUtc ? `Last ran ${agoLabel(state.lastCompletedUtc)}` : "Not run yet"} />
                   <ListCell mobile>
                     <Chip tone={chip.tone}>{chip.label}</Chip>
                   </ListCell>
@@ -320,9 +376,9 @@ export function SearchCyclesPage() {
             ])}
           </ListTable>
         )}
-      </ListCard>
+      </ListCard> : null}
 
-      <ListCard title="Failed downloads" count={`After ${cleanup.strikeThreshold || 3} strikes on the same release`}>
+      {view === "failed" ? <ListCard title="Failed downloads" count={`After ${cleanup.strikeThreshold || 3} strikes on the same release`}>
         <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
           <Field label="Act after this many strikes" help="A strike is one failed health check on the same release." className="max-w-[16rem]">
             <PresetField
@@ -338,14 +394,16 @@ export function SearchCyclesPage() {
               customPlaceholder="1–20"
             />
           </Field>
-          <SwitchRow label="Block this release" description="Do not select the same failed release again." checked={cleanup.blockRelease} onCheckedChange={(checked) => setCleanup((current) => ({ ...current, blockRelease: checked }))} />
-          <SwitchRow label="Search for a replacement" description="Queue one bounded replacement search using the normal budget." checked={cleanup.queueReplacement} onCheckedChange={(checked) => setCleanup((current) => ({ ...current, queueReplacement: checked }))} />
-          <SwitchRow label="Remove the client entry" description="Remove the failed item from its download client when the client supports it." checked={cleanup.removeClientEntry} onCheckedChange={(checked) => setCleanup((current) => ({ ...current, removeClientEntry: checked }))} />
-          <SwitchRow label="Purge residual files" description="Delete the failed payload, only inside paths Deluno can prove it owns." checked={cleanup.purgePayload} onCheckedChange={(checked) => setCleanup((current) => ({ ...current, purgePayload: checked }))} />
+          <div className="grid gap-[var(--grid-gap)] sm:grid-cols-2">
+            <SwitchRow label="Block this release" description="Do not select the same failed release again." checked={cleanup.blockRelease} onCheckedChange={(checked) => setCleanup((current) => ({ ...current, blockRelease: checked }))} />
+            <SwitchRow label="Search for a replacement" description="Queue one bounded replacement search using the normal budget." checked={cleanup.queueReplacement} onCheckedChange={(checked) => setCleanup((current) => ({ ...current, queueReplacement: checked }))} className="sm:border-l sm:border-hairline sm:pl-[var(--grid-gap)]" />
+            <SwitchRow label="Remove the client entry" description="Remove the failed item from its download client when the client supports it." checked={cleanup.removeClientEntry} onCheckedChange={(checked) => setCleanup((current) => ({ ...current, removeClientEntry: checked }))} />
+            <SwitchRow label="Purge residual files" description="Delete the failed payload, only inside paths Deluno can prove it owns." checked={cleanup.purgePayload} onCheckedChange={(checked) => setCleanup((current) => ({ ...current, purgePayload: checked }))} className="sm:border-l sm:border-hairline sm:pl-[var(--grid-gap)]" />
+          </div>
         </div>
-      </ListCard>
+      </ListCard> : null}
 
-      <ListCard title="Recent cycles" count={cyclesShown.length ? runsLabel(cyclesShown.length, searchCycles.length) : undefined}>
+      {view === "overview" ? <ListCard title="Recent cycles" count={cyclesShown.length ? runsLabel(cyclesShown.length, searchCycles.length) : undefined}>
         {searchCycles.length === 0 ? (
           <ListEmpty title="No search cycles yet" description="Once a library runs a missing or upgrade search, each cycle and what it queued shows up here." />
         ) : (
@@ -363,9 +421,9 @@ export function SearchCyclesPage() {
             ))}
           </ListTable>
         )}
-      </ListCard>
+      </ListCard> : null}
 
-      <PageFooter state={cleanupFooter} message={cleanupMessage} saveLabel="Save failed-download handling" onDiscard={() => setCleanup(savedCleanup)} />
+      {view === "failed" || view === "upgrades" ? <PageFooter state={cleanupFooter} message={cleanupMessage} saveLabel="Save automation settings" /> : null}
 
       <Drawer
         open={drawerId !== null}
@@ -378,9 +436,11 @@ export function SearchCyclesPage() {
         footer={<DrawerFooter state={drawerFooterState} message={drawerMessage} saveLabel="Save schedule" onCancel={() => setDrawerId(null)} disabled={busy !== null} />}
       >
         <DrawerSection title="What to search for">
-          <SwitchRow label="Search automatically" description="Turn off to keep this library manual — you can still run a search from here." checked={form.autoSearchEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, autoSearchEnabled: checked }))} />
-          <SwitchRow label="Missing titles" description="Look for files this library does not have yet." checked={form.missingSearchEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, missingSearchEnabled: checked }))} />
-          <SwitchRow label="Upgrades" description="Look for better releases for files already imported, until the profile cutoff." checked={form.upgradeSearchEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, upgradeSearchEnabled: checked }))} />
+          <div className="grid gap-[var(--grid-gap)] sm:grid-cols-3">
+            <SwitchRow label="Search automatically" description="Turn off to keep this library manual — you can still run a search from here." checked={form.autoSearchEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, autoSearchEnabled: checked }))} />
+            <SwitchRow label="Missing titles" description="Look for files this library does not have yet." checked={form.missingSearchEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, missingSearchEnabled: checked }))} className="sm:border-l sm:border-hairline sm:pl-[var(--grid-gap)]" />
+            <SwitchRow label="Upgrades" description="Look for better releases for files already imported, until the profile cutoff." checked={form.upgradeSearchEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, upgradeSearchEnabled: checked }))} className="sm:border-l sm:border-hairline sm:pl-[var(--grid-gap)]" />
+          </div>
         </DrawerSection>
 
         <DrawerSection title="Schedule">
@@ -396,7 +456,7 @@ export function SearchCyclesPage() {
             <PresetField inputType="number" value={form.maxItemsPerRun} onChange={(value) => setForm((current) => ({ ...current, maxItemsPerRun: value }))} options={BATCH_OPTIONS} customLabel="Custom batch" customPlaceholder="Titles" />
           </Field>
           <FieldRow>
-            <Field label="Only search after" optional help="Leave both blank to search at any hour.">
+            <Field label="Only search after" optional help="Leave both empty to search at any hour.">
               <Select value={form.searchWindowStartHour} onChange={(event) => setForm((current) => ({ ...current, searchWindowStartHour: event.target.value }))} placeholder="Any time" options={HOUR_OPTIONS} />
             </Field>
             <Field label="And before" optional>
@@ -469,13 +529,27 @@ function cleanupFrom(settings: PlatformSettingsSnapshot): CleanupForm {
     purgePayload: settings.cleanupPurgePayloadAfterThreshold
   };
 }
+function nextSearchLabel(view: string, library: LibraryItem, state: LibraryAutomationStateItem | undefined): string | null {
+  if (!state) return null;
+
+  const missing = library.missingSearchEnabled && (state.nextMissingSearchUtc ?? state.nextSearchUtc)
+    ? `Missing ${untilLabel(state.nextMissingSearchUtc ?? state.nextSearchUtc!)}`
+    : null;
+  const upgrades = library.upgradeSearchEnabled && (state.nextUpgradeSearchUtc ?? state.nextSearchUtc)
+    ? `Upgrades ${untilLabel(state.nextUpgradeSearchUtc ?? state.nextSearchUtc!)}`
+    : null;
+
+  if (view === "missing") return missing;
+  if (view === "upgrades") return upgrades;
+  return [missing, upgrades].filter(Boolean).join(" · ") || null;
+}
 function automationChip(library: LibraryItem, state: LibraryAutomationStateItem | undefined, globallyPaused: boolean): { tone: NonNullable<ChipProps["tone"]>; label: string } {
   if (!library.autoSearchEnabled) return { tone: "muted", label: "Manual" };
   if (globallyPaused) return { tone: "warn", label: "Paused" };
   if (state?.lastError) return { tone: "bad", label: "Last run failed" };
   if (state?.status === "running") return { tone: "info", label: "Searching" };
   if (state?.status === "queued") return { tone: "info", label: "Queued" };
-  return { tone: "ok", label: "Scheduled" };
+  return { tone: "muted", label: "Scheduled" };
 }
 function parseNotes(notesJson: string | null): { apiCallCount: number; queuedReleaseBytes: number } {
   if (!notesJson) return { apiCallCount: 0, queuedReleaseBytes: 0 };

@@ -135,7 +135,8 @@ public sealed class SqliteMediaStateRepository(
         int take,
         DateTimeOffset now,
         bool ignoreRetryWindow,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? wantedStatus = null)
     {
         var map = MediaTableMap.For(kind);
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -159,6 +160,9 @@ public sealed class SqliteMediaStateRepository(
         var retry = ignoreRetryWindow
             ? string.Empty
             : "AND (w.next_eligible_search_utc IS NULL OR w.next_eligible_search_utc <= @now)";
+        var statusFilter = string.IsNullOrWhiteSpace(wantedStatus)
+            ? "AND w.wanted_status IN ('missing', 'upgrade')"
+            : "AND w.wanted_status = @wantedStatus";
 
         using var command = connection.CreateCommand();
         command.CommandText = $"""
@@ -170,7 +174,7 @@ public sealed class SqliteMediaStateRepository(
             FROM {map.WantedTable} w
             INNER JOIN {map.EntryTable} {map.EntryAlias} ON {map.EntryAlias}.id = w.{map.WantedMediaIdColumn}
             WHERE w.library_id = @libraryId
-              AND w.wanted_status IN ('missing', 'upgrade')
+              {statusFilter}
               {monitored}
               {retry}
               {availability}
@@ -185,6 +189,10 @@ public sealed class SqliteMediaStateRepository(
         AddParameter(command, "@now", now.ToString("O"));
         AddParameter(command, "@today", DateOnly.FromDateTime(now.UtcDateTime).ToString("yyyy-MM-dd"));
         AddParameter(command, "@take", Math.Clamp(take, 1, 500));
+        if (!string.IsNullOrWhiteSpace(wantedStatus))
+        {
+            AddParameter(command, "@wantedStatus", NormalizeWantedStatus(wantedStatus));
+        }
 
         var items = new List<MediaWantedItem>();
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -200,7 +208,8 @@ public sealed class SqliteMediaStateRepository(
         MediaKind kind,
         string libraryId,
         DateTimeOffset now,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? wantedStatus = null)
     {
         var map = MediaTableMap.For(kind);
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -213,13 +222,14 @@ public sealed class SqliteMediaStateRepository(
             FROM {map.WantedTable} w
             INNER JOIN {map.EntryTable} {map.EntryAlias} ON {map.EntryAlias}.id = w.{map.WantedMediaIdColumn}
             WHERE w.library_id = @libraryId
-              AND w.wanted_status IN ('missing', 'upgrade')
+              AND (@wantedStatus IS NULL OR w.wanted_status = @wantedStatus)
               AND {map.EntryAlias}.monitored = 1
               AND w.next_eligible_search_utc IS NOT NULL
               AND w.next_eligible_search_utc > @now;
             """;
         AddParameter(command, "@libraryId", libraryId);
         AddParameter(command, "@now", now.ToString("O"));
+        AddParameter(command, "@wantedStatus", string.IsNullOrWhiteSpace(wantedStatus) ? null : NormalizeWantedStatus(wantedStatus));
         var value = await command.ExecuteScalarAsync(cancellationToken);
         return Convert.ToInt32(value, CultureInfo.InvariantCulture);
     }
@@ -699,29 +709,13 @@ public sealed class SqliteMediaStateRepository(
             AddParameter(insert, "@id", mediaId);
             AddParameter(insert, "@title", normalizedTitle);
             AddParameter(insert, "@year", request.Year);
-            AddParameter(
-                insert,
-                "@monitored",
-                request.UnmonitorWhenCutoffMet && request.QualityCutoffMet ? 0 : 1);
+            // Reaching the cutoff stops upgrade searches; it must not stop
+            // monitoring. The user's monitoring choice is independent.
+            AddParameter(insert, "@monitored", 1);
             AddParameter(insert, "@createdUtc", now);
             AddParameter(insert, "@updatedUtc", now);
             await insert.ExecuteNonQueryAsync(cancellationToken);
         }
-        else if (request.UnmonitorWhenCutoffMet && request.QualityCutoffMet)
-        {
-            using var unmonitor = connection.CreateCommand();
-            unmonitor.Transaction = transaction;
-            unmonitor.CommandText = $"""
-                UPDATE {map.EntryTable}
-                SET monitored = 0,
-                    updated_utc = @updatedUtc
-                WHERE id = @mediaId;
-                """;
-            AddParameter(unmonitor, "@mediaId", mediaId);
-            AddParameter(unmonitor, "@updatedUtc", now);
-            await unmonitor.ExecuteNonQueryAsync(cancellationToken);
-        }
-
         using var wanted = connection.CreateCommand();
         wanted.Transaction = transaction;
         wanted.CommandText = $"""

@@ -31,7 +31,8 @@ public sealed class SqliteLibrariesRepository(
                 l.import_workflow, l.processor_name, l.processor_output_path, l.processor_timeout_minutes, l.processor_failure_mode,
                 l.auto_search_enabled, l.missing_search_enabled, l.upgrade_search_enabled, l.search_interval_hours,
                 l.retry_delay_hours, l.max_items_per_run, l.search_window_start_hour, l.search_window_end_hour,
-                l.created_utc, l.updated_utc, l.default_policy_set_id, p.name
+                l.created_utc, l.updated_utc, l.default_policy_set_id, p.name,
+                l.cleanup_mode, l.remove_empty_source_folders
             FROM libraries l
             LEFT JOIN quality_profiles q ON q.id = l.quality_profile_id
             LEFT JOIN policy_sets p ON p.id = l.default_policy_set_id
@@ -91,7 +92,7 @@ public sealed class SqliteLibrariesRepository(
         command.CommandText =
             """
             SELECT
-                id, user_id, variant, name, quick_filter, sort_field, sort_direction,
+                id, user_id, variant, library_id, name, quick_filter, sort_field, sort_direction,
                 view_mode, card_size, display_options_json, rules_json, created_utc, updated_utc
             FROM library_views
             WHERE user_id = @userId AND variant = @variant
@@ -172,6 +173,7 @@ public sealed class SqliteLibrariesRepository(
             Id: Guid.CreateVersion7().ToString("N"),
             UserId: userId,
             Variant: NormalizeLibraryViewVariant(request.Variant),
+            LibraryId: NormalizeOptionalId(request.LibraryId),
             Name: NormalizeName(request.Name) ?? "New view",
             QuickFilter: NormalizeName(request.QuickFilter) ?? "all",
             SortField: NormalizeName(request.SortField) ?? "title",
@@ -191,17 +193,18 @@ public sealed class SqliteLibrariesRepository(
         command.CommandText =
             """
             INSERT INTO library_views (
-                id, user_id, variant, name, quick_filter, sort_field, sort_direction,
+                id, user_id, variant, library_id, name, quick_filter, sort_field, sort_direction,
                 view_mode, card_size, display_options_json, rules_json, created_utc, updated_utc
             )
             VALUES (
-                @id, @userId, @variant, @name, @quickFilter, @sortField, @sortDirection,
+                @id, @userId, @variant, @libraryId, @name, @quickFilter, @sortField, @sortDirection,
                 @viewMode, @cardSize, @displayOptionsJson, @rulesJson, @createdUtc, @updatedUtc
             );
             """;
         AddParameter(command, "@id", item.Id);
         AddParameter(command, "@userId", item.UserId);
         AddParameter(command, "@variant", item.Variant);
+        AddParameter(command, "@libraryId", item.LibraryId);
         AddParameter(command, "@name", item.Name);
         AddParameter(command, "@quickFilter", item.QuickFilter);
         AddParameter(command, "@sortField", item.SortField);
@@ -284,7 +287,8 @@ public sealed class SqliteLibrariesRepository(
         command.CommandText =
             """
             UPDATE library_views
-            SET name = @name,
+            SET library_id = @libraryId,
+                name = @name,
                 quick_filter = @quickFilter,
                 sort_field = @sortField,
                 sort_direction = @sortDirection,
@@ -297,6 +301,7 @@ public sealed class SqliteLibrariesRepository(
             """;
         AddParameter(command, "@id", id);
         AddParameter(command, "@userId", userId);
+        AddParameter(command, "@libraryId", NormalizeOptionalId(request.LibraryId));
         AddParameter(command, "@name", NormalizeName(request.Name) ?? "Updated view");
         AddParameter(command, "@quickFilter", NormalizeName(request.QuickFilter) ?? "all");
         AddParameter(command, "@sortField", NormalizeName(request.SortField) ?? "title");
@@ -353,7 +358,9 @@ public sealed class SqliteLibrariesRepository(
             LastSearchedUtc: null,
             NextSearchUtc: null,
             CreatedUtc: now,
-            UpdatedUtc: now);
+            UpdatedUtc: now,
+            CleanupMode: NormalizeCleanupMode(request.CleanupMode),
+            RemoveEmptySourceFolders: request.RemoveEmptySourceFolders);
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
@@ -374,6 +381,7 @@ public sealed class SqliteLibrariesRepository(
             INSERT INTO libraries (
                 id, name, media_type, purpose, root_path, downloads_path, quality_profile_id,
                 import_workflow, processor_name, processor_output_path, processor_timeout_minutes, processor_failure_mode,
+                cleanup_mode, remove_empty_source_folders,
                 auto_search_enabled,
                 missing_search_enabled, upgrade_search_enabled, search_interval_hours,
                 retry_delay_hours, max_items_per_run,
@@ -383,6 +391,7 @@ public sealed class SqliteLibrariesRepository(
             VALUES (
                 @id, @name, @mediaType, @purpose, @rootPath, @downloadsPath, @qualityProfileId,
                 @importWorkflow, @processorName, @processorOutputPath, @processorTimeoutMinutes, @processorFailureMode,
+                @cleanupMode, @removeEmptySourceFolders,
                 @autoSearchEnabled,
                 @missingSearchEnabled, @upgradeSearchEnabled, @searchIntervalHours,
                 @retryDelayHours, @maxItemsPerRun,
@@ -403,6 +412,8 @@ public sealed class SqliteLibrariesRepository(
         AddParameter(command, "@processorOutputPath", item.ProcessorOutputPath);
         AddParameter(command, "@processorTimeoutMinutes", item.ProcessorTimeoutMinutes);
         AddParameter(command, "@processorFailureMode", item.ProcessorFailureMode);
+        AddParameter(command, "@cleanupMode", item.CleanupMode);
+        AddParameter(command, "@removeEmptySourceFolders", item.RemoveEmptySourceFolders ? 1 : 0);
         AddParameter(command, "@autoSearchEnabled", item.AutoSearchEnabled ? 1 : 0);
         AddParameter(command, "@missingSearchEnabled", item.MissingSearchEnabled ? 1 : 0);
         AddParameter(command, "@upgradeSearchEnabled", item.UpgradeSearchEnabled ? 1 : 0);
@@ -676,6 +687,8 @@ public sealed class SqliteLibrariesRepository(
                 processor_output_path = @processorOutputPath,
                 processor_timeout_minutes = @processorTimeoutMinutes,
                 processor_failure_mode = @processorFailureMode,
+                cleanup_mode = COALESCE(@cleanupMode, cleanup_mode),
+                remove_empty_source_folders = COALESCE(@removeEmptySourceFolders, remove_empty_source_folders),
                 updated_utc = @updatedUtc
             WHERE id = @id;
             """;
@@ -686,6 +699,8 @@ public sealed class SqliteLibrariesRepository(
         AddParameter(command, "@processorOutputPath", processorOutputPath);
         AddParameter(command, "@processorTimeoutMinutes", NormalizePositiveValue(request.ProcessorTimeoutMinutes, 360));
         AddParameter(command, "@processorFailureMode", NormalizeProcessorFailureMode(request.ProcessorFailureMode));
+        AddParameter(command, "@cleanupMode", string.IsNullOrWhiteSpace(request.CleanupMode) ? null : NormalizeCleanupMode(request.CleanupMode));
+        AddParameter(command, "@removeEmptySourceFolders", request.RemoveEmptySourceFolders.HasValue ? (request.RemoveEmptySourceFolders.Value ? 1 : 0) : null);
         AddParameter(command, "@updatedUtc", now.ToString("O"));
 
         if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
@@ -781,10 +796,10 @@ public sealed class SqliteLibrariesRepository(
             insertClient.CommandText =
                 """
                 INSERT INTO library_download_client_links (
-                    id, library_id, download_client_id, priority, created_utc, updated_utc
+                    id, library_id, download_client_id, priority, category, created_utc, updated_utc
                 )
                 VALUES (
-                    @id, @libraryId, @downloadClientId, @priority, @createdUtc, @updatedUtc
+                    @id, @libraryId, @downloadClientId, @priority, @category, @createdUtc, @updatedUtc
                 );
                 """;
 
@@ -792,6 +807,7 @@ public sealed class SqliteLibrariesRepository(
             AddParameter(insertClient, "@libraryId", libraryId);
             AddParameter(insertClient, "@downloadClientId", client.DownloadClientId);
             AddParameter(insertClient, "@priority", client.Priority is >= 1 ? client.Priority.Value : 100);
+            AddParameter(insertClient, "@category", NormalizeCategory(client.Category));
             AddParameter(insertClient, "@createdUtc", now.ToString("O"));
             AddParameter(insertClient, "@updatedUtc", now.ToString("O"));
             await insertClient.ExecuteNonQueryAsync(cancellationToken);
@@ -858,7 +874,8 @@ public sealed class SqliteLibrariesRepository(
                 l.import_workflow, l.processor_name, l.processor_output_path, l.processor_timeout_minutes, l.processor_failure_mode,
                 l.auto_search_enabled, l.missing_search_enabled, l.upgrade_search_enabled, l.search_interval_hours,
                 l.retry_delay_hours, l.max_items_per_run, l.search_window_start_hour, l.search_window_end_hour,
-                l.created_utc, l.updated_utc, l.default_policy_set_id, p.name
+                l.created_utc, l.updated_utc, l.default_policy_set_id, p.name,
+                l.cleanup_mode, l.remove_empty_source_folders
             FROM libraries l
             LEFT JOIN quality_profiles q ON q.id = l.quality_profile_id
             LEFT JOIN policy_sets p ON p.id = l.default_policy_set_id
@@ -963,7 +980,7 @@ public sealed class SqliteLibrariesRepository(
         command.CommandText =
             """
             SELECT
-                id, user_id, variant, name, quick_filter, sort_field, sort_direction,
+                id, user_id, variant, library_id, name, quick_filter, sort_field, sort_direction,
                 view_mode, card_size, display_options_json, rules_json, created_utc, updated_utc
             FROM library_views
             WHERE user_id = @userId AND id = @id
@@ -1037,6 +1054,20 @@ public sealed class SqliteLibrariesRepository(
             _ => "movies"
         };
     }
+
+
+    private static string NormalizeCleanupMode(string? value)
+    {
+        var normalized = value?.Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "remove-source-after-import" or "delete-source-after-import" or "remove" => "remove-source-after-import",
+            _ => "keep-source"
+        };
+    }
+
+    private static string? NormalizeOptionalId(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
 
     private static string NormalizeSortDirection(string? value)
@@ -1148,7 +1179,9 @@ public sealed class SqliteLibrariesRepository(
             CreatedUtc: ParseTimestamp(reader.GetString(24)),
             UpdatedUtc: ParseTimestamp(reader.GetString(25)),
             DefaultPolicySetId: reader.IsDBNull(26) ? null : reader.GetString(26),
-            DefaultPolicySetName: reader.IsDBNull(27) ? null : reader.GetString(27));
+            DefaultPolicySetName: reader.IsDBNull(27) ? null : reader.GetString(27),
+            CleanupMode: reader.IsDBNull(28) ? "keep-source" : NormalizeCleanupMode(reader.GetString(28)),
+            RemoveEmptySourceFolders: !reader.IsDBNull(29) && reader.GetInt64(29) == 1);
     }
 
 
@@ -1175,16 +1208,17 @@ public sealed class SqliteLibrariesRepository(
             Id: reader.GetString(0),
             UserId: reader.GetString(1),
             Variant: reader.GetString(2),
-            Name: reader.GetString(3),
-            QuickFilter: reader.GetString(4),
-            SortField: reader.GetString(5),
-            SortDirection: reader.GetString(6),
-            ViewMode: reader.GetString(7),
-            CardSize: reader.GetString(8),
-            DisplayOptionsJson: reader.GetString(9),
-            RulesJson: reader.GetString(10),
-            CreatedUtc: ParseTimestamp(reader.GetString(11)),
-            UpdatedUtc: ParseTimestamp(reader.GetString(12)));
+            LibraryId: reader.IsDBNull(3) ? null : reader.GetString(3),
+            Name: reader.GetString(4),
+            QuickFilter: reader.GetString(5),
+            SortField: reader.GetString(6),
+            SortDirection: reader.GetString(7),
+            ViewMode: reader.GetString(8),
+            CardSize: reader.GetString(9),
+            DisplayOptionsJson: reader.GetString(10),
+            RulesJson: reader.GetString(11),
+            CreatedUtc: ParseTimestamp(reader.GetString(12)),
+            UpdatedUtc: ParseTimestamp(reader.GetString(13)));
     }
 
 
@@ -1199,7 +1233,7 @@ public sealed class SqliteLibrariesRepository(
         command.CommandText =
             """
             SELECT
-                l.id, l.library_id, l.download_client_id, d.name, l.priority, l.created_utc, l.updated_utc
+                l.id, l.library_id, l.download_client_id, d.name, l.priority, l.created_utc, l.updated_utc, l.category
             FROM library_download_client_links l
             INNER JOIN download_clients d ON d.id = l.download_client_id
             WHERE l.library_id = @libraryId
@@ -1218,11 +1252,15 @@ public sealed class SqliteLibrariesRepository(
                 DownloadClientName: reader.GetString(3),
                 Priority: reader.GetInt32(4),
                 CreatedUtc: ParseTimestamp(reader.GetString(5)),
-                UpdatedUtc: ParseTimestamp(reader.GetString(6))));
+                UpdatedUtc: ParseTimestamp(reader.GetString(6)),
+                Category: reader.IsDBNull(7) ? null : reader.GetString(7)));
         }
 
         return items;
     }
+
+    private static string? NormalizeCategory(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
 
 }

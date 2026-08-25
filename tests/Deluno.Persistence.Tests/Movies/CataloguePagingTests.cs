@@ -163,6 +163,28 @@ public sealed class CataloguePagingTests
     }
 
     [Fact]
+    public async Task Library_filter_narrows_movie_rows_and_facets_in_sql()
+    {
+        using var storage = TestStorage.Create();
+        var movies = await CreateMoviesAsync(storage);
+        var anime = await movies.AddAsync(new CreateMovieRequest("Anime Feature", 2020, null), CancellationToken.None);
+        var general = await movies.AddAsync(new CreateMovieRequest("General Feature", 2021, null), CancellationToken.None);
+
+        await movies.EnsureWantedStateAsync(anime.Id, "library-anime", "wanted", "missing", false, null, "WEB 1080p", false, CancellationToken.None);
+        await movies.EnsureWantedStateAsync(general.Id, "library-general", "wanted", "missing", true, "WEB 720p", "WEB 1080p", false, CancellationToken.None);
+
+        var page = await movies.ListPageAsync(
+            new CatalogueQuery(LibraryId: "library-anime", PageSize: 10),
+            CancellationToken.None);
+
+        Assert.Equal(anime.Id, Assert.Single(page.Items).Id);
+        Assert.Equal(1, page.TotalCount);
+        Assert.Equal(1, page.Facets!.All);
+        Assert.Equal(0, page.Facets.Downloaded);
+        Assert.Equal(1, page.Facets.Missing);
+    }
+
+    [Fact]
     public async Task An_unreadable_token_starts_again_rather_than_failing()
     {
         using var storage = TestStorage.Create();
@@ -224,6 +246,27 @@ public sealed class CataloguePagingTests
 
         Assert.Equal(25, seen.Count);
         Assert.Equal(25, seen.Distinct().Count());
+    }
+
+    [Fact]
+    public async Task Library_filter_narrows_series_rows_and_facets_in_sql()
+    {
+        using var storage = TestStorage.Create();
+        var series = await CreateSeriesAsync(storage);
+        var anime = await series.AddAsync(new CreateSeriesRequest("Anime Series", 2020, null), CancellationToken.None);
+        var general = await series.AddAsync(new CreateSeriesRequest("General Series", 2021, null), CancellationToken.None);
+
+        await series.EnsureWantedStateAsync(anime.Id, "library-anime", "wanted", "missing", false, null, "WEB 1080p", false, CancellationToken.None);
+        await series.EnsureWantedStateAsync(general.Id, "library-general", "wanted", "missing", true, "WEB 720p", "WEB 1080p", false, CancellationToken.None);
+
+        var page = await series.ListPageAsync(
+            new CatalogueQuery(LibraryId: "library-general", PageSize: 10),
+            CancellationToken.None);
+
+        Assert.Equal(general.Id, Assert.Single(page.Items).Id);
+        Assert.Equal(1, page.TotalCount);
+        Assert.Equal(1, page.Facets!.Downloaded);
+        Assert.Equal(0, page.Facets.Missing);
     }
 
     private static async Task SeedAsync(IMovieCatalogRepository movies, int count)

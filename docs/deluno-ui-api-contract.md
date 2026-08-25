@@ -269,6 +269,8 @@ Implemented endpoints:
 - `PUT /api/libraries/{id}/workflow`
 - `POST /api/libraries/{id}/search-now`
 - `POST /api/libraries/{id}/skip-cycle`
+- `GET /api/libraries/{id}/import-existing/preview?cursor=...&take=50` — reads a bounded page of existing files/folders without writing
+- `POST /api/libraries/{id}/import-existing/selected` — imports only the explicitly selected preview paths (maximum 100 per request)
 - `POST /api/libraries/{id}/import-existing` — starts a run, returns `202` with its progress
 - `GET /api/libraries/{id}/import-existing` — the run in flight, or the most recent one
 - `POST /api/libraries/{id}/import-existing/pause`
@@ -282,6 +284,15 @@ Current UI contract expectations:
 
 - library automation, workflow, quality-profile assignment, and routing are already implemented settings surfaces
 - routing is library-aware and should remain the place where indexer/download-client normalization is consumed by higher-level workflows
+- each library download-client link may carry an optional `category`; when present, Deluno sends that label to the client for automatic grabs. When empty, the client’s configured Movies or TV category is used. This supports separate routes such as `family-movies`, `movies`, and `kids` on one SABnzbd or qBittorrent instance without duplicating global completed-download settings
+
+`PUT /api/libraries/{id}/workflow` also accepts `cleanupMode` (`keep-source`
+or `remove-source-after-import`) and `removeEmptySourceFolders`. Cleanup is
+performed only after a verified import and is scoped below the library's
+configured completed-download path. The default keeps the source. Download
+client queue retention, repair, and seeding remain the external client's
+responsibility unless a future client integration explicitly supports a safe
+Deluno-owned action.
 
 Importing an existing library is a **tracked background operation**, not a request
 that returns when the work is done. `POST .../import-existing` creates (or re-attaches
@@ -295,6 +306,12 @@ The progress body is `{ run, percentComplete, itemsPerSecond, estimatedSecondsRe
 There is at most one active run per library, so a second POST returns the existing one.
 Poll the `GET` for progress; it reads a single row and costs the same at 20 items or
 200,000.
+
+The normal user workflow is review-first: the Library & Storage drawer opens the
+read-only preview, keeps only one page of candidates in the browser, and lets the
+user import selected files or folders. The selected endpoint checks each path is
+still inside the library root before writing. The older background endpoint remains
+for resumable maintenance and compatibility, but the UI never starts it blindly.
 
 Current gaps:
 
@@ -321,7 +338,7 @@ percent of the work as if it were all of it.
 
 ### The paged catalogue list
 
-`GET /api/{movies,series}/page` takes `search`, `status`, `sort`, `direction`,
+`GET /api/{movies,series}/page` takes `search`, `status`, `libraryId`, `sort`, `direction`,
 `pageSize` and `pageToken`, and returns
 `{ items, nextPageToken, hasMore, totalCount, facets }`.
 
@@ -334,6 +351,9 @@ percent of the work as if it were all of it.
 - **`totalCount` and `facets` are present on the first page only** (`null` on a
   continuation). Counting is the one part of the request that scans, so it happens
   once per filter rather than once per page.
+- `libraryId` is optional. When present, the page, total count, status facets, and
+  file facts are scoped to that library's wanted-state rows. Omitting it means all
+  libraries, so the default view remains the complete Movies or TV catalogue.
 - `sort` is one of `added` (default), `title`, `year`, `rating`; each has an index
   behind it. `status` is one of `all`, `monitored`, `unmonitored`, `downloaded`,
   `missing`, or `upgrades`. `pageSize` is capped at the shared maximum of 500;
@@ -341,6 +361,10 @@ percent of the work as if it were all of it.
 - Rows carry `fileSizeBytes` and `currentQuality`, plus file path, codecs, audio
   details, release group, runtime, popularity, votes, and derived bitrate. The legacy
   unbounded catalogue routes were removed; consumers must use this paged contract.
+
+Saved library views also persist the optional `libraryId` alongside their search,
+status, order, and display choices, so a view such as "Family movies" returns to the
+same library without downloading or filtering the full catalogue in the UI.
 
 ### Outbound pacing
 
@@ -385,6 +409,7 @@ Implemented download-client endpoints:
 - `GET /api/download-clients/telemetry/last-known`
 - `POST /api/download-clients/{clientId}/queue/actions`
 - `POST /api/download-clients/{clientId}/grab`
+- `POST /api/download-clients/{clientId}/categories/check` — verifies a library-specific category against SABnzbd or qBittorrent and reports `ready`, `missing`, `unreachable`, `configuration`, or `unsupported` without claiming the route is ready when it cannot be verified
 
 Implemented webhook endpoints:
 

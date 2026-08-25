@@ -36,7 +36,7 @@ Every automated action must have a plain-English explanation: what Deluno did, w
 
 ## Scenario-first configuration
 
-Start with understandable scenarios, such as Family 1080p, Premium 4K HDR, Anime, Low Storage, Usenet-first, Private Tracker, or Mixed Sources. Advanced users can refine every part of the plan.
+Start with understandable scenarios, such as Family 1080p, Premium 4K HDR, Low Storage, Usenet-first, Private Tracker, or Mixed Sources. Advanced users can refine every part of the plan.
 
 Policies layer safely:
 

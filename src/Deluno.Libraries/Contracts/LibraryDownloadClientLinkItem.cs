@@ -7,4 +7,5 @@ public sealed record LibraryDownloadClientLinkItem(
     string DownloadClientName,
     int Priority,
     DateTimeOffset CreatedUtc,
-    DateTimeOffset UpdatedUtc);
+    DateTimeOffset UpdatedUtc,
+    string? Category = null);

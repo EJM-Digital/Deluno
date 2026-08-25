@@ -108,7 +108,7 @@ test.describe("first-run and auth screens", () => {
     });
 
     await authenticateAndNavigate(page, "/setup-guide");
-    await page.getByRole("button", { name: /4 Connections/ }).click();
+    await page.getByRole("button", { name: /Find & Download/ }).click();
     await expect(page.getByRole("radiogroup", { name: "Search source presets" })).toBeVisible();
     await page.getByPlaceholder("https://indexer.example/api").fill("");
     await page.getByRole("button", { name: "Test search source" }).click();
@@ -118,7 +118,7 @@ test.describe("first-run and auth screens", () => {
 
   test("guided setup requires an external download app address before testing", async ({ page }) => {
     await authenticateAndNavigate(page, "/setup-guide");
-    await page.getByRole("button", { name: /4 Connections/ }).click();
+    await page.getByRole("button", { name: /Find & Download/ }).click();
     await page.getByRole("button", { name: "Test download client" }).click();
     await expect(page.getByText("Enter a download client host before testing.")).toBeVisible();
     await expect(page.getByPlaceholder("localhost or docker host")).toBeVisible();
@@ -141,10 +141,10 @@ test.describe("first-run and auth screens", () => {
   test("setup overview shows the complete ordered journey and keeps import lists optional", async ({ page }) => {
     await authenticateAndNavigate(page, "/settings");
 
-    await expect(page.getByRole("heading", { name: "Setup overview" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Find & download" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "First acquisition" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Discover media" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Setup Overview" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Find & Download" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "First Acquisition" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Discover Media" })).toBeVisible();
     await expect(page.getByText(/Optionally configure import lists/)).toBeVisible();
     await expect(page.getByText(/required steps complete/)).toBeVisible();
   });

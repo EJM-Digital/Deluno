@@ -1,4 +1,4 @@
-import { Plus, Zap } from "lucide-react";
+import { Plus, RefreshCw, Zap } from "lucide-react";
 import { librarySummaryTone } from "../../lib/media-status-presentation";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
@@ -12,6 +12,8 @@ type LibrarySummaryHeaderProps = {
   missingCount: number;
   downloadingCount: number;
   onToggleCreate: () => void;
+  isUpdatingMetadata: boolean;
+  onUpdateMetadata: () => void;
 };
 
 export function LibrarySummaryHeader({
@@ -23,6 +25,8 @@ export function LibrarySummaryHeader({
   missingCount,
   downloadingCount,
   onToggleCreate,
+  isUpdatingMetadata,
+  onUpdateMetadata,
 }: LibrarySummaryHeaderProps) {
   return (
     <div className="relative overflow-hidden rounded-2xl border border-hairline bg-card p-[var(--tile-pad)] shadow-card dark:border-white/[0.06]">
@@ -51,6 +55,17 @@ export function LibrarySummaryHeader({
           <Button className="gap-2" onClick={onToggleCreate}>
             <Plus className="h-4 w-4" strokeWidth={2.5} />
             Add {singular}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="gap-2"
+            onClick={onUpdateMetadata}
+            disabled={isUpdatingMetadata}
+            title={`Queue a metadata refresh for every ${singular.toLowerCase()} in Deluno`}
+          >
+            <RefreshCw className={cn("h-4 w-4", isUpdatingMetadata && "animate-spin")} />
+            Update all metadata
           </Button>
           {missingCount > 0 ? <Button variant="secondary" className="gap-2"><Zap className="h-4 w-4" />Hunt {missingCount} missing</Button> : null}
         </div>

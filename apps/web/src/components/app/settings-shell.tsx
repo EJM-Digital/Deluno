@@ -1,17 +1,25 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
-import { HelpCircle } from "lucide-react";
+import { FileInput, FolderTree, HelpCircle, Image, MapPinned, SlidersHorizontal, Tags, Workflow } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { GlossaryModal } from "../ui/glossary-modal";
 import { PageToolbar } from "../ui/page-toolbar";
 
 export const librarySetupNavItems = [
-  { to: "/settings/libraries", label: "Library folders", end: false },
-  { to: "/settings/media-management", label: "File handling & naming", end: false },
-  { to: "/settings/processing", label: "Processing workflow", end: false },
-  { to: "/settings/destination-rules", label: "Final destinations", end: false },
-  { to: "/settings/metadata", label: "Metadata & sidecars", end: false },
-  { to: "/settings/tags", label: "Tags", end: false }
+  { to: "/settings/libraries", label: "Library & Storage", end: false, icon: <FolderTree aria-hidden="true" /> },
+  { to: "/settings/media-management", label: "Media Naming", end: false, icon: <SlidersHorizontal aria-hidden="true" /> },
+  { to: "/settings/import-policy", label: "Import Policy", end: false, icon: <FileInput aria-hidden="true" /> },
+  { to: "/settings/processing", label: "Processing Workflow", end: false, icon: <Workflow aria-hidden="true" /> },
+  { to: "/settings/destination-rules", label: "Final Destinations", end: false, icon: <MapPinned aria-hidden="true" /> },
+  { to: "/settings/metadata", label: "Metadata & Files", end: false, icon: <Image aria-hidden="true" /> },
+  { to: "/settings/tags", label: "Tags", end: false, icon: <Tags aria-hidden="true" /> }
+] as const;
+
+export const automationNavItems = [
+  { to: "/search-cycles", label: "Automation", end: true },
+  { to: "/search-cycles/missing", label: "Missing Searches", end: false },
+  { to: "/search-cycles/upgrades", label: "Upgrades", end: false },
+  { to: "/search-cycles/failed-downloads", label: "Failed Downloads", end: false }
 ] as const;
 
 /**
@@ -26,44 +34,57 @@ export const librarySetupNavItems = [
 export const configurationNavAreas = [
   {
     match: (path: string) => path === "/settings" || librarySetupNavItems.some((item) => path.startsWith(item.to)),
-    label: "Files & folders",
+    label: "Media Management",
     icon: "library",
     to: "/settings/libraries",
+    accent: "yellow",
     tabsInToolbar: true,
     items: librarySetupNavItems
   },
   {
+    match: (path: string) => path.startsWith("/settings/policy-sets") || path.startsWith("/settings/profiles") || path.startsWith("/settings/quality") || path.startsWith("/settings/custom-formats"),
+    label: "Quality Profiles",
+    icon: "plans",
+    to: "/settings/profiles",
+    accent: "blue",
+    tabsInToolbar: true,
+    items: [
+      { to: "/settings/profiles", label: "Quality Profiles", end: false },
+      { to: "/settings/quality", label: "Size Rules", end: false },
+      { to: "/settings/custom-formats", label: "Release Preferences", end: false },
+      { to: "/settings/policy-sets", label: "Library Profiles", end: false }
+    ]
+  },
+  {
     match: (path: string) => path.startsWith("/indexers"),
-    label: "Connections",
+    label: "Find & Download",
     icon: "connections",
     to: "/indexers/indexers",
+    accent: "green",
     tabsInToolbar: true,
     items: [
       { to: "/indexers/indexers", label: "Indexers", end: false },
-      { to: "/indexers/download-clients", label: "Download clients", end: false },
-      { to: "/indexers/library-routing", label: "Library routing", end: false }
+      { to: "/indexers/download-clients", label: "Download Clients", end: false },
+      { to: "/indexers/library-routing", label: "Library Routing", end: false }
     ]
   },
   {
-    match: (path: string) => path.startsWith("/settings/policy-sets") || path.startsWith("/settings/profiles") || path.startsWith("/settings/quality") || path.startsWith("/settings/custom-formats"),
-    label: "Media plans",
-    icon: "plans",
-    to: "/settings/policy-sets",
+    match: (path: string) => path.startsWith("/search-cycles") || path.startsWith("/settings/automation"),
+    label: "Automation & Recovery",
+    icon: "automation",
+    to: "/search-cycles",
+    accent: "orange",
     tabsInToolbar: true,
-    items: [
-      { to: "/settings/policy-sets", label: "Plans", end: false },
-      { to: "/settings/profiles", label: "Quality profiles", end: false },
-      { to: "/settings/quality", label: "Size rules", end: false },
-      { to: "/settings/custom-formats", label: "Release preferences", end: false }
-    ]
+    items: automationNavItems
   },
   {
     match: (path: string) => path.startsWith("/settings/lists"),
-    label: "Import lists",
+    label: "Discover Media",
     icon: "discover",
     to: "/settings/lists",
+    accent: "violet",
     tabsInToolbar: true,
-    items: [{ to: "/settings/lists", label: "Import lists", end: false }]
+    items: [{ to: "/settings/lists", label: "Import Lists", end: false }]
   }
 ] as const;
 
@@ -81,8 +102,8 @@ export const systemHealthNavItems = [
   { to: "/system/audit", label: "Audit", end: false },
   { to: "/system/backups", label: "Backups", end: false },
   { to: "/system/updates", label: "Updates", end: false },
-  { to: "/system/api", label: "API access", end: false },
-  { to: "/system/docs", label: "Help & guides", end: false }
+  { to: "/system/api", label: "API Access", end: false },
+  { to: "/system/docs", label: "Help & Guides", end: false }
 ] as const;
 
 /**
@@ -97,6 +118,7 @@ export const maintenanceNavItems = [
     label: "Preferences",
     icon: "setup",
     to: "/settings/general",
+    accent: "blue",
     tabsInToolbar: true,
     items: systemSettingsNavItems
   },
@@ -105,6 +127,7 @@ export const maintenanceNavItems = [
     label: "System",
     icon: "system",
     to: "/system",
+    accent: "cyan",
     tabsInToolbar: true,
     items: systemHealthNavItems
   }
@@ -128,73 +151,82 @@ const systemNavItems = [
  * The topbar renders this as the page's h1 (see routeMeta in app-layout). The
  * page body deliberately does not repeat it — a page is named once. Before this
  * was consolidated there were two independent maps, which drifted: "/settings"
- * was "Files & folders" in the topbar and "Setup overview" in the body.
+ * was "Media Management" in the topbar and "Setup overview" in the body.
  */
 export const settingsPageMeta = [
+  // Every page in this workspace keeps the same area identity in the topbar.
+  // Page-specific guidance belongs in the page header or card below it; the
+  // shell should not appear to change context when the user changes tabs.
   {
     match: (path: string) => path.startsWith("/settings/processing"),
-    title: "Processing workflow",
-    description: "Optional: let an external processor finish a file before Deluno imports and renames it.",
+    title: "Media Management",
+    description: "Manage where your media lives, how it is named, and how it moves through Deluno.",
     chrome: "none"
   },
   {
     match: (path: string) => path === "/settings",
-    title: "Setup overview",
+    title: "Setup Overview",
     description:
       "Guided configuration for your media library, quality policy, automation, and runtime behaviour."
   },
   {
+    match: (path: string) => path.startsWith("/settings/import-policy"),
+    title: "Media Management",
+    description: "Manage where your media lives, how it is named, and how it moves through Deluno.",
+    chrome: "none"
+  },
+  {
     match: (path: string) => path.startsWith("/settings/media-management"),
-    title: "File handling & naming",
-    description: "Set how completed files are named, linked, cleaned up, and imported into your library.",
+    title: "Media Management",
+    description: "Manage where your media lives, how it is named, and how it moves through Deluno.",
     chrome: "none"
   },
   {
     match: (path: string) => path.startsWith("/settings/libraries"),
-    title: "Library folders",
-    description: "Create the movie and TV libraries Deluno manages, and choose where each one lives.",
+    title: "Media Management",
+    description: "Manage where your media lives, how it is named, and how it moves through Deluno.",
     chrome: "none"
   },
   {
     match: (path: string) => path.startsWith("/settings/destination-rules"),
-    title: "Final destinations",
-    description: "Choose where completed movies and TV shows finally live after Deluno imports and names them.",
+    title: "Media Management",
+    description: "Manage where your media lives, how it is named, and how it moves through Deluno.",
     chrome: "none"
   },
   {
     match: (path: string) => path.startsWith("/settings/policy-sets"),
-    title: "Media plans",
-    description: "Configure the quality, size, release, language, and upgrade rules Deluno follows.",
+    title: "Library Profiles",
+    description: "Configure the reusable settings each library inherits for quality, searching, upgrades, and routing.",
     // List → drawer pages carry their own toolbar; the topbar already names the page.
     chrome: "none"
   },
   {
     match: (path: string) => path.startsWith("/settings/profiles"),
-    title: "Quality profiles",
-    description: "Quality ladders and cutoff targets used by Media Plans.",
+    title: "Quality Profiles",
+    description: "The complete quality standard used by Library Profiles: tiers, sizes, release preferences, exclusions, and upgrades.",
     chrome: "none"
   },
   {
     match: (path: string) => path.startsWith("/settings/quality"),
-    title: "Size rules",
-    description: "File-size boundaries Media Plans use to reject releases that are too small or too large.",
+    title: "Size Rules",
+    description: "File-size boundaries Library Profiles use to reject releases that are too small or too large.",
     chrome: "none"
   },
   {
     match: (path: string) => path.startsWith("/settings/custom-formats"),
-    title: "Release preferences",
-    description: "Preference rules for source, codec, HDR, language, group, and custom-format scoring used by Media Plans.",
+    title: "Release Preferences",
+    description: "Preference rules for source, codec, HDR, language, group, and custom-format scoring used by Library Profiles.",
     chrome: "none"
   },
   {
     match: (path: string) => path.startsWith("/settings/lists"),
-    title: "Import lists",
+    title: "Discover Media",
     description: "Watchlists and curated lists that can add the movies or shows you want Deluno to manage.",
     chrome: "none"
   },
   {
     match: (path: string) => path.startsWith("/settings/automation"),
-    title: "Automation & recovery",
+    title: "Automation & Recovery",
     description: "Control scheduled searches, retries, upgrades, and what happens after a failed download.",
     chrome: "none"
   },
@@ -206,14 +238,14 @@ export const settingsPageMeta = [
   },
   {
     match: (path: string) => path.startsWith("/settings/metadata"),
-    title: "Metadata & sidecars",
-    description: "Language, ratings region, artwork, and optional files saved beside your media.",
+    title: "Media Management",
+    description: "Manage where your media lives, how it is named, and how it moves through Deluno.",
     chrome: "none"
   },
   {
     match: (path: string) => path.startsWith("/settings/tags"),
-    title: "Tags",
-    description: "Labels used for filtering, routing, policies, and user organisation.",
+    title: "Media Management",
+    description: "Manage where your media lives, how it is named, and how it moves through Deluno.",
     chrome: "none"
   },
   {
@@ -283,7 +315,7 @@ export function SettingsWorkspaceLayout() {
   }
 
   return (
-    <SettingsShell title={meta.title} description={meta.description}>
+    <SettingsShell description={meta.description}>
       <SettingsWorkspaceContext.Provider value>
         <Outlet />
       </SettingsWorkspaceContext.Provider>
@@ -299,7 +331,7 @@ export function SettingsWorkspaceLayout() {
 export function SystemWorkspaceLayout() {
   return (
     <div className="flex flex-col gap-[var(--page-gap)]">
-      <PageToolbar tabs={systemHealthNavItems} />
+      <PageToolbar tabs={systemHealthNavItems} accent="cyan" />
       <SystemWorkspaceContext.Provider value>
         <Outlet />
       </SystemWorkspaceContext.Provider>
@@ -308,13 +340,9 @@ export function SystemWorkspaceLayout() {
 }
 
 export function SettingsShell({
-  eyebrow = "Library setup",
-  title,
   description,
   children
 }: {
-  eyebrow?: string;
-  title: string;
   description: string;
   children: ReactNode;
 }) {
@@ -327,29 +355,19 @@ export function SettingsShell({
   return (
     <div className="space-y-[var(--page-gap)]">
       <GlossaryModal open={glossaryOpen} onOpenChange={setGlossaryOpen} />
-      <div className="max-w-4xl">
-        <div className="min-w-0">
-          {/* A real heading, not a styled paragraph: a screen-reader user
-              navigates by jumping between headings, and while this was a <p>
-              there was nothing in the settings body to jump to at all. The page
-              name itself is the topbar's h1 and is not repeated here, so this
-              sits at h2. */}
-          <h2 className="text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-            {eyebrow}
-          </h2>
-          <div className="mt-2 flex items-center gap-3">
-            <button
-              onClick={() => setGlossaryOpen(true)}
-              className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
-              title="Open glossary"
-            >
-              <HelpCircle className="h-5 w-5" />
-            </button>
-          </div>
-        </div>
-        <p className="mt-3 max-w-3xl text-[length:var(--section-subtitle-size)] leading-relaxed text-muted-foreground">
+      <div className="flex max-w-4xl items-start justify-between gap-[var(--grid-gap)]">
+        <p className="max-w-3xl text-[length:var(--section-subtitle-size)] leading-relaxed text-muted-foreground">
           {description}
         </p>
+        <button
+          type="button"
+          onClick={() => setGlossaryOpen(true)}
+          className="shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          title="Open glossary"
+          aria-label="Open glossary"
+        >
+          <HelpCircle className="h-5 w-5" />
+        </button>
       </div>
 
       <div className="min-w-0 space-y-[var(--page-gap)]">

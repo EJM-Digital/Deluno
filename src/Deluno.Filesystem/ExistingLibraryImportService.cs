@@ -67,6 +67,106 @@ public sealed class ExistingLibraryImportService(
         @"(?<![A-Za-z0-9])(?:remux|blu[-\s]?ray|bdrip|brrip|web[-\s]?dl|webrip|web|hdtv|sdtv|dvd|dvdrip|proper|repack|internal|hdr|sdr|uhd|4k|x264|x265|h[-\s]?264|h[-\s]?265|hevc|avc|av1|xvid|divx|mpeg[-\s]?2|vp9|truehd|atmos|dts(?:[-\s]?(?:hd(?:[-\s]?ma)?|x))?|e[-\s]?ac[-\s]?3|ddp|dd\+|eac3|ac[-\s]?3|dd|flac|opus|aac|mp3|[1-9][\s-][0-2]|480p|720p|1080p|2160p)(?![A-Za-z0-9])",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    public async Task<ExistingLibraryPreviewPage?> PreviewAsync(
+        string libraryId,
+        string? cursor,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        var library = await FindLibraryAsync(libraryId, cancellationToken);
+        if (library is null || string.IsNullOrWhiteSpace(library.RootPath) || !Directory.Exists(library.RootPath))
+        {
+            return null;
+        }
+
+        var entries = ListTopLevelEntries(library.RootPath);
+        var page = entries
+            .Where(entry => cursor is null || string.CompareOrdinal(entry, cursor) > 0)
+            .Take(Math.Clamp(take, 1, 100) + 1)
+            .ToArray();
+        var hasMore = page.Length > Math.Clamp(take, 1, 100);
+        var visible = page.Take(Math.Clamp(take, 1, 100)).ToArray();
+
+        return new ExistingLibraryPreviewPage(
+            LibraryId: library.Id,
+            LibraryName: library.Name,
+            MediaType: library.MediaType,
+            RootPath: library.RootPath,
+            Items: visible.Select(entry => ToPreviewCandidate(library, entry)).ToArray(),
+            NextCursor: hasMore && visible.Length > 0 ? visible[^1] : null,
+            HasMore: hasMore);
+    }
+
+    public async Task<ExistingLibraryImportResult?> ImportSelectedAsync(
+        string libraryId,
+        IReadOnlyList<string> sourcePaths,
+        CancellationToken cancellationToken)
+    {
+        var library = await FindLibraryAsync(libraryId, cancellationToken);
+        if (library is null || string.IsNullOrWhiteSpace(library.RootPath) || !Directory.Exists(library.RootPath))
+        {
+            return null;
+        }
+
+        var issues = new List<ExistingLibraryImportIssue>();
+        var requested = new List<string>();
+        var requestedInput = sourcePaths.Where(path => !string.IsNullOrWhiteSpace(path)).Take(100).ToArray();
+        foreach (var sourcePath in requestedInput)
+        {
+            try
+            {
+                var fullPath = Path.GetFullPath(sourcePath.Trim());
+                if (!requested.Contains(fullPath, StringComparer.OrdinalIgnoreCase))
+                {
+                    requested.Add(fullPath);
+                }
+            }
+            catch (ArgumentException)
+            {
+                issues.Add(new ExistingLibraryImportIssue(sourcePath, "invalidPath", "The selected path is not valid."));
+            }
+        }
+
+        var pending = new List<DetectedLibraryItem>(requested.Count);
+        var isMovies = string.Equals(library.MediaType, "movies", StringComparison.OrdinalIgnoreCase);
+
+        foreach (var sourcePath in requested)
+        {
+            if (!IsWithinRoot(library.RootPath, sourcePath) || (!File.Exists(sourcePath) && !Directory.Exists(sourcePath)))
+            {
+                issues.Add(new ExistingLibraryImportIssue(sourcePath, "outsideLibrary", "The selected path is no longer inside this library folder."));
+                continue;
+            }
+
+            var detection = TryDetect(library, sourcePath, isMovies);
+            if (detection.Item is null)
+            {
+                var issue = detection.Issue ?? new DetectionIssue("notImportable", "Deluno could not find a supported media file here.");
+                issues.Add(new ExistingLibraryImportIssue(sourcePath, issue.Kind, issue.Detail));
+                continue;
+            }
+
+            if (detection.Issue is { } warning)
+            {
+                issues.Add(new ExistingLibraryImportIssue(sourcePath, warning.Kind, warning.Detail));
+            }
+
+            pending.Add(detection.Item);
+        }
+
+        var imported = 0;
+        foreach (var batch in pending.Chunk(isMovies ? _slice.MovieBatchSize : _slice.SeriesBatchSize))
+        {
+            imported += await ImportSelectedBatchAsync(library, isMovies, batch, issues, cancellationToken);
+        }
+
+        return new ExistingLibraryImportResult(
+            RequestedCount: requestedInput.Length,
+            ImportedCount: imported,
+            SkippedCount: requestedInput.Length - imported,
+            Issues: issues);
+    }
+
     public async Task<LibraryImportRunProgress?> StartAsync(string libraryId, CancellationToken cancellationToken)
     {
         var library = await FindLibraryAsync(libraryId, cancellationToken);
@@ -154,6 +254,93 @@ public sealed class ExistingLibraryImportService(
         int take,
         CancellationToken cancellationToken)
         => importRunsRepository.ListResumableRunsAsync(idleBeforeUtc, take, cancellationToken);
+
+    private ExistingLibraryCandidate ToPreviewCandidate(LibraryItem library, string entry)
+    {
+        var isMovies = string.Equals(library.MediaType, "movies", StringComparison.OrdinalIgnoreCase);
+        var detection = TryDetect(library, entry, isMovies);
+        var item = detection.Item;
+
+        return new ExistingLibraryCandidate(
+            SourcePath: entry,
+            RelativePath: Path.GetRelativePath(library.RootPath, entry),
+            Title: item?.Title ?? Path.GetFileName(entry),
+            Year: item?.Year,
+            DetectedQuality: item?.DetectedQuality,
+            FileSizeBytes: item?.FileSizeBytes,
+            IsDirectory: Directory.Exists(entry),
+            CanImport: item is not null,
+            IssueKind: detection.Issue?.Kind,
+            IssueDetail: detection.Issue?.Detail);
+    }
+
+    private DetectionResult TryDetect(LibraryItem library, string entry, bool isMovies)
+    {
+        try
+        {
+            return isMovies ? DetectMovie(entry) : DetectSeries(entry);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            logger.LogWarning(ex, "Could not inspect existing-library path {EntryPath}.", entry);
+            return new DetectionResult(null, new DetectionIssue("unreadable", "Deluno could not read this file or folder."));
+        }
+    }
+
+    private async Task<int> ImportSelectedBatchAsync(
+        LibraryItem library,
+        bool isMovies,
+        IReadOnlyList<DetectedLibraryItem> batch,
+        List<ExistingLibraryImportIssue> issues,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return isMovies
+                ? await movieCatalogRepository.ImportExistingBatchAsync(
+                    library.Id,
+                    batch.Select(item => ToMovieRequest(library, item)).ToArray(),
+                    cancellationToken)
+                : await seriesCatalogRepository.ImportExistingBatchAsync(
+                    library.Id,
+                    batch.Select(item => ToSeriesRequest(library, item)).ToArray(),
+                    cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            var imported = 0;
+            foreach (var item in batch)
+            {
+                try
+                {
+                    imported += isMovies
+                        ? await movieCatalogRepository.ImportExistingBatchAsync(library.Id, [ToMovieRequest(library, item)], cancellationToken)
+                        : await seriesCatalogRepository.ImportExistingBatchAsync(library.Id, [ToSeriesRequest(library, item)], cancellationToken);
+                }
+                catch (Exception itemException) when (itemException is not OperationCanceledException)
+                {
+                    issues.Add(new ExistingLibraryImportIssue(
+                        item.FilePath ?? item.Title,
+                        "writeFailed",
+                        itemException.Message));
+                }
+            }
+
+            if (imported == 0 && batch.Count > 0 && issues.All(issue => issue.Kind != "writeFailed"))
+            {
+                issues.Add(new ExistingLibraryImportIssue(batch[0].FilePath ?? batch[0].Title, "writeFailed", ex.Message));
+            }
+
+            return imported;
+        }
+    }
+
+    private static bool IsWithinRoot(string rootPath, string candidatePath)
+    {
+        var root = Path.GetFullPath(rootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        var candidate = Path.GetFullPath(candidatePath);
+        return candidate.StartsWith(root, StringComparison.OrdinalIgnoreCase);
+    }
 
     public async Task<LibraryImportSliceOutcome> RunSliceAsync(string runId, CancellationToken cancellationToken)
     {

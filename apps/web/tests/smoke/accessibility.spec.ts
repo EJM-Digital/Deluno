@@ -34,7 +34,7 @@ test.describe("accessibility semantics", () => {
 
   test("keeps setup presets keyboard-navigable as radio groups", async ({ page }) => {
     await authenticateAndNavigate(page, "/setup-guide");
-    await page.getByRole("button", { name: /Connections/ }).click();
+    await page.getByRole("button", { name: /Find & Download/ }).click();
 
     const searchPresets = page.getByRole("radiogroup", { name: "Search source presets" });
     const searchOptions = searchPresets.getByRole("radio");

@@ -37,6 +37,7 @@ public sealed class LibrarySearchJobHandler(
         var configuredClients = routing?.DownloadClients.Count ?? 0;
         var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
         var library = libraries.FirstOrDefault(item => item.Id == payload.LibraryId);
+        var searchStatus = ResolveSearchStatus(payload);
         var customFormats = await SearchExecutionSupport.ResolveCustomFormatsAsync(
             qualityRepository,
             library?.QualityProfileId,
@@ -44,15 +45,16 @@ public sealed class LibrarySearchJobHandler(
 
         if (payload.MediaType == "movies")
         {
-            return await SearchMoviesAsync(job, payload, routing, customFormats, configuredSources, configuredClients, now, cancellationToken);
+            return await SearchMoviesAsync(job, payload, searchStatus, routing, customFormats, configuredSources, configuredClients, now, cancellationToken);
         }
 
-        return await SearchSeriesAsync(job, payload, routing, customFormats, configuredSources, configuredClients, now, cancellationToken);
+        return await SearchSeriesAsync(job, payload, searchStatus, routing, customFormats, configuredSources, configuredClients, now, cancellationToken);
     }
 
     private async Task<string> SearchMoviesAsync(
         JobQueueItem job,
         JobPayloads.LibrarySearchPayload payload,
+        string? searchStatus,
         LibraryRoutingSnapshot? routing,
         IReadOnlyList<Deluno.Quality.Contracts.CustomFormatItem> customFormats,
         int configuredSources,
@@ -64,13 +66,14 @@ public sealed class LibrarySearchJobHandler(
         var startedUtc = now;
         var retryDelayed = ignoreRetryWindow
             ? 0
-            : await movieCatalogRepository.CountRetryDelayedWantedAsync(payload.LibraryId, now, cancellationToken);
+            : await movieCatalogRepository.CountRetryDelayedWantedAsync(payload.LibraryId, now, cancellationToken, searchStatus);
         var candidates = (await movieCatalogRepository.ListEligibleWantedAsync(
             payload.LibraryId,
             payload.MaxItems,
             now,
             ignoreRetryWindow,
-            cancellationToken))
+            cancellationToken,
+            searchStatus))
             .Where(candidate => string.IsNullOrWhiteSpace(payload.TargetEntityId) || string.Equals(candidate.MovieId, payload.TargetEntityId, StringComparison.OrdinalIgnoreCase))
             .ToArray();
         var matchedCount = 0;
@@ -217,7 +220,8 @@ public sealed class LibrarySearchJobHandler(
                 retryDelayed,
                 SearchExecutionSupport.SerializeCycleNotes(configuredSources, configuredClients, checkedCount, matchedCount, blockedCount, heldCount, retryDelayed, payload.MaxItems, apiCallCount, queuedReleaseBytes),
                 startedUtc,
-                timeProvider.GetUtcNow()),
+                timeProvider.GetUtcNow(),
+                searchStatus ?? "combined"),
             cancellationToken);
 
         await activityFeedRepository.RecordActivityAsync(
@@ -235,6 +239,7 @@ public sealed class LibrarySearchJobHandler(
     private async Task<string> SearchSeriesAsync(
         JobQueueItem job,
         JobPayloads.LibrarySearchPayload payload,
+        string? searchStatus,
         LibraryRoutingSnapshot? routing,
         IReadOnlyList<Deluno.Quality.Contracts.CustomFormatItem> customFormats,
         int configuredSources,
@@ -248,13 +253,14 @@ public sealed class LibrarySearchJobHandler(
             payload.MaxItems,
             now,
             seriesIgnoreRetryWindow,
-            cancellationToken))
+            cancellationToken,
+            searchStatus))
             .Where(candidate => string.IsNullOrWhiteSpace(payload.TargetEntityId) || string.Equals(candidate.SeriesId, payload.TargetEntityId, StringComparison.OrdinalIgnoreCase))
             .ToArray();
         var seriesStartedUtc = now;
         var seriesRetryDelayed = seriesIgnoreRetryWindow
             ? 0
-            : await seriesCatalogRepository.CountRetryDelayedWantedAsync(payload.LibraryId, now, cancellationToken);
+            : await seriesCatalogRepository.CountRetryDelayedWantedAsync(payload.LibraryId, now, cancellationToken, searchStatus);
         var seriesMatchedCount = 0;
         var seriesBlockedCount = 0;
         var seriesCheckedCount = 0;
@@ -401,7 +407,8 @@ public sealed class LibrarySearchJobHandler(
                 seriesRetryDelayed,
                 SearchExecutionSupport.SerializeCycleNotes(configuredSources, configuredClients, seriesCheckedCount, seriesMatchedCount, seriesBlockedCount, seriesHeldCount, seriesRetryDelayed, payload.MaxItems, seriesApiCallCount, seriesQueuedReleaseBytes),
                 seriesStartedUtc,
-                timeProvider.GetUtcNow()),
+                timeProvider.GetUtcNow(),
+                searchStatus ?? "combined"),
             cancellationToken);
 
         await activityFeedRepository.RecordActivityAsync(
@@ -414,5 +421,14 @@ public sealed class LibrarySearchJobHandler(
             cancellationToken);
 
         return SearchExecutionSupport.FormatCompletionMessage(payload.LibraryName, seriesCandidates.Length, configuredSources, configuredClients, "TV show");
+    }
+
+    private static string? ResolveSearchStatus(JobPayloads.LibrarySearchPayload payload)
+    {
+        if (string.Equals(payload.SearchKind, "missing", StringComparison.OrdinalIgnoreCase)) return "missing";
+        if (string.Equals(payload.SearchKind, "upgrade", StringComparison.OrdinalIgnoreCase)) return "upgrade";
+        if (payload.CheckMissing && !payload.CheckUpgrades) return "missing";
+        if (payload.CheckUpgrades && !payload.CheckMissing) return "upgrade";
+        return null;
     }
 }

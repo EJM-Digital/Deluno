@@ -18,7 +18,8 @@ internal static class JobPayloads
         int MaxItems,
         int RetryDelayHours,
         string TriggeredBy,
-        string? TargetEntityId = null);
+        string? TargetEntityId = null,
+        string SearchKind = "combined");
 
     internal sealed record LibraryQualityPayload(
         string LibraryId,

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate, useNavigation, useSearchParams } from "react-router-dom";
 import type { MediaItem } from "../../lib/media-types";
 import {
@@ -8,7 +8,9 @@ import {
   type CatalogueFacets,
   type CataloguePage,
   type CreateLibraryViewRequest,
+  type LibraryItem,
   type LibraryViewItem,
+  type MetadataRefreshJobsResponse,
   type MetadataProviderStatus,
   type MetadataSearchResult,
   type MovieListItem,
@@ -70,6 +72,7 @@ export function LibraryView({
   const [searchParams, setSearchParams] = useSearchParams();
   const { density } = useDensity();
   const [libraryItems, setLibraryItems] = useState<MediaItem[]>([]);
+  const [libraries, setLibraries] = useState<LibraryItem[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [facets, setFacets] = useState<CatalogueFacets | null>(null);
   const [nextPageToken, setNextPageToken] = useState<string | null>(null);
@@ -78,12 +81,40 @@ export function LibraryView({
   const [isCatalogueLoading, setIsCatalogueLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [refreshVersion, setRefreshVersion] = useState(0);
+  const [isUpdatingMetadata, setIsUpdatingMetadata] = useState(false);
   const {
-    query, setQuery, quickFilter, setQuickFilter, view, setView, sortField, setSortField,
+    query, setQuery, libraryId, setLibraryId, quickFilter, setQuickFilter, view, setView, sortField, setSortField,
     sortDirection, setSortDirection, cardSize, displayOptions,
     savedPresets, setSavedPresets, newPresetName, setNewPresetName, isSavingPreset,
     setIsSavingPreset, changeSize, updateDisplayOptions, activeFilterCount
   } = useLibraryFilters(variant, searchParams.get("filter"));
+
+  const compatibleLibraries = libraries
+    .filter((library) => library.mediaType === (variant === "movies" ? "movies" : "tv"))
+    .sort((left, right) => left.name.localeCompare(right.name));
+
+  const buildCatalogueParams = useCallback((pageToken?: string) => {
+    const params = new URLSearchParams({ pageSize: "100", sort: sortField, direction: sortDirection });
+    if (pageToken) params.set("pageToken", pageToken);
+    if (query.trim()) params.set("search", query.trim());
+    if (quickFilter !== "all") params.set("status", quickFilter);
+    if (libraryId) params.set("libraryId", libraryId);
+    return params;
+  }, [libraryId, query, quickFilter, sortDirection, sortField]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchJson<LibraryItem[]>("/api/libraries")
+      .then((items) => {
+        if (!cancelled) setLibraries(items);
+      })
+      .catch(() => {
+        if (!cancelled) setLibraries([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const {
     selectedIds, setSelectedIds, isBulkUpdating, setIsBulkUpdating, isBulkToolsOpen, setIsBulkToolsOpen,
@@ -104,11 +135,19 @@ export function LibraryView({
 
   useEffect(() => {
     let cancelled = false;
+    // Do not leave the previous variant visible while the new catalogue is
+    // loading. Movies and TV share the same workspace component, so retaining
+    // these rows for even one frame looks like ghosted content from the other
+    // library during a fast sidebar switch.
+    setLibraryItems([]);
+    setTotalCount(0);
+    setFacets(null);
+    setNextPageToken(null);
+    setCurrentPageToken(null);
+    setPreviousPageTokens([]);
+    setIsCatalogueLoading(true);
     const timer = window.setTimeout(async () => {
-      setIsCatalogueLoading(true);
-      const params = new URLSearchParams({ pageSize: "100", sort: sortField, direction: sortDirection });
-      if (query.trim()) params.set("search", query.trim());
-      if (quickFilter !== "all") params.set("status", quickFilter);
+      const params = buildCatalogueParams();
       try {
         if (variant === "movies") {
           const [page, wanted] = await Promise.all([
@@ -149,14 +188,12 @@ export function LibraryView({
       }
     }, 250);
     return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [query, quickFilter, refreshVersion, sortDirection, sortField, variant]);
+  }, [buildCatalogueParams, refreshVersion, setSelectedIds, variant]);
 
   async function loadNextCataloguePage() {
     if (!nextPageToken || isLoadingMore) return;
     setIsLoadingMore(true);
-    const params = new URLSearchParams({ pageSize: "100", sort: sortField, direction: sortDirection, pageToken: nextPageToken });
-    if (query.trim()) params.set("search", query.trim());
-    if (quickFilter !== "all") params.set("status", quickFilter);
+    const params = buildCatalogueParams(nextPageToken);
     try {
       if (variant === "movies") {
         const [page, wanted] = await Promise.all([
@@ -189,10 +226,7 @@ export function LibraryView({
     const previousToken = previousPageTokens[previousPageTokens.length - 1] ?? null;
 
     setIsLoadingMore(true);
-    const params = new URLSearchParams({ pageSize: "100", sort: sortField, direction: sortDirection });
-    if (previousToken) params.set("pageToken", previousToken);
-    if (query.trim()) params.set("search", query.trim());
-    if (quickFilter !== "all") params.set("status", quickFilter);
+    const params = buildCatalogueParams(previousToken ?? undefined);
     try {
       if (variant === "movies") {
         const [page, wanted] = await Promise.all([
@@ -281,6 +315,7 @@ export function LibraryView({
           items.map((item) => ({
             id: item.id,
             name: item.name,
+            libraryId: item.libraryId ?? null,
             quickFilter: isQuickFilter(item.quickFilter) ? item.quickFilter : "all",
             sortField: isSortField(item.sortField) ? item.sortField : "title",
             sortDirection: item.sortDirection === "desc" ? "desc" : "asc",
@@ -319,6 +354,26 @@ export function LibraryView({
     navigate(item.type === "movie" ? `/movies/${item.id}` : `/tv/${item.id}`);
   }
 
+  async function handleUpdateAllMetadata() {
+    if (isUpdatingMetadata) return;
+    setIsUpdatingMetadata(true);
+    try {
+      const endpoint = variant === "movies" ? "/api/movies/metadata/jobs" : "/api/series/metadata/jobs";
+      const result = await fetchJson<MetadataRefreshJobsResponse>(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ forceAll: true, take: 500 })
+      });
+      toast.success(result.message);
+      setRefreshVersion((current) => current + 1);
+      onReload?.();
+    } catch {
+      toast.error(`Could not queue a metadata update for the ${variant === "movies" ? "movie" : "TV show"} library.`);
+    } finally {
+      setIsUpdatingMetadata(false);
+    }
+  }
+
   async function saveCurrentPreset() {
     const name = newPresetName.trim();
     if (!name) {
@@ -330,6 +385,7 @@ export function LibraryView({
     try {
       const payload: CreateLibraryViewRequest = {
         variant,
+        libraryId,
         name,
         quickFilter,
         sortField,
@@ -353,6 +409,7 @@ export function LibraryView({
         {
           id: created.id,
           name: created.name,
+          libraryId: created.libraryId ?? null,
           quickFilter: isQuickFilter(created.quickFilter) ? created.quickFilter : "all",
           sortField: isSortField(created.sortField) ? created.sortField : "title",
           sortDirection: created.sortDirection === "desc" ? "desc" : "asc",
@@ -371,6 +428,7 @@ export function LibraryView({
   }
 
   function applyPreset(preset: SavedFilterPreset) {
+    setLibraryId(preset.libraryId);
     setQuickFilter(preset.quickFilter);
     setSortField(preset.sortField);
     setSortDirection(preset.sortDirection);
@@ -662,6 +720,8 @@ export function LibraryView({
           missingCount={missingCount}
           downloadingCount={downloadingCount}
           onToggleCreate={() => showCreate ? closeCreate() : openCreate()}
+          isUpdatingMetadata={isUpdatingMetadata}
+          onUpdateMetadata={() => void handleUpdateAllMetadata()}
         />
         <LibraryCreateDialog
           open={showCreate}
@@ -692,6 +752,7 @@ export function LibraryView({
             query, setQuery, quickFilter, setQuickFilter, sortField, setSortField,
             sortDirection, setSortDirection, view, setView, cardSize, changeSize,
             displayOptions, setDisplayOptions: updateDisplayOptions, savedPresets,
+            libraryId, setLibraryId, libraries: compatibleLibraries,
             newPresetName, setNewPresetName, isSavingPreset, saveCurrentPreset,
             applyPreset, deletePreset, activeFilterCount
           }}
@@ -704,6 +765,7 @@ export function LibraryView({
           selectedCount={selectedCount}
           allVisibleSelected={filtered.length > 0 && filtered.every((item) => selectedIds.includes(item.id))}
           onToggle={toggleSelectAllVisible}
+          view={view}
         />
 
         {/* Action messages now surface through the global Toaster */}
@@ -726,19 +788,20 @@ export function LibraryView({
           label={label}
           singular={singular}
           libraryCount={facets?.all ?? totalCount}
-          hasActiveFilter={Boolean(query.trim()) || quickFilter !== "all"}
+          hasActiveFilter={Boolean(query.trim()) || libraryId !== null || quickFilter !== "all"}
           view={view}
           cardSize={cardSize}
           density={density}
           displayOptions={displayOptions}
           selectedIds={selectedIds}
-          keyBust={`${cardSize}-${quickFilter}-${query}-${sortField}-${sortDirection}-${displayOptions.showMeta}-${displayOptions.showStatusPill}-${displayOptions.showQualityBadge}-${displayOptions.showRating}`}
+          keyBust={`${cardSize}-${libraryId ?? "all"}-${quickFilter}-${query}-${sortField}-${sortDirection}-${displayOptions.showMeta}-${displayOptions.showStatusPill}-${displayOptions.showQualityBadge}-${displayOptions.showRating}`}
           isLoadingMore={isLoadingMore}
           hasPreviousPage={previousPageTokens.length > 0}
           hasNextPage={Boolean(nextPageToken)}
           onOpenCreate={openCreate}
           onClearFilters={() => {
             setQuickFilter("all");
+            setLibraryId(null);
             setQuery("");
           }}
           onSelect={openWorkspace}

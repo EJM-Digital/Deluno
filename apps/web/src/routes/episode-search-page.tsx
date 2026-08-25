@@ -133,6 +133,7 @@ export function EpisodeSearchPage() {
   return (
     <div className="grid gap-[var(--page-gap)]">
       <PageToolbar
+        accent="yellow"
         actions={
           <>
             <Button asChild type="button" variant="outline">

@@ -25,13 +25,17 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
   ({ className, id, options, placeholder, children, ...props }, ref) => {
     const field = useFieldContext();
     return (
-      <span className="relative block min-w-0">
+      <span className="group relative block min-w-0">
         <select
           ref={ref}
           id={id ?? field?.id}
           aria-describedby={props["aria-describedby"] ?? field?.describedBy}
           aria-invalid={props["aria-invalid"] ?? (field?.invalid ? true : undefined)}
-          className={cn(controlClassName, "appearance-none pr-9", className)}
+          className={cn(
+            controlClassName,
+            "cursor-pointer appearance-none pr-[calc(var(--field-pad-x)+1.5rem)] hover:border-foreground/20 hover:bg-surface-2 focus:bg-surface-2",
+            className
+          )}
           {...props}
         >
           {placeholder !== undefined ? <option value="">{placeholder}</option> : null}
@@ -44,7 +48,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
         </select>
         <ChevronDown
           aria-hidden
-          className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+          className="pointer-events-none absolute right-[var(--field-pad-x)] top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/80 transition-colors group-hover:text-foreground group-focus-within:text-primary"
         />
       </span>
     );

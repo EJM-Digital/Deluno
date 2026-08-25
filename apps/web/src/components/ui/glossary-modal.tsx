@@ -29,11 +29,11 @@ const GLOSSARY: GlossaryItem[] = [
   },
   {
     term: "Quality Profile",
-    definition: "A named configuration that combines a ranked list of qualities, a quality cutoff, and custom format rules. Assigned to each library."
+    definition: "The complete quality standard for a library: accepted quality levels, size limits, release preferences, exclusions, and upgrade behaviour."
   },
   {
-    term: "Media Plan",
-    definition: "Deluno's outcome-first home for what version you want: quality, file size, release preferences, language, and upgrades. Destination rules stay separate for folder exceptions."
+    term: "Library Profile",
+    definition: "A reusable profile attached to a library. It tells Deluno what quality to accept, when to search, how to upgrade, and where to put finished media."
   },
   {
     term: "Dry Run",
@@ -57,15 +57,15 @@ const GLOSSARY: GlossaryItem[] = [
   },
   {
     term: "Live Automation",
-    definition: "The operational view of what Deluno is searching, retrying, waiting on, or pausing right now. It is separate from Library setup so a live action is not mistaken for a permanent configuration change."
+    definition: "The operational view of what Deluno is searching, retrying, waiting on, or pausing right now. It is separate from Media Management so a live action is not mistaken for a permanent configuration change."
   },
   {
     term: "Download Health & Cleanup",
     definition: "Deluno's integrated replacement for a separate cleanup tool: it explains unhealthy downloads, previews a safe action, and can schedule a bounded replacement search. It is not antivirus protection and never silently deletes unproven shared data."
   },
   {
-    term: "Guide-backed Plan",
-    definition: "A plan informed by a quality guide or imported configuration. Deluno must show its source, effective rules, and any overrides rather than claiming every Recyclarr or Configarr setting maps exactly."
+    term: "Guide-backed Rules",
+    definition: "A Library Profile informed by a quality guide or imported configuration. Deluno must show its source, effective settings, and any overrides rather than claiming every Recyclarr or Configarr setting maps exactly."
   },
   {
     term: "Monitored Episode",

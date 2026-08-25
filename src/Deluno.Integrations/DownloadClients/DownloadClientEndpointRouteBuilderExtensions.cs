@@ -1,11 +1,12 @@
 using Microsoft.AspNetCore.Mvc;
 using Deluno.Contracts;
+using Deluno.Connections.Data;
+using Deluno.Security;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Deluno.Platform;
 using Deluno.Platform.Data;
-using Deluno.Security;
 
 namespace Deluno.Integrations.DownloadClients;
 
@@ -95,6 +96,51 @@ public static class DownloadClientEndpointRouteBuilderExtensions
 
             var result = await grabService.GrabAsync(clientId, request, cancellationToken);
             return result.Succeeded ? Results.Ok(result) : Results.BadRequest(result);
+        });
+
+        endpoints.MapPost("/api/download-clients/{clientId}/categories/check", async (
+            string clientId,
+            HttpContext httpContext,
+            DownloadClientCategoryCheckRequest request,
+            IConnectionsRepository connectionsRepository,
+            IDownloadClientRegistry downloadClientRegistry,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var category = request.Category?.Trim();
+            if (string.IsNullOrWhiteSpace(category))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["category"] = ["Enter the category name used by the download client."]
+                });
+            }
+
+            var client = (await connectionsRepository.ListDownloadClientsAsync(cancellationToken))
+                .FirstOrDefault(item => string.Equals(item.Id, clientId, StringComparison.OrdinalIgnoreCase));
+            if (client is null)
+            {
+                return Results.NotFound();
+            }
+
+            if (!downloadClientRegistry.TryGet(client.Protocol, out var downloadClient))
+            {
+                return Results.Ok(new DownloadClientCategoryCheckResult(
+                    client.Id,
+                    client.Name,
+                    category,
+                    DownloadClientCategoryStatuses.Unsupported,
+                    $"Deluno does not have a category checker for {client.Protocol} yet.",
+                    Supported: false,
+                    Found: false));
+            }
+
+            return Results.Ok(await downloadClient.CheckCategoryAsync(client, category, cancellationToken));
         });
 
         endpoints.MapPost("/api/download-clients/{clientId}/webhook", async (

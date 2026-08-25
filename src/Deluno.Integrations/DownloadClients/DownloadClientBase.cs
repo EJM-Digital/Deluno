@@ -30,6 +30,19 @@ public abstract class DownloadClientBase : IDownloadClient
         CancellationToken cancellationToken)
         => Task.FromResult<IReadOnlyList<DownloadClientHistoryItem>>([]);
 
+    public virtual Task<DownloadClientCategoryCheckResult> CheckCategoryAsync(
+        DownloadClientItem client,
+        string category,
+        CancellationToken cancellationToken)
+        => Task.FromResult(new DownloadClientCategoryCheckResult(
+            client.Id,
+            client.Name,
+            category,
+            DownloadClientCategoryStatuses.Unsupported,
+            $"Deluno cannot list categories for {client.Protocol} yet. You can still use the client default.",
+            Supported: false,
+            Found: false));
+
     public abstract string NormalizeStatus(
         string? nativeStatus,
         double? progress,

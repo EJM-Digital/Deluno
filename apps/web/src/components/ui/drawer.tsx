@@ -112,7 +112,7 @@ export function DrawerSection({
   children,
   className
 }: {
-  /** Uppercase 11px label. Omit for a trailing danger section. */
+  /** Quiet eyebrow heading. Omit for a trailing danger section. */
   title?: React.ReactNode;
   /** Muted text right of the title (e.g. "12 rules selected"). */
   aside?: React.ReactNode;
@@ -120,11 +120,11 @@ export function DrawerSection({
   className?: string;
 }) {
   return (
-    <section className={cn("grid gap-[var(--grid-gap)] border-b border-hairline py-5 last:border-b-0", className)}>
+    <section className={cn("grid min-w-0 gap-[var(--grid-gap)] border-b border-hairline py-5 last:border-b-0", className)}>
       {title ? (
-        <h3 className="flex items-baseline gap-2 text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-          {title}
-          {aside ? <span className="font-normal normal-case tracking-normal">{aside}</span> : null}
+        <h3 className="flex min-w-0 flex-wrap items-baseline gap-x-[var(--grid-gap)] gap-y-1 text-[length:var(--type-caption)] font-semibold uppercase leading-tight tracking-[0.1em] text-muted-foreground">
+          <span className="min-w-0">{title}</span>
+          {aside ? <span className="max-w-full font-normal normal-case leading-tight tracking-normal">{aside}</span> : null}
         </h3>
       ) : null}
       {children}

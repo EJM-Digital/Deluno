@@ -78,7 +78,7 @@ export function MediaMetadataDrawer({
   const [confirmDiscard, setConfirmDiscard] = useState(false);
 
   const dirty = open && state === "dirty";
-  const blocker = useUnsavedChanges(dirty);
+  useUnsavedChanges(dirty);
 
   // Reopening starts from what the server holds now, not from an abandoned edit.
   useEffect(() => {
@@ -353,11 +353,10 @@ export function MediaMetadataDrawer({
     </Drawer>
 
     <ConfirmDialog
-      open={confirmDiscard || blocker.state === "blocked"}
+      open={confirmDiscard}
       onOpenChange={(next) => {
         if (next) return;
         setConfirmDiscard(false);
-        if (blocker.state === "blocked") blocker.reset();
       }}
       title="Discard unsaved changes?"
       description="The metadata values you typed haven't been saved."
@@ -367,7 +366,6 @@ export function MediaMetadataDrawer({
         setState("clean");
         setForm(value);
         onOpenChange(false);
-        if (blocker.state === "blocked") blocker.proceed();
       }}
     />
     </>

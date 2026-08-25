@@ -13,8 +13,43 @@ export class ApiRequestError extends Error {
   }
 }
 
+const TRANSIENT_HTTP_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
+const RETRY_DELAYS_MS = [150, 450, 1_000] as const;
+
+function canRetryRequest(init?: RequestInit) {
+  const method = (init?.method ?? "GET").toUpperCase();
+  return method === "GET" || method === "HEAD" || method === "OPTIONS";
+}
+
+function isTransientNetworkError(error: unknown) {
+  return error instanceof TypeError || (typeof DOMException !== "undefined" && error instanceof DOMException && error.name !== "AbortError");
+}
+
+function waitForRetry(attempt: number) {
+  return new Promise<void>((resolve) => globalThis.setTimeout(resolve, RETRY_DELAYS_MS[attempt] ?? RETRY_DELAYS_MS.at(-1)!));
+}
+
 export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await authedFetch(path, { cache: "no-store", ...init });
+  const requestInit: RequestInit = { cache: "no-store", ...init };
+  const retryable = canRetryRequest(requestInit);
+  let response: Response;
+
+  for (let attempt = 0; ; attempt++) {
+    try {
+      response = await authedFetch(path, requestInit);
+    } catch (error) {
+      if (!retryable || attempt >= RETRY_DELAYS_MS.length || !isTransientNetworkError(error)) throw error;
+      await waitForRetry(attempt);
+      continue;
+    }
+
+    if (response.ok || !retryable || !TRANSIENT_HTTP_STATUSES.has(response.status) || attempt >= RETRY_DELAYS_MS.length) {
+      break;
+    }
+
+    await waitForRetry(attempt);
+  }
+
   if (!response.ok) {
     const responseBody = await response.text().catch(() => "");
     let message = `Request failed for ${path} with status ${response.status}.`;

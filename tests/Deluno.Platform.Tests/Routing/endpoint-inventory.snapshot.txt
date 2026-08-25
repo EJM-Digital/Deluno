@@ -69,6 +69,7 @@ GET /api/libraries/
 GET /api/libraries/export
 GET /api/libraries/{id}/import-existing
 GET /api/libraries/{id}/import-existing/issues
+GET /api/libraries/{id}/import-existing/preview
 GET /api/libraries/{id}/routing
 GET /api/library-automation
 GET /api/library-views/
@@ -146,6 +147,7 @@ POST /api/destination-rules/
 POST /api/destination-rules/resolve
 POST /api/download-clients/
 POST /api/download-clients/test
+POST /api/download-clients/{clientId}/categories/check
 POST /api/download-clients/{clientId}/grab
 POST /api/download-clients/{clientId}/queue/actions
 POST /api/download-clients/{clientId}/queue/{queueItemId}/health/{kind}/ignore
@@ -181,6 +183,7 @@ POST /api/libraries/{id}/import-existing
 POST /api/libraries/{id}/import-existing/cancel
 POST /api/libraries/{id}/import-existing/pause
 POST /api/libraries/{id}/import-existing/resume
+POST /api/libraries/{id}/import-existing/selected
 POST /api/libraries/{id}/search-now
 POST /api/libraries/{id}/skip-cycle
 POST /api/library-views/

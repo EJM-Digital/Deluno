@@ -152,7 +152,7 @@ Response shape:
   "recommendedCategories": {
     "movies": "deluno-movies",
     "tv": "deluno-tv",
-    "anime": "deluno-anime",
+    "family-movies": "deluno-family-movies",
     "movies4k": "deluno-movies-4k",
     "tv4k": "deluno-tv-4k"
   },
@@ -200,9 +200,9 @@ API key scopes:
 
 When a Deluno library is configured for **Refine before import**, an external processor can clean the completed download without bypassing Deluno's destination resolver, import mover, rename rules, or metadata refresh. The normal path is processor-agnostic: the processor writes below the library's configured processed-output root using the completed download's final source-folder name, and Deluno matches that stable path component to its durable hand-off.
 
-### Optional notification callback
+### Optional processor connection
 
-In **Library setup → Media management → Optional completion callbacks**, save a compatible generic webhook only if existing automation should be notified when a completed download reaches the hand-off stage. Deluno posts this minimal payload; it does not configure, start, or otherwise integrate with FileFlows, Weir, or another processor:
+In **Media Management → Processing Workflow → Processor connections**, connect a compatible processor endpoint only when an external tool should receive processing jobs from Deluno. Deluno posts this minimal hand-off payload; the processor then reports completion to Deluno through the callback path in the payload. Deluno does not configure, start, or otherwise take ownership of FileFlows, Weir, or another processor:
 
 ```json
 {
@@ -219,7 +219,7 @@ In **Library setup → Media management → Optional completion callbacks**, sav
 
 The selected connection may use an `Authorization: Bearer …` token or a custom header. Deluno never includes that secret in activity, diagnostics, or API responses. A connection test uses a safe `HEAD` request; a processor that rejects `HEAD` is still shown as reachable, and its first actual hand-off validates the submission path.
 
-Any existing automation can use `sourcePath` as its input, preserve `handoffId`, and optionally call Deluno back when it has produced its clean output. Treat `handoffId` as the idempotency key: if automation sees it again after a Deluno restart, it must not run the same file twice. Deluno will not import merely because the outbound POST succeeded.
+Any existing automation can use `sourcePath` as its input, preserve `handoffId`, and call Deluno back when it has produced its clean output. Treat `handoffId` as the idempotency key: if automation sees it again after a Deluno restart, it must not run the same file twice. Deluno will not import merely because the outbound POST succeeded. If no processor connection is configured, Deluno watches the processed-output folder itself instead.
 
 Endpoint:
 

@@ -6,6 +6,7 @@ import type { CatalogueFacets } from "../../lib/api";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { Select } from "../ui/select";
 import { SwitchRow } from "../ui/switch";
 import type { CardSize, DisplayOptions } from "./library-grid";
 
@@ -16,6 +17,7 @@ export type SortDirection = "asc" | "desc";
 export interface SavedFilterPreset {
   id: string;
   name: string;
+  libraryId: string | null;
   quickFilter: QuickFilter;
   sortField: SortField;
   sortDirection: SortDirection;
@@ -51,6 +53,9 @@ export function isSortField(value: string | null): value is SortField {
 export interface LibraryControls {
   query: string;
   setQuery: (value: string) => void;
+  libraryId: string | null;
+  setLibraryId: (value: string | null) => void;
+  libraries: Array<{ id: string; name: string }>;
   quickFilter: QuickFilter;
   setQuickFilter: (value: QuickFilter) => void;
   sortField: SortField;
@@ -79,7 +84,7 @@ export function ControlRail({ label, facets, controls }: {
   controls: LibraryControls;
 }) {
   const {
-    query, setQuery, quickFilter, setQuickFilter, sortField, setSortField,
+    query, setQuery, libraryId, setLibraryId, libraries, quickFilter, setQuickFilter, sortField, setSortField,
     sortDirection, setSortDirection, view, setView, cardSize, changeSize,
     displayOptions, setDisplayOptions, savedPresets, newPresetName,
     setNewPresetName, isSavingPreset, saveCurrentPreset, applyPreset,
@@ -157,6 +162,20 @@ export function ControlRail({ label, facets, controls }: {
                 </kbd>
               )}
             </div>
+
+            <label className="flex min-h-[var(--library-toolbar-height)] min-w-[11rem] items-center rounded-xl bg-foreground/[0.04] px-2.5 ring-1 ring-inset ring-hairline/60 dark:bg-white/[0.05] dark:ring-white/[0.06]">
+              <span className="sr-only">Library</span>
+              <Select
+                aria-label="Library"
+                value={libraryId ?? ""}
+                onChange={(event) => setLibraryId(event.target.value || null)}
+                className="h-[calc(var(--library-toolbar-height)-0.5rem)] border-0 bg-transparent px-1 text-[length:var(--library-toolbar-size)] font-semibold shadow-none focus-visible:ring-0"
+                options={[
+                  { value: "", label: "All libraries" },
+                  ...libraries.map((library) => ({ value: library.id, label: library.name }))
+                ]}
+              />
+            </label>
 
             <ToolbarMenuButton
               label="Display"
@@ -331,6 +350,7 @@ export function ControlRail({ label, facets, controls }: {
                           <button type="button" className="min-w-0 flex-1 text-left" onClick={() => applyPreset(preset)}>
                             <p className="truncate text-sm font-medium text-foreground">{preset.name}</p>
                             <p className="text-xs text-muted-foreground">
+                              {preset.libraryId ? `${libraries.find((library) => library.id === preset.libraryId)?.name ?? "Library"} · ` : "All libraries · "}
                               {preset.quickFilter !== "all" ? `${preset.quickFilter} · ` : ""}
                               Saved search, order, and display settings
                             </p>

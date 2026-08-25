@@ -48,7 +48,7 @@ link.
 ### Quality terminology
 
 - **Media Plan** is Deluno’s high-level policy: the outcome a library wants.
-- **Quality profile** is the familiar Radarr/Sonarr-style ladder and upgrade
+- **Quality profile** is the familiar Radarr/Sonarr-style ordered quality and upgrade
   target assigned to a library.
 - **Quality & size limits** defines accepted quality tiers and sensible file
   size bounds.

@@ -20,6 +20,39 @@ namespace Deluno.Persistence.Tests.Filesystem;
 public sealed class ExistingLibraryImportServiceTests
 {
     [Fact]
+    public async Task Preview_is_paged_and_import_only_writes_explicitly_selected_paths()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-19T08:00:00Z"));
+        await InitializeAsync(storage, timeProvider);
+
+        var rootPath = CreateMovieTree(storage, count: 3);
+        var libraries = new SqliteLibrariesRepository(storage.Factory, timeProvider);
+        var libraryId = await CreateLibraryAsync(libraries, rootPath, "movies");
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, libraries, movies);
+
+        var preview = await service.PreviewAsync(libraryId, cursor: null, take: 2, CancellationToken.None);
+
+        Assert.NotNull(preview);
+        Assert.Equal(2, preview.Items.Count);
+        Assert.True(preview.HasMore);
+        Assert.NotNull(preview.NextCursor);
+        Assert.Empty(await movies.ListAsync(CancellationToken.None));
+
+        var result = await service.ImportSelectedAsync(
+            libraryId,
+            [preview.Items[0].SourcePath],
+            CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal(1, result.RequestedCount);
+        Assert.Equal(1, result.ImportedCount);
+        Assert.Empty(result.Issues);
+        Assert.Single(await movies.ListAsync(CancellationToken.None));
+    }
+
+    [Fact]
     public async Task Start_creates_a_queued_run_rather_than_importing_inline()
     {
         using var storage = TestStorage.Create();

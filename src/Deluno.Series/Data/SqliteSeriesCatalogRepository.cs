@@ -481,8 +481,19 @@ public sealed class SqliteSeriesCatalogRepository(
     }
 
     /// <summary>
-    private const string CatalogueHasFile = "EXISTS(SELECT 1 FROM series_wanted_state w WHERE w.series_id = s.id AND w.has_file = 1)";
-    private const string CatalogueUpgrade = "EXISTS(SELECT 1 FROM series_wanted_state w WHERE w.series_id = s.id AND w.has_file = 1 AND w.quality_cutoff_met = 0)";
+    private static string CatalogueStateScope(string? libraryId)
+        => string.IsNullOrWhiteSpace(libraryId) ? string.Empty : " AND w.library_id = @libraryId";
+
+    private static string CatalogueLibraryFilter(string? libraryId)
+        => string.IsNullOrWhiteSpace(libraryId)
+            ? string.Empty
+            : "EXISTS(SELECT 1 FROM series_wanted_state w WHERE w.series_id = s.id AND w.library_id = @libraryId)";
+
+    private static string CatalogueHasFileFor(string? libraryId)
+        => $"EXISTS(SELECT 1 FROM series_wanted_state w WHERE w.series_id = s.id{CatalogueStateScope(libraryId)} AND w.has_file = 1)";
+
+    private static string CatalogueUpgradeFor(string? libraryId)
+        => $"EXISTS(SELECT 1 FROM series_wanted_state w WHERE w.series_id = s.id{CatalogueStateScope(libraryId)} AND w.has_file = 1 AND w.quality_cutoff_met = 0)";
 
     /// <summary>
     /// The projection a catalogue page returns. Matches <see cref="ReadSeries"/>
@@ -491,14 +502,16 @@ public sealed class SqliteSeriesCatalogRepository(
     /// current quality, which live in the wanted state, not in provider
     /// metadata.
     /// </summary>
-    private const string CataloguePageColumns =
-        """
+    private static string CataloguePageColumnsFor(string? libraryId)
+    {
+        var scope = CatalogueStateScope(libraryId);
+        return $"""
             s.id,
             s.title,
             s.start_year,
             s.imdb_id,
             s.monitored,
-            EXISTS(SELECT 1 FROM series_wanted_state w WHERE w.series_id = s.id AND w.has_file = 1) AS has_file,
+            EXISTS(SELECT 1 FROM series_wanted_state w WHERE w.series_id = s.id{scope} AND w.has_file = 1) AS has_file,
             s.metadata_provider,
             s.metadata_provider_id,
             s.original_title,
@@ -512,17 +525,18 @@ public sealed class SqliteSeriesCatalogRepository(
             s.metadata_updated_utc,
             s.created_utc,
             s.updated_utc,
-            (SELECT MAX(w.file_size_bytes) FROM series_wanted_state w WHERE w.series_id = s.id) AS file_size_bytes,
-            (SELECT w.current_quality FROM series_wanted_state w WHERE w.series_id = s.id AND w.current_quality IS NOT NULL LIMIT 1) AS current_quality,
-            (SELECT w.file_path FROM series_wanted_state w WHERE w.series_id = s.id AND w.file_path IS NOT NULL LIMIT 1) AS file_path,
-            (SELECT w.video_codec FROM series_wanted_state w WHERE w.series_id = s.id AND w.video_codec IS NOT NULL LIMIT 1) AS video_codec,
-            (SELECT w.audio_codec FROM series_wanted_state w WHERE w.series_id = s.id AND w.audio_codec IS NOT NULL LIMIT 1) AS audio_codec,
-            (SELECT w.audio_channels FROM series_wanted_state w WHERE w.series_id = s.id AND w.audio_channels IS NOT NULL LIMIT 1) AS audio_channels,
-            (SELECT w.release_group FROM series_wanted_state w WHERE w.series_id = s.id AND w.release_group IS NOT NULL LIMIT 1) AS release_group,
+            (SELECT MAX(w.file_size_bytes) FROM series_wanted_state w WHERE w.series_id = s.id{scope}) AS file_size_bytes,
+            (SELECT w.current_quality FROM series_wanted_state w WHERE w.series_id = s.id{scope} AND w.current_quality IS NOT NULL LIMIT 1) AS current_quality,
+            (SELECT w.file_path FROM series_wanted_state w WHERE w.series_id = s.id{scope} AND w.file_path IS NOT NULL LIMIT 1) AS file_path,
+            (SELECT w.video_codec FROM series_wanted_state w WHERE w.series_id = s.id{scope} AND w.video_codec IS NOT NULL LIMIT 1) AS video_codec,
+            (SELECT w.audio_codec FROM series_wanted_state w WHERE w.series_id = s.id{scope} AND w.audio_codec IS NOT NULL LIMIT 1) AS audio_codec,
+            (SELECT w.audio_channels FROM series_wanted_state w WHERE w.series_id = s.id{scope} AND w.audio_channels IS NOT NULL LIMIT 1) AS audio_channels,
+            (SELECT w.release_group FROM series_wanted_state w WHERE w.series_id = s.id{scope} AND w.release_group IS NOT NULL LIMIT 1) AS release_group,
             s.runtime_minutes,
             s.popularity,
             s.vote_count
         """;
+    }
 
     /// <summary>
     /// One page of the catalogue — searched, filtered, sorted and counted in SQL.
@@ -541,12 +555,14 @@ public sealed class SqliteSeriesCatalogRepository(
         var sort = CatalogueSortFields.Normalize(query.Sort);
         var status = CatalogueStatusFilters.Normalize(query.Status);
         var search = string.IsNullOrWhiteSpace(query.Search) ? null : query.Search.Trim();
+        var libraryId = string.IsNullOrWhiteSpace(query.LibraryId) ? null : query.LibraryId.Trim();
         var token = CataloguePageToken.Decode(query.PageToken);
 
         var sortExpression = CatalogueKeyset.SortExpression(sort, "s", "start_year");
         var where = CatalogueKeyset.CombineFilters(
             search is null ? string.Empty : CatalogueKeyset.SearchFilter("s"),
-            CatalogueKeyset.StatusFilter(status, "s", CatalogueHasFile, CatalogueUpgrade),
+            CatalogueLibraryFilter(libraryId),
+            CatalogueKeyset.StatusFilter(status, "s", CatalogueHasFileFor(libraryId), CatalogueUpgradeFor(libraryId)),
             token is null ? string.Empty : CatalogueKeyset.SeekPredicate(sortExpression, "s", query.Descending));
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -561,7 +577,7 @@ public sealed class SqliteSeriesCatalogRepository(
             command.CommandText =
                 $"""
                 SELECT
-                {CataloguePageColumns},
+                {CataloguePageColumnsFor(libraryId)},
                     {sortExpression} AS sort_value
                 FROM series_entries s
                 WHERE {where}
@@ -571,6 +587,7 @@ public sealed class SqliteSeriesCatalogRepository(
 
             AddParameter(command, "@fetchCount", pageSize + 1);
             CatalogueKeyset.BindSearch(command, search);
+            AddParameter(command, "@libraryId", libraryId);
             if (token is not null)
             {
                 CatalogueKeyset.BindSeek(command, token, sort);
@@ -620,7 +637,7 @@ public sealed class SqliteSeriesCatalogRepository(
             return new CataloguePage<SeriesListItem>(items, nextPageToken, hasMore, null, null);
         }
 
-        var facets = await CountCatalogueFacetsAsync(connection, search, cancellationToken);
+        var facets = await CountCatalogueFacetsAsync(connection, search, libraryId, cancellationToken);
 
         return new CataloguePage<SeriesListItem>(
             items,
@@ -638,10 +655,12 @@ public sealed class SqliteSeriesCatalogRepository(
     private async Task<CatalogueFacets> CountCatalogueFacetsAsync(
         System.Data.Common.DbConnection connection,
         string? search,
+        string? libraryId,
         CancellationToken cancellationToken)
     {
         var where = CatalogueKeyset.CombineFilters(
-            search is null ? string.Empty : CatalogueKeyset.SearchFilter("s"));
+            search is null ? string.Empty : CatalogueKeyset.SearchFilter("s"),
+            CatalogueLibraryFilter(libraryId));
 
         using var command = connection.CreateCommand();
         command.CommandText =
@@ -650,13 +669,14 @@ public sealed class SqliteSeriesCatalogRepository(
                 COUNT(*),
                 SUM(CASE WHEN s.monitored = 1 THEN 1 ELSE 0 END),
                 SUM(CASE WHEN s.monitored = 0 THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {CatalogueHasFile} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {CatalogueHasFile} THEN 0 ELSE 1 END),
-                SUM(CASE WHEN {CatalogueUpgrade} THEN 1 ELSE 0 END)
+                SUM(CASE WHEN {CatalogueHasFileFor(libraryId)} THEN 1 ELSE 0 END),
+                SUM(CASE WHEN {CatalogueHasFileFor(libraryId)} THEN 0 ELSE 1 END),
+                SUM(CASE WHEN {CatalogueUpgradeFor(libraryId)} THEN 1 ELSE 0 END)
             FROM series_entries s
             WHERE {where};
             """;
         CatalogueKeyset.BindSearch(command, search);
+        AddParameter(command, "@libraryId", libraryId);
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken))
@@ -1269,7 +1289,8 @@ public sealed class SqliteSeriesCatalogRepository(
         int take,
         DateTimeOffset now,
         bool ignoreRetryWindow,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? wantedStatus = null)
     {
         if (sharedMediaStateRepository is not null)
         {
@@ -1279,11 +1300,15 @@ public sealed class SqliteSeriesCatalogRepository(
                 take,
                 now,
                 ignoreRetryWindow,
-                cancellationToken);
+                cancellationToken,
+                wantedStatus);
             return sharedItems.Select(MapWanted).ToArray();
         }
 
         var items = new List<SeriesWantedItem>();
+        var statusFilter = string.IsNullOrWhiteSpace(wantedStatus)
+            ? "w.wanted_status IN ('missing', 'upgrade')"
+            : "w.wanted_status = @wantedStatus";
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Series,
@@ -1292,7 +1317,7 @@ public sealed class SqliteSeriesCatalogRepository(
         using var command = connection.CreateCommand();
         command.CommandText =
             ignoreRetryWindow
-                ? """
+                ? $"""
                   SELECT
                       s.id, s.title, s.start_year, s.imdb_id,
                       w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality, w.quality_cutoff_met,
@@ -1301,14 +1326,14 @@ public sealed class SqliteSeriesCatalogRepository(
                   FROM series_wanted_state w
                   INNER JOIN series_entries s ON s.id = w.series_id
                   WHERE w.library_id = @libraryId
-                    AND w.wanted_status IN ('missing', 'upgrade')
+                    AND {statusFilter}
                   ORDER BY
                       CASE w.wanted_status WHEN 'missing' THEN 0 ELSE 1 END,
                       COALESCE(w.last_search_utc, w.missing_since_utc, w.updated_utc) ASC,
                       s.title ASC
                   LIMIT @take;
                   """
-                : """
+                : $"""
                   SELECT
                       s.id, s.title, s.start_year, s.imdb_id,
                       w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality, w.quality_cutoff_met,
@@ -1317,7 +1342,7 @@ public sealed class SqliteSeriesCatalogRepository(
                   FROM series_wanted_state w
                   INNER JOIN series_entries s ON s.id = w.series_id
                   WHERE w.library_id = @libraryId
-                    AND w.wanted_status IN ('missing', 'upgrade')
+                    AND {statusFilter}
                     AND s.monitored = 1
                     AND (w.next_eligible_search_utc IS NULL OR w.next_eligible_search_utc <= @now)
                   ORDER BY
@@ -1330,6 +1355,10 @@ public sealed class SqliteSeriesCatalogRepository(
         AddParameter(command, "@libraryId", libraryId);
         AddParameter(command, "@now", now.ToString("O"));
         AddParameter(command, "@take", take);
+        if (!string.IsNullOrWhiteSpace(wantedStatus))
+        {
+            AddParameter(command, "@wantedStatus", NormalizeWantedStatus(wantedStatus));
+        }
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
@@ -1343,7 +1372,8 @@ public sealed class SqliteSeriesCatalogRepository(
     public async Task<int> CountRetryDelayedWantedAsync(
         string libraryId,
         DateTimeOffset now,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? wantedStatus = null)
     {
         if (sharedMediaStateRepository is not null)
         {
@@ -1351,7 +1381,8 @@ public sealed class SqliteSeriesCatalogRepository(
                 MediaKind.Series,
                 libraryId,
                 now,
-                cancellationToken);
+                cancellationToken,
+                wantedStatus);
         }
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -1365,7 +1396,7 @@ public sealed class SqliteSeriesCatalogRepository(
             FROM series_wanted_state w
             INNER JOIN series_entries s ON s.id = w.series_id
             WHERE w.library_id = @libraryId
-              AND w.wanted_status IN ('missing', 'upgrade')
+              AND (@wantedStatus IS NULL OR w.wanted_status = @wantedStatus)
               AND s.monitored = 1
               AND w.next_eligible_search_utc IS NOT NULL
               AND w.next_eligible_search_utc > @now;
@@ -1373,6 +1404,7 @@ public sealed class SqliteSeriesCatalogRepository(
 
         AddParameter(command, "@libraryId", libraryId);
         AddParameter(command, "@now", now.ToString("O"));
+        AddParameter(command, "@wantedStatus", string.IsNullOrWhiteSpace(wantedStatus) ? null : NormalizeWantedStatus(wantedStatus));
         var value = await command.ExecuteScalarAsync(cancellationToken);
         return Convert.ToInt32(value, CultureInfo.InvariantCulture);
     }
@@ -1582,25 +1614,12 @@ public sealed class SqliteSeriesCatalogRepository(
                 AddParameter(insert, "@id", seriesId);
                 AddParameter(insert, "@title", normalizedTitle);
                 AddParameter(insert, "@startYear", startYear);
-                AddParameter(insert, "@monitored", unmonitorWhenCutoffMet && qualityCutoffMet ? 0 : 1);
+                // Reaching the cutoff stops upgrade searches; it must not stop
+                // monitoring. Missing media and future episodes remain visible.
+                AddParameter(insert, "@monitored", 1);
                 AddParameter(insert, "@createdUtc", now.ToString("O"));
                 AddParameter(insert, "@updatedUtc", now.ToString("O"));
                 await insert.ExecuteNonQueryAsync(cancellationToken);
-            }
-            else if (unmonitorWhenCutoffMet && qualityCutoffMet)
-            {
-                using var unmonitor = connection.CreateCommand();
-                unmonitor.Transaction = transaction;
-                unmonitor.CommandText =
-                    """
-                    UPDATE series_entries
-                    SET monitored = 0,
-                        updated_utc = @updatedUtc
-                    WHERE id = @seriesId;
-                    """;
-                AddParameter(unmonitor, "@seriesId", seriesId);
-                AddParameter(unmonitor, "@updatedUtc", now.ToString("O"));
-                await unmonitor.ExecuteNonQueryAsync(cancellationToken);
             }
         }
         else

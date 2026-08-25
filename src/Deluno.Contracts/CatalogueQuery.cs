@@ -18,6 +18,10 @@ namespace Deluno.Contracts;
 /// One of <see cref="CatalogueStatusFilters"/>. Anything else is read as "all"
 /// rather than silently returning nothing.
 /// </param>
+/// <param name="LibraryId">
+/// Optional library identity. When supplied, the query and its facets are
+/// limited to media assigned to that library in wanted state.
+/// </param>
 /// <param name="Sort">One of <see cref="CatalogueSortFields"/>.</param>
 /// <param name="Descending">Sort direction.</param>
 /// <param name="PageSize">Rows per page, clamped by the repository.</param>
@@ -29,6 +33,7 @@ namespace Deluno.Contracts;
 public sealed record CatalogueQuery(
     string? Search = null,
     string? Status = null,
+    string? LibraryId = null,
     string? Sort = null,
     bool Descending = true,
     int PageSize = 50,

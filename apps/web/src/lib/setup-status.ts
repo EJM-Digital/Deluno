@@ -68,49 +68,58 @@ export function buildSetupStatus(input: SetupStatusInput): SetupStatusModel {
   const movieLibraries = input.libraries.filter((library) => library.mediaType === "movies").length;
   const tvLibraries = input.libraries.filter((library) => library.mediaType === "tv").length;
   const autoLibraries = input.libraries.filter((library) => library.autoSearchEnabled).length;
-  const configuredLibraries = input.libraries.filter((library) => Boolean(library.rootPath?.trim())).length;
   const enabledIntakeSources = (input.intakeSources ?? []).filter((source) => source.isEnabled);
   const hasHealthyIndexer = healthyIndexers.length > 0;
   const hasHealthyClient = healthyClients.length > 0;
   const connectionsReady = hasHealthyIndexer && hasHealthyClient;
   const automationReady = input.settings.autoStartJobs && autoLibraries > 0;
+  const readyLibraries = input.libraries.filter((library) => isLibraryReady(library, input.settings));
+  const mediaManagementReady = input.libraries.length > 0 && readyLibraries.length === input.libraries.length;
 
   const steps: SetupStatusStep[] = [
     {
       id: "library",
       number: 1,
-      title: "Library & storage",
-      description: "Create your movie and TV libraries, choose their folders, then set naming and import behaviour.",
+      title: "Media Management",
+      description: "Set up your movie and TV libraries, storage paths, naming, and import behaviour.",
       status:
-        configuredLibraries === 0
+        input.libraries.length === 0
           ? "Not configured"
-          : `${plural(movieLibraries, "movie library")} - ${plural(tvLibraries, "TV library")}`,
-      complete: configuredLibraries > 0,
-      state: configuredLibraries > 0 ? "complete" : "not-started",
+          : mediaManagementReady
+            ? `${plural(movieLibraries, "movie library")} - ${plural(tvLibraries, "TV library")}`
+            : `${readyLibraries.length}/${input.libraries.length} libraries ready`,
+      complete: mediaManagementReady,
+      state: mediaManagementReady ? "complete" : input.libraries.length > 0 ? "failed" : "not-started",
       optional: false,
       to: "/settings/libraries",
-      action: configuredLibraries === 0 ? "Configure library" : "Review library",
-      attentionTitle: "Library not configured",
-      attentionText: "Create at least one movie or TV library and choose its final folder."
+      action: mediaManagementReady
+        ? "Review media management"
+        : input.libraries.length > 0
+          ? "Finish media management"
+          : "Configure media management",
+      attentionTitle: "Media management not configured",
+      attentionText: input.libraries.length === 0
+        ? "Create at least one movie or TV library and choose its final folder."
+        : "Finish every library's destination, naming, and import workflow before treating media management as ready."
     },
     {
       id: "media-plans",
       number: 2,
-      title: "Media Plan",
+      title: "Library Profiles",
       description: "Choose the quality, size, release, and upgrade behaviour Deluno will follow.",
-      status: activePlans > 0 ? `${plural(activePlans, "active Media Plan")} - ${plural(input.qualityProfiles.length, "quality profile")}` : "No active Media Plan",
+      status: activePlans > 0 ? `${plural(activePlans, "active library profile")} - ${plural(input.qualityProfiles.length, "quality profile")}` : "No library profile selected",
       complete: activePlans > 0,
       state: activePlans > 0 ? "complete" : "not-started",
       optional: false,
       to: "/settings/policy-sets",
-      action: activePlans > 0 ? "Review Media Plan" : "Choose Media Plan",
-      attentionTitle: "No Media Plan selected",
-      attentionText: "Choose a Media Plan so Deluno knows which releases to accept, hold, reject, and upgrade."
+      action: activePlans > 0 ? "Review Library Profiles" : "Choose Library Profiles",
+      attentionTitle: "No library profile selected",
+      attentionText: "Choose a Library Profile so Deluno knows which releases to accept, hold, reject, and upgrade."
     },
     {
       id: "connections",
       number: 3,
-      title: "Find & download",
+      title: "Find & Download",
       description: "Connect and test the search sources that find releases and the download clients that receive approved work.",
       status: connectionStatus(enabledIndexers.length, healthyIndexers.length, enabledClients.length, healthyClients.length),
       complete: connectionsReady,
@@ -124,7 +133,7 @@ export function buildSetupStatus(input: SetupStatusInput): SetupStatusModel {
     {
       id: "automation",
       number: 4,
-      title: "Automation & recovery",
+      title: "Automation & Recovery",
       description: "Decide when Deluno searches, upgrades, retries failed downloads, and alerts you when decisions need attention.",
       status: automationStatus(input.settings.autoStartJobs, autoLibraries),
       complete: automationReady,
@@ -136,23 +145,9 @@ export function buildSetupStatus(input: SetupStatusInput): SetupStatusModel {
       attentionText: automationAttentionText(input.settings.autoStartJobs, autoLibraries)
     },
     {
-      id: "workflow",
-      number: 5,
-      title: "First acquisition",
-      description: "Run one complete search, dispatch, download, import, and catalogue flow before calling setup operationally ready.",
-      status: input.settings.workflowVerified ? "End-to-end acquisition verified" : "First end-to-end acquisition not verified",
-      complete: input.settings.workflowVerified,
-      state: input.settings.workflowVerified ? "complete" : "not-started",
-      optional: false,
-      to: "/movies",
-      action: input.settings.workflowVerified ? "Review first flow" : "Run first acquisition",
-      attentionTitle: "First workflow not verified",
-      attentionText: "Add or choose a title, dispatch a release, and verify that the completed download imports into the library."
-    },
-    {
       id: "discovery",
-      number: 6,
-      title: "Discover media",
+      number: 5,
+      title: "Discover Media",
       description: "Optionally configure import lists or watchlists with provenance, exclusions, and reviewable sync results.",
       status: enabledIntakeSources.length > 0 ? `${plural(enabledIntakeSources.length, "import list")} enabled` : "Optional - not configured",
       complete: enabledIntakeSources.length > 0,
@@ -162,6 +157,20 @@ export function buildSetupStatus(input: SetupStatusInput): SetupStatusModel {
       action: enabledIntakeSources.length > 0 ? "Review import lists" : "Configure import lists",
       attentionTitle: "Import lists are optional",
       attentionText: "Add import lists only if you want Deluno to discover titles for you. Manual title entry remains available."
+    },
+    {
+      id: "workflow",
+      number: 6,
+      title: "First Acquisition",
+      description: "Run one complete search, dispatch, download, import, and catalogue flow before calling setup operationally ready.",
+      status: input.settings.workflowVerified ? "End-to-end acquisition verified" : "First end-to-end acquisition not verified",
+      complete: input.settings.workflowVerified,
+      state: input.settings.workflowVerified ? "complete" : "not-started",
+      optional: false,
+      to: "/movies",
+      action: input.settings.workflowVerified ? "Review first flow" : "Run first acquisition",
+      attentionTitle: "First workflow not verified",
+      attentionText: "Add or choose a title, dispatch a release, and verify that the completed download imports into the library."
     }
   ];
 
@@ -269,4 +278,19 @@ function plural(count: number, singular: string, pluralLabel = `${singular}s`) {
 
 function isHealthy(status: string) {
   return status === "healthy";
+}
+
+function isLibraryReady(library: LibraryItem, settings: PlatformSettingsSnapshot) {
+  if (!library.rootPath?.trim()) return false;
+
+  const mediaType = library.mediaType?.toLowerCase();
+  const namingReady = mediaType === "movies"
+    ? Boolean(settings.movieFolderFormat?.trim())
+    : mediaType === "tv"
+      ? Boolean(settings.seriesFolderFormat?.trim()) && Boolean(settings.episodeFileFormat?.trim())
+      : false;
+  if (!namingReady) return false;
+
+  const workflow = (library.importWorkflow ?? "standard").trim().toLowerCase();
+  return workflow !== "refine-before-import" || Boolean(library.processorOutputPath?.trim());
 }

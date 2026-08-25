@@ -376,7 +376,7 @@ export function useBulkEdit({
       }
       else if (bulkOperation === "quality") {
         if (!bulkQualityProfileId.trim()) {
-          setBulkError("Choose a quality profile first.");
+      setBulkError("Choose a quality profile first.");
           return;
         }
 
@@ -409,7 +409,7 @@ export function useBulkEdit({
             await applyQualityProfile(selectedIds, bulkQualityProfileId.trim());
           }
         });
-        toast.success("Quality profile updated.");
+      toast.success("Quality profile updated.");
       }
       else if (bulkOperation === "reassignLibrary") {
         if (!bulkTargetLibraryId.trim()) {

@@ -18,7 +18,7 @@ import { Drawer, DrawerDanger, DrawerFooter, DrawerSection, type DrawerSaveState
 import { Field, FieldRow } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
-import { PageToolbar } from "../components/ui/page-toolbar";
+import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
 import { systemSettingsNavItems } from "../components/app/settings-shell";
 import { Select } from "../components/ui/select";
 import { Switch, SwitchRow } from "../components/ui/switch";
@@ -80,7 +80,7 @@ export function SettingsNotificationsPage() {
   const editing = mode.kind === "edit" ? webhooks.find((webhook) => webhook.id === mode.id) ?? null : null;
   const dirty = isOpen && (form.name !== initialForm.name || form.url !== initialForm.url || form.eventFilters !== initialForm.eventFilters || form.isEnabled !== initialForm.isEnabled);
   const footerState: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
-  const blocker = useUnsavedChanges(dirty);
+  useUnsavedChanges(dirty);
   useEffect(() => {
     if (dirty && (saveState === "saved" || saveState === "error")) setSaveState(undefined);
   }, [dirty, saveState]);
@@ -193,15 +193,13 @@ export function SettingsNotificationsPage() {
     <div className="grid gap-[var(--page-gap)]">
       <PageToolbar
         tabs={systemSettingsNavItems}
+        accent="blue"
         actions={
-          <Button type="button" onClick={() => open(null)}>
-            <Plus className="h-4 w-4" />
-            New webhook
-          </Button>
+          <PageToolbarAction onClick={() => open(null)}>New webhook</PageToolbarAction>
         }
       />
 
-      <ListCard title="Webhooks" count={webhooks.length ? `${webhooks.length} ${webhooks.length === 1 ? "webhook" : "webhooks"} · ${webhooks.filter((webhook) => webhook.isEnabled).length} enabled` : undefined}>
+      <ListCard title="Webhooks" count={webhooks.length ? `${webhooks.length} ${webhooks.length === 1 ? "webhook" : "webhooks"} · ${webhooks.filter((webhook) => webhook.isEnabled).length} enabled · send Deluno events to other tools` : undefined}>
         {webhooks.length === 0 ? (
           <ListEmpty
             title="No webhooks yet"
@@ -297,23 +295,17 @@ export function SettingsNotificationsPage() {
 
       <ConfirmDialog open={confirmRemove} onOpenChange={setConfirmRemove} title={`Delete “${editing?.name ?? form.name}”?`} description="Deluno stops posting to this URL. This cannot be undone." confirmLabel="Delete webhook" busy={busy === "remove"} onConfirm={() => void handleRemove()} />
       <ConfirmDialog
-        open={confirmDiscard || blocker.state === "blocked"}
+        open={confirmDiscard}
         onOpenChange={(open) => {
           if (open) return;
           setConfirmDiscard(false);
-          if (blocker.state === "blocked") blocker.reset();
         }}
         title="Discard unsaved changes?"
         description="Your edits to this webhook haven't been saved."
         confirmLabel="Discard"
         onConfirm={() => {
           setConfirmDiscard(false);
-          if (blocker.state === "blocked") {
-            setMode({ kind: "closed" });
-            blocker.proceed();
-          } else {
-            closeDrawer();
-          }
+          closeDrawer();
         }}
       />
     </div>

@@ -11,4 +11,5 @@ public sealed record RecordSearchCycleRunRequest(
     int SkippedCount,
     string? NotesJson,
     DateTimeOffset StartedUtc,
-    DateTimeOffset? CompletedUtc);
+    DateTimeOffset? CompletedUtc,
+    string SearchKind = "combined");

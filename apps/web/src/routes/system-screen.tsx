@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { JOB_STATUS, type JobStatus, isJobActive, isJobFailed, isJobSuccessful } from "../lib/job-status-constants";
 import { SystemShell } from "../components/app/settings-shell";
+import { MetadataMaintenanceCard } from "../components/app/metadata-maintenance-card";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { AuditTimeline, type TimelineEvent } from "../components/shell/audit-timeline";
 import { SaveStatus, useSaveStatus } from "../components/shell/save-status";
@@ -130,7 +131,7 @@ export function SystemPage() {
   const providerCard = (
     <ListCard title="Providers" count={`${healthyIndexers + healthyClients} of ${indexers.length + downloadClients.length} responding`}>
       {indexers.length + downloadClients.length === 0 ? (
-        <ListEmpty title="Nothing connected yet" description="Add a search source or a download client under Connections and its health shows up here." />
+        <ListEmpty title="Nothing connected yet" description="Add a search source or a download client under Find & Download and its health shows up here." />
       ) : (
         <ListTable columns={[{ label: "Provider" }, { label: "Kind", width: "minmax(0,1fr)" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]} chevron={false}>
           {indexers.map((indexer) => (
@@ -234,6 +235,7 @@ export function SystemPage() {
 
       {monitoring.alerts.length ? <MonitoringCard monitoring={monitoring} /> : null}
       {providerCard}
+      <MetadataMaintenanceCard onRefresh={() => revalidator.revalidate()} />
       <AutomationCard automation={automation} cycles={searchCycles} retryWindows={retryWindows} onRefresh={() => revalidator.revalidate()} />
       {jobsCard}
       {runtimeCard}
@@ -445,15 +447,11 @@ function BackupCard({
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
   const dirty = useMemo(() => JSON.stringify(settings) !== JSON.stringify(savedSettings), [settings, savedSettings]);
   const scheduleState: DrawerSaveState = scheduleSaveState === "saving" ? "saving" : dirty ? "dirty" : scheduleSaveState ?? "clean";
-  const blocker = useUnsavedChanges(dirty);
+  useUnsavedChanges(dirty, "Your backup schedule edits have not been saved.", saveSchedule);
 
   useEffect(() => {
     if (dirty && (scheduleSaveState === "saved" || scheduleSaveState === "error")) setScheduleSaveState(undefined);
   }, [dirty, scheduleSaveState]);
-
-  useEffect(() => {
-    if (blocker.state === "blocked" && !dirty) blocker.proceed();
-  }, [blocker, dirty]);
 
   async function reload() {
     const [nextBackups, nextSettings] = await Promise.all([
@@ -698,11 +696,6 @@ function BackupCard({
         saveLabel="Save backup schedule"
         saveType="button"
         onSave={() => void saveSchedule()}
-        onDiscard={() => {
-          setSettings(savedSettings);
-          setScheduleSaveState(undefined);
-          setScheduleMessage(null);
-        }}
       />
 
       <ConfirmDialog
@@ -714,16 +707,6 @@ function BackupCard({
         confirmVariant="destructive"
         busy={busy === "restore"}
         onConfirm={() => void confirmRestore()}
-      />
-      <ConfirmDialog
-        open={blocker.state === "blocked"}
-        onOpenChange={(open) => {
-          if (!open && blocker.state === "blocked") blocker.reset();
-        }}
-        title="Discard unsaved changes?"
-        description="Your backup schedule edits haven't been saved."
-        confirmLabel="Discard"
-        onConfirm={() => blocker.proceed?.()}
       />
     </>
   );
@@ -742,7 +725,9 @@ function UpgradeCard({ status, children }: { status: UpdateStatusResponse; child
     [preferences, savedPreferences]
   );
   const preferencesState: DrawerSaveState = preferencesSaveState === "saving" ? "saving" : preferencesDirty ? "dirty" : preferencesSaveState ?? "clean";
-  const blocker = useUnsavedChanges(preferencesDirty);
+  useUnsavedChanges(preferencesDirty, "Your update preference edits have not been saved.", () => {
+    if (preferences) return savePreferences(preferences);
+  });
 
   async function refreshStatus() {
     const next = await fetchJson<UpdateStatusResponse>("/api/updates/status");
@@ -810,10 +795,6 @@ function UpgradeCard({ status, children }: { status: UpdateStatusResponse; child
   useEffect(() => {
     if (preferencesDirty && (preferencesSaveState === "saved" || preferencesSaveState === "error")) setPreferencesSaveState(undefined);
   }, [preferencesDirty, preferencesSaveState]);
-
-  useEffect(() => {
-    if (blocker.state === "blocked" && !preferencesDirty) blocker.proceed();
-  }, [blocker, preferencesDirty]);
 
   const isDocker = current.installKind === "docker";
   const canControl = current.isInstalled && !isDocker;
@@ -914,22 +895,6 @@ function UpgradeCard({ status, children }: { status: UpdateStatusResponse; child
         saveType="button"
         disabled={preferences === null}
         onSave={() => preferences && void savePreferences(preferences)}
-        onDiscard={() => {
-          if (savedPreferences) setPreferences(savedPreferences);
-          setPreferencesSaveState(undefined);
-          setPreferencesMessage(null);
-        }}
-      />
-
-      <ConfirmDialog
-        open={blocker.state === "blocked"}
-        onOpenChange={(open) => {
-          if (!open && blocker.state === "blocked") blocker.reset();
-        }}
-        title="Discard unsaved changes?"
-        description="Your update preference edits haven't been saved."
-        confirmLabel="Discard"
-        onConfirm={() => blocker.proceed?.()}
       />
     </>
   );

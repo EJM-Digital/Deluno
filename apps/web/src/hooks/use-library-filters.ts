@@ -35,6 +35,7 @@ function initialDisplayOptions(variant: LibraryVariant): DisplayOptions {
 
 export function useLibraryFilters(variant: LibraryVariant, urlFilter: string | null) {
   const [query, setQuery] = useState("");
+  const [libraryId, setLibraryId] = useState<string | null>(null);
   const [quickFilter, setQuickFilter] = useState<QuickFilter>("all");
   const [view, setView] = useState<ViewMode>("grid");
   const [sortField, setSortField] = useState<SortField>("title");
@@ -47,6 +48,7 @@ export function useLibraryFilters(variant: LibraryVariant, urlFilter: string | n
 
   useEffect(() => {
     setSavedPresets([]);
+    setLibraryId(null);
     setQuickFilter("all");
     setSortField("title");
     setSortDirection("asc");
@@ -71,10 +73,10 @@ export function useLibraryFilters(variant: LibraryVariant, urlFilter: string | n
   }
 
   return {
-    query, setQuery, quickFilter, setQuickFilter, view, setView, sortField, setSortField,
+    query, setQuery, libraryId, setLibraryId, quickFilter, setQuickFilter, view, setView, sortField, setSortField,
     sortDirection, setSortDirection, cardSize, displayOptions, setDisplayOptions,
     savedPresets, setSavedPresets, newPresetName, setNewPresetName, isSavingPreset,
     setIsSavingPreset, changeSize, updateDisplayOptions,
-    activeFilterCount: quickFilter === "all" ? 0 : 1
+    activeFilterCount: Number(libraryId !== null) + Number(quickFilter !== "all")
   };
 }

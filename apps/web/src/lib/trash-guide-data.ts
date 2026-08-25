@@ -257,7 +257,7 @@ export const BUNDLED_CUSTOM_FORMATS: BundledCF[] = [
     trashId: "185f1dd7264c4562b9022d963ac37424",
     name: "FLAC",
     category: "audio",
-    description: "FLAC lossless audio — common in MKV releases and anime.",
+    description: "FLAC lossless audio — common in MKV and other high-quality releases.",
     defaultScore: 2,
     patterns: ["\\bFLAC\\b"],
   },

@@ -47,7 +47,7 @@ export function SettingsOverviewPage() {
   const nextStep = setupSteps.find((step) => !step.optional && !step.complete) ?? null;
 
   return (
-    <SettingsShell title="Setup overview" description="Follow the complete acquisition workflow in order. Detailed configuration remains available from the owning pages.">
+    <SettingsShell description="Follow the complete acquisition workflow in order. Detailed configuration remains available from the owning pages.">
       <Card as="section" aria-labelledby="setup-status-heading" className="dark:border-white/[0.07]">
         <div className="flex flex-col gap-3 border-b border-hairline px-[var(--tile-pad)] py-4 sm:flex-row sm:items-start sm:justify-between">
           <div>

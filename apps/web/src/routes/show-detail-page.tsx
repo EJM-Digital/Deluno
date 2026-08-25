@@ -12,7 +12,7 @@
  */
 import { Fragment, useMemo, useState } from "react";
 import { Link, useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
-import { ArrowLeft, LoaderCircle, Search, Trash2 } from "lucide-react";
+import { ArrowLeft, LoaderCircle, RefreshCw, Search, Trash2 } from "lucide-react";
 import {
   fetchJson, fetchPageItems,
   type ActivityEventItem,
@@ -181,7 +181,7 @@ export function ShowDetailPage() {
           ? {
               eyebrow: "Episodes missing",
               title: `Find ${missingCount} missing episode${missingCount === 1 ? "" : "s"}`,
-              description: "Deluno can search every indexer you have connected using this show's media plan.",
+              description: "Deluno can search every indexer you have connected using this show's Library Profile.",
               action: "Search now",
               onAction: () => void handleSearchNow("automatic")
             }
@@ -284,6 +284,20 @@ export function ShowDetailPage() {
     }
   }
 
+  async function handleMetadataRefresh() {
+    setBusyAction("metadata-refresh");
+    try {
+      const response = await authedFetch(`/api/series/${series.id}/metadata/refresh`, { method: "POST" });
+      if (!response.ok) throw new Error("series-metadata-refresh-failed");
+      toast.success(`${series.title} metadata refreshed.`);
+      revalidator.revalidate();
+    } catch {
+      toast.error("This TV show's metadata could not be refreshed.");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
   async function handleSearchNow(mode: "automatic" | "interactive") {
     setBusyAction(`${mode}-search`);
 
@@ -309,7 +323,7 @@ export function ShowDetailPage() {
         setSection("episodes");
         if (found) toast.success(`${found} release${found === 1 ? "" : "s"} scored. Choose one below.`);
         else {
-          const explained = describeSearchReason(payload.reason, payload.summary ?? "No releases matched this show's media plan.");
+          const explained = describeSearchReason(payload.reason, payload.summary ?? "No releases matched this show's Library Profile.");
           const action = explained.action;
           toast.info(explained.title, {
             description: explained.description,
@@ -318,7 +332,7 @@ export function ShowDetailPage() {
         }
       } else {
         if (best) {
-          toast.success(`Deluno selected ${best} using this show's media plan.`);
+          toast.success(`Deluno selected ${best} using this show's Library Profile.`);
         } else {
           const explained = describeSearchReason(payload.reason, "Search finished with no accepted release.");
           const action = explained.action;
@@ -479,6 +493,7 @@ export function ShowDetailPage() {
       {/* One toolbar: which part of the show you want, where you came from, and
           the two searches. The topbar names the section, the hero names the show. */}
       <PageToolbar
+        accent="yellow"
         left={
           <SegmentedControl<DetailSection>
             aria-label="Section"
@@ -514,7 +529,7 @@ export function ShowDetailPage() {
               type="button"
               onClick={() => void handleSearchNow("automatic")}
               disabled={busyAction !== null}
-              title="Deluno applies the active media plan and sends the best acceptable release."
+              title="Deluno applies the active Library Profile and sends the best acceptable release."
             >
               {busyAction === "automatic-search" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
               Search now
@@ -572,7 +587,11 @@ export function ShowDetailPage() {
                 <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Source</span><span className="font-medium text-foreground">{series.metadataProvider?.toUpperCase() ?? "Not linked"}</span></div>
                 <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">IMDb</span><span className="font-medium text-foreground">{series.imdbId ?? "—"}</span></div>
               </div>
-              <Button variant="outline" className="mt-4 w-full" onClick={() => setIsMetadataOpen(true)}>Edit metadata</Button>
+              <Button variant="outline" className="mt-4 w-full" onClick={() => void handleMetadataRefresh()} disabled={busyAction !== null}>
+                {busyAction === "metadata-refresh" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                Refresh metadata
+              </Button>
+              <Button variant="outline" className="mt-2 w-full" onClick={() => setIsMetadataOpen(true)}>Edit metadata</Button>
               {/* Destructive, so it sits with the other "manage this title" controls
                   rather than beside the two searches in the toolbar. */}
               <Button

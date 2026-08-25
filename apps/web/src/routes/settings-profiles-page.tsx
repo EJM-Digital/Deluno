@@ -1,11 +1,11 @@
 /**
- * Quality profiles — list → drawer.
+ * Quality Profiles — advanced list → drawer.
  *
- *   PageToolbar (Media Plans tabs · New profile)
+ *   PageToolbar (Library Profiles tabs · New quality profile)
  *   ListCard  (name · allowed tiers · stops at · used by · status · ›)
  *   Drawer    (Start from · Basics · Quality tiers · Formats [Fine-tune] · Used by · Delete)
  *
- * Tier vocabulary comes from /api/quality-model — the same names Size rules and
+ * Tier vocabulary comes from /api/quality-model — the same names Size Rules and
  * the decision engine use — so a profile's allowed/cutoff values always resolve.
  *
  * Contracts: GET/POST /api/quality-profiles, PUT/DELETE /api/quality-profiles/{id},
@@ -22,7 +22,7 @@ import { Drawer, DrawerDanger, DrawerFooter, DrawerSection, type DrawerSaveState
 import { Field, FieldRow } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
-import { PageToolbar } from "../components/ui/page-toolbar";
+import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
 import { ListGroupHeader, MediaTypeFilter, useMediaTypeSplit } from "../components/ui/media-type-split";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { Select } from "../components/ui/select";
@@ -44,7 +44,7 @@ import { authedFetch } from "../lib/use-auth";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { cn } from "../lib/utils";
 
-const TABS = configurationNavAreas.find((area) => area.label === "Media plans")?.items ?? [];
+const TABS = configurationNavAreas.find((area) => area.label === "Quality Profiles")?.items ?? [];
 
 /**
  * Starters expressed in the backend's own tier names, each linked to the TRaSH
@@ -57,7 +57,6 @@ const PROFILE_STARTERS: { id: string; label: string; mediaType: "movies" | "tv";
   { id: "movies-remux", label: "4K Remux", mediaType: "movies", allowed: ["WEB 2160p", "Bluray 2160p", "Remux 2160p"], cutoff: "Remux 2160p", summary: "Uncompromising quality; very large files.", trashPresetId: "remux-2160p" },
   { id: "tv-1080p", label: "1080p TV", mediaType: "tv", allowed: ["WEB 720p", "WEB 1080p", "HDTV 1080p"], cutoff: "WEB 1080p", summary: "Everyday TV at 1080p with a 720p fallback.", trashPresetId: "web-1080p-tv" },
   { id: "tv-4k", label: "4K TV", mediaType: "tv", allowed: ["WEB 1080p", "WEB 2160p", "Bluray 2160p"], cutoff: "WEB 2160p", summary: "4K episodes where available, 1080p otherwise." },
-  { id: "tv-anime", label: "Anime", mediaType: "tv", allowed: ["WEB 1080p", "Bluray 1080p", "Remux 1080p"], cutoff: "Bluray 1080p", summary: "Anime-focused sources and release groups.", trashPresetId: "anime-1080p" }
 ];
 
 interface LoaderData {
@@ -125,7 +124,7 @@ export function SettingsProfilesPage() {
   const editing = mode.kind === "edit" ? qualityProfiles.find((profile) => profile.id === mode.id) ?? null : null;
   const dirty = useMemo(() => isOpen && !sameForm(form, initialForm), [isOpen, form, initialForm]);
   const footerState: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
-  const blocker = useUnsavedChanges(dirty);
+  useUnsavedChanges(dirty);
   useEffect(() => {
     if (dirty && (saveState === "saved" || saveState === "error")) setSaveState(undefined);
   }, [dirty, saveState]);
@@ -221,7 +220,7 @@ export function SettingsProfilesPage() {
     event.preventDefault();
     if (!isOpen || busy) return;
     const nextErrors: typeof errors = {};
-    if (!form.name.trim()) nextErrors.name = "Give this profile a name.";
+    if (!form.name.trim()) nextErrors.name = "Give this quality profile a name.";
     if (!form.allowed.length) nextErrors.allowed = "Allow at least one quality tier.";
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
@@ -295,26 +294,24 @@ export function SettingsProfilesPage() {
     <div className="grid gap-[var(--page-gap)]">
       <PageToolbar
         tabs={TABS}
+        accent="blue"
         actions={
           <>
             <MediaTypeFilter value={split.scope} onValueChange={split.setScope} counts={split.counts} />
-            <Button type="button" onClick={openCreate}>
-              <Plus className="h-4 w-4" />
-              New profile
-            </Button>
+      <PageToolbarAction onClick={openCreate}>New quality profile</PageToolbarAction>
           </>
         }
       />
 
-      <ListCard title="Quality profiles" count={qualityProfiles.length ? `${qualityProfiles.length} ${qualityProfiles.length === 1 ? "profile" : "profiles"}` : undefined}>
+      <ListCard title="Quality Profiles" count={qualityProfiles.length ? `${qualityProfiles.length} ${qualityProfiles.length === 1 ? "profile" : "profiles"} · complete quality decisions used by Library Profiles` : undefined}>
         {qualityProfiles.length === 0 ? (
           <ListEmpty
             title="No quality profiles yet"
-            description="A profile is the quality ladder a media plan follows: which release tiers are allowed, and where upgrades stop."
+            description="A Quality Profile defines the quality, size, release preferences, exclusions, and upgrade point for a library. Library Profiles attach it to the searches and upgrades that use it."
             actions={
               <Button type="button" size="sm" onClick={openCreate}>
                 <Plus className="h-3.5 w-3.5" />
-                New profile
+                New quality profile
               </Button>
             }
           />
@@ -350,14 +347,14 @@ export function SettingsProfilesPage() {
           if (!open) requestClose();
         }}
         title={mode.kind === "create" ? "New quality profile" : editing?.name ?? form.name}
-        description={mode.kind === "create" ? "Which release tiers are allowed, and where upgrades stop." : `Quality profile · ${form.mediaType === "tv" ? "TV" : "Movies"} · stops at ${form.cutoff || "—"}`}
+        description={mode.kind === "create" ? "Set the quality you want Deluno to accept, prefer, upgrade to, or reject." : `Quality profile · ${form.mediaType === "tv" ? "TV" : "Movies"} · stops at ${form.cutoff || "—"}`}
         onSubmit={handleSubmit}
-        footer={<DrawerFooter state={footerState} message={saveMessage} saveLabel={mode.kind === "create" ? "Create profile" : "Save profile"} onCancel={requestClose} disabled={busy} />}
+        footer={<DrawerFooter state={footerState} message={saveMessage} saveLabel={mode.kind === "create" ? "Create quality profile" : "Save quality profile"} onCancel={requestClose} disabled={busy} />}
       >
         {mode.kind === "create" ? (
-          <DrawerSection title="Start from">
-            <Field label="Starter" help="Based on TRaSH Guide recommendations. Everything below stays editable.">
-              <Select value={starterId} onChange={(event) => applyStarter(event.target.value)} options={[{ value: "", label: "Blank profile" }, ...PROFILE_STARTERS.map((starter) => ({ value: starter.id, label: `${starter.label} · ${starter.mediaType === "tv" ? "TV" : "Movies"}` }))]} />
+          <DrawerSection title="Template">
+            <Field label="Choose a template" help="A predefined starting point based on TRaSH Guide recommendations. Everything below stays editable.">
+              <Select value={starterId} onChange={(event) => applyStarter(event.target.value)} options={[{ value: "", label: "Create a custom Quality Profile" }, ...PROFILE_STARTERS.map((starter) => ({ value: starter.id, label: `${starter.label} · ${starter.mediaType === "tv" ? "TV" : "Movies"}` }))]} />
             </Field>
             {starterId ? <p className="-mt-1 text-[length:var(--type-caption)] text-muted-foreground">{PROFILE_STARTERS.find((starter) => starter.id === starterId)?.summary}</p> : null}
             {recommendedCount ? (
@@ -444,7 +441,7 @@ export function SettingsProfilesPage() {
               })}
             </div>
           ) : (
-            <p className="text-[length:var(--type-caption)] text-muted-foreground">No {form.mediaType === "tv" ? "TV" : "movie"} formats yet — add them under Release preferences.</p>
+            <p className="text-[length:var(--type-caption)] text-muted-foreground">No {form.mediaType === "tv" ? "TV" : "movie"} formats yet — add them under Release Preferences.</p>
           )}
           <Disclosure title="Fine-tune" summary="Unknown-quality handling" open={fineTuneOpen} onOpenChange={setFineTuneOpen}>
             <SwitchRow label="Upgrade files of unknown quality" description="Replace files Deluno can't identify when a matching release appears." checked={form.upgradeUnknownItems} onCheckedChange={(checked) => setForm((current) => ({ ...current, upgradeUnknownItems: checked }))} />
@@ -463,37 +460,31 @@ export function SettingsProfilesPage() {
                 ))}
               </div>
             ) : (
-              <p className="text-[length:var(--type-caption)] text-muted-foreground">Not assigned yet. Libraries pick a profile through their media plan, or directly in Library setup.</p>
+              <p className="text-[length:var(--type-caption)] text-muted-foreground">Not assigned yet. A Library Profile normally chooses a Quality Profile for each library.</p>
             )}
           </DrawerSection>
         ) : null}
 
         {editing ? (
           <DrawerSection>
-            <DrawerDanger title="Delete this profile" description="Libraries and plans using it need another profile." action={<Button type="button" variant="destructive" size="sm" onClick={() => setConfirmRemove(true)} disabled={busy}>Delete</Button>} />
+          <DrawerDanger title="Delete this Quality Profile" description="Library Profiles using it need another Quality Profile." action={<Button type="button" variant="destructive" size="sm" onClick={() => setConfirmRemove(true)} disabled={busy}>Delete</Button>} />
           </DrawerSection>
         ) : null}
       </Drawer>
 
-      <ConfirmDialog open={confirmRemove} onOpenChange={setConfirmRemove} title={`Delete “${editing?.name ?? form.name}”?`} description={usedBy.length ? `${usedBy.length} ${usedBy.length === 1 ? "library uses" : "libraries use"} this profile and will need another one.` : "This profile is not assigned to any library."} confirmLabel="Delete profile" busy={busy} onConfirm={() => void handleRemove()} />
+      <ConfirmDialog open={confirmRemove} onOpenChange={setConfirmRemove} title={`Delete “${editing?.name ?? form.name}”?`} description={usedBy.length ? `${usedBy.length} ${usedBy.length === 1 ? "library uses" : "libraries use"} this Quality Profile and will need another one.` : "This Quality Profile is not assigned to any Library Profile."} confirmLabel="Delete Quality Profile" busy={busy} onConfirm={() => void handleRemove()} />
       <ConfirmDialog
-        open={confirmDiscard || blocker.state === "blocked"}
+        open={confirmDiscard}
         onOpenChange={(open) => {
           if (open) return;
           setConfirmDiscard(false);
-          if (blocker.state === "blocked") blocker.reset();
         }}
         title="Discard unsaved changes?"
-        description="Your edits to this profile haven't been saved."
+        description="Your edits to this quality profile haven't been saved."
         confirmLabel="Discard"
         onConfirm={() => {
           setConfirmDiscard(false);
-          if (blocker.state === "blocked") {
-            setMode({ kind: "closed" });
-            blocker.proceed();
-          } else {
-            closeDrawer();
-          }
+          closeDrawer();
         }}
       />
     </div>

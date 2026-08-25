@@ -56,7 +56,7 @@ export const WANTED_STATUS_PRESENTATION: Record<string, { label: string; tone: "
   covered: {
     label: "Complete",
     tone: "ok",
-    hint: "Deluno has a file that meets your media plan, so it has stopped looking."
+    hint: "Deluno has a file that meets your Library Profile, so it has stopped looking."
   },
   missing: {
     label: "Missing",
@@ -66,7 +66,7 @@ export const WANTED_STATUS_PRESENTATION: Record<string, { label: string; tone: "
   upgrade: {
     label: "Upgrade wanted",
     tone: "info",
-    hint: "There is a file, but it is below the quality your media plan asks for."
+    hint: "There is a file, but it is below the quality your Library Profile asks for."
   },
   waiting: {
     label: "Waiting",

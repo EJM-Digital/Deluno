@@ -31,6 +31,9 @@ interface PathInputProps {
   placeholder?: string;
   className?: string;
   browseTitle?: string;
+  showCheck?: boolean;
+  showAdvanced?: boolean;
+  stacked?: boolean;
 }
 
 export function PathInput({
@@ -38,7 +41,10 @@ export function PathInput({
   onChange,
   placeholder,
   className,
-  browseTitle = "Choose folder"
+  browseTitle = "Choose folder",
+  showCheck = true,
+  showAdvanced = true,
+  stacked = false
 }: PathInputProps) {
   const [open, setOpen] = useState(false);
   const [browserPath, setBrowserPath] = useState<string | null>(null);
@@ -210,42 +216,48 @@ export function PathInput({
 
   return (
     <>
-      <div className={cn("flex items-center gap-2", className)}>
+      <div className={cn(stacked ? "grid gap-2" : "flex items-center gap-2", className)}>
         <Input value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} />
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="shrink-0"
-          onClick={() => void handleDiagnostic(value)}
-          disabled={!value.trim() || diagnosticLoading}
-        >
-          {diagnosticLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <FolderCheck className="h-4 w-4" />}
-          Check
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="shrink-0"
-          onClick={() => void handleNativeBrowse()}
-          disabled={nativePickerLoading}
-        >
-          {nativePickerLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <FolderOpen className="h-4 w-4" />}
-          Choose folder
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="shrink-0"
-          onClick={() => {
-            setAdvancedReason(null);
-            setOpen(true);
-          }}
-        >
-          Advanced
-        </Button>
+        <div className={cn("flex items-center gap-2", stacked && "flex-wrap")}>
+          {showCheck ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              onClick={() => void handleDiagnostic(value)}
+              disabled={!value.trim() || diagnosticLoading}
+            >
+              {diagnosticLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <FolderCheck className="h-4 w-4" />}
+              Check
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            onClick={() => void handleNativeBrowse()}
+            disabled={nativePickerLoading}
+          >
+            {nativePickerLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <FolderOpen className="h-4 w-4" />}
+            Choose folder
+          </Button>
+          {showAdvanced ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="shrink-0"
+              onClick={() => {
+                setAdvancedReason(null);
+                setOpen(true);
+              }}
+            >
+              Advanced
+            </Button>
+          ) : null}
+        </div>
       </div>
       {diagnostic || diagnosticError ? (
         <PathDiagnosticPanel diagnostic={diagnostic} error={diagnosticError} compact />

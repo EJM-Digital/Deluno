@@ -88,7 +88,7 @@ public sealed class ReferenceSearchFlowTests
             CancellationToken.None);
         var client = await connectionsRepository.CreateDownloadClientAsync(new CreateDownloadClientRequest(
             "Reference qBittorrent", "qbittorrent", "localhost", 8080, null, null,
-            "C:\\Downloads", "movies", "tv", null, 1, true), CancellationToken.None);
+            "C:\\Downloads", "configured-movies", "configured-tv", null, 1, true), CancellationToken.None);
         await connectionsRepository.UpdateDownloadClientHealthAsync(
             client.Id,
             "healthy",
@@ -120,17 +120,36 @@ public sealed class ReferenceSearchFlowTests
             ],
             DownloadClients:
             [
-                new LibraryDownloadClientLinkItem("reference-client-link", "reference-library", client.Id, client.Name, 1, time.GetUtcNow(), time.GetUtcNow())
+                new LibraryDownloadClientLinkItem("reference-client-link", "reference-library", client.Id, client.Name, 1, time.GetUtcNow(), time.GetUtcNow(), Category: "reference-movies")
             ]), CancellationToken.None);
 
         Assert.Equal("matched", plan.Outcome);
         Assert.True(plan.ShouldDispatch);
         Assert.NotNull(plan.DispatchRequest);
         Assert.Equal("Dune.Part.Two.2024.WEB.1080p-PREFERRED", plan.DispatchRequest!.ReleaseName);
+        Assert.Equal("reference-movies", plan.DispatchRequest.Category);
         Assert.Contains(plan.Alternatives, alternative => alternative.Status == "rejected" && alternative.Name.Contains("CAM", StringComparison.OrdinalIgnoreCase));
         Assert.Contains("t=search", handler.Query, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("q=Dune%20Part%20Two%202024", handler.Query, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("cat=2000", handler.Query, StringComparison.OrdinalIgnoreCase);
+
+        var fallbackPlan = await pipeline.PlanAsync(new AcquisitionDecisionRequest(
+            "Dune Part Two",
+            2024,
+            "movies",
+            CurrentQuality: null,
+            TargetQuality: "WEB 1080p",
+            Sources:
+            [
+                new LibrarySourceLinkItem("reference-source", "reference-library", indexer.Id, indexer.Name, 1, "", "", time.GetUtcNow(), time.GetUtcNow())
+            ],
+            DownloadClients:
+            [
+                new LibraryDownloadClientLinkItem("reference-client-link", "reference-library", client.Id, client.Name, 1, time.GetUtcNow(), time.GetUtcNow())
+            ]), CancellationToken.None);
+
+        Assert.NotNull(fallbackPlan.DispatchRequest);
+        Assert.Equal("configured-movies", fallbackPlan.DispatchRequest!.Category);
     }
 
     private sealed class SingleClientFactory(HttpMessageHandler handler) : IHttpClientFactory

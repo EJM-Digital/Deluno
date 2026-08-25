@@ -12,7 +12,6 @@
 
 import * as React from "react";
 import {
-  AnimatePresence,
   motion,
   useReducedMotion,
   type HTMLMotionProps,
@@ -29,57 +28,18 @@ import { useLocation, useOutlet } from "react-router-dom";
   `blur(0px)`) makes this wrapper the containing block for every fixed and
   sticky descendant, which silently breaks page-level sticky bars inside routes.
 */
-const pageVariants: Variants = {
-  initial: { opacity: 0, y: 8 },
-  enter: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.32, ease: [0.2, 0.9, 0.22, 1] }
-  },
-  exit: {
-    opacity: 0,
-    y: -6,
-    transition: { duration: 0.16, ease: [0.4, 0, 0.2, 1] }
-  }
-};
-
-const pageVariantsReduced: Variants = {
-  initial: { opacity: 0 },
-  enter: { opacity: 1, transition: { duration: 0.12 } },
-  exit: { opacity: 0, transition: { duration: 0.08 } }
-};
-
 /**
  * Wrap this around `<Outlet />` in the app layout. Animates presence on
  * every navigation. Respects `prefers-reduced-motion`.
  */
 export function PageTransition() {
-  const location = useLocation();
   const outlet = useOutlet();
-  const shouldReduce = useReducedMotion();
-  const variants = shouldReduce ? pageVariantsReduced : pageVariants;
-  const transitionKey = getRouteTransitionKey(location.pathname);
-
-  return (
-    <AnimatePresence mode="wait" initial={false}>
-      <motion.div
-        key={transitionKey}
-        variants={variants}
-        initial="initial"
-        animate="enter"
-        exit="exit"
-        className="min-h-[60vh]"
-      >
-        {outlet}
-      </motion.div>
-    </AnimatePresence>
-  );
-}
-
-function getRouteTransitionKey(pathname: string) {
-  if (pathname.startsWith("/settings")) return "/settings";
-  if (pathname.startsWith("/system")) return "/system";
-  return pathname;
+  const location = useLocation();
+  // Route changes should replace the content in place. Exit/enter presence
+  // kept the previous route mounted while the next one loaded, which made
+  // fast menu clicks show ghost cards and partial frames underneath the new
+  // page. Page-local motion remains available through Stagger/Reveal.
+  return <div key={location.pathname} className="min-h-[60vh]">{outlet}</div>;
 }
 
 /* ──────────────────────────────────────────────────────

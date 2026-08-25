@@ -47,7 +47,7 @@ export function Label({ htmlFor, className, children, ...props }: React.LabelHTM
     <label
       {...props}
       htmlFor={htmlFor}
-      className={cn("text-[length:var(--type-body-sm)] font-medium leading-tight text-foreground", className)}
+      className={cn("density-label font-sans text-foreground", className)}
     >
       {children}
     </label>
@@ -73,11 +73,11 @@ export function Field({ label, help, error, hideLabel = false, optional = false,
         </Label>
         {children}
         {error ? (
-          <p id={helpId} role="alert" className="text-[length:var(--type-caption)] leading-snug text-destructive">
+          <p id={helpId} role="alert" className="density-help font-sans text-destructive">
             {error}
           </p>
         ) : help ? (
-          <p id={helpId} className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">
+          <p id={helpId} className="density-help font-sans text-muted-foreground">
             {help}
           </p>
         ) : null}

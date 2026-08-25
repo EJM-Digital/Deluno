@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Deluno.Connections.Contracts;
 
@@ -54,6 +55,64 @@ public sealed class QbittorrentDownloadClient : DownloadClientBase
             "qBittorrent", item.State?.Contains("error", StringComparison.OrdinalIgnoreCase) == true ? item.State : null,
             DownloadClientHelpers.FromUnix(item.AddedOn), DownloadClientHelpers.ChoosePath(item.ContentPath, item.SavePath))).ToArray();
         return CreateSnapshot(client, queue, capturedUtc, "healthy", $"Connected to qBittorrent at {baseUri.Host}:{baseUri.Port}.");
+    }
+
+    public override async Task<DownloadClientCategoryCheckResult> CheckCategoryAsync(
+        DownloadClientItem client,
+        string category,
+        CancellationToken cancellationToken)
+    {
+        var normalizedCategory = category.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedCategory))
+        {
+            return new(client.Id, client.Name, normalizedCategory, DownloadClientCategoryStatuses.Configuration,
+                "Enter a category before checking it.", Supported: true, Found: false);
+        }
+
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        if (baseUri is null)
+        {
+            return new(client.Id, client.Name, normalizedCategory, DownloadClientCategoryStatuses.Configuration,
+                "Add the qBittorrent address before checking a category.", Supported: true, Found: false);
+        }
+
+        try
+        {
+            using var handler = new HttpClientHandler { CookieContainer = new CookieContainer() };
+            using var http = new HttpClient(handler) { BaseAddress = baseUri, Timeout = TimeSpan.FromSeconds(8) };
+            await LoginAsync(http, client, cancellationToken);
+            using var response = await http.GetAsync("api/v2/torrents/categories", cancellationToken);
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                return new(client.Id, client.Name, normalizedCategory, DownloadClientCategoryStatuses.Unsupported,
+                    "This qBittorrent version does not expose its category list. You can still use the category, but Deluno cannot verify it.", Supported: false, Found: false);
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                return new(client.Id, client.Name, normalizedCategory, DownloadClientCategoryStatuses.Unreachable,
+                    $"qBittorrent returned {(int)response.StatusCode} while checking its categories.", Supported: true, Found: false);
+            }
+
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+            var found = document.RootElement.ValueKind == JsonValueKind.Object && document.RootElement.EnumerateObject()
+                .Any(item => string.Equals(item.Name, normalizedCategory, StringComparison.OrdinalIgnoreCase));
+            return new(
+                client.Id,
+                client.Name,
+                normalizedCategory,
+                found ? DownloadClientCategoryStatuses.Ready : DownloadClientCategoryStatuses.Missing,
+                found
+                    ? $"qBittorrent has a category named {normalizedCategory}."
+                    : $"qBittorrent does not have a category named {normalizedCategory}. Create it there before using it in Deluno.",
+                Supported: true,
+                Found: found);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException)
+        {
+            return new(client.Id, client.Name, normalizedCategory, DownloadClientCategoryStatuses.Unreachable,
+                $"Deluno could not reach qBittorrent to check its categories: {ex.Message}", Supported: true, Found: false);
+        }
     }
 
     public override async Task<DownloadClientActionResult> ExecuteActionAsync(DownloadClientItem client, string action, string queueItemId, CancellationToken cancellationToken)

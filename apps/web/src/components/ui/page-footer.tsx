@@ -3,7 +3,8 @@
  * (Size rules, File handling, Automation…). Pinned to the bottom of the content
  * area so Save is always reachable, no matter which card you are editing.
  *
- * Same anatomy as DrawerFooter: status left, Discard + Save right.
+ * Same anatomy as DrawerFooter: status left, Save right. Discarding is handled
+ * by the shared unsaved-changes popup when the user navigates away.
  *
  * Positioned `fixed` rather than `sticky` on purpose: the app shell wraps every
  * page in an `overflow-x: hidden` container, which becomes the scroll container
@@ -28,7 +29,6 @@ export function PageFooter({
   state,
   message,
   saveLabel,
-  onDiscard,
   onSave,
   saveType = "submit",
   disabled,
@@ -37,7 +37,6 @@ export function PageFooter({
   state: DrawerSaveState;
   message?: string | null;
   saveLabel: string;
-  onDiscard: () => void;
   onSave?: () => void;
   saveType?: "submit" | "button";
   disabled?: boolean;
@@ -76,9 +75,6 @@ export function PageFooter({
           ) : null}
         </span>
         <div className="flex shrink-0 items-center gap-2">
-          <Button type="button" variant="outline" onClick={onDiscard} disabled={saving || state === "clean"}>
-            Discard
-          </Button>
           <Button type={saveType} onClick={saveType === "button" ? onSave : undefined} disabled={disabled || !canSave || saving}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             {saveLabel}

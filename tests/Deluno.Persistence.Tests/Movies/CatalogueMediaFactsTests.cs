@@ -36,7 +36,7 @@ public sealed class CatalogueMediaFactsTests
                     CurrentQuality: "Bluray-1080p",
                     TargetQuality: "Bluray-1080p",
                     QualityCutoffMet: true,
-                    UnmonitorWhenCutoffMet: false,
+                    UnmonitorWhenCutoffMet: true,
                     FilePath: @"D:\Media\Arrival (2016)\Arrival.2016.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS.mkv",
                     FileSizeBytes: 8L * 1024 * 1024 * 1024)
             ],
@@ -46,6 +46,7 @@ public sealed class CatalogueMediaFactsTests
             (await movies.ListPageAsync(new CatalogueQuery(), CancellationToken.None)).Items);
 
         Assert.Equal("H.264", item.VideoCodec);
+        Assert.True(item.Monitored);
         Assert.Equal("DTS-HD", item.AudioCodec);
         Assert.Equal("5.1", item.AudioChannels);
         Assert.Equal("SPARKS", item.ReleaseGroup);

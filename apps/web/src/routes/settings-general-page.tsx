@@ -2,9 +2,8 @@
  * General — a page-level form on the shared grammar.
  *
  *   PageToolbar (System settings tabs)
- *   SummaryStrip (instance · address · authentication · last saved)
  *   ListCard  instance and host (page form)
- *   PageFooter (pinned: status · Discard · Save)
+ *   PageFooter (pinned: status · Save)
  *
  * Contracts: PATCH /api/settings.
  */
@@ -16,7 +15,6 @@ import { ListCard } from "../components/ui/list-card";
 import { PageFooter } from "../components/ui/page-footer";
 import { PageToolbar } from "../components/ui/page-toolbar";
 import { PresetField } from "../components/ui/preset-field";
-import { SummaryStrip } from "../components/ui/summary-strip";
 import { systemSettingsNavItems } from "../components/app/settings-shell";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import type { DrawerSaveState } from "../components/ui/drawer";
@@ -88,16 +86,7 @@ export function SettingsGeneralPage() {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-[var(--page-gap)]" noValidate>
-      <PageToolbar tabs={systemSettingsNavItems} />
-
-      <SummaryStrip
-        cells={[
-          { label: "Instance", value: settings.appInstanceName || "Deluno", help: "shown in the topbar and notifications" },
-          { label: "Listening on", value: `${settings.hostBindAddress}:${settings.hostPort}`, help: settings.hostBindAddress === "127.0.0.1" ? "this machine only" : "reachable from your network" },
-          { label: "Sign-in", value: "Required", help: "every session must authenticate" },
-          { label: "Last saved", value: formatWhen(settings.updatedUtc), help: "general settings" }
-        ]}
-      />
+      <PageToolbar tabs={systemSettingsNavItems} accent="blue" />
 
       <ListCard title="Instance and host" count="How this installation names and serves itself">
         <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
@@ -139,7 +128,7 @@ export function SettingsGeneralPage() {
               />
             </Field>
           </FieldRow>
-          <Field label="URL base" optional help="Path prefix when Deluno sits behind a reverse proxy. Leave blank when it serves from the root." error={settingsMutation.fieldErrors.urlBase}>
+          <Field label="URL base" optional help="Path prefix when Deluno sits behind a reverse proxy. Leave empty when it serves from the root." error={settingsMutation.fieldErrors.urlBase}>
             <PresetField
               value={form.urlBase}
               onChange={(value) => setForm((current) => ({ ...current, urlBase: value }))}
@@ -160,7 +149,7 @@ export function SettingsGeneralPage() {
         </div>
       </ListCard>
 
-      <PageFooter state={state} message={message} saveLabel="Save general settings" onDiscard={() => setForm(savedForm)} />
+      <PageFooter state={state} message={message} saveLabel="Save general settings" />
     </form>
   );
 }
@@ -178,8 +167,4 @@ function formFrom(settings: PlatformSettingsSnapshot): GeneralForm {
     hostPort: String(settings.hostPort),
     urlBase: settings.urlBase
   };
-}
-
-function formatWhen(value: string) {
-  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value));
 }

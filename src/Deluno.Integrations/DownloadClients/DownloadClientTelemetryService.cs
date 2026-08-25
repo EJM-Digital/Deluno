@@ -39,6 +39,7 @@ public sealed class DownloadClientTelemetryService(
         var clients = await connectionsRepository.ListDownloadClientsAsync(cancellationToken);
         var pathMappings = await connectionsRepository.ListDownloadClientPathMappingsAsync(null, cancellationToken);
         var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+        var routeCategoriesByLibrary = await LoadRouteCategoriesAsync(libraries, cancellationToken);
         var dispatches = await jobQueueRepository.ListDownloadDispatchesAsync(100, null, cancellationToken);
         var importJobs = await jobQueueRepository.ListAsync(200, cancellationToken);
         var snapshots = new List<DownloadClientTelemetrySnapshot>();
@@ -64,7 +65,8 @@ public sealed class DownloadClientTelemetryService(
                         capturedUtc),
                     libraries,
                     clientDispatches,
-                    importJobs));
+                    importJobs,
+                    routeCategoriesByLibrary));
                 continue;
             }
 
@@ -324,6 +326,7 @@ public sealed class DownloadClientTelemetryService(
         }
 
         var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+        var routeCategoriesByLibrary = await LoadRouteCategoriesAsync(libraries, cancellationToken);
         var notes = new List<string>();
         var evaluated = 0;
         var replacements = 0;
@@ -355,7 +358,11 @@ public sealed class DownloadClientTelemetryService(
                 }
 
                 var library = libraries.FirstOrDefault(candidate => string.Equals(candidate.Id, dispatch.LibraryId, StringComparison.OrdinalIgnoreCase));
-                var categoryOwned = IsDelunoCategory(client, item.Category, dispatch.MediaType);
+                var routeCategory = routeCategoriesByLibrary.TryGetValue(dispatch.LibraryId, out var categories) &&
+                    categories.TryGetValue(client.Id, out var configuredRouteCategory)
+                    ? configuredRouteCategory
+                    : null;
+                var categoryOwned = IsDelunoCategory(client, item.Category, dispatch.MediaType, routeCategory);
                 var payloadOwned = library is not null && IsPathWithinApprovedDownloadRoot(item.SourcePath, library.DownloadsPath);
                 var applied = new List<string>();
 
@@ -479,8 +486,13 @@ public sealed class DownloadClientTelemetryService(
         CancellationToken cancellationToken)
         => ExecuteActionCoreAsync(client, "delete", queueItemId, cancellationToken);
 
-    private static bool IsDelunoCategory(DownloadClientItem client, string category, string mediaType)
+    private static bool IsDelunoCategory(DownloadClientItem client, string category, string mediaType, string? routeCategory = null)
     {
+        if (!string.IsNullOrWhiteSpace(routeCategory) && string.Equals(routeCategory, category, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
         var expected = mediaType.Equals("tv", StringComparison.OrdinalIgnoreCase)
             ? client.TvCategory
             : client.MoviesCategory;
@@ -550,7 +562,8 @@ public sealed class DownloadClientTelemetryService(
         DownloadClientTelemetrySnapshot snapshot,
         IReadOnlyList<LibraryItem> libraries,
         IReadOnlyList<DownloadDispatchItem> dispatches,
-        IReadOnlyList<JobQueueItem> importJobs)
+        IReadOnlyList<JobQueueItem> importJobs,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> routeCategoriesByLibrary)
     {
         if (snapshot.Queue.Count == 0)
         {
@@ -584,11 +597,17 @@ public sealed class DownloadClientTelemetryService(
                 return item with { Status = status };
             }
 
-            var library = ResolveLibraryForQueueItem(item, libraries, dispatches);
-            if (library is not null &&
-                string.Equals(library.ImportWorkflow, "refine-before-import", StringComparison.OrdinalIgnoreCase))
+            var library = ResolveLibraryForQueueItem(item, libraries, dispatches, routeCategoriesByLibrary);
+            if (library is not null)
             {
-                return item with { Status = DownloadQueueStatuses.WaitingForProcessor };
+                var resolvedItem = item with
+                {
+                    LibraryId = library.Id,
+                    MediaType = library.MediaType
+                };
+                return string.Equals(library.ImportWorkflow, "refine-before-import", StringComparison.OrdinalIgnoreCase)
+                    ? resolvedItem with { Status = DownloadQueueStatuses.WaitingForProcessor }
+                    : resolvedItem;
             }
 
             return item;
@@ -604,7 +623,8 @@ public sealed class DownloadClientTelemetryService(
     private static LibraryItem? ResolveLibraryForQueueItem(
         DownloadQueueItem item,
         IReadOnlyList<LibraryItem> libraries,
-        IReadOnlyList<DownloadDispatchItem> dispatches)
+        IReadOnlyList<DownloadDispatchItem> dispatches,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> routeCategoriesByLibrary)
     {
         var dispatch = dispatches
             .OrderByDescending(dispatch => dispatch.CreatedUtc)
@@ -618,6 +638,33 @@ public sealed class DownloadClientTelemetryService(
             if (dispatchedLibrary is not null)
             {
                 return dispatchedLibrary;
+            }
+        }
+
+        var category = item.Category?.Trim();
+        if (!string.IsNullOrWhiteSpace(category))
+        {
+            var categoryLibraries = libraries
+                .Where(library => routeCategoriesByLibrary.TryGetValue(library.Id, out var categories) &&
+                    categories.TryGetValue(item.ClientId, out var routeCategory) &&
+                    string.Equals(routeCategory, category, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+
+            if (categoryLibraries.Length > 0)
+            {
+                if (!string.IsNullOrWhiteSpace(item.SourcePath))
+                {
+                    var categorySource = NormalizeSourceKey(item.SourcePath);
+                    var categoryPathMatch = categoryLibraries.FirstOrDefault(library =>
+                        !string.IsNullOrWhiteSpace(library.DownloadsPath) &&
+                        categorySource.StartsWith(NormalizeSourceKey(library.DownloadsPath), StringComparison.OrdinalIgnoreCase));
+                    if (categoryPathMatch is not null)
+                    {
+                        return categoryPathMatch;
+                    }
+                }
+
+                return categoryLibraries[0];
             }
         }
 
@@ -642,6 +689,22 @@ public sealed class DownloadClientTelemetryService(
         }
 
         return mediaLibraries.FirstOrDefault();
+    }
+
+    private async Task<IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>> LoadRouteCategoriesAsync(
+        IReadOnlyList<LibraryItem> libraries,
+        CancellationToken cancellationToken)
+    {
+        var routeCategoriesByLibrary = new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var library in libraries)
+        {
+            var routing = await librariesRepository.GetLibraryRoutingAsync(library.Id, cancellationToken);
+            routeCategoriesByLibrary[library.Id] = (routing?.DownloadClients ?? [])
+                .Where(link => !string.IsNullOrWhiteSpace(link.Category))
+                .ToDictionary(link => link.DownloadClientId, link => link.Category!.Trim(), StringComparer.OrdinalIgnoreCase);
+        }
+
+        return routeCategoriesByLibrary;
     }
 
     private static string? TryReadImportSourcePath(string? payloadJson)

@@ -1,15 +1,32 @@
 import * as React from "react";
-import { NavLink } from "react-router-dom";
+import { Plus } from "lucide-react";
+import { NavLink, useLocation } from "react-router-dom";
+import { titleCaseLabel } from "../../lib/title-case";
 import { cn } from "../../lib/utils";
+import { Button, type ButtonProps } from "./button";
 
 export interface ToolbarTab {
   to: string;
   label: React.ReactNode;
   end?: boolean;
+  icon?: React.ReactNode;
+  /** A verified completion state for setup-style rails. Never inferred from navigation alone. */
+  status?: "complete" | "pending";
 }
 
+export type ToolbarAccent = "yellow" | "green" | "blue" | "orange" | "violet" | "cyan";
+
+export const TOOLBAR_ACCENT_COLOURS: Record<ToolbarAccent, string> = {
+  yellow: "47 100% 68%",
+  green: "145 78% 52%",
+  blue: "207 96% 62%",
+  orange: "28 96% 58%",
+  violet: "270 92% 70%",
+  cyan: "188 92% 62%"
+};
+
 interface PageToolbarProps {
-  /** Sub-pages of this area. Rendered as a segmented tab bar on the left. */
+  /** Sub-pages of this area. Rendered as a consistent navigation rail. */
   tabs?: readonly ToolbarTab[];
   /**
    * The same slot as `tabs`, for a page whose sections are local state rather
@@ -20,44 +37,98 @@ interface PageToolbarProps {
   left?: React.ReactNode;
   /** At most two: one primary ("New …") and one secondary. */
   actions?: React.ReactNode;
+  /** The accent used by the matching sidebar area. */
+  accent?: ToolbarAccent;
   className?: string;
 }
 
+export interface PageToolbarActionProps extends Omit<ButtonProps, "children"> {
+  children: React.ReactNode;
+}
+
+/** The shared primary action treatment for collection-page toolbar rails. */
+export function PageToolbarAction({ children, className, ...props }: PageToolbarActionProps) {
+  const { style, variant, ...buttonProps } = props;
+  const actionStyle = (variant ?? "default") === "default"
+    ? {
+        ...style,
+        backgroundImage: "linear-gradient(to bottom, var(--toolbar-accent), var(--toolbar-accent))",
+        color: "hsl(var(--background))"
+      }
+    : style;
+
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant={variant}
+      style={actionStyle}
+      className={cn("shrink-0 px-3.5", className)}
+      {...buttonProps}
+    >
+      <Plus aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+      {children}
+    </Button>
+  );
+}
+
 /**
- * The first row of every collection page: 40px, tabs left, actions right.
+ * The first row of every collection page: 40px, section rail left, actions right.
  * The topbar already names the page, so there is no H1 here.
  */
-export function PageToolbar({ tabs, left, actions, className }: PageToolbarProps) {
+export function PageToolbar({ tabs, left, actions, accent, className }: PageToolbarProps) {
+  const location = useLocation();
+  const accentStyle = {
+    "--toolbar-accent": accent ? `hsl(${TOOLBAR_ACCENT_COLOURS[accent]})` : "hsl(var(--primary))"
+  } as React.CSSProperties;
+
   return (
-    <div className={cn("flex min-h-[var(--toolbar-height)] items-center justify-between gap-[var(--grid-gap)]", className)}>
+    <div className={cn("flex h-[var(--toolbar-height)] min-h-[var(--toolbar-height)] items-center justify-between gap-[var(--grid-gap)] border-b border-hairline/80 dark:border-white/[0.08]", className)} style={accentStyle}>
       {tabs?.length ? (
         <nav
           aria-label="Sections"
-          className="no-scrollbar flex h-[var(--control-height)] max-w-full items-center gap-0.5 overflow-x-auto rounded-[10px] border border-hairline bg-surface-2 p-[3px]"
+          className="no-scrollbar flex h-[var(--toolbar-height)] min-w-0 flex-1 items-stretch overflow-x-auto bg-transparent"
         >
-          {tabs.map((tab) => (
-            <NavLink
-              key={tab.to}
-              to={tab.to}
-              end={tab.end}
-              className={({ isActive }) =>
-                cn(
-                  "flex h-full shrink-0 items-center rounded-[8px] px-3 text-[length:var(--type-body-sm)] font-medium transition-colors",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  isActive ? "bg-card font-semibold text-foreground shadow-card" : "text-muted-foreground hover:bg-card/50 hover:text-foreground"
-                )
-              }
-            >
-              {tab.label}
-            </NavLink>
-          ))}
+          <div className="flex h-full min-w-max items-stretch gap-[var(--grid-gap)]">
+            {tabs.map((tab) => {
+              const isActive = isTabActive(location.pathname, tab);
+              const isComplete = tab.status === "complete";
+              const tabLabel = typeof tab.label === "string" ? titleCaseLabel(tab.label) : undefined;
+
+              return (
+                <NavLink
+                  key={tab.to}
+                  to={tab.to}
+                  end={tab.end}
+                  aria-label={tabLabel ? `${tabLabel}${isComplete ? " — complete" : ""}` : undefined}
+                  data-status={isComplete ? "complete" : "pending"}
+                  className={cn(
+                    "group relative flex h-full shrink-0 items-center pt-px text-[length:var(--type-body-sm)] font-medium leading-none transition-colors duration-200",
+                    "focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    isActive
+                      ? cn(
+                          "font-semibold after:absolute after:inset-x-0 after:bottom-2.5 after:h-0.5",
+                          accent ? "text-[var(--toolbar-accent)] after:bg-[var(--toolbar-accent)]" : "text-foreground after:bg-primary"
+                        )
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <span className="whitespace-nowrap">{tabLabel ?? tab.label}</span>
+                </NavLink>
+              );
+            })}
+          </div>
         </nav>
       ) : left ? (
         <div className="flex min-w-0 items-center gap-2">{left}</div>
       ) : (
         <span />
       )}
-      {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+      {actions ? <div className="flex shrink-0 items-center justify-end gap-2">{actions}</div> : null}
     </div>
   );
+}
+
+function isTabActive(pathname: string, tab: ToolbarTab) {
+  return tab.end ? pathname === tab.to : pathname === tab.to || pathname.startsWith(`${tab.to}/`);
 }

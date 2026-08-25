@@ -34,6 +34,11 @@ public interface IDownloadClient
         DateTimeOffset capturedUtc,
         CancellationToken cancellationToken);
 
+    Task<DownloadClientCategoryCheckResult> CheckCategoryAsync(
+        DownloadClientItem client,
+        string category,
+        CancellationToken cancellationToken);
+
     string NormalizeStatus(
         string? nativeStatus,
         double? progress,

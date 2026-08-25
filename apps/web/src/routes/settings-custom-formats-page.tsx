@@ -1,9 +1,9 @@
 /**
- * Release preferences — list → drawer plus one page-level form.
+ * Release Preferences — list → drawer plus one page-level form.
  *
- *   PageToolbar (Media Plans tabs · All/Movies/TV · Test a release · New rule)
- *   ListCard  presets      (row → drawer: what it contains · Apply)
- *   ListCard  release rules (row → drawer: Basics · Conditions · Remove)
+ *   PageToolbar (Library Profiles tabs · All/Movies/TV · Test a release · New custom rule)
+ *   ListCard  guide presets       (row → drawer: what it contains · Apply)
+ *   ListCard  advanced rules      (row → drawer: setup · Advanced matching · Remove)
  *   ListCard  safeguards   (page form, saved by PageFooter)
  *
  * Rules score a release by its traits: Radarr and Sonarr call these Custom
@@ -19,13 +19,15 @@ import { useLoaderData, useRevalidator } from "react-router-dom";
 import { FlaskConical, Loader2, Plus, RotateCcw, X } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Chip } from "../components/ui/chip";
+import { Disclosure } from "../components/ui/disclosure";
 import { Drawer, DrawerDanger, DrawerFooter, DrawerSection, type DrawerSaveState } from "../components/ui/drawer";
 import { Field, FieldRow } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
+import { LibraryImpactLinks } from "../components/ui/library-impact";
 import { ListGroupHeader, MediaTypeFilter, mediaTypeLabel, useMediaTypeSplit } from "../components/ui/media-type-split";
 import { PageFooter } from "../components/ui/page-footer";
-import { PageToolbar } from "../components/ui/page-toolbar";
+import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
 import { PresetField } from "../components/ui/preset-field";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { Select } from "../components/ui/select";
@@ -45,6 +47,8 @@ import {
 import {
   fetchJson,
   type CustomFormatItem,
+  type LibraryItem,
+  type PolicySetItem,
   type PlatformSettingsSnapshot,
   type QualityProfileItem
 } from "../lib/api";
@@ -53,7 +57,7 @@ import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
 import { authedFetch } from "../lib/use-auth";
 
-const TABS = configurationNavAreas.find((area) => area.label === "Media plans")?.items ?? [];
+const TABS = configurationNavAreas.find((area) => area.label === "Quality Profiles")?.items ?? [];
 
 /** Scores users actually reach for. Anything at or under -10000 blocks a release outright. */
 const SCORE_OPTIONS = [
@@ -86,6 +90,8 @@ interface Condition {
 const DEFAULT_NEVER_GRAB_RULES = ["cam", "camrip", "telesync", "telecine", "workprint", "screener", "sample", "trailer", "extras"];
 
 interface LoaderData {
+  libraries: LibraryItem[];
+  policySets: PolicySetItem[];
   qualityProfiles: QualityProfileItem[];
   customFormats: CustomFormatItem[];
   settings: PlatformSettingsSnapshot;
@@ -119,12 +125,22 @@ type DrawerMode =
   | null;
 
 export function SettingsCustomFormatsPage() {
-  const { customFormats, settings } = useLoaderData() as LoaderData;
+  const { customFormats, settings, libraries, policySets, qualityProfiles } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
   const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
   const [busy, setBusy] = useState<string | null>(null);
 
   const split = useMediaTypeSplit(customFormats, (format) => format.mediaType);
+  const librariesByFormat = useMemo(() => {
+    const map = new Map<string, LibraryItem[]>();
+    for (const library of libraries) {
+      const plan = library.defaultPolicySetId ? policySets.find((candidate) => candidate.id === library.defaultPolicySetId) : null;
+      const profile = library.qualityProfileId ? qualityProfiles.find((candidate) => candidate.id === library.qualityProfileId) : plan?.qualityProfileId ? qualityProfiles.find((candidate) => candidate.id === plan.qualityProfileId) : null;
+      const formatIds = new Set([...splitCsv(plan?.customFormatIds), ...splitCsv(profile?.customFormatIds)]);
+      for (const formatId of formatIds) map.set(formatId, [...(map.get(formatId) ?? []), library]);
+    }
+    return map;
+  }, [libraries, policySets, qualityProfiles]);
   const [drawer, setDrawer] = useState<DrawerMode>(null);
 
   /* ------------------------------------------------------------- rules */
@@ -132,6 +148,7 @@ export function SettingsCustomFormatsPage() {
   const [initialForm, setInitialForm] = useState<RuleForm>(() => emptyRule());
   const [ruleState, setRuleState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
   const [ruleMessage, setRuleMessage] = useState<string | null>(null);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const editing = drawer?.kind === "rule" && drawer.id ? customFormats.find((format) => format.id === drawer.id) ?? null : null;
   const ruleDirty = drawer?.kind === "rule" && !same(form, initialForm);
@@ -146,6 +163,7 @@ export function SettingsCustomFormatsPage() {
     setInitialForm(next);
     setRuleState(undefined);
     setRuleMessage(null);
+    setAdvancedOpen(!format);
     setDrawer({ kind: "rule", id: format?.id ?? null });
   }
 
@@ -154,6 +172,7 @@ export function SettingsCustomFormatsPage() {
     const bundled = findBundledCF(trashId);
     if (!bundled) {
       setForm((current) => ({ ...current, trashId: null }));
+      setAdvancedOpen(true);
       return;
     }
     setForm((current) => ({
@@ -163,6 +182,7 @@ export function SettingsCustomFormatsPage() {
       score: String(bundled.defaultScore),
       conditions: bundled.patterns.map((pattern) => ({ type: "releaseTitle" as ConditionType, value: pattern, negate: false, required: true }))
     }));
+    setAdvancedOpen(false);
   }
 
   async function submitRule(event: FormEvent<HTMLFormElement>) {
@@ -340,10 +360,12 @@ export function SettingsCustomFormatsPage() {
   }
 
   /* ------------------------------------------------------------ render */
+  const selectedGuide = form.trashId ? findBundledCF(form.trashId) : null;
   return (
     <form onSubmit={submitSafeguards} className="flex flex-col gap-[var(--page-gap)]" noValidate>
       <PageToolbar
         tabs={TABS}
+        accent="blue"
         actions={
           <>
             <MediaTypeFilter value={split.scope} onValueChange={split.setScope} counts={split.counts} />
@@ -351,15 +373,12 @@ export function SettingsCustomFormatsPage() {
               <FlaskConical className="h-4 w-4" />
               Test a release
             </Button>
-            <Button type="button" onClick={() => openRule(null)}>
-              <Plus className="h-4 w-4" />
-              New rule
-            </Button>
+            <PageToolbarAction onClick={() => openRule(null)}>New custom rule</PageToolbarAction>
           </>
         }
       />
 
-      <ListCard title="Presets" count="Start with a goal rather than a rules list">
+      <ListCard title="Guide presets" count="Start with a goal instead of building rules yourself">
         <ListTable columns={[{ label: "Preset" }, { label: "Best for", width: "minmax(0,1.6fr)" }, { label: "Rules" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]}>
           {CUSTOM_FORMAT_BUNDLES.map((bundle) => {
             const progress = presetProgress(bundle);
@@ -378,20 +397,21 @@ export function SettingsCustomFormatsPage() {
         </ListTable>
       </ListCard>
 
-      <ListCard title="Release rules" count={customFormats.length ? `${customFormats.length} ${customFormats.length === 1 ? "rule" : "rules"}` : undefined}>
+      <ListCard title="Advanced release rules" count={customFormats.length ? `${customFormats.length} ${customFormats.length === 1 ? "rule" : "rules"} · full TRaSH and custom controls` : undefined}>
         {customFormats.length === 0 ? (
           <ListEmpty
-            title="No release rules yet"
-            description="Apply a preset above, or write a rule of your own. Rules add or subtract points from a release based on its traits, and the highest-scoring release wins."
-            actions={<Button type="button" variant="outline" onClick={() => openRule(null)}><Plus className="h-4 w-4" />New rule</Button>}
+            title="No advanced release rules yet"
+            description="Most people can choose release preferences from a Library Profile. Use this area when you want the full guide catalogue, custom scores, or your own matching rule."
+            actions={<Button type="button" variant="outline" onClick={() => openRule(null)}><Plus className="h-4 w-4" />New custom rule</Button>}
           />
         ) : (
-          <ListTable columns={[{ label: "Rule" }, { label: "Matches on", width: "minmax(0,1.4fr)" }, { label: "Score" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]}>
+          <ListTable columns={[{ label: "Rule" }, { label: "Matches on", width: "minmax(0,1.4fr)" }, { label: "Score" }, { label: "Used by" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]}>
             {split.groups.flatMap((group) => [
               split.showGroups && split.scope === "all" ? <ListGroupHeader key={group.key} label={group.label} count={group.items.length} /> : null,
               ...group.items.map((format) => {
                 const conditions = parseConditions(format.conditions);
                 const guide = format.trashId ? findBundledCF(format.trashId) : undefined;
+                const usedBy = librariesByFormat.get(format.id) ?? [];
                 return (
                   <ListRow key={format.id} onClick={() => openRule(format)} selected={drawer?.kind === "rule" && drawer.id === format.id}>
                     <ListNameCell name={format.name} sub={guide ? "From the guide catalogue" : "Written here"} />
@@ -401,6 +421,7 @@ export function SettingsCustomFormatsPage() {
                       secondary={conditions.length ? `${conditions.length} ${conditions.length === 1 ? "condition" : "conditions"}` : "never matches anything"}
                     />
                     <ListCell numeric primary={scoreLabel(format.score)} secondary={format.score <= -10000 ? "never grabbed" : "points"} />
+                    <ListCell primary={<LibraryImpactLinks libraries={usedBy} />} secondary={usedBy.length ? "Inherited through a Library Profile" : "Not selected by a library profile"} />
                     <ListCell mobile>
                       <Chip tone={format.score <= -10000 ? "bad" : format.score > 0 ? "ok" : "warn"}>
                         {format.score <= -10000 ? "Blocked" : format.score > 0 ? "Preferred" : "Avoided"}
@@ -479,7 +500,7 @@ export function SettingsCustomFormatsPage() {
         </div>
       </ListCard>
 
-      <PageFooter state={safeguardFooter} message={safeguardMessage} saveLabel="Save safeguards" onDiscard={() => setSafeguards(savedSafeguards)} />
+      <PageFooter state={safeguardFooter} message={safeguardMessage} saveLabel="Save safeguards" />
 
       {/* --------------------------------------------------- rule drawer */}
       <Drawer
@@ -487,8 +508,8 @@ export function SettingsCustomFormatsPage() {
         onOpenChange={(open) => {
           if (!open) setDrawer(null);
         }}
-        title={editing ? editing.name : "New release rule"}
-        description={editing ? `${mediaTypeLabel(editing.mediaType)} · ${scoreLabel(editing.score)}` : "Score a release by the traits in its name"}
+        title={editing ? editing.name : "New custom release rule"}
+        description={editing ? `${mediaTypeLabel(editing.mediaType)} · ${selectedGuide ? "Guide-backed" : "Custom rule"}` : "Choose a guide rule or build your own"}
         onSubmit={submitRule}
         footer={
           <DrawerFooter
@@ -500,10 +521,10 @@ export function SettingsCustomFormatsPage() {
           />
         }
       >
-        <DrawerSection title="Basics">
+        <DrawerSection title="Rule setup">
           {!editing ? (
-            <Field label="Start from" optional help="Pick a rule from the bundled guide catalogue to fill this in, or leave it blank and write your own.">
-              <Select value={form.trashId ?? ""} onChange={(event) => startFrom(event.target.value)} placeholder="Write my own">
+            <Field label="Guide choice" optional help="Choose a guide-backed rule and Deluno fills in the technical matching for you. Choose Custom rule when you want to define your own.">
+              <Select value={form.trashId ?? ""} onChange={(event) => startFrom(event.target.value)} placeholder="Custom rule">
                 {CF_CATEGORY_ORDER.map((category) => {
                   const entries = BUNDLED_CUSTOM_FORMATS.filter((cf) => cf.category === category && !cf.bundleOnly);
                   if (!entries.length) return null;
@@ -511,7 +532,7 @@ export function SettingsCustomFormatsPage() {
                     <optgroup key={category} label={CF_CATEGORY_META[category as CFCategory]?.label ?? category}>
                       {entries.map((cf) => (
                         <option key={cf.trashId} value={cf.trashId}>
-                          {cf.name}
+                          {friendlyGuideName(cf)}
                         </option>
                       ))}
                     </optgroup>
@@ -519,6 +540,13 @@ export function SettingsCustomFormatsPage() {
                 })}
               </Select>
             </Field>
+          ) : null}
+          {selectedGuide ? (
+            <div className="grid gap-1 rounded-[10px] border border-primary/25 bg-primary/5 px-3 py-2">
+              <p className="text-[length:var(--type-body-sm)] font-medium text-foreground">{friendlyGuideName(selectedGuide)}</p>
+              <p className="text-[length:var(--type-caption)] text-muted-foreground">{selectedGuide.description}</p>
+              <p className="text-[length:var(--type-caption)] text-muted-foreground">The guide definition stays attached; the technical match is available under Advanced matching.</p>
+            </div>
           ) : null}
           <Field label="Name" help="What this rule is looking for, in your own words.">
             <Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="e.g. Dolby Vision" />
@@ -548,65 +576,82 @@ export function SettingsCustomFormatsPage() {
           </FieldRow>
         </DrawerSection>
 
-        <DrawerSection title="Conditions" aside={form.conditions.length ? `${form.conditions.length} · all must match` : "none yet"}>
-          {form.conditions.length === 0 ? (
-            <p className="text-[length:var(--type-caption)] text-muted-foreground">
-              Without a condition this rule never matches anything. Add at least one.
-            </p>
-          ) : null}
-          {form.conditions.map((condition, index) => (
-            <div key={index} className="grid gap-2 rounded-[10px] border border-hairline p-3">
-              <FieldRow>
-                <Field label="Look at" hideLabel={false}>
-                  <Select
-                    value={condition.type}
-                    onChange={(event) => updateCondition(setForm, index, { type: event.target.value as ConditionType })}
-                    options={CONDITION_TYPES.map((type) => ({ value: type.value, label: type.label }))}
+        <DrawerSection title="Matching" aside={selectedGuide ? "Guide-backed" : form.conditions.length ? `${form.conditions.length} criteria` : "Set up below"}>
+          <p className="text-[length:var(--type-caption)] text-muted-foreground">
+            {selectedGuide
+              ? "Deluno will use the guide definition above. You only need to open Advanced matching if you want to change how it identifies releases."
+              : "A custom rule needs at least one thing to look for. Use plain words such as WEB-DL, HDR, or a release group name."}
+          </p>
+          <Disclosure
+            title="Advanced matching"
+            summary={selectedGuide ? "View or edit the guide-backed criteria" : "Choose what Deluno should look for"}
+            open={advancedOpen}
+            onOpenChange={setAdvancedOpen}
+          >
+            {form.conditions.length === 0 ? (
+              <p className="text-[length:var(--type-caption)] text-muted-foreground">Add at least one matching criterion before saving this custom rule.</p>
+            ) : null}
+            {form.conditions.map((condition, index) => (
+              <div key={index} className="grid gap-2 rounded-[10px] border border-hairline bg-surface-2/40 p-3">
+                <FieldRow>
+                  <Field label="Match on">
+                    <Select
+                      value={condition.type}
+                      onChange={(event) => updateCondition(setForm, index, { type: event.target.value as ConditionType })}
+                      options={CONDITION_TYPES.map((type) => ({ value: type.value, label: type.label }))}
+                    />
+                  </Field>
+                  <Field label="Rule">
+                    <Select
+                      value={condition.negate ? "not" : "is"}
+                      onChange={(event) => updateCondition(setForm, index, { negate: event.target.value === "not" })}
+                      options={[
+                        { value: "is", label: "Contains" },
+                        { value: "not", label: "Does not contain" }
+                      ]}
+                    />
+                  </Field>
+                </FieldRow>
+                <Field label="Words to match" help="Plain text is enough. Deluno also accepts a pattern for advanced matching.">
+                  <Input
+                    value={condition.value}
+                    onChange={(event) => updateCondition(setForm, index, { value: event.target.value })}
+                    placeholder="e.g. WEB-DL, HDR, or GROUP"
+                    className={selectedGuide ? "font-mono" : undefined}
                   />
                 </Field>
-                <Field label="Match">
-                  <Select
-                    value={condition.negate ? "not" : "is"}
-                    onChange={(event) => updateCondition(setForm, index, { negate: event.target.value === "not" })}
-                    options={[
-                      { value: "is", label: "Contains" },
-                      { value: "not", label: "Does not contain" }
-                    ]}
-                  />
-                </Field>
-              </FieldRow>
-              <Field label="Text or pattern" help="Plain text is matched anywhere in the release name.">
-                <Input
-                  value={condition.value}
-                  onChange={(event) => updateCondition(setForm, index, { value: event.target.value })}
-                  placeholder="e.g. DV, DoVi, Dolby.?Vision"
-                  className="font-mono"
-                />
-              </Field>
-              <div className="flex justify-end">
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => setForm((current) => ({ ...current, conditions: current.conditions.filter((_, i) => i !== index) }))}
-                >
-                  Remove condition
-                </Button>
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => setForm((current) => ({ ...current, conditions: current.conditions.filter((_, i) => i !== index) }))}
+                  >
+                    Remove criterion
+                  </Button>
+                </div>
               </div>
+            ))}
+            <div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setForm((current) => ({ ...current, conditions: [...current.conditions, { type: "releaseTitle", value: "", negate: false, required: true }] }))}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add matching criterion
+              </Button>
             </div>
-          ))}
-          <div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setForm((current) => ({ ...current, conditions: [...current.conditions, { type: "releaseTitle", value: "", negate: false, required: true }] }))}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Add a condition
-            </Button>
-          </div>
+          </Disclosure>
         </DrawerSection>
+
+        {editing ? (
+          <DrawerSection title="Library impact" aside={librariesByFormat.get(editing.id)?.length ? `${librariesByFormat.get(editing.id)!.length} libraries` : "Not assigned"}>
+            <p className="text-[length:var(--type-caption)] text-muted-foreground">This rule only changes releases for libraries whose Library Profile includes it.</p>
+            <LibraryImpactLinks libraries={librariesByFormat.get(editing.id) ?? []} emptyLabel="No Library Profile uses this rule yet." />
+          </DrawerSection>
+        ) : null}
 
         {editing ? (
           <DrawerSection>
@@ -794,6 +839,10 @@ function same<T>(a: T, b: T) {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+function splitCsv(value: string | null | undefined) {
+  return (value ?? "").split(",").map((item) => item.trim()).filter(Boolean);
+}
+
 function updateCondition(setForm: React.Dispatch<React.SetStateAction<RuleForm>>, index: number, patch: Partial<Condition>) {
   setForm((current) => ({
     ...current,
@@ -856,6 +905,18 @@ function conditionSummary(conditions: Condition[]) {
   // Patterns can be long regex; the drawer shows them in full.
   const value = first.value.length > 32 ? `${first.value.slice(0, 32)}…` : first.value;
   return `${label} ${first.negate ? "without" : "with"} “${value}”`;
+}
+
+function friendlyGuideName(format: BundledCF) {
+  const names: Record<string, string> = {
+    "HD Bluray Tier 01": "Top-tier Blu-ray groups",
+    "HD Bluray Tier 02": "Trusted Blu-ray groups",
+    "WEB Tier 01": "Top-tier WEB groups",
+    "WEB Tier 02": "Trusted WEB groups",
+    "No Release Group": "Releases without a release group",
+    "LQ (Low Quality Groups)": "Known low-quality release groups"
+  };
+  return names[format.name] ?? format.name;
 }
 
 function scoreLabel(score: number) {

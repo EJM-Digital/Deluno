@@ -1,16 +1,16 @@
 /**
  * Final destinations — list → drawer.
  *
- *   PageToolbar (Library setup tabs · Test a title · New rule)
+ *   PageToolbar (Media Management tabs · Test a title · New rule)
  *   ListCard  (name · when · goes to · order · status · on · ›)
- *   Rule drawer (Basics · Destination · Remove) · Test drawer (routing preview)
+ *   Rule drawer (Rule details · Destination · Status · Remove) · Test drawer (routing preview)
  *
  * Contracts: GET/POST /api/destination-rules, PUT/DELETE /api/destination-rules/{id},
  * POST /api/filesystem/import/preview.
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
-import { FlaskConical, LoaderCircle, Plus } from "lucide-react";
+import { FlaskConical, Plus } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Chip } from "../components/ui/chip";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
@@ -18,7 +18,8 @@ import { Drawer, DrawerDanger, DrawerFooter, DrawerSection, type DrawerSaveState
 import { Field, FieldRow } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
-import { PageToolbar } from "../components/ui/page-toolbar";
+import { LibraryImpactLinks } from "../components/ui/library-impact";
+import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
 import { PathInput } from "../components/ui/path-input";
 import { PresetField } from "../components/ui/preset-field";
 import { SegmentedControl } from "../components/ui/segmented-control";
@@ -26,7 +27,7 @@ import { Select } from "../components/ui/select";
 import { Switch, SwitchRow } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
 import { librarySetupNavItems } from "../components/app/settings-shell";
-import { fetchJson, type DestinationRuleItem, type ImportPreviewResponse, type LibraryItem, type PlatformSettingsSnapshot, type TagItem } from "../lib/api";
+import { fetchJson, type DestinationRuleItem, type ImportPreviewResponse, type LibraryItem, type PlatformSettingsSnapshot, type PolicySetItem, type TagItem } from "../lib/api";
 import { settingsOverviewLoader } from "./settings-overview-page";
 import { authedFetch } from "../lib/use-auth";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
@@ -35,6 +36,7 @@ interface LoaderData {
   libraries: LibraryItem[];
   settings: PlatformSettingsSnapshot;
   destinationRules: DestinationRuleItem[];
+  policySets: PolicySetItem[];
   tags: TagItem[];
 }
 
@@ -110,14 +112,23 @@ const PRIORITY_OPTIONS = [
 
 export async function settingsDestinationRulesLoader(): Promise<LoaderData> {
   const [overview, destinationRules, tags] = await Promise.all([settingsOverviewLoader(), fetchJson<DestinationRuleItem[]>("/api/destination-rules"), fetchJson<TagItem[]>("/api/tags")]);
-  return { libraries: overview.libraries, settings: overview.settings, destinationRules, tags };
+  return { libraries: overview.libraries, settings: overview.settings, destinationRules, policySets: overview.policySets, tags };
 }
 
 export function SettingsDestinationRulesPage() {
-  const { destinationRules, tags, settings } = useLoaderData() as LoaderData;
+  const { destinationRules, tags, settings, libraries, policySets } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
   const sorted = useMemo(() => [...destinationRules].sort((a, b) => a.priority - b.priority || a.name.localeCompare(b.name)), [destinationRules]);
   const tagOptions = useMemo(() => tags.map((tag) => ({ label: tag.name, value: tag.name })), [tags]);
+  const librariesByRule = useMemo(() => {
+    const map = new Map<string, LibraryItem[]>();
+    for (const library of libraries) {
+      const plan = library.defaultPolicySetId ? policySets.find((candidate) => candidate.id === library.defaultPolicySetId) : null;
+      if (!plan?.destinationRuleId) continue;
+      map.set(plan.destinationRuleId, [...(map.get(plan.destinationRuleId) ?? []), library]);
+    }
+    return map;
+  }, [libraries, policySets]);
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
   /* ---------------------------------------------------------- drawer */
@@ -137,7 +148,7 @@ export function SettingsDestinationRulesPage() {
   const editing = mode.kind === "edit" ? destinationRules.find((rule) => rule.id === mode.id) ?? null : null;
   const dirty = isRuleDrawer && !sameForm(form, initialForm);
   const footerState: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
-  const blocker = useUnsavedChanges(dirty);
+  useUnsavedChanges(dirty);
   useEffect(() => {
     if (dirty && (saveState === "saved" || saveState === "error")) setSaveState(undefined);
   }, [dirty, saveState]);
@@ -278,25 +289,23 @@ export function SettingsDestinationRulesPage() {
     <div className="grid gap-[var(--page-gap)]">
       <PageToolbar
         tabs={librarySetupNavItems}
+        accent="yellow"
         actions={
           <>
             <Button type="button" variant="outline" onClick={openTest}>
               <FlaskConical className="h-4 w-4" />
               Test a title
             </Button>
-            <Button type="button" onClick={() => openRule(null)}>
-              <Plus className="h-4 w-4" />
-              New rule
-            </Button>
+            <PageToolbarAction onClick={() => openRule(null)}>New rule</PageToolbarAction>
           </>
         }
       />
 
-      <ListCard title="Final destinations" count={destinationRules.length ? `${destinationRules.length} ${destinationRules.length === 1 ? "rule" : "rules"} · ${destinationRules.filter((rule) => rule.isEnabled).length} enabled · first match wins` : undefined}>
+      <ListCard title="Destination rules" count={destinationRules.length ? `${destinationRules.length} ${destinationRules.length === 1 ? "rule" : "rules"} · ${destinationRules.filter((rule) => rule.isEnabled).length} active · exceptions to the library folder` : undefined}>
         {destinationRules.length === 0 ? (
           <ListEmpty
             title="No destination rules"
-            description="Your library folder is the default. Add a rule only for exceptions — Anime, Kids, 4K, a tag, or a language that should land in a separate folder."
+            description="Your library folder is the default. Add a rule only for exceptions — a genre, tag, quality, or language that should land in a separate folder."
             actions={
               <Button type="button" size="sm" onClick={() => openRule(null)}>
                 <Plus className="h-3.5 w-3.5" />
@@ -305,12 +314,13 @@ export function SettingsDestinationRulesPage() {
             }
           />
         ) : (
-          <ListTable columns={[{ label: "Name" }, { label: "When" }, { label: "Goes to", width: "minmax(0,1.4fr)" }, { label: "Order", width: "90px", align: "end" }, { label: "Status", width: LIST_TRACK.status, mobile: true }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]}>
+          <ListTable columns={[{ label: "Name" }, { label: "Match" }, { label: "Goes to", width: "minmax(0,1.4fr)" }, { label: "Used by" }, { label: "Rule order", width: "90px", align: "end" }, { label: "Status", width: LIST_TRACK.status, mobile: true }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]}>
             {sorted.map((rule) => (
               <ListRow key={rule.id} onClick={() => openRule(rule)} selected={mode.kind === "edit" && mode.id === rule.id}>
                 <ListNameCell name={rule.name} sub={rule.mediaType === "tv" ? "TV shows" : "Movies"} />
                 <ListCell primary={`${MATCH_KIND_LABELS[rule.matchKind] ?? rule.matchKind} is ${rule.matchValue}`} />
                 <ListCell mono primary={rule.rootPath} secondary={rule.folderTemplate ? rule.folderTemplate : "Standard folder naming"} />
+                <ListCell primary={<LibraryImpactLinks libraries={librariesByRule.get(rule.id) ?? []} />} secondary={librariesByRule.has(rule.id) ? "Applied through a Library Profile" : "Library folder remains the default"} />
                 <ListCell numeric align="end" primary={String(rule.priority)} />
                 <ListCell mobile>
                   <Chip tone={rule.isEnabled ? "ok" : "muted"}>{rule.isEnabled ? "Active" : "Off"}</Chip>
@@ -342,38 +352,46 @@ export function SettingsDestinationRulesPage() {
       >
         {isRuleDrawer ? (
           <>
-            <DrawerSection title="Basics">
+            <DrawerSection title="Rule details">
               <FieldRow>
                 <Field label="Name" error={errors.name}>
-                  <Input value={form.name} onChange={(event) => { setErrors((current) => ({ ...current, name: "" })); setForm((current) => ({ ...current, name: event.target.value })); }} placeholder="Anime to its own folder" autoComplete="off" />
+                  <Input value={form.name} onChange={(event) => { setErrors((current) => ({ ...current, name: "" })); setForm((current) => ({ ...current, name: event.target.value })); }} placeholder="Example: family films to another folder" autoComplete="off" />
                 </Field>
                 <Field label="Media type">
                   <SegmentedControl<"movies" | "tv"> value={form.mediaType} onValueChange={(mediaType) => setForm((current) => ({ ...current, mediaType, rootPath: current.rootPath === defaultRoot(current.mediaType, settings) ? defaultRoot(mediaType, settings) : current.rootPath }))} options={[{ value: "movies", label: "Movies" }, { value: "tv", label: "TV shows" }]} />
                 </Field>
               </FieldRow>
               <FieldRow>
-                <Field label="When">
+                <Field label="Match">
                   <Select value={form.matchKind} onChange={(event) => setForm((current) => ({ ...current, matchKind: event.target.value, matchValue: "" }))} options={Object.entries(MATCH_KIND_LABELS).map(([value, label]) => ({ value, label }))} />
                 </Field>
-                <Field label="Is" error={errors.matchValue}>
+                <Field label="Value" error={errors.matchValue}>
                   <PresetField value={form.matchValue} onChange={(value) => { setErrors((current) => ({ ...current, matchValue: "" })); setForm((current) => ({ ...current, matchValue: value })); }} options={matchOptions} allowCustom={form.matchKind !== "tag" || tagOptions.length === 0} customLabel="Custom value" customPlaceholder={form.matchKind === "genre" ? "Genre name" : "Match value"} />
                 </Field>
               </FieldRow>
-              <SwitchRow label="Enabled" description="Rules are tried in order; the first enabled match decides the folder." checked={form.isEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, isEnabled: checked }))} />
             </DrawerSection>
-            <DrawerSection title="Destination">
-              <Field label="Root folder" help="Titles matching this rule are imported here instead of the library folder." error={errors.rootPath}>
+            <DrawerSection title="Where matching titles go">
+              <Field label="Destination folder" help="Titles matching this rule are imported here instead of the library folder." error={errors.rootPath}>
                 <PathInput value={form.rootPath} onChange={(rootPath) => { setErrors((current) => ({ ...current, rootPath: "" })); setForm((current) => ({ ...current, rootPath })); }} browseTitle="Choose destination folder" />
               </Field>
               <FieldRow>
-                <Field label="Folder template" optional help="Leave blank to use the library's naming. Tokens: {Title}, {Year}, {Genre}, {Tag}.">
+                <Field label="Folder name format" optional help="Optional. Leave blank to use the library's naming. Tokens: {Title}, {Year}, {Genre}, {Tag}.">
                   <Input value={form.folderTemplate} onChange={(event) => setForm((current) => ({ ...current, folderTemplate: event.target.value }))} placeholder="{Title} ({Year})" className="font-mono text-[length:var(--type-caption)]" />
                 </Field>
-                <Field label="Order" help="Lower numbers are checked first.">
+                <Field label="Rule order" help="If more than one rule matches, the lower number runs first.">
                   <PresetField inputType="number" value={form.priority} onChange={(value) => setForm((current) => ({ ...current, priority: value }))} options={PRIORITY_OPTIONS} customLabel="Custom order" customPlaceholder="1–1000" />
                 </Field>
               </FieldRow>
             </DrawerSection>
+            <DrawerSection title="Rule status">
+              <SwitchRow label="Use this rule" description="When enabled, matching titles use this destination before the library folder." checked={form.isEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, isEnabled: checked }))} />
+            </DrawerSection>
+            {editing ? (
+              <DrawerSection title="Library impact" aside={librariesByRule.get(editing.id)?.length ? `${librariesByRule.get(editing.id)!.length} libraries` : "Not assigned"}>
+                <p className="text-[length:var(--type-caption)] text-muted-foreground">This exception only applies to libraries whose Library Profile uses it.</p>
+                <LibraryImpactLinks libraries={librariesByRule.get(editing.id) ?? []} emptyLabel="No Library Profile uses this rule yet." />
+              </DrawerSection>
+            ) : null}
             {editing ? (
               <DrawerSection>
                 <DrawerDanger title="Delete this rule" description="Titles already imported stay where they are." action={<Button type="button" variant="destructive" size="sm" onClick={() => setConfirmRemove(true)} disabled={busy}>Delete</Button>} />
@@ -411,7 +429,7 @@ export function SettingsDestinationRulesPage() {
               </FieldRow>
             </DrawerSection>
             <DrawerSection title="Source file">
-              <Field label="Source path" help="A real path lets Deluno also check hardlink availability.">
+              <Field label="Source path" help="A real path lets Deluno check whether the source and destination can share one set of file data through a single-copy link (hardlink).">
                 <Input value={testForm.sourcePath} onChange={(event) => setTestForm((current) => ({ ...current, sourcePath: event.target.value }))} className="font-mono text-[length:var(--type-caption)]" />
               </Field>
               <Field label="File name" optional>
@@ -422,8 +440,8 @@ export function SettingsDestinationRulesPage() {
               <DrawerSection title="Result" aside={testResult.matchedRuleName ? `rule: ${testResult.matchedRuleName}` : "library default"}>
                 <div className="flex flex-wrap gap-1.5">
                   <Chip tone={testResult.matchedRuleName ? "ok" : "muted"}>{testResult.matchedRuleName ? `Rule: ${testResult.matchedRuleName}` : "Default root"}</Chip>
-                  <Chip tone={testResult.preferredTransferMode === "hardlink" ? "info" : "muted"}>{testResult.preferredTransferMode}</Chip>
-                  <Chip tone={testResult.hardlinkAvailable ? "ok" : "warn"}>{testResult.hardlinkAvailable ? "Hardlink available" : "Copy required"}</Chip>
+                  <Chip tone={testResult.preferredTransferMode === "hardlink" ? "info" : "muted"}>{testResult.preferredTransferMode === "hardlink" ? "Single-copy link" : testResult.preferredTransferMode}</Chip>
+                  <Chip tone={testResult.hardlinkAvailable ? "ok" : "warn"}>{testResult.hardlinkAvailable ? "Single-copy link available" : "Copy required"}</Chip>
                 </div>
                 <p className="text-[length:var(--type-body-sm)] text-muted-foreground">{testResult.explanation}</p>
                 <dl className="grid grid-cols-[110px_1fr] gap-x-[var(--grid-gap)] gap-y-2 text-[length:var(--type-body-sm)]">
@@ -450,23 +468,17 @@ export function SettingsDestinationRulesPage() {
 
       <ConfirmDialog open={confirmRemove} onOpenChange={setConfirmRemove} title={`Delete “${editing?.name ?? form.name}”?`} description="Titles already imported stay where they are. New imports use the next matching rule or the library folder." confirmLabel="Delete rule" busy={busy} onConfirm={() => void handleRemove()} />
       <ConfirmDialog
-        open={confirmDiscard || blocker.state === "blocked"}
+        open={confirmDiscard}
         onOpenChange={(open) => {
           if (open) return;
           setConfirmDiscard(false);
-          if (blocker.state === "blocked") blocker.reset();
         }}
         title="Discard unsaved changes?"
         description="Your edits to this rule haven't been saved."
         confirmLabel="Discard"
         onConfirm={() => {
           setConfirmDiscard(false);
-          if (blocker.state === "blocked") {
-            setMode({ kind: "closed" });
-            blocker.proceed();
-          } else {
-            closeDrawer();
-          }
+          closeDrawer();
         }}
       />
     </div>

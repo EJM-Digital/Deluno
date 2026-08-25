@@ -1029,7 +1029,8 @@ public sealed class SqliteJobStore(
             """
             SELECT
                 library_id, library_name, media_type, status, search_requested, last_planned_utc,
-                last_started_utc, last_completed_utc, next_search_utc, last_job_id, last_error, updated_utc
+                last_started_utc, last_completed_utc, next_search_utc, last_job_id, last_error, updated_utc,
+                next_missing_search_utc, next_upgrade_search_utc
             FROM library_automation_state;
             """;
 
@@ -1060,7 +1061,8 @@ public sealed class SqliteJobStore(
             """
             SELECT
                 library_id, library_name, media_type, status, search_requested, last_planned_utc,
-                last_started_utc, last_completed_utc, next_search_utc, last_job_id, last_error, updated_utc
+                last_started_utc, last_completed_utc, next_search_utc, last_job_id, last_error, updated_utc,
+                next_missing_search_utc, next_upgrade_search_utc
             FROM library_automation_state
             WHERE (@mediaType IS NULL
                 OR media_type > @mediaType
@@ -1093,6 +1095,39 @@ public sealed class SqliteJobStore(
         return Page<LibraryAutomationStateItem>.Of(items, nextPageToken);
     }
 
+    public async Task EnsureLibraryAutomationStateAsync(
+        LibraryAutomationPlanItem library,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        await UpsertLibraryAutomationStateAsync(connection, transaction, library, now, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task RemoveLibraryAutomationStateAsync(
+        string libraryId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "DELETE FROM library_automation_state WHERE library_id = @libraryId;";
+        AddParameter(command, "@libraryId", libraryId);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+
+        await transaction.CommitAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<SearchCycleRunItem>> ListSearchCycleRunsAsync(
         int take,
         string? libraryId,
@@ -1109,7 +1144,7 @@ public sealed class SqliteJobStore(
             """
             SELECT
                 id, library_id, library_name, media_type, trigger_kind, status,
-                planned_count, queued_count, skipped_count, notes_json, started_utc, completed_utc
+                planned_count, queued_count, skipped_count, notes_json, started_utc, completed_utc, search_kind
             FROM search_cycle_runs
             WHERE (@libraryId IS NULL OR library_id = @libraryId)
             ORDER BY started_utc DESC
@@ -1146,7 +1181,7 @@ public sealed class SqliteJobStore(
             """
             SELECT
                 id, library_id, library_name, media_type, trigger_kind, status,
-                planned_count, queued_count, skipped_count, notes_json, started_utc, completed_utc
+                planned_count, queued_count, skipped_count, notes_json, started_utc, completed_utc, search_kind
             FROM search_cycle_runs
             WHERE (@libraryId IS NULL OR library_id = @libraryId)
               AND (@startedUtc IS NULL OR started_utc < @startedUtc OR (started_utc = @startedUtc AND id < @id))
@@ -1496,6 +1531,8 @@ public sealed class SqliteJobStore(
                     search_requested = 0,
                     status = CASE WHEN status = 'running' THEN status ELSE 'idle' END,
                     next_search_utc = @nextSearchUtc,
+                    next_missing_search_utc = @nextMissingSearchUtc,
+                    next_upgrade_search_utc = @nextUpgradeSearchUtc,
                     last_error = NULL,
                     updated_utc = @updatedUtc
                 WHERE library_id = @libraryId;
@@ -1503,6 +1540,8 @@ public sealed class SqliteJobStore(
 
             AddParameter(update, "@libraryId", library.LibraryId);
             AddParameter(update, "@nextSearchUtc", nextSearchUtc?.ToString("O"));
+            AddParameter(update, "@nextMissingSearchUtc", nextSearchUtc?.ToString("O"));
+            AddParameter(update, "@nextUpgradeSearchUtc", nextSearchUtc?.ToString("O"));
             AddParameter(update, "@updatedUtc", now.ToString("O"));
             await update.ExecuteNonQueryAsync(cancellationToken);
         }
@@ -1557,7 +1596,7 @@ public sealed class SqliteJobStore(
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
         var stateByLibraryId = await ReadLibraryAutomationStatesAsync(connection, transaction, cancellationToken);
-        var pendingJobLibraries = await ReadPendingLibraryJobsAsync(connection, transaction, cancellationToken);
+        var pendingJobKeys = await ReadPendingLibraryJobsAsync(connection, transaction, cancellationToken);
 
         var queuedAny = false;
 
@@ -1598,6 +1637,13 @@ public sealed class SqliteJobStore(
                 LastError: null,
                 UpdatedUtc: now);
 
+            var missingNextSearchUtc = library.MissingSearchEnabled
+                ? state.NextMissingSearchUtc ?? state.NextSearchUtc
+                : null;
+            var upgradeNextSearchUtc = library.UpgradeSearchEnabled
+                ? state.NextUpgradeSearchUtc ?? state.NextSearchUtc
+                : null;
+
             if (!library.AutoSearchEnabled && !state.SearchRequested)
             {
                 await UpdateAutomationIdleAsync(
@@ -1607,20 +1653,24 @@ public sealed class SqliteJobStore(
                     library.LibraryName,
                     library.MediaType,
                     "paused",
-                    nextSearchUtc: null,
+                    nextMissingSearchUtc: null,
+                    nextUpgradeSearchUtc: null,
                     searchRequested: false,
                     updatedUtc: now,
-                    cancellationToken);
+                    cancellationToken: cancellationToken);
 
                 continue;
             }
 
-            var hasPendingJob = pendingJobLibraries.Contains(library.LibraryId);
-            var dueForScheduledSearch = library.AutoSearchEnabled &&
-                (state.NextSearchUtc is null || state.NextSearchUtc <= now);
+            var manualRequest = state.SearchRequested;
+            var missingDue = library.AutoSearchEnabled && library.MissingSearchEnabled &&
+                (missingNextSearchUtc is null || missingNextSearchUtc <= now);
+            var upgradeDue = library.AutoSearchEnabled && library.UpgradeSearchEnabled &&
+                (upgradeNextSearchUtc is null || upgradeNextSearchUtc <= now);
 
-            // Respect time-of-day search window (manual requests bypass the window)
-            if (dueForScheduledSearch && !state.SearchRequested &&
+            // Respect time-of-day search window independently for both schedules
+            // (manual requests bypass the window).
+            if ((missingDue || upgradeDue) && !manualRequest &&
                 library.SearchWindowStartHour.HasValue && library.SearchWindowEndHour.HasValue)
             {
                 var currentHour = now.Hour;
@@ -1632,150 +1682,146 @@ public sealed class SqliteJobStore(
 
                 if (!inWindow)
                 {
-                    // Advance next_search_utc to the next window opening
+                    // Advance each due schedule to the next window opening.
                     var hoursUntilWindow = windowStart > currentHour
                         ? windowStart - currentHour
                         : 24 - currentHour + windowStart;
                     var nextWindowOpen = now.AddHours(hoursUntilWindow);
+                    if (missingDue) missingNextSearchUtc = nextWindowOpen;
+                    if (upgradeDue) upgradeNextSearchUtc = nextWindowOpen;
 
                     await UpdateAutomationIdleAsync(
                         connection, transaction,
                         library.LibraryId, library.LibraryName, library.MediaType,
-                        "idle", nextSearchUtc: nextWindowOpen, searchRequested: false,
-                        updatedUtc: now, cancellationToken);
+                        "idle", missingNextSearchUtc, upgradeNextSearchUtc, searchRequested: false,
+                        updatedUtc: now, cancellationToken: cancellationToken);
 
                     continue;
                 }
             }
 
-            var shouldQueue = state.SearchRequested || dueForScheduledSearch;
-            if (!shouldQueue)
+            if (!manualRequest && !missingDue && !upgradeDue)
             {
                 continue;
             }
 
-            if (hasPendingJob)
+            var queuedForLibrary = false;
+            var hasPendingForLibrary = false;
+            var attemptedKinds = 0;
+
+            foreach (var (kind, enabled, due) in new[]
             {
-                await UpdateAutomationIdleAsync(
-                    connection,
-                    transaction,
-                    library.LibraryId,
-                    library.LibraryName,
-                    library.MediaType,
-                    "queued",
-                    nextSearchUtc: library.AutoSearchEnabled ? state.NextSearchUtc : null,
-                    searchRequested: state.SearchRequested,
-                    updatedUtc: now,
-                    cancellationToken);
-
-                continue;
-            }
-
-            var payload = JsonSerializer.Serialize(new
+                (Kind: "missing", Enabled: library.MissingSearchEnabled, Due: missingDue),
+                (Kind: "upgrade", Enabled: library.UpgradeSearchEnabled, Due: upgradeDue)
+            })
             {
-                libraryId = library.LibraryId,
-                libraryName = library.LibraryName,
-                mediaType = library.MediaType,
-                checkMissing = library.MissingSearchEnabled,
-                checkUpgrades = library.UpgradeSearchEnabled,
-                maxItems = library.MaxItemsPerRun,
-                retryDelayHours = library.RetryDelayHours,
-                triggeredBy = state.SearchRequested ? "manual" : "schedule"
-            });
-            var idempotencyKey = $"library.search:{library.LibraryId}:{(state.SearchRequested ? "manual" : "schedule")}";
-            var dedupeKey = $"library.search:{library.LibraryId}";
+                if (!enabled || (!manualRequest && !due))
+                {
+                    continue;
+                }
 
-            var job = new JobQueueItem(
-                Id: Guid.CreateVersion7().ToString("N"),
-                JobType: "library.search",
-                Source: library.MediaType,
-                Status: "queued",
-                PayloadJson: payload,
-                Attempts: 0,
-                CreatedUtc: now,
-                ScheduledUtc: now,
-                StartedUtc: null,
-                CompletedUtc: null,
-                LeasedUntilUtc: null,
-                WorkerId: null,
-                LastError: null,
-                RelatedEntityType: "library",
-                RelatedEntityId: library.LibraryId,
-                IdempotencyKey: idempotencyKey,
-                DedupeKey: dedupeKey,
-                MaxAttempts: DefaultMaxAttempts,
-                LastAttemptUtc: null,
-                NextAttemptUtc: now);
+                attemptedKinds++;
+                var dedupeKey = $"library.search:{library.LibraryId}:{kind}";
+                var legacyDedupeKey = $"library.search:{library.LibraryId}";
+                if (pendingJobKeys.Contains(dedupeKey) || pendingJobKeys.Contains(legacyDedupeKey))
+                {
+                    hasPendingForLibrary = true;
+                    continue;
+                }
 
-            var duplicate = await FindDuplicateActiveJobAsync(
-                connection,
-                transaction,
-                idempotencyKey,
-                dedupeKey,
-                cancellationToken);
-            if (duplicate is not null)
-            {
-                await UpdateAutomationIdleAsync(
-                    connection,
-                    transaction,
-                    library.LibraryId,
-                    library.LibraryName,
-                    library.MediaType,
-                    "queued",
-                    nextSearchUtc: library.AutoSearchEnabled ? now.AddHours(Math.Max(1, library.SearchIntervalHours)) : null,
-                    searchRequested: false,
-                    updatedUtc: now,
-                    cancellationToken);
-                continue;
-            }
+                var payload = JsonSerializer.Serialize(new
+                {
+                    libraryId = library.LibraryId,
+                    libraryName = library.LibraryName,
+                    mediaType = library.MediaType,
+                    checkMissing = kind == "missing",
+                    checkUpgrades = kind == "upgrade",
+                    searchKind = kind,
+                    maxItems = library.MaxItemsPerRun,
+                    retryDelayHours = library.RetryDelayHours,
+                    triggeredBy = manualRequest ? "manual" : "schedule"
+                });
+                var idempotencyKey = $"library.search:{library.LibraryId}:{kind}:{(manualRequest ? "manual" : "schedule")}";
+                var job = new JobQueueItem(
+                    Id: Guid.CreateVersion7().ToString("N"),
+                    JobType: "library.search",
+                    Source: library.MediaType,
+                    Status: "queued",
+                    PayloadJson: payload,
+                    Attempts: 0,
+                    CreatedUtc: now,
+                    ScheduledUtc: now,
+                    StartedUtc: null,
+                    CompletedUtc: null,
+                    LeasedUntilUtc: null,
+                    WorkerId: null,
+                    LastError: null,
+                    RelatedEntityType: "library",
+                    RelatedEntityId: library.LibraryId,
+                    IdempotencyKey: idempotencyKey,
+                    DedupeKey: dedupeKey,
+                    MaxAttempts: DefaultMaxAttempts,
+                    LastAttemptUtc: null,
+                    NextAttemptUtc: now);
 
-            await InsertJobAsync(connection, transaction, job, cancellationToken);
-            queuedAny = true;
+                var duplicate = await FindDuplicateActiveJobAsync(connection, transaction, idempotencyKey, dedupeKey, cancellationToken);
+                if (duplicate is not null)
+                {
+                    hasPendingForLibrary = true;
+                    if (kind == "missing") missingNextSearchUtc = NextSearchAfterQueue(now, library);
+                    else upgradeNextSearchUtc = NextSearchAfterQueue(now, library);
+                    continue;
+                }
 
-            DateTimeOffset? nextSearchUtc = library.AutoSearchEnabled
-                ? now.AddHours(Math.Max(1, library.SearchIntervalHours))
-                : null;
+                await InsertJobAsync(connection, transaction, job, cancellationToken);
+                queuedAny = true;
+                queuedForLibrary = true;
+                if (kind == "missing") missingNextSearchUtc = NextSearchAfterQueue(now, library);
+                else upgradeNextSearchUtc = NextSearchAfterQueue(now, library);
 
-            using (var update = connection.CreateCommand())
-            {
+                using var update = connection.CreateCommand();
                 update.Transaction = transaction;
                 update.CommandText =
                     """
                     UPDATE library_automation_state
-                    SET
-                        library_name = @libraryName,
+                    SET library_name = @libraryName,
                         media_type = @mediaType,
                         status = 'queued',
                         search_requested = 0,
                         last_planned_utc = @lastPlannedUtc,
                         next_search_utc = @nextSearchUtc,
+                        next_missing_search_utc = @nextMissingSearchUtc,
+                        next_upgrade_search_utc = @nextUpgradeSearchUtc,
                         last_job_id = @lastJobId,
                         last_error = NULL,
                         updated_utc = @updatedUtc
                     WHERE library_id = @libraryId;
                     """;
-
                 AddParameter(update, "@libraryId", library.LibraryId);
                 AddParameter(update, "@libraryName", library.LibraryName);
                 AddParameter(update, "@mediaType", library.MediaType);
                 AddParameter(update, "@lastPlannedUtc", now.ToString("O"));
-                AddParameter(update, "@nextSearchUtc", nextSearchUtc?.ToString("O"));
+                AddParameter(update, "@nextSearchUtc", Earliest(missingNextSearchUtc, upgradeNextSearchUtc)?.ToString("O"));
+                AddParameter(update, "@nextMissingSearchUtc", missingNextSearchUtc?.ToString("O"));
+                AddParameter(update, "@nextUpgradeSearchUtc", upgradeNextSearchUtc?.ToString("O"));
                 AddParameter(update, "@lastJobId", job.Id);
                 AddParameter(update, "@updatedUtc", now.ToString("O"));
                 await update.ExecuteNonQueryAsync(cancellationToken);
+
+                await InsertActivityAsync(connection, transaction, "job.queued", FormatQueuedMessage(job.JobType, job.Source, job.PayloadJson), job.PayloadJson, job.Id, job.RelatedEntityType, job.RelatedEntityId, now, cancellationToken);
             }
 
-            await InsertActivityAsync(
-                connection,
-                transaction,
-                category: "job.queued",
-                message: FormatQueuedMessage(job.JobType, job.Source, job.PayloadJson),
-                detailsJson: job.PayloadJson,
-                relatedJobId: job.Id,
-                relatedEntityType: job.RelatedEntityType,
-                relatedEntityId: job.RelatedEntityId,
-                createdUtc: now,
-                cancellationToken: cancellationToken);
+            if (manualRequest && attemptedKinds == 0)
+            {
+                // A manual request against a library with both search types off
+                // is consumed rather than retried forever on every planner tick.
+                manualRequest = false;
+            }
+
+            if (!queuedForLibrary && (hasPendingForLibrary || manualRequest))
+            {
+                await UpdateAutomationIdleAsync(connection, transaction, library.LibraryId, library.LibraryName, library.MediaType, "queued", missingNextSearchUtc, upgradeNextSearchUtc, searchRequested: false, updatedUtc: now, cancellationToken: cancellationToken);
+            }
         }
 
         await transaction.CommitAsync(cancellationToken);
@@ -2052,11 +2098,11 @@ public sealed class SqliteJobStore(
                 """
                 INSERT INTO search_cycle_runs (
                     id, library_id, library_name, media_type, trigger_kind, status,
-                    planned_count, queued_count, skipped_count, notes_json, started_utc, completed_utc
+                    planned_count, queued_count, skipped_count, notes_json, started_utc, completed_utc, search_kind
                 )
                 VALUES (
                     @id, @libraryId, @libraryName, @mediaType, @triggerKind, @status,
-                    @plannedCount, @queuedCount, @skippedCount, @notesJson, @startedUtc, @completedUtc
+                    @plannedCount, @queuedCount, @skippedCount, @notesJson, @startedUtc, @completedUtc, @searchKind
                 );
                 """;
 
@@ -2072,6 +2118,7 @@ public sealed class SqliteJobStore(
             AddParameter(command, "@notesJson", request.NotesJson);
             AddParameter(command, "@startedUtc", request.StartedUtc.ToString("O"));
             AddParameter(command, "@completedUtc", request.CompletedUtc?.ToString("O"));
+            AddParameter(command, "@searchKind", request.SearchKind);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
@@ -2497,7 +2544,8 @@ public sealed class SqliteJobStore(
             """
             SELECT
                 library_id, library_name, media_type, status, search_requested, last_planned_utc,
-                last_started_utc, last_completed_utc, next_search_utc, last_job_id, last_error, updated_utc
+                last_started_utc, last_completed_utc, next_search_utc, last_job_id, last_error, updated_utc,
+                next_missing_search_utc, next_upgrade_search_utc
             FROM library_automation_state;
             """;
 
@@ -2516,13 +2564,13 @@ public sealed class SqliteJobStore(
         System.Data.Common.DbTransaction transaction,
         CancellationToken cancellationToken)
     {
-        var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText =
             """
-            SELECT DISTINCT related_entity_id
+            SELECT DISTINCT COALESCE(dedupe_key, 'library.search:' || related_entity_id)
             FROM job_queue
             WHERE job_type = 'library.search'
               AND related_entity_type = 'library'
@@ -2533,10 +2581,10 @@ public sealed class SqliteJobStore(
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            ids.Add(reader.GetString(0));
+            keys.Add(reader.GetString(0));
         }
 
-        return ids;
+        return keys;
     }
 
     /// <summary>
@@ -2562,10 +2610,11 @@ public sealed class SqliteJobStore(
             """
             INSERT INTO library_automation_state (
                 library_id, library_name, media_type, status, search_requested, last_planned_utc,
-                last_started_utc, last_completed_utc, next_search_utc, last_job_id, last_error, updated_utc
+                last_started_utc, last_completed_utc, next_search_utc, last_job_id, last_error, updated_utc,
+                next_missing_search_utc, next_upgrade_search_utc
             )
             VALUES (
-                @libraryId, @libraryName, @mediaType, 'idle', 0, NULL, NULL, NULL, NULL, NULL, NULL, @updatedUtc
+                @libraryId, @libraryName, @mediaType, 'idle', 0, NULL, NULL, NULL, NULL, NULL, NULL, @updatedUtc, NULL, NULL
             )
             ON CONFLICT(library_id) DO UPDATE SET
                 library_name = excluded.library_name,
@@ -2599,7 +2648,8 @@ public sealed class SqliteJobStore(
         string libraryName,
         string mediaType,
         string status,
-        DateTimeOffset? nextSearchUtc,
+        DateTimeOffset? nextMissingSearchUtc,
+        DateTimeOffset? nextUpgradeSearchUtc,
         bool searchRequested,
         DateTimeOffset updatedUtc,
         CancellationToken cancellationToken)
@@ -2614,6 +2664,8 @@ public sealed class SqliteJobStore(
                 media_type = @mediaType,
                 status = @status,
                 next_search_utc = @nextSearchUtc,
+                next_missing_search_utc = @nextMissingSearchUtc,
+                next_upgrade_search_utc = @nextUpgradeSearchUtc,
                 search_requested = @searchRequested,
                 updated_utc = @updatedUtc
             WHERE library_id = @libraryId
@@ -2622,6 +2674,8 @@ public sealed class SqliteJobStore(
                   OR media_type IS NOT @mediaType
                   OR status IS NOT @status
                   OR next_search_utc IS NOT @nextSearchUtc
+                  OR next_missing_search_utc IS NOT @nextMissingSearchUtc
+                  OR next_upgrade_search_utc IS NOT @nextUpgradeSearchUtc
                   OR search_requested IS NOT @searchRequested
               );
             """;
@@ -2630,11 +2684,25 @@ public sealed class SqliteJobStore(
         AddParameter(command, "@libraryName", libraryName);
         AddParameter(command, "@mediaType", mediaType);
         AddParameter(command, "@status", status);
-        AddParameter(command, "@nextSearchUtc", nextSearchUtc?.ToString("O"));
+        AddParameter(command, "@nextSearchUtc", Earliest(nextMissingSearchUtc, nextUpgradeSearchUtc)?.ToString("O"));
+        AddParameter(command, "@nextMissingSearchUtc", nextMissingSearchUtc?.ToString("O"));
+        AddParameter(command, "@nextUpgradeSearchUtc", nextUpgradeSearchUtc?.ToString("O"));
         AddParameter(command, "@searchRequested", searchRequested ? 1 : 0);
         AddParameter(command, "@updatedUtc", updatedUtc.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
+
+    private static DateTimeOffset NextSearchAfterQueue(
+        DateTimeOffset now,
+        LibraryAutomationPlanItem library)
+        => now.AddHours(Math.Max(1, library.SearchIntervalHours));
+
+    private static DateTimeOffset? Earliest(DateTimeOffset? first, DateTimeOffset? second)
+        => first is null
+            ? second
+            : second is null
+                ? first
+                : first <= second ? first : second;
 
     private static async Task MarkAutomationStateRunningAsync(
         System.Data.Common.DbConnection connection,
@@ -2860,7 +2928,9 @@ public sealed class SqliteJobStore(
             NextSearchUtc: reader.IsDBNull(8) ? null : ParseTimestamp(reader.GetString(8)),
             LastJobId: reader.IsDBNull(9) ? null : reader.GetString(9),
             LastError: reader.IsDBNull(10) ? null : reader.GetString(10),
-            UpdatedUtc: ParseTimestamp(reader.GetString(11)));
+            UpdatedUtc: ParseTimestamp(reader.GetString(11)),
+            NextMissingSearchUtc: reader.IsDBNull(12) ? null : ParseTimestamp(reader.GetString(12)),
+            NextUpgradeSearchUtc: reader.IsDBNull(13) ? null : ParseTimestamp(reader.GetString(13)));
     }
 
     private static SearchCycleRunItem ReadSearchCycleRun(System.Data.Common.DbDataReader reader)
@@ -2877,7 +2947,8 @@ public sealed class SqliteJobStore(
             SkippedCount: reader.GetInt32(8),
             NotesJson: reader.IsDBNull(9) ? null : reader.GetString(9),
             StartedUtc: ParseTimestamp(reader.GetString(10)),
-            CompletedUtc: reader.IsDBNull(11) ? null : ParseTimestamp(reader.GetString(11)));
+            CompletedUtc: reader.IsDBNull(11) ? null : ParseTimestamp(reader.GetString(11)),
+            SearchKind: reader.IsDBNull(12) ? "combined" : reader.GetString(12));
     }
 
     private static SearchRetryWindowItem ReadSearchRetryWindow(System.Data.Common.DbDataReader reader)

@@ -46,6 +46,11 @@ public sealed partial class ImportPipelineService(
         var settings = await platformRepository.GetAsync(cancellationToken);
         var rules = await librariesRepository.ListDestinationRulesAsync(cancellationToken);
         var preview = ResolveImportPreview(request, settings, rules);
+        if (preview.SourceExists && !ImportFileReadiness.IsReady(preview.SourcePath))
+        {
+            return AddReadinessWarning(preview);
+        }
+
         return await EnrichPreviewWithMediaProbeAsync(preview, cancellationToken);
     }
 
@@ -53,8 +58,20 @@ public sealed partial class ImportPipelineService(
     {
         var settings = await platformRepository.GetAsync(cancellationToken);
         var rules = await librariesRepository.ListDestinationRulesAsync(cancellationToken);
-        var preview = await EnrichPreviewWithMediaProbeAsync(ResolveImportPreview(request.Preview, settings, rules), cancellationToken);
+        var resolvedPreview = ResolveImportPreview(request.Preview, settings, rules);
         var mediaType = NormalizeMediaType(request.Preview.MediaType);
+
+        if (resolvedPreview.SourceExists && !ImportFileReadiness.IsReady(resolvedPreview.SourcePath))
+        {
+            // Do not probe or copy a file while a download client or processor
+            // may still be writing it. Worker retries can safely try again on
+            // the next attempt without creating a false recovery failure.
+            return Failed(
+                ImportFileReadiness.RetryableStatusCode,
+                "The source file is still being written or is locked by another process. Deluno will retry when it is stable.");
+        }
+
+        var preview = await EnrichPreviewWithMediaProbeAsync(resolvedPreview, cancellationToken);
 
         if (realtimeEventPublisher is not null &&
             downloadDispatchesRepository is not null &&
@@ -264,6 +281,8 @@ public sealed partial class ImportPipelineService(
                 settings.UnmonitorWhenCutoffMet,
                 cancellationToken);
 
+            var matchedLibrary = ResolveLibraryForImport(preview.DestinationPath, mediaType, libraries);
+
             if (catalogImportResult.CatalogUpdated && !string.IsNullOrWhiteSpace(request.DispatchId))
             {
                 await platformRepository.MarkWorkflowVerifiedAsync(cancellationToken);
@@ -290,6 +309,8 @@ public sealed partial class ImportPipelineService(
                     cancellationToken);
             }
 
+            var cleanup = ApplyWorkflowCleanup(preview.SourcePath, matchedLibrary);
+
             await activityFeedRepository.RecordActivityAsync(
                 "filesystem.import.completed",
                 $"{TitleForActivity(request.Preview)} was imported using {mode}.",
@@ -301,6 +322,7 @@ public sealed partial class ImportPipelineService(
                     TransferModeUsed = mode,
                     usedFallback,
                     catalogUpdated = catalogImportResult.CatalogUpdated,
+                    workflowCleanup = cleanup,
                     preview.MatchedRuleId,
                     preview.MatchedRuleName,
                     MediaProbe = preview.MediaProbe
@@ -326,9 +348,10 @@ public sealed partial class ImportPipelineService(
                         ["transferModeUsed"] = mode,
                         ["matchedRuleId"] = preview.MatchedRuleId,
                         ["matchedRuleName"] = preview.MatchedRuleName,
-                        ["catalogUpdated"] = catalogImportResult.CatalogUpdated.ToString()
+                        ["catalogUpdated"] = catalogImportResult.CatalogUpdated.ToString(),
+                        ["workflowCleanup"] = cleanup.Summary
                     },
-                    Outcome: $"{TitleForActivity(request.Preview)} imported to {preview.DestinationPath}.",
+                    Outcome: $"{TitleForActivity(request.Preview)} imported to {preview.DestinationPath}. {cleanup.Summary}",
                     Alternatives: []),
                 null,
                 mediaType == "tv" ? "series" : "movie",
@@ -342,8 +365,8 @@ public sealed partial class ImportPipelineService(
                 UsedFallback: usedFallback,
                 CatalogUpdated: catalogImportResult.CatalogUpdated,
                 Message: usedFallback
-                    ? "Import completed with copy fallback because hardlink creation was not possible."
-                    : $"Import completed using {mode}.");
+                    ? $"Import completed with copy fallback because hardlink creation was not possible. {cleanup.Summary}"
+                    : $"Import completed using {mode}. {cleanup.Summary}");
 
             restoreSourceOnFailure = false;
             if (backupPath is not null)
@@ -403,6 +426,13 @@ public sealed partial class ImportPipelineService(
 
     private static ImportPipelineResult Failed(int statusCode, string message)
         => new(false, statusCode, null, message);
+
+    private static ImportPreviewResponse AddReadinessWarning(ImportPreviewResponse preview)
+        => preview with
+        {
+            Warnings = [.. preview.Warnings, "The source file is still being written or locked. Deluno will wait before probing or importing it."],
+            DecisionSteps = [.. preview.DecisionSteps, "Source: the file is visible, but it is not stable enough to read safely yet."]
+        };
 
     private async Task<ImportPreviewResponse> EnrichPreviewWithMediaProbeAsync(
         ImportPreviewResponse preview,
@@ -1034,6 +1064,96 @@ public sealed partial class ImportPipelineService(
             // Best-effort cleanup only. Recovery cases carry the actionable error.
         }
     }
+
+    private WorkflowCleanupResult ApplyWorkflowCleanup(string sourcePath, LibraryItem? library)
+    {
+        if (library is null || !string.Equals(library.CleanupMode, "remove-source-after-import", StringComparison.OrdinalIgnoreCase))
+        {
+            return new WorkflowCleanupResult("keep-source", false, 0, "Source kept because this workflow is configured to retain completed downloads.");
+        }
+
+        var sourceRemoved = false;
+        var emptyFoldersRemoved = 0;
+        string? warning = null;
+
+        try
+        {
+            if (File.Exists(sourcePath))
+            {
+                File.Delete(sourcePath);
+                sourceRemoved = true;
+            }
+
+            if (library.RemoveEmptySourceFolders)
+            {
+                emptyFoldersRemoved = RemoveEmptySourceFolders(sourcePath, library.DownloadsPath);
+            }
+        }
+        catch (IOException exception)
+        {
+            warning = exception.Message;
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            warning = exception.Message;
+        }
+
+        var summary = warning is null
+            ? sourceRemoved
+                ? emptyFoldersRemoved == 0
+                    ? "The completed source file was removed after import."
+                    : $"The completed source file was removed and {emptyFoldersRemoved} empty source folder(s) cleaned up."
+                : "The source file was already gone, so there was nothing left to remove."
+            : $"Import succeeded, but source cleanup was not completed: {warning}";
+
+        return new WorkflowCleanupResult("remove-source-after-import", sourceRemoved, emptyFoldersRemoved, summary, warning);
+    }
+
+    private static int RemoveEmptySourceFolders(string sourcePath, string? configuredRoot)
+    {
+        if (string.IsNullOrWhiteSpace(configuredRoot))
+        {
+            return 0;
+        }
+
+        var root = Path.GetFullPath(configuredRoot)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var current = Path.GetDirectoryName(Path.GetFullPath(sourcePath));
+        var removed = 0;
+
+        while (!string.IsNullOrWhiteSpace(current) &&
+               !string.Equals(current.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar), root, GetPathComparison()) &&
+               IsWithinPath(root, current))
+        {
+            if (Directory.EnumerateFileSystemEntries(current).Any())
+            {
+                break;
+            }
+
+            Directory.Delete(current);
+            removed++;
+            current = Path.GetDirectoryName(current);
+        }
+
+        return removed;
+    }
+
+    private static bool IsWithinPath(string root, string candidate)
+    {
+        var normalizedRoot = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        var normalizedCandidate = Path.GetFullPath(candidate).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        return normalizedCandidate.StartsWith(normalizedRoot, GetPathComparison());
+    }
+
+    private static StringComparison GetPathComparison()
+        => OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
+    private sealed record WorkflowCleanupResult(
+        string Mode,
+        bool SourceRemoved,
+        int EmptyFoldersRemoved,
+        string Summary,
+        string? Warning = null);
 
     private static string BuildTransferExplanation(string preferredMode, bool hardlinkAvailable, bool useHardlinks)
     {

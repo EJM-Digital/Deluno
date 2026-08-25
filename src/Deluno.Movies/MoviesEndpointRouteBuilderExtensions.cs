@@ -42,6 +42,7 @@ public static class MoviesEndpointRouteBuilderExtensions
         movies.MapGet("/page", async (
             string? search,
             string? status,
+            string? libraryId,
             string? sort,
             string? direction,
             int? pageSize,
@@ -53,6 +54,7 @@ public static class MoviesEndpointRouteBuilderExtensions
                 new CatalogueQuery(
                     Search: search,
                     Status: status,
+                    LibraryId: libraryId,
                     Sort: sort,
                     Descending: !string.Equals(direction, "asc", StringComparison.OrdinalIgnoreCase),
                     PageSize: pageSize ?? 50,

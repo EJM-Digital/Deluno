@@ -70,7 +70,7 @@ export function IndexerDrawerBody({
           <Input value={form.baseUrl} onChange={(event) => { clearError("baseUrl"); setForm((current) => ({ ...current, baseUrl: event.target.value })); }} placeholder={preset.placeholder} className="font-mono text-[length:var(--type-caption)]" autoComplete="off" spellCheck={false} />
         </Field>
         {preset.requiresApiKey || form.apiKey ? (
-          <Field label="API key" error={errors.apiKey} help={editing ? "Stored encrypted. Leave blank to keep the current key; paste a new one to rotate it." : "From your indexer's account or settings page."}>
+          <Field label="API key" error={errors.apiKey} help={editing ? "Stored encrypted. Leave empty to keep the current key; paste a new one to rotate it." : "From your indexer's account or settings page."}>
             <span className="relative block">
               <Input type={showKey ? "text" : "password"} value={form.apiKey} onChange={(event) => { clearError("apiKey"); setForm((current) => ({ ...current, apiKey: event.target.value })); }} placeholder={editing ? "••••••••••••  (unchanged)" : "Paste your API key"} className="pr-16 font-mono" autoComplete="off" spellCheck={false} />
               <button type="button" onClick={() => setShowKey(!showKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[length:var(--type-caption)] font-medium text-primary hover:underline">

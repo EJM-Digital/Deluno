@@ -32,4 +32,6 @@ public sealed record LibraryItem(
     DateTimeOffset CreatedUtc,
     DateTimeOffset UpdatedUtc,
     string? DefaultPolicySetId = null,
-    string? DefaultPolicySetName = null);
+    string? DefaultPolicySetName = null,
+    string CleanupMode = "keep-source",
+    bool RemoveEmptySourceFolders = false);

@@ -65,7 +65,7 @@ public sealed class SeriesCatalogueSyncPersistenceTests
             currentQuality: "WEB 1080p",
             targetQuality: "WEB 1080p",
             qualityCutoffMet: true,
-            unmonitorWhenCutoffMet: false,
+            unmonitorWhenCutoffMet: true,
             filePath: @"C:\media\severance\s01e01.mkv",
             fileSizeBytes: 123456,
             episodes: [new ImportedEpisodeItem(1, 1, HasFile: true, FilePath: @"C:\media\severance\s01e01.mkv", FileSizeBytes: 123456)],
@@ -392,6 +392,7 @@ public sealed class SeriesCatalogueSyncPersistenceTests
 
         var series = Assert.Single(await repository.ListAsync(CancellationToken.None));
         Assert.Equal("Severance", series.Title);
+        Assert.True(series.Monitored);
 
         var episodeIds = await GetEpisodeIdsAsync(storage, series.Id);
         Assert.True(episodeIds.ContainsKey((1, 1)));

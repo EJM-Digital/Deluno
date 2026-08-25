@@ -113,6 +113,17 @@ public static class FilesystemEndpointRouteBuilderExtensions
             CancellationToken cancellationToken) =>
         {
             var preview = await importPipeline.PreviewAsync(request.Preview, cancellationToken);
+            if (preview.SourceExists && !ImportFileReadiness.IsReady(preview.SourcePath))
+            {
+                return Results.Json(
+                    new
+                    {
+                        message = "The source file is still being written or is locked by another process. Deluno will wait until it is stable before queuing the import.",
+                        preview
+                    },
+                    statusCode: ImportFileReadiness.RetryableStatusCode);
+            }
+
             if (!preview.SourceExists ||
                 !preview.IsSupportedMediaFile ||
                 IsSamePath(preview.SourcePath, preview.DestinationPath) ||

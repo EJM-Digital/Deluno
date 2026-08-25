@@ -231,6 +231,7 @@ const SignalRContext = createContext<SignalRContextValue | null>(null);
 /* ── Provider ────────────────────────────────────────────────────── */
 const HUB_URL = "/hubs/deluno";
 const DEBUG = import.meta.env.VITE_WS_DEBUG === "1";
+const INITIAL_START_RETRY_DELAYS_MS = [0, 2_000, 5_000, 10_000, 30_000] as const;
 
 type AnyHandler = (payload: unknown) => void;
 
@@ -358,18 +359,38 @@ export function SignalRProvider({
 
     connectionRef.current = builder;
 
+    let disposed = false;
+    const startWithRetry = async () => {
+      for (let attempt = 0; attempt < INITIAL_START_RETRY_DELAYS_MS.length; attempt++) {
+        const delay = INITIAL_START_RETRY_DELAYS_MS[attempt];
+        if (delay > 0) {
+          setStatus("reconnecting");
+          await new Promise<void>((resolve) => globalThis.setTimeout(resolve, delay));
+        }
+        if (disposed) return;
+
+        try {
+          await builder.start();
+          if (disposed) {
+            await builder.stop();
+            return;
+          }
+          setStatus("connected");
+          void resume(builder);
+          return;
+        } catch {
+          if (attempt === INITIAL_START_RETRY_DELAYS_MS.length - 1) {
+            setStatus("disconnected");
+          }
+        }
+      }
+    };
+
     setStatus("connecting");
-    builder.start()
-      .then(() => {
-        setStatus("connected");
-        void resume(builder);
-      })
-      .catch(() => {
-        setStatus("disconnected");
-        /* Silently swallow — happens in dev when backend is down */
-      });
+    void startWithRetry();
 
     return () => {
+      disposed = true;
       void builder.stop();
       connectionRef.current = null;
     };

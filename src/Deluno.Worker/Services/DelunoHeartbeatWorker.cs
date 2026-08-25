@@ -245,18 +245,17 @@ public sealed class DelunoHeartbeatWorker(
             var processorRepository = services.GetRequiredService<IProcessorRepository>();
             var librariesRepository = services.GetRequiredService<ILibrariesRepository>();
 
-            // The gate goes first. It used to be the fourth thing that
-            // happened, after a heartbeat write and a settings read, so an
-            // install with automation switched off still paid for two database
-            // round trips per lane tick, forever.
+            // Liveness is independent of whether background automation is
+            // enabled. A paused installation is still running and must not
+            // look unavailable to the readiness endpoint.
+            await HeartbeatIfDueAsync(jobQueueRepository, stoppingToken);
+
             var settings = await ReadSettingsAsync(platformSettingsRepository, stoppingToken);
             if (!settings.AutoStartJobs)
             {
                 logger.LogDebug("Worker {WorkerId} lane {LaneName} tick with auto-start disabled.", _workerId, lane.Name);
                 continue;
             }
-
-            await HeartbeatIfDueAsync(jobQueueRepository, stoppingToken);
 
             var jobScheduler = services.GetRequiredService<IJobScheduler>();
             var workPlanner = services.GetRequiredService<WorkPlanner>();

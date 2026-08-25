@@ -90,7 +90,11 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
             ShouldDispatch: outcome == "matched" && !request.PreviewOnly,
             DispatchRequest: bestCandidate is null || selectedClient is null
                 ? null
-                : BuildGrabRequest(bestCandidate, request.MediaType, DispatchCategory(request.MediaType), selectedClient),
+                : BuildGrabRequest(
+                    bestCandidate,
+                    request.MediaType,
+                    DispatchCategory(request.MediaType, selectedClient, readyConnections.DownloadClientDetails),
+                    selectedClient),
             Alternatives: BuildDecisionAlternatives(searchPlan));
     }
 
@@ -220,8 +224,33 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
             ? "tv"
             : "movies";
 
-    private static string DispatchCategory(string mediaType)
-        => NormalizeMediaType(mediaType) == "tv" ? "tv" : "movies";
+    private static string DispatchCategory(
+        string mediaType,
+        LibraryDownloadClientLinkItem route,
+        IReadOnlyDictionary<string, DownloadClientItem> downloadClientDetails)
+    {
+        if (!string.IsNullOrWhiteSpace(route.Category))
+        {
+            return route.Category.Trim();
+        }
+
+        if (downloadClientDetails.TryGetValue(route.DownloadClientId, out var client))
+        {
+            var configuredCategory = NormalizeCategory(
+                NormalizeMediaType(mediaType) == "tv" ? client.TvCategory : client.MoviesCategory)
+                ?? NormalizeCategory(client.CategoryTemplate);
+
+            if (configuredCategory is not null)
+            {
+                return configuredCategory;
+            }
+        }
+
+        return NormalizeMediaType(mediaType) == "tv" ? "tv" : "movies";
+    }
+
+    private static string? NormalizeCategory(string? category)
+        => string.IsNullOrWhiteSpace(category) ? null : category.Trim();
 
     private static IReadOnlyList<DecisionAlternativeExplanation> BuildDecisionAlternatives(MediaSearchPlan plan)
         => plan.Candidates
@@ -272,7 +301,10 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
         // never treats a merely linked connection as ready.
         if (connectionsRepository is null)
         {
-            return new ReadyConnections(request.Sources, request.DownloadClients);
+            return new ReadyConnections(
+                request.Sources,
+                request.DownloadClients,
+                new Dictionary<string, DownloadClientItem>(StringComparer.OrdinalIgnoreCase));
         }
 
         var indexers = await connectionsRepository.ListIndexersAsync(cancellationToken);
@@ -281,14 +313,14 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
             .Where(item => item.IsEnabled && string.Equals(item.HealthStatus, "healthy", StringComparison.OrdinalIgnoreCase))
             .Select(item => item.Id)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var readyClientIds = clients
+        var readyClientDetails = clients
             .Where(item => item.IsEnabled && IsReadyDownloadClient(item))
-            .Select(item => item.Id)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            .ToDictionary(item => item.Id, StringComparer.OrdinalIgnoreCase);
 
         return new ReadyConnections(
             request.Sources.Where(source => readyIndexerIds.Contains(source.IndexerId)).ToArray(),
-            request.DownloadClients.Where(client => readyClientIds.Contains(client.DownloadClientId)).ToArray());
+            request.DownloadClients.Where(client => readyClientDetails.ContainsKey(client.DownloadClientId)).ToArray(),
+            readyClientDetails);
     }
 
     private static bool IsReadyDownloadClient(DownloadClientItem client)
@@ -296,7 +328,8 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
 
     private sealed record ReadyConnections(
         IReadOnlyList<LibrarySourceLinkItem> Sources,
-        IReadOnlyList<LibraryDownloadClientLinkItem> DownloadClients);
+        IReadOnlyList<LibraryDownloadClientLinkItem> DownloadClients,
+        IReadOnlyDictionary<string, DownloadClientItem> DownloadClientDetails);
 
     private sealed class DisabledReleaseRankingService : IReleaseRankingModelService
     {
