@@ -39,6 +39,7 @@ import { MediaMetadataDrawer } from "../components/app/media-metadata-drawer";
 import { RatingStrip } from "../components/app/rating-strip";
 import { Chip } from "../components/ui/chip";
 import { Drawer, DrawerFacts, DrawerFooter, DrawerSection } from "../components/ui/drawer";
+import { Input } from "../components/ui/input";
 import { ListGroupHeader } from "../components/ui/media-type-split";
 import {
   LIST_TRACK,
@@ -111,6 +112,7 @@ export function ShowDetailPage() {
   const [isMetadataOpen, setIsMetadataOpen] = useState(false);
   const [releaseCandidates, setReleaseCandidates] = useState<SearchPlanCandidate[]>([]);
   const [openCandidate, setOpenCandidate] = useState<SearchPlanCandidate | null>(null);
+  const [forceReason, setForceReason] = useState<string | null>(null);
   const [openEpisodeId, setOpenEpisodeId] = useState<string | null>(null);
   const [openSearchId, setOpenSearchId] = useState<string | null>(null);
   const [episodeFilter, setEpisodeFilter] = useState<EpisodeFilter>("all");
@@ -1079,7 +1081,10 @@ export function ShowDetailPage() {
       <Drawer
         open={openCandidate !== null}
         onOpenChange={(next) => {
-          if (!next) setOpenCandidate(null);
+          if (!next) {
+            setOpenCandidate(null);
+            setForceReason(null);
+          }
         }}
         title={openCandidate?.releaseName ?? "Release"}
         description={openCandidate ? `${openCandidate.indexerName} · score ${openCandidate.score}` : undefined}
@@ -1137,26 +1142,52 @@ export function ShowDetailPage() {
             ) : null}
 
             <DrawerSection>
-              <div className="flex min-h-[52px] items-center justify-between gap-[var(--grid-gap)] rounded-[10px] border border-warning/30 px-[var(--field-pad-x)] py-2">
-                <div className="min-w-0">
-                  <p className="text-[length:var(--type-body-sm)] font-medium text-foreground">Send it anyway</p>
-                  <p className="mt-0.5 text-[length:var(--type-caption)] text-muted-foreground">
-                    Overrides the scorer. Your reason is stored in activity and search history.
-                  </p>
+              <div className="rounded-[10px] border border-warning/30 px-[var(--field-pad-x)] py-2">
+                <div className="flex min-h-[52px] items-center justify-between gap-[var(--grid-gap)]">
+                  <div className="min-w-0">
+                    <p className="text-[length:var(--type-body-sm)] font-medium text-foreground">Send it anyway</p>
+                    <p className="mt-0.5 text-[length:var(--type-caption)] text-muted-foreground">
+                      Overrides the scorer. Your reason is stored in activity and search history.
+                    </p>
+                  </div>
+                  {forceReason === null ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={busyAction !== null || !openCandidate.downloadUrl}
+                      onClick={() => setForceReason(openCandidate.summary ?? "")}
+                    >
+                      Force
+                    </Button>
+                  ) : null}
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={busyAction !== null || !openCandidate.downloadUrl}
-                  onClick={() => {
-                    const reason = window.prompt("Why force this release?", openCandidate.summary);
-                    if (reason !== null && reason.trim()) void handleGrabCandidate(openCandidate, true, reason.trim());
-                  }}
-                >
-                  {busyAction === "force-grab" ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : null}
-                  Force
-                </Button>
+                {forceReason !== null ? (
+                  <div className="mt-2 flex items-center gap-2 pb-1">
+                    <Input
+                      value={forceReason}
+                      onChange={(event) => setForceReason(event.target.value)}
+                      aria-label="Why force this release?"
+                      placeholder="Why force this release?"
+                      autoFocus
+                    />
+                    <Button type="button" variant="outline" size="sm" onClick={() => setForceReason(null)}>
+                      Cancel
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={busyAction !== null || !forceReason.trim()}
+                      onClick={() => {
+                        void handleGrabCandidate(openCandidate, true, forceReason.trim());
+                        setForceReason(null);
+                      }}
+                    >
+                      {busyAction === "force-grab" ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : null}
+                      Send anyway
+                    </Button>
+                  </div>
+                ) : null}
               </div>
             </DrawerSection>
           </>
