@@ -163,7 +163,7 @@ const FORMAT_GOALS = {
     bestFor: "Everyday movie and TV libraries where quality matters but storage should stay sensible."
   },
   homeTheater: {
-    label: "Home theater",
+    label: "Home theatre",
     bundleId: "premium-4k-streaming",
     copy: "Prioritises 4K WEB, HDR, Dolby Vision, stronger release groups, and better living-room playback.",
     bestFor: "4K TVs, Apple TV, Shield, Plex/Jellyfin/Emby users, and premium libraries."
@@ -1031,8 +1031,10 @@ function FinishStep({
           { label: "Libraries", value: form.mediaIntent === "both" ? "Movies + TV" : form.mediaIntent === "tv" ? "TV" : "Movies" },
           { label: "Quality", value: form.qualityPreset ? QUALITY_PRESETS[form.qualityPreset].label : "Not chosen", tone: form.qualityPreset ? undefined : "warning" },
           { label: "Release scoring", value: form.formatGoal ? FORMAT_GOALS[form.formatGoal].label : "Not chosen", tone: form.formatGoal ? undefined : "warning" },
-          { label: "Indexer", value: form.indexerUrl.trim() ? form.indexerProtocol : "Later" },
-          { label: "Client", value: form.clientHost.trim() ? form.clientProtocol : "Later" }
+          // The connection's name, not its protocol id: this read "torznab"
+          // and "qbittorrent" where the user had just named them (#259).
+          { label: "Search source", value: form.indexerUrl.trim() ? form.indexerName || form.indexerProtocol : "Later" },
+          { label: "Download client", value: form.clientHost.trim() ? form.clientName || form.clientProtocol : "Later" }
         ]}
       />
       <div className="rounded-2xl border border-hairline bg-surface-1 p-4">
@@ -1210,8 +1212,10 @@ function SetupComplete({ result }: { result: SetupCompletion }) {
           { label: "Libraries", value: result.libraries.join(" + ") || "None" },
           { label: "Quality Profiles", value: result.qualityProfiles.join(" + ") || "Existing" },
           { label: "Release rules", value: result.customFormatCount > 0 ? `${result.customFormatCount} created` : "Reused existing" },
-          { label: "Indexer", value: result.indexerName ?? "Later", help: result.indexerName ? "connected" : "add one when you are ready" },
-          { label: "First title", value: result.firstTitle ?? "Skipped", help: result.clientName ? `via ${result.clientName}` : "no download client yet" }
+          { label: "Search source", value: result.indexerName ?? "Later", help: result.indexerName ? "connected" : "add one when you are ready" },
+          // The title came from the metadata provider; the client is what will
+          // download it. "via {client}" credited the wrong thing (#259).
+          { label: "First title", value: result.firstTitle ?? "Skipped", help: result.firstTitle ? "added and monitored" : "add one whenever you like" }
         ]}
       />
       <div className="grid gap-3 lg:grid-cols-4">

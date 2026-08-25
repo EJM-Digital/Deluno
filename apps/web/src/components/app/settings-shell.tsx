@@ -297,7 +297,7 @@ const systemPageMeta = [
   {
     match: (path: string) => path.startsWith("/system/updates"),
     title: "Updates",
-    description: "Version status, update channel, behavior mode, download progress, and restart guidance."
+    description: "Version status, update channel, behaviour mode, download progress, and restart guidance."
   }
 ] as const;
 

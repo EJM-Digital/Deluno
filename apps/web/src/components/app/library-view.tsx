@@ -933,7 +933,7 @@ export function LibraryView({
         open={isRemovalConfirmationOpen}
         onOpenChange={setIsRemovalConfirmationOpen}
         title={`Remove ${selectedIds.length} ${singular}${selectedIds.length === 1 ? "" : "s"} from Deluno?`}
-        description="This removes the selected catalog record and stops Deluno managing it. It does not delete imported media files or remove anything from your download client."
+        description="This removes the selected catalogue record and stops Deluno managing it. It does not delete imported media files or remove anything from your download client."
         confirmLabel="Remove from Deluno"
         busy={isBulkUpdating}
         onConfirm={() => void handleRemoveFromDeluno()}
