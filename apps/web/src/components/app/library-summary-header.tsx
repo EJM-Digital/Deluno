@@ -16,6 +16,8 @@ type LibrarySummaryHeaderProps = {
   onToggleCreate: () => void;
   isUpdatingMetadata: boolean;
   onUpdateMetadata: () => void;
+  isHuntingMissing?: boolean;
+  onHuntMissing?: () => void;
 };
 
 export function LibrarySummaryHeader({
@@ -30,6 +32,8 @@ export function LibrarySummaryHeader({
   onToggleCreate,
   isUpdatingMetadata,
   onUpdateMetadata,
+  isHuntingMissing = false,
+  onHuntMissing,
 }: LibrarySummaryHeaderProps) {
   return (
     <div className="relative overflow-hidden rounded-2xl border border-hairline bg-card p-[var(--tile-pad)] shadow-card dark:border-white/[0.06]">
@@ -76,7 +80,19 @@ export function LibrarySummaryHeader({
             <RefreshCw className={cn("h-4 w-4", isUpdatingMetadata && "animate-spin")} />
             Update all metadata
           </Button>
-          {missingCount > 0 ? <Button variant="secondary" className="gap-2"><Zap className="h-4 w-4" />Hunt {missingCount} missing</Button> : null}
+          {missingCount > 0 ? (
+            <Button
+              type="button"
+              variant="secondary"
+              className="gap-2"
+              onClick={onHuntMissing}
+              disabled={isHuntingMissing || !onHuntMissing}
+              title={`Search now for the ${missingCount} missing ${missingCount === 1 ? singular.toLowerCase() : label}`}
+            >
+              <Zap className={cn("h-4 w-4", isHuntingMissing && "animate-pulse")} />
+              {isHuntingMissing ? "Hunting…" : `Hunt ${missingCount} missing`}
+            </Button>
+          ) : null}
         </div>
       </div>
     </div>
