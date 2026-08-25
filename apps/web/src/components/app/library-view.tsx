@@ -42,11 +42,29 @@ import { LibrarySummaryHeader } from "./library-summary-header";
 
 type Variant = "movies" | "shows";
 
-// Last-known page per variant, surviving the per-variant remount that `key`
-// forces. Without it every visit repainted a zeroed header and empty grid for
-// ~300ms before the fetch landed (#265); with it a revisit renders instantly
-// from the last snapshot while a silent refetch replaces it.
-const catalogueCache = new Map<Variant, { items: MediaItem[]; totalCount: number; facets: CatalogueFacets | null }>();
+// Last-known page, surviving the per-variant remount that `key` forces. Without
+// it every visit repainted a zeroed header and empty grid for ~300ms before the
+// fetch landed (#265); with it a revisit renders instantly from the last
+// snapshot while a silent refetch replaces it.
+//
+// Keyed by the *whole* query, not just the variant. Keying it by variant alone
+// meant a search result was stored under "movies" and then replayed on the next
+// mount as if it were the entire library — the list showed the last thing you
+// searched for, presented as everything you own.
+const catalogueCache = new Map<string, { items: MediaItem[]; totalCount: number; facets: CatalogueFacets | null }>();
+
+/** Only the most recent snapshot is worth keeping; this is an anti-flash buffer, not a store. */
+const CATALOGUE_CACHE_LIMIT = 8;
+
+function rememberCatalogue(key: string, entry: { items: MediaItem[]; totalCount: number; facets: CatalogueFacets | null }) {
+  catalogueCache.delete(key);
+  catalogueCache.set(key, entry);
+  while (catalogueCache.size > CATALOGUE_CACHE_LIMIT) {
+    const oldest = catalogueCache.keys().next().value;
+    if (oldest === undefined) break;
+    catalogueCache.delete(oldest);
+  }
+}
 
 function sameMetadataResult(left: MetadataSearchResult, right: MetadataSearchResult) {
   return left.provider === right.provider && left.providerId === right.providerId;
@@ -78,30 +96,12 @@ export function LibraryView({
   const navigation = useNavigation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { density } = useDensity();
-  const [libraryItems, setLibraryItems] = useState<MediaItem[]>(() => catalogueCache.get(variant)?.items ?? []);
-  const [libraries, setLibraries] = useState<LibraryItem[]>([]);
-  const [totalCount, setTotalCount] = useState(() => catalogueCache.get(variant)?.totalCount ?? 0);
-  const [facets, setFacets] = useState<CatalogueFacets | null>(() => catalogueCache.get(variant)?.facets ?? null);
-  const [nextPageToken, setNextPageToken] = useState<string | null>(null);
-  const [currentPageToken, setCurrentPageToken] = useState<string | null>(null);
-  const [previousPageTokens, setPreviousPageTokens] = useState<Array<string | null>>([]);
-  const [isCatalogueLoading, setIsCatalogueLoading] = useState(() => !catalogueCache.has(variant));
-  const hasLoadedOnceRef = useRef(catalogueCache.has(variant));
-  const [hasLoadedOnce, setHasLoadedOnce] = useState(() => catalogueCache.has(variant));
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [refreshVersion, setRefreshVersion] = useState(0);
-  const [isUpdatingMetadata, setIsUpdatingMetadata] = useState(false);
-  const [isHuntingMissing, setIsHuntingMissing] = useState(false);
   const {
     query, setQuery, libraryId, setLibraryId, quickFilter, setQuickFilter, view, setView, sortField, setSortField,
     sortDirection, setSortDirection, cardSize, displayOptions,
     savedPresets, setSavedPresets, newPresetName, setNewPresetName, isSavingPreset,
     setIsSavingPreset, changeSize, updateDisplayOptions, activeFilterCount
   } = useLibraryFilters(variant, searchParams.get("filter"));
-
-  const compatibleLibraries = libraries
-    .filter((library) => library.mediaType === (variant === "movies" ? "movies" : "tv"))
-    .sort((left, right) => left.name.localeCompare(right.name));
 
   const buildCatalogueParams = useCallback((pageToken?: string) => {
     const params = new URLSearchParams({ pageSize: "100", sort: sortField, direction: sortDirection });
@@ -111,6 +111,32 @@ export function LibraryView({
     if (libraryId) params.set("libraryId", libraryId);
     return params;
   }, [libraryId, query, quickFilter, sortDirection, sortField]);
+
+  // The identity of what is on screen. A snapshot may only be replayed for the
+  // exact query that produced it.
+  const cacheKey = `${variant}?${buildCatalogueParams()}`;
+  const cacheKeyRef = useRef(cacheKey);
+  cacheKeyRef.current = cacheKey;
+  const seeded = catalogueCache.get(cacheKey);
+
+  const [libraryItems, setLibraryItems] = useState<MediaItem[]>(() => seeded?.items ?? []);
+  const [libraries, setLibraries] = useState<LibraryItem[]>([]);
+  const [totalCount, setTotalCount] = useState(() => seeded?.totalCount ?? 0);
+  const [facets, setFacets] = useState<CatalogueFacets | null>(() => seeded?.facets ?? null);
+  const [nextPageToken, setNextPageToken] = useState<string | null>(null);
+  const [currentPageToken, setCurrentPageToken] = useState<string | null>(null);
+  const [previousPageTokens, setPreviousPageTokens] = useState<Array<string | null>>([]);
+  const [isCatalogueLoading, setIsCatalogueLoading] = useState(() => seeded === undefined);
+  const hasLoadedOnceRef = useRef(seeded !== undefined);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(() => seeded !== undefined);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [refreshVersion, setRefreshVersion] = useState(0);
+  const [isUpdatingMetadata, setIsUpdatingMetadata] = useState(false);
+  const [isHuntingMissing, setIsHuntingMissing] = useState(false);
+
+  const compatibleLibraries = libraries
+    .filter((library) => library.mediaType === (variant === "movies" ? "movies" : "tv"))
+    .sort((left, right) => left.name.localeCompare(right.name));
 
   useEffect(() => {
     let cancelled = false;
@@ -150,6 +176,15 @@ export function LibraryView({
     // cross-variant rows cannot appear — the `key` on LibraryView remounts the
     // component per variant. Only pagination is reset so "load more" cannot
     // run against a stale token mid-reload.
+    //
+    // A snapshot of *this* query, if we have one, is shown at once; results
+    // from a different query are never replayed here (#270).
+    const remembered = catalogueCache.get(cacheKeyRef.current);
+    if (remembered) {
+      setLibraryItems(remembered.items);
+      setTotalCount(remembered.totalCount);
+      setFacets(remembered.facets);
+    }
     setNextPageToken(null);
     setCurrentPageToken(null);
     setPreviousPageTokens([]);
@@ -173,7 +208,7 @@ export function LibraryView({
           setNextPageToken(page.nextPageToken);
           setCurrentPageToken(null);
           setPreviousPageTokens([]);
-          catalogueCache.set(variant, { items, totalCount: page.totalCount ?? 0, facets: page.facets });
+          rememberCatalogue(cacheKeyRef.current, { items, totalCount: page.totalCount ?? 0, facets: page.facets });
         } else {
           const [page, wanted] = await Promise.all([
             fetchJson<CataloguePage<SeriesListItem>>(`/api/series/page?${params}`),
@@ -187,7 +222,7 @@ export function LibraryView({
           setNextPageToken(page.nextPageToken);
           setCurrentPageToken(null);
           setPreviousPageTokens([]);
-          catalogueCache.set(variant, { items, totalCount: page.totalCount ?? 0, facets: page.facets });
+          rememberCatalogue(cacheKeyRef.current, { items, totalCount: page.totalCount ?? 0, facets: page.facets });
         }
         setSelectedIds([]);
       } catch {
@@ -196,7 +231,7 @@ export function LibraryView({
           setTotalCount(0);
           setFacets(null);
           setNextPageToken(null);
-          catalogueCache.delete(variant);
+          catalogueCache.delete(cacheKeyRef.current);
           toast.error("Could not load the library.");
         }
       } finally {
@@ -867,6 +902,7 @@ export function LibraryView({
 
         <LibraryResults
           isLoading={isRouteLoading || navigation.state !== "idle" || isCatalogueLoading}
+          hasLoadedOnce={hasLoadedOnce}
           items={filtered}
           label={label}
           singular={singular}

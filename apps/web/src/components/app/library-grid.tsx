@@ -81,7 +81,16 @@ export function ProgressiveGrid({
       const gap = Number.parseFloat(getComputedStyle(probe).marginLeft) || 0;
       probe.remove();
 
-      const nextColumns = Math.max(1, Math.floor((container.clientWidth + gap) / (minimumCardWidth + gap)));
+      // Before the container has been laid out, both the probe and the
+      // container measure 0, and the division yields NaN (0/0) or Infinity.
+      // That reached `useVirtualizer` as its row count, which builds an array of
+      // that length and threw "Invalid array length", taking the whole Movies
+      // route down behind the error boundary (#270). One column is the honest
+      // fallback until a real measurement arrives — the ResizeObserver below
+      // corrects it on the next layout.
+      const track = minimumCardWidth + gap;
+      const measured = track > 0 ? Math.floor((container.clientWidth + gap) / track) : 1;
+      const nextColumns = Number.isFinite(measured) ? Math.max(1, measured) : 1;
       setColumns((current) => current === nextColumns ? current : nextColumns);
     };
 
@@ -90,7 +99,10 @@ export function ProgressiveGrid({
     observer.observe(container);
     return () => observer.disconnect();
   }, [gridMin]);
-  const rowCount = Math.ceil(items.length / columns);
+  // Belt and braces: the virtualiser allocates an array of this length, so it
+  // must be a non-negative integer no matter what the measurement produced.
+  const safeColumns = Number.isFinite(columns) && columns >= 1 ? Math.floor(columns) : 1;
+  const rowCount = Math.max(0, Math.ceil(items.length / safeColumns));
   const virtualizer = useVirtualizer({ count: rowCount, getScrollElement: () => parentRef.current, estimateSize: () => cardSize === "lg" ? 440 : cardSize === "sm" ? 245 : 340, overscan: 3 });
   const virtualRows = virtualizer.getVirtualItems();
 
@@ -105,8 +117,8 @@ export function ProgressiveGrid({
         <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
           {virtualRows.map((row) => (
             <div key={row.key} ref={virtualizer.measureElement} data-index={row.index} className="absolute left-0 top-0 w-full" style={{ transform: `translateY(${row.start}px)` }}>
-              <div className="stagger grid gap-[var(--library-grid-gap)] pb-[var(--library-grid-gap)]" style={{ gridTemplateColumns: `repeat(${columns}, minmax(${gridMin}, 1fr))` }}>
-                {items.slice(row.index * columns, (row.index + 1) * columns).map((item) => (
+              <div className="stagger grid gap-[var(--library-grid-gap)] pb-[var(--library-grid-gap)]" style={{ gridTemplateColumns: `repeat(${safeColumns}, minmax(${gridMin}, 1fr))` }}>
+                {items.slice(row.index * safeColumns, (row.index + 1) * safeColumns).map((item) => (
                   <PosterCard key={item.id} item={item} size={cardSize} density={density} displayOptions={displayOptions} selected={selectedIds.includes(item.id)} onSelect={() => onSelect(item)} onToggle={() => onToggle(item.id)} />
                 ))}
               </div>

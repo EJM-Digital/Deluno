@@ -135,7 +135,12 @@ test.describe("first-run and auth screens", () => {
     await page.getByRole("button", { name: /5 Start/ }).click();
 
     await expect(page.getByRole("button", { name: "Create baseline" })).toBeDisabled();
-    await expect(page.getByText("Test at least one search source and one download client before Deluno can be marked operationally ready.")).toBeVisible();
+    // Untested connections no longer block the baseline (#246) — the guide
+    // states plainly that readiness is still outstanding, which is the claim
+    // this test exists to pin.
+    await expect(
+      page.getByText("Deluno cannot be marked operationally ready until a search source is configured and tested.")
+    ).toBeVisible();
   });
 
   test("setup overview shows the complete ordered journey and keeps import lists optional", async ({ page }) => {
