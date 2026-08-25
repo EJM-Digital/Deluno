@@ -110,7 +110,7 @@ export function RemoveMediaDialog({
           </div>
 
           <div className="flex items-center justify-between border-t border-hairline bg-surface-1 px-6 py-4">
-            <p className="text-xs text-muted-foreground">The Deluno catalog record will be removed.</p>
+            <p className="text-xs text-muted-foreground">The Deluno catalogue record will be removed.</p>
             <div className="flex gap-2">
               <Dialog.Close asChild>
                 <Button variant="secondary" size="sm" disabled={busy}>Cancel</Button>

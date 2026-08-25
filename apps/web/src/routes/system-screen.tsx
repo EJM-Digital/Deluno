@@ -812,7 +812,7 @@ function UpgradeCard({ status, children }: { status: UpdateStatusResponse; child
           <RotateCcw className="h-4 w-4 text-primary" />
           Updates
         </CardTitle>
-        <CardDescription>Version status, channel, behavior mode, and restart flow.</CardDescription>
+        <CardDescription>Version status, channel, behaviour mode, and restart flow.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         <SaveStatus state={actionStatus.state} message={actionStatus.message} />
@@ -833,8 +833,8 @@ function UpgradeCard({ status, children }: { status: UpdateStatusResponse; child
 
         {preferences ? (
           <div className="rounded-xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.7)] space-y-3">
-            <p className="text-sm font-semibold text-foreground">Update behavior</p>
-            <Field label="Update behavior" hideLabel>
+            <p className="text-sm font-semibold text-foreground">Update behaviour</p>
+            <Field label="Update behaviour" hideLabel>
               <Select
                 value={preferences.mode}
                 onChange={(event) => setPreferences((currentValue) => currentValue ? { ...currentValue, mode: event.target.value } : currentValue)}
