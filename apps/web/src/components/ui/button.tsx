@@ -13,11 +13,15 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
+        // The primary action takes the accent of the area it sits in, so a
+        // toolbar's "New …" and the empty-state button for the same action can
+        // no longer be two different colours (#256). --page-accent-* is set on
+        // the page container by AppLayout; pages that belong to no area (login,
+        // setup) fall back to the global primary gradient.
         default: [
           "relative overflow-hidden",
-          "bg-gradient-to-b from-primary to-[hsl(var(--primary-2))]",
-          "dark:from-primary dark:to-[hsl(var(--primary-2))]",
-          "text-primary-foreground",
+          "bg-[image:var(--page-accent-image,linear-gradient(to_bottom,hsl(var(--primary)),hsl(var(--primary-2))))]",
+          "text-[color:var(--page-accent-foreground,hsl(var(--primary-foreground)))]",
           "shadow-[0_1px_2px_hsl(var(--primary-deep)/0.35),inset_0_1px_0_hsl(0_0%_100%/0.12)]",
           "hover:brightness-110"
         ].join(" "),
