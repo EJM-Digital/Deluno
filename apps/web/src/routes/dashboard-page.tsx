@@ -423,7 +423,9 @@ export function DashboardPage() {
         ]}
       />
 
-      <div className="grid gap-[var(--grid-gap)] md:grid-cols-2 xl:grid-cols-3">
+      {/* items-start: a tile without a chart is shorter, and stretching it to
+          match its neighbours just moves the empty space inside the card (#262). */}
+      <div className="grid items-start gap-[var(--grid-gap)] md:grid-cols-2 xl:grid-cols-3">
         {/* Live, and labelled as such: this is sampled in the browser, not stored. */}
         <MetricChart
           label="Download speed"
