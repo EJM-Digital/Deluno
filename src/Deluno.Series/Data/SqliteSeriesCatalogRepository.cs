@@ -2845,7 +2845,7 @@ public sealed class SqliteSeriesCatalogRepository(
                     )
                     VALUES (
                         @id, @seriesId, @seasonId, @seasonNumber, @episodeNumber, @title, @overview, @airDateUtc,
-                        1, 0, 0, @source, @syncedUtc,
+                        @monitored, 0, 0, @source, @syncedUtc,
                         @createdUtc, @updatedUtc
                     )
                     ON CONFLICT(series_id, season_number, episode_number) DO UPDATE SET
@@ -2862,6 +2862,12 @@ public sealed class SqliteSeriesCatalogRepository(
                 AddParameter(upsert, "@seasonId", seasonId);
                 AddParameter(upsert, "@seasonNumber", episode.SeasonNumber);
                 AddParameter(upsert, "@episodeNumber", episode.EpisodeNumber);
+                // Season 0 is specials: extras, recaps and behind-the-scenes
+                // pieces most people do not want hunted. Sonarr leaves them
+                // unmonitored for this reason; monitoring them made a new show
+                // arrive with nine "missing" specials to chase (#243). Only the
+                // default differs — the per-episode switch still governs.
+                AddParameter(upsert, "@monitored", episode.SeasonNumber == 0 ? 0 : 1);
                 AddParameter(upsert, "@title", NormalizeText(episode.Title));
                 AddParameter(upsert, "@overview", NormalizeText(episode.Overview));
                 AddParameter(upsert, "@airDateUtc", episode.AirDateUtc?.ToString("O"));

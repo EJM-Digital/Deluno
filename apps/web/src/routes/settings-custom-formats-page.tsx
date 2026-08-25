@@ -423,8 +423,13 @@ export function SettingsCustomFormatsPage() {
                     <ListCell numeric primary={scoreLabel(format.score)} secondary={format.score <= -10000 ? "never grabbed" : "points"} />
                     <ListCell primary={<LibraryImpactLinks libraries={usedBy} />} secondary={usedBy.length ? "Inherited through a Library Profile" : "Not selected by a library profile"} />
                     <ListCell mobile>
-                      <Chip tone={format.score <= -10000 ? "bad" : format.score > 0 ? "ok" : "warn"}>
-                        {format.score <= -10000 ? "Blocked" : format.score > 0 ? "Preferred" : "Avoided"}
+                      {/*
+                        Score 0 is neutral, not avoided: a 1080p tag rule
+                        scoring 0 inside a 1080p profile looked banned (#257).
+                        Only a negative score is an active penalty.
+                      */}
+                      <Chip tone={format.score <= -10000 ? "bad" : format.score > 0 ? "ok" : format.score < 0 ? "warn" : "muted"}>
+                        {format.score <= -10000 ? "Blocked" : format.score > 0 ? "Preferred" : format.score < 0 ? "Avoided" : "Neutral"}
                       </Chip>
                     </ListCell>
                   </ListRow>

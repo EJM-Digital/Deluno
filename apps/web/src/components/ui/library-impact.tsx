@@ -33,17 +33,23 @@ export function LibraryImpactLinks({
 
   return (
     <span className={cn("flex min-w-0 flex-wrap gap-1.5", className)}>
-      {libraries.slice(0, 4).map((library) => (
-        <Link
-          key={library.id}
-          to={`/settings/libraries?libraryId=${encodeURIComponent(library.id)}`}
-          onClick={(event) => event.stopPropagation()}
-          className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-full border border-hairline bg-surface-1 px-2 py-1 text-[length:var(--type-caption)] font-medium text-foreground transition-colors hover:border-primary/40 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <span className="max-w-36 truncate">{library.name}</span>
-          <span className="shrink-0 text-muted-foreground">{library.mediaType === "tv" ? "TV" : "Movies"}</span>
-        </Link>
-      ))}
+      {libraries.slice(0, 4).map((library) => {
+        const typeLabel = library.mediaType === "tv" ? "TV" : "Movies";
+        // A library named "Movies" does not need "Movies" after it — that read
+        // as "Movies Movies" wherever these chips appear (#257).
+        const nameAlreadySaysType = library.name.toLowerCase().includes(typeLabel.toLowerCase());
+        return (
+          <Link
+            key={library.id}
+            to={`/settings/libraries?libraryId=${encodeURIComponent(library.id)}`}
+            onClick={(event) => event.stopPropagation()}
+            className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-full border border-hairline bg-surface-1 px-2 py-1 text-[length:var(--type-caption)] font-medium text-foreground transition-colors hover:border-primary/40 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <span className="max-w-36 truncate">{library.name}</span>
+            {nameAlreadySaysType ? null : <span className="shrink-0 text-muted-foreground">{typeLabel}</span>}
+          </Link>
+        );
+      })}
       {libraries.length > 4 ? <span className="self-center text-[length:var(--type-caption)] text-muted-foreground">+{libraries.length - 4} more</span> : null}
     </span>
   );
