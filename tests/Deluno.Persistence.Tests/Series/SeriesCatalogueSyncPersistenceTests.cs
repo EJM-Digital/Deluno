@@ -186,6 +186,49 @@ public sealed class SeriesCatalogueSyncPersistenceTests
     }
 
     [Fact]
+    public async Task SyncEpisodeCatalogueAsync_leaves_specials_unmonitored_but_monitors_real_seasons()
+    {
+        var now = DateTimeOffset.Parse("2026-04-29T03:00:00Z");
+        var (storage, repository, _, seriesId) = await CreateSeriesAsync(now);
+        using var _ = storage;
+
+        await repository.SyncEpisodeCatalogueAsync(
+            seriesId,
+            [
+                // Season 0 is specials: extras and recaps most people do not
+                // want hunted, so they arrive unmonitored (#243).
+                new CatalogueEpisodeItem(0, 1, "Behind the scenes", null, now.AddDays(-40)),
+                new CatalogueEpisodeItem(0, 2, "Recap", null, now.AddDays(-39)),
+                new CatalogueEpisodeItem(1, 1, "S1E1", null, now.AddDays(-30)),
+                new CatalogueEpisodeItem(1, 2, "S1E2", null, now.AddDays(-28)),
+            ],
+            source: "tmdb",
+            CancellationToken.None);
+
+        await using var connection = await storage.Factory.OpenConnectionAsync("series", CancellationToken.None);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT season_number, SUM(monitored)
+            FROM episode_entries
+            WHERE series_id = @seriesId
+            GROUP BY season_number
+            ORDER BY season_number;
+            """;
+        AddParam(command, "@seriesId", seriesId);
+
+        var monitoredBySeason = new Dictionary<long, long>();
+        using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            monitoredBySeason[reader.GetInt64(0)] = reader.GetInt64(1);
+        }
+
+        Assert.Equal(0L, monitoredBySeason[0]);
+        Assert.Equal(2L, monitoredBySeason[1]);
+    }
+
+    [Fact]
     public async Task SyncEpisodeCatalogueAsync_backfills_wanted_state_idempotently()
     {
         var now = DateTimeOffset.Parse("2026-04-29T03:00:00Z");

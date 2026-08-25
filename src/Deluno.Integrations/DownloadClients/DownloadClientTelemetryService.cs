@@ -874,8 +874,37 @@ public sealed class DownloadClientTelemetryService(
             IndexerName: dispatch.IndexerName,
             SizeBytes: 0,
             CompletedUtc: dispatch.CreatedUtc == default ? capturedUtc : dispatch.CreatedUtc,
-            ErrorMessage: dispatch.NotesJson);
+            // Only a real failure message belongs here. NotesJson is the
+            // dispatch's diagnostic payload (the search plan), and passing it
+            // as an error message painted successful "sent" rows red and
+            // leaked raw JSON into the activity list (#257).
+            ErrorMessage: DescribeDispatchFailure(dispatch));
     }
+
+    /// <summary>
+    /// The human-readable reason a dispatch failed, or null when it did not.
+    /// </summary>
+    private static string? DescribeDispatchFailure(DownloadDispatchItem dispatch)
+    {
+        if (!string.IsNullOrWhiteSpace(dispatch.ImportFailureMessage))
+        {
+            return dispatch.ImportFailureMessage;
+        }
+
+        if (IsFailureStatus(dispatch.ImportStatus) || IsFailureStatus(dispatch.GrabStatus) || IsFailureStatus(dispatch.Status))
+        {
+            return dispatch.GrabMessage ?? dispatch.GrabFailureCode ?? dispatch.ImportFailureCode ?? "The download client reported a failure.";
+        }
+
+        return null;
+    }
+
+    private static bool IsFailureStatus(string? status)
+        => status is not null &&
+           (status.Equals("failed", StringComparison.OrdinalIgnoreCase) ||
+            status.Equals("blocked", StringComparison.OrdinalIgnoreCase) ||
+            status.Equals("rejected", StringComparison.OrdinalIgnoreCase) ||
+            status.Equals("error", StringComparison.OrdinalIgnoreCase));
 
     private static DownloadTelemetrySummary Summarize(IEnumerable<DownloadQueueItem> queue)
     {
