@@ -14,6 +14,20 @@ public sealed class SqliteNotificationRepository(
     TimeProvider timeProvider)
     : INotificationRepository
 {
+    public async Task<bool> AreOutboundNotificationsEnabledAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT setting_value FROM system_settings WHERE setting_key = 'notifications.enabled';";
+        var value = await command.ExecuteScalarAsync(cancellationToken) as string;
+        // Same read semantics as the Platform settings snapshot: only an
+        // explicit "true" counts as on, matching what the settings page shows.
+        return string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
+    }
+
     public async Task<IReadOnlyList<NotificationWebhookItem>> ListNotificationWebhooksAsync(CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(

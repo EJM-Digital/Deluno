@@ -17,4 +17,11 @@ public interface INotificationRepository
     Task<bool> DeleteNotificationWebhookAsync(string id, CancellationToken cancellationToken);
 
     Task RecordNotificationWebhookFiredAsync(string id, string? error, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The user's master delivery switch ("Send notifications"). When false,
+    /// no webhook fires — including tests — which is what the settings page
+    /// promises (#253).
+    /// </summary>
+    Task<bool> AreOutboundNotificationsEnabledAsync(CancellationToken cancellationToken);
 }

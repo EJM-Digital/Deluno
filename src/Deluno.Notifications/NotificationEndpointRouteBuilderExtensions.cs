@@ -88,6 +88,7 @@ public static class NotificationEndpointRouteBuilderExtensions
         notificationWebhooks.MapPost("{id}/test", async (
             string id,
             HttpContext httpContext,
+            [FromServices] INotificationRepository repository,
             [FromServices] IOutboundNotificationService notificationService,
             CancellationToken cancellationToken) =>
         {
@@ -95,6 +96,11 @@ public static class NotificationEndpointRouteBuilderExtensions
             if (denied is not null)
             {
                 return denied;
+            }
+
+            if (!await repository.AreOutboundNotificationsEnabledAsync(cancellationToken))
+            {
+                return Results.Ok(new { sent = false, message = "Notifications are paused. Turn on Send notifications to test this webhook." });
             }
 
             await notificationService.DispatchAsync(
