@@ -40,4 +40,9 @@ public sealed record UpdatePlatformSettingsRequest(
     bool? CleanupBlockReleaseAfterThreshold = null,
     bool? CleanupQueueReplacementAfterThreshold = null,
     bool? CleanupRemoveClientEntryAfterThreshold = null,
-    bool? CleanupPurgePayloadAfterThreshold = null);
+    bool? CleanupPurgePayloadAfterThreshold = null,
+    string? SharingMode = null,
+    int? SharingForHours = null,
+    double? SharingUntilRatio = null,
+    string? SharingStuckAction = null,
+    int? SharingStuckAfterDays = null);

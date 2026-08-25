@@ -69,7 +69,8 @@ public sealed class SqliteConnectionsRepository(
                 media_scope, is_enabled, health_status, last_health_message,
                 last_health_failure_category, last_health_latency_ms, last_health_test_utc,
                 consecutive_failures, rate_limited_until_utc, disabled_reason, request_interval_seconds,
-                created_utc, updated_utc
+                created_utc, updated_utc,
+                sharing_mode, sharing_for_hours, sharing_until_ratio, sharing_stuck_action, sharing_stuck_after_days
             FROM indexer_sources
             ORDER BY priority ASC, name ASC;
             """;
@@ -100,7 +101,14 @@ public sealed class SqliteConnectionsRepository(
                 CreatedUtc: ParseTimestamp(reader.GetString(20)),
                 UpdatedUtc: ParseTimestamp(reader.GetString(21)))
             {
-                RequestIntervalSeconds = reader.IsDBNull(19) ? null : reader.GetInt32(19)
+                RequestIntervalSeconds = reader.IsDBNull(19) ? null : reader.GetInt32(19),
+                // All null on a source that has never been given its own rule,
+                // which is the common case: it inherits the global one.
+                SharingMode = reader.IsDBNull(22) ? null : reader.GetString(22),
+                SharingForHours = reader.IsDBNull(23) ? null : reader.GetInt32(23),
+                SharingUntilRatio = reader.IsDBNull(24) ? null : reader.GetDouble(24),
+                SharingStuckAction = reader.IsDBNull(25) ? null : reader.GetString(25),
+                SharingStuckAfterDays = reader.IsDBNull(26) ? null : reader.GetInt32(26)
             });
         }
 
@@ -228,7 +236,12 @@ public sealed class SqliteConnectionsRepository(
             CreatedUtc: now,
             UpdatedUtc: now)
         {
-            RequestIntervalSeconds = request.RequestIntervalSeconds
+            RequestIntervalSeconds = request.RequestIntervalSeconds,
+            SharingMode = request.SharingMode,
+            SharingForHours = request.SharingForHours,
+            SharingUntilRatio = request.SharingUntilRatio,
+            SharingStuckAction = request.SharingStuckAction,
+            SharingStuckAfterDays = request.SharingStuckAfterDays
         };
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -240,15 +253,22 @@ public sealed class SqliteConnectionsRepository(
             """
             INSERT INTO indexer_sources (
                 id, name, protocol, privacy, base_url, api_key, priority, categories, tags,
-                media_scope, is_enabled, health_status, last_health_message, request_interval_seconds, created_utc, updated_utc
+                media_scope, is_enabled, health_status, last_health_message, request_interval_seconds, created_utc, updated_utc,
+                sharing_mode, sharing_for_hours, sharing_until_ratio, sharing_stuck_action, sharing_stuck_after_days
             )
             VALUES (
                 @id, @name, @protocol, @privacy, @baseUrl, @apiKey, @priority, @categories, @tags,
-                @mediaScope, @isEnabled, @healthStatus, @lastHealthMessage, @requestIntervalSeconds, @createdUtc, @updatedUtc
+                @mediaScope, @isEnabled, @healthStatus, @lastHealthMessage, @requestIntervalSeconds, @createdUtc, @updatedUtc,
+                @sharingMode, @sharingForHours, @sharingUntilRatio, @sharingStuckAction, @sharingStuckAfterDays
             );
             """;
 
         AddParameter(command, "@id", item.Id);
+        AddParameter(command, "@sharingMode", item.SharingMode);
+        AddParameter(command, "@sharingForHours", item.SharingForHours);
+        AddParameter(command, "@sharingUntilRatio", item.SharingUntilRatio);
+        AddParameter(command, "@sharingStuckAction", item.SharingStuckAction);
+        AddParameter(command, "@sharingStuckAfterDays", item.SharingStuckAfterDays);
         AddParameter(command, "@name", item.Name);
         AddParameter(command, "@protocol", item.Protocol);
         AddParameter(command, "@privacy", item.Privacy);
@@ -304,6 +324,16 @@ public sealed class SqliteConnectionsRepository(
             ? null
             : request.RequestIntervalSeconds ?? existing.RequestIntervalSeconds;
 
+        // Clearing drops the whole override at once rather than field by field:
+        // "this source is no different from the rest" is a single intent, and
+        // half-cleared overrides are exactly the state nobody can reason about.
+        var clearSharing = request.ClearSharingPolicy == true;
+        var newSharingMode        = clearSharing ? null : request.SharingMode ?? existing.SharingMode;
+        var newSharingForHours    = clearSharing ? null : request.SharingForHours ?? existing.SharingForHours;
+        var newSharingUntilRatio  = clearSharing ? null : request.SharingUntilRatio ?? existing.SharingUntilRatio;
+        var newSharingStuckAction = clearSharing ? null : request.SharingStuckAction ?? existing.SharingStuckAction;
+        var newSharingStuckDays   = clearSharing ? null : request.SharingStuckAfterDays ?? existing.SharingStuckAfterDays;
+
         // If enabling a previously-disabled indexer, reset health status so the UI prompts a test
         var newHealth = newEnabled && !existing.IsEnabled ? "untested" : existing.HealthStatus;
         var newMsg    = newEnabled && !existing.IsEnabled ? "Re-enabled — test connection to confirm." : existing.LastHealthMessage;
@@ -323,6 +353,11 @@ public sealed class SqliteConnectionsRepository(
                 tags = @tags,
                 media_scope = @mediaScope,
                 request_interval_seconds = @requestIntervalSeconds,
+                sharing_mode = @sharingMode,
+                sharing_for_hours = @sharingForHours,
+                sharing_until_ratio = @sharingUntilRatio,
+                sharing_stuck_action = @sharingStuckAction,
+                sharing_stuck_after_days = @sharingStuckAfterDays,
                 is_enabled = @isEnabled,
                 health_status = @healthStatus,
                 last_health_message = @lastHealthMessage,
@@ -346,6 +381,11 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@tags", newTags);
         AddParameter(command, "@mediaScope", newScope);
         AddParameter(command, "@requestIntervalSeconds", newRequestInterval);
+        AddParameter(command, "@sharingMode", newSharingMode);
+        AddParameter(command, "@sharingForHours", newSharingForHours);
+        AddParameter(command, "@sharingUntilRatio", newSharingUntilRatio);
+        AddParameter(command, "@sharingStuckAction", newSharingStuckAction);
+        AddParameter(command, "@sharingStuckAfterDays", newSharingStuckDays);
         AddParameter(command, "@isEnabled", newEnabled ? 1 : 0);
         AddParameter(command, "@healthStatus", newHealth);
         AddParameter(command, "@lastHealthMessage", newMsg);
@@ -365,6 +405,11 @@ public sealed class SqliteConnectionsRepository(
             Tags     = newTags,
             MediaScope = newScope,
             RequestIntervalSeconds = newRequestInterval,
+            SharingMode = newSharingMode,
+            SharingForHours = newSharingForHours,
+            SharingUntilRatio = newSharingUntilRatio,
+            SharingStuckAction = newSharingStuckAction,
+            SharingStuckAfterDays = newSharingStuckDays,
             IsEnabled  = newEnabled,
             HealthStatus = newHealth,
             LastHealthMessage = newMsg,
