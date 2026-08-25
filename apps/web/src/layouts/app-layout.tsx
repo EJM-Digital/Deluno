@@ -19,7 +19,7 @@ import { CommandPalette } from "../components/shell/command-palette";
 import { KeyboardHintOverlay } from "../components/shell/keyboard-hint-overlay";
 import { MobileShellNav } from "../components/shell/mobile-shell-nav";
 import { PageTransition } from "../components/shell/motion";
-import { Toaster } from "../components/shell/toaster";
+import { Toaster, toast } from "../components/shell/toaster";
 import { WsStatusBadge } from "../components/shell/ws-status-badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -27,7 +27,7 @@ import { getGlobalShortcuts } from "../lib/command-registry";
 import { attentionTotal, type AttentionSnapshot, useAttention } from "../lib/use-attention";
 import { useAuth, type UserProfile } from "../lib/use-auth";
 import { DENSITY_LABELS, DensityProvider, useDensity, type Density } from "../lib/use-density";
-import { SignalRProvider } from "../lib/use-signalr";
+import { RealtimeGroups, SignalRProvider, useSignalREvent } from "../lib/use-signalr";
 import { cn } from "../lib/utils";
 import { commandPaletteShortcut } from "../lib/platform-shortcuts";
 import { UnsavedChangesProvider } from "../components/shell/unsaved-changes-provider";
@@ -184,6 +184,30 @@ function AppLayoutContent() {
   const { user, logout } = useAuth();
   const { resolvedTheme, setTheme } = useTheme();
   const attention = useAttention();
+
+  /*
+    An import finishing is the end of the workflow the user started, and until
+    now nothing announced it: a download completed, an import succeeded or
+    failed, and the only way to find out was to go and look at Transfers
+    (#264). The server has always published this; it just had no listener.
+
+    Announced app-wide rather than on Transfers, because the point is to reach
+    the user wherever they are — and it refreshes the attention counts so the
+    sidebar agrees with what the toast just said.
+  */
+  useSignalREvent("DispatchImportCompleted", RealtimeGroups.Queue, (event) => {
+    const title = event.releaseName || "A download";
+    if (event.succeeded) {
+      toast.success(`${title} is in your library.`, {
+        action: { label: "Open Transfers", onClick: () => navigate("/queue") }
+      });
+    } else {
+      toast.error(`Import failed for ${title}.${event.failureReason ? ` ${event.failureReason}` : ""}`, {
+        action: { label: "See why", onClick: () => navigate("/queue") }
+      });
+    }
+    void attention.refresh();
+  });
   const [commandOpen, setCommandOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
