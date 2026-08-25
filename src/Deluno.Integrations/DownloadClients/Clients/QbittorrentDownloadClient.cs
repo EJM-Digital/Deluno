@@ -53,7 +53,14 @@ public sealed class QbittorrentDownloadClient : DownloadClientBase
             Math.Clamp(Math.Round((item.Progress ?? 0) * 100, 1), 0, 100), Math.Round((item.DownloadSpeed ?? 0) / 1_000_000d, 1),
             Convert.ToInt32(Math.Clamp(item.Eta ?? 0, 0, int.MaxValue)), item.Size ?? 0, item.Downloaded ?? 0, item.NumSeeds ?? 0,
             "qBittorrent", item.State?.Contains("error", StringComparison.OrdinalIgnoreCase) == true ? item.State : null,
-            DownloadClientHelpers.FromUnix(item.AddedOn), DownloadClientHelpers.ChoosePath(item.ContentPath, item.SavePath))).ToArray();
+            DownloadClientHelpers.FromUnix(item.AddedOn), DownloadClientHelpers.ChoosePath(item.ContentPath, item.SavePath),
+            LibraryId: null,
+            HealthFindings: null,
+            // Both come back on the same torrents/info call, so a sharing rule
+            // costs no extra request. seeding_time is seconds since the torrent
+            // completed; it is 0 while still downloading.
+            Ratio: item.Ratio,
+            SeedingMinutes: item.SeedingTimeSeconds is null ? null : (int)Math.Clamp(item.SeedingTimeSeconds.Value / 60, 0, int.MaxValue))).ToArray();
         return CreateSnapshot(client, queue, capturedUtc, "healthy", $"Connected to qBittorrent at {baseUri.Host}:{baseUri.Port}.");
     }
 
@@ -127,12 +134,16 @@ public sealed class QbittorrentDownloadClient : DownloadClientBase
             "pause" => new[] { "api/v2/torrents/stop", "api/v2/torrents/pause" },
             "resume" => new[] { "api/v2/torrents/start", "api/v2/torrents/resume" },
             "delete" => new[] { "api/v2/torrents/delete" },
+            "delete-with-data" => new[] { "api/v2/torrents/delete" },
             "recheck" => new[] { "api/v2/torrents/recheck" },
             _ => null
         };
         if (endpoints is null) return DownloadClientHelpers.Unsupported(client, queueItemId, action, "qBittorrent");
         var pairs = new List<KeyValuePair<string, string>> { new("hashes", queueItemId) };
-        if (action == "delete") pairs.Add(new("deleteFiles", "false"));
+        if (action is "delete" or "delete-with-data")
+        {
+            pairs.Add(new("deleteFiles", action == "delete-with-data" ? "true" : "false"));
+        }
         HttpResponseMessage? lastResponse = null;
         foreach (var endpoint in endpoints)
         {
@@ -183,5 +194,7 @@ public sealed class QbittorrentDownloadClient : DownloadClientBase
         [property: JsonPropertyName("num_seeds")] int? NumSeeds,
         [property: JsonPropertyName("added_on")] long? AddedOn,
         [property: JsonPropertyName("save_path")] string? SavePath,
-        [property: JsonPropertyName("content_path")] string? ContentPath);
+        [property: JsonPropertyName("content_path")] string? ContentPath,
+        [property: JsonPropertyName("ratio")] double? Ratio = null,
+        [property: JsonPropertyName("seeding_time")] long? SeedingTimeSeconds = null);
 }
