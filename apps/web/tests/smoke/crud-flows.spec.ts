@@ -490,7 +490,7 @@ test.describe("indexer and download client CRUD", () => {
       await expect(drawer.getByLabel("Profile name")).toHaveValue(name);
       await drawer.getByLabel("Profile name").fill(renamed);
       const update = page.waitForRequest((request) => request.method() === "PUT" && new URL(request.url()).pathname === `/api/quality-profiles/${profile.id}`);
-      await drawer.getByRole("button", { name: "Save profile" }).click();
+      await drawer.getByRole("button", { name: "Save quality profile" }).click();
       await update;
       const list = await page.request.get("/api/quality-profiles", { headers: authHeaders() });
       expect(list.ok()).toBe(true);
@@ -555,27 +555,49 @@ test.describe("library editing", () => {
   async function libraries(page: import("@playwright/test").Page) {
     const response = await page.request.get("/api/libraries", { headers: authHeaders() });
     expect(response.ok()).toBe(true);
-    return await response.json() as Array<{ id: string; name: string; rootPath: string; downloadsPath?: string | null }>;
+    return await response.json() as Array<{ id: string; name: string; rootPath: string; downloadsPath?: string | null; missingSearchEnabled: boolean; upgradeSearchEnabled: boolean }>;
   }
 
-  test("persists rename and both managed folders from the library drawer", async ({ page }) => {
+  test("persists the library folder without embedding search settings in the library drawer", async ({ page }) => {
     const { name, library } = await seedLibrary(page);
     const renamed = `${name}-renamed`;
     const movedRoot = path.join(seededRoot, "moved");
-    const downloadsRoot = path.join(seededRoot, "completed");
     mkdirSync(movedRoot, { recursive: true });
-    mkdirSync(downloadsRoot, { recursive: true });
     try {
       await page.goto("/settings/libraries");
       await page.getByText(name, { exact: true }).click();
       await page.getByLabel("Library name").fill(renamed);
       await page.getByLabel("Library folder").fill(movedRoot);
-      await page.getByLabel("Completed downloads folder").fill(downloadsRoot);
+      await expect(page.getByRole("switch", { name: "Find missing media" })).toHaveCount(0);
+      await expect(page.getByRole("switch", { name: "Look for better releases" })).toHaveCount(0);
       await page.getByRole("button", { name: "Save library" }).click();
       await expect(page.getByText(renamed, { exact: true }).first()).toBeVisible();
-      await expect.poll(async () => (await libraries(page)).find((item) => item.id === library.id)).toMatchObject({ name: renamed, rootPath: movedRoot, downloadsPath: downloadsRoot });
+      await expect.poll(async () => (await libraries(page)).find((item) => item.id === library.id)).toMatchObject({ name: renamed, rootPath: movedRoot });
     } finally {
       await page.request.delete(`/api/libraries/${library.id}`, { headers: authHeaders() });
+    }
+  });
+
+  test("closes the library drawer after creating a library", async ({ page }) => {
+    const name = `Smoke-UI-Library-${Date.now()}`;
+    const rootPath = path.join(seededRoot, "ui-created");
+    mkdirSync(rootPath, { recursive: true });
+    let createdId: string | undefined;
+
+    try {
+      await page.goto("/settings/libraries");
+      await page.getByRole("button", { name: "New library", exact: true }).first().click();
+      const drawer = page.getByRole("dialog", { name: "New library" });
+      await drawer.getByLabel("Library name").fill(name);
+      await drawer.getByLabel("Library folder").fill(rootPath);
+      await drawer.getByRole("button", { name: "Create library", exact: true }).click();
+
+      await expect(drawer).toBeHidden();
+      await expect(page.getByText(name, { exact: true }).first()).toBeVisible();
+      createdId = (await libraries(page)).find((item) => item.name === name)?.id;
+      expect(createdId).toBeDefined();
+    } finally {
+      if (createdId) await page.request.delete(`/api/libraries/${createdId}`, { headers: authHeaders() });
     }
   });
 
@@ -597,9 +619,9 @@ test.describe("library editing", () => {
       await page.getByText(name, { exact: true }).click();
       await page.getByLabel("Library name").fill(`${name}-draft`);
       await page.locator('a[href="/settings/general"]').first().evaluate((link: HTMLAnchorElement) => link.click());
-      const dialog = page.getByRole("dialog", { name: "Discard unsaved changes?" });
+      const dialog = page.getByRole("dialog", { name: "Unsaved changes" });
       await expect(dialog).toBeVisible();
-      await dialog.getByRole("button", { name: "Discard", exact: true }).click();
+      await dialog.getByRole("button", { name: "Discard and continue", exact: true }).click();
       await expect(page).toHaveURL(/\/settings\/general$/);
     } finally {
       await page.request.delete(`/api/libraries/${library.id}`, { headers: authHeaders() });

@@ -348,7 +348,7 @@ public sealed class MediaStateRepositoryTests
                         "Bluray-1080p",
                         "Bluray-1080p",
                         QualityCutoffMet: true,
-                        UnmonitorWhenCutoffMet: false,
+                        UnmonitorWhenCutoffMet: true,
                         @"D:\Media\Imported movie (2016)\Imported.movie.2016.1080p.BluRay.x264-GROUP.mkv",
                         1024)
                 ],
@@ -359,6 +359,7 @@ public sealed class MediaStateRepositoryTests
                 (await repository.ListPageAsync(new CatalogueQuery(), CancellationToken.None)).Items);
             Assert.Equal("Imported movie", item.Title);
             Assert.True(item.HasFile);
+            Assert.True(item.Monitored);
             Assert.Equal("H.264", item.VideoCodec);
             Assert.Equal("GROUP", item.ReleaseGroup);
 
@@ -388,7 +389,7 @@ public sealed class MediaStateRepositoryTests
                         "WEB-1080p",
                         "WEB-1080p",
                         QualityCutoffMet: false,
-                        UnmonitorWhenCutoffMet: false,
+                        UnmonitorWhenCutoffMet: true,
                         @"D:\Media\Imported series (2019)\Imported.series.S01E01.1080p.WEB-DL.mkv",
                         2048,
                         [
@@ -402,6 +403,7 @@ public sealed class MediaStateRepositoryTests
             var series = Assert.Single(await repository.ListAsync(CancellationToken.None));
             var detail = await repository.GetInventoryDetailAsync(series.Id, CancellationToken.None);
             Assert.NotNull(detail);
+            Assert.True(series.Monitored);
             Assert.Equal(2, detail.EpisodeCount);
             Assert.Equal(2, detail.ImportedEpisodeCount);
 

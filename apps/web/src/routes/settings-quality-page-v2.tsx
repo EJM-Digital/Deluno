@@ -1,11 +1,11 @@
 /**
- * Size rules — a page-level form on the shared grammar.
+ * Size Rules — a page-level form on the shared grammar.
  *
- *   PageToolbar (Media Plans tabs · Movies / TV)
+ *   PageToolbar (Library Profiles tabs · Movies / TV)
  *   ListCard (one media type at a time, tiers grouped into collapsible
  *             resolution bands on one square-root ruler with a drawn axis)
  *   ListCard (upgrade behaviour)
- *   PageFooter (pinned: status · Discard · Save)
+ *   PageFooter (pinned: status · Save)
  *
  * Contracts: GET/PUT /api/quality-model.
  */
@@ -27,7 +27,7 @@ import { fetchJson, type QualityModelSnapshot, type QualityTierDefinition } from
 import { cn } from "../lib/utils";
 import type { DrawerSaveState } from "../components/ui/drawer";
 
-const TABS = configurationNavAreas.find((area) => area.label === "Media plans")?.items ?? [];
+const TABS = configurationNavAreas.find((area) => area.label === "Quality Profiles")?.items ?? [];
 
 interface LoaderData {
   qualityModel: QualityModelSnapshot;
@@ -48,17 +48,11 @@ export function SettingsQualityPage() {
   const [scope, setScope] = useState<"movie" | "episode">("movie");
   const dirty = useMemo(() => JSON.stringify(model) !== JSON.stringify(saved), [model, saved]);
   const state: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
-  const blocker = useUnsavedChanges(dirty);
+  useUnsavedChanges(dirty);
 
   useEffect(() => {
     if (dirty && (saveState === "saved" || saveState === "error")) setSaveState(undefined);
   }, [dirty, saveState]);
-
-  // The blocker has no confirm dialog here: a page form discards nothing on its
-  // own, so leaving is only confirmed through the browser prompt for reloads.
-  useEffect(() => {
-    if (blocker.state === "blocked" && !dirty) blocker.proceed();
-  }, [blocker, dirty]);
 
   function updateTier(index: number, key: keyof QualityTierDefinition, value: number) {
     setModel((current) => ({
@@ -91,6 +85,7 @@ export function SettingsQualityPage() {
     <form onSubmit={handleSubmit} className="flex flex-col gap-[var(--page-gap)]" noValidate>
       <PageToolbar
         tabs={TABS}
+        accent="blue"
         actions={
           <SegmentedControl<"movie" | "episode">
             aria-label="Show sizes for"
@@ -112,14 +107,8 @@ export function SettingsQualityPage() {
         <SizeCard scope="episode" unit="MB" tiers={model.tiers} minKey="episodeMinMb" maxKey="episodeMaxMb" step={100} onChange={updateTier} />
       )}
 
-      <ListCard title="Upgrade behaviour" count="What happens after a file is already in the library">
+      <ListCard title="Same-quality upgrades" count="How Deluno chooses between equally ranked releases">
         <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
-          <SwitchRow
-            label="Stop at the profile cutoff"
-            description="Stop upgrading once the current file has reached the quality profile's target tier."
-            checked={model.upgradeStop.stopWhenCutoffMet}
-            onCheckedChange={(checked) => setModel((current) => ({ ...current, upgradeStop: { ...current.upgradeStop, stopWhenCutoffMet: checked } }))}
-          />
           <SwitchRow
             label="Require a score improvement at the same quality"
             description="Only replace an equally ranked release when its release score is better."
@@ -129,7 +118,7 @@ export function SettingsQualityPage() {
         </div>
       </ListCard>
 
-      <PageFooter state={state} message={message} saveLabel="Save size rules" onDiscard={() => setModel(saved)} />
+      <PageFooter state={state} message={message} saveLabel="Save size rules" />
     </form>
   );
 }

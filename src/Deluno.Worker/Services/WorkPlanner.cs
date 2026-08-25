@@ -289,6 +289,11 @@ public sealed class WorkPlanner(
             return;
         }
 
+        var routeCategoriesByLibrary = await LoadRouteCategoriesAsync(
+            libraries,
+            librariesRepository,
+            cancellationToken);
+
         var maintenancePlanningBatchSize = configuration.GetValue("Deluno:Worker:MaintenancePlanningBatchSize", 600);
         var existingJobs = await jobQueueRepository.ListAsync(maintenancePlanningBatchSize, cancellationToken);
         var knownImportSources = existingJobs
@@ -344,13 +349,22 @@ public sealed class WorkPlanner(
                 continue;
             }
 
+            // A download client can report completion just before the final
+            // copy or rename has released the file. Keep the item visible to
+            // telemetry, but do not create a hand-off or import job until the
+            // path is stable and readable.
+            if (File.Exists(item.SourcePath) && !ProcessorOutputReadiness.IsReady(item.SourcePath))
+            {
+                continue;
+            }
+
             var sourceKey = NormalizeSourceKey(item.SourcePath);
             if (knownImportSources.Contains(sourceKey))
             {
                 continue;
             }
 
-            var library = ResolveLibraryForQueueItem(item, libraries);
+            var library = ResolveLibraryForQueueItem(item, libraries, routeCategoriesByLibrary);
             if (library is null)
             {
                 continue;
@@ -518,6 +532,7 @@ public sealed class WorkPlanner(
                 files = Directory
                     .EnumerateFiles(library.ProcessorOutputPath!, "*.*", SearchOption.TopDirectoryOnly)
                     .Where(IsImportableVideoFile)
+                    .Where(ProcessorOutputReadiness.IsReady)
                     .OrderByDescending(File.GetLastWriteTimeUtc)
                     .Take(10)
                     .ToArray();
@@ -623,6 +638,7 @@ public sealed class WorkPlanner(
 
             var candidates = FindCorrelatedProcessorOutputs(library.ProcessorOutputPath!, handoff.SourcePath)
                 .Where(path => !knownImportSources.Contains(NormalizeSourceKey(path)))
+                .Where(ProcessorOutputReadiness.IsReady)
                 .ToArray();
             if (candidates.Length != 1)
             {
@@ -728,6 +744,7 @@ public sealed class WorkPlanner(
 
                 matches.AddRange(Directory.EnumerateFiles(expectedDirectory, "*.*", SearchOption.AllDirectories)
                     .Where(IsImportableVideoFile)
+                    .Where(ProcessorOutputReadiness.IsReady)
                     .OrderByDescending(File.GetLastWriteTimeUtc)
                     .Take(2));
             }
@@ -845,7 +862,10 @@ public sealed class WorkPlanner(
         }
     }
 
-    private static LibraryItem? ResolveLibraryForQueueItem(DownloadQueueItem item, IReadOnlyList<LibraryItem> libraries)
+    private static LibraryItem? ResolveLibraryForQueueItem(
+        DownloadQueueItem item,
+        IReadOnlyList<LibraryItem> libraries,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> routeCategoriesByLibrary)
     {
         if (!string.IsNullOrWhiteSpace(item.LibraryId))
         {
@@ -854,6 +874,33 @@ public sealed class WorkPlanner(
             if (assignedLibrary is not null)
             {
                 return assignedLibrary;
+            }
+        }
+
+        var category = item.Category?.Trim();
+        if (!string.IsNullOrWhiteSpace(category))
+        {
+            var categoryLibraries = libraries
+                .Where(library => routeCategoriesByLibrary.TryGetValue(library.Id, out var categories) &&
+                    categories.TryGetValue(item.ClientId, out var routeCategory) &&
+                    string.Equals(routeCategory, category, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+
+            if (categoryLibraries.Length > 0)
+            {
+                if (!string.IsNullOrWhiteSpace(item.SourcePath))
+                {
+                    var categorySource = NormalizeSourceKey(item.SourcePath);
+                    var categoryPathMatch = categoryLibraries.FirstOrDefault(library =>
+                        !string.IsNullOrWhiteSpace(library.DownloadsPath) &&
+                        categorySource.StartsWith(NormalizeSourceKey(library.DownloadsPath), StringComparison.OrdinalIgnoreCase));
+                    if (categoryPathMatch is not null)
+                    {
+                        return categoryPathMatch;
+                    }
+                }
+
+                return categoryLibraries[0];
             }
         }
 
@@ -878,6 +925,23 @@ public sealed class WorkPlanner(
         }
 
         return mediaLibraries.FirstOrDefault();
+    }
+
+    private static async Task<IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>> LoadRouteCategoriesAsync(
+        IReadOnlyList<LibraryItem> libraries,
+        ILibrariesRepository librariesRepository,
+        CancellationToken cancellationToken)
+    {
+        var routeCategoriesByLibrary = new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var library in libraries)
+        {
+            var routing = await librariesRepository.GetLibraryRoutingAsync(library.Id, cancellationToken);
+            routeCategoriesByLibrary[library.Id] = (routing?.DownloadClients ?? [])
+                .Where(link => !string.IsNullOrWhiteSpace(link.Category))
+                .ToDictionary(link => link.DownloadClientId, link => link.Category!.Trim(), StringComparer.OrdinalIgnoreCase);
+        }
+
+        return routeCategoriesByLibrary;
     }
 
     private static string? TryReadImportSourcePath(string? payloadJson)

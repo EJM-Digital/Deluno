@@ -247,8 +247,8 @@ function Start-OrReuseFrontend {
 
 $loadedSecretNames = Import-DeploymentSecrets $secretsPath
 $backend = Start-OrReuseBackend
+$readyHealth = Wait-ForUrl "$BackendUrl/api/health/ready" $TimeoutSeconds
 $frontend = Start-OrReuseFrontend
-$readyHealth = Test-Url "$BackendUrl/api/health/ready"
 
 $status = [ordered]@{
     generatedAtUtc = (Get-Date).ToUniversalTime().ToString("O")
@@ -265,7 +265,8 @@ $status = [ordered]@{
         readinessUrl = "$BackendUrl/api/health/ready"
         startedByScript = $backend.Started
         processId = $backend.ProcessId
-        ready = $backend.Health.Ready
+        live = $backend.Health.Ready
+        ready = $readyHealth.Ready
         statusCode = $backend.Health.StatusCode
         error = $backend.Health.Error
         readinessStatusCode = $readyHealth.StatusCode
@@ -288,7 +289,7 @@ $status = [ordered]@{
 $status | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $statusPath -Encoding UTF8
 
 Write-Host "Deluno local app status written to $statusPath"
-Write-Host "Backend:  $BackendUrl (pid: $($status.backend.processId), ready: $($status.backend.ready))"
+Write-Host "Backend:  $BackendUrl (pid: $($status.backend.processId), live: $($status.backend.live), ready: $($status.backend.ready))"
 Write-Host "Frontend: $FrontendUrl (pid: $($status.frontend.processId), ready: $($status.frontend.ready))"
 if ($loadedSecretNames.Count -gt 0) {
     Write-Host "Deployment credentials loaded for backend: $($loadedSecretNames -join ', ')"
@@ -297,6 +298,6 @@ if ($loadedSecretNames.Count -gt 0) {
 }
 Write-Host "Logs:     $logRoot"
 
-if (-not $backend.Health.Ready -or -not $frontend.Health.Ready) {
+if (-not $backend.Health.Ready -or -not $readyHealth.Ready -or -not $frontend.Health.Ready) {
     exit 1
 }

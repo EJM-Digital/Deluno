@@ -7,6 +7,7 @@ type LibrarySelectAllToggleProps = {
   selectedCount: number;
   allVisibleSelected: boolean;
   onToggle: () => void;
+  view: "grid" | "list";
 };
 
 export function LibrarySelectAllToggle({
@@ -16,13 +17,14 @@ export function LibrarySelectAllToggle({
   selectedCount,
   allVisibleSelected,
   onToggle,
+  view,
 }: LibrarySelectAllToggleProps) {
-  if (totalCount <= loadedCount) return null;
+  if (loadedCount === 0 || (view === "list" && totalCount <= loadedCount)) return null;
 
   return (
     <div className="flex items-center justify-between gap-3">
       <p className="text-[length:var(--library-toolbar-size)] font-medium text-muted-foreground">
-        Showing <span className="font-bold tabular text-foreground">{filteredCount}</span> loaded of {totalCount.toLocaleString()}
+        {totalCount > loadedCount ? <>Showing <span className="font-bold tabular text-foreground">{filteredCount}</span> loaded of {totalCount.toLocaleString()}</> : <><span className="font-bold tabular text-foreground">{filteredCount}</span> titles shown</>}
       </p>
       <button
         type="button"
@@ -48,7 +50,7 @@ export function LibrarySelectAllToggle({
             </svg>
           ) : selectedCount > 0 ? <span className="h-0.5 w-2 rounded-full bg-primary" /> : null}
         </span>
-        {selectedCount > 0 ? `${selectedCount} selected` : "Select all"}
+        {selectedCount > 0 ? `${selectedCount} selected` : "Select all on this page"}
       </button>
     </div>
   );

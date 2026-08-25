@@ -7,45 +7,45 @@ import { Badge } from "../components/ui/badge";
 const workflowSections = [
   {
     icon: Sparkles,
-    title: "Beginner setup",
+    title: "Beginner Setup",
     badge: "Start here",
     body:
       "Create the first user, run guided setup, choose roots, pick a simple quality target, connect providers if you have them, then add the first title. Advanced controls stay available after the baseline works."
   },
   {
     icon: Route,
-    title: "Routing and tags",
+    title: "Routing and Tags",
     badge: "Better than extra instances",
     body:
-      "Deluno separates Movies and TV by media type, library, category, destination rule, and dispatch metadata. Tags are optional policy labels for anime, kids, 4K, foreign-language media, processor workflows, or special root folders."
+      "Deluno separates Movies and TV by media type, library, category, destination rule, and dispatch metadata. Tags are optional policy labels for kids, 4K, foreign-language media, processor workflows, or special root folders."
   },
   {
     icon: DownloadCloud,
-    title: "External download clients",
+    title: "External Download Clients",
     badge: "Recommended",
     body:
       "Use qBittorrent, SABnzbd, NZBGet, Deluge, Transmission, or uTorrent-style Web UI clients for transfer work. Deluno normalizes queue, history, progress, speed, ETA, errors, and import readiness."
   },
   {
     icon: Brain,
-    title: "Release scoring",
+    title: "Release Scoring",
     badge: "Safety first",
     body:
       "Search decisions should explain quality delta, cutoff, custom formats, release group, estimated bitrate, size sanity, seeders, indexer health, language expectations, and never-grab rules. Force override is available but audited."
   },
   {
     icon: WandSparkles,
-    title: "Refine before import",
+    title: "Refine Before Import",
     badge: "Processor workflow",
     body:
-      "A library can wait for an external refiner or another processor to clean audio/subtitles before Deluno imports, hardlinks or moves, renames, refreshes metadata, and records recovery actions if processing stalls."
+      "A library can wait for an external refiner or another processor to clean audio/subtitles before Deluno imports, creates single-copy links (hardlinks) or moves, renames, refreshes metadata, and records recovery actions if processing stalls."
   },
   {
     icon: FolderTree,
-    title: "Import hygiene",
+    title: "Import Hygiene",
     badge: "Clean library",
     body:
-      "Imports should preview destination, validate with ffprobe when available, avoid duplicates, preserve hardlinks where requested, and keep Movies and TV in their correct folders without user guesswork."
+      "Imports should preview destination, validate with ffprobe when available, avoid duplicates, preserve single-copy links where requested, and keep Movies and TV in their correct folders without user guesswork."
   },
   {
     icon: ShieldCheck,
@@ -56,7 +56,7 @@ const workflowSections = [
   },
   {
     icon: KeyRound,
-    title: "API access",
+    title: "API Access",
     badge: "Integrations",
     body:
       "Generate keys in System -> API. External apps should read the manifest first, then health, queue, activity, import preview, and processor-event endpoints depending on their role."
@@ -70,14 +70,14 @@ const lifecycle = [
   "Approved release is sent to the chosen external download client with category context.",
   "Queue telemetry tracks progress, speed, ETA, and failure state in one normalized model.",
   "Completed download is imported directly or held for processor output, depending on library workflow.",
-  "Deluno validates, moves or hardlinks, renames, refreshes metadata, and records an audit trail."
+  "Deluno validates, moves or creates single-copy links (hardlinks), renames, refreshes metadata, and records an audit trail."
 ];
 
 export function SystemDocsPage() {
   return (
     <div className="space-y-[var(--page-gap)]">
       <ListCard title={<span className="flex items-center gap-2"><BookOpenText className="h-5 w-5 text-primary" />
-            Deluno operating model</span>} count={<>This is the plain-English guide for how Deluno should work once a user has moved past first setup.</>}>
+            Deluno Operating Model</span>} count={<>This is the plain-English guide for how Deluno should work once a user has moved past first setup.</>}>
         <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)] md:grid-cols-2 xl:grid-cols-4">
           {workflowSections.map((section) => {
             const Icon = section.icon;
@@ -113,7 +113,7 @@ export function SystemDocsPage() {
         </ListTable>
       </ListCard>
 
-      <ListCard title={<span className="flex items-center gap-2">Media lifecycle</span>} count={<>Every major screen and automation should support this sequence without making the user guess.</>}>
+      <ListCard title={<span className="flex items-center gap-2">Media Lifecycle</span>} count={<>Every major screen and automation should support this sequence without making the user guess.</>}>
         <div className="p-[var(--card-pad-x)]">
           <div className="grid gap-3 lg:grid-cols-7">
             {lifecycle.map((item, index) => (

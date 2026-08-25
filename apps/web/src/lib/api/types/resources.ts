@@ -17,6 +17,8 @@ export interface LibraryItem {
   processorOutputPath: string | null;
   processorTimeoutMinutes: number;
   processorFailureMode: "block" | "import-original" | "manual-review" | string;
+  cleanupMode?: "keep-source" | "remove-source-after-import" | string;
+  removeEmptySourceFolders?: boolean;
   autoSearchEnabled: boolean;
   missingSearchEnabled: boolean;
   upgradeSearchEnabled: boolean;
@@ -53,6 +55,7 @@ export interface LibraryDownloadClientLinkItem {
   downloadClientId: string;
   downloadClientName: string;
   priority: number;
+  category?: string | null;
   createdUtc: string;
   updatedUtc: string;
 }
@@ -341,6 +344,50 @@ export interface DownloadClientItem {
   updatedUtc: string;
 }
 
+export interface ExistingLibraryCandidate {
+  sourcePath: string;
+  relativePath: string;
+  title: string;
+  year: number | null;
+  detectedQuality: string | null;
+  fileSizeBytes: number | null;
+  isDirectory: boolean;
+  canImport: boolean;
+  issueKind: string | null;
+  issueDetail: string | null;
+}
+
+export interface ExistingLibraryPreviewPage {
+  libraryId: string;
+  libraryName: string;
+  mediaType: string;
+  rootPath: string;
+  items: ExistingLibraryCandidate[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
+export interface ExistingLibraryImportResult {
+  requestedCount: number;
+  importedCount: number;
+  skippedCount: number;
+  issues: Array<{
+    sourcePath: string;
+    kind: string;
+    detail: string;
+  }>;
+}
+
+export interface DownloadClientCategoryCheckResult {
+  clientId: string;
+  clientName: string;
+  category: string;
+  status: "ready" | "missing" | "unsupported" | "unreachable" | "configuration" | string;
+  message: string;
+  supported: boolean;
+  found: boolean;
+}
+
 export interface DownloadTelemetrySummary {
   activeCount: number;
   queuedCount: number;
@@ -371,6 +418,7 @@ export interface DownloadQueueItem {
   errorMessage: string | null;
   addedUtc: string;
   sourcePath: string | null;
+  libraryId: string | null;
   healthFindings: DownloadHealthFinding[] | null;
 }
 

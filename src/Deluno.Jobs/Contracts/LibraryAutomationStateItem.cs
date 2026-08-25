@@ -12,4 +12,6 @@ public sealed record LibraryAutomationStateItem(
     DateTimeOffset? NextSearchUtc,
     string? LastJobId,
     string? LastError,
-    DateTimeOffset UpdatedUtc);
+    DateTimeOffset UpdatedUtc,
+    DateTimeOffset? NextMissingSearchUtc = null,
+    DateTimeOffset? NextUpgradeSearchUtc = null);

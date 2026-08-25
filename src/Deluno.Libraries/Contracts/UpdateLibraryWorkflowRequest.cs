@@ -5,4 +5,6 @@ public sealed record UpdateLibraryWorkflowRequest(
     string? ProcessorName,
     string? ProcessorOutputPath,
     int? ProcessorTimeoutMinutes,
-    string? ProcessorFailureMode);
+    string? ProcessorFailureMode,
+    string? CleanupMode = null,
+    bool? RemoveEmptySourceFolders = null);

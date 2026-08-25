@@ -76,7 +76,7 @@ export function RemoveMediaDialog({
               label="Prevent automatic re-add"
               description={
                 importListCount > 0
-                  ? `Keep this ${mediaLabel} out of the ${importListCount === 1 ? "import list" : `${importListCount} import lists`} that added it. You can restore it later from Import lists.`
+                  ? `Keep this ${mediaLabel} out of the ${importListCount === 1 ? "import list" : `${importListCount} import lists`} that added it. You can restore it later from Import Lists.`
                   : `This ${mediaLabel} was not added by an import list, so there is nothing to exclude.`
               }
               onCheckedChange={setAddImportListExclusion}

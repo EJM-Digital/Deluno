@@ -4,6 +4,7 @@ public sealed record LibraryViewItem(
     string Id,
     string UserId,
     string Variant,
+    string? LibraryId,
     string Name,
     string QuickFilter,
     string SortField,

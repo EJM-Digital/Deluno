@@ -18,28 +18,31 @@
  * …/handoffs/{id}/retry, /api/filesystem/import/{preview,jobs,execute}.
  */
 import { useMemo, useRef, useState } from "react";
-import { useLoaderData, useRevalidator } from "react-router-dom";
+import { Link, useLoaderData, useRevalidator } from "react-router-dom";
 import { Loader2, Pause, Play, RefreshCw, RotateCw, Trash2, Upload } from "lucide-react";
 import {
   ApiRequestError,
   fetchJson, fetchPageItems,
   type DownloadCleanupPreview,
+  type DownloadDispatchDetail,
   type DownloadHealthRecord,
   type DownloadDispatchItem,
   type DownloadQueueItem,
   type DownloadTelemetryOverview,
+  type ActivityEventItem,
   type ImportJobResponse,
   type ImportPreviewRequest,
   type ImportPreviewResponse,
   type JobQueueItem,
-  type MovieImportRecoveryCase,
+  type LibraryItem,
   type MovieImportRecoverySummary,
   type PlatformSettingsSnapshot,
+  type ProcessorConnectionItem,
   type ProcessorHandoffItem,
-  type SeriesImportRecoveryCase,
   type SeriesImportRecoverySummary
 } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
+import { resolveImportSourcePath } from "../lib/import-source";
 import { JOB_STATUS, isJobActive } from "../lib/job-status-constants";
 import { downloadQueueStatuses, isImportReadyStatus, isProcessingStatus, queueStatusLabel } from "../lib/download-telemetry";
 import { Button } from "../components/ui/button";
@@ -75,29 +78,38 @@ interface QueueLoaderData {
   dispatches: DownloadDispatchItem[];
   movieRecovery: MovieImportRecoverySummary;
   seriesRecovery: SeriesImportRecoverySummary;
+  libraries: LibraryItem[];
   settings: PlatformSettingsSnapshot;
   jobs: JobQueueItem[];
   healthRecords: DownloadHealthRecord[];
+  processorConnections: ProcessorConnectionItem[];
   processorHandoffs: ProcessorHandoffItem[];
+  activityEvents: ActivityEventItem[];
 }
 
 export async function queueLoader(): Promise<QueueLoaderData> {
-  const [telemetry, dispatches, movieRecovery, seriesRecovery, settings, jobs, healthRecords, processorHandoffs] = await Promise.all([
+  const [telemetry, dispatches, movieRecovery, seriesRecovery, libraries, settings, jobs, healthRecords, processorConnections, processorHandoffs, activityEvents] = await Promise.all([
     fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry"),
     fetchPageItems<DownloadDispatchItem>("/api/download-dispatches?pageSize=60"),
     fetchJson<MovieImportRecoverySummary>("/api/movies/import-recovery"),
     fetchJson<SeriesImportRecoverySummary>("/api/series/import-recovery"),
+    fetchJson<LibraryItem[]>("/api/libraries"),
     fetchJson<PlatformSettingsSnapshot>("/api/settings"),
     fetchPageItems<JobQueueItem>("/api/jobs?pageSize=80"),
     fetchPageItems<DownloadHealthRecord>("/api/download-health?pageSize=30"),
+    fetchJson<ProcessorConnectionItem[]>("/api/integrations/processors/connections").catch((error) => {
+      if (error instanceof ApiRequestError && error.status === 404) return [];
+      throw error;
+    }),
     fetchJson<ProcessorHandoffItem[]>("/api/integrations/processors/handoffs?take=30").catch((error) => {
       // Permit a newly deployed web build to remain usable during a rolling upgrade
       // while an older local API is still running. Other failures remain visible.
       if (error instanceof ApiRequestError && error.status === 404) return [];
       throw error;
-    })
+    }),
+    fetchPageItems<ActivityEventItem>("/api/activity?pageSize=80&relatedEntityType=download_dispatch")
   ]);
-  return { telemetry, dispatches, movieRecovery, seriesRecovery, settings, jobs, healthRecords, processorHandoffs };
+  return { telemetry, dispatches, movieRecovery, seriesRecovery, libraries, settings, jobs, healthRecords, processorConnections, processorHandoffs, activityEvents };
 }
 
 /** One row shape for every kind of thing that has already happened. */
@@ -113,10 +125,10 @@ interface ActivityEntry {
   whenUtc: string;
 }
 
-type DrawerMode = { kind: "queue"; id: string } | { kind: "manual" } | { kind: "activity"; id: string } | null;
+type DrawerMode = { kind: "queue"; id: string } | { kind: "manual" } | { kind: "activity"; id: string } | { kind: "dispatch"; id: string } | null;
 
 export function QueuePage() {
-  const { telemetry, dispatches, movieRecovery, seriesRecovery, settings, jobs, healthRecords, processorHandoffs } =
+  const { telemetry, dispatches, movieRecovery, seriesRecovery, libraries, settings, jobs, healthRecords, processorConnections, processorHandoffs, activityEvents } =
     useLoaderData() as QueueLoaderData;
   const revalidator = useRevalidator();
   const lastDispatchRefresh = useRef(0);
@@ -138,6 +150,7 @@ export function QueuePage() {
 
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [drawer, setDrawer] = useState<DrawerMode>(null);
+  const [dispatchDetails, setDispatchDetails] = useState<Record<string, DownloadDispatchDetail>>({});
   const [importPreviews, setImportPreviews] = useState<Record<string, ImportPreviewResponse>>({});
   const [cleanupPreviews, setCleanupPreviews] = useState<Record<string, DownloadCleanupPreview>>({});
   const [pendingRemoval, setPendingRemoval] = useState<DownloadQueueItem | null>(null);
@@ -171,6 +184,10 @@ export function QueuePage() {
   );
   const failedImportJobs = importJobs.filter((job) => job.status === JOB_STATUS.FAILED);
   const activeImportJobs = importJobs.filter((job) => isJobActive(job.status as never)).length;
+  const activeProcessorHandoffs = processorHandoffs.filter((handoff) => !isProcessorTerminal(handoff.status));
+  const failedProcessorHandoffs = processorHandoffs.filter((handoff) => isProcessorFailure(handoff.status) || Boolean(handoff.failureMessage));
+  const failedDispatches = dispatches.filter(isDispatchFailure);
+  const blockedQueueItems = queue.filter((item) => item.healthFindings?.some((finding) => finding.candidateBlocked));
   const healthyClients = telemetry.clients.filter((client) => isHealthyClient(client.healthStatus)).length;
   const recoveryCases = useMemo(
     () => [
@@ -180,15 +197,17 @@ export function QueuePage() {
     [movieRecovery.recentCases, seriesRecovery.recentCases]
   );
   const openRecovery = movieRecovery.openCount + seriesRecovery.openCount;
-  const needsAction = openRecovery + queueAttention.length + failedImportJobs.length;
+  const needsAction = openRecovery + queueAttention.length + failedImportJobs.length + failedProcessorHandoffs.length + failedDispatches.length;
 
   const activity = useMemo(
-    () => buildActivity({ importJobs, processorHandoffs, dispatches, telemetry, healthRecords }),
-    [importJobs, processorHandoffs, dispatches, telemetry, healthRecords]
+    () => buildActivity({ importJobs, processorHandoffs, dispatches, telemetry, healthRecords, activityEvents }),
+    [importJobs, processorHandoffs, dispatches, telemetry, healthRecords, activityEvents]
   );
   const visibleActivity = activityKind === "all" ? activity : activity.filter((entry) => entry.kind === activityKind);
   const openQueueItem = drawer?.kind === "queue" ? queue.find((item) => item.id === drawer.id) ?? null : null;
   const openActivity = drawer?.kind === "activity" ? activity.find((entry) => entry.id === drawer.id) ?? null : null;
+  const openDispatchSummary = drawer?.kind === "dispatch" ? dispatches.find((item) => item.id === drawer.id) ?? null : null;
+  const openDispatchDetail = drawer?.kind === "dispatch" ? dispatchDetails[drawer.id] ?? null : null;
 
   /* ------------------------------------------------------------- actions */
   async function run(key: string, action: () => Promise<unknown>, success?: string) {
@@ -201,6 +220,20 @@ export function QueuePage() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "That action could not be completed.");
       return false;
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function showDispatch(dispatch: DownloadDispatchItem) {
+    setDrawer({ kind: "dispatch", id: dispatch.id });
+    if (dispatchDetails[dispatch.id]) return;
+    setBusyKey(`dispatch:${dispatch.id}`);
+    try {
+      const detail = await fetchJson<DownloadDispatchDetail>(`/api/v1/download-dispatches/${encodeURIComponent(dispatch.id)}`);
+      setDispatchDetails((current) => ({ ...current, [dispatch.id]: detail }));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "The transfer details could not be loaded.");
     } finally {
       setBusyKey(null);
     }
@@ -223,10 +256,12 @@ export function QueuePage() {
 
   async function previewImport(item: DownloadQueueItem) {
     await run(`preview:${item.id}`, async () => {
+      const sourcePath = resolveImportSourcePath(item, libraries);
+      if (!sourcePath) throw new Error("The download client has not reported a completed file location, and this library has no folder override.");
       const preview = await fetchJson<ImportPreviewResponse>("/api/filesystem/import/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(buildImportRequest(item, settings.downloadsPath))
+        body: JSON.stringify(buildImportRequest(item, libraries))
       });
       setImportPreviews((current) => ({ ...current, [item.id]: preview }));
     });
@@ -236,11 +271,13 @@ export function QueuePage() {
     await run(
       `import:${item.id}`,
       async () => {
+        const sourcePath = resolveImportSourcePath(item, libraries);
+        if (!sourcePath) throw new Error("The download client has not reported a completed file location, and this library has no folder override.");
         const result = await fetchJson<ImportJobResponse>("/api/filesystem/import/jobs", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            preview: buildImportRequest(item, settings.downloadsPath),
+            preview: buildImportRequest(item, libraries),
             transferMode: "auto",
             overwrite: false,
             allowCopyFallback: true,
@@ -365,6 +402,7 @@ export function QueuePage() {
   return (
     <div className="flex flex-col gap-[var(--page-gap)]">
       <PageToolbar
+        accent="orange"
         actions={
           <>
             <Button type="button" variant="outline" onClick={() => revalidator.revalidate()} disabled={revalidator.state !== "idle"}>
@@ -381,29 +419,31 @@ export function QueuePage() {
 
       <SummaryStrip
         cells={[
-          { label: "Downloading", value: String(telemetry.summary.activeCount), help: processing.length ? `${processing.length} being processed` : "in your clients" },
-          { label: "Speed", value: telemetry.summary.totalSpeedMbps.toFixed(1), help: "MB/s combined" },
+          { label: "Downloading", value: String(telemetry.summary.activeCount), help: `${telemetry.summary.totalSpeedMbps.toFixed(1)} MB/s combined` },
+          { label: "Processing", value: String(processing.length + activeProcessorHandoffs.length), help: activeProcessorHandoffs.length ? `${activeProcessorHandoffs.length} with the processor` : processorConnections.length ? `${processorConnections.length} connector${processorConnections.length === 1 ? "" : "s"} configured` : "no processor connected" },
+          { label: "Importing", value: String(activeImportJobs), help: activeImportJobs ? "writing into your library" : "nothing being written" },
           { label: "Ready to import", value: String(importReady.length), help: importReady.length ? "waiting on you" : "nothing waiting", tone: importReady.length ? "success" : undefined },
-          { label: "Needs action", value: String(needsAction), help: needsAction ? "see below" : "all clear", tone: needsAction ? "warning" : undefined },
+          { label: "Needs action", value: String(needsAction), help: blockedQueueItems.length ? `${blockedQueueItems.length} release${blockedQueueItems.length === 1 ? "" : "s"} blocked` : needsAction ? "see below" : "all clear", tone: needsAction ? "warning" : undefined },
           { label: "Clients", value: `${healthyClients}/${telemetry.clients.length}`, help: healthyClients === telemetry.clients.length ? "all responding" : "one is not responding", tone: healthyClients < telemetry.clients.length ? "danger" : undefined }
         ]}
       />
 
       <ListCard
-        title="Downloads"
+        title="Media pipeline"
         count={queue.length ? `${queue.length} in flight · ${activeImportJobs} importing` : undefined}
       >
         {queue.length === 0 ? (
           <ListEmpty
-            title="Nothing downloading"
-            description="Releases Deluno sends to a download client show up here with progress, speed and import status. You only need to step in when one needs attention."
+            title="Nothing in motion"
+            description="Media appears here from the moment Deluno sends it to a download client through processing, naming, and import."
           />
         ) : (
           <ListTable
             columns={[
-              { label: "Release" },
+              { label: "Media" },
+              { label: "Stage", width: "minmax(0,1.25fr)" },
               { label: "Progress", width: "minmax(0,1.2fr)" },
-              { label: "Speed / left" },
+              { label: "Speed / left", mobile: true },
               { label: "Client" },
               { label: "Status", width: LIST_TRACK.status, mobile: true }
             ]}
@@ -413,6 +453,7 @@ export function QueuePage() {
               return (
                 <ListRow key={`${item.clientId}:${item.id}`} onClick={() => setDrawer({ kind: "queue", id: item.id })} selected={openQueueItem?.id === item.id}>
                   <ListNameCell name={item.title || item.releaseName} sub={item.mediaType === "tv" ? "TV" : "Movies"} />
+                  <ListCell primary={pipelineStage(item)} secondary={pipelineDetail(item)} />
                   <ListCell>
                     <ProgressBar value={item.progress} />
                     <span className="mt-1 block truncate text-[length:var(--type-caption)] tabular-nums text-muted-foreground">
@@ -434,6 +475,59 @@ export function QueuePage() {
           </ListTable>
         )}
       </ListCard>
+
+      {processorHandoffs.length || processorConnections.length ? (
+        <ListCard
+          title="Processing connector"
+          count={activeProcessorHandoffs.length ? `${activeProcessorHandoffs.length} active · ${processorConnections.length} configured` : `${processorConnections.length} configured · latest ${processorHandoffs.length}`}
+        >
+          {processorConnections.length ? (
+            <div className="flex flex-wrap gap-2 border-b border-hairline px-[var(--card-pad-x)] py-3">
+              {processorConnections.map((connection) => (
+                <Chip key={connection.id} tone={processorConnectionTone(connection)}>
+                  {connection.name} · {processorConnectionStatus(connection)}
+                </Chip>
+              ))}
+            </div>
+          ) : null}
+          {processorHandoffs.length ? (
+            <ListTable columns={[{ label: "Media" }, { label: "Connector" }, { label: "Stage" }, { label: "Source / output", width: "minmax(0,1.8fr)" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]}>
+              {processorHandoffs.map((handoff) => (
+                <ListRow key={handoff.id} onClick={() => setDrawer({ kind: "activity", id: `processor:${handoff.id}` })} selected={openActivity?.id === `processor:${handoff.id}`}>
+                  <ListNameCell name={handoff.releaseName} sub={handoff.mediaType === "tv" ? "TV" : "Movies"} />
+                  <ListCell primary={handoff.processorName ?? "Configured processor"} secondary={handoff.outputPath ? "Output received" : "Waiting for output"} />
+                  <ListCell primary={processorStageLabel(handoff.status)} secondary={handoff.failureMessage ?? undefined} />
+                  <ListCell primary={handoff.outputPath ?? handoff.sourcePath} secondary={handoff.outputPath ? `From ${handoff.sourcePath}` : "Source hand-off"} />
+                  <ListCell mobile><Chip tone={processorTone(handoff)}>{processorStatusLabel(handoff.status)}</Chip></ListCell>
+                </ListRow>
+              ))}
+            </ListTable>
+          ) : (
+            <ListEmpty title="No media is being processed" description="The connector is configured. When Deluno hands media to it, its status and returned output will appear here." />
+          )}
+        </ListCard>
+      ) : null}
+
+      {importJobs.length ? (
+        <ListCard
+          title="Import & naming"
+          count={`${activeImportJobs} active · latest ${importJobs.length}`}
+        >
+          <ListTable columns={[{ label: "Media" }, { label: "Source / destination", width: "minmax(0,2fr)" }, { label: "Stage" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]}>
+            {importJobs.map((job) => {
+              const info = parseImportJobPayload(job.payloadJson);
+              return (
+                <ListRow key={job.id} onClick={() => setDrawer({ kind: "activity", id: `import:${job.id}` })} selected={openActivity?.id === `import:${job.id}`}>
+                  <ListNameCell name={info?.title || info?.fileName || jobTitle(job)} sub={info?.fileName || "Filesystem import"} />
+                  <ListCell primary={info?.destinationPath || "Destination not resolved yet"} secondary={info?.sourcePath ? `From ${info.sourcePath}` : "Source path not recorded"} />
+                  <ListCell primary={importJobStage(job)} secondary={job.attempts > 1 ? `Attempt ${job.attempts}` : undefined} />
+                  <ListCell mobile><Chip tone={importJobTone(job)}>{job.status}</Chip></ListCell>
+                </ListRow>
+              );
+            })}
+          </ListTable>
+        </ListCard>
+      ) : null}
 
       {needsAction > 0 ? (
         <ListCard
@@ -473,8 +567,8 @@ export function QueuePage() {
               <ListRow key={`attention:${item.clientId}:${item.id}`} onClick={() => setDrawer({ kind: "queue", id: item.id })}>
                 <ListNameCell name={item.title || item.releaseName} sub={item.clientName} />
                 <ListCell
-                  primary={item.errorMessage ?? item.healthFindings?.[0]?.summary ?? "This download has stalled."}
-                  secondary={item.healthFindings?.length ? `${item.healthFindings.length} health ${item.healthFindings.length === 1 ? "finding" : "findings"}` : undefined}
+                  primary={attentionReason(item)}
+                  secondary={attentionEvidence(item)}
                 />
                 <ListCell mobile align="end">
                   <span className="text-[length:var(--type-caption)] text-muted-foreground">Open to fix</span>
@@ -488,11 +582,47 @@ export function QueuePage() {
                 <ListCell mobile align="end">
                   <span className="text-[length:var(--type-caption)] text-muted-foreground">Use Retry above</span>
                 </ListCell>
+                </ListRow>
+            ))}
+            {failedProcessorHandoffs.map((handoff) => (
+              <ListRow key={`processor-failure:${handoff.id}`} onClick={() => setDrawer({ kind: "activity", id: `processor:${handoff.id}` })}>
+                <ListNameCell name={handoff.releaseName} sub={handoff.processorName ?? "Processing connector"} />
+                <ListCell primary={handoff.failureMessage ?? `Processor reported ${processorStatusLabel(handoff.status)}.`} secondary={handoff.sourcePath} />
+                <ListCell mobile align="end"><span className="text-[length:var(--type-caption)] text-muted-foreground">Open to retry</span></ListCell>
+              </ListRow>
+            ))}
+            {failedDispatches.map((dispatch) => (
+              <ListRow key={`dispatch-failure:${dispatch.id}`} onClick={() => void showDispatch(dispatch)} selected={openDispatchSummary?.id === dispatch.id}>
+                <ListNameCell name={dispatch.releaseName} sub={dispatch.mediaType === "tv" ? "TV" : "Movies"} />
+                <ListCell primary={dispatchActivityDetail(dispatch)} secondary={dispatchFailureDetail(dispatch)} />
+                <ListCell mobile align="end"><span className="text-[length:var(--type-caption)] text-muted-foreground">Open transfer details</span></ListCell>
               </ListRow>
             ))}
           </ListTable>
         </ListCard>
       ) : null}
+
+      <ListCard
+        title="Cleanup guardrails"
+        count={cleanupPolicyLabel(settings)}
+      >
+        <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+          <p className="max-w-3xl text-[length:var(--type-body-sm)] leading-relaxed text-muted-foreground">
+            Transfers records why media failed, was blocked, or was removed. Deluno will not delete a client entry or payload just because a health check failed unless the matching safeguards are enabled.
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <PolicyFact label="Block release" enabled={settings.cleanupBlockReleaseAfterThreshold} />
+            <PolicyFact label="Queue replacement" enabled={settings.cleanupQueueReplacementAfterThreshold} />
+            <PolicyFact label="Remove client entry" enabled={settings.cleanupRemoveClientEntryAfterThreshold} />
+            <PolicyFact label="Purge payload" enabled={settings.cleanupPurgePayloadAfterThreshold} />
+          </div>
+          <div>
+            <Button asChild type="button" variant="outline" size="sm">
+              <Link to="/search-cycles">Review Automation &amp; Recovery</Link>
+            </Button>
+          </div>
+        </div>
+      </ListCard>
 
       <ListCard
         title="Recent activity"
@@ -509,7 +639,8 @@ export function QueuePage() {
                 { value: "import", label: "Imports" },
                 { value: "processor", label: "Processing" },
                 { value: "sent", label: "Sent" },
-                { value: "client", label: "Clients" }
+                { value: "client", label: "Clients" },
+                { value: "health", label: "Issues" }
               ]}
             />
           ) : undefined
@@ -522,7 +653,20 @@ export function QueuePage() {
             columns={[{ label: "Item" }, { label: "What happened", width: "minmax(0,1.6fr)" }, { label: "When", width: "150px" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]}
           >
             {visibleActivity.slice(0, 25).map((entry) => (
-              <ListRow key={entry.id} onClick={() => setDrawer({ kind: "activity", id: entry.id })} selected={openActivity?.id === entry.id}>
+              <ListRow
+                key={entry.id}
+                onClick={() => {
+                  if (entry.kind === "sent") {
+                    const dispatch = dispatches.find((item) => `sent:${item.id}` === entry.id);
+                    if (dispatch) {
+                      void showDispatch(dispatch);
+                      return;
+                    }
+                  }
+                  setDrawer({ kind: "activity", id: entry.id });
+                }}
+                selected={openActivity?.id === entry.id || (entry.kind === "sent" && openDispatchSummary?.id === entry.id.slice("sent:".length))}
+              >
                 <ListNameCell name={entry.name} sub={entry.sub} />
                 <ListCell primary={entry.detail} secondary={entry.extra} />
                 <ListCell numeric primary={formatAgo(entry.whenUtc)} secondary={formatDateTime(entry.whenUtc)} />
@@ -670,15 +814,15 @@ export function QueuePage() {
                 ]}
               />
             </Field>
-            <Field label="Transfer" help="Auto picks a hardlink when it can and a copy when it cannot.">
+            <Field label="Transfer method" help="Automatic uses a single-copy link (hardlink) when possible, so the download can keep seeding without a duplicate. If that is not possible, Deluno copies or moves the file.">
               <Select
                 value={manualImport.transferMode}
                 onChange={(event) => setManualImport((current) => ({ ...current, transferMode: event.target.value }))}
                 options={[
                   { value: "auto", label: "Automatic" },
-                  { value: "hardlink", label: "Hardlink" },
-                  { value: "copy", label: "Copy" },
-                  { value: "move", label: "Move" }
+                  { value: "hardlink", label: "Single-copy link (hardlink)" },
+                  { value: "copy", label: "Copy the file" },
+                  { value: "move", label: "Move the file" }
                 ]}
               />
             </Field>
@@ -712,6 +856,68 @@ export function QueuePage() {
             </Button>
           </div>
         </DrawerSection>
+      </Drawer>
+
+      {/* ----------------------------------------------- dispatch details */}
+      <Drawer
+        open={drawer?.kind === "dispatch"}
+        onOpenChange={(open) => {
+          if (!open) setDrawer(null);
+        }}
+        title={openDispatchDetail?.dispatch.releaseName ?? openDispatchSummary?.releaseName ?? "Transfer details"}
+        description={openDispatchDetail ? `${openDispatchDetail.dispatch.downloadClientName || "Download client"} · ${dispatchStageLabel(openDispatchDetail.dispatch)}` : "Loading the recorded transfer journey"}
+        footer={<DrawerFooter state="clean" saveType="button" saveLabel="Close" saveEnabled={false} onCancel={() => setDrawer(null)} />}
+      >
+        {openDispatchDetail ? (
+          <>
+            <DrawerSection title="Transfer journey" aside={dispatchStageLabel(openDispatchDetail.dispatch)}>
+              <div className="grid gap-1.5">
+                <Fact label="Release" value={openDispatchDetail.dispatch.releaseName} mono />
+                <Fact label="Indexer" value={openDispatchDetail.dispatch.indexerName || "Unknown source"} />
+                <Fact label="Client" value={openDispatchDetail.dispatch.downloadClientName || "Unassigned client"} />
+                <Fact label="Grab" value={dispatchOutcome(openDispatchDetail.dispatch.grabStatus, openDispatchDetail.dispatch.grabMessage)} />
+                <Fact label="Detected" value={openDispatchDetail.dispatch.detectedUtc ? formatDateTime(openDispatchDetail.dispatch.detectedUtc) : "Not detected by the client"} />
+                <Fact label="Import" value={dispatchOutcome(openDispatchDetail.dispatch.importStatus, openDispatchDetail.dispatch.importFailureMessage)} />
+                <Fact label="Attempts" value={String(openDispatchDetail.dispatch.attemptCount ?? 0)} />
+              </div>
+            </DrawerSection>
+
+            {openDispatchDetail.dispatch.importedFilePath || openDispatchDetail.dispatch.importFailureMessage || openDispatchDetail.dispatch.grabFailureCode ? (
+              <DrawerSection title="File and outcome">
+                <div className="grid gap-1.5">
+                  {openDispatchDetail.dispatch.importedFilePath ? <Fact label="Imported file" value={openDispatchDetail.dispatch.importedFilePath} mono /> : null}
+                  {openDispatchDetail.dispatch.downloadedBytes ? <Fact label="Downloaded" value={formatBytes(openDispatchDetail.dispatch.downloadedBytes)} /> : null}
+                  {openDispatchDetail.dispatch.grabFailureCode ? <Fact label="Grab issue" value={openDispatchDetail.dispatch.grabFailureCode} /> : null}
+                  {openDispatchDetail.dispatch.importFailureMessage ? <Fact label="Import issue" value={openDispatchDetail.dispatch.importFailureMessage} /> : null}
+                  {openDispatchDetail.dispatch.nextRetryEligibleUtc ? <Fact label="Next retry" value={formatDateTime(openDispatchDetail.dispatch.nextRetryEligibleUtc)} /> : null}
+                </div>
+              </DrawerSection>
+            ) : null}
+
+            <DrawerSection title="Recorded timeline" aside={openDispatchDetail.timeline.length ? `${openDispatchDetail.timeline.length} events` : "No events recorded"}>
+              {openDispatchDetail.timeline.length ? (
+                <div className="grid gap-0">
+                  {openDispatchDetail.timeline.map((event) => (
+                    <div key={event.id} className="grid gap-0.5 border-b border-hairline py-2 last:border-b-0">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <span className="text-[length:var(--type-body-sm)] font-medium text-foreground">{timelineEventLabel(event.eventType)}</span>
+                        <span className="shrink-0 text-[length:var(--type-caption)] text-muted-foreground">{formatAgo(event.timestamp)}</span>
+                      </div>
+                      {timelineEventDetail(event) ? <span className="text-[length:var(--type-caption)] text-muted-foreground">{timelineEventDetail(event)}</span> : null}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[length:var(--type-caption)] text-muted-foreground">The client has not reported any additional transfer events yet.</p>
+              )}
+            </DrawerSection>
+          </>
+        ) : (
+          <ListEmpty
+            title={busyKey?.startsWith("dispatch:") ? "Loading transfer history" : "Transfer details unavailable"}
+            description="The transfer row is still visible, but its full server-side timeline could not be loaded. Refresh and try again."
+          />
+        )}
       </Drawer>
 
       {/* ------------------------------------------------- activity drawer */}
@@ -816,30 +1022,217 @@ function queueChip(item: DownloadQueueItem): { tone: NonNullable<ChipProps["tone
   return { tone: "info", label: queueStatusLabel(item.status) };
 }
 
+function importJobStage(job: JobQueueItem) {
+  if (job.status === JOB_STATUS.FAILED) return "Import failed";
+  if (job.status === JOB_STATUS.COMPLETED) return "Imported and named";
+  if (job.status === JOB_STATUS.RUNNING) return "Writing to library";
+  return "Waiting to import";
+}
+
+function importJobTone(job: JobQueueItem): NonNullable<ChipProps["tone"]> {
+  if (job.status === JOB_STATUS.FAILED) return "bad";
+  if (isJobActive(job.status as never)) return "info";
+  return "ok";
+}
+
+function pipelineStage(item: DownloadQueueItem) {
+  if (item.status === downloadQueueStatuses.waitingForProcessor) return "Processing connector";
+  if (item.status === downloadQueueStatuses.processing || item.status === downloadQueueStatuses.processed) return "Checking media";
+  if (item.status === downloadQueueStatuses.importQueued) return "Importing & naming";
+  if (item.status === downloadQueueStatuses.imported) return "In library";
+  if (item.status === downloadQueueStatuses.importFailed || item.status === downloadQueueStatuses.processingFailed) return "Needs attention";
+  if (isImportReadyStatus(item.status)) return "Ready for import";
+  return item.status === downloadQueueStatuses.queued ? "Waiting for client" : "Downloading";
+}
+
+function pipelineDetail(item: DownloadQueueItem) {
+  if (item.errorMessage) return item.errorMessage;
+  if (item.status === downloadQueueStatuses.waitingForProcessor) return "Waiting for the cleaned output before import.";
+  if (item.status === downloadQueueStatuses.processing || item.status === downloadQueueStatuses.processed) return "Media quality and processor output are being checked.";
+  if (item.status === downloadQueueStatuses.importQueued) return "The destination and final name are being applied.";
+  if (item.status === downloadQueueStatuses.imported) return "The file has been placed in the library.";
+  if (isImportReadyStatus(item.status)) return "Preview the destination and final name before importing.";
+  return item.sourcePath ? `Source: ${item.sourcePath}` : "External client owns the download.";
+}
+
+function attentionReason(item: DownloadQueueItem) {
+  const blocked = item.healthFindings?.find((finding) => finding.candidateBlocked);
+  if (blocked) return "Release blocked after repeated health failures";
+  return item.errorMessage ?? item.healthFindings?.[0]?.summary ?? "This download has stalled.";
+}
+
+function attentionEvidence(item: DownloadQueueItem) {
+  const blocked = item.healthFindings?.find((finding) => finding.candidateBlocked);
+  if (blocked) return `${blocked.strikeCount} strikes · ${blocked.evidence}`;
+  return item.healthFindings?.length ? `${item.healthFindings.length} health ${item.healthFindings.length === 1 ? "finding" : "findings"}` : undefined;
+}
+
+function isProcessorTerminal(status: string) {
+  return status.toLowerCase() === "completed";
+}
+
+function isProcessorFailure(status: string) {
+  return ["failed", "timed-out", "timeout"].includes(status.toLowerCase());
+}
+
+function processorStageLabel(status: string) {
+  switch (status.toLowerCase()) {
+    case "waiting":
+      return "Waiting to submit";
+    case "submitted":
+      return "Submitted to connector";
+    case "accepted":
+      return "Accepted by connector";
+    case "started":
+      return "Processing media";
+    case "completed":
+      return "Output received";
+    case "timed-out":
+    case "timeout":
+      return "Timed out";
+    case "failed":
+      return "Processing failed";
+    default:
+      return status || "Waiting";
+  }
+
+}
+
+function processorStatusLabel(status: string) {
+  return processorStageLabel(status);
+}
+
+function processorTone(handoff: ProcessorHandoffItem): NonNullable<ChipProps["tone"]> {
+  if (isProcessorFailure(handoff.status) || handoff.failureMessage) return "bad";
+  if (isProcessorTerminal(handoff.status)) return "ok";
+  return "info";
+}
+
+function processorConnectionStatus(connection: ProcessorConnectionItem) {
+  if (!connection.isEnabled) return "disabled";
+  return connection.healthStatus || "unknown";
+}
+
+function processorConnectionTone(connection: ProcessorConnectionItem): NonNullable<ChipProps["tone"]> {
+  if (!connection.isEnabled || connection.healthStatus === "unreachable") return "bad";
+  if (connection.healthStatus === "degraded") return "warn";
+  if (connection.healthStatus === "healthy") return "ok";
+  return "muted";
+}
+
+function isDispatchFailure(dispatch: DownloadDispatchItem) {
+  return [dispatch.status, dispatch.grabStatus, dispatch.importStatus, dispatch.grabFailureCode, dispatch.importFailureCode]
+    .filter((value): value is string => Boolean(value))
+    .some((value) => ["failed", "blocked", "rejected", "unresolved", "error"].includes(value.toLowerCase()));
+}
+
+function dispatchStageLabel(dispatch: DownloadDispatchItem) {
+  if (isDispatchFailure(dispatch)) return "Needs attention";
+  if (dispatch.importStatus === "completed" || dispatch.importCompletedUtc) return "Imported";
+  if (dispatch.importStatus) return `Import ${dispatch.importStatus}`;
+  if (dispatch.detectedUtc || dispatch.grabStatus === "detected") return "Detected by client";
+  if (dispatch.grabStatus) return `Grab ${dispatch.grabStatus}`;
+  return dispatch.status || "Sent to client";
+}
+
+function dispatchActivityDetail(dispatch: DownloadDispatchItem) {
+  if (dispatch.importedFilePath) return `Imported as ${fileNameFromPath(dispatch.importedFilePath)}`;
+  if (dispatch.importFailureMessage) return `Import could not complete: ${dispatch.importFailureMessage}`;
+  if (dispatch.grabMessage) return dispatch.grabMessage;
+  return `${dispatch.indexerName || "Unknown source"} → ${dispatch.downloadClientName || "Unassigned client"}`;
+}
+
+function dispatchFailureDetail(dispatch: DownloadDispatchItem) {
+  if (dispatch.importFailureMessage) return dispatch.importFailureMessage;
+  if (dispatch.grabMessage) return dispatch.grabMessage;
+  if (dispatch.grabFailureCode) return `Grab failed with ${dispatch.grabFailureCode}.`;
+  if (!dispatch.notesJson) return "Review the transfer timeline for the recorded reason.";
+  try {
+    const parsed = JSON.parse(dispatch.notesJson) as { message?: string; reason?: string; error?: string; failureMessage?: string };
+    return parsed.failureMessage ?? parsed.reason ?? parsed.message ?? parsed.error ?? dispatch.notesJson;
+  } catch {
+    return dispatch.notesJson;
+  }
+}
+
+function dispatchOutcome(status: string | null | undefined, message: string | null | undefined) {
+  if (message) return message;
+  if (status) return status;
+  return "Not reported yet";
+}
+
+function fileNameFromPath(path: string) {
+  return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
+}
+
+function timelineEventLabel(eventType: string) {
+  return eventType
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function timelineEventDetail(event: { detailsJson: string | null }) {
+  if (!event.detailsJson) return null;
+  try {
+    const parsed = JSON.parse(event.detailsJson) as Record<string, unknown>;
+    const values = Object.entries(parsed)
+      .filter(([, value]) => typeof value === "string" || typeof value === "number" || typeof value === "boolean")
+      .map(([key, value]) => `${timelineEventLabel(key)}: ${String(value)}`);
+    return values.length ? values.join(" · ") : null;
+  } catch {
+    return event.detailsJson;
+  }
+}
+
+function cleanupPolicyLabel(settings: PlatformSettingsSnapshot) {
+  if (settings.cleanupRemoveClientEntryAfterThreshold || settings.cleanupPurgePayloadAfterThreshold) return "automatic removal enabled";
+  if (settings.cleanupBlockReleaseAfterThreshold || settings.cleanupQueueReplacementAfterThreshold) return "automatic safeguards enabled";
+  return "manual review before removal";
+}
+
+function PolicyFact({ label, enabled }: { label: string; enabled: boolean }) {
+  return (
+    <div className="rounded-lg border border-hairline bg-surface-1 px-3 py-2">
+      <span className="block text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{label}</span>
+      <span className={enabled ? "text-success" : "text-muted-foreground"}>{enabled ? "Enabled" : "Off"}</span>
+    </div>
+  );
+}
+
 /** Every finished thing, in one row shape, newest first. */
 function buildActivity({
   importJobs,
   processorHandoffs,
   dispatches,
   telemetry,
-  healthRecords
+  healthRecords,
+  activityEvents
 }: {
   importJobs: JobQueueItem[];
   processorHandoffs: ProcessorHandoffItem[];
   dispatches: DownloadDispatchItem[];
   telemetry: DownloadTelemetryOverview;
   healthRecords: DownloadHealthRecord[];
+  activityEvents: ActivityEventItem[];
 }): ActivityEntry[] {
   const entries: ActivityEntry[] = [];
 
   for (const job of importJobs) {
+    const info = parseImportJobPayload(job.payloadJson);
+    const importedName = info?.fileName ? ` as ${info.fileName}` : "";
     entries.push({
       id: `import:${job.id}`,
       kind: "import",
-      name: jobTitle(job),
+      name: info?.title || jobTitle(job),
       sub: "Import",
-      detail: job.status === JOB_STATUS.FAILED ? job.lastError ?? "The import failed." : `Import ${job.status}`,
-      extra: job.attempts > 1 ? `Attempt ${job.attempts}` : undefined,
+      detail: job.status === JOB_STATUS.FAILED
+        ? job.lastError ?? "The import failed."
+        : job.status === JOB_STATUS.COMPLETED
+          ? `Imported${importedName}`
+          : job.status === JOB_STATUS.RUNNING
+            ? `Importing${importedName}`
+            : `Import ${job.status}`,
+      extra: info?.destinationPath ?? (job.attempts > 1 ? `Attempt ${job.attempts}` : undefined),
       tone: job.status === JOB_STATUS.FAILED ? "bad" : isJobActive(job.status as never) ? "info" : "ok",
       status: job.status,
       whenUtc: job.completedUtc ?? job.startedUtc ?? job.createdUtc
@@ -866,10 +1259,11 @@ function buildActivity({
       kind: "sent",
       name: dispatch.releaseName,
       sub: dispatch.mediaType === "tv" ? "TV" : "Movies",
-      detail: `${dispatch.indexerName || "unknown source"} → ${dispatch.downloadClientName || "unassigned client"}`,
-      tone: dispatch.status === "sent" ? "ok" : dispatch.status === "failed" ? "bad" : "muted",
-      status: dispatch.status,
-      whenUtc: dispatch.createdUtc
+      detail: dispatchActivityDetail(dispatch),
+      extra: dispatch.importedFilePath ?? (isDispatchFailure(dispatch) ? dispatchFailureDetail(dispatch) : undefined),
+      tone: isDispatchFailure(dispatch) ? "bad" : dispatch.importedFilePath ? "ok" : "muted",
+      status: dispatchStageLabel(dispatch),
+      whenUtc: dispatch.importCompletedUtc ?? dispatch.detectedUtc ?? dispatch.grabAttemptedUtc ?? dispatch.createdUtc
     });
   }
 
@@ -903,6 +1297,20 @@ function buildActivity({
     });
   }
 
+  for (const event of activityEvents) {
+    entries.push({
+      id: `event:${event.id}`,
+      kind: "health",
+      name: activityEventTitle(event),
+      sub: "Issue / cleanup",
+      detail: event.message,
+      extra: activityEventDetail(event),
+      tone: event.severity === "error" ? "bad" : event.severity === "warning" ? "warn" : "info",
+      status: activityEventLabel(event.category),
+      whenUtc: event.createdUtc
+    });
+  }
+
   return entries.sort((a, b) => new Date(b.whenUtc).getTime() - new Date(a.whenUtc).getTime());
 }
 
@@ -926,22 +1334,68 @@ function jobTitle(job: JobQueueItem) {
   return parsed?.title || parsed?.fileName || `Job ${job.id.slice(0, 8)}`;
 }
 
-function parseImportJobPayload(payloadJson: string | null): { title: string | null; fileName: string | null } | null {
+interface ImportJobInfo {
+  title: string | null;
+  fileName: string | null;
+  sourcePath: string | null;
+  destinationPath: string | null;
+}
+
+function parseImportJobPayload(payloadJson: string | null): ImportJobInfo | null {
   if (!payloadJson) return null;
   try {
-    const parsed = JSON.parse(payloadJson) as { preview?: { title?: string; fileName?: string }; title?: string; fileName?: string };
+    const parsed = JSON.parse(payloadJson) as {
+      preview?: { title?: string; fileName?: string; sourcePath?: string; destinationPath?: string };
+      title?: string;
+      fileName?: string;
+      sourcePath?: string;
+      destinationPath?: string;
+    };
+    const preview = parsed.preview;
     return {
-      title: parsed.preview?.title ?? parsed.title ?? null,
-      fileName: parsed.preview?.fileName ?? parsed.fileName ?? null
+      title: preview?.title ?? parsed.title ?? null,
+      fileName: preview?.fileName ?? parsed.fileName ?? null,
+      sourcePath: preview?.sourcePath ?? parsed.sourcePath ?? null,
+      destinationPath: preview?.destinationPath ?? parsed.destinationPath ?? null
     };
   } catch {
     return null;
   }
 }
 
-function buildImportRequest(item: DownloadQueueItem, downloadsPath: string | null): ImportPreviewRequest {
+function activityEventTitle(event: ActivityEventItem) {
+  const details = parseActivityDetails(event.detailsJson);
+  return typeof details?.releaseName === "string" ? details.releaseName : event.message;
+}
+
+function activityEventDetail(event: ActivityEventItem) {
+  const details = parseActivityDetails(event.detailsJson);
+  const actions = Array.isArray(details?.actions) ? details.actions.filter((item): item is string => typeof item === "string") : [];
+  if (actions.length) return actions.join(" · ");
+  if (typeof details?.reason === "string") return details.reason;
+  return event.detail ?? undefined;
+}
+
+function activityEventLabel(category: string) {
+  return category
+    .replace(/^download\./, "")
+    .replace(/[._-]+/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function parseActivityDetails(detailsJson: string | null): Record<string, unknown> | null {
+  if (!detailsJson) return null;
+  try {
+    const parsed: unknown = JSON.parse(detailsJson);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
+function buildImportRequest(item: DownloadQueueItem, libraries: LibraryItem[]): ImportPreviewRequest {
   return {
-    sourcePath: item.sourcePath || downloadsPath || "",
+    sourcePath: resolveImportSourcePath(item, libraries) || "",
     fileName: inferImportFileName(item),
     mediaType: item.mediaType === "tv" ? "tv" : "movies",
     title: item.title || null,

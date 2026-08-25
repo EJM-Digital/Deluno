@@ -21,31 +21,11 @@ export type DelunoNavGlyphKind =
   | "recovery"
   | "system";
 
-const ICON_COLOR_MAP: Record<DelunoNavGlyphKind, string> = {
-  dashboard: "#ffd15a",
-  movies: "#ffd15a",
-  shows: "#ffd15a",
-  schedule: "#ff9d3a",
-  transfers: "#4bb7ff",
-  automation: "#ffd15a",
-  activity: "#2ee887",
-  setup: "#ffd15a",
-  library: "#ffd15a",
-  connections: "#2ee887",
-  plans: "#ffd15a",
-  quality: "#4bb7ff",
-  size: "#4bb7ff",
-  scoring: "#ff9d3a",
-  destinations: "#2ee887",
-  discover: "#4bb7ff",
-  search: "#4bb7ff",
-  recovery: "#ffd15a",
-  system: "#ffd15a"
-};
-
 /**
  * Deluno's product icon language from the selected specific icon pack.
  * Keep these line icons simple so they stay readable in nav, command, and setup UI.
+ * The surrounding navigation item owns the colour so idle and selected states
+ * cannot disagree with the area accent.
  */
 export function DelunoNavGlyph({
   kind,
@@ -54,9 +34,8 @@ export function DelunoNavGlyph({
   kind: DelunoNavGlyphKind;
   className?: string;
 }) {
-  const iconColor = ICON_COLOR_MAP[kind];
   const shared = {
-    stroke: iconColor,
+    stroke: "currentColor",
     strokeWidth: 2.2,
     strokeLinecap: "round" as const,
     strokeLinejoin: "round" as const

@@ -66,6 +66,60 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
         return await GetHistoryCoreAsync(http, client, baseUri, client.Secret, capturedUtc, cancellationToken);
     }
 
+    public override async Task<DownloadClientCategoryCheckResult> CheckCategoryAsync(
+        DownloadClientItem client,
+        string category,
+        CancellationToken cancellationToken)
+    {
+        var normalizedCategory = category.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedCategory))
+        {
+            return new(client.Id, client.Name, normalizedCategory, DownloadClientCategoryStatuses.Configuration,
+                "Enter a category before checking it.", Supported: true, Found: false);
+        }
+
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        var apiKey = client.Secret ?? client.Username;
+        if (baseUri is null || string.IsNullOrWhiteSpace(apiKey))
+        {
+            return new(client.Id, client.Name, normalizedCategory, DownloadClientCategoryStatuses.Configuration,
+                "Add the SABnzbd address and API key before checking a category.", Supported: true, Found: false);
+        }
+
+        try
+        {
+            var http = httpClientFactory.CreateClient("download-clients");
+            http.Timeout = TimeSpan.FromSeconds(8);
+            using var response = await http.GetAsync(
+                new Uri(baseUri, $"api?mode=get_cats&output=json&apikey={Uri.EscapeDataString(apiKey)}"),
+                cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return new(client.Id, client.Name, normalizedCategory, DownloadClientCategoryStatuses.Unreachable,
+                    $"SABnzbd returned {(int)response.StatusCode} while checking its categories.", Supported: true, Found: false);
+            }
+
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+            var found = ReadCategoryNames(document.RootElement)
+                .Any(item => string.Equals(item, normalizedCategory, StringComparison.OrdinalIgnoreCase));
+            return new(
+                client.Id,
+                client.Name,
+                normalizedCategory,
+                found ? DownloadClientCategoryStatuses.Ready : DownloadClientCategoryStatuses.Missing,
+                found
+                    ? $"SABnzbd has a category named {normalizedCategory}."
+                    : $"SABnzbd does not have a category named {normalizedCategory}. Create it there before using it in Deluno.",
+                Supported: true,
+                Found: found);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException)
+        {
+            return new(client.Id, client.Name, normalizedCategory, DownloadClientCategoryStatuses.Unreachable,
+                $"Deluno could not reach SABnzbd to check its categories: {ex.Message}", Supported: true, Found: false);
+        }
+    }
+
     public override async Task<DownloadClientActionResult> ExecuteActionAsync(DownloadClientItem client, string action, string queueItemId, CancellationToken cancellationToken)
     {
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
@@ -126,6 +180,25 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
     private static long ParseHistorySize(JsonElement? value) => value is { ValueKind: JsonValueKind.Number } number && number.TryGetInt64(out var parsed) ? parsed : value is not null && long.TryParse(value.Value.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out parsed) ? parsed : 0;
     private static string? QueueError(string? status) => string.IsNullOrWhiteSpace(status) ? null : status.Contains("fail", StringComparison.OrdinalIgnoreCase) || status.Contains("error", StringComparison.OrdinalIgnoreCase) || status.Contains("stall", StringComparison.OrdinalIgnoreCase) ? status : null;
     private static string NormalizeHistoryOutcome(string value) => value.Equals("completed", StringComparison.OrdinalIgnoreCase) || value.Equals("succeeded", StringComparison.OrdinalIgnoreCase) || value.Equals("success", StringComparison.OrdinalIgnoreCase) ? DownloadQueueStatuses.Completed : value.Contains("fail", StringComparison.OrdinalIgnoreCase) || value.Contains("error", StringComparison.OrdinalIgnoreCase) ? "failed" : value.Contains("import", StringComparison.OrdinalIgnoreCase) ? DownloadQueueStatuses.ImportReady : value.Length == 0 ? "unknown" : value.Trim().ToLowerInvariant();
+
+    private static IReadOnlyList<string> ReadCategoryNames(JsonElement root)
+    {
+        if (!root.TryGetProperty("categories", out var categories))
+        {
+            return [];
+        }
+
+        return categories.ValueKind switch
+        {
+            JsonValueKind.Array => categories.EnumerateArray()
+                .Where(item => item.ValueKind == JsonValueKind.String)
+                .Select(item => item.GetString() ?? string.Empty)
+                .Where(item => !string.IsNullOrWhiteSpace(item))
+                .ToArray(),
+            JsonValueKind.Object => categories.EnumerateObject().Select(item => item.Name).ToArray(),
+            _ => []
+        };
+    }
 
     private sealed record SabQueueResponse([property: JsonPropertyName("queue")] SabQueue? Queue);
     private sealed record SabQueue([property: JsonPropertyName("speed")] string? Speed, [property: JsonPropertyName("slots")] IReadOnlyList<SabSlot>? Slots);

@@ -4,7 +4,7 @@ Status: approved product decision for GitHub issue #88. The delivery work remain
 
 ## The user-facing model
 
-A **Media Plan** is the one place a person describes the media experience they want: for example, *Family movies in 1080p*, *Premium 4K home theatre*, *Compact TV*, or *Anime with original audio*.
+A **Media Plan** is the one place a person describes the media experience they want: for example, *Family movies in 1080p*, *Premium 4K home theatre*, *Compact TV*, or *Storage-friendly movies*.
 
 The plan summary must always be readable as a sentence:
 
@@ -18,7 +18,7 @@ Technical terms such as custom formats, score, and indexer category are supporti
 | --- | --- | --- |
 | Non-negotiable safety limits, blocked patterns, and proof requirements | Deluno global safeguards | Nobody through a plan |
 | Curated defaults and provenance | Bundled, versioned Deluno preference pack | Media Plan adoption/local override |
-| Quality ladder, size envelope, language/release preferences, upgrade rule, search budget | Media Plan | Library and title overrides |
+| Quality profile, size envelope, language/release preferences, upgrade rule, search budget | Media Plan | Library and title overrides |
 | Destination, naming, import and storage mechanics | Library & storage | Library only |
 | Whether a title is monitored, paused, deferred, or manually overridden | Title | Title only |
 | Source/client availability and routing | Connections | Library routing context |
@@ -43,7 +43,7 @@ An override changes only the field it names. It never implicitly replaces unrela
 
 Quality goals and file sizes are one decision, not separate pages:
 
-- A plan has an ordered quality ladder and an upgrade cutoff.
+- A plan has a quality profile with ordered tiers and an upgrade cutoff.
 - Every plan exposes a simple, selectable **size tier** for each quality goal. The tier is described in ordinary language and its resulting ranges are visible before it is saved.
 - Advanced editing exposes a per-quality minimum/typical/maximum size envelope, expressed in friendly units and optionally normalized by runtime for episodes.
 - Deluno scores ordinary variance inside the chosen envelope and rejects obvious hard-boundary outliers. The detailed editor can make a boundary stricter, or choose hold/review behaviour where that better suits the library.
@@ -79,7 +79,7 @@ change with its recorded local overrides.
 The first screen is deliberately small, but it must never conceal what a
 preset will do. Selecting a scenario immediately shows a plain-language
 summary and an expandable **What this includes** view. That view lists the
-quality ladder, selected size tier and its ranges, language behaviour, upgrade
+quality profile, selected size tier and its ranges, language behaviour, upgrade
 behaviour, release preferences, and bundled-pack/version (when one supplied
 the defaults).
 
@@ -102,7 +102,7 @@ a preset.
 
 ## Scenario-first flow
 
-1. Choose a scenario: Family 1080p, Everyday TV, Premium 4K, Low storage, Anime, or Start custom.
+1. Choose a scenario: Family 1080p, Everyday TV, Premium 4K, Low storage, or Start custom.
 2. Read the short result sentence and select movie/TV scope.
 3. Optionally refine quality, size, language, or release-group preferences.
 4. Attach the plan to a library; show the actual destination and connected sources as context.

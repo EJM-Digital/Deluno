@@ -12,6 +12,7 @@
  */
 import * as React from "react";
 import { ChevronRight, Search } from "lucide-react";
+import { titleCaseLabel } from "../../lib/title-case";
 import { cn } from "../../lib/utils";
 
 /* ---------------------------------------------------------------- card */
@@ -31,7 +32,7 @@ export function ListCard({ title, count, filter, actions, className, children }:
   return (
     <section className={cn("overflow-hidden rounded-2xl border border-hairline bg-card shadow-card dark:border-white/[0.07]", className)}>
       <header className="flex min-h-[var(--list-header-height)] items-center gap-3 border-b border-hairline px-[var(--card-pad-x)]">
-        <h2 className="text-[length:var(--type-card-title)] font-semibold leading-none text-foreground">{title}</h2>
+        <h2 className="text-[length:var(--type-card-title)] font-semibold leading-none text-foreground">{typeof title === "string" ? titleCaseLabel(title) : title}</h2>
         {count ? <span className="text-[length:var(--type-caption)] text-muted-foreground">{count}</span> : null}
         <span className="flex-1" />
         {filter ? (

@@ -103,6 +103,49 @@ public static class LibraryActionEndpointRouteBuilderExtensions
             return skipped ? Results.Accepted() : Results.NotFound();
         });
 
+        // Existing media is deliberately a review-first workflow. The preview
+        // is read-only and paged; nothing is written until the user selects
+        // specific files or folders and posts those paths back.
+        write.MapGet("/api/libraries/{id}/import-existing/preview", async (
+            string id,
+            string? cursor,
+            int? take,
+            HttpContext httpContext,
+            [FromServices] IExistingLibraryImportService importService,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var preview = await importService.PreviewAsync(id, cursor, Math.Clamp(take ?? 50, 1, 100), cancellationToken);
+            return preview is null ? Results.NotFound() : Results.Ok(preview);
+        });
+
+        write.MapPost("/api/libraries/{id}/import-existing/selected", async (
+            string id,
+            HttpContext httpContext,
+            [FromBody] ExistingLibraryImportSelectionRequest request,
+            [FromServices] IExistingLibraryImportService importService,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (request.SourcePaths is null || request.SourcePaths.Count == 0)
+            {
+                return Results.BadRequest(new { message = "Select at least one file or folder to import." });
+            }
+
+            var result = await importService.ImportSelectedAsync(id, request.SourcePaths.Take(100).ToArray(), cancellationToken);
+            return result is null ? Results.NotFound() : Results.Ok(result);
+        });
+
         // Importing an existing library is a tracked background operation, not
         // a request that returns when the work is finished. At 20,000 items the
         // work runs far longer than any HTTP request should live, so the POST
@@ -368,3 +411,5 @@ public static class LibraryActionEndpointRouteBuilderExtensions
     }
 
 }
+
+public sealed record ExistingLibraryImportSelectionRequest(IReadOnlyList<string> SourcePaths);

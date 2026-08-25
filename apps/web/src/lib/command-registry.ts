@@ -25,6 +25,7 @@ import {
   Tv,
   Wand2
 } from "lucide-react";
+import { commandPaletteShortcut } from "./platform-shortcuts";
 
 export type CommandGroup = "navigation" | "actions" | "recents" | "preferences";
 
@@ -75,7 +76,7 @@ export const navigationCommands: CommandItem[] = [
   },
   {
     id: "nav.indexers",
-    label: "Connections",
+    label: "Find & Download",
     keywords: ["providers", "prowlarr", "sources", "indexers", "download clients"],
     group: "navigation",
     icon: RadioTower,
@@ -84,7 +85,7 @@ export const navigationCommands: CommandItem[] = [
   },
   {
     id: "nav.automation",
-    label: "Automation",
+    label: "Automation & Recovery",
     keywords: ["search", "retries", "upgrades", "wanted", "scheduling", "recovery"],
     group: "navigation",
     icon: RefreshCw,
@@ -120,7 +121,7 @@ export const navigationCommands: CommandItem[] = [
   },
   {
     id: "nav.settings",
-    label: "Library setup",
+    label: "Media Management",
     keywords: ["preferences", "config"],
     group: "navigation",
     icon: Settings,
@@ -129,7 +130,7 @@ export const navigationCommands: CommandItem[] = [
   },
   {
     id: "nav.system",
-    label: "System & settings",
+    label: "System & Settings",
     keywords: ["logs", "tasks", "diagnostics"],
     group: "navigation",
     icon: Cpu,
@@ -157,15 +158,23 @@ export const settingsCommands: CommandItem[] = [
   },
   {
     id: "settings.media-management",
-    label: "Library setup · File handling & naming",
+    label: "Media Management · Media Naming",
     keywords: ["naming", "import", "organise", "hardlinks", "cleanup"],
     group: "navigation",
     icon: FolderTree,
     to: "/settings/media-management"
   },
   {
+    id: "settings.import-policy",
+    label: "Media Management · Import Policy",
+    keywords: ["import", "downloads", "hardlinks", "cleanup", "cutoff", "upgrade"],
+    group: "navigation",
+    icon: Download,
+    to: "/settings/import-policy"
+  },
+  {
     id: "settings.processing",
-    label: "Library setup · Processing workflow",
+    label: "Media Management · Processing Workflow",
     keywords: ["processor", "fileflows", "weir", "handoff", "completed files", "import"],
     group: "navigation",
     icon: RefreshCw,
@@ -173,7 +182,7 @@ export const settingsCommands: CommandItem[] = [
   },
   {
     id: "settings.libraries",
-    label: "Library setup · Library folders",
+    label: "Media Management · Library & Storage",
     keywords: ["library", "folders", "paths", "root", "movies", "tv"],
     group: "navigation",
     icon: FolderTree,
@@ -181,7 +190,7 @@ export const settingsCommands: CommandItem[] = [
   },
   {
     id: "settings.destination-rules",
-    label: "Library setup · Final destinations",
+    label: "Media Management · Final Destinations",
     keywords: ["library", "routing", "rules", "root folders", "genre", "tag", "language"],
     group: "navigation",
     icon: FolderTree,
@@ -189,7 +198,7 @@ export const settingsCommands: CommandItem[] = [
   },
   {
     id: "settings.metadata",
-    label: "Library setup · Metadata & sidecars",
+    label: "Media Management · Metadata & Files",
     keywords: ["library", "tmdb", "tvdb", "fanart", "metadata", "nfo"],
     group: "navigation",
     icon: Sparkles,
@@ -197,7 +206,7 @@ export const settingsCommands: CommandItem[] = [
   },
   {
     id: "settings.tags",
-    label: "Library setup · Tags",
+    label: "Media Management · Tags",
     keywords: ["library", "tags", "labels", "groups", "routing"],
     group: "navigation",
     icon: Tag,
@@ -205,7 +214,7 @@ export const settingsCommands: CommandItem[] = [
   },
   {
     id: "settings.automation",
-    label: "Automation & recovery",
+    label: "Automation & Recovery",
     keywords: ["search", "retries", "failed downloads", "upgrades", "scheduling", "recovery"],
     group: "navigation",
     icon: RefreshCw,
@@ -213,15 +222,15 @@ export const settingsCommands: CommandItem[] = [
   },
   {
     id: "settings.policy-sets",
-    label: "Media Plans",
-    keywords: ["quality", "policy", "media plan", "defaults", "custom plan", "multi version"],
+    label: "Library Profiles",
+    keywords: ["quality", "profile", "library profile", "behaviour", "policy", "library behaviour", "library rules", "defaults", "custom rules", "multi version"],
     group: "navigation",
     icon: Stars,
     to: "/settings/policy-sets"
   },
   {
     id: "settings.profiles",
-    label: "Media Plans · Quality profiles",
+    label: "Library Profiles · Quality Profiles",
     keywords: ["quality", "profiles", "policy", "upgrades"],
     group: "navigation",
     icon: Stars,
@@ -229,7 +238,7 @@ export const settingsCommands: CommandItem[] = [
   },
   {
     id: "settings.quality",
-    label: "Media Plans · Size rules",
+    label: "Library Profiles · Size Rules",
     keywords: ["quality", "resolution", "bitrate", "size limits", "sizes"],
     group: "navigation",
     icon: SlidersHorizontal,
@@ -237,7 +246,7 @@ export const settingsCommands: CommandItem[] = [
   },
   {
     id: "settings.custom-formats",
-    label: "Media Plans · Release preferences",
+    label: "Library Profiles · Release Preferences",
     keywords: ["quality", "scoring", "release", "format", "rules"],
     group: "navigation",
     icon: Wand2,
@@ -245,7 +254,7 @@ export const settingsCommands: CommandItem[] = [
   },
   {
     id: "settings.lists",
-    label: "Discover media · Import lists",
+    label: "Discover Media · Import Lists",
     keywords: ["automation", "imdb", "trakt", "intake", "source", "auto import", "lists"],
     group: "navigation",
     icon: ListChecks,
@@ -253,7 +262,7 @@ export const settingsCommands: CommandItem[] = [
   },
   {
     id: "settings.notifications",
-    label: "System & settings · Notifications",
+    label: "System & Settings · Notifications",
     keywords: ["webhook", "alerts", "events", "notifications"],
     group: "navigation",
     icon: Activity,
@@ -261,7 +270,7 @@ export const settingsCommands: CommandItem[] = [
   },
   {
     id: "settings.migration",
-    label: "System & settings · Migration",
+    label: "System & Settings · Migration",
     keywords: ["radarr", "sonarr", "import", "migration", "configuration"],
     group: "navigation",
     icon: FolderTree,
@@ -269,7 +278,7 @@ export const settingsCommands: CommandItem[] = [
   },
   {
     id: "settings.guided-setup",
-    label: "System & settings · Guided setup",
+    label: "System & Settings · Guided Setup",
     keywords: ["setup", "wizard", "first time", "configuration"],
     group: "navigation",
     icon: Sparkles,
@@ -348,27 +357,30 @@ export function buildActionCommands({
   return items;
 }
 
-export const globalShortcuts: ShortcutItem[] = [
-  { keys: ["Cmd", "K"], label: "Open command palette", group: "Global" },
-  { keys: ["/"], label: "Focus search", group: "Global" },
-  { keys: ["?"], label: "Show keyboard shortcuts", group: "Global" },
-  { keys: ["Esc"], label: "Close overlay or clear selection", group: "Global" },
-  { keys: ["g", "o"], label: "Go to Dashboard", group: "Navigation" },
-  { keys: ["g", "m"], label: "Go to Movies", group: "Navigation" },
-  { keys: ["g", "t"], label: "Go to TV", group: "Navigation" },
-  { keys: ["g", "q"], label: "Go to Transfers", group: "Navigation" },
-  { keys: ["g", "i"], label: "Go to Connections", group: "Navigation" },
-  { keys: ["g", "x"], label: "Go to Automation", group: "Navigation" },
-  { keys: ["g", "a"], label: "Go to Activity", group: "Navigation" },
-  { keys: ["g", "c"], label: "Go to Schedule", group: "Navigation" },
-  { keys: ["g", "s"], label: "Go to Library setup", group: "Navigation" },
-  { keys: ["g", "y"], label: "Go to System & settings", group: "Navigation" },
-  { keys: ["j"], label: "Focus next row", group: "Table" },
-  { keys: ["k"], label: "Focus previous row", group: "Table" },
-  { keys: ["x"], label: "Select focused row", group: "Table" },
-  { keys: ["m"], label: "Toggle monitored", group: "Row" },
-  { keys: ["."], label: "Open row actions", group: "Row" }
-];
+export function getGlobalShortcuts(platform?: string): ShortcutItem[] {
+  const commandShortcut = commandPaletteShortcut(platform);
+  return [
+    { keys: commandShortcut.label.split(" "), label: "Open search & navigate", group: "Global" },
+    { keys: ["/"], label: "Focus search", group: "Global" },
+    { keys: ["?"], label: "Show keyboard shortcuts", group: "Global" },
+    { keys: ["Esc"], label: "Close overlay or clear selection", group: "Global" },
+    { keys: ["g", "o"], label: "Go to Dashboard", group: "Navigation" },
+    { keys: ["g", "m"], label: "Go to Movies", group: "Navigation" },
+    { keys: ["g", "t"], label: "Go to TV", group: "Navigation" },
+    { keys: ["g", "q"], label: "Go to Transfers", group: "Navigation" },
+    { keys: ["g", "i"], label: "Go to Find & Download", group: "Navigation" },
+    { keys: ["g", "x"], label: "Go to Automation & Recovery", group: "Navigation" },
+    { keys: ["g", "a"], label: "Go to Activity", group: "Navigation" },
+    { keys: ["g", "c"], label: "Go to Schedule", group: "Navigation" },
+    { keys: ["g", "s"], label: "Go to Media Management", group: "Navigation" },
+    { keys: ["g", "y"], label: "Go to System & Settings", group: "Navigation" },
+    { keys: ["j"], label: "Focus next row", group: "Table" },
+    { keys: ["k"], label: "Focus previous row", group: "Table" },
+    { keys: ["x"], label: "Select focused row", group: "Table" },
+    { keys: ["m"], label: "Toggle monitored", group: "Row" },
+    { keys: ["."], label: "Open row actions", group: "Row" }
+  ];
+}
 
 export function commandToShortcut(item: CommandItem): ShortcutItem | null {
   if (!item.shortcut) return null;

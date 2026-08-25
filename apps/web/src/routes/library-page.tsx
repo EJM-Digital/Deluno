@@ -16,6 +16,7 @@ export function MoviesPage() {
   const revalidator = useRevalidator();
   return (
     <LibraryView
+      key="movies"
       variant="movies"
       metadataStatus={metadataStatus}
       isRouteLoading={navigation.state !== "idle"}
@@ -30,6 +31,7 @@ export function ShowsPage() {
   const revalidator = useRevalidator();
   return (
     <LibraryView
+      key="shows"
       variant="shows"
       metadataStatus={metadataStatus}
       isRouteLoading={navigation.state !== "idle"}

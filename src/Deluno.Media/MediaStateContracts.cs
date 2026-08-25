@@ -159,13 +159,15 @@ public interface IMediaStateRepository
         int take,
         DateTimeOffset now,
         bool ignoreRetryWindow,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        string? wantedStatus = null);
 
     Task<int> CountRetryDelayedWantedAsync(
         MediaKind kind,
         string libraryId,
         DateTimeOffset now,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        string? wantedStatus = null);
 
     Task EnsureWantedStateAsync(
         MediaKind kind,

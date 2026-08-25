@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { useLoaderData, useLocation, useRevalidator } from "react-router-dom";
-import { Plus } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useLoaderData, useLocation, useNavigate, useRevalidator } from "react-router-dom";
+import { Info, Plus } from "lucide-react";
 import {
   fetchJson,
   readValidationProblem,
   type DownloadClientItem,
+  type DownloadClientCategoryCheckResult,
   type DownloadClientPathMappingItem,
   type DownloadClientTelemetrySnapshot,
   type DownloadTelemetryOverview,
@@ -25,7 +26,7 @@ import { Chip } from "../components/ui/chip";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { Drawer, DrawerFooter, type DrawerSaveState } from "../components/ui/drawer";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
-import { PageToolbar } from "../components/ui/page-toolbar";
+import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
 import { Switch } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
@@ -36,7 +37,7 @@ import { ClientDrawerBody } from "./connections/client-drawer-body";
 import { IndexerDrawerBody } from "./connections/indexer-drawer-body";
 import { RoutingDrawerBody } from "./connections/routing-drawer-body";
 
-const TABS = configurationNavAreas.find((area) => area.label === "Connections")?.items ?? [];
+const TABS = configurationNavAreas.find((area) => area.to === "/indexers/indexers")?.items ?? [];
 
 interface LoaderData {
   clients: DownloadClientItem[];
@@ -48,6 +49,14 @@ interface LoaderData {
   telemetry: DownloadTelemetryOverview | null;
   outboundThrottle: OutboundThrottleSnapshot;
 }
+
+type RouteCategories = Record<string, string>;
+
+function sameRouteCategories(left: RouteCategories, right: RouteCategories) {
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+  return [...keys].every((key) => (left[key] ?? "") === (right[key] ?? ""));
+}
+
 export async function indexersLoader(): Promise<LoaderData> {
   const [indexers, clients, libraries, settings, telemetry, outboundThrottle] = await Promise.all([
     fetchJson<IndexerItem[]>("/api/indexers"),
@@ -81,6 +90,7 @@ async function send(url: string, method: string, body?: unknown, failure = "Requ
 export function IndexersPage() {
   const { clients, pathMappings, indexers, libraries, routing, settings, telemetry, outboundThrottle } = useLoaderData() as LoaderData;
   const location = useLocation();
+  const navigate = useNavigate();
   const revalidator = useRevalidator();
   const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
   const lastTelemetryRefresh = useRef(0);
@@ -133,7 +143,9 @@ export function IndexersPage() {
   const [clientInitial, setClientInitial] = useState<ClientForm>(emptyClientForm);
   const [routeSources, setRouteSources] = useState<string[]>([]);
   const [routeClients, setRouteClients] = useState<string[]>([]);
-  const [routeInitial, setRouteInitial] = useState<{ sources: string[]; clients: string[] }>({ sources: [], clients: [] });
+  const [routeCategories, setRouteCategories] = useState<RouteCategories>({});
+  const [categoryChecks, setCategoryChecks] = useState<Record<string, DownloadClientCategoryCheckResult>>({});
+  const [routeInitial, setRouteInitial] = useState<{ sources: string[]; clients: string[]; categories: RouteCategories }>({ sources: [], clients: [], categories: {} });
   const [saveState, setSaveState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -152,23 +164,23 @@ export function IndexersPage() {
   const dirty = useMemo(() => {
     if (drawer.kind === "indexer") return !sameIndexer(indexerForm, indexerInitial);
     if (drawer.kind === "client") return !sameClient(clientForm, clientInitial);
-    if (drawer.kind === "routing") return !sameSet(routeSources, routeInitial.sources) || !sameSet(routeClients, routeInitial.clients);
+    if (drawer.kind === "routing") return !sameSet(routeSources, routeInitial.sources) || !sameSet(routeClients, routeInitial.clients) || !sameRouteCategories(routeCategories, routeInitial.categories);
     return false;
-  }, [drawer.kind, indexerForm, indexerInitial, clientForm, clientInitial, routeSources, routeClients, routeInitial]);
+  }, [drawer.kind, indexerForm, indexerInitial, clientForm, clientInitial, routeSources, routeClients, routeCategories, routeInitial]);
   const footerState: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
-  const blocker = useUnsavedChanges(dirty);
+  useUnsavedChanges(dirty);
 
   useEffect(() => {
     if (dirty && (saveState === "saved" || saveState === "error")) setSaveState(undefined);
   }, [dirty, saveState]);
 
-  function resetDrawerChrome() {
+  const resetDrawerChrome = useCallback(() => {
     setSaveState(undefined);
     setFieldErrors({});
     setShowKey(false);
     setFineTuneOpen(false);
     setNewMapping({ remotePath: "", localPath: "" });
-  }
+  }, []);
   function openIndexer(item: IndexerItem | null) {
     const next = item ? indexerFormFrom(item) : emptyIndexerForm();
     setDrawer({ kind: "indexer", id: item?.id ?? null });
@@ -183,16 +195,29 @@ export function IndexersPage() {
     setClientInitial(next);
     resetDrawerChrome();
   }
-  function openRouting(library: LibraryItem) {
+  const openRouting = useCallback((library: LibraryItem) => {
     const snapshot = routing.find((item) => item.libraryId === library.id);
     const sources = snapshot?.sources.map((source) => source.indexerId) ?? [];
     const clientIds = snapshot?.downloadClients.map((client) => client.downloadClientId) ?? [];
+    const categories = Object.fromEntries(snapshot?.downloadClients.map((client) => [client.downloadClientId, client.category ?? ""]) ?? []);
     setDrawer({ kind: "routing", libraryId: library.id });
     setRouteSources(sources);
     setRouteClients(clientIds);
-    setRouteInitial({ sources, clients: clientIds });
+    setRouteCategories(categories);
+    setCategoryChecks({});
+    setRouteInitial({ sources, clients: clientIds, categories });
     resetDrawerChrome();
-  }
+  }, [resetDrawerChrome, routing]);
+
+  useEffect(() => {
+    if (section !== "routing" || drawer.kind !== "closed") return;
+    const libraryId = new URLSearchParams(location.search).get("libraryId");
+    if (!libraryId) return;
+    const library = libraries.find((item) => item.id === libraryId);
+    if (!library) return;
+    openRouting(library);
+    navigate("/connections/library-routing", { replace: true });
+  }, [drawer.kind, libraries, location.search, navigate, openRouting, section]);
   function closeDrawer() {
     setDrawer({ kind: "closed" });
     setConfirmDiscard(false);
@@ -290,11 +315,13 @@ export function IndexersPage() {
           "PUT",
           {
             sources: routeSources.map((indexerId, index) => ({ indexerId, priority: index + 1, requiredTags: "", excludedTags: "" })),
-            downloadClients: routeClients.map((downloadClientId, index) => ({ downloadClientId, priority: index + 1 }))
+            downloadClients: routeClients.map((downloadClientId, index) => ({ downloadClientId, priority: index + 1, category: routeCategories[downloadClientId]?.trim() || null }))
           },
           "Routing could not be saved."
         );
-        setRouteInitial({ sources: routeSources, clients: routeClients });
+        const categories = Object.fromEntries(routeClients.map((id) => [id, routeCategories[id]?.trim() ?? ""]));
+        setRouteCategories(categories);
+        setRouteInitial({ sources: routeSources, clients: routeClients, categories });
         setSaveMessage("Routing saved");
       }
       setSaveState("saved");
@@ -375,25 +402,36 @@ export function IndexersPage() {
     });
   }
 
+  async function checkCategory(clientId: string) {
+    const category = routeCategories[clientId]?.trim();
+    if (!category) return;
+    await run(`category:${clientId}`, async () => {
+      const response = await send(
+        `/api/download-clients/${clientId}/categories/check`,
+        "POST",
+        { category },
+        "Deluno could not check this download category."
+      );
+      const result = (await response.json()) as DownloadClientCategoryCheckResult;
+      setCategoryChecks((current) => ({ ...current, [clientId]: result }));
+      if (result.status === "ready") toast.success(result.message);
+      else if (result.status === "missing" || result.status === "unreachable") toast.error(result.message);
+    });
+  }
+
   const enabledIndexers = indexers.filter((item) => item.isEnabled).length;
   const healthyIndexers = indexers.filter((item) => item.isEnabled && item.healthStatus === "healthy").length;
 
   const toolbarAction =
     section === "indexers" ? (
-      <Button type="button" onClick={() => openIndexer(null)}>
-        <Plus className="h-4 w-4" />
-        New indexer
-      </Button>
+      <PageToolbarAction onClick={() => openIndexer(null)}>New indexer</PageToolbarAction>
     ) : section === "clients" ? (
-      <Button type="button" onClick={() => openClient(null)}>
-        <Plus className="h-4 w-4" />
-        New client
-      </Button>
+      <PageToolbarAction onClick={() => openClient(null)}>New client</PageToolbarAction>
     ) : null;
 
   return (
     <div className="grid gap-[var(--page-gap)]">
-      <PageToolbar tabs={TABS} actions={toolbarAction} />
+      <PageToolbar tabs={TABS} accent="green" actions={toolbarAction} />
 
       {section === "indexers" ? (
         <ListCard title="Indexers" count={indexers.length ? `${indexers.length} ${indexers.length === 1 ? "indexer" : "indexers"} · ${healthyIndexers}/${enabledIndexers} healthy` : undefined}>
@@ -479,7 +517,7 @@ export function IndexersPage() {
           <ListCard title="Permissions">
             <ListTable columns={[{ label: "Permission" }, { label: "Applies to" }, { label: "Status", width: LIST_TRACK.status, mobile: true }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]} chevron={false}>
               <ListRow>
-                <ListNameCell name="Remove items from the client queue" sub="A confirmed, manual Remove on Transfers. Automatic cleanup is configured in Automation & recovery." />
+              <ListNameCell name="Remove items from the client queue" sub="A confirmed, manual Remove on Transfers. Automatic cleanup is configured in Automation & Recovery." />
                 <ListCell primary="All download clients" secondary="SABnzbd, qBittorrent, …" />
                 <ListCell mobile>
                   <Chip tone={settings.removeCompletedDownloads ? "ok" : "muted"}>{settings.removeCompletedDownloads ? "Allowed" : "Blocked"}</Chip>
@@ -494,7 +532,35 @@ export function IndexersPage() {
       ) : null}
 
       {section === "routing" ? (
-        <ListCard title="Library routing" count={libraries.length ? `${libraries.length} ${libraries.length === 1 ? "library" : "libraries"}` : undefined}>
+        <>
+          <section aria-labelledby="library-routing-help-title" className="mb-4 overflow-hidden rounded-2xl border border-info/20 bg-info/[0.04]">
+            <div className="flex gap-3 px-[var(--card-pad-x)] py-3">
+              <span aria-hidden className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-info/25 bg-info/10 text-info">
+                <Info className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <h2 id="library-routing-help-title" className="text-[length:var(--type-card-title)] font-semibold text-foreground">How this works</h2>
+                <p className="mt-1 max-w-4xl text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">
+                  Deluno starts with the library you add a title to — for example Movies, TV Shows, or a custom library. That library decides which sources to search, which download app to use, and where the finished file belongs. A category is optional: it is only a name Deluno sends to the download app, not a tag you add to the movie in Deluno.
+                </p>
+              </div>
+            </div>
+            <div className="grid border-t border-info/15 md:grid-cols-3">
+              <div className="border-info/15 px-[var(--card-pad-x)] py-3 md:border-r">
+                <p className="text-[length:var(--type-caption)] font-semibold text-foreground">1. The library comes first</p>
+                <p className="mt-1 text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">When you add a title, Deluno knows whether it belongs in Movies, TV Shows, or another library.</p>
+              </div>
+              <div className="border-info/15 px-[var(--card-pad-x)] py-3 md:border-r">
+                <p className="text-[length:var(--type-caption)] font-semibold text-foreground">2. Deluno sends the file</p>
+                <p className="mt-1 text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">The selected download app, such as SABnzbd or qBittorrent, does the actual downloading.</p>
+              </div>
+              <div className="px-[var(--card-pad-x)] py-3">
+                <p className="text-[length:var(--type-caption)] font-semibold text-foreground">3. Add a category only if needed</p>
+                <p className="mt-1 text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">If the download app has its own category or folder rule, enter the matching category here. Deluno uses the same name when the file finishes.</p>
+              </div>
+            </div>
+          </section>
+          <ListCard title="Library routing" count={libraries.length ? `${libraries.length} ${libraries.length === 1 ? "library" : "libraries"}` : undefined}>
           {libraries.length === 0 ? (
             <ListEmpty title="No libraries yet" description="Create a Movies or TV library first, then choose its search and download connections here." />
           ) : (
@@ -503,12 +569,18 @@ export function IndexersPage() {
                 const snapshot = routing.find((item) => item.libraryId === library.id);
                 const sources = snapshot?.sources ?? [];
                 const targets = snapshot?.downloadClients ?? [];
-                const status = !sources.length ? { tone: "warn" as const, label: "No indexers" } : !targets.length ? { tone: "warn" as const, label: "No client" } : { tone: "ok" as const, label: "Ready" };
+                const status = !sources.length
+                  ? { tone: "warn" as const, label: "No indexers" }
+                  : !targets.length
+                    ? { tone: "warn" as const, label: "No client" }
+                    : targets.some((target) => Boolean(target.category?.trim()))
+                      ? { tone: "info" as const, label: "Category route" }
+                      : { tone: "ok" as const, label: "Ready" };
                 return (
                   <ListRow key={library.id} onClick={() => openRouting(library)} selected={drawer.kind === "routing" && drawer.libraryId === library.id}>
                     <ListNameCell name={library.name} sub={library.mediaType === "tv" ? "TV shows" : "Movies"} />
                     <ListCell numeric primary={sources.length ? `${sources.length} of ${indexers.length}` : <span className="text-muted-foreground">None</span>} secondary={sources.map((source) => source.indexerName).join(", ") || "Deluno can't search for this library"} />
-                    <ListCell numeric primary={targets.length ? `${targets.length} of ${clients.length}` : <span className="text-muted-foreground">None</span>} secondary={targets.map((target) => target.downloadClientName).join(", ") || "Nowhere to send releases"} />
+                    <ListCell numeric primary={targets.length ? `${targets.length} of ${clients.length}` : <span className="text-muted-foreground">None</span>} secondary={targets.map((target) => `${target.downloadClientName}${target.category?.trim() ? ` · ${target.category.trim()}` : ""}`).join(", ") || "Nowhere to send releases"} />
                     <ListCell mobile>
                       <Chip tone={status.tone}>{status.label}</Chip>
                     </ListCell>
@@ -517,7 +589,8 @@ export function IndexersPage() {
               })}
             </ListTable>
           )}
-        </ListCard>
+          </ListCard>
+        </>
       ) : null}
 
       <Drawer
@@ -534,7 +607,7 @@ export function IndexersPage() {
         description={
           drawer.kind === "indexer" ? (editingIndexer ? `${protocolLabel(editingIndexer.protocol)} indexer · used for ${scopeLabel(editingIndexer.mediaScope)}` : "Where Deluno looks for releases.")
           : drawer.kind === "client" ? (editingClient ? `${protocolLabel(editingClient.protocol)} · ${editingClient.endpointUrl ?? ""}` : "Where Deluno sends approved releases.")
-          : drawer.kind === "routing" ? `Which connections ${routingLibrary?.name ?? "this library"} may use`
+          : drawer.kind === "routing" ? `Choose where ${routingLibrary?.name ?? "this library"} searches and where its downloads go`
           : undefined
         }
         onSubmit={handleSubmit}
@@ -591,8 +664,34 @@ export function IndexersPage() {
             clients={clients}
             sources={routeSources}
             targets={routeClients}
+            categories={routeCategories}
             onToggleSource={(id, on) => setRouteSources((current) => (on ? [...new Set([...current, id])] : current.filter((item) => item !== id)))}
-            onToggleClient={(id, on) => setRouteClients((current) => (on ? [...new Set([...current, id])] : current.filter((item) => item !== id)))}
+            onToggleClient={(id, on) => {
+              setRouteClients((current) => (on ? [...new Set([...current, id])] : current.filter((item) => item !== id)));
+              if (!on) {
+                setRouteCategories((current) => {
+                  const next = { ...current };
+                  delete next[id];
+                  return next;
+                });
+                setCategoryChecks((current) => {
+                  const next = { ...current };
+                  delete next[id];
+                  return next;
+                });
+              }
+            }}
+            onCategoryChange={(id, value) => {
+              setRouteCategories((current) => ({ ...current, [id]: value }));
+              setCategoryChecks((current) => {
+                const next = { ...current };
+                delete next[id];
+                return next;
+              });
+            }}
+            categoryChecks={categoryChecks}
+            onCheckCategory={(id) => void checkCategory(id)}
+            busy={busy}
           />
         ) : null}
       </Drawer>
@@ -607,23 +706,17 @@ export function IndexersPage() {
         onConfirm={() => void handleRemove()}
       />
       <ConfirmDialog
-        open={confirmDiscard || blocker.state === "blocked"}
+        open={confirmDiscard}
         onOpenChange={(open) => {
           if (open) return;
           setConfirmDiscard(false);
-          if (blocker.state === "blocked") blocker.reset();
         }}
         title="Discard unsaved changes?"
         description="Your edits haven't been saved."
         confirmLabel="Discard"
         onConfirm={() => {
           setConfirmDiscard(false);
-          if (blocker.state === "blocked") {
-            setDrawer({ kind: "closed" });
-            blocker.proceed();
-          } else {
-            closeDrawer();
-          }
+          closeDrawer();
         }}
       />
     </div>

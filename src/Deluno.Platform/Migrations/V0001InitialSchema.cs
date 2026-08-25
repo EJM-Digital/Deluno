@@ -26,7 +26,10 @@ public static class PlatformDatabaseMigrations
         new V0018LibraryMediaPlans(),
         new V0019LibraryImportRuns(),
         new V0020IndexerRequestInterval(),
-        new V0021RepairQualityProfileTierNames()
+        new V0021RepairQualityProfileTierNames(),
+        new V0022LibraryDownloadClientCategories(),
+        new V0023LibraryViewLibraryFilter(),
+        new V0024LibraryWorkflowCleanup()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

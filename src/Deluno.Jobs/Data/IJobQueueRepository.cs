@@ -77,6 +77,19 @@ public interface IJobQueueRepository
         PageRequest request,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Creates the runtime row for a newly created library immediately. The
+    /// library configuration remains the source of truth; this row only holds
+    /// live scheduler state such as last/next run and errors.
+    /// </summary>
+    Task EnsureLibraryAutomationStateAsync(
+        LibraryAutomationPlanItem library,
+        CancellationToken cancellationToken);
+
+    Task RemoveLibraryAutomationStateAsync(
+        string libraryId,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<SearchCycleRunItem>> ListSearchCycleRunsAsync(
         int take,
         string? libraryId,

@@ -1,22 +1,17 @@
 /**
- * Metadata & sidecars — a page-level form on the shared grammar.
+ * Metadata & files — a page-level form on the shared grammar.
  *
- *   PageToolbar (Library setup tabs)
- *   ListCard  what Deluno saves   (page form: language, region, sidecar files)
- *   ListCard  title matching      (status row · check runs and reports in place)
- *   ListCard  refresh jobs        (one row per maintenance command)
- *   PageFooter (pinned: status · Discard · Save)
+ *   PageToolbar (Media Management tabs)
+ *   ListCard  metadata files      (page form: language, region, optional files)
+ *   PageFooter (pinned: status · Save)
  *
- * Contracts: PATCH /api/settings, POST /api/metadata/test,
- * POST /api/movies/metadata/jobs, POST /api/series/metadata/jobs.
+ * Global metadata checks and refresh jobs live under System. This page only
+ * stores the metadata files and regional preferences used by the library.
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
-import { Loader2, RefreshCw, SearchCheck } from "lucide-react";
-import { Button } from "../components/ui/button";
-import { Chip } from "../components/ui/chip";
 import { Field, FieldRow } from "../components/ui/field";
-import { ListCard, ListCell, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
+import { ListCard } from "../components/ui/list-card";
 import { PageFooter } from "../components/ui/page-footer";
 import { PageToolbar } from "../components/ui/page-toolbar";
 import { PresetField } from "../components/ui/preset-field";
@@ -26,12 +21,7 @@ import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import type { DrawerSaveState } from "../components/ui/drawer";
 import {
   fetchJson,
-  type LibraryItem,
-  type MetadataRefreshJobsResponse,
-  type MetadataProviderStatus,
-  type MetadataTestResponse,
-  type PlatformSettingsSnapshot,
-  type QualityProfileItem
+  type PlatformSettingsSnapshot
 } from "../lib/api";
 import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
@@ -57,46 +47,12 @@ const LANGUAGE_OPTIONS = [
   { label: "Japanese (ja)", value: "ja" }
 ];
 
-const REFRESH_JOBS = [
-  {
-    key: "missing",
-    name: "Fill in missing details",
-    sub: "Movies and TV",
-    description: "Only touches titles that are missing artwork, a description or a rating.",
-    mediaType: "all" as const,
-    forceAll: false
-  },
-  {
-    key: "movies",
-    name: "Refresh every movie",
-    sub: "Movies",
-    description: "Re-fetches details for the whole movie library. Use after changing language or region.",
-    mediaType: "movies" as const,
-    forceAll: true
-  },
-  {
-    key: "tv",
-    name: "Refresh every show",
-    sub: "TV shows",
-    description: "Re-fetches details for the whole TV library. Use after changing language or region.",
-    mediaType: "tv" as const,
-    forceAll: true
-  }
-];
-
 interface LoaderData {
-  libraries: LibraryItem[];
-  qualityProfiles: QualityProfileItem[];
-  metadataStatus: MetadataProviderStatus | null;
   settings: PlatformSettingsSnapshot;
 }
 
 export async function settingsMetadataLoader(): Promise<LoaderData> {
-  const [overview, metadataStatus] = await Promise.all([
-    import("./settings-overview-page").then((module) => module.settingsOverviewLoader()),
-    fetchJson<MetadataProviderStatus>("/api/metadata/status").catch(() => null)
-  ]);
-  return { ...overview, metadataStatus };
+  return { settings: await fetchJson<PlatformSettingsSnapshot>("/api/settings") };
 }
 
 interface MetadataForm {
@@ -107,7 +63,7 @@ interface MetadataForm {
 }
 
 export function SettingsMetadataPage() {
-  const { libraries, metadataStatus, settings } = useLoaderData() as LoaderData;
+  const { settings } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
   const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
 
@@ -115,9 +71,6 @@ export function SettingsMetadataPage() {
   const [form, setForm] = useState<MetadataForm>(savedForm);
   const [saveState, setSaveState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
   const [message, setMessage] = useState<string | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [testResult, setTestResult] = useState<MetadataTestResponse | null>(null);
-  const [jobResult, setJobResult] = useState<Record<string, string>>({});
 
   const dirty = !same(form, savedForm);
   const settingsForm = useMemo(() => formFrom(settings), [settings]);
@@ -154,70 +107,11 @@ export function SettingsMetadataPage() {
     }
   }
 
-  /** The result lands in the row that started it — a check is not an outcome elsewhere. */
-  async function checkTitleMatching() {
-    setBusy("test");
-    setTestResult(null);
-    try {
-      setTestResult(
-        await fetchJson<MetadataTestResponse>("/api/metadata/test", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query: "The Matrix", mediaType: "movies", year: 1999 })
-        })
-      );
-    } catch (error) {
-      setTestResult({ isConfigured: false, resultCount: 0, message: error instanceof Error ? error.message : "The check could not be run." } as MetadataTestResponse);
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function queueRefresh(job: (typeof REFRESH_JOBS)[number]) {
-    setBusy(`job:${job.key}`);
-    try {
-      const targets =
-        job.mediaType === "all"
-          ? ["/api/movies/metadata/jobs", "/api/series/metadata/jobs"]
-          : [job.mediaType === "movies" ? "/api/movies/metadata/jobs" : "/api/series/metadata/jobs"];
-      const results = await Promise.all(
-        targets.map((path) =>
-          fetchJson<MetadataRefreshJobsResponse>(path, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ forceAll: job.forceAll, take: 500 })
-          })
-        )
-      );
-      // The server phrases this, because it is the only side that knows how much
-      // is left. "Queued 500 titles" on a 20,000-item library read as finished
-      // while covering 2.5% of it.
-      const enqueued = results.reduce((total, item) => total + item.enqueuedCount, 0);
-      const remaining = results.reduce((total, item) => total + item.remainingCount, 0);
-      const summary =
-        results.length === 1
-          ? results[0].message
-          : remaining > 0
-            ? `Queued ${enqueued.toLocaleString()} ${enqueued === 1 ? "title" : "titles"}. Another ${remaining.toLocaleString()} still to go — Deluno keeps working through them in the background.`
-            : enqueued
-              ? `Queued ${enqueued.toLocaleString()} ${enqueued === 1 ? "title" : "titles"}. That is everything that needs refreshing.`
-              : "Nothing needs refreshing.";
-      setJobResult((current) => ({ ...current, [job.key]: summary }));
-      revalidator.revalidate();
-    } catch (error) {
-      setJobResult((current) => ({ ...current, [job.key]: error instanceof Error ? error.message : "Could not queue" }));
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  const ready = Boolean(metadataStatus?.isConfigured);
-
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-[var(--page-gap)]" noValidate>
-      <PageToolbar tabs={librarySetupNavItems} />
+      <PageToolbar tabs={librarySetupNavItems} accent="yellow" />
 
-      <ListCard title="What Deluno saves" count="Language, region, and the files kept beside your media">
+      <ListCard title="Metadata files" count="Optional information stored beside your media">
         <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
           <FieldRow>
             <Field label="Details language" help="Preferred language for titles, descriptions, and release information." error={settingsMutation.fieldErrors.metadataLanguage}>
@@ -239,67 +133,25 @@ export function SettingsMetadataPage() {
               />
             </Field>
           </FieldRow>
-          <SwitchRow
-            label="Save NFO files"
-            description="Keep a portable .nfo record in each media folder for other players and tools."
-            checked={form.nfoEnabled}
-            onCheckedChange={(checked) => setForm((current) => ({ ...current, nfoEnabled: checked }))}
-          />
-          <SwitchRow
-            label="Save poster and backdrop files"
-            description="Keep artwork next to your media so it stays available outside Deluno."
-            checked={form.artworkEnabled}
-            onCheckedChange={(checked) => setForm((current) => ({ ...current, artworkEnabled: checked }))}
-          />
+          <FieldRow>
+            <SwitchRow
+              label="Save portable metadata files (.nfo)"
+              description="Keep a small .nfo record in each media folder so other players and tools can read the details."
+              checked={form.nfoEnabled}
+              onCheckedChange={(checked) => setForm((current) => ({ ...current, nfoEnabled: checked }))}
+            />
+            <SwitchRow
+              label="Save artwork files"
+              description="Keep poster and backdrop images next to your media so they remain available outside Deluno."
+              checked={form.artworkEnabled}
+              onCheckedChange={(checked) => setForm((current) => ({ ...current, artworkEnabled: checked }))}
+              className="sm:border-l sm:border-hairline sm:pl-[var(--grid-gap)]"
+            />
+          </FieldRow>
         </div>
       </ListCard>
 
-      <ListCard
-        title="Title matching"
-        count="Deluno runs this for you — there are no provider keys to set"
-        actions={
-          <Button type="button" variant="outline" size="sm" onClick={() => void checkTitleMatching()} disabled={busy !== null}>
-            {busy === "test" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <SearchCheck className="h-3.5 w-3.5" />}
-            Check now
-          </Button>
-        }
-      >
-        <ListTable columns={[{ label: "Service" }, { label: "Last check", width: "minmax(0,1.6fr)" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]} chevron={false}>
-          <ListRow>
-            <ListNameCell name="Matching and library details" sub="Posters, descriptions, ratings" />
-            <ListCell
-              primary={testResult ? (testResult.isConfigured ? `${testResult.resultCount} ${testResult.resultCount === 1 ? "match" : "matches"} for “The Matrix”` : "The check could not reach the service") : "Not checked this session"}
-              secondary={testResult?.message ?? (ready ? "Deluno can match titles and collect their details." : "You can still add a movie or show by hand.")}
-            />
-            <ListCell mobile>
-              <Chip tone={testResult ? (testResult.isConfigured ? "ok" : "bad") : ready ? "ok" : "warn"}>
-                {testResult ? (testResult.isConfigured ? "Working" : "Failed") : ready ? "Ready" : "Unavailable"}
-              </Chip>
-            </ListCell>
-          </ListRow>
-        </ListTable>
-      </ListCard>
-
-      {libraries.length > 0 ? (
-        <ListCard title="Refresh library details" count="Run one of these after changing the language or region above">
-          <ListTable columns={[{ label: "Job" }, { label: "What it does", width: "minmax(0,1.8fr)" }, { label: "Run", width: "120px", mobile: true, srOnly: true }]} chevron={false}>
-            {REFRESH_JOBS.map((job) => (
-              <ListRow key={job.key}>
-                <ListNameCell name={job.name} sub={job.sub} />
-                <ListCell primary={job.description} secondary={jobResult[job.key]} />
-                <ListCell mobile align="end">
-                  <Button type="button" variant="outline" size="sm" onClick={() => void queueRefresh(job)} disabled={busy !== null}>
-                    {busy === `job:${job.key}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                    Run
-                  </Button>
-                </ListCell>
-              </ListRow>
-            ))}
-          </ListTable>
-        </ListCard>
-      ) : null}
-
-      <PageFooter state={state} message={message} saveLabel="Save metadata settings" onDiscard={() => setForm(savedForm)} />
+      <PageFooter state={state} message={message} saveLabel="Save metadata settings" />
     </form>
   );
 }

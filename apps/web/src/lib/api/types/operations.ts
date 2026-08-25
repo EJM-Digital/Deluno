@@ -26,6 +26,8 @@ export interface LibraryAutomationStateItem {
   lastStartedUtc: string | null;
   lastCompletedUtc: string | null;
   nextSearchUtc: string | null;
+  nextMissingSearchUtc?: string | null;
+  nextUpgradeSearchUtc?: string | null;
   lastJobId: string | null;
   lastError: string | null;
   updatedUtc: string;
@@ -44,6 +46,7 @@ export interface SearchCycleRunItem {
   notesJson: string | null;
   startedUtc: string;
   completedUtc: string | null;
+  searchKind?: string;
 }
 
 export interface SearchRetryWindowItem {
@@ -254,6 +257,38 @@ export interface DownloadDispatchItem {
   status: string;
   notesJson: string | null;
   createdUtc: string;
+  grabStatus?: string | null;
+  grabAttemptedUtc?: string | null;
+  grabResponseCode?: number | null;
+  grabMessage?: string | null;
+  grabFailureCode?: string | null;
+  grabResponseJson?: string | null;
+  detectedUtc?: string | null;
+  torrentHashOrItemId?: string | null;
+  downloadedBytes?: number | null;
+  importStatus?: string | null;
+  importDetectedUtc?: string | null;
+  importCompletedUtc?: string | null;
+  importedFilePath?: string | null;
+  importFailureCode?: string | null;
+  importFailureMessage?: string | null;
+  circuitOpenUntilUtc?: string | null;
+  nextRetryEligibleUtc?: string | null;
+  attemptCount?: number | null;
+}
+
+export interface DispatchTimelineEvent {
+  id: string;
+  dispatchId: string;
+  eventType: string;
+  timestamp: string;
+  detailsJson: string | null;
+  createdUtc: string;
+}
+
+export interface DownloadDispatchDetail {
+  dispatch: DownloadDispatchItem;
+  timeline: DispatchTimelineEvent[];
 }
 
 export interface DirectoryBrowseEntry {
@@ -293,6 +328,7 @@ export interface LibraryViewItem {
   id: string;
   userId: string;
   variant: "movies" | "shows";
+  libraryId: string | null;
   name: string;
   quickFilter: string;
   sortField: string;
@@ -371,6 +407,7 @@ export interface MigrationAuditReport {
 
 export interface CreateLibraryViewRequest {
   variant: "movies" | "shows";
+  libraryId: string | null;
   name: string;
   quickFilter: string;
   sortField: string;
@@ -382,6 +419,7 @@ export interface CreateLibraryViewRequest {
 }
 
 export interface UpdateLibraryViewRequest {
+  libraryId: string | null;
   name: string;
   quickFilter: string;
   sortField: string;

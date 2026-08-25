@@ -132,7 +132,9 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                     library.MissingSearchEnabled,
                     library.UpgradeSearchEnabled,
                     library.MaxItemsPerRun,
-                    library.AutomationStatus)).ToArray(),
+                    library.AutomationStatus,
+                    library.CleanupMode,
+                    library.RemoveEmptySourceFolders)).ToArray(),
                 Indexers: indexers.Select(indexer => new ExternalIndexerManifest(
                     indexer.Id,
                     indexer.Name,
@@ -810,7 +812,9 @@ public sealed record ExternalLibraryManifest(
     bool MissingSearchEnabled,
     bool UpgradeSearchEnabled,
     int MaxItemsPerRun,
-    string AutomationStatus);
+    string AutomationStatus,
+    string CleanupMode = "keep-source",
+    bool RemoveEmptySourceFolders = false);
 
 public sealed record ExternalIndexerManifest(
     string Id,

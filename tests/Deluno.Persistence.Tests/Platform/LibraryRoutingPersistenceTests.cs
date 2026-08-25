@@ -150,7 +150,7 @@ public sealed class LibraryRoutingPersistenceTests
             library.Id,
             new UpdateLibraryRoutingRequest(
                 Sources: null,
-                DownloadClients: [new UpdateLibraryDownloadClientLinkRequest(client.Id, Priority: 1)]),
+                DownloadClients: [new UpdateLibraryDownloadClientLinkRequest(client.Id, Priority: 1, Category: "anime")]),
             CancellationToken.None);
 
         Assert.NotNull(routing);
@@ -158,6 +158,7 @@ public sealed class LibraryRoutingPersistenceTests
         var link = Assert.Single(routing.DownloadClients);
         Assert.Equal(client.Id, link.DownloadClientId);
         Assert.Equal(1, link.Priority);
+        Assert.Equal("anime", link.Category);
     }
 
     [Fact]

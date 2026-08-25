@@ -52,19 +52,6 @@ export const MEDIA_PLAN_STARTERS: MediaPlanStarter[] = [
       notes: "Editable default plan: an everyday TV plan with steady missing-episode and upgrade searches."
     }
   },
-  {
-    id: "anime",
-    title: "Default: Anime",
-    description: "An editable default for anime-specific language, group, and format preferences.",
-    values: {
-      name: "Default: Anime",
-      mediaType: "tv",
-      searchIntervalOverrideHours: "6",
-      retryDelayOverrideHours: "3",
-      upgradeUntilCutoff: true,
-      notes: "Editable default plan: choose anime release preferences below, then fine-tune language and quality for this library."
-    }
-  }
 ];
 
 export function describeMediaPlanStarter(starter: MediaPlanStarter) {

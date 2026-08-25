@@ -3,14 +3,31 @@ import type { DownloadClientItem, IndexerItem, LibraryItem, PlatformSettingsSnap
 import { buildSetupStatus, type SetupStatusInput } from "./setup-status";
 
 function input(overrides: Partial<SetupStatusInput> = {}): SetupStatusInput {
-  return { libraries: [], downloadClients: [], indexers: [], intakeSources: [], policySets: [], qualityProfiles: [], settings: { autoStartJobs: false, workflowVerified: false } as PlatformSettingsSnapshot, ...overrides };
+  const { settings, ...rest } = overrides;
+  return {
+    libraries: [],
+    downloadClients: [],
+    indexers: [],
+    intakeSources: [],
+    policySets: [],
+    qualityProfiles: [],
+    ...rest,
+    settings: {
+      autoStartJobs: false,
+      workflowVerified: false,
+      movieFolderFormat: "{Movie Title} ({Release Year})",
+      seriesFolderFormat: "{Series Title} ({Series Year})",
+      episodeFileFormat: "{Series Title} - S{season:00}E{episode:00} - {Episode Title}",
+      ...settings
+    } as PlatformSettingsSnapshot
+  };
 }
 
 describe("setup status", () => {
   it("explains a fresh install", () => {
     const status = buildSetupStatus(input());
-    expect(status).toMatchObject({ completedCount: 0, totalCount: 5, isComplete: false, readiness: "not-ready", summary: "Start with step 1: Library & storage." });
-    expect(status.steps.map((step) => step.id)).toEqual(["library", "media-plans", "connections", "automation", "workflow", "discovery"]);
+    expect(status).toMatchObject({ completedCount: 0, totalCount: 5, isComplete: false, readiness: "not-ready", summary: "Start with step 1: Media Management." });
+    expect(status.steps.map((step) => step.id)).toEqual(["library", "media-plans", "connections", "automation", "discovery", "workflow"]);
     expect(status.steps.map((step) => step.state)).toEqual(["not-started", "not-started", "not-started", "not-started", "not-started", "not-started"]);
     expect(status.attentionItems.map((item) => item.id)).toEqual(["library", "media-plans", "connections", "automation", "workflow"]);
   });
@@ -28,6 +45,19 @@ describe("setup status", () => {
     expect(status.steps.find((step) => step.id === "connections")).toMatchObject({ complete: false, state: "failed" });
     expect(status.readiness).toBe("not-ready");
     expect(status.attentionItems.map((item) => item.id)).toContain("connections");
+  });
+
+  it("does not mark media management complete when a processor workflow is missing its output folder", () => {
+    const status = buildSetupStatus(input({
+      libraries: [{
+        mediaType: "movies",
+        rootPath: "D:\\Media\\Movies",
+        importWorkflow: "refine-before-import",
+        processorOutputPath: ""
+      } as LibraryItem]
+    }));
+
+    expect(status.steps.find((step) => step.id === "library")).toMatchObject({ complete: false, state: "failed", status: "0/1 libraries ready" });
   });
 
   it("recognises operational readiness while keeping import lists optional", () => {

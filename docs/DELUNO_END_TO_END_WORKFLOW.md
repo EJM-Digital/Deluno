@@ -61,10 +61,17 @@ decides naming, metadata output, import behaviour, and optional processor
 handoff. Existing media can be imported, but that is only one part of the
 product and does not replace acquisition readiness.
 
+Each library's import workflow also owns its source cleanup rule. The safe
+default is to keep the completed source file. A user may instead choose to
+remove that source only after Deluno has verified the import, and may opt to
+remove folders that are genuinely empty afterwards. Deluno never removes the
+configured download root, and it does not silently take over queue retention
+or seeding decisions that belong to the external download client.
+
 ### 3. Select the Media Plan
 
 The user chooses an understandable scenario or plan, such as balanced 1080p,
-premium 4K, anime, or storage-friendly. The plan owns quality, size, release,
+premium 4K, family-friendly, or storage-friendly. The plan owns quality, size, release,
 naming, routing, and upgrade behaviour. Advanced controls remain available
 behind the same decision rather than becoming a second unrelated setup system.
 
@@ -133,6 +140,13 @@ For a missing or upgrade candidate, Deluno must be able to:
 9. import without overwrite, record the decision trail, and update the
    catalogue;
 10. notify the user and schedule the next missing or upgrade action.
+
+Import readiness is deliberately conservative: a completed status from the
+download client is not enough on its own. Deluno checks that the source file
+has a non-zero size, is old enough to have settled, can be opened for reading,
+and has not changed while it is checked. If the file is still being copied or
+locked, Deluno leaves it alone and retries instead of probing, importing, or
+creating a false recovery failure.
 
 The same loop must work for movie and TV engines while keeping their internal
 ownership separate.

@@ -13,6 +13,26 @@ namespace Deluno.Contracts;
 public interface IExistingLibraryImportService
 {
     /// <summary>
+    /// Reads one bounded page of existing top-level files and folders without
+    /// changing the catalogue. The caller must review and select the returned
+    /// paths before anything is imported.
+    /// </summary>
+    Task<ExistingLibraryPreviewPage?> PreviewAsync(
+        string libraryId,
+        string? cursor,
+        int take,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Imports only the paths the user explicitly selected from a preview page.
+    /// Paths are checked against the library root again before they are read.
+    /// </summary>
+    Task<ExistingLibraryImportResult?> ImportSelectedAsync(
+        string libraryId,
+        IReadOnlyList<string> sourcePaths,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Starts an import for the library, or returns the one already in flight.
     /// Returns <c>null</c> when the library does not exist or its root path is
     /// not readable.
@@ -78,3 +98,35 @@ public sealed record LibraryImportResumeCandidate(
     string LibraryId,
     string LibraryName,
     int ProcessedCount);
+
+public sealed record ExistingLibraryPreviewPage(
+    string LibraryId,
+    string LibraryName,
+    string MediaType,
+    string RootPath,
+    IReadOnlyList<ExistingLibraryCandidate> Items,
+    string? NextCursor,
+    bool HasMore);
+
+public sealed record ExistingLibraryCandidate(
+    string SourcePath,
+    string RelativePath,
+    string Title,
+    int? Year,
+    string? DetectedQuality,
+    long? FileSizeBytes,
+    bool IsDirectory,
+    bool CanImport,
+    string? IssueKind,
+    string? IssueDetail);
+
+public sealed record ExistingLibraryImportResult(
+    int RequestedCount,
+    int ImportedCount,
+    int SkippedCount,
+    IReadOnlyList<ExistingLibraryImportIssue> Issues);
+
+public sealed record ExistingLibraryImportIssue(
+    string SourcePath,
+    string Kind,
+    string Detail);

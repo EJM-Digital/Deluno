@@ -128,12 +128,14 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
         int take,
         DateTimeOffset now,
         bool ignoreRetryWindow,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        string? wantedStatus = null);
 
     Task<int> CountRetryDelayedWantedAsync(
         string libraryId,
         DateTimeOffset now,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        string? wantedStatus = null);
 
     Task EnsureWantedStateAsync(
         string seriesId,

@@ -34,7 +34,7 @@ export function SummaryStrip({ cells, className }: { cells: SummaryCell[]; class
     <div
       className={cn(
         "grid grid-cols-2 overflow-hidden rounded-2xl border border-hairline bg-card shadow-card dark:border-white/[0.07]",
-        cells.length >= 5 ? "md:grid-cols-5" : cells.length === 4 ? "md:grid-cols-4" : cells.length === 3 ? "md:grid-cols-3" : "md:grid-cols-2",
+        cells.length >= 6 ? "md:grid-cols-6" : cells.length === 5 ? "md:grid-cols-5" : cells.length === 4 ? "md:grid-cols-4" : cells.length === 3 ? "md:grid-cols-3" : "md:grid-cols-2",
         className
       )}
     >

@@ -142,7 +142,7 @@ export function SystemApiPage() {
 
               <Field
                 label="Access"
-                help="Scope names are stored now so we can enforce fine-grained permissions later without changing existing keys."
+                help="Choose the smallest access the integration needs. A processor that only reports completed files needs Media automation access."
               >
                 <PresetField
                   value={scopes}

@@ -63,7 +63,7 @@ export function LibrarySelectionCommandBar({
           <BulkAction label="Search now" icon={<Zap className="h-3.5 w-3.5" />} onClick={() => onOpenBulkTools("search")} disabled={isUpdating} />
           <BulkAction label="Unmonitor" icon={<CircleOff className="h-3.5 w-3.5" />} onClick={() => onOpenBulkTools("monitoring", false)} disabled={isUpdating} />
           <BulkAction label="Remove" icon={<Trash2 className="h-3.5 w-3.5" />} onClick={onRemove} disabled={isUpdating} variant="danger" />
-          <BulkAction label="Bulk tools" icon={<FolderTree className="h-3.5 w-3.5" />} onClick={() => onOpenBulkTools("quality")} disabled={isUpdating} />
+          <BulkAction label="Bulk edit" icon={<FolderTree className="h-3.5 w-3.5" />} onClick={() => onOpenBulkTools("quality")} disabled={isUpdating} />
         </div>
 
         <div className="border-l border-white/[0.07] px-1.5 py-1.5">

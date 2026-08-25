@@ -1,7 +1,9 @@
+import { useEffect, useState } from "react";
 import { Loader2, Plus, Trash2, Wifi } from "lucide-react";
 import type { DownloadClientItem, DownloadClientPathMappingItem } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import { Chip } from "../../components/ui/chip";
+import { Disclosure } from "../../components/ui/disclosure";
 import { DrawerDanger, DrawerSection } from "../../components/ui/drawer";
 import { Field, FieldRow } from "../../components/ui/field";
 import { Input } from "../../components/ui/input";
@@ -42,9 +44,14 @@ export function ClientDrawerBody({
   onTest: () => void;
   onRemove: () => void;
 }) {
+  const [pathMappingOpen, setPathMappingOpen] = useState(false);
   const preset = CLIENT_PRESETS.find((item) => item.protocol === form.protocol);
   const chip = editing ? healthChip(editing) : null;
   const sameCategory = form.moviesCategory && form.moviesCategory === form.tvCategory;
+
+  useEffect(() => {
+    setPathMappingOpen(false);
+  }, [editing?.id]);
 
   function choosePreset(protocol: string) {
     const next = CLIENT_PRESETS.find((item) => item.protocol === protocol);
@@ -82,7 +89,7 @@ export function ClientDrawerBody({
           <Field label="Username" optional>
             <Input value={form.username} onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))} autoComplete="off" />
           </Field>
-          <Field label={preset?.authMode === "API key" ? "API key" : "Password"} optional help={editing ? "Stored encrypted. Leave blank to keep the current one." : preset?.authMode === "API key" ? "From the client's settings page." : undefined}>
+          <Field label={preset?.authMode === "API key" ? "API key" : "Password"} optional help={editing ? "Stored encrypted. Leave empty to keep the current one." : preset?.authMode === "API key" ? "From the client's settings page." : undefined}>
             <Input type="password" value={form.password} onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))} placeholder={editing ? "••••••••  (unchanged)" : ""} autoComplete="new-password" />
           </Field>
         </FieldRow>
@@ -101,9 +108,14 @@ export function ClientDrawerBody({
       </DrawerSection>
 
       {editing ? (
-        <DrawerSection title="File locations" aside={mappings.length ? `${mappings.length} link${mappings.length === 1 ? "" : "s"}` : "only when paths differ"}>
+        <Disclosure
+          title="Advanced path mapping"
+          summary={mappings.length ? `${mappings.length} saved path ${mappings.length === 1 ? "mapping" : "mappings"}` : "Only when the client and Deluno see different paths"}
+          open={pathMappingOpen}
+          onOpenChange={setPathMappingOpen}
+        >
           <p className="text-[length:var(--type-caption)] text-muted-foreground">
-            Configure the completed-download folder in the client itself. Add a link only when the same files have a different path for Deluno — for example a Docker client reports <code className="font-mono">/downloads/complete</code> while Deluno reads <code className="font-mono">D:\Downloads\complete</code>.
+            Configure completed-download folders in the client itself. Use this only when the client reports a path Deluno cannot use directly — for example, the client reports <code className="font-mono">/downloads/complete</code> while Deluno reads <code className="font-mono">D:\Downloads\complete</code>.
           </p>
           {mappings.length ? (
             <div className="grid gap-2">
@@ -135,7 +147,7 @@ export function ClientDrawerBody({
             {busy === "mapping:add" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
             Link paths
           </Button>
-        </DrawerSection>
+        </Disclosure>
       ) : null}
 
       {editing && chip ? (

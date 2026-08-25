@@ -1,5 +1,5 @@
 import type { LoaderFunction } from "react-router-dom";
-import { createBrowserRouter, Navigate, redirect, useParams } from "react-router-dom";
+import { createBrowserRouter, Navigate, redirect, useLoaderData, useParams } from "react-router-dom";
 import type { ComponentType } from "react";
 import { RouteErrorBoundary } from "./components/shell/route-error-boundary";
 import { ConfigurationWorkspaceLayout, SettingsWorkspaceLayout, SystemWorkspaceLayout } from "./components/app/settings-shell";
@@ -7,7 +7,7 @@ import { MoviesWorkspaceLayout, TvWorkspaceLayout } from "./components/app/media
 import { AppLayout } from "./layouts/app-layout";
 import { LoginPage } from "./routes/login-page";
 import { SetupPage } from "./routes/setup-page";
-import { RouteSkeleton } from "./components/shell/skeleton";
+import { RoutePending, RouteSkeleton } from "./components/shell/skeleton";
 import { readStored } from "./lib/use-auth";
 
 function LegacyShowDetailRedirect() {
@@ -27,14 +27,21 @@ type LazyRouteModule = {
 function withSkeleton(loadModule: () => Promise<LazyRouteModule>) {
   return async () => {
     const mod = await loadModule();
+    const Component = mod.loader
+      ? function RouteDataGuard() {
+          const loaderData = useLoaderData();
+          return loaderData == null ? <RoutePending /> : <mod.Component />;
+        }
+      : mod.Component;
+
     return {
       loader: mod.loader
         ? async (args: Parameters<NonNullable<LazyRouteModule["loader"]>>[0]) =>
             (await mod.loader!(args)) ?? null
         : async () => null,
-      Component: mod.Component,
+      Component,
       ErrorBoundary: RouteErrorBoundary,
-      HydrateFallback: RouteSkeleton
+      HydrateFallback: RoutePending
     };
   };
 }
@@ -269,6 +276,27 @@ export const router = createBrowserRouter([
         })
       },
       {
+        path: "search-cycles/missing",
+        lazy: withSkeleton(async () => {
+          const module = await import("./routes/search-cycles-page");
+          return { loader: module.searchCyclesLoader, Component: module.SearchCyclesPage };
+        })
+      },
+      {
+        path: "search-cycles/upgrades",
+        lazy: withSkeleton(async () => {
+          const module = await import("./routes/search-cycles-page");
+          return { loader: module.searchCyclesLoader, Component: module.SearchCyclesPage };
+        })
+      },
+      {
+        path: "search-cycles/failed-downloads",
+        lazy: withSkeleton(async () => {
+          const module = await import("./routes/search-cycles-page");
+          return { loader: module.searchCyclesLoader, Component: module.SearchCyclesPage };
+        })
+      },
+      {
         path: "settings",
         element: <SettingsWorkspaceLayout />,
         children: [
@@ -288,6 +316,16 @@ export const router = createBrowserRouter([
           },
           {
             path: "media-management",
+            lazy: withSkeleton(async () => {
+              const module = await import("./routes/settings-media-management-page-v2");
+              return {
+                loader: module.settingsMediaManagementLoader,
+                Component: module.SettingsMediaManagementPage
+              };
+            })
+          },
+          {
+            path: "import-policy",
             lazy: withSkeleton(async () => {
               const module = await import("./routes/settings-media-management-page-v2");
               return {

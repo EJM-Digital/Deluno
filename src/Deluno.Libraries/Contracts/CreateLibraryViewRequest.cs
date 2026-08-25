@@ -2,6 +2,7 @@ namespace Deluno.Libraries.Contracts;
 
 public sealed record CreateLibraryViewRequest(
     string Variant,
+    string? LibraryId,
     string Name,
     string QuickFilter,
     string SortField,

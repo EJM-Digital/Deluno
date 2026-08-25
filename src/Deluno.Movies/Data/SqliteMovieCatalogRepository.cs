@@ -514,8 +514,19 @@ public sealed class SqliteMovieCatalogRepository(
     }
 
     /// <summary>
-    private const string CatalogueHasFile = "EXISTS(SELECT 1 FROM movie_wanted_state w WHERE w.movie_id = m.id AND w.has_file = 1)";
-    private const string CatalogueUpgrade = "EXISTS(SELECT 1 FROM movie_wanted_state w WHERE w.movie_id = m.id AND w.has_file = 1 AND w.quality_cutoff_met = 0)";
+    private static string CatalogueStateScope(string? libraryId)
+        => string.IsNullOrWhiteSpace(libraryId) ? string.Empty : " AND w.library_id = @libraryId";
+
+    private static string CatalogueLibraryFilter(string? libraryId)
+        => string.IsNullOrWhiteSpace(libraryId)
+            ? string.Empty
+            : "EXISTS(SELECT 1 FROM movie_wanted_state w WHERE w.movie_id = m.id AND w.library_id = @libraryId)";
+
+    private static string CatalogueHasFileFor(string? libraryId)
+        => $"EXISTS(SELECT 1 FROM movie_wanted_state w WHERE w.movie_id = m.id{CatalogueStateScope(libraryId)} AND w.has_file = 1)";
+
+    private static string CatalogueUpgradeFor(string? libraryId)
+        => $"EXISTS(SELECT 1 FROM movie_wanted_state w WHERE w.movie_id = m.id{CatalogueStateScope(libraryId)} AND w.has_file = 1 AND w.quality_cutoff_met = 0)";
 
     /// <summary>
     /// The projection a catalogue page returns. Matches <see cref="ReadMovie"/>
@@ -524,14 +535,16 @@ public sealed class SqliteMovieCatalogRepository(
     /// current quality, which live in the wanted state, not in provider
     /// metadata.
     /// </summary>
-    private const string CataloguePageColumns =
-        """
+    private static string CataloguePageColumnsFor(string? libraryId)
+    {
+        var scope = CatalogueStateScope(libraryId);
+        return $"""
             m.id,
             m.title,
             m.release_year,
             m.imdb_id,
             m.monitored,
-            EXISTS(SELECT 1 FROM movie_wanted_state w WHERE w.movie_id = m.id AND w.has_file = 1) AS has_file,
+            EXISTS(SELECT 1 FROM movie_wanted_state w WHERE w.movie_id = m.id{scope} AND w.has_file = 1) AS has_file,
             m.metadata_provider,
             m.metadata_provider_id,
             m.original_title,
@@ -549,17 +562,18 @@ public sealed class SqliteMovieCatalogRepository(
             m.digital_release_date,
             m.physical_release_date,
             m.minimum_availability,
-            (SELECT MAX(w.file_size_bytes) FROM movie_wanted_state w WHERE w.movie_id = m.id) AS file_size_bytes,
-            (SELECT w.current_quality FROM movie_wanted_state w WHERE w.movie_id = m.id AND w.current_quality IS NOT NULL LIMIT 1) AS current_quality,
-            (SELECT w.file_path FROM movie_wanted_state w WHERE w.movie_id = m.id AND w.file_path IS NOT NULL LIMIT 1) AS file_path,
-            (SELECT w.video_codec FROM movie_wanted_state w WHERE w.movie_id = m.id AND w.video_codec IS NOT NULL LIMIT 1) AS video_codec,
-            (SELECT w.audio_codec FROM movie_wanted_state w WHERE w.movie_id = m.id AND w.audio_codec IS NOT NULL LIMIT 1) AS audio_codec,
-            (SELECT w.audio_channels FROM movie_wanted_state w WHERE w.movie_id = m.id AND w.audio_channels IS NOT NULL LIMIT 1) AS audio_channels,
-            (SELECT w.release_group FROM movie_wanted_state w WHERE w.movie_id = m.id AND w.release_group IS NOT NULL LIMIT 1) AS release_group,
+            (SELECT MAX(w.file_size_bytes) FROM movie_wanted_state w WHERE w.movie_id = m.id{scope}) AS file_size_bytes,
+            (SELECT w.current_quality FROM movie_wanted_state w WHERE w.movie_id = m.id{scope} AND w.current_quality IS NOT NULL LIMIT 1) AS current_quality,
+            (SELECT w.file_path FROM movie_wanted_state w WHERE w.movie_id = m.id{scope} AND w.file_path IS NOT NULL LIMIT 1) AS file_path,
+            (SELECT w.video_codec FROM movie_wanted_state w WHERE w.movie_id = m.id{scope} AND w.video_codec IS NOT NULL LIMIT 1) AS video_codec,
+            (SELECT w.audio_codec FROM movie_wanted_state w WHERE w.movie_id = m.id{scope} AND w.audio_codec IS NOT NULL LIMIT 1) AS audio_codec,
+            (SELECT w.audio_channels FROM movie_wanted_state w WHERE w.movie_id = m.id{scope} AND w.audio_channels IS NOT NULL LIMIT 1) AS audio_channels,
+            (SELECT w.release_group FROM movie_wanted_state w WHERE w.movie_id = m.id{scope} AND w.release_group IS NOT NULL LIMIT 1) AS release_group,
             m.runtime_minutes,
             m.popularity,
             m.vote_count
         """;
+    }
 
     /// <summary>
     /// One page of the catalogue — searched, filtered, sorted and counted in SQL.
@@ -578,12 +592,14 @@ public sealed class SqliteMovieCatalogRepository(
         var sort = CatalogueSortFields.Normalize(query.Sort);
         var status = CatalogueStatusFilters.Normalize(query.Status);
         var search = string.IsNullOrWhiteSpace(query.Search) ? null : query.Search.Trim();
+        var libraryId = string.IsNullOrWhiteSpace(query.LibraryId) ? null : query.LibraryId.Trim();
         var token = CataloguePageToken.Decode(query.PageToken);
 
         var sortExpression = CatalogueKeyset.SortExpression(sort, "m", "release_year");
         var where = CatalogueKeyset.CombineFilters(
             search is null ? string.Empty : CatalogueKeyset.SearchFilter("m"),
-            CatalogueKeyset.StatusFilter(status, "m", CatalogueHasFile, CatalogueUpgrade),
+            CatalogueLibraryFilter(libraryId),
+            CatalogueKeyset.StatusFilter(status, "m", CatalogueHasFileFor(libraryId), CatalogueUpgradeFor(libraryId)),
             token is null ? string.Empty : CatalogueKeyset.SeekPredicate(sortExpression, "m", query.Descending));
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -598,7 +614,7 @@ public sealed class SqliteMovieCatalogRepository(
             command.CommandText =
                 $"""
                 SELECT
-                {CataloguePageColumns},
+                {CataloguePageColumnsFor(libraryId)},
                     {sortExpression} AS sort_value
                 FROM movie_entries m
                 WHERE {where}
@@ -608,6 +624,7 @@ public sealed class SqliteMovieCatalogRepository(
 
             AddParameter(command, "@fetchCount", pageSize + 1);
             CatalogueKeyset.BindSearch(command, search);
+            AddParameter(command, "@libraryId", libraryId);
             if (token is not null)
             {
                 CatalogueKeyset.BindSeek(command, token, sort);
@@ -657,7 +674,7 @@ public sealed class SqliteMovieCatalogRepository(
             return new CataloguePage<MovieListItem>(items, nextPageToken, hasMore, null, null);
         }
 
-        var facets = await CountCatalogueFacetsAsync(connection, search, cancellationToken);
+        var facets = await CountCatalogueFacetsAsync(connection, search, libraryId, cancellationToken);
 
         return new CataloguePage<MovieListItem>(
             items,
@@ -675,10 +692,12 @@ public sealed class SqliteMovieCatalogRepository(
     private async Task<CatalogueFacets> CountCatalogueFacetsAsync(
         System.Data.Common.DbConnection connection,
         string? search,
+        string? libraryId,
         CancellationToken cancellationToken)
     {
         var where = CatalogueKeyset.CombineFilters(
-            search is null ? string.Empty : CatalogueKeyset.SearchFilter("m"));
+            search is null ? string.Empty : CatalogueKeyset.SearchFilter("m"),
+            CatalogueLibraryFilter(libraryId));
 
         using var command = connection.CreateCommand();
         command.CommandText =
@@ -687,13 +706,14 @@ public sealed class SqliteMovieCatalogRepository(
                 COUNT(*),
                 SUM(CASE WHEN m.monitored = 1 THEN 1 ELSE 0 END),
                 SUM(CASE WHEN m.monitored = 0 THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {CatalogueHasFile} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {CatalogueHasFile} THEN 0 ELSE 1 END),
-                SUM(CASE WHEN {CatalogueUpgrade} THEN 1 ELSE 0 END)
+                SUM(CASE WHEN {CatalogueHasFileFor(libraryId)} THEN 1 ELSE 0 END),
+                SUM(CASE WHEN {CatalogueHasFileFor(libraryId)} THEN 0 ELSE 1 END),
+                SUM(CASE WHEN {CatalogueUpgradeFor(libraryId)} THEN 1 ELSE 0 END)
             FROM movie_entries m
             WHERE {where};
             """;
         CatalogueKeyset.BindSearch(command, search);
+        AddParameter(command, "@libraryId", libraryId);
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken))
@@ -1037,7 +1057,8 @@ public sealed class SqliteMovieCatalogRepository(
         int take,
         DateTimeOffset now,
         bool ignoreRetryWindow,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? wantedStatus = null)
     {
         if (sharedMediaStateRepository is not null)
         {
@@ -1047,11 +1068,15 @@ public sealed class SqliteMovieCatalogRepository(
                 take,
                 now,
                 ignoreRetryWindow,
-                cancellationToken);
+                cancellationToken,
+                wantedStatus);
             return sharedItems.Select(MapWanted).ToArray();
         }
 
         var items = new List<MovieWantedItem>();
+        var statusFilter = string.IsNullOrWhiteSpace(wantedStatus)
+            ? "w.wanted_status IN ('missing', 'upgrade')"
+            : "w.wanted_status = @wantedStatus";
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Movies,
@@ -1060,7 +1085,7 @@ public sealed class SqliteMovieCatalogRepository(
         using var command = connection.CreateCommand();
         command.CommandText =
             ignoreRetryWindow
-                ? """
+                ? $"""
                   SELECT
                       m.id, m.title, m.release_year, m.imdb_id,
                       w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality, w.quality_cutoff_met,
@@ -1069,14 +1094,14 @@ public sealed class SqliteMovieCatalogRepository(
                   FROM movie_wanted_state w
                   INNER JOIN movie_entries m ON m.id = w.movie_id
                   WHERE w.library_id = @libraryId
-                    AND w.wanted_status IN ('missing', 'upgrade')
+                    AND {statusFilter}
                   ORDER BY
                       CASE w.wanted_status WHEN 'missing' THEN 0 ELSE 1 END,
                       COALESCE(w.last_search_utc, w.missing_since_utc, w.updated_utc) ASC,
                       m.title ASC
                   LIMIT @take;
                   """
-                : """
+                : $"""
                   SELECT
                       m.id, m.title, m.release_year, m.imdb_id,
                       w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality, w.quality_cutoff_met,
@@ -1085,7 +1110,7 @@ public sealed class SqliteMovieCatalogRepository(
                   FROM movie_wanted_state w
                   INNER JOIN movie_entries m ON m.id = w.movie_id
                   WHERE w.library_id = @libraryId
-                    AND w.wanted_status IN ('missing', 'upgrade')
+                    AND {statusFilter}
                     AND m.monitored = 1
                     AND (w.next_eligible_search_utc IS NULL OR w.next_eligible_search_utc <= @now)
                     -- Nothing to find before a film is obtainable, so do not spend
@@ -1110,6 +1135,10 @@ public sealed class SqliteMovieCatalogRepository(
         AddParameter(command, "@now", now.ToString("O"));
         AddParameter(command, "@today", DateOnly.FromDateTime(now.UtcDateTime).ToString("yyyy-MM-dd"));
         AddParameter(command, "@take", take);
+        if (!string.IsNullOrWhiteSpace(wantedStatus))
+        {
+            AddParameter(command, "@wantedStatus", NormalizeWantedStatus(wantedStatus));
+        }
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
@@ -1123,7 +1152,8 @@ public sealed class SqliteMovieCatalogRepository(
     public async Task<int> CountRetryDelayedWantedAsync(
         string libraryId,
         DateTimeOffset now,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? wantedStatus = null)
     {
         if (sharedMediaStateRepository is not null)
         {
@@ -1131,7 +1161,8 @@ public sealed class SqliteMovieCatalogRepository(
                 MediaKind.Movie,
                 libraryId,
                 now,
-                cancellationToken);
+                cancellationToken,
+                wantedStatus);
         }
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -1145,7 +1176,7 @@ public sealed class SqliteMovieCatalogRepository(
             FROM movie_wanted_state w
             INNER JOIN movie_entries m ON m.id = w.movie_id
             WHERE w.library_id = @libraryId
-              AND w.wanted_status IN ('missing', 'upgrade')
+              AND (@wantedStatus IS NULL OR w.wanted_status = @wantedStatus)
               AND m.monitored = 1
               AND w.next_eligible_search_utc IS NOT NULL
               AND w.next_eligible_search_utc > @now;
@@ -1153,6 +1184,7 @@ public sealed class SqliteMovieCatalogRepository(
 
         AddParameter(command, "@libraryId", libraryId);
         AddParameter(command, "@now", now.ToString("O"));
+        AddParameter(command, "@wantedStatus", string.IsNullOrWhiteSpace(wantedStatus) ? null : NormalizeWantedStatus(wantedStatus));
         var value = await command.ExecuteScalarAsync(cancellationToken);
         return Convert.ToInt32(value, CultureInfo.InvariantCulture);
     }
@@ -1378,27 +1410,14 @@ public sealed class SqliteMovieCatalogRepository(
             AddParameter(insert, "@id", movieId);
             AddParameter(insert, "@title", normalizedTitle);
             AddParameter(insert, "@releaseYear", request.ReleaseYear);
-            AddParameter(insert, "@monitored", request.UnmonitorWhenCutoffMet && request.QualityCutoffMet ? 0 : 1);
+            // Reaching the cutoff stops upgrade searches; it must not stop
+            // monitoring. Users may still need missing media or future
+            // episodes, and monitoring remains their explicit choice.
+            AddParameter(insert, "@monitored", 1);
             AddParameter(insert, "@createdUtc", now.ToString("O"));
             AddParameter(insert, "@updatedUtc", now.ToString("O"));
             await insert.ExecuteNonQueryAsync(cancellationToken);
         }
-        else if (request.UnmonitorWhenCutoffMet && request.QualityCutoffMet)
-        {
-            using var unmonitor = connection.CreateCommand();
-            unmonitor.Transaction = transaction;
-            unmonitor.CommandText =
-                """
-                UPDATE movie_entries
-                SET monitored = 0,
-                    updated_utc = @updatedUtc
-                WHERE id = @movieId;
-                """;
-            AddParameter(unmonitor, "@movieId", movieId);
-            AddParameter(unmonitor, "@updatedUtc", now.ToString("O"));
-            await unmonitor.ExecuteNonQueryAsync(cancellationToken);
-        }
-
         using var wanted = connection.CreateCommand();
         wanted.Transaction = transaction;
         wanted.CommandText =

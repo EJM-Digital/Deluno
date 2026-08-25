@@ -123,6 +123,7 @@ export function ActivityPage() {
   return (
     <div className="grid gap-[var(--page-gap)]">
       <PageToolbar
+        accent="green"
         left={
           <SegmentedControl<Section>
             aria-label="Section"

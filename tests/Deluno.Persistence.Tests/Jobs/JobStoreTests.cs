@@ -11,6 +11,40 @@ namespace Deluno.Persistence.Tests.Jobs;
 public sealed class JobStoreTests
 {
     [Fact]
+    public async Task EnsureLibraryAutomationStateAsync_creates_runtime_row_without_waiting_for_planner()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T04:00:00Z"));
+        await InitializeJobsAsync(storage, timeProvider);
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var library = new LibraryAutomationPlanItem(
+            LibraryId: "movies-main",
+            LibraryName: "Movies",
+            MediaType: "movies",
+            AutoSearchEnabled: true,
+            MissingSearchEnabled: true,
+            UpgradeSearchEnabled: true,
+            SearchIntervalHours: 12,
+            RetryDelayHours: 6,
+            MaxItemsPerRun: 10,
+            SearchWindowStartHour: null,
+            SearchWindowEndHour: null);
+
+        await store.EnsureLibraryAutomationStateAsync(library, CancellationToken.None);
+
+        var state = Assert.Single((await store.ListLibraryAutomationStatesAsync(CancellationToken.None)).Values);
+        Assert.Equal(library.LibraryId, state.LibraryId);
+        Assert.Equal(library.LibraryName, state.LibraryName);
+        Assert.Equal("idle", state.Status);
+        Assert.False(state.SearchRequested);
+        Assert.Null(state.NextSearchUtc);
+        Assert.Null(state.LastError);
+
+        await store.RemoveLibraryAutomationStateAsync(library.LibraryId, CancellationToken.None);
+        Assert.Empty(await store.ListLibraryAutomationStatesAsync(CancellationToken.None));
+    }
+
+    [Fact]
     public async Task Enqueue_lease_complete_and_retry_failed_jobs_preserve_expected_lifecycle()
     {
         using var storage = TestStorage.Create();
@@ -357,7 +391,10 @@ public sealed class JobStoreTests
 
         Assert.True(await store.RequestLibrarySearchAsync(library, CancellationToken.None));
         await store.PlanLibrarySearchesAsync([library], CancellationToken.None);
-        Assert.Single(await store.ListAsync(20, CancellationToken.None));
+        var plannedJobs = await store.ListAsync(20, CancellationToken.None);
+        Assert.Equal(2, plannedJobs.Count);
+        Assert.Contains(plannedJobs, job => job.PayloadJson?.Contains("\"searchKind\":\"missing\"", StringComparison.Ordinal) == true);
+        Assert.Contains(plannedJobs, job => job.PayloadJson?.Contains("\"searchKind\":\"upgrade\"", StringComparison.Ordinal) == true);
 
         Assert.True(await store.SkipLibrarySearchCycleAsync(library, CancellationToken.None));
 
@@ -367,6 +404,8 @@ public sealed class JobStoreTests
         Assert.Equal("idle", state.Status);
         Assert.NotNull(state.NextSearchUtc);
         Assert.Equal(timeProvider.GetUtcNow().AddHours(6), state.NextSearchUtc!.Value);
+        Assert.Equal(timeProvider.GetUtcNow().AddHours(6), state.NextMissingSearchUtc);
+        Assert.Equal(timeProvider.GetUtcNow().AddHours(6), state.NextUpgradeSearchUtc);
         Assert.Equal(
             [
                 ("AutomationState", "movies-main"),

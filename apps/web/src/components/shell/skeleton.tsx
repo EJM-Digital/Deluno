@@ -94,6 +94,15 @@ export function RouteSkeleton() {
   );
 }
 
+/**
+ * Navigation should keep its chrome quiet while a route is resolving. The
+ * older full-page skeleton looked like broken content during quick switches;
+ * this small state reserves the page space without flashing placeholder cards.
+ */
+export function RoutePending() {
+  return <div className="min-h-[60vh]" aria-busy="true" aria-live="polite" />;
+}
+
 /** Poster-grid skeleton for the library view. */
 export function LibraryGridSkeleton({ count = 18 }: { count?: number }) {
   return (

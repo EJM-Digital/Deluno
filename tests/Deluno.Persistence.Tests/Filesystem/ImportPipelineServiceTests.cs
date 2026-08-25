@@ -29,6 +29,7 @@ public sealed class ImportPipelineServiceTests
         Directory.CreateDirectory(movieRootPath);
         var sourcePath = Path.Combine(downloadsPath, "Arrival.2016.WEB.1080p.mkv");
         await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
 
         var platform = CreatePlatformRepository(storage, timeProvider);
         var libraries = CreateLibrariesRepository(storage, timeProvider);
@@ -103,6 +104,7 @@ public sealed class ImportPipelineServiceTests
         Directory.CreateDirectory(movieRootPath);
         var sourcePath = Path.Combine(downloadsPath, "Blade.Runner.2017.WEB.720p.mkv");
         await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 2048).Select(value => (byte)(value % 193)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
 
         var destinationFolder = Path.Combine(movieRootPath, "Blade Runner 2017 (2017)");
         var blockedDestinationPath = Path.Combine(destinationFolder, "Blade Runner 2017 (2017).mkv");
@@ -166,6 +168,147 @@ public sealed class ImportPipelineServiceTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_applies_library_cleanup_only_after_a_successful_import()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var sourceFolder = Path.Combine(downloadsPath, "anime");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(sourceFolder);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(sourceFolder, "Paprika.2006.1080p.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 2048).Select(value => (byte)(value % 193)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(
+            libraries,
+            movieRootPath,
+            downloadsPath,
+            cleanupMode: "remove-source-after-import",
+            removeEmptySourceFolders: true);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath,
+                    FileName: null,
+                    MediaType: "movies",
+                    Title: "Paprika",
+                    Year: 2006,
+                    Genres: ["Animation"],
+                    Tags: [],
+                    Studio: "Madhouse",
+                    OriginalLanguage: "ja"),
+                TransferMode: "copy",
+                Overwrite: false,
+                AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.False(File.Exists(sourcePath));
+        Assert.False(Directory.Exists(sourceFolder));
+        Assert.Contains("source file was removed", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_waits_for_a_source_file_to_be_stable_before_probing_or_importing()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "The.Matrix.1999.WEB.1080p.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 2048).Select(value => (byte)(value % 193)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow);
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath,
+                    FileName: null,
+                    MediaType: "movies",
+                    Title: "The Matrix",
+                    Year: 1999,
+                    Genres: ["Science Fiction"],
+                    Tags: [],
+                    Studio: "Warner",
+                    OriginalLanguage: "en"),
+                TransferMode: "copy",
+                Overwrite: false,
+                AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(425, result.StatusCode);
+        Assert.Contains("still being written", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.True(File.Exists(sourcePath));
+        Assert.Empty(await movies.ListAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task PreviewAsync_explains_that_an_unstable_source_will_wait_without_running_ffprobe()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Dune.2021.WEB.1080p.mkv");
+        await File.WriteAllBytesAsync(sourcePath, [1, 2, 3]);
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow);
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies, new ProbeMustNotRunService());
+
+        var preview = await service.PreviewAsync(
+            new ImportPreviewRequest(
+                SourcePath: sourcePath,
+                FileName: null,
+                MediaType: "movies",
+                Title: "Dune",
+                Year: 2021,
+                Genres: ["Science Fiction"],
+                Tags: [],
+                Studio: "Warner",
+                OriginalLanguage: "en"),
+            CancellationToken.None);
+
+        Assert.True(preview.SourceExists);
+        Assert.Null(preview.MediaProbe);
+        Assert.Contains(preview.Warnings, warning => warning.Contains("still being written", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(preview.DecisionSteps, step => step.Contains("not stable", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task Reconciliation_detects_missing_tracked_file_and_marks_it_missing_only_when_requested()
     {
         using var storage = TestStorage.Create();
@@ -178,6 +321,7 @@ public sealed class ImportPipelineServiceTests
         Directory.CreateDirectory(movieRootPath);
         var sourcePath = Path.Combine(downloadsPath, "Conclave.2024.WEB.1080p.mkv");
         await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 3072).Select(value => (byte)(value % 211)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
 
         var platform = CreatePlatformRepository(storage, timeProvider);
         var libraries = CreateLibrariesRepository(storage, timeProvider);
@@ -282,6 +426,7 @@ public sealed class ImportPipelineServiceTests
         Directory.CreateDirectory(movieRootPath);
         var sourcePath = Path.Combine(downloadsPath, "Interstellar.2014.WEB.1080p.mkv");
         await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
 
         var platform = CreatePlatformRepository(storage, timeProvider);
         var libraries = CreateLibrariesRepository(storage, timeProvider);
@@ -395,14 +540,15 @@ public sealed class ImportPipelineServiceTests
         TimeProvider timeProvider,
         SqlitePlatformSettingsRepository platform,
         ILibrariesRepository librariesRepository,
-        SqliteMovieCatalogRepository movies)
+        SqliteMovieCatalogRepository movies,
+        IMediaProbeService? mediaProbeService = null)
         => new(
             platform,
             librariesRepository,
             movies,
             new SqliteSeriesCatalogRepository(storage.Factory, timeProvider),
             new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository()),
-            new SuccessfulProbeService(),
+            mediaProbeService ?? new SuccessfulProbeService(),
             new MediaDecisionService(new VersionedMediaPolicyEngine()),
             null, // IOutboundNotificationService — not needed in tests
             new NullImportResolutionsRepository(),
@@ -425,7 +571,9 @@ public sealed class ImportPipelineServiceTests
     private static async Task CreateMovieLibraryAsync(
         ILibrariesRepository librariesRepository,
         string movieRootPath,
-        string downloadsPath)
+        string downloadsPath,
+        string cleanupMode = "keep-source",
+        bool removeEmptySourceFolders = false)
     {
         var request = new CreateLibraryRequest(
             Name: "Movies",
@@ -444,7 +592,9 @@ public sealed class ImportPipelineServiceTests
             UpgradeSearchEnabled: true,
             SearchIntervalHours: 6,
             RetryDelayHours: 24,
-            MaxItemsPerRun: 25);
+            MaxItemsPerRun: 25,
+            CleanupMode: cleanupMode,
+            RemoveEmptySourceFolders: removeEmptySourceFolders);
         await librariesRepository.CreateLibraryAsync(request, CancellationToken.None);
     }
 
@@ -515,5 +665,11 @@ public sealed class ImportPipelineServiceTests
                 ],
                 AudioStreams: [],
                 SubtitleStreams: []));
+    }
+
+    private sealed class ProbeMustNotRunService : IMediaProbeService
+    {
+        public Task<MediaProbeInfo> ProbeAsync(string path, CancellationToken cancellationToken)
+            => throw new InvalidOperationException("ffprobe should not run for an unstable source file.");
     }
 }

@@ -2,7 +2,7 @@
  * Tags — list → drawer. Contracts: GET/POST /api/tags, PUT/DELETE /api/tags/{id}.
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { useLoaderData, useRevalidator } from "react-router-dom";
+import { Link, useLoaderData, useRevalidator } from "react-router-dom";
 import { Plus } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
@@ -10,7 +10,7 @@ import { Drawer, DrawerDanger, DrawerFooter, DrawerSection, type DrawerSaveState
 import { Field, FieldRow } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { ListCard, ListCell, ListEmpty, ListRow, ListTable } from "../components/ui/list-card";
-import { PageToolbar } from "../components/ui/page-toolbar";
+import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
 import { Select } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
 import { toast } from "../components/shell/toaster";
@@ -62,7 +62,7 @@ export function SettingsTagsPage() {
   const editing = mode.kind === "edit" ? tags.find((tag) => tag.id === mode.id) ?? null : null;
   const dirty = isOpen && (form.name !== initialForm.name || form.color !== initialForm.color || form.description !== initialForm.description);
   const footerState: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
-  const blocker = useUnsavedChanges(dirty);
+  useUnsavedChanges(dirty);
   useEffect(() => {
     if (dirty && (saveState === "saved" || saveState === "error")) setSaveState(undefined);
   }, [dirty, saveState]);
@@ -138,19 +138,34 @@ export function SettingsTagsPage() {
     <div className="grid gap-[var(--page-gap)]">
       <PageToolbar
         tabs={librarySetupNavItems}
+        accent="yellow"
         actions={
-          <Button type="button" onClick={() => open(null)}>
-            <Plus className="h-4 w-4" />
-            New tag
-          </Button>
+          <PageToolbarAction onClick={() => open(null)}>New tag</PageToolbarAction>
         }
       />
 
-      <ListCard title="Tags" count={tags.length ? `${tags.length} ${tags.length === 1 ? "tag" : "tags"}` : undefined}>
+      <ListCard title="How tags are used" count="A tag is a label you can reuse across Deluno">
+        <div className="grid divide-y divide-hairline md:grid-cols-3 md:divide-x md:divide-y-0">
+          <div className="grid gap-1.5 p-[var(--card-pad-x)]">
+            <p className="text-[length:var(--type-body-sm)] font-semibold text-foreground">Route downloads</p>
+            <p className="text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">Use required or excluded tags in <Link to="/indexers/library-routing" className="text-info underline underline-offset-2">Library Routing</Link> when an indexer or download client uses categories or labels.</p>
+          </div>
+          <div className="grid gap-1.5 p-[var(--card-pad-x)]">
+            <p className="text-[length:var(--type-body-sm)] font-semibold text-foreground">Choose destinations</p>
+            <p className="text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">A <Link to="/settings/destination-rules" className="text-info underline underline-offset-2">Destination Rule</Link> can match a tag and send that title to a different folder instead of the library default.</p>
+          </div>
+          <div className="grid gap-1.5 p-[var(--card-pad-x)]">
+            <p className="text-[length:var(--type-body-sm)] font-semibold text-foreground">Organise media</p>
+            <p className="text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">Apply tags to <Link to="/movies" className="text-info underline underline-offset-2">movies</Link> or <Link to="/tv" className="text-info underline underline-offset-2">TV shows</Link> in bulk, then use them to find and manage related media.</p>
+          </div>
+        </div>
+      </ListCard>
+
+      <ListCard title="Tags" count={tags.length ? `${tags.length} ${tags.length === 1 ? "tag" : "tags"} · reusable labels for routing, destinations, and media` : undefined}>
         {tags.length === 0 ? (
           <ListEmpty
             title="No tags yet"
-            description="Labels shared by libraries, final destinations and routing — Kids, 4K, Anime, or a processor workflow. Add only the ones that make you manage media differently."
+            description="Create a label once, then reuse it in Library Routing, Destination Rules, or on your movies and shows. A tag does nothing until you apply it somewhere."
             actions={
               <Button type="button" size="sm" onClick={() => open(null)}>
                 <Plus className="h-3.5 w-3.5" />
@@ -180,21 +195,21 @@ export function SettingsTagsPage() {
           if (!open) requestClose();
         }}
         title={mode.kind === "create" ? "New tag" : editing?.name ?? form.name}
-        description={mode.kind === "create" ? "A label shared by libraries, destinations and routing." : "Tag"}
+        description={mode.kind === "create" ? "Create a label first, then apply it where you need it." : "Reusable label"}
         onSubmit={handleSubmit}
         footer={<DrawerFooter state={footerState} message={saveMessage} saveLabel={mode.kind === "create" ? "Create tag" : "Save tag"} onCancel={requestClose} disabled={busy} />}
       >
-        <DrawerSection title="Basics">
+        <DrawerSection title="Tag details">
           <FieldRow>
-            <Field label="Name" error={nameError} help="Use the same spelling wherever a library or rule refers to it.">
+            <Field label="Name" error={nameError} help="Use the same spelling wherever you apply this tag. Tags are case-insensitive.">
               <Input value={form.name} onChange={(event) => { setNameError(null); setForm((current) => ({ ...current, name: event.target.value })); }} placeholder="Kids" autoComplete="off" />
             </Field>
             <Field label="Colour">
               <Select value={form.color} onChange={(event) => setForm((current) => ({ ...current, color: event.target.value }))} options={COLORS.map((color) => ({ value: color, label: capitalise(color) }))} />
             </Field>
           </FieldRow>
-          <Field label="Description" optional>
-            <Textarea value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} placeholder="What this tag is for." rows={2} />
+          <Field label="What this tag means" optional help="This note is for you; it does not change matching or routing.">
+            <Textarea value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} placeholder="For example: titles sent to the lounge TV." rows={2} />
           </Field>
         </DrawerSection>
         {editing ? (
@@ -206,23 +221,17 @@ export function SettingsTagsPage() {
 
       <ConfirmDialog open={confirmRemove} onOpenChange={setConfirmRemove} title={`Delete “${editing?.name ?? form.name}”?`} description="Anything referring to this tag simply loses the label." confirmLabel="Delete tag" busy={busy} onConfirm={() => void handleRemove()} />
       <ConfirmDialog
-        open={confirmDiscard || blocker.state === "blocked"}
+        open={confirmDiscard}
         onOpenChange={(open) => {
           if (open) return;
           setConfirmDiscard(false);
-          if (blocker.state === "blocked") blocker.reset();
         }}
         title="Discard unsaved changes?"
         description="Your edits to this tag haven't been saved."
         confirmLabel="Discard"
         onConfirm={() => {
           setConfirmDiscard(false);
-          if (blocker.state === "blocked") {
-            setMode({ kind: "closed" });
-            blocker.proceed();
-          } else {
-            closeDrawer();
-          }
+          closeDrawer();
         }}
       />
     </div>

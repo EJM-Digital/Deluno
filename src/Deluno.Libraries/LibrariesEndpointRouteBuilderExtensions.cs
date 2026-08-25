@@ -236,6 +236,7 @@ public static class LibrariesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] CreateLibraryRequest request,
             [FromServices] ILibrariesRepository repository,
+            [FromServices] IJobQueueRepository jobs,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
@@ -252,6 +253,8 @@ public static class LibrariesEndpointRouteBuilderExtensions
             }
 
             var item = await repository.CreateLibraryAsync(request, cancellationToken);
+            await jobs.EnsureLibraryAutomationStateAsync(ToAutomationPlan(item), cancellationToken);
+            await realtimeEventPublisher.PublishEntityChangedAsync("AutomationState", item.Id, cancellationToken);
             await realtimeEventPublisher.PublishEntityChangedAsync("Library", item.Id, cancellationToken);
             return Results.Ok(item);
         });
@@ -261,6 +264,7 @@ public static class LibrariesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] UpdateLibraryDetailsRequest request,
             [FromServices] ILibrariesRepository repository,
+            [FromServices] IJobQueueRepository jobs,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
@@ -292,6 +296,8 @@ public static class LibrariesEndpointRouteBuilderExtensions
                 return Results.NotFound();
             }
 
+            await jobs.EnsureLibraryAutomationStateAsync(ToAutomationPlan(item), cancellationToken);
+            await realtimeEventPublisher.PublishEntityChangedAsync("AutomationState", item.Id, cancellationToken);
             await realtimeEventPublisher.PublishEntityChangedAsync("Library", item.Id, cancellationToken);
             return Results.Ok(item);
         });
@@ -301,6 +307,7 @@ public static class LibrariesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] UpdateLibraryAutomationRequest request,
             [FromServices] ILibrariesRepository repository,
+            [FromServices] IJobQueueRepository jobs,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
@@ -322,6 +329,7 @@ public static class LibrariesEndpointRouteBuilderExtensions
                 return Results.NotFound();
             }
 
+            await jobs.EnsureLibraryAutomationStateAsync(ToAutomationPlan(item), cancellationToken);
             await realtimeEventPublisher.PublishEntityChangedAsync("AutomationState", item.Id, cancellationToken);
             await realtimeEventPublisher.PublishEntityChangedAsync("Library", item.Id, cancellationToken);
             return Results.Ok(item);
@@ -448,6 +456,7 @@ public static class LibrariesEndpointRouteBuilderExtensions
             string id,
             HttpContext httpContext,
             [FromServices] ILibrariesRepository repository,
+            [FromServices] IJobQueueRepository jobs,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
@@ -463,6 +472,8 @@ public static class LibrariesEndpointRouteBuilderExtensions
                 return Results.NotFound();
             }
 
+            await jobs.RemoveLibraryAutomationStateAsync(id, cancellationToken);
+            await realtimeEventPublisher.PublishEntityChangedAsync("AutomationState", id, cancellationToken);
             await realtimeEventPublisher.PublishEntityChangedAsync("Library", id, cancellationToken);
             return Results.NoContent();
         });
@@ -564,6 +575,12 @@ public static class LibrariesEndpointRouteBuilderExtensions
             if (string.IsNullOrWhiteSpace(client.DownloadClientId))
             {
                 errors["downloadClients"] = ["Choose a download client before saving library routing."];
+                break;
+            }
+
+            if (client.Category?.Length > 200)
+            {
+                errors["downloadClients"] = ["Keep a download category under 200 characters."];
                 break;
             }
         }
@@ -680,6 +697,20 @@ public static class LibrariesEndpointRouteBuilderExtensions
             "refine-before-import" or "refine" or "processor" or "processing" => "refine-before-import",
             _ => "standard"
         };
+
+    private static LibraryAutomationPlanItem ToAutomationPlan(LibraryItem item)
+        => new(
+            LibraryId: item.Id,
+            LibraryName: item.Name,
+            MediaType: item.MediaType,
+            AutoSearchEnabled: item.AutoSearchEnabled,
+            MissingSearchEnabled: item.MissingSearchEnabled,
+            UpgradeSearchEnabled: item.UpgradeSearchEnabled,
+            SearchIntervalHours: item.SearchIntervalHours,
+            RetryDelayHours: item.RetryDelayHours,
+            MaxItemsPerRun: item.MaxItemsPerRun,
+            SearchWindowStartHour: item.SearchWindowStartHour,
+            SearchWindowEndHour: item.SearchWindowEndHour);
 
     /// <summary>
     /// Used to filter libraries by media scope for the bulk search-now

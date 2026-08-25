@@ -1,5 +1,5 @@
 /**
- * Import lists — list → drawer.
+ * Import Lists — list → drawer.
  *
  *   PageToolbar (New list)
  *   ListCard  (name · list · adds to · last sync · status · on · ›)
@@ -21,7 +21,7 @@ import { Drawer, DrawerDanger, DrawerFooter, DrawerSection, type DrawerSaveState
 import { Field, FieldRow } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
-import { PageToolbar } from "../components/ui/page-toolbar";
+import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
 import { PresetField } from "../components/ui/preset-field";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { Select } from "../components/ui/select";
@@ -117,7 +117,7 @@ export function SettingsListsPage() {
   const editing = mode.kind === "edit" ? intakeSources.find((item) => item.id === mode.id) ?? null : null;
   const dirty = useMemo(() => isOpen && !sameForm(form, initialForm), [isOpen, form, initialForm]);
   const footerState: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
-  const blocker = useUnsavedChanges(dirty);
+  useUnsavedChanges(dirty);
 
   useEffect(() => {
     if (dirty && (saveState === "saved" || saveState === "error")) setSaveState(undefined);
@@ -330,15 +330,13 @@ export function SettingsListsPage() {
   return (
     <div className="grid gap-[var(--page-gap)]">
       <PageToolbar
+        accent="orange"
         actions={
-          <Button type="button" onClick={openCreate}>
-            <Plus className="h-4 w-4" />
-            New list
-          </Button>
+          <PageToolbarAction onClick={openCreate}>New list</PageToolbarAction>
         }
       />
 
-      <ListCard title="Import lists" count={intakeSources.length ? `${intakeSources.length} ${intakeSources.length === 1 ? "list" : "lists"} · ${intakeSources.filter((item) => item.isEnabled).length} enabled` : undefined}>
+      <ListCard title="Import Lists" count={intakeSources.length ? `${intakeSources.length} ${intakeSources.length === 1 ? "list" : "lists"} · ${intakeSources.filter((item) => item.isEnabled).length} enabled · add titles from watchlists and feeds` : undefined}>
         {intakeSources.length === 0 ? (
           <ListEmpty
             title="No import lists yet"
@@ -445,8 +443,10 @@ export function SettingsListsPage() {
           <Field label="Check the list" help="How often Deluno re-reads the list for new titles.">
             <PresetField inputType="number" value={form.syncIntervalHours} onChange={(value) => setForm((current) => ({ ...current, syncIntervalHours: value }))} options={SYNC_OPTIONS} customLabel="Custom interval" customPlaceholder="Hours" />
           </Field>
-          <SwitchRow label="Search when a title is added" description="Turn off to add titles without downloading anything yet." checked={form.searchOnAdd} onCheckedChange={(checked) => setForm((current) => ({ ...current, searchOnAdd: checked }))} />
-          <SwitchRow label="Enabled" description="Checked on the schedule above. Syncing never removes titles already in your library." checked={form.isEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, isEnabled: checked }))} />
+          <FieldRow>
+            <SwitchRow label="Search when a title is added" description="Turn off to add titles without downloading anything yet." checked={form.searchOnAdd} onCheckedChange={(checked) => setForm((current) => ({ ...current, searchOnAdd: checked }))} />
+            <SwitchRow label="Enabled" description="Checked on the schedule above. Syncing never removes titles already in your library." checked={form.isEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, isEnabled: checked }))} className="sm:border-l sm:border-hairline sm:pl-[var(--grid-gap)]" />
+          </FieldRow>
         </DrawerSection>
 
         {editing ? (
@@ -495,23 +495,17 @@ export function SettingsListsPage() {
         onConfirm={() => void handleRemove()}
       />
       <ConfirmDialog
-        open={confirmDiscard || blocker.state === "blocked"}
+        open={confirmDiscard}
         onOpenChange={(open) => {
           if (open) return;
           setConfirmDiscard(false);
-          if (blocker.state === "blocked") blocker.reset();
         }}
         title="Discard unsaved changes?"
         description="Your edits to this list haven't been saved."
         confirmLabel="Discard"
         onConfirm={() => {
           setConfirmDiscard(false);
-          if (blocker.state === "blocked") {
-            setMode({ kind: "closed" });
-            blocker.proceed();
-          } else {
-            closeDrawer();
-          }
+          closeDrawer();
         }}
       />
     </div>

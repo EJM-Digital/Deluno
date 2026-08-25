@@ -17,4 +17,6 @@ public sealed record CreateLibraryRequest(
     bool UpgradeSearchEnabled,
     int? SearchIntervalHours,
     int? RetryDelayHours,
-    int? MaxItemsPerRun);
+    int? MaxItemsPerRun,
+    string? CleanupMode = null,
+    bool RemoveEmptySourceFolders = false);

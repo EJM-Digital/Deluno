@@ -107,12 +107,14 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
         int take,
         DateTimeOffset now,
         bool ignoreRetryWindow,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        string? wantedStatus = null);
 
     Task<int> CountRetryDelayedWantedAsync(
         string libraryId,
         DateTimeOffset now,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        string? wantedStatus = null);
 
     Task EnsureWantedStateAsync(
         string movieId,
