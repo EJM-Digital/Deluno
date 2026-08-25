@@ -6,6 +6,7 @@ using Deluno.Jobs.Decisions;
 using Deluno.Libraries.Data;
 using Deluno.Platform.Data;
 using Deluno.Quality.Data;
+using Deluno.Quality;
 
 namespace Deluno.Media;
 
@@ -78,6 +79,10 @@ public static class MediaSearchHandler
             qualityRepository,
             library.QualityProfileId,
             cancellationToken);
+        var allowedQualities = await QualityProfileResolver.ResolveAllowedQualitiesAsync(
+            qualityRepository,
+            library.QualityProfileId,
+            cancellationToken);
         var decisionPlan = await acquisitionPipeline.PlanAsync(
             new AcquisitionDecisionRequest(
                 item.Title,
@@ -88,7 +93,8 @@ public static class MediaSearchHandler
                 routing?.Sources ?? [],
                 routing?.DownloadClients ?? [],
                 customFormats,
-                PreviewOnly: string.Equals(mode, "preview", StringComparison.OrdinalIgnoreCase)),
+                PreviewOnly: string.Equals(mode, "preview", StringComparison.OrdinalIgnoreCase),
+                AllowedQualities: allowedQualities),
             cancellationToken);
         var searchPlan = decisionPlan.SearchPlan;
         var bestCandidate = searchPlan.BestCandidate;

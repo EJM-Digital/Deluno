@@ -45,7 +45,8 @@ public sealed partial class ImportPipelineService(
     {
         var settings = await platformRepository.GetAsync(cancellationToken);
         var rules = await librariesRepository.ListDestinationRulesAsync(cancellationToken);
-        var preview = ResolveImportPreview(request, settings, rules);
+        var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+        var preview = ResolveImportPreview(request, settings, rules, libraries);
         if (preview.SourceExists && !ImportFileReadiness.IsReady(preview.SourcePath))
         {
             return AddReadinessWarning(preview);
@@ -58,7 +59,8 @@ public sealed partial class ImportPipelineService(
     {
         var settings = await platformRepository.GetAsync(cancellationToken);
         var rules = await librariesRepository.ListDestinationRulesAsync(cancellationToken);
-        var resolvedPreview = ResolveImportPreview(request.Preview, settings, rules);
+        var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+        var resolvedPreview = ResolveImportPreview(request.Preview, settings, rules, libraries);
         var mediaType = NormalizeMediaType(request.Preview.MediaType);
 
         if (resolvedPreview.SourceExists && !ImportFileReadiness.IsReady(resolvedPreview.SourcePath))
@@ -86,6 +88,24 @@ public sealed partial class ImportPipelineService(
                     mediaType,
                     cancellationToken);
             }
+        }
+
+        // Never write media to a relative path. If no rule, library or platform
+        // setting produced a root, the destination resolves against whatever the
+        // host's working directory happens to be, which is how imports silently
+        // ended up outside the library while reporting success. A missing root is
+        // a configuration failure the user has to see, not a path to guess at.
+        if (!Path.IsPathRooted(preview.DestinationPath))
+        {
+            var message = $"No library root is configured for {mediaType}, so Deluno has nowhere to import '{preview.SourcePath}'.";
+            await RecordImportFailureAsync(
+                request,
+                request.Preview,
+                "missingLibraryRoot",
+                message,
+                "Set the root folder for this library in Media Management, then retry the import.",
+                cancellationToken);
+            return Failed(StatusCodes.Status409Conflict, message);
         }
 
         var extension = Path.GetExtension(preview.DestinationPath);
@@ -274,7 +294,6 @@ public sealed partial class ImportPipelineService(
             File.Move(stagingPath, preview.DestinationPath, overwrite: request.Overwrite);
             VerifyFinalImport(preview.DestinationPath, stagedSize);
 
-            var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
             var catalogImportResult = await MarkCatalogImportedAsync(
                 request.Preview,
                 preview,
@@ -599,10 +618,22 @@ public sealed partial class ImportPipelineService(
         return request with { SourcePath = resolved, FileName = fileName };
     }
 
+    /// <summary>
+    /// The root of the library that owns this media type, or null when no
+    /// library of that type has one. First match wins; a library without a root
+    /// is skipped rather than treated as an empty answer.
+    /// </summary>
+    private static string? ResolveLibraryRoot(IReadOnlyList<LibraryItem> libraries, string mediaType)
+        => libraries
+            .Where(library => NormalizeMediaType(library.MediaType) == mediaType)
+            .Select(library => library.RootPath)
+            .FirstOrDefault(root => !string.IsNullOrWhiteSpace(root));
+
     private static ImportPreviewResponse ResolveImportPreview(
         ImportPreviewRequest request,
         PlatformSettingsSnapshot settings,
-        IReadOnlyList<DestinationRuleItem> rules)
+        IReadOnlyList<DestinationRuleItem> rules,
+        IReadOnlyList<LibraryItem> libraries)
     {
         request = ResolveDirectorySource(request);
         var mediaType = NormalizeMediaType(request.MediaType);
@@ -611,7 +642,20 @@ public sealed partial class ImportPipelineService(
             .Where(item => item.IsEnabled && NormalizeMediaType(item.MediaType) == mediaType)
             .OrderBy(item => item.Priority)
             .FirstOrDefault(item => MatchesRule(item, request));
+        // Root precedence, most specific first. The library that owns the media
+        // sits above the platform default deliberately: a destination rule is an
+        // explicit override, a library's own root is where the user pointed that
+        // library in Media Management, and the platform setting is only a
+        // fallback for an install that has no library to speak of. Two movie
+        // libraries with different roots must not both land on one global path.
+        //
+        // Before this the library was never consulted at all, so an install with
+        // libraries configured and no platform default fell through to
+        // string.Empty and imported to a *relative* path — which .NET resolves
+        // against the host's working directory. Media landed wherever the
+        // service happened to be started from while Deluno reported success.
         var rootPath = rule?.RootPath ??
+                       ResolveLibraryRoot(libraries, mediaType) ??
                        (mediaType == "tv" ? settings.SeriesRootPath : settings.MovieRootPath) ??
                        string.Empty;
         var template = rule?.FolderTemplate ??

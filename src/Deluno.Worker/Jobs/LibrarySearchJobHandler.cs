@@ -7,6 +7,7 @@ using Deluno.Libraries.Data;
 using Deluno.Movies.Data;
 using Deluno.Quality.Data;
 using Deluno.Series.Data;
+using Deluno.Quality;
 
 namespace Deluno.Worker.Jobs;
 
@@ -42,13 +43,17 @@ public sealed class LibrarySearchJobHandler(
             qualityRepository,
             library?.QualityProfileId,
             cancellationToken);
+        var allowedQualities = await QualityProfileResolver.ResolveAllowedQualitiesAsync(
+            qualityRepository,
+            library?.QualityProfileId,
+            cancellationToken);
 
         if (payload.MediaType == "movies")
         {
-            return await SearchMoviesAsync(job, payload, searchStatus, routing, customFormats, configuredSources, configuredClients, now, cancellationToken);
+            return await SearchMoviesAsync(job, payload, searchStatus, routing, customFormats, allowedQualities, configuredSources, configuredClients, now, cancellationToken);
         }
 
-        return await SearchSeriesAsync(job, payload, searchStatus, routing, customFormats, configuredSources, configuredClients, now, cancellationToken);
+        return await SearchSeriesAsync(job, payload, searchStatus, routing, customFormats, allowedQualities, configuredSources, configuredClients, now, cancellationToken);
     }
 
     private async Task<string> SearchMoviesAsync(
@@ -57,6 +62,7 @@ public sealed class LibrarySearchJobHandler(
         string? searchStatus,
         LibraryRoutingSnapshot? routing,
         IReadOnlyList<Deluno.Quality.Contracts.CustomFormatItem> customFormats,
+        IReadOnlyList<string> allowedQualities,
         int configuredSources,
         int configuredClients,
         DateTimeOffset now,
@@ -125,7 +131,8 @@ public sealed class LibrarySearchJobHandler(
                     candidate.TargetQuality,
                     routing?.Sources ?? [],
                     routing?.DownloadClients ?? [],
-                    customFormats),
+                    customFormats,
+                    AllowedQualities: allowedQualities),
                 cancellationToken);
             if (decisionPlan.SourceCount > 0 && decisionPlan.DownloadClientCount > 0)
             {
@@ -242,6 +249,7 @@ public sealed class LibrarySearchJobHandler(
         string? searchStatus,
         LibraryRoutingSnapshot? routing,
         IReadOnlyList<Deluno.Quality.Contracts.CustomFormatItem> customFormats,
+        IReadOnlyList<string> allowedQualities,
         int configuredSources,
         int configuredClients,
         DateTimeOffset now,
@@ -311,7 +319,8 @@ public sealed class LibrarySearchJobHandler(
                     candidate.TargetQuality,
                     routing?.Sources ?? [],
                     routing?.DownloadClients ?? [],
-                    customFormats),
+                    customFormats,
+                    AllowedQualities: allowedQualities),
                 cancellationToken);
             if (decisionPlan.SourceCount > 0 && decisionPlan.DownloadClientCount > 0)
             {

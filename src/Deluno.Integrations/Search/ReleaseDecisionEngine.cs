@@ -44,6 +44,22 @@ public static partial class ReleaseDecisionEngine
             risks.Add($"Release name matched the never-grab pattern '{matchedNeverGrab}'.");
         }
 
+        // The profile's allowed tiers are a gate, not a preference. Without this
+        // the only quality signal was the cutoff, and anything at or above it
+        // scored as "preferred" — so a profile allowing up to Bluray 1080p would
+        // happily grab WEB 2160p, which is the exact outcome an allowed list
+        // exists to prevent. An empty list means the profile does not constrain
+        // tiers, so it is not treated as "nothing is allowed".
+        if (input.AllowedQualities is { Count: > 0 } allowed &&
+            !allowed.Any(entry => string.Equals(
+                LibraryQualityDecider.NormalizeQuality(entry) ?? entry,
+                normalizedCandidate,
+                StringComparison.OrdinalIgnoreCase)))
+        {
+            hardReject = true;
+            risks.Add($"{normalizedCandidate} is not one of the qualities this profile allows ({string.Join(", ", allowed)}).");
+        }
+
         reasons.Add(meetsCutoff
             ? $"Quality {normalizedCandidate} meets or exceeds cutoff {normalizedTarget}."
             : $"Quality {normalizedCandidate} is below cutoff {normalizedTarget}.");
@@ -95,7 +111,11 @@ public static partial class ReleaseDecisionEngine
         }
 
         var seederScore = ScoreSeeders(input.Seeders, risks, reasons);
-        var sizeScore = ScoreSize(input.SizeBytes, normalizedCandidate, qualityModel, risks, reasons, out var estimatedBitrate);
+        var sizeScore = ScoreSize(input.SizeBytes, normalizedCandidate, qualityModel, risks, reasons, out var estimatedBitrate, out var sizeOutOfRange);
+        if (sizeOutOfRange)
+        {
+            hardReject = true;
+        }
         var releaseGroup = InferReleaseGroup(input.ReleaseName);
         if (!string.IsNullOrWhiteSpace(releaseGroup))
         {
@@ -186,11 +206,15 @@ public static partial class ReleaseDecisionEngine
         QualityModelSnapshot? qualityModel,
         ICollection<string> risks,
         ICollection<string> reasons,
-        out double? estimatedBitrate)
+        out double? estimatedBitrate,
+        out bool outOfRange)
     {
         estimatedBitrate = null;
+        outOfRange = false;
         if (sizeBytes is null or <= 0)
         {
+            // An unreported size is not a size violation. Rejecting here would
+            // block every indexer that omits the field.
             risks.Add("Indexer did not report release size.");
             return -50;
         }
@@ -198,16 +222,28 @@ public static partial class ReleaseDecisionEngine
         var sizeGb = sizeBytes.Value / 1_073_741_824d;
         estimatedBitrate = Math.Round(sizeBytes.Value * 8d / (2.0 * 60 * 60) / 1_000_000, 1);
         var (min, max) = ExpectedSizeRangeGb(quality, qualityModel);
-        if (sizeGb < min)
+
+        // Size Rules is described in the UI as "the final check that rejects a
+        // release as implausibly small or large", and a minimum in GB reads to a
+        // user as a floor. It used to be a score penalty only: one risk flag was
+        // not enough to reach "risky" (which needs three) let alone "rejected",
+        // so a 0.06 GB file passed a 7 GB floor and was grabbed. The penalty also
+        // could not discriminate when every candidate was equally wrong.
+        //
+        // 0 and 0 remains the documented "no limit" convention, handled by
+        // ExpectedSizeRangeGb returning a zero bound.
+        if (min > 0 && sizeGb < min)
         {
-            risks.Add($"Size {sizeGb:0.0} GB is unusually small for {quality}.");
+            outOfRange = true;
+            risks.Add($"Size {sizeGb:0.0} GB is below the {min:0.#} GB minimum configured for {quality}.");
             return -180;
         }
 
         // max <= 0 is the "unlimited" convention from the quality model.
         if (max > 0 && sizeGb > max)
         {
-            risks.Add($"Size {sizeGb:0.0} GB is unusually large for {quality}.");
+            outOfRange = true;
+            risks.Add($"Size {sizeGb:0.0} GB is above the {max:0.#} GB maximum configured for {quality}.");
             return -80;
         }
 
@@ -342,4 +378,10 @@ public sealed record ReleaseDecisionInput(
     int SourcePriorityScore,
     int CustomFormatScore,
     IReadOnlyList<string>? NeverGrabPatterns = null,
-    int? CurrentCustomFormatScore = null);
+    int? CurrentCustomFormatScore = null,
+    /// <summary>
+    /// The quality tiers the governing profile permits. Null or empty means the
+    /// profile does not constrain tiers; a non-empty list rejects anything
+    /// outside it, whatever the cutoff says.
+    /// </summary>
+    IReadOnlyList<string>? AllowedQualities = null);

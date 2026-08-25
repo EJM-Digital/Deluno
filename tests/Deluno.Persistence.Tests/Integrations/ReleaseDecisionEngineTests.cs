@@ -13,7 +13,8 @@ public sealed class ReleaseDecisionEngineTests
         int? seeders = 25,
         int sourcePriority = 100,
         int customFormatScore = 0,
-        IReadOnlyList<string>? neverGrab = null)
+        IReadOnlyList<string>? neverGrab = null,
+        IReadOnlyList<string>? allowedQualities = null)
         => new(
             ReleaseName: releaseName,
             Quality: quality,
@@ -24,7 +25,72 @@ public sealed class ReleaseDecisionEngineTests
             DownloadUrl: "https://example.test/file.torrent",
             SourcePriorityScore: sourcePriority,
             CustomFormatScore: customFormatScore,
-            NeverGrabPatterns: neverGrab);
+            NeverGrabPatterns: neverGrab,
+            AllowedQualities: allowedQualities);
+
+    // ── Allowed qualities (#283) ──────────────────────────────────────────
+
+    [Fact]
+    public void Decide_rejects_a_quality_the_profile_does_not_allow()
+    {
+        // Live regression: the shipped "Standard Movies" profile allows up to
+        // Bluray 1080p, and Deluno grabbed WEB 2160p and called it preferred,
+        // because only the cutoff reached the engine.
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(
+            releaseName: "Movie.2024.2160p.WEB-DL.x265-GRP",
+            quality: "WEB 2160p",
+            targetQuality: "WEB 1080p",
+            sizeBytes: 20_000_000_000,
+            allowedQualities: ["WEB 720p", "WEB 1080p", "Bluray 1080p"]));
+
+        Assert.Equal("rejected", decision.Status);
+        Assert.Contains(decision.Reasons.Concat(decision.RiskFlags), text => text.Contains("not one of the qualities this profile allows", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Decide_accepts_a_quality_inside_the_allowed_list()
+    {
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(
+            allowedQualities: ["WEB 720p", "WEB 1080p", "Bluray 1080p"]));
+
+        Assert.Equal("preferred", decision.Status);
+    }
+
+    [Fact]
+    public void Decide_accepts_an_allowed_quality_that_sits_below_cutoff()
+    {
+        // Below cutoff is "eligible", not rejected — the allowed list governs
+        // which tiers may be grabbed, the cutoff governs how far to upgrade.
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(
+            releaseName: "Movie.2024.720p.WEB-DL-GRP",
+            quality: "WEB 720p",
+            targetQuality: "WEB 1080p",
+            sizeBytes: 4_000_000_000,
+            allowedQualities: ["WEB 720p", "WEB 1080p"]));
+
+        Assert.Equal("eligible", decision.Status);
+    }
+
+    [Fact]
+    public void Decide_treats_an_empty_allowed_list_as_unconstrained()
+    {
+        // Empty must mean "the cutoff decides", never "nothing is allowed".
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(allowedQualities: []));
+
+        Assert.Equal("preferred", decision.Status);
+    }
+
+    // ── Size rules (#284) ─────────────────────────────────────────────────
+
+    [Fact]
+    public void Decide_does_not_reject_when_the_indexer_omits_the_size()
+    {
+        // An unreported size is not a size violation; rejecting here would block
+        // every indexer that omits the field.
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(sizeBytes: null));
+
+        Assert.NotEqual("rejected", decision.Status);
+    }
 
     // ── Status ────────────────────────────────────────────────────────────
 
@@ -112,15 +178,20 @@ public sealed class ReleaseDecisionEngineTests
     [Fact]
     public void Decide_returns_risky_when_three_or_more_risk_flags()
     {
-        // Three risks: downgrade (-delta), no seeders, too-small size.
+        // Three risks: downgrade (-delta), no seeders, unreported size.
         // Target is 2160p so the current 1080p file doesn't meet it — the
         // downgrade becomes a risk flag rather than a hard reject.
+        //
+        // The size here is null rather than tiny on purpose: a size *below the
+        // configured minimum* is now a hard rejection (#284), so using one would
+        // test rejection instead of escalation. An unreported size stays a plain
+        // risk, which is what this test is about.
         var decision = ReleaseDecisionEngine.Decide(GoodInput(
             releaseName: "Movie.2024.720p.WEB-GRP",
             quality: "WEB 720p",
             currentQuality: "WEB 1080p",
             targetQuality: "WEB 2160p",
-            sizeBytes: 100_000,
+            sizeBytes: null,
             seeders: 0));
 
         Assert.Equal("risky", decision.Status);
@@ -230,24 +301,29 @@ public sealed class ReleaseDecisionEngineTests
     }
 
     [Fact]
-    public void Decide_adds_risk_flag_when_size_unusually_small_for_1080p()
+    public void Decide_rejects_when_size_is_below_the_minimum_for_1080p()
     {
         var decision = ReleaseDecisionEngine.Decide(GoodInput(
             quality: "WEB 1080p",
-            sizeBytes: 200_000_000)); // 0.2 GB, too small for 1080p
+            sizeBytes: 200_000_000)); // 0.2 GB, below the configured floor
 
-        Assert.Contains(decision.RiskFlags, r => r.Contains("small", StringComparison.OrdinalIgnoreCase));
+        // Size Rules is described in the UI as the final check that *rejects*.
+        // It used to only subtract score, so a release three orders of magnitude
+        // under the floor was still grabbed (#284).
+        Assert.Equal("rejected", decision.Status);
+        Assert.Contains(decision.RiskFlags, r => r.Contains("below", StringComparison.OrdinalIgnoreCase) && r.Contains("minimum", StringComparison.OrdinalIgnoreCase));
         Assert.Equal(-180, decision.SizeScore);
     }
 
     [Fact]
-    public void Decide_adds_risk_flag_when_size_unusually_large_for_1080p()
+    public void Decide_rejects_when_size_is_above_the_maximum_for_1080p()
     {
         var decision = ReleaseDecisionEngine.Decide(GoodInput(
             quality: "WEB 1080p",
-            sizeBytes: 40_000_000_000L)); // 40 GB, too large for 1080p WEB
+            sizeBytes: 40_000_000_000L)); // 40 GB, above the configured ceiling
 
-        Assert.Contains(decision.RiskFlags, r => r.Contains("large", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("rejected", decision.Status);
+        Assert.Contains(decision.RiskFlags, r => r.Contains("above", StringComparison.OrdinalIgnoreCase) && r.Contains("maximum", StringComparison.OrdinalIgnoreCase));
         Assert.Equal(-80, decision.SizeScore);
     }
 

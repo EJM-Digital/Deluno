@@ -68,6 +68,7 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
                 request.CustomFormats,
                 request.SeasonNumber,
                 request.EpisodeNumber,
+                request.AllowedQualities,
                 cancellationToken);
 
         var bestCandidate = searchPlan.BestCandidate;
@@ -361,7 +362,12 @@ public sealed record AcquisitionDecisionRequest(
     IReadOnlyList<CustomFormatItem>? CustomFormats = null,
     bool PreviewOnly = false,
     int? SeasonNumber = null,
-    int? EpisodeNumber = null);
+    int? EpisodeNumber = null,
+    /// <summary>
+    /// Quality tiers the governing profile permits. Empty leaves selection to
+    /// the cutoff; a populated list rejects anything outside it.
+    /// </summary>
+    IReadOnlyList<string>? AllowedQualities = null);
 
 public sealed record AcquisitionDecisionPlan(
     MediaSearchPlan SearchPlan,

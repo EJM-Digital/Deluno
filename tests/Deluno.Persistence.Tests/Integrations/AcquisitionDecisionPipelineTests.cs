@@ -256,6 +256,7 @@ public sealed class AcquisitionDecisionPipelineTests
             IReadOnlyList<CustomFormatItem>? customFormats = null,
             int? seasonNumber = null,
             int? episodeNumber = null,
+            IReadOnlyList<string>? allowedQualities = null,
             CancellationToken cancellationToken = default)
             => Task.FromResult(plan);
     }
@@ -272,6 +273,7 @@ public sealed class AcquisitionDecisionPipelineTests
             IReadOnlyList<CustomFormatItem>? customFormats = null,
             int? seasonNumber = null,
             int? episodeNumber = null,
+            IReadOnlyList<string>? allowedQualities = null,
             CancellationToken cancellationToken = default)
             => throw new InvalidOperationException("An unready connection must not reach the search planner.");
     }

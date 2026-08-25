@@ -58,6 +58,7 @@ public sealed class FeedMediaSearchPlanner(
         IReadOnlyList<CustomFormatItem>? customFormats = null,
         int? seasonNumber = null,
         int? episodeNumber = null,
+        IReadOnlyList<string>? allowedQualities = null,
         CancellationToken cancellationToken = default)
     {
         var indexers = await connectionsRepository.ListIndexersAsync(cancellationToken);
@@ -115,7 +116,7 @@ public sealed class FeedMediaSearchPlanner(
                 var (source, indexer) = sourceIndexers[index];
                 searchResults[index] = await TrySearchIndexerAsync(
                     indexer, source, title, year, mediaType, currentQuality, targetQuality,
-                    customFormats, neverGrabPatterns, scoringMode, seasonNumber, episodeNumber, token);
+                    customFormats, neverGrabPatterns, scoringMode, seasonNumber, episodeNumber, allowedQualities, token);
             });
 
         // Indexed writes above, flattened in order here, so results stay in
@@ -179,6 +180,7 @@ public sealed class FeedMediaSearchPlanner(
         string scoringMode,
         int? seasonNumber,
         int? episodeNumber,
+        IReadOnlyList<string>? allowedQualities,
         CancellationToken cancellationToken)
     {
         if (!Uri.TryCreate(BuildSearchUrl(indexer, title, year, mediaType, seasonNumber, episodeNumber), UriKind.Absolute, out var uri))
@@ -254,7 +256,7 @@ public sealed class FeedMediaSearchPlanner(
                     await using var stream = await response.Content.ReadAsStreamAsync(token);
                     var document = await XDocument.LoadAsync(stream, LoadOptions.None, token);
                     var qualityModel = await qualityModelService.GetAsync(token);
-                    var parsed = ParseCandidates(document, indexer, source, currentQuality, targetQuality, customFormats, neverGrabPatterns, qualityModel, scoringMode, rankingModelService);
+                    var parsed = ParseCandidates(document, indexer, source, currentQuality, targetQuality, customFormats, neverGrabPatterns, qualityModel, scoringMode, rankingModelService, allowedQualities);
                     return new IndexerSearchOutcome(
                         parsed.Candidates,
                         parsed.CandidatesTruncatedByIndexer,
@@ -307,6 +309,7 @@ public sealed class FeedMediaSearchPlanner(
         QualityModelSnapshot qualityModel,
         string scoringMode,
         IReleaseRankingModelService rankingModelService,
+        IReadOnlyList<string>? allowedQualities = null,
         int requestedLimit = IndexerResultLimit)
     {
         XNamespace torznab = "http://torznab.com/schemas/2015/feed";
@@ -347,7 +350,9 @@ public sealed class FeedMediaSearchPlanner(
                 downloadUrl,
                 SourcePriorityScore: Math.Max(0, 200 - source.Priority),
                 customFormatBonus,
-                neverGrabPatterns), qualityModel);
+                neverGrabPatterns,
+                CurrentCustomFormatScore: null,
+                AllowedQualities: allowedQualities), qualityModel);
 
             var boost = rankingModelService.Score(new ReleaseRankingFeatures(
                 Seeders: seeders,

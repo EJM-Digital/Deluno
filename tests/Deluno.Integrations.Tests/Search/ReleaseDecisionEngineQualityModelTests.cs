@@ -28,7 +28,13 @@ public sealed class ReleaseDecisionEngineQualityModelTests
             SourcePriorityScore: 100,
             CustomFormatScore: 0), model);
 
-        Assert.Contains(decision.RiskFlags, flag => flag.Contains("unusually large", StringComparison.OrdinalIgnoreCase));
+        // The bound comes from the model's tier (max 2.0 GB), and exceeding it is
+        // now a rejection rather than a score penalty (#284) — the Size Rules
+        // screen describes it as the final check that rejects a release.
+        Assert.Equal("rejected", decision.Status);
+        Assert.Contains(decision.RiskFlags, flag =>
+            flag.Contains("above", StringComparison.OrdinalIgnoreCase) &&
+            flag.Contains("maximum", StringComparison.OrdinalIgnoreCase));
         Assert.True(decision.SizeScore < 0);
     }
 
