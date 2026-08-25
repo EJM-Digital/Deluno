@@ -496,7 +496,13 @@ export function SetupGuidePage() {
     <div className="space-y-[var(--page-gap)]">
       <section className="relative overflow-hidden rounded-3xl border border-hairline bg-card p-[var(--tile-pad)] shadow-sm">
         <div aria-hidden className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/70 to-transparent" />
-        <div className="grid gap-[var(--grid-gap)] 2xl:grid-cols-[minmax(0,1fr)_380px] 2xl:items-stretch">
+        {/*
+          The readiness table used to sit here as a second column. A six-row
+          table is far taller than the intro beside it, so the hero stretched
+          to match and left a large dead zone under the summary tiles (#254).
+          Readiness now sits with the step rail, where progress belongs.
+        */}
+        <div>
           <div>
             <p className="flex items-center gap-2 text-[length:var(--type-caption)] font-bold uppercase tracking-[0.18em] text-primary">
               <Sparkles className="h-4 w-4" />
@@ -507,8 +513,9 @@ export function SetupGuidePage() {
               Get Deluno working first. Tune it later.
             </p>
             <p className="mt-3 max-w-4xl text-[length:var(--type-body)] leading-relaxed text-muted-foreground">
-              This sets up the complete acquisition path: media folders, quality settings, a tested search source, and a tested download client.
-              Advanced users can skip the guide, but the setup overview will keep the installation incomplete until the acquisition path is ready.
+              This sets up the essentials: where your media lives, the quality you want, and how releases are chosen.
+              Connecting a search source and a download client is part of the guide but not required to finish — the
+              dashboard keeps that step waiting until you do. Advanced users can skip straight to the full settings.
             </p>
             <SummaryStrip
               className="mt-4"
@@ -520,18 +527,6 @@ export function SetupGuidePage() {
               ]}
             />
           </div>
-          <ListCard title="Readiness" count={`${completion.filter((item) => item.done).length} of ${completion.length} done`}>
-            <ListTable columns={[{ label: "Step" }, { label: "State", width: LIST_TRACK.status, mobile: true }]} chevron={false}>
-              {completion.map((item) => (
-                <ListRow key={item.label}>
-                  <ListNameCell name={item.label} />
-                  <ListCell mobile>
-                    <Chip tone={item.done ? "ok" : "muted"}>{item.done ? "Done" : "Waiting"}</Chip>
-                  </ListCell>
-                </ListRow>
-              ))}
-            </ListTable>
-          </ListCard>
         </div>
       </section>
 
@@ -563,6 +558,28 @@ export function SetupGuidePage() {
               </button>
             );
           })}
+
+          {/*
+            A plain list, not a ListTable: the rail is 260px and a two-column
+            table truncated every label to "Acco…" / "Medi…". The rail's own
+            language is these bordered cards, so readiness matches them.
+          */}
+          <div className="rounded-2xl border border-hairline bg-card p-4">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-[length:var(--type-body-sm)] font-semibold text-foreground">Readiness</span>
+              <span className="text-[length:var(--type-caption)] tabular-nums text-muted-foreground">
+                {completion.filter((item) => item.done).length} of {completion.length} done
+              </span>
+            </div>
+            <ul className="mt-3 grid gap-2">
+              {completion.map((item) => (
+                <li key={item.label} className="flex items-center justify-between gap-2">
+                  <span className="min-w-0 text-[length:var(--type-caption)] leading-snug text-muted-foreground">{item.label}</span>
+                  <Chip tone={item.done ? "ok" : "muted"}>{item.done ? "Done" : "Waiting"}</Chip>
+                </li>
+              ))}
+            </ul>
+          </div>
         </aside>
 
         <form onSubmit={(event) => void handleFinish(event)} className="rounded-3xl border border-hairline bg-card shadow-sm">
