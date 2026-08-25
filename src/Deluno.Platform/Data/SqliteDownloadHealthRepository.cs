@@ -192,10 +192,12 @@ public sealed class SqliteDownloadHealthRepository(
         return builder.ToString();
     }
 
+    // Deluno is single-user and self-hosted: the import source path IS the
+    // diagnostic the owner needs when an import fails, and nothing secret ever
+    // appears in health evidence (paths and client messages only). Redacting
+    // it forced failed-import diagnosis into the server logs (#248).
     private static string SanitizeDownloadHealthEvidence(string evidence)
-        => evidence.TrimStart().StartsWith("Import source:", StringComparison.OrdinalIgnoreCase)
-            ? "Import source: [redacted path]"
-            : evidence.Trim();
+        => evidence.Trim();
 
     private static async Task UpsertSettingAsync(
         System.Data.Common.DbConnection connection,
