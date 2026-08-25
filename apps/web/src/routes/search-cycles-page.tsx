@@ -24,6 +24,7 @@ import { PageToolbar } from "../components/ui/page-toolbar";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { ListGroupHeader, MediaTypeFilter, useMediaTypeSplit } from "../components/ui/media-type-split";
 import { PresetField } from "../components/ui/preset-field";
+import { SegmentedControl } from "../components/ui/segmented-control";
 import { Select } from "../components/ui/select";
 import { Switch, SwitchRow } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
@@ -92,6 +93,21 @@ interface AutomationForm {
   maxItemsPerRun: string;
   searchWindowStartHour: string;
   searchWindowEndHour: string;
+}
+
+/**
+ * What Deluno does with the download client's copy once a title is safely in
+ * the library (#288). It lives on this screen because it answers the same
+ * question the cleanup settings below it do — what happens on its own, without
+ * being asked — and it used to live on the library instead, which split "after
+ * a download finishes" and "when a download goes wrong" across two screens.
+ */
+interface SharingForm {
+  mode: string;
+  forHours: string;
+  untilRatio: string;
+  stuckAction: string;
+  stuckAfterDays: string;
 }
 
 interface CleanupForm {
@@ -245,21 +261,26 @@ export function SearchCyclesPage() {
   // a save — long enough for the effect below to wipe "Saved just now" off the footer.
   const [savedCleanup, setSavedCleanup] = useState<CleanupForm>(() => cleanupFrom(settings));
   const [cleanup, setCleanup] = useState<CleanupForm>(savedCleanup);
+  const [savedSharing, setSavedSharing] = useState<SharingForm>(() => sharingFrom(settings));
+  const [sharing, setSharing] = useState<SharingForm>(savedSharing);
   const [savedQualityModel, setSavedQualityModel] = useState(loadedQualityModel);
   const [qualityModel, setQualityModel] = useState(loadedQualityModel);
   const [cleanupState, setCleanupState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
   const [cleanupMessage, setCleanupMessage] = useState<string | null>(null);
 
-  const cleanupDirty = !same(cleanup, savedCleanup);
+  const cleanupDirty = !same(cleanup, savedCleanup) || !same(sharing, savedSharing);
   const qualityDirty = !same(qualityModel, savedQualityModel);
   const automationDirty = cleanupDirty || qualityDirty;
   const settingsCleanup = useMemo(() => cleanupFrom(settings), [settings]);
+  const settingsSharing = useMemo(() => sharingFrom(settings), [settings]);
   useEffect(() => {
     // Adopt server state only when the user has nothing unsaved in this form.
     if (cleanupDirty || same(savedCleanup, settingsCleanup)) return;
     setSavedCleanup(settingsCleanup);
     setCleanup(settingsCleanup);
-  }, [cleanupDirty, savedCleanup, settingsCleanup]);
+    setSavedSharing(settingsSharing);
+    setSharing(settingsSharing);
+  }, [cleanupDirty, savedCleanup, settingsCleanup, settingsSharing]);
 
   const cleanupFooter: DrawerSaveState = cleanupState === "saving" ? "saving" : automationDirty ? "dirty" : cleanupState ?? "clean";
   useUnsavedChanges(automationDirty || drawerDirty);
@@ -278,7 +299,14 @@ export function SearchCyclesPage() {
             cleanupBlockReleaseAfterThreshold: cleanup.blockRelease,
             cleanupQueueReplacementAfterThreshold: cleanup.queueReplacement,
             cleanupRemoveClientEntryAfterThreshold: cleanup.removeClientEntry,
-            cleanupPurgePayloadAfterThreshold: cleanup.purgePayload
+            cleanupPurgePayloadAfterThreshold: cleanup.purgePayload,
+            sharingMode: sharing.mode,
+            // A blank target is sent as null, which the API stores as
+            // "deliberately not part of this rule" rather than "never set".
+            sharingForHours: sharing.forHours.trim() === "" ? null : Math.max(1, Number(sharing.forHours)),
+            sharingUntilRatio: sharing.untilRatio.trim() === "" ? null : Math.max(0, Number(sharing.untilRatio)),
+            sharingStuckAction: sharing.stuckAction,
+            sharingStuckAfterDays: Math.max(1, Number(sharing.stuckAfterDays || 14))
         }),
         fetchJson<QualityModelSnapshot>("/api/quality-model", {
           method: "PUT",
@@ -288,6 +316,7 @@ export function SearchCyclesPage() {
       ]);
       // Move the baseline first: the revalidation below is slower than the render.
       setSavedCleanup(cleanup);
+      setSavedSharing(sharing);
       setSavedQualityModel(nextQualityModel);
       setQualityModel(nextQualityModel);
       setCleanupState("saved");
@@ -378,6 +407,112 @@ export function SearchCyclesPage() {
         )}
       </ListCard> : null}
 
+      {view === "overview" ? (
+        <ListCard
+          title="When a download finishes"
+          count={sharing.mode === "share-then-tidy" ? "Shares, then tidies up" : sharing.mode === "tidy-now" ? "Tidies up straight away" : "Left alone"}
+        >
+          <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+            {/* The whole beginner decision is this one control. The dials below
+                only exist once they can apply, so nobody configures a ratio for
+                a mode that never waits. */}
+            <Field
+              label="What Deluno does with the original"
+              help="Your library keeps its own copy either way. This is about the download client's copy, which may still be shared with other people."
+            >
+              <SegmentedControl
+                aria-label="What Deluno does with the original"
+                value={sharing.mode}
+                onValueChange={(mode) => setSharing((current) => ({ ...current, mode }))}
+                options={[
+                  { value: "share-then-tidy", label: "Share, then tidy up" },
+                  { value: "tidy-now", label: "Tidy up now" },
+                  { value: "leave-alone", label: "Leave it alone" }
+                ]}
+              />
+            </Field>
+
+            {sharing.mode === "share-then-tidy" ? (
+              <>
+                <div className="grid gap-[var(--grid-gap)] sm:grid-cols-2">
+                  <Field label="Keep sharing for" help="Leave blank to ignore time and use the ratio alone.">
+                    <PresetField
+                      inputType="number"
+                      value={sharing.forHours}
+                      onChange={(value) => setSharing((current) => ({ ...current, forHours: value }))}
+                      options={[
+                        { value: "24", label: "1 day" },
+                        { value: "72", label: "3 days" },
+                        { value: "336", label: "14 days" }
+                      ]}
+                      customLabel="Custom"
+                      customPlaceholder="Hours"
+                    />
+                  </Field>
+                  <Field label="And until ratio" help="Leave blank to ignore ratio and use the time alone. Set both and Deluno waits for both.">
+                    <PresetField
+                      inputType="number"
+                      value={sharing.untilRatio}
+                      onChange={(value) => setSharing((current) => ({ ...current, untilRatio: value }))}
+                      options={[
+                        { value: "", label: "Not used" },
+                        { value: "1", label: "1.0" },
+                        { value: "2", label: "2.0" }
+                      ]}
+                      customLabel="Custom"
+                      customPlaceholder="e.g. 1.5"
+                    />
+                  </Field>
+                </div>
+
+                <div className="grid gap-[var(--grid-gap)] sm:grid-cols-2">
+                  <Field label="If it can never get there" help="A download with nobody to share to will never reach a ratio.">
+                    <SegmentedControl
+                      aria-label="If it can never get there"
+                      value={sharing.stuckAction}
+                      onValueChange={(stuckAction) => setSharing((current) => ({ ...current, stuckAction }))}
+                      options={[
+                        { value: "give-up", label: "Give up" },
+                        { value: "keep-waiting", label: "Keep waiting" },
+                        { value: "ask", label: "Ask me" }
+                      ]}
+                    />
+                  </Field>
+                  {sharing.stuckAction === "give-up" ? (
+                    <Field label="Give up after" help="Deluno tidies up and tells you it could not reach the target.">
+                      <PresetField
+                        inputType="number"
+                        value={sharing.stuckAfterDays}
+                        onChange={(value) => setSharing((current) => ({ ...current, stuckAfterDays: value }))}
+                        options={[
+                          { value: "7", label: "7 days" },
+                          { value: "14", label: "14 days" },
+                          { value: "30", label: "30 days" }
+                        ]}
+                        customLabel="Custom"
+                        customPlaceholder="Days"
+                      />
+                    </Field>
+                  ) : null}
+                </div>
+              </>
+            ) : null}
+
+            {sharing.mode === "tidy-now" ? (
+              <p className="text-[length:var(--type-body-sm)] text-muted-foreground">
+                Deluno reclaims the space as soon as the import is verified. Some sites expect you to keep sharing and may penalise an account that does not.
+              </p>
+            ) : null}
+
+            {sharing.mode === "leave-alone" ? (
+              <p className="text-[length:var(--type-body-sm)] text-muted-foreground">
+                Deluno never removes anything from your download client. You decide what to keep and when to delete it.
+              </p>
+            ) : null}
+          </div>
+        </ListCard>
+      ) : null}
+
       {view === "failed" ? <ListCard title="Failed downloads" count={`After ${cleanup.strikeThreshold || 3} strikes on the same release`}>
         <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
           <Field label="Act after this many strikes" help="A strike is one failed health check on the same release." className="max-w-[16rem]">
@@ -423,7 +558,9 @@ export function SearchCyclesPage() {
         )}
       </ListCard> : null}
 
-      {view === "failed" || view === "upgrades" ? <PageFooter state={cleanupFooter} message={cleanupMessage} saveLabel="Save automation settings" /> : null}
+      {/* Automation carries a saveable setting of its own now — what happens
+          when a download finishes — so it needs the footer too. */}
+      {view === "overview" || view === "failed" || view === "upgrades" ? <PageFooter state={cleanupFooter} message={cleanupMessage} saveLabel="Save automation settings" /> : null}
 
       <Drawer
         open={drawerId !== null}
@@ -520,6 +657,18 @@ function automationFrom(library: LibraryItem): AutomationForm {
     searchWindowEndHour: library.searchWindowEndHour === null ? "" : String(library.searchWindowEndHour)
   };
 }
+function sharingFrom(settings: PlatformSettingsSnapshot): SharingForm {
+  return {
+    mode: settings.sharingMode ?? "share-then-tidy",
+    // Empty means that half of the rule is not part of it, which is different
+    // from it never having been set.
+    forHours: settings.sharingForHours == null ? "" : String(settings.sharingForHours),
+    untilRatio: settings.sharingUntilRatio == null ? "" : String(settings.sharingUntilRatio),
+    stuckAction: settings.sharingStuckAction ?? "give-up",
+    stuckAfterDays: String(settings.sharingStuckAfterDays ?? 14)
+  };
+}
+
 function cleanupFrom(settings: PlatformSettingsSnapshot): CleanupForm {
   return {
     strikeThreshold: String(settings.downloadHealthStrikeThreshold ?? 3),
