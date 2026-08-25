@@ -43,7 +43,7 @@ export const configurationNavAreas = [
   },
   {
     match: (path: string) => path.startsWith("/settings/policy-sets") || path.startsWith("/settings/profiles") || path.startsWith("/settings/quality") || path.startsWith("/settings/custom-formats"),
-    label: "Quality Profiles",
+    label: "Quality & Release",
     icon: "plans",
     to: "/settings/profiles",
     accent: "blue",

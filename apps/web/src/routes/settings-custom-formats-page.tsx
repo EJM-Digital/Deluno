@@ -57,7 +57,7 @@ import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
 import { authedFetch } from "../lib/use-auth";
 
-const TABS = configurationNavAreas.find((area) => area.label === "Quality Profiles")?.items ?? [];
+const TABS = configurationNavAreas.find((area) => area.label === "Quality & Release")?.items ?? [];
 
 /** Scores users actually reach for. Anything at or under -10000 blocks a release outright. */
 const SCORE_OPTIONS = [
@@ -421,7 +421,13 @@ export function SettingsCustomFormatsPage() {
                       secondary={conditions.length ? `${conditions.length} ${conditions.length === 1 ? "condition" : "conditions"}` : "never matches anything"}
                     />
                     <ListCell numeric primary={scoreLabel(format.score)} secondary={format.score <= -10000 ? "never grabbed" : "points"} />
-                    <ListCell primary={<LibraryImpactLinks libraries={usedBy} />} secondary={usedBy.length ? "Inherited through a Library Profile" : "Not selected by a library profile"} />
+                    {/*
+                      A library reaches these rules through its quality profile,
+                      whether that came from a Library Profile or was attached
+                      directly — claiming "Inherited through a Library Profile"
+                      named an entity most installs never create (#255).
+                    */}
+                    <ListCell primary={<LibraryImpactLinks libraries={usedBy} />} secondary={usedBy.length ? "Applied through the library's quality profile" : "Not applied to any library yet"} />
                     <ListCell mobile>
                       {/*
                         Score 0 is neutral, not avoided: a 1080p tag rule
