@@ -167,7 +167,12 @@ public interface IJobQueueRepository
         string? lastResult,
         CancellationToken cancellationToken);
 
-    Task<string?> FindRecentDispatchIdAsync(
+    /// <summary>
+    /// The catalogue item a recently dispatched release belongs to, so an
+    /// import can be named from the title Deluno knows rather than from the
+    /// release name the download client reports (#268).
+    /// </summary>
+    Task<DispatchCatalogueLink?> FindRecentDispatchLinkAsync(
         string downloadClientId,
         string releaseName,
         CancellationToken cancellationToken);

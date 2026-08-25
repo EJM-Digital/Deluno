@@ -450,9 +450,19 @@ public sealed class WorkPlanner(
                 continue;
             }
 
-            var dispatchId = await jobQueueRepository.FindRecentDispatchIdAsync(
+            var dispatch = await jobQueueRepository.FindRecentDispatchLinkAsync(
                 item.ClientId,
                 item.ReleaseName,
+                cancellationToken);
+
+            // Name from the catalogue when Deluno knows which title it grabbed.
+            // The client reports a release name ("Blade.Runner.2049.2017.1080p…"),
+            // and parsing it produced both a mangled folder name and the wrong
+            // year — 2049 is part of the title, not the release year (#268).
+            var (catalogueTitle, catalogueYear) = await ResolveCatalogueNamingAsync(
+                dispatch,
+                movieCatalogRepository,
+                seriesCatalogRepository,
                 cancellationToken);
 
             var request = new ImportExecuteRequest(
@@ -460,8 +470,8 @@ public sealed class WorkPlanner(
                     SourcePath: item.SourcePath,
                     FileName: InferImportFileName(item),
                     MediaType: item.MediaType,
-                    Title: item.Title,
-                    Year: InferYear(item.ReleaseName),
+                    Title: catalogueTitle ?? item.Title,
+                    Year: catalogueYear ?? InferYear(item.ReleaseName),
                     Genres: [],
                     Tags: string.IsNullOrWhiteSpace(item.Category) ? [] : [item.Category],
                     Studio: null,
@@ -470,7 +480,7 @@ public sealed class WorkPlanner(
                 Overwrite: false,
                 AllowCopyFallback: true,
                 ForceReplacement: false,
-                DispatchId: dispatchId);
+                DispatchId: dispatch?.DispatchId);
 
             var job = await jobScheduler.EnqueueAsync(
                 new EnqueueJobRequest(
@@ -478,7 +488,9 @@ public sealed class WorkPlanner(
                     Source: "download-client",
                     PayloadJson: JsonSerializer.Serialize(request, PayloadJsonOptions),
                     RelatedEntityType: library.MediaType == "tv" ? "series" : "movie",
-                    RelatedEntityId: null),
+                    // The catalogue item this import belongs to, when the grab
+                    // is known — so the job is traceable to the title.
+                    RelatedEntityId: dispatch?.EntityId),
                 cancellationToken);
 
             knownImportSources.Add(sourceKey);
@@ -1014,21 +1026,33 @@ public sealed class WorkPlanner(
         return $"{(string.IsNullOrWhiteSpace(cleaned) ? item.Id : cleaned)}.mkv";
     }
 
-    private static int? InferYear(string value)
+    /// <summary>
+    /// The catalogue title and year behind a dispatched release, or (null,
+    /// null) when the grab cannot be tied to a catalogue item — in which case
+    /// the caller falls back to parsing the release name.
+    /// </summary>
+    private static async Task<(string? Title, int? Year)> ResolveCatalogueNamingAsync(
+        DispatchCatalogueLink? dispatch,
+        IMovieCatalogRepository movieCatalogRepository,
+        ISeriesCatalogRepository seriesCatalogRepository,
+        CancellationToken cancellationToken)
     {
-        var parts = value.Split([' ', '.', '-', '_', '[', ']', '(', ')'], StringSplitOptions.RemoveEmptyEntries);
-        foreach (var part in parts)
+        if (dispatch is null || string.IsNullOrWhiteSpace(dispatch.EntityId))
         {
-            if (part.Length == 4 &&
-                int.TryParse(part, out var year) &&
-                year is >= 1900 and <= 2100)
-            {
-                return year;
-            }
+            return (null, null);
         }
 
-        return null;
+        if (string.Equals(dispatch.EntityType, "series", StringComparison.OrdinalIgnoreCase))
+        {
+            var series = await seriesCatalogRepository.GetByIdAsync(dispatch.EntityId, cancellationToken);
+            return series is null ? (null, null) : (series.Title, series.StartYear);
+        }
+
+        var movie = await movieCatalogRepository.GetByIdAsync(dispatch.EntityId, cancellationToken);
+        return movie is null ? (null, null) : (movie.Title, movie.ReleaseYear);
     }
+
+    private static int? InferYear(string value) => ReleaseNameParser.InferYear(value);
 
     private sealed record ProcessingWaitDetails(
         string? LibraryId,
