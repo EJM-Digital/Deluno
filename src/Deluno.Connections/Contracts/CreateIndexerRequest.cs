@@ -11,4 +11,10 @@ public sealed record CreateIndexerRequest(
     string? Tags,
     string? MediaScope,
     bool IsEnabled,
-    int? RequestIntervalSeconds = null);
+    int? RequestIntervalSeconds = null,
+    // Null means "inherit the global sharing rule" (#288).
+    string? SharingMode = null,
+    int? SharingForHours = null,
+    double? SharingUntilRatio = null,
+    string? SharingStuckAction = null,
+    int? SharingStuckAfterDays = null);

@@ -181,6 +181,11 @@ public sealed class SqlitePlatformSettingsRepository(
         await UpsertSettingAsync(connection, transaction, "cleanup.blockReleaseAfterThreshold", request.CleanupBlockReleaseAfterThreshold is false ? "false" : "true", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "cleanup.queueReplacementAfterThreshold", request.CleanupQueueReplacementAfterThreshold is false ? "false" : "true", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "cleanup.removeClientEntryAfterThreshold", request.CleanupRemoveClientEntryAfterThreshold == true ? "true" : "false", updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "sharing.mode", SharingPolicy.NormalizeMode(request.SharingMode), updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "sharing.forHours", request.SharingForHours?.ToString(CultureInfo.InvariantCulture) ?? string.Empty, updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "sharing.untilRatio", request.SharingUntilRatio?.ToString(CultureInfo.InvariantCulture) ?? string.Empty, updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "sharing.stuckAction", SharingPolicy.NormalizeStuckAction(request.SharingStuckAction), updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "sharing.stuckAfterDays", (request.SharingStuckAfterDays is > 0 ? request.SharingStuckAfterDays.Value : SharingPolicy.Default.StuckAfterDays).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "cleanup.purgePayloadAfterThreshold", request.CleanupPurgePayloadAfterThreshold == true ? "true" : "false", updatedUtc, cancellationToken);
         if (!string.IsNullOrWhiteSpace(request.MetadataTmdbApiKey))
         {
@@ -449,6 +454,11 @@ public sealed class SqlitePlatformSettingsRepository(
             CleanupBlockReleaseAfterThreshold: !string.Equals(GetValue(settings, "cleanup.blockReleaseAfterThreshold"), "false", StringComparison.OrdinalIgnoreCase),
             CleanupQueueReplacementAfterThreshold: !string.Equals(GetValue(settings, "cleanup.queueReplacementAfterThreshold"), "false", StringComparison.OrdinalIgnoreCase),
             CleanupRemoveClientEntryAfterThreshold: string.Equals(GetValue(settings, "cleanup.removeClientEntryAfterThreshold"), "true", StringComparison.OrdinalIgnoreCase),
+            SharingMode: SharingPolicy.NormalizeMode(GetValue(settings, "sharing.mode")),
+            SharingForHours: ReadOptionalInt(GetValue(settings, "sharing.forHours"), SharingPolicy.Default.ForHours),
+            SharingUntilRatio: ReadOptionalDouble(GetValue(settings, "sharing.untilRatio")),
+            SharingStuckAction: SharingPolicy.NormalizeStuckAction(GetValue(settings, "sharing.stuckAction")),
+            SharingStuckAfterDays: ReadOptionalInt(GetValue(settings, "sharing.stuckAfterDays"), SharingPolicy.Default.StuckAfterDays) ?? SharingPolicy.Default.StuckAfterDays,
             CleanupPurgePayloadAfterThreshold: string.Equals(GetValue(settings, "cleanup.purgePayloadAfterThreshold"), "true", StringComparison.OrdinalIgnoreCase),
             WorkflowVerified: string.Equals(GetValue(settings, "setup.workflowVerified"), "true", StringComparison.OrdinalIgnoreCase));
     }
@@ -688,6 +698,27 @@ public sealed class SqlitePlatformSettingsRepository(
 
     private static string? GetValue(IReadOnlyDictionary<string, string> values, string key)
         => values.TryGetValue(key, out var value) ? value : null;
+
+    /// <summary>
+    /// A sharing target that is absent and one that has been deliberately
+    /// cleared mean different things. A missing key is an install that has
+    /// never been configured, so it takes the shipped default; a stored empty
+    /// string is a user who removed that half of the rule, and must stay unset
+    /// rather than springing back to the default on the next read.
+    /// </summary>
+    private static int? ReadOptionalInt(string? value, int? fallback)
+    {
+        if (value is null) return fallback;
+        if (value.Trim().Length == 0) return null;
+        return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) ? parsed : fallback;
+    }
+
+    /// <summary>As above; the ratio target ships unset, so there is no fallback.</summary>
+    private static double? ReadOptionalDouble(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        return double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) ? parsed : null;
+    }
 
 }
 

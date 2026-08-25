@@ -43,4 +43,12 @@ public sealed record PlatformSettingsSnapshot(
     bool CleanupQueueReplacementAfterThreshold = true,
     bool CleanupRemoveClientEntryAfterThreshold = false,
     bool CleanupPurgePayloadAfterThreshold = false,
-    bool WorkflowVerified = false);
+    bool WorkflowVerified = false,
+    // What Deluno does with the download client's copy once a title is safely
+    // in the library (#288). Sits with the cleanup settings above because it is
+    // the same question — what happens on its own, without being asked.
+    string SharingMode = SharingPolicy.ModeShareThenTidy,
+    int? SharingForHours = 72,
+    double? SharingUntilRatio = null,
+    string SharingStuckAction = SharingPolicy.StuckGiveUp,
+    int SharingStuckAfterDays = 14);
