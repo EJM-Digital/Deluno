@@ -687,7 +687,7 @@ export function QueuePage() {
         }}
         title={openQueueItem?.title || openQueueItem?.releaseName || "Download"}
         description={openQueueItem ? `${openQueueItem.clientName} · ${queueStatusLabel(openQueueItem.status)}` : undefined}
-        footer={<DrawerFooter state="clean" saveType="button" saveLabel="Close" saveEnabled={false} onCancel={() => setDrawer(null)} />}
+        footer={<DrawerFooter state="clean" readOnly saveLabel="Close" onCancel={() => setDrawer(null)} />}
       >
         {openQueueItem ? (
           <>
@@ -866,7 +866,7 @@ export function QueuePage() {
         }}
         title={openDispatchDetail?.dispatch.releaseName ?? openDispatchSummary?.releaseName ?? "Transfer details"}
         description={openDispatchDetail ? `${openDispatchDetail.dispatch.downloadClientName || "Download client"} · ${dispatchStageLabel(openDispatchDetail.dispatch)}` : "Loading the recorded transfer journey"}
-        footer={<DrawerFooter state="clean" saveType="button" saveLabel="Close" saveEnabled={false} onCancel={() => setDrawer(null)} />}
+        footer={<DrawerFooter state="clean" readOnly saveLabel="Close" onCancel={() => setDrawer(null)} />}
       >
         {openDispatchDetail ? (
           <>
@@ -929,17 +929,21 @@ export function QueuePage() {
         title={openActivity?.name ?? "Activity"}
         description={openActivity ? `${openActivity.sub} · ${openActivity.status}` : undefined}
         footer={
-          <DrawerFooter
-            state="clean"
-            saveType="button"
-            saveLabel={openActivity?.kind === "processor" ? "Try again" : "Close"}
-            saveEnabled={openActivity?.kind === "processor" && busyKey === null}
-            onSave={() => {
-              const handoff = processorHandoffs.find((entry) => `processor:${entry.id}` === openActivity?.id);
-              if (handoff) void retryHandoff(handoff);
-            }}
-            onCancel={() => setDrawer(null)}
-          />
+          openActivity?.kind === "processor" ? (
+            <DrawerFooter
+              state="clean"
+              saveType="button"
+              saveLabel="Try again"
+              saveEnabled={busyKey === null}
+              onSave={() => {
+                const handoff = processorHandoffs.find((entry) => `processor:${entry.id}` === openActivity?.id);
+                if (handoff) void retryHandoff(handoff);
+              }}
+              onCancel={() => setDrawer(null)}
+            />
+          ) : (
+            <DrawerFooter state="clean" readOnly saveLabel="Close" onCancel={() => setDrawer(null)} />
+          )
         }
       >
         {openActivity ? (
