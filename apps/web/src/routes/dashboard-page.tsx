@@ -469,7 +469,9 @@ export function DashboardPage() {
           id: "missing",
           tone: "warn" as SetupAttentionTone,
           title: `${data.missingCount} ${data.missingCount === 1 ? "title is" : "titles are"} still missing`,
-          text: `${data.movieMissingCount} movies and ${data.showMissingCount} TV shows have no acceptable release yet.`,
+          // The heading above this already pluralises; this line did not, so a
+          // single missing film read "1 movies and 0 TV shows".
+          text: `${data.movieMissingCount} ${data.movieMissingCount === 1 ? "movie" : "movies"} and ${data.showMissingCount} ${data.showMissingCount === 1 ? "TV show" : "TV shows"} have no acceptable release yet.`,
           href: "/movies",
           action: "Review"
         }]

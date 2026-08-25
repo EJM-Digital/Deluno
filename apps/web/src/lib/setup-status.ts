@@ -23,7 +23,7 @@ export interface SetupStatusInput {
 }
 
 export interface SetupStatusStep {
-  id: "library" | "media-plans" | "connections" | "automation" | "workflow" | "discovery";
+  id: "library" | "media-plans" | "connections" | "automation" | "discovery";
   number: number;
   title: string;
   description: string;
@@ -171,20 +171,6 @@ export function buildSetupStatus(input: SetupStatusInput): SetupStatusModel {
       action: enabledIntakeSources.length > 0 ? "Review import lists" : "Configure import lists",
       attentionTitle: "Import lists are optional",
       attentionText: "Add import lists only if you want Deluno to discover titles for you. Manual title entry remains available."
-    },
-    {
-      id: "workflow",
-      number: 6,
-      title: "First Acquisition",
-      description: "Run one complete search, dispatch, download, import, and catalogue flow before calling setup operationally ready.",
-      status: input.settings.workflowVerified ? "End-to-end acquisition verified" : "First end-to-end acquisition not verified",
-      complete: input.settings.workflowVerified,
-      state: input.settings.workflowVerified ? "complete" : "not-started",
-      optional: false,
-      to: "/movies",
-      action: input.settings.workflowVerified ? "Review first flow" : "Run first acquisition",
-      attentionTitle: "First workflow not verified",
-      attentionText: "Add or choose a title, dispatch a release, and verify that the completed download imports into the library."
     }
   ];
 
@@ -220,9 +206,7 @@ export function buildSetupStatus(input: SetupStatusInput): SetupStatusModel {
     ? "not-ready"
     : !automationReady
       ? "acquisition-ready"
-      : !input.settings.workflowVerified
-        ? "automation-ready"
-        : "operationally-ready";
+      : "operationally-ready";
 
   return {
     steps,

@@ -26,10 +26,13 @@ function input(overrides: Partial<SetupStatusInput> = {}): SetupStatusInput {
 describe("setup status", () => {
   it("explains a fresh install", () => {
     const status = buildSetupStatus(input());
-    expect(status).toMatchObject({ completedCount: 0, totalCount: 5, isComplete: false, readiness: "not-ready", summary: "Start with step 1: Media Management." });
-    expect(status.steps.map((step) => step.id)).toEqual(["library", "media-plans", "connections", "automation", "discovery", "workflow"]);
-    expect(status.steps.map((step) => step.state)).toEqual(["not-started", "not-started", "not-started", "not-started", "not-started", "not-started"]);
-    expect(status.attentionItems.map((item) => item.id)).toEqual(["library", "media-plans", "connections", "automation", "workflow"]);
+    // Four required basics. "First Acquisition" was removed: running one is
+    // using Deluno, not configuring it, and it kept the ladder on screen
+    // permanently on an otherwise finished install.
+    expect(status).toMatchObject({ completedCount: 0, totalCount: 4, isComplete: false, readiness: "not-ready", summary: "Start with step 1: Media Management." });
+    expect(status.steps.map((step) => step.id)).toEqual(["library", "media-plans", "connections", "automation", "discovery"]);
+    expect(status.steps.map((step) => step.state)).toEqual(["not-started", "not-started", "not-started", "not-started", "not-started"]);
+    expect(status.attentionItems.map((item) => item.id)).toEqual(["library", "media-plans", "connections", "automation"]);
   });
 
   it("requires healthy acquisition services rather than merely enabled records", () => {
@@ -105,7 +108,9 @@ describe("setup status", () => {
       settings: { autoStartJobs: true, workflowVerified: true } as PlatformSettingsSnapshot
     });
     const status = buildSetupStatus(configured);
-    expect(status).toMatchObject({ completedCount: 5, totalCount: 5, isComplete: true, readiness: "operationally-ready" });
+    // Operationally ready once the four basics are done — no separate
+    // "verify a workflow" tier standing between setup and a finished install.
+    expect(status).toMatchObject({ completedCount: 4, totalCount: 4, isComplete: true, readiness: "operationally-ready" });
     expect(status.steps.find((step) => step.id === "discovery")).toMatchObject({ complete: false, optional: true });
     expect(status.optionalConfiguredCount).toBe(0);
     expect(status.attentionItems).toEqual([]);
