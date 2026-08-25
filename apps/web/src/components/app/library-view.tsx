@@ -91,6 +91,7 @@ export function LibraryView({
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [isUpdatingMetadata, setIsUpdatingMetadata] = useState(false);
+  const [isHuntingMissing, setIsHuntingMissing] = useState(false);
   const {
     query, setQuery, libraryId, setLibraryId, quickFilter, setQuickFilter, view, setView, sortField, setSortField,
     sortDirection, setSortDirection, cardSize, displayOptions,
@@ -641,7 +642,9 @@ export function LibraryView({
       if (failedCount > 0) {
         toast.error(`${failedCount} title${failedCount === 1 ? "" : "s"} could not be removed.`);
       }
-      onReload?.();
+      // The rows are already gone optimistically; this resyncs the header
+      // total and the filter chip counts, which the optimistic edit cannot.
+      refreshCatalogue();
     } catch {
       toast.error("Could not remove the selected titles from Deluno.");
     } finally {
@@ -691,7 +694,7 @@ export function LibraryView({
           setMetadataResults([]);
           setSelectedMetadataResults([]);
           closeCreate();
-          onReload?.();
+          refreshCatalogue();
           return;
         }
 
@@ -700,7 +703,7 @@ export function LibraryView({
         );
         toast.error(`${failureCount} ${failureCount === 1 ? "title" : "titles"} could not be added.`);
         if (successCount > 0) {
-          onReload?.();
+          refreshCatalogue();
         }
         return;
       }
@@ -711,13 +714,71 @@ export function LibraryView({
       setMetadataResults([]);
       setSelectedMetadataResults([]);
       closeCreate();
-      onReload?.();
+      refreshCatalogue();
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Create failed.";
       toast.error(msg);
     } finally {
       setIsCreating(false);
     }
+  }
+
+  /**
+   * "Hunt N missing" used to render with no handler at all — a headline
+   * control on both media pages that did nothing (#252). It now queues the
+   * missing-search cycle for the libraries those titles belong to, which is
+   * what the bulk-search endpoint does with an explicit selection.
+   */
+  async function handleHuntMissing() {
+    if (isHuntingMissing || missingCount === 0) return;
+    setIsHuntingMissing(true);
+    const loadingId = toast.loading(`Hunting ${missingCount} missing ${missingCount === 1 ? singular : label}…`);
+    try {
+      // Ask the server which titles are missing rather than relying on the
+      // loaded page: the header count is a whole-library facet, so the rows it
+      // counts may not all be on screen.
+      const params = new URLSearchParams({ pageSize: "100", status: "missing", sort: sortField, direction: sortDirection });
+      if (libraryId) params.set("libraryId", libraryId);
+      const page = await fetchJson<CataloguePage<{ id: string }>>(
+        `/api/${variant === "movies" ? "movies" : "series"}/page?${params}`
+      );
+      const ids = page.items.map((item) => item.id);
+      if (ids.length === 0) {
+        toast.info("Nothing is missing right now.", { id: loadingId });
+        return;
+      }
+
+      const response = await authedFetch(variant === "movies" ? "/api/movies/bulk/search" : "/api/series/bulk/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(variant === "movies" ? { movieIds: ids } : { seriesIds: ids })
+      });
+      if (!response.ok) throw new Error("hunt-missing-failed");
+
+      const result = await response.json() as { searchesTriggered?: number; libraryCount?: number };
+      const searches = result.searchesTriggered ?? 0;
+      toast.success(
+        searches > 0
+          ? `Searching for missing titles in ${searches} ${searches === 1 ? "library" : "libraries"}. Watch it in Transfers.`
+          : "No library was ready to search. Check that automation and a search source are configured.",
+        { id: loadingId }
+      );
+    } catch {
+      toast.error("Could not start the hunt for missing titles.", { id: loadingId });
+    } finally {
+      setIsHuntingMissing(false);
+    }
+  }
+
+  /**
+   * Reload the catalogue itself, not just the route loader. `onReload` only
+   * revalidates the router data (metadata status); the catalogue is fetched by
+   * the effect keyed on refreshVersion, so a create that called only onReload
+   * left the list showing its pre-create state until a manual reload (#251).
+   */
+  function refreshCatalogue() {
+    setRefreshVersion((current) => current + 1);
+    onReload?.();
   }
 
   function closeBulkTools() {
@@ -742,6 +803,8 @@ export function LibraryView({
           onToggleCreate={() => showCreate ? closeCreate() : openCreate()}
           isUpdatingMetadata={isUpdatingMetadata}
           onUpdateMetadata={() => void handleUpdateAllMetadata()}
+          isHuntingMissing={isHuntingMissing}
+          onHuntMissing={() => void handleHuntMissing()}
         />
         <LibraryCreateDialog
           open={showCreate}
