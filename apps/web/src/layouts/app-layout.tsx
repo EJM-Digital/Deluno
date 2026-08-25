@@ -97,7 +97,11 @@ const routeMeta = [
     title: (path: string) => settingsPageMeta.find((item) => item.match(path))?.title ?? "Settings",
     subtitle: (path: string) => settingsPageMeta.find((item) => item.match(path))?.description ?? ""
   },
-  { match: (path: string) => path.startsWith("/system") || path.startsWith("/setup-guide"), title: "System", subtitle: "How this installation is doing — health, backups, updates, and audit" }
+  // The guided setup lives in the System area but is not the System page: it
+  // was titled "System — how this installation is doing", which named the
+  // wrong thing on the first screen a new user studies (#254).
+  { match: (path: string) => path.startsWith("/setup-guide"), title: "Guided setup", subtitle: "Get the essentials in place — folders, quality, and how releases are chosen" },
+  { match: (path: string) => path.startsWith("/system"), title: "System", subtitle: "How this installation is doing — health, backups, updates, and audit" }
 ];
 
 /**
