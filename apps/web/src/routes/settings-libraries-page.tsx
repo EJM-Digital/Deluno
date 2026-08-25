@@ -288,7 +288,7 @@ export function SettingsLibrariesPage() {
               return (
                 <ListRow key={library.id} onClick={() => openEdit(library)} selected={mode.kind === "edit" && mode.id === library.id}>
                   <ListNameCell name={library.name} sub={library.mediaType === "tv" ? "TV shows" : "Movies"} />
-                  <ListCell mono primary={library.rootPath} secondary={library.downloadsPath ? `Advanced source: ${library.downloadsPath}` : "Uses the download client's reported folder"} />
+                  <ListCell mono primary={library.rootPath} secondary={library.downloadsPath ? <>Advanced source: <span className="font-mono">{library.downloadsPath}</span></> : "Uses the download client's reported folder"} />
                   <ListCell
                     primary={library.defaultPolicySetName ?? (profile ? <span>Direct quality profile: {profile.name}</span> : <span className="text-muted-foreground">No profile assigned</span>)}
                     secondary={library.defaultPolicySetName ? profile ? `${profile.name} · stops at ${profile.cutoffQuality}` : "Quality set by the Library Profile" : profile ? `Stops at ${profile.cutoffQuality}` : "Add a Library Profile before automated searching"}

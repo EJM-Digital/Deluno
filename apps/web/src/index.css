@@ -192,9 +192,8 @@
   }
 
   body {
-    @apply bg-background text-foreground;
-    font-family: "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont,
-      ui-sans-serif, system-ui, sans-serif;
+    /* The sans stack lives in tailwind.config.ts (fontFamily.sans) — this is the only other place that names it. */
+    @apply bg-background font-sans text-foreground;
     font-feature-settings: "cv11" 1, "ss01" 1, "ss02" 1;
     min-height: 100dvh;
     overflow-x: hidden;
@@ -319,11 +318,6 @@
   /* Ultra-tight display tracking for hero numbers */
   .tracking-display {
     letter-spacing: -0.04em;
-  }
-
-  .font-mono-code {
-    font-family: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace,
-      SFMono-Regular, Menlo, monospace;
   }
 
   .text-fluid-h1 {

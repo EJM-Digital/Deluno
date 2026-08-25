@@ -555,7 +555,7 @@ export function SetupGuidePage() {
                 )}
               >
                 <span className="flex items-center gap-3">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-hairline bg-background font-mono text-xs font-bold text-foreground">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-hairline bg-background text-xs font-bold tabular-nums text-foreground">
                     {done ? <CheckCircle2 className="h-4 w-4 text-success" /> : index + 1}
                   </span>
                   <span>
@@ -1133,7 +1133,7 @@ function FinishStep({
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-semibold text-foreground">{item.title}</span>
                   <span className="mt-0.5 block text-xs text-muted-foreground">{item.year ?? "Unknown year"} · {item.provider.toUpperCase()}</span>
-                  {item.rating ? <span className="mt-1 block font-mono text-[length:var(--type-caption)] text-primary">{item.rating.toFixed(1)} rating</span> : null}
+                  {item.rating ? <span className="mt-1 block text-[length:var(--type-caption)] tabular-nums text-primary">{item.rating.toFixed(1)} rating</span> : null}
                 </span>
               </button>
             ))}

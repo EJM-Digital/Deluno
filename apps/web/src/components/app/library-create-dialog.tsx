@@ -85,7 +85,7 @@ export function LibraryCreateDialog({
                       <span className="min-w-0 self-center">
                         <span className="block truncate text-sm font-semibold text-foreground">{result.title}</span>
                         <span className="mt-1 block text-xs text-muted-foreground">{result.year ?? "Unknown year"} · TMDb</span>
-                        {result.rating ? <span className="mt-2 block font-mono text-xs text-primary">{result.rating.toFixed(1)} rating</span> : null}
+                        {result.rating ? <span className="mt-2 block text-xs tabular-nums text-primary">{result.rating.toFixed(1)} rating</span> : null}
                         {isSelected ? <span className="mt-1 inline-flex rounded-full bg-primary/15 px-2 py-0.5 text-[length:var(--type-micro)] font-semibold text-primary">Selected</span> : <span className="mt-1 block text-[length:var(--type-micro)] text-muted-foreground">Click to select</span>}
                       </span>
                     </button>;

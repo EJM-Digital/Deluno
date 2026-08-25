@@ -319,7 +319,7 @@ export function SettingsDestinationRulesPage() {
               <ListRow key={rule.id} onClick={() => openRule(rule)} selected={mode.kind === "edit" && mode.id === rule.id}>
                 <ListNameCell name={rule.name} sub={rule.mediaType === "tv" ? "TV shows" : "Movies"} />
                 <ListCell primary={`${MATCH_KIND_LABELS[rule.matchKind] ?? rule.matchKind} is ${rule.matchValue}`} />
-                <ListCell mono primary={rule.rootPath} secondary={rule.folderTemplate ? rule.folderTemplate : "Standard folder naming"} />
+                <ListCell mono primary={rule.rootPath} secondary={rule.folderTemplate ? <span className="font-mono">{rule.folderTemplate}</span> : "Standard folder naming"} />
                 <ListCell primary={<LibraryImpactLinks libraries={librariesByRule.get(rule.id) ?? []} />} secondary={librariesByRule.has(rule.id) ? "Applied through a Library Profile" : "Library folder remains the default"} />
                 <ListCell numeric align="end" primary={String(rule.priority)} />
                 <ListCell mobile>

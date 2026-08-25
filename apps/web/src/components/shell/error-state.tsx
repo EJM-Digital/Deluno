@@ -69,7 +69,7 @@ export function ErrorState({
         </p>
         {code ? (
           <div className="pt-1">
-          <code className="font-mono-code inline-flex items-center gap-1.5 rounded-md border border-hairline bg-surface-1 px-2 py-0.5 text-[length:var(--type-micro)] text-muted-foreground">
+          <code className="inline-flex items-center gap-1.5 rounded-md border border-hairline bg-surface-1 px-2 py-0.5 font-mono text-[length:var(--type-micro)] text-muted-foreground">
               <span className="h-1 w-1 rounded-full bg-destructive" />
               {code}
             </code>

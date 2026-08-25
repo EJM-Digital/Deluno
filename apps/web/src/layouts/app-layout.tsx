@@ -642,7 +642,7 @@ function SidebarItem({
           </span>
           <span className="min-w-0 flex-1 whitespace-nowrap">{item.label}</span>
           {count > 0 ? (
-            <span className={cn("flex h-[calc(var(--shell-pill-height)*0.42)] min-w-[calc(var(--shell-pill-height)*0.42)] shrink-0 items-center justify-center rounded-full px-1.5 font-mono text-[length:var(--shell-nav-badge-size)] font-bold", isActive ? "bg-[var(--nav-accent)] text-background" : "bg-surface-2 text-muted-foreground")}>
+            <span className={cn("flex h-[calc(var(--shell-pill-height)*0.42)] min-w-[calc(var(--shell-pill-height)*0.42)] shrink-0 items-center justify-center rounded-full px-1.5 text-[length:var(--shell-nav-badge-size)] font-bold tabular-nums", isActive ? "bg-[var(--nav-accent)] text-background" : "bg-surface-2 text-muted-foreground")}>
               {count}
             </span>
           ) : null}

@@ -352,7 +352,7 @@ function AutomationCard({
                   <p className="truncate text-xs font-semibold text-foreground">{item.mediaType} / {item.actionKind}</p>
                   <p className="text-[length:var(--type-caption)] text-muted-foreground">{item.lastResult || "Last search recorded"}</p>
                 </div>
-                <span className="font-mono text-[length:var(--type-caption)] text-muted-foreground">{formatWhen(item.nextEligibleUtc)}</span>
+                <span className="text-[length:var(--type-caption)] tabular-nums text-muted-foreground">{formatWhen(item.nextEligibleUtc)}</span>
               </div>
             ))}
           </div>

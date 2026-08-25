@@ -289,7 +289,7 @@ export function AuditTimeline({ events, liveEvents = [], maxVisible = 200 }: Aud
                     </span>
                     <span title={absoluteTime(event.createdUtc)}>{relativeTime(event.createdUtc)}</span>
                     <span className="opacity-50">·</span>
-                    <span className="font-mono text-[length:var(--type-micro)]">{absoluteTime(event.createdUtc)}</span>
+                    <span className="text-[length:var(--type-micro)] tabular-nums">{absoluteTime(event.createdUtc)}</span>
                   </div>
 
                   {event.detail ? (
