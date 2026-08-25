@@ -67,7 +67,18 @@ public sealed record DownloadQueueItem(
     DateTimeOffset AddedUtc,
     string? SourcePath = null,
     string? LibraryId = null,
-    IReadOnlyList<DownloadHealthFinding>? HealthFindings = null);
+    IReadOnlyList<DownloadHealthFinding>? HealthFindings = null,
+    /// <summary>
+    /// Upload divided by download, as the client reports it. Null when the
+    /// client does not track it — usenet has no such notion, and a rule that
+    /// asks for a ratio can never be satisfied there.
+    /// </summary>
+    double? Ratio = null,
+    /// <summary>
+    /// How long the client has been sharing this item since it completed. Null
+    /// where the protocol has no sharing phase.
+    /// </summary>
+    int? SeedingMinutes = null);
 
 /// <summary>
 /// An observational queue-health signal. These findings never cause Deluno to remove
