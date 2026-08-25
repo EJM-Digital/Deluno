@@ -36,6 +36,16 @@ const SAMPLES = 180;
 /** How quickly the drawn value chases the real one. 0–1 per frame. */
 const EASING = 0.12;
 
+/** The glowing "now" marker at the leading edge. */
+const HEAD_RADIUS = 2.5;
+/**
+ * The trace stops short of the canvas edge by the head's radius. It used to run
+ * to the full width with the marker centred 1.5px from the edge, so a third of
+ * the dot — and all of its glow — was clipped away and it read as a cut-off
+ * smudge rather than a leading edge.
+ */
+const RIGHT_INSET = HEAD_RADIUS + 1.5;
+
 export function LiveWave({
   value,
   max,
@@ -108,7 +118,8 @@ export function LiveWave({
 
       context.clearRect(0, 0, width, height);
 
-      const step = width / (samples.length - 1);
+      const plotWidth = Math.max(1, width - RIGHT_INSET);
+      const step = plotWidth / (samples.length - 1);
       // A zero reading rests a few pixels clear of the bottom edge rather than
       // flush against it: an idle trace still has to be a visible line, or the
       // card reads as broken rather than quiet. The value itself is always
@@ -126,11 +137,11 @@ export function LiveWave({
         const midX = (previousX + x) / 2;
         context.quadraticCurveTo(previousX, pointY(samples[index - 1]), midX, (pointY(samples[index - 1]) + pointY(samples[index])) / 2);
       }
-      context.lineTo(width, pointY(samples[samples.length - 1]));
+      context.lineTo(plotWidth, pointY(samples[samples.length - 1]));
 
       // Fill under the trace.
       context.save();
-      context.lineTo(width, height);
+      context.lineTo(plotWidth, height);
       context.lineTo(0, height);
       context.closePath();
       const gradient = context.createLinearGradient(0, 0, 0, height);
@@ -149,7 +160,7 @@ export function LiveWave({
         const midX = (previousX + x) / 2;
         context.quadraticCurveTo(previousX, pointY(samples[index - 1]), midX, (pointY(samples[index - 1]) + pointY(samples[index])) / 2);
       }
-      context.lineTo(width, pointY(samples[samples.length - 1]));
+      context.lineTo(plotWidth, pointY(samples[samples.length - 1]));
       context.strokeStyle = colour;
       context.lineWidth = 1.75;
       context.lineJoin = "round";
@@ -162,7 +173,7 @@ export function LiveWave({
       // says Idle, and the trace itself stays exactly where zero is.
       const idle = peak <= 0.0001;
       if (idle && !reduceMotion) {
-        const centre = (phase % 1) * width;
+        const centre = (phase % 1) * plotWidth;
         const sweep = context.createLinearGradient(centre - 70, 0, centre + 70, 0);
         sweep.addColorStop(0, withAlpha(colour, 0));
         sweep.addColorStop(0.5, colour);
@@ -175,7 +186,7 @@ export function LiveWave({
         context.shadowBlur = 8;
         context.beginPath();
         context.moveTo(Math.max(0, centre - 70), pointY(0));
-        context.lineTo(Math.min(width, centre + 70), pointY(0));
+        context.lineTo(Math.min(plotWidth, centre + 70), pointY(0));
         context.stroke();
         context.restore();
       }
@@ -187,7 +198,7 @@ export function LiveWave({
       context.shadowBlur = 10;
       context.fillStyle = colour;
       context.beginPath();
-      context.arc(width - 1.5, headY, 2.5, 0, Math.PI * 2);
+      context.arc(plotWidth, headY, HEAD_RADIUS, 0, Math.PI * 2);
       context.fill();
       context.restore();
     };
