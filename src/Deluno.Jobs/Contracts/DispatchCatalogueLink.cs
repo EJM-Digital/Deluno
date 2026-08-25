@@ -8,7 +8,14 @@ namespace Deluno.Jobs.Contracts;
 /// <param name="DispatchId">The dispatch record, for import-outcome reporting.</param>
 /// <param name="EntityType">"movie" or "series".</param>
 /// <param name="EntityId">The catalogue id within that engine.</param>
+/// <param name="IndexerName">
+/// The search source the release came from. Sharing rules belong to the site
+/// rather than the library, so reclaiming a completed download has to know
+/// which source's rule applies to it (#288). Empty when the dispatch predates
+/// the field or the grab recorded no source.
+/// </param>
 public sealed record DispatchCatalogueLink(
     string DispatchId,
     string EntityType,
-    string EntityId);
+    string EntityId,
+    string IndexerName = "");

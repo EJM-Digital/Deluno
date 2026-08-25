@@ -1408,7 +1408,7 @@ public sealed class SqliteJobStore(
         using var command = connection.CreateCommand();
         command.CommandText =
             """
-            SELECT id, entity_type, entity_id FROM download_dispatches
+            SELECT id, entity_type, entity_id, indexer_name FROM download_dispatches
             WHERE download_client_id = @downloadClientId
               AND release_name = @releaseName
               AND created_utc > datetime('now', '-6 hours')
@@ -1425,7 +1425,8 @@ public sealed class SqliteJobStore(
             return new DispatchCatalogueLink(
                 reader.GetString(0),
                 reader.IsDBNull(1) ? string.Empty : reader.GetString(1),
-                reader.IsDBNull(2) ? string.Empty : reader.GetString(2));
+                reader.IsDBNull(2) ? string.Empty : reader.GetString(2),
+                reader.IsDBNull(3) ? string.Empty : reader.GetString(3));
         }
 
         return null;
