@@ -456,14 +456,26 @@ export function DashboardPage() {
       href: "/system",
       action: "Open System"
     })),
-    ...data.setupStatus.attentionItems.map((item) => ({
-      id: `setup:${item.id}`,
-      tone: item.tone,
-      title: item.title,
-      text: item.text,
-      href: item.href,
-      action: item.action
-    })),
+    // Setup belongs to the ladder above, not here. Both lists were built from
+    // the same `attentionItems`, so a part-configured install stated the same
+    // three things twice on one screen, about 200px apart (#275). The ladder is
+    // the better home for them: it carries the order they have to happen in,
+    // and it takes itself off the page the moment the basics are done — at
+    // which point this list is the only one left and loses nothing.
+    //
+    // What remains from setup is only what the ladder has no step for --
+    // "Connection health needs review" is raised against connections that are
+    // configured and unhealthy, which no ladder step covers.
+    ...data.setupStatus.attentionItems
+      .filter((item) => !data.setupStatus.steps.some((step) => step.id === item.id))
+      .map((item) => ({
+        id: `setup:${item.id}`,
+        tone: item.tone,
+        title: item.title,
+        text: item.text,
+        href: item.href,
+        action: item.action
+      })),
     ...(data.missingCount > 0
       ? [{
           id: "missing",
