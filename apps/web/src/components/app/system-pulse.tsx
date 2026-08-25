@@ -105,7 +105,11 @@ export function SystemPulse({ snapshot, className }: { snapshot: MonitoringDashb
                 ? "no requests in the window"
                 : latency.errorCount > 0
                   ? `${latency.errorRatePercent.toFixed(1)}% erroring`
-                  : `p95 of ${latency.requestCount.toLocaleString()}`,
+                  // "p95 of 1,027" read as "p95 equals 1,027" — two unrelated
+                  // numbers welded together, one of them jargon. The headline
+                  // is a 95th percentile, so say what that means about the
+                  // requests it was measured over.
+                  : `95% of ${latency.requestCount.toLocaleString()} were faster`,
               tone: latency.errorCount > 0 || latency.p95Ms > LATENCY_WARN_MS ? "warn" : latency.requestCount === 0 ? "idle" : "ok",
               href: "/system"
             }}
