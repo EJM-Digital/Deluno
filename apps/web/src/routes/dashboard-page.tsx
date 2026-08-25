@@ -74,6 +74,8 @@ interface DashboardLoaderData {
   speedMbps: number;
   activeDownloads: ActiveDownload[];
   activeDownloadCount: number;
+  /** Finished in the client and waiting on import — in the pipeline, not transferring. */
+  importReadyCount: number;
   indexerHealth: IndexerHealthItem[];
   indexerHealthPercent: number | null;
   configuredLibraryCount: number;
@@ -200,7 +202,12 @@ function buildDashboardData(sources: DashboardSources): DashboardLoaderData {
     metrics,
     speedMbps: telemetry.summary.totalSpeedMbps,
     activeDownloads,
-    activeDownloadCount: telemetry.summary.activeCount + telemetry.summary.queuedCount + telemetry.summary.importReadyCount,
+    // Downloading means downloading. Counting import-ready items here made
+    // the stat read "1" with nothing transferring, beside a card row sitting
+    // at 100% and 0.0 MB/s (#258). Finished-but-not-imported work is counted
+    // separately below and shown on Transfers.
+    activeDownloadCount: telemetry.summary.activeCount + telemetry.summary.queuedCount,
+    importReadyCount: telemetry.summary.importReadyCount,
     indexerHealth,
     indexerHealthPercent: indexerHealth.length ? Math.round((healthyCount / indexerHealth.length) * 100) : null,
     configuredLibraryCount: libraries.length,
@@ -389,12 +396,22 @@ export function DashboardPage() {
           {
             label: "Downloading",
             value: data.activeDownloadCount.toString(),
-            help: topDownload ? `${topDownload.speedMbps.toFixed(1)} MB/s` : "nothing in flight"
+            help: data.activeDownloadCount > 0
+              ? `${data.speedMbps.toFixed(1)} MB/s`
+              : data.importReadyCount > 0
+                ? `${data.importReadyCount} waiting to import`
+                : "nothing in flight"
           },
           {
             label: "Still missing",
             value: data.missingCount.toString(),
-            help: data.upgradeCount ? `plus ${data.upgradeCount} could be upgraded` : "nothing waiting",
+            // "1 / nothing waiting" contradicted itself: the help line spoke
+            // about upgrades while the value spoke about missing titles (#258).
+            help: data.missingCount === 0
+              ? "nothing missing"
+              : data.upgradeCount
+                ? `plus ${data.upgradeCount} could be upgraded`
+                : "Deluno is searching on schedule",
             tone: data.missingCount > 0 ? "warning" : undefined
           },
           {
@@ -414,7 +431,9 @@ export function DashboardPage() {
           help={
             data.activeDownloadCount > 0
               ? `${data.activeDownloadCount} transfer${data.activeDownloadCount === 1 ? "" : "s"} in flight`
-              : "nothing downloading"
+              : data.importReadyCount > 0
+                ? `${data.importReadyCount} waiting to import`
+                : "nothing downloading"
           }
           series={speedSeries.length ? speedSeries : [{ date: new Date().toISOString(), value: 0 }]}
           tone={liveSpeedMbps > 0 ? "success" : "primary"}
@@ -462,8 +481,14 @@ export function DashboardPage() {
 
       {data.activeDownloads.length ? (
         <ListCard
-          title="Downloading now"
-          count={`${data.activeDownloadCount} in flight`}
+          // "Downloading now" listed finished-but-not-imported work too, so a
+          // completed transfer sat here at 100% and 0.0 MB/s as if stuck. The
+          // card covers the whole in-flight pipeline, so it says so, and each
+          // row states which stage it is actually at (#258).
+          title="In flight"
+          count={data.activeDownloadCount > 0
+            ? `${data.activeDownloadCount} downloading${data.importReadyCount > 0 ? ` · ${data.importReadyCount} waiting to import` : ""}`
+            : `${data.importReadyCount} waiting to import`}
           actions={
             <Button asChild type="button" variant="outline" size="sm">
               <Link to="/queue">Open Transfers</Link>
@@ -471,26 +496,41 @@ export function DashboardPage() {
           }
         >
           <ListTable columns={[{ label: "Release" }, { label: "Progress", width: "minmax(0,1.2fr)" }, { label: "Speed / left" }, { label: "From" }]} chevron={false}>
-            {data.activeDownloads.slice(0, 6).map((download) => (
-              <ListRow key={download.id}>
-                <ListNameCell name={download.title} sub={download.quality ?? "Unknown quality"} />
-                <ListCell>
-                  <span aria-hidden className="block h-1.5 w-full overflow-hidden rounded-full bg-surface-3">
-                    <span className="block h-full rounded-full bg-primary" style={{ width: `${Math.min(100, Math.max(0, download.progress))}%` }} />
-                  </span>
-                  <span className="mt-1 block text-[length:var(--type-caption)] tabular-nums text-muted-foreground">{Math.round(download.progress)}%</span>
-                </ListCell>
-                <ListCell numeric primary={`${download.speedMbps.toFixed(1)} MB/s`} secondary={download.etaMinutes > 0 ? `${download.etaMinutes} min left` : undefined} />
-                <ListCell primary={download.indexer} secondary={download.peers ? `${download.peers} peers` : undefined} />
-              </ListRow>
-            ))}
+            {data.activeDownloads.slice(0, 6).map((download) => {
+              const finished = download.progress >= 100 || download.speedMbps <= 0;
+              return (
+                <ListRow key={download.id}>
+                  <ListNameCell name={download.title} sub={download.quality ?? "Unknown quality"} />
+                  <ListCell>
+                    <span aria-hidden className="block h-1.5 w-full overflow-hidden rounded-full bg-surface-3">
+                      <span
+                        className={cn("block h-full rounded-full", finished ? "bg-success/70" : "bg-primary")}
+                        style={{ width: `${Math.min(100, Math.max(0, download.progress))}%` }}
+                      />
+                    </span>
+                    <span className="mt-1 block text-[length:var(--type-caption)] tabular-nums text-muted-foreground">
+                      {finished ? "Downloaded" : `${Math.round(download.progress)}%`}
+                    </span>
+                  </ListCell>
+                  <ListCell
+                    numeric
+                    primary={finished ? "Waiting to import" : `${download.speedMbps.toFixed(1)} MB/s`}
+                    secondary={!finished && download.etaMinutes > 0 ? `${download.etaMinutes} min left` : undefined}
+                  />
+                  <ListCell primary={download.indexer} secondary={download.peers ? `${download.peers} peers` : undefined} />
+                </ListRow>
+              );
+            })}
           </ListTable>
         </ListCard>
       ) : null}
 
       {upcomingGroups.length ? (
         <ListCard
-          title="Airing soon"
+          // This card carries episode air dates *and* scheduled search
+          // retries, including for movies — so "Airing soon / Show / Episode"
+          // filed a film under a TV heading with an episode of "Retry" (#258).
+          title="Coming up"
           count="The next 72 hours"
           actions={
             <Button asChild type="button" variant="outline" size="sm">
@@ -498,7 +538,7 @@ export function DashboardPage() {
             </Button>
           }
         >
-          <ListTable columns={[{ label: "Show" }, { label: "Episode", width: "minmax(0,1.4fr)" }, { label: "When", width: "170px", mobile: true }]}>
+          <ListTable columns={[{ label: "Title" }, { label: "What", width: "minmax(0,1.4fr)" }, { label: "When", width: "170px", mobile: true }]}>
             {upcomingGroups.flatMap((group) =>
               group.entries.slice(0, 3).map((entry) => (
                 <ListRow key={entry.id} onClick={() => navigate(entry.href)}>
@@ -871,7 +911,7 @@ function buildDashboardUpcoming(
         id: `series-retry-${item.seriesId}`,
         time: new Date(item.nextEligibleSearchUtc!).getTime(),
         title: item.title,
-        episode: "Retry",
+        episode: "Search retry",
         network: item.wantedReason,
         poster: null,
         href: `/tv/${item.seriesId}`,
@@ -883,7 +923,7 @@ function buildDashboardUpcoming(
         id: `movie-retry-${item.movieId}`,
         time: new Date(item.nextEligibleSearchUtc!).getTime(),
         title: item.title,
-        episode: "Retry",
+        episode: "Search retry",
         network: item.wantedReason,
         poster: null,
         href: `/movies/${item.movieId}`,
@@ -947,6 +987,7 @@ function emptyDashboardData(): DashboardLoaderData {
     speedMbps: 0,
     activeDownloads: [],
     activeDownloadCount: 0,
+    importReadyCount: 0,
     indexerHealth: [],
     indexerHealthPercent: null,
     configuredLibraryCount: 0,
