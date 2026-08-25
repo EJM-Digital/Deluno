@@ -24,7 +24,7 @@ export function LibrarySelectAllToggle({
   return (
     <div className="flex items-center justify-between gap-3">
       <p className="text-[length:var(--library-toolbar-size)] font-medium text-muted-foreground">
-        {totalCount > loadedCount ? <>Showing <span className="font-bold tabular text-foreground">{filteredCount}</span> loaded of {totalCount.toLocaleString()}</> : <><span className="font-bold tabular text-foreground">{filteredCount}</span> titles shown</>}
+        {totalCount > loadedCount ? <>Showing <span className="font-bold tabular text-foreground">{filteredCount}</span> loaded of {totalCount.toLocaleString()}</> : <><span className="font-bold tabular text-foreground">{filteredCount}</span> {filteredCount === 1 ? "title" : "titles"} shown</>}
       </p>
       <button
         type="button"

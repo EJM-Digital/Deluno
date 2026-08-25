@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useNavigation, useSearchParams } from "react-router-dom";
 import type { MediaItem } from "../../lib/media-types";
 import {
@@ -41,6 +41,13 @@ import { LibrarySelectAllToggle } from "./library-select-all-toggle";
 import { LibrarySummaryHeader } from "./library-summary-header";
 
 type Variant = "movies" | "shows";
+
+// Last-known page per variant, surviving the per-variant remount that `key`
+// forces. Without it every visit repainted a zeroed header and empty grid for
+// ~300ms before the fetch landed (#265); with it a revisit renders instantly
+// from the last snapshot while a silent refetch replaces it.
+const catalogueCache = new Map<Variant, { items: MediaItem[]; totalCount: number; facets: CatalogueFacets | null }>();
+
 function sameMetadataResult(left: MetadataSearchResult, right: MetadataSearchResult) {
   return left.provider === right.provider && left.providerId === right.providerId;
 }
@@ -71,14 +78,16 @@ export function LibraryView({
   const navigation = useNavigation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { density } = useDensity();
-  const [libraryItems, setLibraryItems] = useState<MediaItem[]>([]);
+  const [libraryItems, setLibraryItems] = useState<MediaItem[]>(() => catalogueCache.get(variant)?.items ?? []);
   const [libraries, setLibraries] = useState<LibraryItem[]>([]);
-  const [totalCount, setTotalCount] = useState(0);
-  const [facets, setFacets] = useState<CatalogueFacets | null>(null);
+  const [totalCount, setTotalCount] = useState(() => catalogueCache.get(variant)?.totalCount ?? 0);
+  const [facets, setFacets] = useState<CatalogueFacets | null>(() => catalogueCache.get(variant)?.facets ?? null);
   const [nextPageToken, setNextPageToken] = useState<string | null>(null);
   const [currentPageToken, setCurrentPageToken] = useState<string | null>(null);
   const [previousPageTokens, setPreviousPageTokens] = useState<Array<string | null>>([]);
-  const [isCatalogueLoading, setIsCatalogueLoading] = useState(true);
+  const [isCatalogueLoading, setIsCatalogueLoading] = useState(() => !catalogueCache.has(variant));
+  const hasLoadedOnceRef = useRef(catalogueCache.has(variant));
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(() => catalogueCache.has(variant));
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [isUpdatingMetadata, setIsUpdatingMetadata] = useState(false);
@@ -135,17 +144,18 @@ export function LibraryView({
 
   useEffect(() => {
     let cancelled = false;
-    // Do not leave the previous variant visible while the new catalogue is
-    // loading. Movies and TV share the same workspace component, so retaining
-    // these rows for even one frame looks like ghosted content from the other
-    // library during a fast sidebar switch.
-    setLibraryItems([]);
-    setTotalCount(0);
-    setFacets(null);
+    // Keep the previous page visible while the next one loads (#265): zeroing
+    // here flashed a "0 total" header and empty grid on every visit. Stale
+    // cross-variant rows cannot appear — the `key` on LibraryView remounts the
+    // component per variant. Only pagination is reset so "load more" cannot
+    // run against a stale token mid-reload.
     setNextPageToken(null);
     setCurrentPageToken(null);
     setPreviousPageTokens([]);
     setIsCatalogueLoading(true);
+    // The delay is a debounce for typing in the search box; the first load of
+    // a mounted view has nothing to debounce and used to eat it as pure lag.
+    const delay = hasLoadedOnceRef.current ? 250 : 0;
     const timer = window.setTimeout(async () => {
       const params = buildCatalogueParams();
       try {
@@ -155,24 +165,28 @@ export function LibraryView({
             fetchJson<MovieWantedSummary>("/api/movies/wanted")
           ]);
           if (cancelled) return;
-          setLibraryItems(adaptMovieItems(page.items, wanted));
+          const items = adaptMovieItems(page.items, wanted);
+          setLibraryItems(items);
           setTotalCount(page.totalCount ?? 0);
           setFacets(page.facets);
           setNextPageToken(page.nextPageToken);
           setCurrentPageToken(null);
           setPreviousPageTokens([]);
+          catalogueCache.set(variant, { items, totalCount: page.totalCount ?? 0, facets: page.facets });
         } else {
           const [page, wanted] = await Promise.all([
             fetchJson<CataloguePage<SeriesListItem>>(`/api/series/page?${params}`),
             fetchJson<SeriesWantedSummary>("/api/series/wanted")
           ]);
           if (cancelled) return;
-          setLibraryItems(adaptSeriesItems(page.items, wanted));
+          const items = adaptSeriesItems(page.items, wanted);
+          setLibraryItems(items);
           setTotalCount(page.totalCount ?? 0);
           setFacets(page.facets);
           setNextPageToken(page.nextPageToken);
           setCurrentPageToken(null);
           setPreviousPageTokens([]);
+          catalogueCache.set(variant, { items, totalCount: page.totalCount ?? 0, facets: page.facets });
         }
         setSelectedIds([]);
       } catch {
@@ -181,17 +195,22 @@ export function LibraryView({
           setTotalCount(0);
           setFacets(null);
           setNextPageToken(null);
+          catalogueCache.delete(variant);
           toast.error("Could not load the library.");
         }
       } finally {
-        if (!cancelled) setIsCatalogueLoading(false);
+        if (!cancelled) {
+          hasLoadedOnceRef.current = true;
+          setHasLoadedOnce(true);
+          setIsCatalogueLoading(false);
+        }
       }
-    }, 250);
+    }, delay);
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, [buildCatalogueParams, refreshVersion, setSelectedIds, variant]);
 
   async function loadNextCataloguePage() {
-    if (!nextPageToken || isLoadingMore) return;
+    if (!nextPageToken || isLoadingMore || isCatalogueLoading) return;
     setIsLoadingMore(true);
     const params = buildCatalogueParams(nextPageToken);
     try {
@@ -714,6 +733,7 @@ export function LibraryView({
         <LibrarySummaryHeader
           label={label}
           singular={singular}
+          isLoading={isCatalogueLoading && !hasLoadedOnce}
           totalCount={totalCount}
           downloadedCount={downloadedCount}
           monitoredCount={monitoredCount}

@@ -6,6 +6,8 @@ import { Button } from "../ui/button";
 type LibrarySummaryHeaderProps = {
   label: string;
   singular: string;
+  /** True only while the very first page is loading — zeros are not yet facts, so the stat line shows placeholders. */
+  isLoading?: boolean;
   totalCount: number;
   downloadedCount: number;
   monitoredCount: number;
@@ -19,6 +21,7 @@ type LibrarySummaryHeaderProps = {
 export function LibrarySummaryHeader({
   label,
   singular,
+  isLoading = false,
   totalCount,
   downloadedCount,
   monitoredCount,
@@ -42,6 +45,10 @@ export function LibrarySummaryHeader({
             Browse and manage your {label}
           </h2>
           <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[length:var(--type-body-sm)] text-muted-foreground">
+            {isLoading ? (
+              <span>Loading your {label}…</span>
+            ) : (
+            <>
             <span><span className="tabular font-semibold text-foreground">{totalCount.toLocaleString()}</span> total</span>
             <span className="text-muted-foreground/45">·</span>
             <span><span className={cn("tabular font-semibold", librarySummaryTone("availability", downloadedCount))}>{downloadedCount}</span> downloaded</span>
@@ -49,6 +56,8 @@ export function LibrarySummaryHeader({
             <span><span className="tabular font-semibold text-muted-foreground">{monitoredCount}</span> monitored</span>
             {missingCount > 0 ? <><span className="text-muted-foreground/45">·</span><span><span className="tabular font-semibold text-warning">{missingCount}</span> missing</span></> : null}
             {downloadingCount > 0 ? <><span className="text-muted-foreground/45">·</span><span><span className="tabular font-semibold text-info">{downloadingCount}</span> downloading</span></> : null}
+            </>
+            )}
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
