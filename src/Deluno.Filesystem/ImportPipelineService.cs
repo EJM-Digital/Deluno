@@ -105,7 +105,9 @@ public sealed partial class ImportPipelineService(
 
         if (!File.Exists(preview.SourcePath))
         {
-            const string message = "The source file does not exist from the Deluno service account's filesystem view.";
+            var message = Directory.Exists(preview.SourcePath)
+                ? $"No importable video file was found inside '{preview.SourcePath}'."
+                : $"The source file was not found at '{preview.SourcePath}'. Deluno checked from its own process.";
             await RecordImportFailureAsync(
                 request,
                 request.Preview,
@@ -543,11 +545,51 @@ public sealed partial class ImportPipelineService(
         return null;
     }
 
+    /// <summary>
+    /// Download clients report a folder, not a file, for multi-file torrents.
+    /// Resolve the media file inside so the rest of the pipeline always works
+    /// on a file path. The largest non-sample video wins; the caller's
+    /// FileName keeps its base but follows the resolved file's extension.
+    /// </summary>
+    private static ImportPreviewRequest ResolveDirectorySource(ImportPreviewRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.SourcePath) || !Directory.Exists(request.SourcePath))
+        {
+            return request;
+        }
+
+        string? resolved;
+        try
+        {
+            resolved = Directory
+                .EnumerateFiles(request.SourcePath, "*.*", SearchOption.AllDirectories)
+                .Where(path => SupportedVideoExtensions.Contains(Path.GetExtension(path)))
+                .Where(path => !SampleTokenPattern().IsMatch(Path.GetFileNameWithoutExtension(path)))
+                .OrderByDescending(path => new FileInfo(path).Length)
+                .FirstOrDefault();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return request;
+        }
+
+        if (resolved is null)
+        {
+            return request;
+        }
+
+        var fileName = string.IsNullOrWhiteSpace(request.FileName)
+            ? null
+            : Path.ChangeExtension(request.FileName.Trim(), Path.GetExtension(resolved));
+        return request with { SourcePath = resolved, FileName = fileName };
+    }
+
     private static ImportPreviewResponse ResolveImportPreview(
         ImportPreviewRequest request,
         PlatformSettingsSnapshot settings,
         IReadOnlyList<DestinationRuleItem> rules)
     {
+        request = ResolveDirectorySource(request);
         var mediaType = NormalizeMediaType(request.MediaType);
         var title = TitleForActivity(request);
         var rule = rules
@@ -1243,6 +1285,9 @@ public sealed partial class ImportPipelineService(
 
     [GeneratedRegex(@"\bS(?<season>\d{1,2})E(?<episode>\d{1,3})\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex EpisodeNumberPattern();
+
+    [GeneratedRegex(@"(^|[.\-_\s])sample([.\-_\s]|$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex SampleTokenPattern();
 
     private static string SanitizeFileName(string value)
     {

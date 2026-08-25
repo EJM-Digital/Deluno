@@ -92,6 +92,103 @@ public sealed class ImportPipelineServiceTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_resolves_the_video_inside_a_folder_shaped_source()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var releaseFolder = Path.Combine(downloadsPath, "Arrival.2016.1080p.WEB-VERIFY");
+        Directory.CreateDirectory(Path.Combine(releaseFolder, "Subs"));
+        Directory.CreateDirectory(movieRootPath);
+
+        // The real feature file, a smaller sample, and non-video clutter - the
+        // shape a download client reports for a multi-file torrent.
+        var featurePath = Path.Combine(releaseFolder, "Arrival.2016.1080p.WEB-VERIFY.mkv");
+        await File.WriteAllBytesAsync(featurePath, Enumerable.Range(0, 8192).Select(value => (byte)(value % 251)).ToArray());
+        await File.WriteAllBytesAsync(Path.Combine(releaseFolder, "arrival-sample.mkv"), new byte[512]);
+        await File.WriteAllTextAsync(Path.Combine(releaseFolder, "Arrival.2016.nfo"), "clutter");
+        foreach (var path in Directory.EnumerateFiles(releaseFolder, "*.*", SearchOption.AllDirectories))
+        {
+            File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddMinutes(-1));
+        }
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: releaseFolder,
+                    FileName: "Arrival.2016.1080p.WEB-VERIFY.mkv",
+                    MediaType: "movies",
+                    Title: "Arrival",
+                    Year: 2016,
+                    Genres: [],
+                    Tags: [],
+                    Studio: null,
+                    OriginalLanguage: null),
+                TransferMode: "copy",
+                Overwrite: false,
+                AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        var destinationPath = Path.Combine(movieRootPath, "Arrival (2016)", "Arrival (2016).mkv");
+        Assert.True(File.Exists(destinationPath));
+        Assert.Equal(new FileInfo(featurePath).Length, new FileInfo(destinationPath).Length);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_names_the_folder_when_it_holds_no_importable_video()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var releaseFolder = Path.Combine(downloadsPath, "Arrival.2016.1080p.WEB-VERIFY");
+        Directory.CreateDirectory(releaseFolder);
+        Directory.CreateDirectory(movieRootPath);
+        await File.WriteAllTextAsync(Path.Combine(releaseFolder, "Arrival.2016.nfo"), "clutter");
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: releaseFolder,
+                    FileName: "Arrival.2016.1080p.WEB-VERIFY.mkv",
+                    MediaType: "movies",
+                    Title: "Arrival",
+                    Year: 2016,
+                    Genres: [],
+                    Tags: [],
+                    Studio: null,
+                    OriginalLanguage: null),
+                TransferMode: "copy",
+                Overwrite: false,
+                AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("No importable video file was found inside", result.Message);
+        Assert.Contains(releaseFolder, result.Message);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_rolls_back_staged_move_when_final_placement_fails()
     {
         using var storage = TestStorage.Create();
