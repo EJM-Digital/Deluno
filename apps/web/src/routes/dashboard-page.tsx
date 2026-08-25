@@ -44,6 +44,16 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { ListCard, ListEmpty } from "../components/ui/list-card";
 import { MetricChart, type MetricPoint } from "../components/ui/metric-chart";
+import { SegmentedControl } from "../components/ui/segmented-control";
+import {
+  DEFAULT_HISTORY_DAYS,
+  HISTORY_RANGES,
+  readStoredHistoryDays,
+  windowLabel,
+  writeStoredHistoryDays,
+  type HistoryDays
+} from "../lib/dashboard-history-range";
+import { ACTIVE_PIPELINE_REFRESH_MS, isPipelineMoving } from "../lib/pipeline-activity";
 import { useCoalescedRevalidate } from "../hooks/use-visible-interval";
 import { StatusLed, type LedTone } from "../components/ui/status-led";
 import { RealtimeGroups, useSignalREvent, useSignalRResync } from "../lib/use-signalr";
@@ -276,15 +286,14 @@ const MONITORING_REFRESH = {
   refetchIntervalInBackground: false
 } as const;
 
-function useDashboardData(initial: DashboardLoaderData) {
+function useDashboardData(initial: DashboardLoaderData, historyDays: HistoryDays) {
   const source = initial.sources;
-  const [moviePage, movieWanted, showPage, showWanted, telemetry, indexers, clients, libraries, automation, searchCycles, retryWindows, upcomingEpisodes, setupProgress, settings, policySets, qualityProfiles, metrics, monitoring, activity, processors] = useQueries({
+  const [moviePage, movieWanted, showPage, showWanted, indexers, clients, libraries, automation, searchCycles, retryWindows, upcomingEpisodes, setupProgress, settings, policySets, qualityProfiles, monitoring, activity, processors] = useQueries({
     queries: [
       { ...DASHBOARD_REFRESH, queryKey: ["movies"], queryFn: () => fetchJson<CataloguePage<MovieListItem>>("/api/movies/page?pageSize=14&sort=added&direction=desc").catch(() => emptyDashboardSources().moviePage), initialData: source.moviePage },
       { ...DASHBOARD_REFRESH, queryKey: ["movies", "wanted"], queryFn: () => fetchJson<MovieWantedSummary>("/api/movies/wanted").catch(() => EMPTY_MOVIE_WANTED), initialData: source.movieWanted },
       { ...DASHBOARD_REFRESH, queryKey: ["series"], queryFn: () => fetchJson<CataloguePage<SeriesListItem>>("/api/series/page?pageSize=14&sort=added&direction=desc").catch(() => emptyDashboardSources().showPage), initialData: source.showPage },
       { ...DASHBOARD_REFRESH, queryKey: ["series", "wanted"], queryFn: () => fetchJson<SeriesWantedSummary>("/api/series/wanted").catch(() => EMPTY_SERIES_WANTED), initialData: source.showWanted },
-      { ...DASHBOARD_REFRESH, queryKey: ["telemetry"], queryFn: () => fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry").catch(() => EMPTY_TELEMETRY), initialData: source.telemetry },
       { ...DASHBOARD_REFRESH, queryKey: ["indexers"], queryFn: () => fetchJson<IndexerItem[]>("/api/indexers").catch(() => []), initialData: source.indexers },
       { ...DASHBOARD_REFRESH, queryKey: ["download-clients"], queryFn: () => fetchJson<DownloadClientItem[]>("/api/download-clients").catch(() => []), initialData: source.clients },
       { ...DASHBOARD_REFRESH, queryKey: ["libraries"], queryFn: () => fetchJson<LibraryItem[]>("/api/libraries").catch(() => []), initialData: source.libraries },
@@ -296,7 +305,6 @@ function useDashboardData(initial: DashboardLoaderData) {
       { ...DASHBOARD_REFRESH, queryKey: ["settings"], queryFn: () => fetchJson<PlatformSettingsSnapshot>("/api/settings").catch(() => emptyPlatformSettingsSnapshot), initialData: source.settings },
       { ...DASHBOARD_REFRESH, queryKey: ["policy-sets"], queryFn: () => fetchJson<PolicySetItem[]>("/api/policy-sets").catch(() => []), initialData: source.policySets },
       { ...DASHBOARD_REFRESH, queryKey: ["quality-profiles"], queryFn: () => fetchJson<QualityProfileItem[]>("/api/quality-profiles").catch(() => []), initialData: source.qualityProfiles },
-      { ...DASHBOARD_REFRESH, queryKey: ["dashboard-metrics"], queryFn: () => fetchJson<DashboardMetrics>("/api/dashboard/metrics?days=30").catch(() => null), initialData: source.metrics },
       { ...MONITORING_REFRESH, queryKey: ["monitoring-dashboard"], queryFn: () => fetchJson<MonitoringDashboardSnapshot>("/api/monitoring/dashboard").catch(() => null), initialData: source.monitoring },
       { ...DASHBOARD_REFRESH, queryKey: ["activity", "dashboard"], queryFn: () => fetchPageItems<ActivityEventItem>("/api/activity?pageSize=10").catch(() => []), initialData: source.activity },
       { ...DASHBOARD_REFRESH, queryKey: ["processor-connections"], queryFn: () => fetchJson<ProcessorConnectionItem[]>("/api/integrations/processors/connections").catch(() => []), initialData: source.processors }
@@ -309,6 +317,36 @@ function useDashboardData(initial: DashboardLoaderData) {
   //
   // A minute-resolution series, so refreshing faster than the sampler writes
   // would only redraw the same points.
+  // Also kept out of the tuple, and not only for the inference cliff above:
+  // the window is part of the cache key, so every range keeps its own entry and
+  // switching back to one already read is instant. The loader only ever fetches
+  // the default window, so that is the only key it can legitimately seed.
+  const metrics = useQuery({
+    ...DASHBOARD_REFRESH,
+    queryKey: ["dashboard-metrics", historyDays],
+    queryFn: () => fetchJson<DashboardMetrics>(`/api/dashboard/metrics?days=${historyDays}`).catch(() => null),
+    initialData: historyDays === DEFAULT_HISTORY_DAYS ? source.metrics : undefined
+  });
+
+  // The one query the pipeline actually moves on: its stage counts and every
+  // progress bar under them come from here, and nothing else refreshes them.
+  // `DownloadProgress` is published once per grab with progress and speed both
+  // zero, so it announces that a transfer exists rather than how far along it
+  // is — on the shared 60s heartbeat that left a transfer visibly stuck at one
+  // percentage for a minute at a time.
+  //
+  // So it polls on the work rather than the clock: a few seconds while anything
+  // is in flight, back to the heartbeat the moment the pipeline empties. It
+  // also has to live outside the tuple above — a `refetchInterval` callback on
+  // one entry is enough to collapse the inference for every entry.
+  const telemetry = useQuery({
+    ...DASHBOARD_REFRESH,
+    queryKey: ["telemetry"],
+    queryFn: () => fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry").catch(() => EMPTY_TELEMETRY),
+    initialData: source.telemetry,
+    refetchInterval: (query) => (isPipelineMoving(query.state.data) ? ACTIVE_PIPELINE_REFRESH_MS : DASHBOARD_REFRESH.refetchInterval)
+  });
+
   const throughput = useQuery({
     ...MONITORING_REFRESH,
     queryKey: ["download-throughput"],
@@ -343,7 +381,8 @@ function useDashboardData(initial: DashboardLoaderData) {
 
 export function DashboardPage() {
   const loaderData = useLoaderData() as DashboardLoaderData;
-  const data = useDashboardData(loaderData);
+  const [historyDays, setHistoryDays] = useState<HistoryDays>(readStoredHistoryDays);
+  const data = useDashboardData(loaderData, historyDays);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [liveSpeedMbps, setLiveSpeedMbps] = useState(() => data.speedMbps);
@@ -375,11 +414,24 @@ export function DashboardPage() {
   useSignalREvent("IndexerChanged", RealtimeGroups.Dashboard, () => invalidate([["indexers"], ["dashboard-metrics"]]));
   useSignalREvent("DownloadClientChanged", RealtimeGroups.Dashboard, () => invalidate([["download-clients"], ["telemetry"], ["dashboard-metrics"]]));
   useSignalRResync(() => { void queryClient.invalidateQueries(); });
-  useSignalREvent("DownloadProgress", RealtimeGroups.Queue, (event) => setLiveSpeedMbps(event.speedMbps));
+  useSignalREvent("DownloadProgress", RealtimeGroups.Queue, (event) => {
+    // Published once, when a grab is dispatched, with progress and speed both
+    // zero. Taking that literally blanked the hero to Idle at the exact moment
+    // a download started; the guard also means a real streaming publisher
+    // would start working here without another change.
+    if (event.speedMbps > 0) {
+      setLiveSpeedMbps(event.speedMbps);
+    }
+    invalidate([["telemetry"]]);
+  });
 
   useEffect(() => {
     setLiveSpeedMbps(data.speedMbps);
   }, [data.speedMbps]);
+
+  useEffect(() => {
+    writeStoredHistoryDays(historyDays);
+  }, [historyDays]);
 
   // Progress events feed the wave directly; it keeps its own rolling window on
   // an animation clock, so there is no series to accumulate here any more.
@@ -523,14 +575,41 @@ export function DashboardPage() {
         </ListCard>
       </div>
 
+      {/* Acquisition in flight, in the order it happens: bytes arrive before
+          anything can be imported, so the throughput chart leads and the stage
+          strip that consumes it follows. The strip takes the wider half: it
+          carries five labelled stages, and a line chart reads at any width
+          while "Ready to import" does not.
+
+          The chart is a 48-hour sampled series, which is the one question the
+          hero's live wave cannot answer — that window starts empty every time
+          the page opens, so "was it slow overnight" needs stored readings. */}
       <div className="grid gap-[var(--grid-gap)] xl:grid-cols-3">
+        <MetricChart
+          label="Download speed"
+          value={formatSpeed(peakSpeed(data.throughput))}
+          help={`peak over the last ${data.throughput?.hours ?? 6} hours`}
+          series={throughputSeries(data.throughput)}
+          tone="success"
+          size="lg"
+          axis="time"
+          formatValue={(tenths) => `${(tenths / 10).toFixed(1)} MB/s`}
+          emptyLabel="Nothing has downloaded in this window"
+        />
         <AcquisitionPipeline
+          className="xl:col-span-2"
           summary={data.sources.telemetry.summary}
           performance={data.monitoring?.performance}
           inFlight={data.activeDownloads}
           showProcessing={data.hasProcessor}
         />
 
+      </div>
+
+      {/* What just happened, what is expected next, and what you hold as a
+          result — the three answers that follow the pipeline above, and the
+          ring leads straight into Recently added below it. */}
+      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-3">
         <ActivityTicker seed={data.activity} limit={6} />
 
         <ListCard
@@ -571,28 +650,6 @@ export function DashboardPage() {
             </div>
           )}
         </ListCard>
-      </div>
-
-      {/* Below the fold on purpose: history and reference, not the live board.
-          Charts at the large size here — this is where someone comes to read a
-          trend, not to glance at one. */}
-      <div className="grid gap-[var(--grid-gap)] md:grid-cols-2">
-        {/* The question a speed graph exists for is "was it slow overnight",
-            which the hero's live wave cannot answer — that window starts empty
-            every time the page opens. These are stored readings, sampled once a
-            minute by the worker and kept for 48 hours. */}
-        <MetricChart
-          label="Download speed"
-          value={formatSpeed(peakSpeed(data.throughput))}
-          help={`peak over the last ${data.throughput?.hours ?? 6} hours`}
-          series={throughputSeries(data.throughput)}
-          tone="success"
-          size="lg"
-          axis="time"
-          formatValue={(tenths) => `${(tenths / 10).toFixed(1)} MB/s`}
-          emptyLabel="Nothing has downloaded in this window"
-          className="md:col-span-2"
-        />
         <LibraryComposition
           onDisk={Math.max(0, data.totalCount - data.missingCount - data.upgradeCount)}
           missing={data.missingCount}
@@ -600,70 +657,87 @@ export function DashboardPage() {
           movieCount={data.movieCount}
           showCount={data.showCount}
         />
-        {data.metrics ? (
-          <>
-          <MetricChart
-            label="Searches"
-            value={formatRate(data.metrics.searches)}
-            help={`${sumSeries(data.metrics.searches.succeeded)} matched a release`}
-            series={data.metrics.searches.succeeded}
-            compare={{ series: data.metrics.searches.failed, label: "no match", tone: "warning" }}
-            tone="success"
-            size="lg"
-          />
-          <MetricChart
-            label="Grabs"
-            value={sumSeries(data.metrics.grabs).toLocaleString()}
-            help={`sent to a download client in ${data.metrics.days} days`}
-            series={data.metrics.grabs}
-            compare={{ series: data.metrics.importFailures, label: "failed to import", tone: "danger" }}
-            tone="primary"
-            size="lg"
-          />
-          <MetricChart
-            label="Background work"
-            value={formatRate(data.metrics.jobs)}
-            help={`${sumSeries(data.metrics.jobs.succeeded).toLocaleString()} jobs finished cleanly`}
-            series={data.metrics.jobs.succeeded}
-            compare={{ series: data.metrics.jobs.failed, label: "failed", tone: "danger" }}
-            tone="success"
-            size="lg"
-            // Five cards in two columns leaves the last one orphaned beside a
-            // gap. It takes the full width instead, which reads as a summary
-            // line under the pairs above rather than a card that lost its twin.
-            className="md:col-span-2"
-          />
-          </>
-        ) : null}
       </div>
 
-      <ListCard
-        title="Recently added"
-        count={data.recentlyAdded.length ? `${data.recentlyAdded.length} newest` : undefined}
-        actions={
-          <Button asChild type="button" variant="outline" size="sm">
-            <Link to="/movies">Browse library</Link>
-          </Button>
-        }
-      >
-        {data.recentlyAdded.length === 0 ? (
-          <ListEmpty
-            title="Nothing in the library yet"
-            description="Movies and shows appear here as Deluno imports them. Add your first title whenever you are ready."
-            actions={
-              <Button asChild type="button" variant="outline">
-                <Link to="/movies?add=true">Add a movie</Link>
-              </Button>
-            }
-          />
-        ) : (
+      {/* The payoff, and the only band that answers "what did Deluno actually
+          get me". That outranks the analytics below it, so it sits above them
+          rather than in the basement.
+
+          It renders only when there is something in it: the hero already says
+          "In your library — 0, no media yet" and offers the add action, so an
+          empty full-width band here would be the same sentence a second time
+          on one screen (#270). */}
+      {data.recentlyAdded.length > 0 ? (
+        <ListCard
+          title="Recently added"
+          count={`${data.recentlyAdded.length} newest`}
+          actions={
+            <Button asChild type="button" variant="outline" size="sm">
+              <Link to="/movies">Browse library</Link>
+            </Button>
+          }
+        >
           <div className="dashboard-poster-grid p-[var(--card-pad-x)]">
             {data.recentlyAdded.slice(0, 12).map((item) => (
               <PosterPreview key={`${item.type}-${item.id}`} item={item} />
             ))}
           </div>
-        )}
-      </ListCard>
+        </ListCard>
+      ) : null}
+
+      {/* Below the fold on purpose: history, not the live board. Charts at the
+          large size here — this is where someone comes to read a trend, not to
+          glance at one.
+
+          Everything in this band shares one day axis and one window, so the
+          range control governs the whole thing and nothing in it has to opt
+          out. Three columns matching the live board at the same breakpoint, so
+          every band on the page breaks to one column at the same width and the
+          card edges line up all the way down. */}
+      {data.metrics ? (
+        <section className="flex flex-col gap-[var(--grid-gap)]">
+          <header className="flex items-center justify-between gap-3">
+            <h2 className="text-[length:var(--type-card-title)] font-semibold text-foreground">Trends</h2>
+            <SegmentedControl
+              aria-label="Trend range"
+              value={historyDays}
+              onValueChange={setHistoryDays}
+              options={HISTORY_RANGES.map((range) => ({ value: range.value, label: range.label }))}
+              className="w-auto shrink-0"
+            />
+          </header>
+          <div className="grid gap-[var(--grid-gap)] xl:grid-cols-3">
+            <MetricChart
+              label="Searches"
+              value={formatRate(data.metrics.searches)}
+              help={`${sumSeries(data.metrics.searches.succeeded)} matched a release in ${windowLabel(data.metrics.days)}`}
+              series={data.metrics.searches.succeeded}
+              compare={{ series: data.metrics.searches.failed, label: "no match", tone: "warning" }}
+              tone="success"
+              size="lg"
+            />
+            <MetricChart
+              label="Grabs"
+              value={sumSeries(data.metrics.grabs).toLocaleString()}
+              help={`sent to a download client in ${windowLabel(data.metrics.days)}`}
+              series={data.metrics.grabs}
+              compare={{ series: data.metrics.importFailures, label: "failed to import", tone: "danger" }}
+              tone="primary"
+              size="lg"
+            />
+            <MetricChart
+              label="Background work"
+              value={formatRate(data.metrics.jobs)}
+              help={`${sumSeries(data.metrics.jobs.succeeded).toLocaleString()} jobs finished cleanly in ${windowLabel(data.metrics.days)}`}
+              series={data.metrics.jobs.succeeded}
+              compare={{ series: data.metrics.jobs.failed, label: "failed", tone: "danger" }}
+              tone="success"
+              size="lg"
+            />
+          </div>
+        </section>
+      ) : null}
+
     </div>
   );
 }
