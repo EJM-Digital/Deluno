@@ -309,6 +309,21 @@ public sealed partial class ImportPipelineService(
                     null,
                     null,
                     cancellationToken);
+
+                // Announce it now, from where the outcome is known. The only
+                // other publisher of this event is the dispatch poller, which
+                // runs hourly — so "your download is in your library" could
+                // arrive up to an hour after it was true (#264).
+                if (realtimeEventPublisher is not null)
+                {
+                    await realtimeEventPublisher.PublishDispatchImportCompletedAsync(
+                        request.DispatchId,
+                        TitleForActivity(request.Preview),
+                        succeeded: true,
+                        importedPath: preview.DestinationPath,
+                        failureReason: null,
+                        cancellationToken);
+                }
             }
 
             var cleanup = ApplyWorkflowCleanup(preview.SourcePath, matchedLibrary);
@@ -725,6 +740,19 @@ public sealed partial class ImportPipelineService(
                 failureKind,
                 summary,
                 cancellationToken);
+
+            // Same reasoning as the success path: a failed import is exactly
+            // what the user needs told promptly, not on the next hourly poll.
+            if (realtimeEventPublisher is not null)
+            {
+                await realtimeEventPublisher.PublishDispatchImportCompletedAsync(
+                    executeRequest.DispatchId,
+                    title,
+                    succeeded: false,
+                    importedPath: null,
+                    failureReason: summary,
+                    cancellationToken);
+            }
         }
 
         if (mediaType == "tv")
