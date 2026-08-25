@@ -424,7 +424,9 @@ export function QueuePage() {
           { label: "Downloading", value: String(telemetry.summary.activeCount), help: `${telemetry.summary.totalSpeedMbps.toFixed(1)} MB/s combined` },
           { label: "Processing", value: String(processing.length + activeProcessorHandoffs.length), help: activeProcessorHandoffs.length ? `${activeProcessorHandoffs.length} with the processor` : processorConnections.length ? `${processorConnections.length} connector${processorConnections.length === 1 ? "" : "s"} configured` : "no processor connected" },
           { label: "Importing", value: String(activeImportJobs), help: activeImportJobs ? "writing into your library" : "nothing being written" },
-          { label: "Ready to import", value: String(importReady.length), help: importReady.length ? "waiting on you" : "nothing waiting", tone: importReady.length ? "success" : undefined },
+          // Automation picks these up on its next pass; "waiting on you" asked
+          // for something the user does not need to do (#263).
+          { label: "Ready to import", value: String(importReady.length), help: importReady.length ? "Deluno imports these next" : "nothing waiting" },
           { label: "Needs action", value: String(needsAction), help: blockedQueueItems.length ? `${blockedQueueItems.length} release${blockedQueueItems.length === 1 ? "" : "s"} blocked` : needsAction ? "see below" : "all clear", tone: needsAction ? "warning" : undefined },
           { label: "Clients", value: `${healthyClients}/${telemetry.clients.length}`, help: healthyClients === telemetry.clients.length ? "all responding" : "one is not responding", tone: healthyClients < telemetry.clients.length ? "danger" : undefined }
         ]}
@@ -452,24 +454,43 @@ export function QueuePage() {
           >
             {queue.map((item) => {
               const chip = queueChip(item);
+              // Colour follows what needs a person, not what finished. A
+              // completed transfer used to be the brightest thing on the page —
+              // a full saturated bar at 100% and 0.0 MB/s — while a failure sat
+              // in plain text below it (#263).
+              const transferring = item.speedMbps > 0 || (item.progress > 0 && item.progress < 100);
+              const needsAttention = chip.tone === "bad" || chip.tone === "warn";
               return (
                 <ListRow key={`${item.clientId}:${item.id}`} onClick={() => setDrawer({ kind: "queue", id: item.id })} selected={openQueueItem?.id === item.id}>
-                  <ListNameCell name={item.title || item.releaseName} sub={item.mediaType === "tv" ? "TV" : "Movies"} />
+                  <ListNameCell
+                    name={item.title || item.releaseName}
+                    sub={<span className="font-mono">{item.releaseName}</span>}
+                  />
                   <ListCell primary={pipelineStage(item)} secondary={pipelineDetail(item)} />
                   <ListCell>
-                    <ProgressBar value={item.progress} />
-                    <span className="mt-1 block truncate text-[length:var(--type-caption)] tabular-nums text-muted-foreground">
-                      {Math.round(item.progress)}% of {formatBytes(item.sizeBytes)}
-                    </span>
+                    {transferring ? (
+                      <>
+                        <ProgressBar value={item.progress} />
+                        <span className="mt-1 block truncate text-[length:var(--type-caption)] tabular-nums text-muted-foreground">
+                          {Math.round(item.progress)}% of {formatBytes(item.sizeBytes)}
+                        </span>
+                      </>
+                    ) : (
+                      // Finished, queued or stalled: a bar would say "in
+                      // progress" about something that is not.
+                      <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">
+                        {formatBytes(item.sizeBytes)}
+                      </span>
+                    )}
                   </ListCell>
                   <ListCell
                     numeric
-                    primary={item.speedMbps > 0 ? `${item.speedMbps.toFixed(1)} MB/s` : "—"}
-                    secondary={item.etaSeconds > 0 ? formatEta(item.etaSeconds) : undefined}
+                    primary={transferring ? `${item.speedMbps.toFixed(1)} MB/s` : "—"}
+                    secondary={transferring && item.etaSeconds > 0 ? formatEta(item.etaSeconds) : undefined}
                   />
                   <ListCell primary={item.clientName} secondary={item.indexerName || undefined} />
                   <ListCell mobile>
-                    <Chip tone={chip.tone}>{chip.label}</Chip>
+                    <Chip tone={needsAttention ? chip.tone : transferring ? "info" : "muted"}>{chip.label}</Chip>
                   </ListCell>
                 </ListRow>
               );
