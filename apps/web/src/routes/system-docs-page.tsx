@@ -118,7 +118,7 @@ export function SystemDocsPage() {
           <div className="grid gap-3 lg:grid-cols-7">
             {lifecycle.map((item, index) => (
               <div key={item} className="rounded-2xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.75)]">
-                <span className="font-mono text-[length:var(--type-caption)] font-bold text-primary">{String(index + 1).padStart(2, "0")}</span>
+                <span className="text-[length:var(--type-caption)] font-bold tabular-nums text-primary">{String(index + 1).padStart(2, "0")}</span>
                 <p className="mt-2 text-[length:var(--type-body)] font-medium leading-snug text-foreground">{item}</p>
               </div>
             ))}

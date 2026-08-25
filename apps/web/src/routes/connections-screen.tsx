@@ -453,7 +453,7 @@ export function IndexersPage() {
                 const throttle = throttleByHost.get(indexerHost(item.baseUrl) ?? "");
                 return (
                   <ListRow key={item.id} onClick={() => openIndexer(item)} selected={drawer.kind === "indexer" && drawer.id === item.id}>
-                    <ListNameCell name={item.name} sub={item.baseUrl} />
+                    <ListNameCell name={item.name} sub={<span className="font-mono">{item.baseUrl}</span>} />
                     <ListCell primary={protocolLabel(item.protocol)} secondary={item.privacy === "private" ? "Private" : "Public"} />
                     <ListCell primary={scopeLabel(item.mediaScope)} secondary={`Priority ${item.priority}`} />
                     <ListCell numeric primary={relative(item.lastHealthTestUtc)} secondary={item.consecutiveFailures > 0 ? `${item.consecutiveFailures} consecutive failure${item.consecutiveFailures === 1 ? "" : "s"}` : item.lastHealthLatencyMs != null ? `${item.lastHealthLatencyMs} ms` : item.lastHealthMessage ?? "—"} />
@@ -497,7 +497,7 @@ export function IndexersPage() {
                   const mappings = mappingsByClient.get(item.id) ?? [];
                   return (
                     <ListRow key={item.id} onClick={() => openClient(item)} selected={drawer.kind === "client" && drawer.id === item.id}>
-                      <ListNameCell name={item.name} sub={item.endpointUrl ?? [item.host, item.port].filter(Boolean).join(":")} />
+                      <ListNameCell name={item.name} sub={<span className="font-mono">{item.endpointUrl ?? [item.host, item.port].filter(Boolean).join(":")}</span>} />
                       <ListCell primary={preset?.label ?? item.protocol} secondary={preset ? `${preset.kind} · ${preset.authMode}` : undefined} />
                       <ListCell mono primary={[movies, tv].filter(Boolean).join(" · ") || "—"} secondary={movies && tv && movies === tv ? "Same for both — files will mix" : mappings.length ? `${mappings.length} file-location link${mappings.length === 1 ? "" : "s"}` : "Movies · TV"} />
                       <ListCell numeric primary={live ? `${live.summary.activeCount} active` : <span className="text-muted-foreground">—</span>} secondary={live ? `${live.summary.totalSpeedMbps.toFixed(1)} MB/s · ${live.summary.importReadyCount} ready to import` : item.lastHealthTestUtc ? `Tested ${relative(item.lastHealthTestUtc)}` : "Not tested"} />

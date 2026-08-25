@@ -186,6 +186,7 @@ interface ListCellProps {
   /** Keep on narrow screens (first cell always is). */
   mobile?: boolean;
   align?: "start" | "end";
+  /** Set the primary line in the code face — for paths, IDs and keys. The secondary line stays in the UI face; prose is never monospace. */
   mono?: boolean;
   numeric?: boolean;
   className?: string;
@@ -201,13 +202,14 @@ export function ListCell({ primary, secondary, mobile = false, align = "start", 
         !mobile && "hidden md:block first:block",
         align === "end" && "text-right",
         numeric && "tabular-nums",
-        mono && "font-mono text-[length:var(--type-caption)]",
         className
       )}
     >
       {children ?? (
         <>
-          {primary !== undefined ? <span className="block truncate text-foreground">{primary}</span> : null}
+          {primary !== undefined ? (
+            <span className={cn("block truncate text-foreground", mono && "font-mono text-[length:var(--type-caption)]")}>{primary}</span>
+          ) : null}
           {secondary !== undefined ? (
             <span className="mt-0.5 block truncate text-[length:var(--type-caption)] text-muted-foreground">{secondary}</span>
           ) : null}

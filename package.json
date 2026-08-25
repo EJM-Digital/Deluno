@@ -11,7 +11,7 @@
     "test:unit:web": "npm --workspace apps/web run test:unit",
     "preview:web": "npm --workspace apps/web run preview",
     "check:metadata-gateway": "npm --prefix services/metadata-gateway run check && npm --prefix services/metadata-gateway test",
-    "ci:check": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/ci-check.ps1",
+    "ci:check": "node scripts/run-ci-check.mjs",
     "ga:regression": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/run-ga-regression.ps1",
     "soak:snapshot": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/collect-soak-snapshot.ps1",
     "validate:agents": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/validate-agent-readiness.ps1"
