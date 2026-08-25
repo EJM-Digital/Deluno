@@ -60,6 +60,41 @@ describe("setup status", () => {
     expect(status.steps.find((step) => step.id === "library")).toMatchObject({ complete: false, state: "failed", status: "0/1 libraries ready" });
   });
 
+  it("accepts a quality profile attached directly to every library as the quality decision", () => {
+    // Guided setup creates quality profiles and attaches them to libraries; it
+    // never creates a Library Profile. Requiring one left step 2 permanently
+    // incomplete for every guided-setup install (#247).
+    const status = buildSetupStatus(input({
+      libraries: [
+        { mediaType: "movies", rootPath: "D:\\Media\\Movies", qualityProfileId: "quality-1" } as LibraryItem,
+        { mediaType: "tv", rootPath: "D:\\Media\\TV", qualityProfileId: "quality-2" } as LibraryItem
+      ],
+      qualityProfiles: [{} as QualityProfileItem, {} as QualityProfileItem]
+    }));
+
+    expect(status.steps.find((step) => step.id === "media-plans")).toMatchObject({
+      complete: true,
+      state: "complete",
+      status: "2 quality profiles - applied to 2 libraries"
+    });
+    expect(status.attentionItems.map((item) => item.id)).not.toContain("media-plans");
+  });
+
+  it("keeps the quality decision incomplete while any library has none", () => {
+    const status = buildSetupStatus(input({
+      libraries: [
+        { mediaType: "movies", rootPath: "D:\\Media\\Movies", qualityProfileId: "quality-1" } as LibraryItem,
+        { mediaType: "tv", rootPath: "D:\\Media\\TV", qualityProfileId: null } as LibraryItem
+      ],
+      qualityProfiles: [{} as QualityProfileItem]
+    }));
+
+    expect(status.steps.find((step) => step.id === "media-plans")).toMatchObject({
+      complete: false,
+      status: "No quality decision yet"
+    });
+  });
+
   it("recognises operational readiness while keeping import lists optional", () => {
     const configured = input({
       libraries: [{ mediaType: "movies", rootPath: "D:\\Media\\Movies", autoSearchEnabled: true } as LibraryItem],

@@ -65,6 +65,16 @@ export function buildSetupStatus(input: SetupStatusInput): SetupStatusModel {
   const unhealthyIndexers = enabledIndexers.length - healthyIndexers.length;
   const unhealthyClients = enabledClients.length - healthyClients.length;
   const activePlans = input.policySets.filter((plan) => plan.isEnabled).length;
+  // A library gets its quality decision either from a Library Profile or from
+  // a quality profile attached directly — both are first-class, and guided
+  // setup uses the direct route. Requiring a Library Profile marked this step
+  // permanently incomplete for every guided-setup install (#247).
+  const librariesWithQualityDecision = input.libraries.filter(
+    (library) => Boolean(library.defaultPolicySetName) || Boolean(library.qualityProfileId)
+  ).length;
+  const qualityDecisionReady =
+    activePlans > 0 ||
+    (input.libraries.length > 0 && librariesWithQualityDecision === input.libraries.length);
   const movieLibraries = input.libraries.filter((library) => library.mediaType === "movies").length;
   const tvLibraries = input.libraries.filter((library) => library.mediaType === "tv").length;
   const autoLibraries = input.libraries.filter((library) => library.autoSearchEnabled).length;
@@ -107,14 +117,18 @@ export function buildSetupStatus(input: SetupStatusInput): SetupStatusModel {
       number: 2,
       title: "Library Profiles",
       description: "Choose the quality, size, release, and upgrade behaviour Deluno will follow.",
-      status: activePlans > 0 ? `${plural(activePlans, "active library profile")} - ${plural(input.qualityProfiles.length, "quality profile")}` : "No library profile selected",
-      complete: activePlans > 0,
-      state: activePlans > 0 ? "complete" : "not-started",
+      status: activePlans > 0
+        ? `${plural(activePlans, "active library profile")} - ${plural(input.qualityProfiles.length, "quality profile")}`
+        : qualityDecisionReady
+          ? `${plural(input.qualityProfiles.length, "quality profile")} - applied to ${plural(input.libraries.length, "library", "libraries")}`
+          : "No quality decision yet",
+      complete: qualityDecisionReady,
+      state: qualityDecisionReady ? "complete" : "not-started",
       optional: false,
-      to: "/settings/policy-sets",
-      action: activePlans > 0 ? "Review Library Profiles" : "Choose Library Profiles",
-      attentionTitle: "No library profile selected",
-      attentionText: "Choose a Library Profile so Deluno knows which releases to accept, hold, reject, and upgrade."
+      to: qualityDecisionReady ? "/settings/policy-sets" : "/settings/profiles",
+      action: qualityDecisionReady ? "Review Library Profiles" : "Choose a quality profile",
+      attentionTitle: "No quality decision yet",
+      attentionText: "Attach a quality profile to every library, or create a Library Profile, so Deluno knows which releases to accept, hold, reject, and upgrade."
     },
     {
       id: "connections",
