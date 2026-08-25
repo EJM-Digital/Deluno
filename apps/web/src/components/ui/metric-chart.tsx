@@ -77,9 +77,17 @@ export function MetricChart({
       return `${x.toFixed(1)},${y.toFixed(1)}`;
     });
 
-  const line = project(points).join(" ");
+  const projected = project(points);
+  const line = projected.join(" ");
   const area = `${line} ${WIDTH},${HEIGHT} 0,${HEIGHT}`;
   const compareLine = compare ? project(compare.series).join(" ") : null;
+
+  // A chart needs enough readings to say something. One or two points drew a
+  // hairline with a single spike against the right edge — it read as broken
+  // rather than calm, and told the user nothing (#262). Below that bar the
+  // tile is just its value and help line, sized to its content.
+  const hasStory = points.length >= 3 && points.some((point) => point.value !== points[0].value);
+  const [lastX, lastY] = (projected.at(-1) ?? "0,0").split(",").map(Number);
 
   const total = points.reduce((sum, point) => sum + point.value, 0);
   const compareTotal = compare?.series.reduce((sum, point) => sum + point.value, 0) ?? 0;
@@ -117,50 +125,74 @@ export function MetricChart({
         ) : null}
       </div>
 
-      <svg
-        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-        preserveAspectRatio="none"
-        role="img"
-        aria-label={summary}
-        className="mt-2 block h-[72px] w-full"
-      >
-        <defs>
-          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={TONE[tone].fill} stopOpacity="0.28" />
-            <stop offset="100%" stopColor={TONE[tone].fill} stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        <polygon points={area} fill={`url(#${gradientId})`} />
-        <polyline
-          points={line}
-          fill="none"
-          stroke={TONE[tone].stroke}
-          strokeWidth="1.75"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-          vectorEffect="non-scaling-stroke"
-        />
-        {compareLine ? (
-          <polyline
-            points={compareLine}
-            fill="none"
-            stroke={TONE[compare!.tone].stroke}
-            strokeWidth="1.5"
-            strokeDasharray="3 3"
-            strokeLinejoin="round"
-            vectorEffect="non-scaling-stroke"
+      {hasStory ? (
+        <div className="relative mt-2">
+          <svg
+            viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+            preserveAspectRatio="none"
+            role="img"
+            aria-label={summary}
+            className="block h-[72px] w-full"
+          >
+            <defs>
+              <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={TONE[tone].fill} stopOpacity="0.28" />
+                <stop offset="100%" stopColor={TONE[tone].fill} stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            <polygon points={area} fill={`url(#${gradientId})`} />
+            <polyline
+              points={line}
+              fill="none"
+              stroke={TONE[tone].stroke}
+              strokeWidth="1.75"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              vectorEffect="non-scaling-stroke"
+            />
+            {compareLine ? (
+              <polyline
+                points={compareLine}
+                fill="none"
+                stroke={TONE[compare!.tone].stroke}
+                strokeWidth="1.5"
+                strokeDasharray="3 3"
+                strokeLinejoin="round"
+                vectorEffect="non-scaling-stroke"
+              />
+            ) : null}
+          </svg>
+          {/*
+            The latest reading, marked. Positioned in HTML rather than as an
+            SVG circle because the chart scales non-uniformly, which would
+            squash a circle into an ellipse.
+          */}
+          <span
+            aria-hidden
+            className="pointer-events-none absolute h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full"
+            style={{
+              left: `${(lastX / WIDTH) * 100}%`,
+              top: `${(lastY / HEIGHT) * 100}%`,
+              backgroundColor: TONE[tone].stroke
+            }}
           />
-        ) : null}
-      </svg>
+        </div>
+      ) : null}
 
-      <footer className="flex items-center justify-between gap-2 border-t border-hairline px-[var(--card-pad-x)] py-1.5">
+      <footer className={cn("flex items-center justify-between gap-2 px-[var(--card-pad-x)] py-1.5", hasStory && "border-t border-hairline")}>
         {footer ? (
           <span className="truncate text-[length:var(--type-micro)] text-muted-foreground">{footer}</span>
-        ) : (
+        ) : hasStory ? (
           <>
             <span className="text-[length:var(--type-micro)] text-muted-foreground">{formatDay(points[0]?.date)}</span>
             <span className="text-[length:var(--type-micro)] text-muted-foreground">{formatDay(points[points.length - 1]?.date)}</span>
           </>
+        ) : (
+          // Without a chart there is no range to caption; saying the window
+          // once here keeps the row's tiles telling the same time story.
+          <span className="text-[length:var(--type-micro)] text-muted-foreground">
+            {points.length > 1 ? `${formatDay(points[0]?.date)} – ${formatDay(points[points.length - 1]?.date)}` : "not enough history yet"}
+          </span>
         )}
       </footer>
     </section>
