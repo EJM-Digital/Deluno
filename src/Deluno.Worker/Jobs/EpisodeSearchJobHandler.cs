@@ -5,6 +5,7 @@ using Deluno.Jobs.Data;
 using Deluno.Libraries.Data;
 using Deluno.Quality.Data;
 using Deluno.Series.Data;
+using Deluno.Quality;
 
 namespace Deluno.Worker.Jobs;
 
@@ -43,6 +44,10 @@ public sealed class EpisodeSearchJobHandler(
         var currentQuality = await seriesCatalogRepository.GetEpisodeCurrentQualityAsync(
             payload.EpisodeId,
             cancellationToken);
+        var allowedQualities = await QualityProfileResolver.ResolveAllowedQualitiesAsync(
+            qualityRepository,
+            library?.QualityProfileId,
+            cancellationToken);
 
         var decisionPlan = await acquisitionPipeline.PlanAsync(
             new AcquisitionDecisionRequest(
@@ -55,7 +60,8 @@ public sealed class EpisodeSearchJobHandler(
                 DownloadClients: routing?.DownloadClients ?? [],
                 CustomFormats: customFormats,
                 SeasonNumber: payload.SeasonNumber,
-                EpisodeNumber: payload.EpisodeNumber),
+                EpisodeNumber: payload.EpisodeNumber,
+                AllowedQualities: allowedQualities),
             cancellationToken);
 
         var searchPlan = decisionPlan.SearchPlan;

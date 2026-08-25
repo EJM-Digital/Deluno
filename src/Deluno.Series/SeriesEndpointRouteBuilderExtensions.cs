@@ -839,6 +839,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             var now = timeProvider.GetUtcNow();
             var nextEligibleSearchUtc = now.AddHours(Math.Max(1, library.RetryDelayHours));
             var customFormats = await ResolveCustomFormatsAsync(qualityRepository, library.QualityProfileId, cancellationToken);
+            var allowedQualities = await QualityProfileResolver.ResolveAllowedQualitiesAsync(qualityRepository, library.QualityProfileId, cancellationToken);
 
             if (configuredSources == 0 || configuredClients == 0)
             {
@@ -901,7 +902,8 @@ public static class SeriesEndpointRouteBuilderExtensions
                         routing?.DownloadClients ?? [],
                         customFormats,
                         SeasonNumber: episode.SeasonNumber,
-                        EpisodeNumber: episode.EpisodeNumber),
+                        EpisodeNumber: episode.EpisodeNumber,
+                        AllowedQualities: allowedQualities),
                     cancellationToken);
                 var searchPlan = decisionPlan.SearchPlan;
                 var bestCandidate = searchPlan.BestCandidate;
@@ -1557,6 +1559,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             var now = timeProvider.GetUtcNow();
             var nextEligibleSearchUtc = now.AddHours(Math.Max(1, library.RetryDelayHours));
             var customFormats = await ResolveCustomFormatsAsync(qualityRepository, library.QualityProfileId, cancellationToken);
+            var allowedQualities = await QualityProfileResolver.ResolveAllowedQualitiesAsync(qualityRepository, library.QualityProfileId, cancellationToken);
 
             if (configuredSources == 0 || configuredClients == 0)
             {
@@ -1601,7 +1604,8 @@ public static class SeriesEndpointRouteBuilderExtensions
                     routing?.Sources ?? [],
                     routing?.DownloadClients ?? [],
                     customFormats,
-                    SeasonNumber: seasonNumber),
+                    SeasonNumber: seasonNumber,
+                    AllowedQualities: allowedQualities),
                 cancellationToken);
             var searchPlan = decisionPlan.SearchPlan;
             var bestCandidate = searchPlan.BestCandidate;

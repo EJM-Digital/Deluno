@@ -16,5 +16,11 @@ public interface IMediaSearchPlanner
         IReadOnlyList<CustomFormatItem>? customFormats = null,
         int? seasonNumber = null,
         int? episodeNumber = null,
+        /// <summary>
+        /// The quality tiers the governing profile permits. Null or empty leaves
+        /// tier selection to the cutoff alone; a non-empty list rejects anything
+        /// outside it.
+        /// </summary>
+        IReadOnlyList<string>? allowedQualities = null,
         CancellationToken cancellationToken = default);
 }
