@@ -17,7 +17,8 @@ public static class MoviesDatabaseMigrations
         new V0009MovieMetadataAttemptTracking(),
         new V0010MovieMetadataRefreshRequests(),
         new V0011MovieCatalogueSortIndexes(),
-        new V0012MovieMediaFacts()
+        new V0012MovieMediaFacts(),
+        new V0013MovieQualityProfileOverride()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration
