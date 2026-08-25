@@ -39,4 +39,10 @@ export interface PlatformSettingsPatch {
   cleanupQueueReplacementAfterThreshold?: boolean;
   cleanupRemoveClientEntryAfterThreshold?: boolean;
   cleanupPurgePayloadAfterThreshold?: boolean;
+  sharingMode?: string;
+  /** Null clears that half of the rule; undefined leaves it as it is. */
+  sharingForHours?: number | null;
+  sharingUntilRatio?: number | null;
+  sharingStuckAction?: string;
+  sharingStuckAfterDays?: number;
 }

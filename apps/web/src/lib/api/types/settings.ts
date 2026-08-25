@@ -61,6 +61,12 @@ export interface PlatformSettingsSnapshot {
   cleanupRemoveClientEntryAfterThreshold: boolean;
   cleanupPurgePayloadAfterThreshold: boolean;
   workflowVerified: boolean;
+  /** What Deluno does with the download client's copy after import (#288). */
+  sharingMode: string;
+  sharingForHours: number | null;
+  sharingUntilRatio: number | null;
+  sharingStuckAction: string;
+  sharingStuckAfterDays: number;
   updatedUtc: string;
 }
 
@@ -154,5 +160,10 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   cleanupRemoveClientEntryAfterThreshold: false,
   cleanupPurgePayloadAfterThreshold: false,
   workflowVerified: false,
+  sharingMode: "share-then-tidy",
+  sharingForHours: 72,
+  sharingUntilRatio: null,
+  sharingStuckAction: "give-up",
+  sharingStuckAfterDays: 14,
   updatedUtc: new Date(0).toISOString()
 };
