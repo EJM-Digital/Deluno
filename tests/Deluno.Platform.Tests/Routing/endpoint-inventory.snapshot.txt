@@ -33,6 +33,7 @@ GET /api/auth/bootstrap-status
 GET /api/backups/
 GET /api/backups/settings
 GET /api/backups/{id}/download
+GET /api/calendar/feed.ics
 GET /api/connections/
 GET /api/custom-formats/
 GET /api/dashboard/metrics
@@ -41,6 +42,7 @@ GET /api/destination-rules/
 GET /api/diagnostics/secrets-backend
 GET /api/download-clients/
 GET /api/download-clients/telemetry
+GET /api/download-clients/throughput
 GET /api/download-clients/{clientId}/queue/{queueItemId}/cleanup-preview
 GET /api/download-clients/{id}/path-mappings
 GET /api/download-dispatches

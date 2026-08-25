@@ -31,6 +31,7 @@ public static class WorkerServiceCollectionExtensions
 
         services.AddScoped<WorkPlanner>();
         services.AddHostedService<DelunoHeartbeatWorker>();
+        services.AddHostedService<DownloadThroughputSampler>();
         return services;
     }
 }

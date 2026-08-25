@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Deluno.Contracts;
+using Deluno.Jobs.Data;
 using Deluno.Connections.Data;
 using Deluno.Security;
 using Microsoft.AspNetCore.Builder;
@@ -32,6 +33,23 @@ public static class DownloadClientEndpointRouteBuilderExtensions
         {
             var overview = await telemetryService.GetOverviewAsync(cancellationToken);
             return Results.Ok(overview);
+        });
+
+        // The stored counterpart to the live telemetry above: what the speed
+        // has been, rather than what it is this second. Kept separate because
+        // the two answer different questions and have very different costs.
+        endpoints.MapGet("/api/download-clients/throughput", async (
+            int? hours,
+            IDownloadThroughputRepository throughputRepository,
+            TimeProvider timeProvider,
+            CancellationToken cancellationToken) =>
+        {
+            // Bounded by the sampler's own retention: asking for a week cannot
+            // conjure history that was never kept.
+            var window = Math.Clamp(hours ?? 6, 1, 48);
+            var since = timeProvider.GetUtcNow().AddHours(-window);
+            var samples = await throughputRepository.ListSamplesAsync(since, cancellationToken);
+            return Results.Ok(new DownloadThroughputWindow(window, samples));
         });
 
         endpoints.MapPost("/api/download-clients/{clientId}/queue/actions", async (

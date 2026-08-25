@@ -29,9 +29,22 @@ public sealed record DownloadTelemetrySummary(
     int QueuedCount,
     int CompletedCount,
     int StalledCount,
+    /// <summary>
+    /// Everything past the download and before the library: items handed to a
+    /// post-processor and items whose import job is queued or running. The two
+    /// are different problems when they stick, so
+    /// <see cref="WaitingForProcessorCount"/> reports the processor share
+    /// separately rather than leaving callers to label the whole bucket.
+    /// </summary>
     int ProcessingCount,
     int ImportReadyCount,
-    double TotalSpeedMbps);
+    double TotalSpeedMbps,
+    /// <summary>
+    /// Downloads finished but held back because their library refines before
+    /// importing and the cleaned output has not arrived. A subset of
+    /// <see cref="ProcessingCount"/>; the remainder is import work.
+    /// </summary>
+    int WaitingForProcessorCount = 0);
 
 public sealed record DownloadQueueItem(
     string Id,

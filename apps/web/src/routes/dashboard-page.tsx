@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useQueries, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight } from "lucide-react";
 import { Link, useLoaderData, useNavigate } from "react-router-dom";
 import type { ActiveDownload, IndexerHealthItem, MediaItem } from "../lib/media-types";
@@ -10,6 +10,7 @@ import {
   type ActivityEventItem,
   type DownloadClientItem,
   type DownloadTelemetryOverview,
+  type DownloadThroughputWindow,
   type IndexerItem,
   type LibraryItem,
   type LibraryAutomationStateItem,
@@ -19,6 +20,7 @@ import {
   type MovieWantedSummary,
   type PlatformSettingsSnapshot,
   type PolicySetItem,
+  type ProcessorConnectionItem,
   type QualityProfileItem,
   type SearchCycleRunItem,
   type SearchRetryWindowItem,
@@ -71,6 +73,10 @@ interface DashboardLoaderData {
   monitoring: MonitoringDashboardSnapshot | null;
   /** Seeds the live ticker so it is populated before the first push arrives. */
   activity: ActivityEventItem[];
+  /** Whether any post-processor connection is enabled. */
+  hasProcessor: boolean;
+  /** Stored throughput readings for the speed chart. */
+  throughput: DownloadThroughputWindow | null;
   /** Combined client throughput right now, in MB/s. */
   speedMbps: number;
   activeDownloads: ActiveDownload[];
@@ -118,6 +124,10 @@ interface DashboardSources {
   metrics: DashboardMetrics | null;
   monitoring: MonitoringDashboardSnapshot | null;
   activity: ActivityEventItem[];
+  /** Only used to decide whether the pipeline has a Processing stage at all. */
+  processors: ProcessorConnectionItem[];
+  /** Stored throughput readings — what the speed has been, not what it is now. */
+  throughput: DownloadThroughputWindow | null;
 }
 
 function emptyDashboardSources(): DashboardSources {
@@ -130,7 +140,7 @@ function emptyDashboardSources(): DashboardSources {
     indexers: [], clients: [], libraries: [], automation: [], searchCycles: [], retryWindows: [], upcomingEpisodes: [],
     setupProgress: EMPTY_SETUP_PROGRESS,
     settings: emptyPlatformSettingsSnapshot,
-    policySets: [], qualityProfiles: [], metrics: null, monitoring: null, activity: []
+    policySets: [], qualityProfiles: [], metrics: null, monitoring: null, activity: [], processors: [], throughput: null
   };
 }
 
@@ -149,7 +159,7 @@ interface DashboardUpcomingItem {
 const EMPTY_MOVIE_WANTED: MovieWantedSummary = { totalWanted: 0, missingCount: 0, upgradeCount: 0, waitingCount: 0, recentItems: [] };
 const EMPTY_SERIES_WANTED: SeriesWantedSummary = { totalWanted: 0, missingCount: 0, upgradeCount: 0, waitingCount: 0, recentItems: [] };
 const EMPTY_TELEMETRY: DownloadTelemetryOverview = {
-  summary: { activeCount: 0, queuedCount: 0, completedCount: 0, stalledCount: 0, processingCount: 0, importReadyCount: 0, totalSpeedMbps: 0 },
+  summary: { activeCount: 0, queuedCount: 0, completedCount: 0, stalledCount: 0, processingCount: 0, importReadyCount: 0, totalSpeedMbps: 0, waitingForProcessorCount: 0 },
   clients: [],
   capturedUtc: new Date(0).toISOString()
 };
@@ -177,16 +187,18 @@ export async function dashboardLoader(): Promise<DashboardLoaderData> {
 
   // A dashboard that cannot draw its charts or read its own health still has to
   // render, so these degrade to a stated gap rather than an error page.
-  const [metrics, monitoring, activity] = await Promise.all([
+  const [metrics, monitoring, activity, processors, throughput] = await Promise.all([
     fetchJson<DashboardMetrics>("/api/dashboard/metrics?days=30").catch(() => null),
     fetchJson<MonitoringDashboardSnapshot>("/api/monitoring/dashboard").catch(() => null),
-    fetchPageItems<ActivityEventItem>("/api/activity?pageSize=10").catch((): ActivityEventItem[] => [])
+    fetchPageItems<ActivityEventItem>("/api/activity?pageSize=10").catch((): ActivityEventItem[] => []),
+    fetchJson<ProcessorConnectionItem[]>("/api/integrations/processors/connections").catch((): ProcessorConnectionItem[] => []),
+    fetchJson<DownloadThroughputWindow>("/api/download-clients/throughput?hours=6").catch(() => null)
   ]);
 
   return buildDashboardData({
     moviePage, movieWanted, showPage, showWanted, telemetry, indexers, clients,
     libraries, automation, searchCycles, retryWindows, upcomingEpisodes,
-    setupProgress, settings, policySets, qualityProfiles, metrics, monitoring, activity
+    setupProgress, settings, policySets, qualityProfiles, metrics, monitoring, activity, processors, throughput
   });
 }
 
@@ -194,7 +206,7 @@ function buildDashboardData(sources: DashboardSources): DashboardLoaderData {
   const {
     moviePage, movieWanted, showPage, showWanted, telemetry, indexers, clients,
     libraries, automation, searchCycles, retryWindows, upcomingEpisodes,
-    setupProgress, settings, policySets, qualityProfiles, metrics, monitoring, activity
+    setupProgress, settings, policySets, qualityProfiles, metrics, monitoring, activity, processors, throughput
   } = sources;
   const adaptedMovies = adaptMovieItems(moviePage.items, movieWanted);
   const adaptedShows = adaptSeriesItems(showPage.items, showWanted);
@@ -208,6 +220,10 @@ function buildDashboardData(sources: DashboardSources): DashboardLoaderData {
     metrics,
     monitoring,
     activity,
+    // A Processing stage only makes sense where something is actually
+    // refining media before import.
+    hasProcessor: processors.some((processor) => processor.isEnabled),
+    throughput,
     speedMbps: telemetry.summary.totalSpeedMbps,
     activeDownloads,
     // Downloading means downloading. Counting import-ready items here made
@@ -262,7 +278,7 @@ const MONITORING_REFRESH = {
 
 function useDashboardData(initial: DashboardLoaderData) {
   const source = initial.sources;
-  const [moviePage, movieWanted, showPage, showWanted, telemetry, indexers, clients, libraries, automation, searchCycles, retryWindows, upcomingEpisodes, setupProgress, settings, policySets, qualityProfiles, metrics, monitoring, activity] = useQueries({
+  const [moviePage, movieWanted, showPage, showWanted, telemetry, indexers, clients, libraries, automation, searchCycles, retryWindows, upcomingEpisodes, setupProgress, settings, policySets, qualityProfiles, metrics, monitoring, activity, processors] = useQueries({
     queries: [
       { ...DASHBOARD_REFRESH, queryKey: ["movies"], queryFn: () => fetchJson<CataloguePage<MovieListItem>>("/api/movies/page?pageSize=14&sort=added&direction=desc").catch(() => emptyDashboardSources().moviePage), initialData: source.moviePage },
       { ...DASHBOARD_REFRESH, queryKey: ["movies", "wanted"], queryFn: () => fetchJson<MovieWantedSummary>("/api/movies/wanted").catch(() => EMPTY_MOVIE_WANTED), initialData: source.movieWanted },
@@ -282,8 +298,22 @@ function useDashboardData(initial: DashboardLoaderData) {
       { ...DASHBOARD_REFRESH, queryKey: ["quality-profiles"], queryFn: () => fetchJson<QualityProfileItem[]>("/api/quality-profiles").catch(() => []), initialData: source.qualityProfiles },
       { ...DASHBOARD_REFRESH, queryKey: ["dashboard-metrics"], queryFn: () => fetchJson<DashboardMetrics>("/api/dashboard/metrics?days=30").catch(() => null), initialData: source.metrics },
       { ...MONITORING_REFRESH, queryKey: ["monitoring-dashboard"], queryFn: () => fetchJson<MonitoringDashboardSnapshot>("/api/monitoring/dashboard").catch(() => null), initialData: source.monitoring },
-      { ...DASHBOARD_REFRESH, queryKey: ["activity", "dashboard"], queryFn: () => fetchPageItems<ActivityEventItem>("/api/activity?pageSize=10").catch(() => []), initialData: source.activity }
+      { ...DASHBOARD_REFRESH, queryKey: ["activity", "dashboard"], queryFn: () => fetchPageItems<ActivityEventItem>("/api/activity?pageSize=10").catch(() => []), initialData: source.activity },
+      { ...DASHBOARD_REFRESH, queryKey: ["processor-connections"], queryFn: () => fetchJson<ProcessorConnectionItem[]>("/api/integrations/processors/connections").catch(() => []), initialData: source.processors }
     ]
+  });
+
+  // Kept out of the `useQueries` tuple above: TanStack infers that tuple
+  // element by element, and past twenty entries the inference collapses and
+  // every result silently widens to `{}`.
+  //
+  // A minute-resolution series, so refreshing faster than the sampler writes
+  // would only redraw the same points.
+  const throughput = useQuery({
+    ...MONITORING_REFRESH,
+    queryKey: ["download-throughput"],
+    queryFn: () => fetchJson<DownloadThroughputWindow>("/api/download-clients/throughput?hours=6").catch(() => null),
+    initialData: source.throughput
   });
 
   return buildDashboardData({
@@ -305,7 +335,9 @@ function useDashboardData(initial: DashboardLoaderData) {
     qualityProfiles: qualityProfiles.data ?? source.qualityProfiles,
     metrics: metrics.data ?? source.metrics,
     monitoring: monitoring.data ?? source.monitoring,
-    activity: activity.data ?? source.activity
+    activity: activity.data ?? source.activity,
+    processors: processors.data ?? source.processors,
+    throughput: throughput.data ?? source.throughput
   });
 }
 
@@ -496,6 +528,7 @@ export function DashboardPage() {
           summary={data.sources.telemetry.summary}
           performance={data.monitoring?.performance}
           inFlight={data.activeDownloads}
+          showProcessing={data.hasProcessor}
         />
 
         <ActivityTicker seed={data.activity} limit={6} />
@@ -544,6 +577,22 @@ export function DashboardPage() {
           Charts at the large size here — this is where someone comes to read a
           trend, not to glance at one. */}
       <div className="grid gap-[var(--grid-gap)] md:grid-cols-2">
+        {/* The question a speed graph exists for is "was it slow overnight",
+            which the hero's live wave cannot answer — that window starts empty
+            every time the page opens. These are stored readings, sampled once a
+            minute by the worker and kept for 48 hours. */}
+        <MetricChart
+          label="Download speed"
+          value={formatSpeed(peakSpeed(data.throughput))}
+          help={`peak over the last ${data.throughput?.hours ?? 6} hours`}
+          series={throughputSeries(data.throughput)}
+          tone="success"
+          size="lg"
+          axis="time"
+          formatValue={(tenths) => `${(tenths / 10).toFixed(1)} MB/s`}
+          emptyLabel="Nothing has downloaded in this window"
+          className="md:col-span-2"
+        />
         <LibraryComposition
           onDisk={Math.max(0, data.totalCount - data.missingCount - data.upgradeCount)}
           missing={data.missingCount}
@@ -579,6 +628,10 @@ export function DashboardPage() {
             compare={{ series: data.metrics.jobs.failed, label: "failed", tone: "danger" }}
             tone="success"
             size="lg"
+            // Five cards in two columns leaves the last one orphaned beside a
+            // gap. It takes the full width instead, which reads as a summary
+            // line under the pairs above rather than a card that lost its twin.
+            className="md:col-span-2"
           />
           </>
         ) : null}
@@ -856,6 +909,28 @@ function formatDashboardDay(date: Date) {
 
 function formatDashboardTime(date: Date) {
   return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
+/**
+ * Stored throughput readings as chart points. `MetricPoint.value` is an int, so
+ * the series is tenths of a megabyte per second — a chart cannot show more
+ * precision than that anyway, and rounding to whole MB/s would flatten every
+ * slow transfer to zero.
+ */
+function throughputSeries(window: DownloadThroughputWindow | null): MetricPoint[] {
+  return (window?.samples ?? []).map((sample) => ({
+    date: sample.capturedUtc,
+    value: Math.round(sample.speedMbps * 10)
+  }));
+}
+
+function peakSpeed(window: DownloadThroughputWindow | null) {
+  const samples = window?.samples ?? [];
+  return samples.length === 0 ? 0 : Math.max(...samples.map((sample) => sample.speedMbps));
+}
+
+function formatSpeed(mbps: number) {
+  return mbps <= 0 ? "Idle" : `${mbps.toFixed(1)} MB/s`;
 }
 
 /** Totals a day series. */
