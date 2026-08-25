@@ -10,7 +10,6 @@ import { LibraryGridSkeleton } from "../shell/skeleton";
 import { Button } from "../ui/button";
 
 type LibraryResultsProps = {
-  isLoading: boolean;
   /**
    * Whether a load for the current query has ever completed. "Empty" is a
    * conclusion, not a default: without this the view announced an empty library
@@ -42,12 +41,23 @@ type LibraryResultsProps = {
 };
 
 export function LibraryResults({
-  isLoading, hasLoadedOnce, items, label, singular, libraryCount, hasActiveFilter, view, cardSize, density, displayOptions, selectedIds,
+  hasLoadedOnce, items, label, singular, libraryCount, hasActiveFilter, view, cardSize, density, displayOptions, selectedIds,
   keyBust, isLoadingMore, hasPreviousPage, hasNextPage, onOpenCreate,
   onClearFilters, onSelect, onToggle, onToggleAll, onPreviousPage, onNextPage,
 }: LibraryResultsProps) {
   return <>
-    {(isLoading || !hasLoadedOnce) && items.length === 0 ? (
+    {/*
+      The skeleton means "we do not know yet", not "we are refreshing". Gating
+      it on `isLoading` meant every navigation to an empty library flashed
+      twenty placeholder posters, because `isLoading` includes route transitions
+      and an empty library is permanently `items.length === 0` — so Deluno
+      promised content it already knew was not there, every single visit.
+
+      Once a load has completed for this query, empty is a known fact: show it
+      and keep showing it. A refetch that finds items replaces the empty state
+      without a placeholder flash in between.
+    */}
+    {!hasLoadedOnce && items.length === 0 ? (
       <GlassTile className="p-[var(--tile-pad)]"><LibraryGridSkeleton count={20} /></GlassTile>
     ) : items.length === 0 && hasActiveFilter ? (
       <EmptyState

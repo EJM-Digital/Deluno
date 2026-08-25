@@ -34,6 +34,7 @@ export function AcquisitionPipeline({
   summary,
   performance,
   inFlight = [],
+  showProcessing = false,
   className
 }: {
   summary: DownloadTelemetrySummary;
@@ -45,14 +46,29 @@ export function AcquisitionPipeline({
    * one screen — the counts here and the rows there (#270).
    */
   inFlight?: ActiveDownload[];
+  /** True when a post-processor is configured, so the extra stage is real. */
+  showProcessing?: boolean;
   className?: string;
 }) {
+  // `processingCount` is post-processing and import work in one bucket, so
+  // showing it whole under "Importing" told a user waiting on FileFlows that
+  // Deluno was importing their file. The processor share is reported
+  // separately, so the two stages can be told apart (#270).
+  const waitingForProcessor = summary.waitingForProcessorCount ?? 0;
+  const importing = Math.max(0, summary.processingCount - waitingForProcessor);
+
   const stages: Stage[] = [
     { label: "Queued", short: "Queued", count: summary.queuedCount, tone: "idle" },
     { label: "Downloading", short: "Down", count: summary.activeCount, tone: "info" },
     { label: "Stalled", short: "Stalled", count: summary.stalledCount, tone: "warn" },
+    // Only shown where a processor is actually in the loop: a library that
+    // imports directly has no such stage, and a permanent empty node would
+    // imply a step Deluno was skipping.
+    ...(showProcessing
+      ? [{ label: "Processing", short: "Process", count: waitingForProcessor, tone: "info" as LedTone }]
+      : []),
     { label: "Ready to import", short: "Ready", count: summary.importReadyCount, tone: "idle" },
-    { label: "Importing", short: "Import", count: summary.processingCount, tone: "ok" }
+    { label: "Importing", short: "Import", count: importing, tone: "ok" }
   ];
 
   const total = stages.reduce((sum, stage) => sum + stage.count, 0);

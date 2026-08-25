@@ -53,6 +53,20 @@ interface MetricChartProps {
   /** What to say when the whole window is zero. Defaults to "No {label} in the last N days". */
   emptyLabel?: string;
   /**
+   * Day series carry `yyyy-MM-dd`; a live-sampled series carries full
+   * timestamps and is read in hours and minutes. The axis decides how a point's
+   * date is parsed and printed — getting this wrong silently renders every
+   * label as "Invalid Date".
+   */
+  axis?: "day" | "time";
+  /**
+   * How a single reading is written in the hover readout. `MetricPoint.value`
+   * is an int, so a series in a fractional unit has to be scaled before it gets
+   * here; without this the readout would print the scaled number and quietly
+   * report 12.5 MB/s as "125".
+   */
+  formatValue?: (value: number) => string;
+  /**
    * Taller, with gridlines and the peak called out. A sparkline says "roughly
    * this shape"; a reader asking how many and when needs an axis to read
    * against.
@@ -71,9 +85,14 @@ export function MetricChart({
   zeroBased = true,
   footer,
   emptyLabel,
+  axis = "day",
+  formatValue,
   size = "sm",
   className
 }: MetricChartProps) {
+  const readValue = formatValue ?? ((reading: number) => reading.toLocaleString());
+  const formatPoint = axis === "time" ? formatTime : formatDay;
+  const unitNoun = axis === "time" ? "readings" : "days";
   const gradientId = useId();
   const height = size === "lg" ? HEIGHT_LG : HEIGHT;
   // Which reading the pointer or keyboard is currently on. A chart you cannot
@@ -129,7 +148,7 @@ export function MetricChart({
   const compareTotal = compare?.series.reduce((sum, point) => sum + point.value, 0) ?? 0;
   // A live series is samples, not days; saying "days" for a 5-second reading is
   // the same class of lie as an invented sparkline.
-  const unit = footer ? "readings" : "days";
+  const unit = footer ? "readings" : unitNoun;
   const summary = compare
     ? `${label}: ${value}. ${total} versus ${compareTotal} ${compare.label.toLowerCase()} over ${points.length} ${unit}.`
     : `${label}: ${value}. ${total} over ${points.length} ${unit}.`;
@@ -290,11 +309,11 @@ export function MetricChart({
                 className="pointer-events-none absolute top-1 z-10 -translate-x-1/2 whitespace-nowrap rounded-md border border-hairline bg-popover px-1.5 py-0.5 text-[length:var(--type-micro)] tabular-nums text-foreground shadow-md"
                 style={{ left: `${Math.min(88, Math.max(12, (activeX / WIDTH) * 100))}%` }}
               >
-                <span className="font-semibold">{active.value.toLocaleString()}</span>
+                <span className="font-semibold">{readValue(active.value)}</span>
                 {compareActive ? (
-                  <span className={cn("ml-1", TONE[compare!.tone].text)}>+{compareActive.value.toLocaleString()}</span>
+                  <span className={cn("ml-1", TONE[compare!.tone].text)}>+{readValue(compareActive.value)}</span>
                 ) : null}
-                <span className="ml-1 text-muted-foreground">{formatDay(active.date)}</span>
+                <span className="ml-1 text-muted-foreground">{formatPoint(active.date)}</span>
               </span>
             </>
           ) : null}
@@ -306,7 +325,7 @@ export function MetricChart({
         >
           <span className="text-[length:var(--type-micro)] text-muted-foreground">
             {hasEnoughReadings
-              ? emptyLabel ?? `No ${label.toLowerCase()} in the last ${points.length} days`
+              ? emptyLabel ?? `No ${label.toLowerCase()} in the last ${points.length} ${unitNoun}`
               : "not enough history yet"}
           </span>
         </div>
@@ -315,7 +334,7 @@ export function MetricChart({
       {/* Announced separately: the visual readout is aria-hidden because it is
           a duplicate of this, positioned. */}
       <span className="sr-only" role="status">
-        {active ? `${formatDay(active.date)}: ${active.value} ${label.toLowerCase()}` : ""}
+        {active ? `${formatPoint(active.date)}: ${readValue(active.value)}` : ""}
       </span>
 
       <footer className="mt-auto flex items-center justify-between gap-2 border-t border-hairline px-[var(--card-pad-x)] py-1.5">
@@ -323,8 +342,8 @@ export function MetricChart({
           <span className="truncate text-[length:var(--type-micro)] text-muted-foreground">{footer}</span>
         ) : (
           <>
-            <span className="text-[length:var(--type-micro)] text-muted-foreground">{formatDay(points[0]?.date)}</span>
-            <span className="text-[length:var(--type-micro)] text-muted-foreground">{formatDay(points[points.length - 1]?.date)}</span>
+            <span className="text-[length:var(--type-micro)] text-muted-foreground">{formatPoint(points[0]?.date)}</span>
+            <span className="text-[length:var(--type-micro)] text-muted-foreground">{formatPoint(points[points.length - 1]?.date)}</span>
           </>
         )}
       </footer>
@@ -335,4 +354,12 @@ export function MetricChart({
 function formatDay(value?: string) {
   if (!value) return "";
   return new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" }).format(new Date(`${value}T00:00:00`));
+}
+
+/** A full timestamp, read as a clock time — the scale a live sample lives at. */
+function formatTime(value?: string) {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(parsed);
 }

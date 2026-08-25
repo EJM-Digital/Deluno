@@ -829,7 +829,10 @@ export function LibraryView({
         <LibrarySummaryHeader
           label={label}
           singular={singular}
-          isLoading={isCatalogueLoading && !hasLoadedOnce}
+          // Route transitions count here but not for the grid: the header's
+          // numbers are unknown until the first load lands, whereas an empty
+          // grid is a fact once we have one.
+          isLoading={(isRouteLoading || navigation.state !== "idle" || isCatalogueLoading) && !hasLoadedOnce}
           totalCount={totalCount}
           downloadedCount={downloadedCount}
           monitoredCount={monitoredCount}
@@ -901,7 +904,6 @@ export function LibraryView({
         />
 
         <LibraryResults
-          isLoading={isRouteLoading || navigation.state !== "idle" || isCatalogueLoading}
           hasLoadedOnce={hasLoadedOnce}
           items={filtered}
           label={label}
