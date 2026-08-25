@@ -55,6 +55,36 @@ function navAccentStyle(accent: ToolbarAccent) {
   } as CSSProperties;
 }
 
+/**
+ * The accent of the area the current route belongs to, or null for pages that
+ * belong to no area (login, setup, a media detail page).
+ *
+ * Primary buttons take this, so a toolbar's "New …" and the empty-state button
+ * for the same action can no longer be two different colours (#256). The
+ * toolbar already painted its own primary this way; everything else on the
+ * page kept the global blue and fought it.
+ */
+function pageAccentFor(pathname: string): ToolbarAccent | null {
+  const areas = [...configurationNavAreas, ...maintenanceNavItems];
+  const area = areas.find((candidate) => candidate.match(pathname));
+  if (area) return area.accent;
+
+  const media = [...libraryNav, ...operationsNav].find((item) =>
+    item.end ? pathname === item.to : pathname.startsWith(item.to)
+  );
+  return media?.accent ?? null;
+}
+
+function pageAccentStyle(accent: ToolbarAccent | null): CSSProperties {
+  if (!accent) return {};
+  const colour = TOOLBAR_ACCENT_COLOURS[accent];
+  return {
+    "--page-accent": `hsl(${colour})`,
+    "--page-accent-image": `linear-gradient(to bottom, hsl(${colour}), hsl(${colour}))`,
+    "--page-accent-foreground": "hsl(var(--background))"
+  } as CSSProperties;
+}
+
 function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
   const tag = target.tagName;
@@ -232,6 +262,7 @@ function AppLayoutContent() {
               id="main-content"
               className="w-full min-w-0"
               style={{
+                ...pageAccentStyle(pageAccentFor(location.pathname)),
                 paddingInline: "var(--content-pad-inline)",
                 // Toolbar pages use the same flush title → rail rhythm as the
                 // settings reference page. Ordinary pages retain the normal
