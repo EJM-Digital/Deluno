@@ -22,6 +22,14 @@ public sealed class OutboundNotificationService(
         IReadOnlyList<Contracts.NotificationWebhookItem> webhooks;
         try
         {
+            // The master switch gates every delivery, tests included — the
+            // settings page promises exactly that (#253).
+            if (!await repository.AreOutboundNotificationsEnabledAsync(cancellationToken))
+            {
+                logger.LogDebug("Outbound notifications are paused; skipping event {Category}.", eventCategory);
+                return;
+            }
+
             webhooks = await repository.ListNotificationWebhooksAsync(cancellationToken);
         }
         catch (Exception ex)
