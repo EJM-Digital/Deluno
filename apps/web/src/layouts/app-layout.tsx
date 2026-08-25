@@ -85,7 +85,11 @@ const routeMeta = [
   { match: (path: string) => path.startsWith("/indexers"), title: "Find & Download", subtitle: "Search sources and download clients Deluno uses" },
   { match: (path: string) => path.startsWith("/search-cycles") || path.startsWith("/settings/automation"), title: "Automation & Recovery", subtitle: "What Deluno searches for on a schedule, and how it recovers when a download fails" },
   { match: (path: string) => path.startsWith("/activity"), title: "Activity", subtitle: "The permanent record of what happened and why" },
-  { match: (path: string) => path.startsWith("/settings/policy-sets") || path.startsWith("/settings/profiles") || path.startsWith("/settings/quality") || path.startsWith("/settings/custom-formats"), title: "Library Profiles", subtitle: "Reusable settings each library inherits for quality, searching, upgrades, and routing" },
+  // The area used to be called "Library Profiles" in the topbar and "Quality
+  // Profiles" in the sidebar, while owning tabs of both names — so no name
+  // told you whether you were in the parent or one of its parts (#255). It is
+  // named for what it governs, matching the sidebar's other "X & Y" areas.
+  { match: (path: string) => path.startsWith("/settings/policy-sets") || path.startsWith("/settings/profiles") || path.startsWith("/settings/quality") || path.startsWith("/settings/custom-formats"), title: "Quality & Release", subtitle: "How Deluno judges a release — and the Library Profiles that apply those choices to a library" },
   { match: (path: string) => path.startsWith("/settings/lists"), title: "Discover Media", subtitle: "Bring movies and shows in from watchlists and curated feeds" },
   { match: (path: string) => path.startsWith("/settings/general") || path.startsWith("/settings/notifications") || path.startsWith("/settings/ui") || path.startsWith("/settings/migration"), title: "Preferences", subtitle: "How you want Deluno to behave, look, and tell you things" },
   // Every /settings route is named by settingsPageMeta, which is the single

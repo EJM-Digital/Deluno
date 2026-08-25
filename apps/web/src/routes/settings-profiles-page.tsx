@@ -44,7 +44,7 @@ import { authedFetch } from "../lib/use-auth";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { cn } from "../lib/utils";
 
-const TABS = configurationNavAreas.find((area) => area.label === "Quality Profiles")?.items ?? [];
+const TABS = configurationNavAreas.find((area) => area.label === "Quality & Release")?.items ?? [];
 
 /**
  * Starters expressed in the backend's own tier names, each linked to the TRaSH

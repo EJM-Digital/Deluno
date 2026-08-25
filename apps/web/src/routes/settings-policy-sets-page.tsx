@@ -40,7 +40,7 @@ import { authedFetch } from "../lib/use-auth";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { cn } from "../lib/utils";
 
-const PLAN_TABS = configurationNavAreas.find((area) => area.label === "Quality Profiles")?.items ?? [];
+const PLAN_TABS = configurationNavAreas.find((area) => area.label === "Quality & Release")?.items ?? [];
 
 interface SettingsPolicySetsLoaderData {
   libraries: LibraryItem[];
