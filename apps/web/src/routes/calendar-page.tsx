@@ -10,9 +10,10 @@
  */
 import { useMemo, useState } from "react";
 import { useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarPlus, ChevronLeft, ChevronRight } from "lucide-react";
 import { fetchJson } from "../lib/api";
 import { cn } from "../lib/utils";
+import { CalendarSubscribeDrawer } from "../components/app/calendar-subscribe-drawer";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { Chip } from "../components/ui/chip";
@@ -103,6 +104,7 @@ export function CalendarPage() {
   const [scope, setScope] = useState<Scope>("month");
   const [view, setView] = useState<View>("grid");
   const [offset, setOffset] = useState(0);
+  const [subscribeOpen, setSubscribeOpen] = useState(false);
 
   const entries = useMemo(() => buildEntries(loaderData), [loaderData]);
   const range = useMemo(() => buildRange(scope, offset), [scope, offset]);
@@ -130,6 +132,24 @@ export function CalendarPage() {
   const alreadyHere = visible.filter((entry) => entry.date < now).length;
   const episodeCount = visible.filter((entry) => entry.id.startsWith("episode:")).length;
   const movieCount = visible.length - episodeCount;
+
+  // Both views carry the same two actions in the same place, so switching
+  // between Calendar and List never moves a control out from under the cursor.
+  const cardActions = (
+    <>
+      <Button type="button" size="sm" variant="outline" onClick={() => setSubscribeOpen(true)}>
+        <CalendarPlus className="h-3.5 w-3.5" />
+        Subscribe
+      </Button>
+      <Button type="button" size="sm" variant="outline" onClick={() => revalidator.revalidate()} disabled={revalidator.state !== "idle"}>
+        Refresh
+      </Button>
+    </>
+  );
+
+  const nothingHere = entries.length
+    ? `Nothing is scheduled in ${range.label}. Step to another ${scope} with the arrows, or switch the range above.`
+    : "Nothing has a date yet. Air dates and release dates come from the metadata provider — link a show or film to its provider record and its schedule appears here.";
 
   return (
     <div className="grid gap-[var(--page-gap)]">
@@ -193,6 +213,7 @@ export function CalendarPage() {
             <span className="text-[length:var(--type-caption)] text-muted-foreground">
               {visible.length} {visible.length === 1 ? "thing" : "things"}
             </span>
+            <div className="ml-auto flex shrink-0 items-center gap-2">{cardActions}</div>
           </header>
 
           <div className="grid grid-cols-7 border-b border-hairline bg-surface-2/40">
@@ -255,25 +276,24 @@ export function CalendarPage() {
               </div>
             ))}
           </div>
+
+          {visible.length === 0 ? (
+            // A grid of empty cells explains nothing on its own.
+            <p className="border-t border-hairline px-[var(--card-pad-x)] py-3 text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">
+              {nothingHere}
+            </p>
+          ) : null}
         </Card>
       ) : (
       <ListCard
         title="Schedule"
         count={visible.length ? `${byDay.length} ${byDay.length === 1 ? "day" : "days"} with something on` : undefined}
-        actions={
-          <Button type="button" size="sm" variant="outline" onClick={() => revalidator.revalidate()} disabled={revalidator.state !== "idle"}>
-            Refresh
-          </Button>
-        }
+        actions={cardActions}
       >
         {visible.length === 0 ? (
           <ListEmpty
             title={entries.length ? `Nothing scheduled in ${range.label}` : "Nothing has a date yet"}
-            description={
-              entries.length
-                ? "Move to another week or month, or widen the range."
-                : "Air dates and release dates come from the metadata provider. Link a show or film to its provider record and its schedule appears here."
-            }
+            description={nothingHere}
           />
         ) : (
           <ListTable
@@ -308,6 +328,8 @@ export function CalendarPage() {
         )}
       </ListCard>
       )}
+
+      <CalendarSubscribeDrawer open={subscribeOpen} onOpenChange={setSubscribeOpen} />
     </div>
   );
 }

@@ -62,6 +62,10 @@ public sealed class EndpointAuthorizationCoverageTests
                 "/api/auth/bootstrap",
                 "/api/auth/bootstrap-status",
                 "/api/auth/login",
+                // Anonymous to the pipeline, not to callers: a calendar client
+                // cannot send a header, so the feed validates its own read-scoped
+                // key or session inside the handler (#260).
+                "/api/calendar/feed.ics",
                 "/api/health/live",
                 "/api/health/ready",
                 "/api/metadata/artwork/{cacheKey}",
