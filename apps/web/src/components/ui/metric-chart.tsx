@@ -14,7 +14,7 @@
  * Inline SVG on purpose — no chart library, so it inherits the token palette and
  * costs nothing to load.
  */
-import { useId } from "react";
+import { useId, useRef, useState } from "react";
 import { cn } from "../../lib/utils";
 
 export interface MetricPoint {
@@ -33,6 +33,8 @@ const TONE: Record<MetricTone, { stroke: string; fill: string; text: string }> =
 
 const WIDTH = 320;
 const HEIGHT = 72;
+/** A chart with room to read: gridlines, a labelled peak, and space for shape. */
+const HEIGHT_LG = 132;
 
 interface MetricChartProps {
   label: string;
@@ -48,6 +50,12 @@ interface MetricChartProps {
   zeroBased?: boolean;
   /** Replaces the date range — for a series whose window is not calendar days. */
   footer?: string;
+  /**
+   * Taller, with gridlines and the peak called out. A sparkline says "roughly
+   * this shape"; a reader asking how many and when needs an axis to read
+   * against.
+   */
+  size?: "sm" | "lg";
   className?: string;
 }
 
@@ -60,9 +68,16 @@ export function MetricChart({
   tone = "primary",
   zeroBased = true,
   footer,
+  size = "sm",
   className
 }: MetricChartProps) {
   const gradientId = useId();
+  const height = size === "lg" ? HEIGHT_LG : HEIGHT;
+  // Which reading the pointer or keyboard is currently on. A chart you cannot
+  // interrogate is decoration: the shape tells you roughly what happened, and
+  // this tells you what happened on a given day.
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const plotRef = useRef<HTMLDivElement | null>(null);
   const points = series.length ? series : [{ date: "", value: 0 }];
 
   const all = compare ? [...points.map((p) => p.value), ...compare.series.map((p) => p.value)] : points.map((p) => p.value);
@@ -73,13 +88,13 @@ export function MetricChart({
   const project = (list: MetricPoint[]) =>
     list.map((point, index) => {
       const x = list.length === 1 ? WIDTH / 2 : (index / (list.length - 1)) * WIDTH;
-      const y = HEIGHT - ((point.value - min) / span) * HEIGHT;
+      const y = height - ((point.value - min) / span) * height;
       return `${x.toFixed(1)},${y.toFixed(1)}`;
     });
 
   const projected = project(points);
   const line = projected.join(" ");
-  const area = `${line} ${WIDTH},${HEIGHT} 0,${HEIGHT}`;
+  const area = `${line} ${WIDTH},${height} 0,${height}`;
   const compareLine = compare ? project(compare.series).join(" ") : null;
 
   // A chart needs enough readings to say something. One or two points drew a
@@ -88,6 +103,9 @@ export function MetricChart({
   // tile is just its value and help line, sized to its content.
   const hasStory = points.length >= 3 && points.some((point) => point.value !== points[0].value);
   const [lastX, lastY] = (projected.at(-1) ?? "0,0").split(",").map(Number);
+  const active = activeIndex === null ? null : points[activeIndex] ?? null;
+  const compareActive = activeIndex === null ? null : compare?.series[activeIndex] ?? null;
+  const [activeX, activeY] = (activeIndex === null ? "0,0" : projected[activeIndex] ?? "0,0").split(",").map(Number);
 
   const total = points.reduce((sum, point) => sum + point.value, 0);
   const compareTotal = compare?.series.reduce((sum, point) => sum + point.value, 0) ?? 0;
@@ -126,13 +144,37 @@ export function MetricChart({
       </div>
 
       {hasStory ? (
-        <div className="relative mt-2">
+        <div
+          ref={plotRef}
+          className="relative mt-2 cursor-crosshair focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          tabIndex={0}
+          role="group"
+          aria-label={`${label} readings. Use the arrow keys to step through days.`}
+          onPointerMove={(event) => {
+            const box = plotRef.current?.getBoundingClientRect();
+            if (!box || box.width === 0) return;
+            const fraction = (event.clientX - box.left) / box.width;
+            setActiveIndex(Math.min(points.length - 1, Math.max(0, Math.round(fraction * (points.length - 1)))));
+          }}
+          onPointerLeave={() => setActiveIndex(null)}
+          onBlur={() => setActiveIndex(null)}
+          onKeyDown={(event) => {
+            if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+            event.preventDefault();
+            setActiveIndex((current) => {
+              const from = current ?? points.length - 1;
+              const next = event.key === "ArrowLeft" ? from - 1 : from + 1;
+              return Math.min(points.length - 1, Math.max(0, next));
+            });
+          }}
+        >
           <svg
-            viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+            viewBox={`0 0 ${WIDTH} ${height}`}
             preserveAspectRatio="none"
             role="img"
             aria-label={summary}
-            className="block h-[72px] w-full"
+            className="block w-full"
+            style={{ height }}
           >
             <defs>
               <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
@@ -140,6 +182,24 @@ export function MetricChart({
                 <stop offset="100%" stopColor={TONE[tone].fill} stopOpacity="0" />
               </linearGradient>
             </defs>
+            {size === "lg" ? (
+              // Quarter lines, so a value can be read against the peak rather
+              // than guessed from the shape.
+              <g aria-hidden>
+                {[0.25, 0.5, 0.75].map((fraction) => (
+                  <line
+                    key={fraction}
+                    x1="0"
+                    x2={WIDTH}
+                    y1={height * fraction}
+                    y2={height * fraction}
+                    stroke="hsl(var(--hairline))"
+                    strokeWidth="1"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ))}
+              </g>
+            ) : null}
             <polygon points={area} fill={`url(#${gradientId})`} className="metric-chart-area" />
             <polyline
               points={line}
@@ -176,12 +236,50 @@ export function MetricChart({
             className="pointer-events-none absolute h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full"
             style={{
               left: `${(lastX / WIDTH) * 100}%`,
-              top: `${(lastY / HEIGHT) * 100}%`,
+              top: `${(lastY / height) * 100}%`,
               backgroundColor: TONE[tone].stroke
             }}
           />
+
+          {active ? (
+            <>
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-y-0 w-px bg-foreground/25"
+                style={{ left: `${(activeX / WIDTH) * 100}%` }}
+              />
+              <span
+                aria-hidden
+                className="pointer-events-none absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-card"
+                style={{
+                  left: `${(activeX / WIDTH) * 100}%`,
+                  top: `${(activeY / height) * 100}%`,
+                  backgroundColor: TONE[tone].stroke
+                }}
+              />
+              {/* Clamped to the card: a readout that runs off the edge on the
+                  first or last day is worse than no readout. */}
+              <span
+                aria-hidden
+                className="pointer-events-none absolute top-1 z-10 -translate-x-1/2 whitespace-nowrap rounded-md border border-hairline bg-popover px-1.5 py-0.5 text-[length:var(--type-micro)] tabular-nums text-foreground shadow-md"
+                style={{ left: `${Math.min(88, Math.max(12, (activeX / WIDTH) * 100))}%` }}
+              >
+                <span className="font-semibold">{active.value.toLocaleString()}</span>
+                {compareActive ? (
+                  <span className={cn("ml-1", TONE[compare!.tone].text)}>+{compareActive.value.toLocaleString()}</span>
+                ) : null}
+                <span className="ml-1 text-muted-foreground">{formatDay(active.date)}</span>
+              </span>
+            </>
+          ) : null}
         </div>
       ) : null}
+
+      {/* Announced separately: the visual readout is aria-hidden because it is
+          a duplicate of this, positioned. */}
+      <span className="sr-only" role="status">
+        {active ? `${formatDay(active.date)}: ${active.value} ${label.toLowerCase()}` : ""}
+      </span>
 
       <footer className={cn("flex items-center justify-between gap-2 px-[var(--card-pad-x)] py-1.5", hasStory && "border-t border-hairline")}>
         {footer ? (

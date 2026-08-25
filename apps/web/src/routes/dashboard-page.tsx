@@ -34,6 +34,7 @@ import { cn } from "../lib/utils";
 import { AcquisitionPipeline } from "../components/app/acquisition-pipeline";
 import { ActivityTicker } from "../components/app/activity-ticker";
 import { DashboardHero } from "../components/app/dashboard-hero";
+import { LibraryComposition } from "../components/app/library-composition";
 import { SystemPulse } from "../components/app/system-pulse";
 import { OnboardingBanner } from "../components/shell/onboarding-banner";
 import { SetupProgressLadder } from "../components/shell/setup-progress-ladder";
@@ -539,17 +540,19 @@ export function DashboardPage() {
         </ListCard>
       </div>
 
-      {/* Below the fold on purpose: history and reference, not the live board. */}
-      {data.metrics ? (
-        <div className="grid items-start gap-[var(--grid-gap)] md:grid-cols-2 xl:grid-cols-3">
-          <MetricChart
-            label="Library"
-            value={String(data.metrics.librarySize.at(-1)?.value ?? 0)}
-            help={`${sumSeries(data.metrics.titlesAdded)} added in ${data.metrics.days} days`}
-            series={data.metrics.librarySize}
-            tone="primary"
-            zeroBased={false}
-          />
+      {/* Below the fold on purpose: history and reference, not the live board.
+          Charts at the large size here — this is where someone comes to read a
+          trend, not to glance at one. */}
+      <div className="grid items-start gap-[var(--grid-gap)] md:grid-cols-2">
+        <LibraryComposition
+          onDisk={Math.max(0, data.totalCount - data.missingCount - data.upgradeCount)}
+          missing={data.missingCount}
+          upgradable={data.upgradeCount}
+          movieCount={data.movieCount}
+          showCount={data.showCount}
+        />
+        {data.metrics ? (
+          <>
           <MetricChart
             label="Searches"
             value={formatRate(data.metrics.searches)}
@@ -557,6 +560,7 @@ export function DashboardPage() {
             series={data.metrics.searches.succeeded}
             compare={{ series: data.metrics.searches.failed, label: "no match", tone: "warning" }}
             tone="success"
+            size="lg"
           />
           <MetricChart
             label="Grabs"
@@ -565,9 +569,20 @@ export function DashboardPage() {
             series={data.metrics.grabs}
             compare={{ series: data.metrics.importFailures, label: "failed to import", tone: "danger" }}
             tone="primary"
+            size="lg"
           />
-        </div>
-      ) : null}
+          <MetricChart
+            label="Background work"
+            value={formatRate(data.metrics.jobs)}
+            help={`${sumSeries(data.metrics.jobs.succeeded).toLocaleString()} jobs finished cleanly`}
+            series={data.metrics.jobs.succeeded}
+            compare={{ series: data.metrics.jobs.failed, label: "failed", tone: "danger" }}
+            tone="success"
+            size="lg"
+          />
+          </>
+        ) : null}
+      </div>
 
       <ListCard
         title="Recently added"

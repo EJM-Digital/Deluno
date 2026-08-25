@@ -166,13 +166,26 @@ test.describe("dashboard workflow", () => {
     const catalogueRequestBlocked = new Promise<void>((resolve) => {
       releaseCatalogueRequest = resolve;
     });
+    // The test only means anything while a catalogue request is genuinely held
+    // open. Without this signal the run could sail past a request that
+    // completed in a millisecond and then fail on the loading assertion for a
+    // reason that had nothing to do with the code under test (#271).
+    let confirmIntercepted!: () => void;
+    const catalogueRequestIntercepted = new Promise<void>((resolve) => {
+      confirmIntercepted = resolve;
+    });
     await page.route("**/api/movies/page**", async (route) => {
+      confirmIntercepted();
       await catalogueRequestBlocked;
-      await route.continue();
+      // By the time the block lifts the test has moved on and unrouted, so the
+      // route may already be handled or its page navigated away. Neither is a
+      // failure — the request only existed to hold the loading state open.
+      await route.continue().catch(() => undefined);
     });
 
     try {
       await page.goto("/movies");
+      await catalogueRequestIntercepted;
       await expect(page.getByText("Your movies library is empty", { exact: true })).toHaveCount(0);
       await expect(page.locator('[aria-busy="true"]')).toBeVisible();
     } finally {

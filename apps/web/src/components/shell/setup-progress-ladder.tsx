@@ -1,39 +1,20 @@
-import { ArrowRight, CheckCircle2, ChevronDown, Circle, CircleX, Sparkles } from "lucide-react";
-import { useState } from "react";
+import { ArrowRight, CheckCircle2, Circle, CircleX, Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { SetupStatusModel, SetupStatusStep } from "../../lib/setup-status";
 import { cn } from "../../lib/utils";
 
 export function SetupProgressLadder({ status }: { status: SetupStatusModel }) {
-  const heading = status.isComplete ? "All required configuration complete" : "Complete your Deluno setup";
+  const heading = "Complete your Deluno setup";
   const count = `${status.completedCount}/${status.totalCount} required steps complete`;
   const currentStepId = status.steps.find((step) => !step.optional && !step.complete)?.id;
 
-  // Setup owns the top of the dashboard until it is finished, and then it does
-  // not: a six-tile ladder saying "you are done" pushed every live number below
-  // the fold on a fully configured install (#270). Complete, it is one line you
-  // can open again; incomplete, it is exactly as prominent as it was.
-  const [expanded, setExpanded] = useState(false);
-  if (status.isComplete && !expanded) {
-    return (
-      <section
-        aria-label="Setup progress"
-        className="flex min-h-[var(--list-header-height)] items-center gap-3 rounded-2xl border border-hairline bg-card px-[var(--card-pad-x)] shadow-card dark:border-white/[0.06]"
-      >
-        <CheckCircle2 aria-hidden className="h-4 w-4 shrink-0 text-success" strokeWidth={2} />
-        <span className="min-w-0 truncate text-[length:var(--type-body-sm)] font-medium text-foreground">{heading}</span>
-        <span className="hidden shrink-0 text-[length:var(--type-caption)] text-muted-foreground sm:block">{count}</span>
-        <span className="flex-1" />
-        <button
-          type="button"
-          onClick={() => setExpanded(true)}
-          className="inline-flex shrink-0 items-center gap-1 text-[length:var(--type-caption)] font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          Review setup
-          <ChevronDown aria-hidden className="h-3.5 w-3.5" />
-        </button>
-      </section>
-    );
+  // Setup owns the top of the dashboard until it is finished, and then it goes
+  // away entirely. A ladder reporting "you are done" is not status, it is a
+  // receipt, and it was pushing every live number below the fold on a fully
+  // configured install (#270). The steps remain reachable at any time from
+  // Settings → Setup Overview, so nothing is lost by removing them here.
+  if (status.isComplete) {
+    return null;
   }
 
   return (
@@ -56,16 +37,6 @@ export function SetupProgressLadder({ status }: { status: SetupStatusModel }) {
             <span className="tabular whitespace-nowrap rounded-full border border-hairline bg-surface-2 px-2.5 py-1 text-[length:var(--type-caption)] font-semibold text-muted-foreground">
               {count}
             </span>
-            {status.isComplete ? (
-              <button
-                type="button"
-                onClick={() => setExpanded(false)}
-                className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-[length:var(--type-caption)] font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                Hide
-                <ChevronDown aria-hidden className="h-3.5 w-3.5 rotate-180" />
-              </button>
-            ) : null}
           </span>
         </div>
 

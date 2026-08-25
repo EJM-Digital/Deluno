@@ -33,7 +33,18 @@ export default defineConfig({
   },
   use: {
     baseURL: smokeWebUrl,
-    trace: "retain-on-failure"
+    trace: "retain-on-failure",
+    // The suite serves a production bundle, which registers Deluno's PWA
+    // service worker. A controlled page routes its own fetches through the
+    // worker, and Playwright cannot intercept those — `page.route` silently
+    // never fires, so any test that blocks a request to assert a loading state
+    // sails past a request that completed normally and then fails for an
+    // unrelated reason (#271). Whether the worker was in control depended on
+    // test order, which is what made it flaky rather than simply broken.
+    //
+    // Nothing here asserts PWA behaviour, and the worker is a progressive
+    // enhancement, so the suite runs without it and stays deterministic.
+    serviceWorkers: "block"
   },
   webServer: [
     {
