@@ -91,7 +91,11 @@ export function EpisodeSearchPage() {
   }, [visible]);
 
   const airedCount = episodes.filter((e) => e.airDateUtc && new Date(e.airDateUtc).getTime() <= now).length;
-  const unairedCount = episodes.length - airedCount;
+  // An episode with no air date is not a future episode. Treating "not aired"
+  // as "everything else" reported two upcoming episodes for a show that ended
+  // in 2013, because the provider had no dates for them (#259).
+  const unairedCount = episodes.filter((e) => e.airDateUtc && new Date(e.airDateUtc).getTime() > now).length;
+  const undatedCount = episodes.filter((e) => !e.airDateUtc).length;
   const neverSearched = episodes.filter((e) => e.lastSearchUtc === null).length;
   const monitored = episodes.filter((e) => e.monitored).length;
 
@@ -163,7 +167,11 @@ export function EpisodeSearchPage() {
         cells={[
           { label: "Wanted", value: episodes.length, help: "missing or upgradeable" },
           { label: "Already aired", value: airedCount, tone: airedCount > 0 ? "warning" : undefined, help: "should be findable" },
-          { label: "Not out yet", value: unairedCount, help: "nothing to find" },
+          {
+            label: "Not out yet",
+            value: unairedCount,
+            help: undatedCount > 0 ? `${undatedCount} with no air date` : "nothing to find yet"
+          },
           { label: "Never searched", value: neverSearched, help: "no attempt recorded" },
           { label: "Monitored", value: monitored, help: `of ${episodes.length} watched` }
         ]}

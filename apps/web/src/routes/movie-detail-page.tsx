@@ -539,7 +539,19 @@ export function MovieDetailPage() {
             label: "Cutoff",
             value: cutoffMet === true ? "Met" : cutoffMet === false ? "Below target" : "No data",
             tone: cutoffMet === false ? "warning" : cutoffMet === true ? "success" : undefined,
-            help: lastDelta === null ? "no comparison yet" : `last delta ${lastDelta > 0 ? "+" : ""}${lastDelta}`
+            // "last delta 0" told the user nothing they could act on (#259).
+            // Say what the comparison meant instead of printing its number.
+            help: cutoffMet === true
+              ? `meets ${targetQuality}`
+              : cutoffMet === false
+                ? `wants ${targetQuality}`
+                : lastDelta === null
+                  ? "nothing compared yet"
+                  : lastDelta > 0
+                    ? "last release scored better"
+                    : lastDelta < 0
+                      ? "last release scored worse"
+                      : "last release scored the same"
           },
           { label: "Monitoring", value: movie.monitored ? "On" : "Paused", help: movie.monitored ? "searched on schedule" : "no automatic searches" },
           {
@@ -603,17 +615,20 @@ export function MovieDetailPage() {
 
           <ListCard title="Routing and destination" count={library?.name ?? "No library linked"}>
             <ListTable chevron={false} columns={[{ label: "Setting" }, { label: "Value", width: "minmax(0,2fr)", mobile: true }]}>
-              {[
-                ["Library", library?.name ?? "Not linked"],
-                ["Root folder", library?.rootPath || "No root configured"],
-                ["Downloads folder", library?.downloadsPath || "Download client default"],
-                ["Import workflow", library?.importWorkflow === "refine-before-import" ? "Refine before import" : "Standard import"],
-                ["Current quality", currentQuality ?? "Unknown"],
-                ["Target quality", targetQuality]
-              ].map(([label, value]) => (
+              {([
+                // `path: true` marks a machine string, so it renders in the
+                // code face like every other path in the app — this table is
+                // not a ListCell `mono` site and was missed by that pass (#259).
+                { label: "Library", value: library?.name ?? "Not linked" },
+                { label: "Root folder", value: library?.rootPath || "No root configured", path: Boolean(library?.rootPath) },
+                { label: "Downloads folder", value: library?.downloadsPath || "Download client default", path: Boolean(library?.downloadsPath) },
+                { label: "Import workflow", value: library?.importWorkflow === "refine-before-import" ? "Refine before import" : "Standard import" },
+                { label: "Current quality", value: currentQuality ?? "Unknown" },
+                { label: "Target quality", value: targetQuality }
+              ] as Array<{ label: string; value: string; path?: boolean }>).map(({ label, value, path }) => (
                 <ListRow key={label}>
                   <ListNameCell name={label} />
-                  <ListCell primary={value} mobile />
+                  <ListCell primary={path ? <span className="font-mono text-[length:var(--type-caption)]">{value}</span> : value} mobile />
                 </ListRow>
               ))}
             </ListTable>
