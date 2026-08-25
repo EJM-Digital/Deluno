@@ -73,7 +73,7 @@ export function ActivityTicker({ seed, limit = 10 }: { seed: ActivityEventItem[]
   }));
 
   const seenLive = new Set(live.map((item) => item.id));
-  const events = collapseRuns([...live, ...seeded.filter((item) => !seenLive.has(item.id))]).slice(0, limit);
+  const events = collapseRepeats([...live, ...seeded.filter((item) => !seenLive.has(item.id))]).slice(0, limit);
   const connected = status === "connected";
 
   return (
@@ -139,22 +139,30 @@ export function ActivityTicker({ seed, limit = 10 }: { seed: ActivityEventItem[]
 /**
  * Deluno's schedulers say the same thing every time they find nothing to do, so
  * a raw feed is mostly "Finished checking Movies. Nothing else needs attention
- * right now." over and over. Consecutive repeats of one message collapse into a
- * single row carrying how many times it happened, which turns ten rows of noise
- * into the handful of things that actually differ. Only *adjacent* repeats
- * collapse — a message that recurs after something else happened is genuinely
- * new information and keeps its own row.
+ * right now." over and over. Identical messages collapse into one row carrying
+ * how many times it happened.
+ *
+ * Collapsing only *adjacent* repeats was not enough: the movie and TV
+ * schedulers interleave, so their no-ops alternate and never sit next to each
+ * other. Grouping across the whole window turns six rows of nothing into two,
+ * which is what leaves room for the events worth reading. Each group keeps the
+ * position and timestamp of its most recent occurrence, so the feed still reads
+ * newest first.
  */
-function collapseRuns(events: TickerEvent[]): TickerEvent[] {
+function collapseRepeats(events: TickerEvent[]): TickerEvent[] {
   const collapsed: TickerEvent[] = [];
+  const seen = new Map<string, TickerEvent>();
 
   for (const event of events) {
-    const previous = collapsed.at(-1);
-    if (previous && previous.message === event.message && previous.category === event.category) {
-      previous.repeats = (previous.repeats ?? 1) + 1;
+    const key = `${event.category}${event.message}`;
+    const existing = seen.get(key);
+    if (existing) {
+      existing.repeats = (existing.repeats ?? 1) + 1;
       continue;
     }
-    collapsed.push({ ...event });
+    const copy = { ...event };
+    seen.set(key, copy);
+    collapsed.push(copy);
   }
 
   return collapsed;
