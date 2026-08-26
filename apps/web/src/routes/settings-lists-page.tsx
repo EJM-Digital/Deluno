@@ -330,7 +330,6 @@ export function SettingsListsPage() {
   return (
     <div className="grid gap-[var(--page-gap)]">
       <PageToolbar
-        accent="orange"
         actions={
           <PageToolbarAction onClick={openCreate}>New list</PageToolbarAction>
         }

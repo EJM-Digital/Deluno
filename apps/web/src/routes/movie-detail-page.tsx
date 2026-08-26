@@ -403,7 +403,6 @@ export function MovieDetailPage() {
       {/* One toolbar: which part of the film you want, where you came from, and
           the two searches. The topbar names the section, the hero names the film. */}
       <PageToolbar
-        accent="yellow"
         left={
           <SegmentedControl<DetailSection>
             aria-label="Section"

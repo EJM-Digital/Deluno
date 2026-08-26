@@ -14,17 +14,6 @@ export interface ToolbarTab {
   status?: "complete" | "pending";
 }
 
-export type ToolbarAccent = "yellow" | "green" | "blue" | "orange" | "violet" | "cyan";
-
-export const TOOLBAR_ACCENT_COLOURS: Record<ToolbarAccent, string> = {
-  yellow: "47 100% 68%",
-  green: "145 78% 52%",
-  blue: "207 96% 62%",
-  orange: "28 96% 58%",
-  violet: "270 92% 70%",
-  cyan: "188 92% 62%"
-};
-
 interface PageToolbarProps {
   /** Sub-pages of this area. Rendered as a consistent navigation rail. */
   tabs?: readonly ToolbarTab[];
@@ -37,8 +26,6 @@ interface PageToolbarProps {
   left?: React.ReactNode;
   /** At most two: one primary ("New …") and one secondary. */
   actions?: React.ReactNode;
-  /** The accent used by the matching sidebar area. */
-  accent?: ToolbarAccent;
   className?: string;
 }
 
@@ -76,10 +63,10 @@ export function PageToolbarAction({ children, className, ...props }: PageToolbar
  * The first row of every collection page: 40px, section rail left, actions right.
  * The topbar already names the page, so there is no H1 here.
  */
-export function PageToolbar({ tabs, left, actions, accent, className }: PageToolbarProps) {
+export function PageToolbar({ tabs, left, actions, className }: PageToolbarProps) {
   const location = useLocation();
   const accentStyle = {
-    "--toolbar-accent": accent ? `hsl(${TOOLBAR_ACCENT_COLOURS[accent]})` : "hsl(var(--primary))"
+    "--toolbar-accent": "hsl(var(--primary))"
   } as React.CSSProperties;
 
   return (
@@ -106,10 +93,7 @@ export function PageToolbar({ tabs, left, actions, accent, className }: PageTool
                     "group relative flex h-full shrink-0 items-center pt-px text-[length:var(--type-body-sm)] font-medium leading-none transition-colors duration-200",
                     "focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     isActive
-                      ? cn(
-                          "font-semibold after:absolute after:inset-x-0 after:bottom-2.5 after:h-0.5",
-                          accent ? "text-[var(--toolbar-accent)] after:bg-[var(--toolbar-accent)]" : "text-foreground after:bg-primary"
-                        )
+                      ? "font-semibold text-[var(--toolbar-accent)] after:absolute after:inset-x-0 after:bottom-2.5 after:h-0.5 after:bg-[var(--toolbar-accent)]"
                       : "text-muted-foreground hover:text-foreground"
                   )}
                 >

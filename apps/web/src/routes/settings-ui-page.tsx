@@ -101,7 +101,7 @@ export function SettingsUiPage() {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-[var(--page-gap)]" noValidate>
-      <PageToolbar tabs={systemSettingsNavItems} accent="blue" />
+      <PageToolbar tabs={systemSettingsNavItems} />
 
       <ListCard title="Appearance" count="Density applies as you pick it, so you can see it before you save">
         <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">

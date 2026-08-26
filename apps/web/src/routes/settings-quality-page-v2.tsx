@@ -85,7 +85,6 @@ export function SettingsQualityPage() {
     <form onSubmit={handleSubmit} className="flex flex-col gap-[var(--page-gap)]" noValidate>
       <PageToolbar
         tabs={TABS}
-        accent="blue"
         actions={
           <SegmentedControl<"movie" | "episode">
             aria-label="Show sizes for"
