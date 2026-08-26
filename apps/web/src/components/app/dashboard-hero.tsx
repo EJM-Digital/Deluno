@@ -32,7 +32,8 @@ export function DashboardHero({
   tone,
   speedMbps,
   transferCount,
-  stats
+  stats,
+  action
 }: {
   /** The one-line state of the system, already decided by the caller. */
   headline: string;
@@ -41,6 +42,14 @@ export function DashboardHero({
   speedMbps: number;
   transferCount: number;
   stats: HeroStat[];
+  /**
+   * The one thing to do next, when there is one. An empty library used to
+   * offer "Add a movie" only from the Recently added card at the bottom of the
+   * page, so hiding that card while empty left a first-run dashboard with
+   * nothing to press (#270). The call to action belongs beside the sentence
+   * telling you the library is empty, not three bands below it.
+   */
+  action?: { label: string; to: string };
 }) {
   const moving = speedMbps > 0;
 
@@ -80,6 +89,14 @@ export function DashboardHero({
           <p className="mt-1 max-w-2xl text-[length:var(--type-body-sm)] leading-relaxed text-muted-foreground">
             {detail}
           </p>
+          {action ? (
+            <Link
+              to={action.to}
+              className="mt-3 inline-flex h-[var(--control-height)] items-center gap-1.5 rounded-[10px] border border-hairline bg-surface-1 px-3 text-[length:var(--type-body-sm)] font-medium text-foreground transition-colors hover:border-primary/40 hover:bg-primary/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {action.label}
+            </Link>
+          ) : null}
         </div>
 
       </div>
