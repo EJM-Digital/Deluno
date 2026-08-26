@@ -206,21 +206,29 @@ public static class FilesystemEndpointRouteBuilderExtensions
             var parent = isDirectory ? fullPath : Path.GetDirectoryName(fullPath);
             var parentExists = !string.IsNullOrWhiteSpace(parent) && Directory.Exists(parent);
             var root = Path.GetPathRoot(fullPath);
+            var exists = isDirectory || isFile;
+            var isUncPath = OperatingSystem.IsWindows() && path.StartsWith(@"\\", StringComparison.Ordinal);
+            var isLikelyDockerPath = IsLikelyDockerPath(fullPath);
             var warnings = new List<string>();
             var canRead = false;
             var canWrite = false;
 
-            if (!isDirectory && !isFile)
+            // Only reach for the exotic explanations when something exotic is
+            // actually in play. A hand-typed local folder that is simply not
+            // there was being answered with "check Docker volumes, UNC
+            // permissions, mapped drives", which sends the reader looking in
+            // four places that have nothing to do with it.
+            if (!exists && !parentExists)
             {
-                warnings.Add("Path is not visible to the Deluno process. Check Docker volumes, UNC permissions, mapped drives, or service account access.");
+                warnings.Add("Neither this folder nor the one above it is visible to the Deluno process. Check Docker volumes, UNC permissions, mapped drives, or service account access.");
             }
 
-            if (OperatingSystem.IsWindows() && path.StartsWith(@"\\", StringComparison.Ordinal))
+            if (isUncPath)
             {
                 warnings.Add("This is a UNC path. Ensure the Deluno service account has network-share permissions, not just your interactive Windows user.");
             }
 
-            if (IsLikelyDockerPath(fullPath))
+            if (isLikelyDockerPath)
             {
                 warnings.Add("This looks like a container path. Make sure the host path is mounted into the Deluno container with the same internal path.");
             }
@@ -260,20 +268,53 @@ public static class FilesystemEndpointRouteBuilderExtensions
 
             return new PathDiagnosticResponse(
                 Path: path,
-                FullPath: fullPath,
+                NormalizedPath: fullPath,
                 Root: root,
-                Exists: isDirectory || isFile,
+                Exists: exists,
                 IsDirectory: isDirectory,
                 IsFile: isFile,
                 ParentExists: parentExists,
-                CanRead: canRead,
-                CanWriteToParent: canWrite,
+                Readable: canRead,
+                Writable: canWrite,
+                IsUncPath: isUncPath,
+                IsLikelyDockerPath: isLikelyDockerPath,
+                Message: DescribePath(exists, isDirectory, isFile, parentExists, canRead, canWrite),
                 Warnings: warnings);
         }
         catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
         {
-            return new PathDiagnosticResponse(path, path, null, false, false, false, false, false, false, [exception.Message]);
+            return new PathDiagnosticResponse(path, path, null, false, false, false, false, false, false, false, false, "That path could not be read.", [exception.Message]);
         }
+    }
+
+    /// <summary>One sentence telling the reader where they stand.</summary>
+    private static string DescribePath(bool exists, bool isDirectory, bool isFile, bool parentExists, bool readable, bool writable)
+    {
+        if (!exists)
+        {
+            return parentExists
+                ? "That folder does not exist yet."
+                : "That path does not exist, and neither does the folder above it.";
+        }
+
+        if (isFile)
+        {
+            return "That is a file, not a folder.";
+        }
+
+        if (!isDirectory)
+        {
+            return "That path exists but is not a folder.";
+        }
+
+        if (!readable)
+        {
+            return "Deluno can see this folder but cannot read it.";
+        }
+
+        return writable
+            ? "Deluno can read and write this folder."
+            : "Deluno can read this folder but cannot write to it, so imports would fail.";
     }
 
     private static bool IsLikelyDockerPath(string path)
@@ -427,16 +468,29 @@ public sealed record NativeFolderPickerRequest(string? InitialPath);
 
 public sealed record NativeFolderPickerResponse(string? Path, bool Cancelled);
 
+/// <summary>
+/// What Deluno can actually do with a path.
+///
+/// The names here are the ones the folder check has always rendered. The server
+/// used to answer with <c>canRead</c>, <c>canWriteToParent</c> and <c>fullPath</c>
+/// and no message at all, so Readable and Writable were never lit for any path,
+/// good or bad, and a healthy folder reported a warning with nothing written
+/// under it. Nothing failed loudly because the two halves of the contract were
+/// only ever compared by hand.
+/// </summary>
 public sealed record PathDiagnosticResponse(
     string Path,
-    string FullPath,
+    string NormalizedPath,
     string? Root,
     bool Exists,
     bool IsDirectory,
     bool IsFile,
     bool ParentExists,
-    bool CanRead,
-    bool CanWriteToParent,
+    bool Readable,
+    bool Writable,
+    bool IsUncPath,
+    bool IsLikelyDockerPath,
+    string Message,
     IReadOnlyList<string> Warnings);
 
 public sealed record ImportPreviewRequest(

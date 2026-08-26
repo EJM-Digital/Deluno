@@ -342,12 +342,13 @@ export interface NativeFolderPickerResponse {
 export interface PathDiagnosticResponse {
   path: string;
   normalizedPath: string;
+  root: string | null;
   exists: boolean;
   isDirectory: boolean;
+  isFile: boolean;
   parentExists: boolean;
   readable: boolean;
   writable: boolean;
-  serverCanBrowse: boolean;
   isUncPath: boolean;
   isLikelyDockerPath: boolean;
   message: string;
