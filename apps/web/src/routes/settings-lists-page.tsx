@@ -379,7 +379,7 @@ export function SettingsListsPage() {
         title={mode.kind === "create" ? "New import list" : editing?.name ?? form.name}
         description={mode.kind === "create" ? "A watchlist, curated list or feed Deluno should follow." : `${providerLabel(form.provider)} · ${form.mediaType === "tv" ? "TV" : "Movies"} · ${editing?.libraryName ? `adds to ${editing.libraryName}` : "no library yet"}`}
         onSubmit={handleSubmit}
-        footer={<DrawerFooter state={footerState} message={saveMessage} saveLabel={mode.kind === "create" ? "Add list" : "Save list"} onCancel={requestClose} disabled={busy !== null} />}
+        footer={<DrawerFooter state={footerState} message={saveMessage} saveLabel={mode.kind === "create" ? "Add list" : "Save list"} onCancel={requestClose} saveEnabled={mode.kind === "create" ? true : undefined} disabled={busy !== null} />}
       >
         <DrawerSection title="Basics">
           <FieldRow>

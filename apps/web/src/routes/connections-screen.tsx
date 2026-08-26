@@ -30,8 +30,8 @@ import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
 import { Switch } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
-import { CLIENT_PRESETS, INDEXER_PRESETS } from "./connections/presets";
-import { STRICT_SHARING, clientFormFrom, emptyClientForm, emptyIndexerForm, indexerFormFrom, sameClient, sameIndexer, sameSet, sharingRuleFrom, type ClientForm, type DrawerState, type IndexerForm, type Section } from "./connections/forms";
+import { CLIENT_PRESETS } from "./connections/presets";
+import { STRICT_SHARING, clientFormErrors, clientFormFrom, emptyClientForm, emptyIndexerForm, indexerFormErrors, indexerFormFrom, sameClient, sameIndexer, sameSet, sharingRuleFrom, type ClientForm, type DrawerState, type IndexerForm, type Section } from "./connections/forms";
 import { formatSeconds, healthChip, indexerHost, protocolLabel, relative, scopeLabel } from "./connections/format";
 import { ClientDrawerBody } from "./connections/client-drawer-body";
 import { IndexerDrawerBody } from "./connections/indexer-drawer-body";
@@ -168,6 +168,16 @@ export function IndexersPage() {
     return false;
   }, [drawer.kind, indexerForm, indexerInitial, clientForm, clientInitial, routeSources, routeClients, routeCategories, routeInitial]);
   const footerState: DrawerSaveState = saveState === "saving" ? "saving" : dirty ? "dirty" : saveState ?? "clean";
+  /**
+   * A create drawer opens with values the user is entitled to accept as-is, so
+   * its Save is gated on the form being *valid*, not on it being *dirty* (#293).
+   * "Unchanged from the defaults" is not "nothing to save"; gating on dirty made
+   * Add client an inert control on the one path a new user actually takes.
+   * Submit runs the same field validation either way, so an incomplete create
+   * form now says what is missing instead of doing nothing. Editing keeps the
+   * dirty gate, where Save with no changes really is a no-op.
+   */
+  const creating = (drawer.kind === "indexer" || drawer.kind === "client") && drawer.id === null;
   useUnsavedChanges(dirty);
 
   useEffect(() => {
@@ -230,17 +240,10 @@ export function IndexersPage() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
-    const errors: Record<string, string> = {};
-    if (drawer.kind === "indexer") {
-      if (!indexerForm.name.trim()) errors.name = "Give this indexer a name.";
-      if (!indexerForm.baseUrl.trim()) errors.baseUrl = "Enter the indexer URL.";
-      const preset = INDEXER_PRESETS.find((item) => item.protocol === indexerForm.protocol);
-      if (!drawer.id && preset?.requiresApiKey && !indexerForm.apiKey.trim()) errors.apiKey = "This indexer needs an API key.";
-    } else if (drawer.kind === "client") {
-      if (!clientForm.name.trim()) errors.name = "Give this client a name.";
-      if (!clientForm.host.trim()) errors.host = "Enter the host or IP.";
-      if (!clientForm.port.trim() || Number.isNaN(Number(clientForm.port))) errors.port = "Enter a port number.";
-    }
+    const errors: Record<string, string> =
+      drawer.kind === "indexer" ? indexerFormErrors(indexerForm, !drawer.id)
+      : drawer.kind === "client" ? clientFormErrors(clientForm)
+      : {};
     setFieldErrors(errors);
     if (Object.keys(errors).length) return;
 
@@ -642,6 +645,7 @@ export function IndexersPage() {
             message={saveMessage}
             saveLabel={drawer.kind === "routing" ? "Save routing" : drawer.kind === "client" ? (drawer.id ? "Save client" : "Add client") : drawer.kind === "indexer" && drawer.id ? "Save indexer" : "Add indexer"}
             onCancel={requestClose}
+            saveEnabled={creating ? true : undefined}
             disabled={busy !== null}
           />
         }

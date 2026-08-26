@@ -430,7 +430,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
                 return denied;
             }
 
-            if (request.Protocol is not null && !DownloadClientProtocolCatalog.IsAccepted(request.Protocol))
+            if (request.Protocol is not null && !DownloadClientProtocolCatalog.IsDispatchable(request.Protocol))
             {
                 return Results.ValidationProblem(new Dictionary<string, string[]>
                 {
@@ -541,7 +541,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             errors["name"] = ["Give this download client a name."];
         }
 
-        if (!DownloadClientProtocolCatalog.IsAccepted(request.Protocol))
+        if (!DownloadClientProtocolCatalog.IsDispatchable(request.Protocol))
         {
             errors["protocol"] = [$"Choose a supported download client protocol: {DownloadClientProtocolCatalog.SupportedProtocols}."];
         }
@@ -814,6 +814,15 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             return ("disabled", "Disabled until you turn it on.", null);
         }
 
+        // A test is the moment someone asks "is this set up right?", so it has
+        // to answer about usability, not only reachability. A legacy protocol
+        // like "torrent" is perfectly reachable and can still receive nothing;
+        // saying healthy here deferred the truth to the first real grab (#292).
+        if (!DownloadClientProtocolCatalog.IsDispatchable(item.Protocol))
+        {
+            return ("degraded", $"Deluno cannot send downloads to a '{item.Protocol}' client. Change it to one of: {DownloadClientProtocolCatalog.SupportedProtocols}.", "configuration");
+        }
+
         var uri = ResolveDownloadClientEndpoint(item);
         if (uri is null)
         {
@@ -830,7 +839,8 @@ public static class ConnectionsEndpointRouteBuilderExtensions
                 "deluge" => await TestDelugeAsync(item, uri, cancellationToken),
                 "nzbget" => await TestNzbGetAsync(item, uri, cancellationToken),
                 "utorrent" => await TestUTorrentAsync(item, uri, cancellationToken),
-                _ => await TestGenericDownloadClientAsync(item, uri, cancellationToken)
+                // Unreachable: the dispatchable guard above covers every other value.
+                _ => ("degraded", $"Deluno cannot send downloads to a '{item.Protocol}' client.", "configuration")
             };
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException)
@@ -945,24 +955,6 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         return html.Contains("<div", StringComparison.OrdinalIgnoreCase)
             ? ("healthy", $"Connected to uTorrent at {uri.Host}:{uri.Port}.", null)
             : ("degraded", "uTorrent token endpoint did not return the expected response.", "unexpected-response");
-    }
-
-    private static async Task<(string healthStatus, string message, string? failureCategory)> TestGenericDownloadClientAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken)
-    {
-        using var client = new HttpClient
-        {
-            Timeout = TimeSpan.FromSeconds(8)
-        };
-
-        using var request = new HttpRequestMessage(HttpMethod.Head, uri);
-        using var response = await client.SendAsync(request, cancellationToken);
-
-        if ((int)response.StatusCode >= 200 && (int)response.StatusCode < 400)
-        {
-            return ("healthy", $"Reached {item.Name} at {uri.Host}:{uri.Port}.", null);
-        }
-
-        return HealthFromStatusCode(item.Name, response.StatusCode);
     }
 
     private static Uri? ResolveDownloadClientEndpoint(DownloadClientItem item)

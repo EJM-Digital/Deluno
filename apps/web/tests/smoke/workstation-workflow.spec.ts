@@ -449,7 +449,13 @@ test.describe("dashboard workflow", () => {
     await expect(drawer.getByText("Quality you want", { exact: true })).toHaveCount(0);
     await expect(drawer.getByText("Release choices", { exact: true })).toHaveCount(0);
     await expect(drawer.getByText("Set this profile up in three steps", { exact: true })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Create library profile" })).toBeDisabled();
+    // #293 — a create form's Save is live from the moment it opens. Nothing
+    // here is prefilled, so pressing it has to name what is missing rather than
+    // sit inert.
+    const create = page.getByRole("button", { name: "Create library profile" });
+    await expect(create).toBeEnabled();
+    await create.click();
+    await expect(drawer.getByText("Give this library profile a name.")).toBeVisible();
 
     // Leaving with edits asks first.
     await page.keyboard.press("Escape");

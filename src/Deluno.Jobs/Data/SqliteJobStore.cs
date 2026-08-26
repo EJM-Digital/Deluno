@@ -2065,11 +2065,17 @@ public sealed class SqliteJobStore(
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
+        // Say what happened, not what was attempted. This line read "Deluno sent
+        // … to qBittorrent" while the dispatch was failing and the client's
+        // torrent list stayed empty (#292), which is the one place a user looks
+        // to find out whether a grab worked.
+        var (activityCategory, activityMessage) = DescribeDispatch(status, releaseName, downloadClientName, grabFailureCode);
+
         await InsertActivityAsync(
             connection,
             transaction,
-            category: "download.dispatch.recorded",
-            message: $"Deluno sent {releaseName} to {downloadClientName}.",
+            category: activityCategory,
+            message: activityMessage,
             detailsJson: notesJson,
             relatedJobId: null,
             relatedEntityType: entityType,
@@ -2100,9 +2106,9 @@ public sealed class SqliteJobStore(
         // said by DispatchGrabCompleted and by the activity event below.
         await realtimeEventPublisher.PublishActivityEventAddedAsync(
             Guid.CreateVersion7().ToString("N"),
-            $"Deluno sent {releaseName} to {downloadClientName}.",
-            "download.dispatch.recorded",
-            SeverityForCategory("download.dispatch.recorded"),
+            activityMessage,
+            activityCategory,
+            SeverityForCategory(activityCategory),
             now.ToString("O"),
             cancellationToken);
 
@@ -3259,6 +3265,27 @@ public sealed class SqliteJobStore(
         int MaxItems,
         int RetryDelayHours,
         string TriggeredBy);
+
+    /// <summary>
+    /// The activity line for a dispatch, told from its outcome.
+    /// </summary>
+    private static (string Category, string Message) DescribeDispatch(
+        string status,
+        string releaseName,
+        string downloadClientName,
+        string? grabFailureCode)
+    {
+        var reason = string.IsNullOrWhiteSpace(grabFailureCode) ? "." : $" — {grabFailureCode}.";
+        return status switch
+        {
+            "sent" => ("download.dispatch.recorded", $"Deluno sent {releaseName} to {downloadClientName}."),
+            "planned" => ("download.dispatch.planned", $"Deluno chose {releaseName} for {downloadClientName} and has not sent it yet."),
+            "paused" => ("download.dispatch.paused", $"Deluno held {releaseName} back because {downloadClientName} is paused."),
+            "circuitOpen" => ("download.dispatch.failed", $"Deluno stopped sending to {downloadClientName} after repeated failures, so {releaseName} was not sent{reason}"),
+            "notFound" => ("download.dispatch.failed", $"Deluno could not find {downloadClientName} to send {releaseName} to{reason}"),
+            _ => ("download.dispatch.failed", $"Deluno could not send {releaseName} to {downloadClientName}{reason}")
+        };
+    }
 
     private static string MapStatusToGrabStatus(string status) =>
         status switch

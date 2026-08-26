@@ -197,7 +197,7 @@ export function SettingsTagsPage() {
         title={mode.kind === "create" ? "New tag" : editing?.name ?? form.name}
         description={mode.kind === "create" ? "Create a label first, then apply it where you need it." : "Reusable label"}
         onSubmit={handleSubmit}
-        footer={<DrawerFooter state={footerState} message={saveMessage} saveLabel={mode.kind === "create" ? "Create tag" : "Save tag"} onCancel={requestClose} disabled={busy} />}
+        footer={<DrawerFooter state={footerState} message={saveMessage} saveLabel={mode.kind === "create" ? "Create tag" : "Save tag"} onCancel={requestClose} saveEnabled={mode.kind === "create" ? true : undefined} disabled={busy} />}
       >
         <DrawerSection title="Tag details">
           <FieldRow>

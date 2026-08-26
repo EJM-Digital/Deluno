@@ -61,8 +61,12 @@ export function AcquisitionPipeline({
   // showing it whole under "Importing" told a user waiting on FileFlows that
   // Deluno was importing their file. The processor share is reported
   // separately, so the two stages can be told apart (#270).
+  // No clamp: waitingForProcessorCount counts a strict subset of the statuses
+  // processingCount counts, both from the same queue in the same pass, so the
+  // difference cannot go negative. Guarding it here would only hide the day
+  // that stopped being true (#280).
   const waitingForProcessor = summary.waitingForProcessorCount ?? 0;
-  const importing = Math.max(0, summary.processingCount - waitingForProcessor);
+  const importing = summary.processingCount - waitingForProcessor;
 
   const holds = sharing?.holds ?? [];
 

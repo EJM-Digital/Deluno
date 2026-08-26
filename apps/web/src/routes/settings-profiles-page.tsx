@@ -349,7 +349,7 @@ export function SettingsProfilesPage() {
         title={mode.kind === "create" ? "New quality profile" : editing?.name ?? form.name}
         description={mode.kind === "create" ? "Set the quality you want Deluno to accept, prefer, upgrade to, or reject." : `Quality profile · ${form.mediaType === "tv" ? "TV" : "Movies"} · stops at ${form.cutoff || "—"}`}
         onSubmit={handleSubmit}
-        footer={<DrawerFooter state={footerState} message={saveMessage} saveLabel={mode.kind === "create" ? "Create quality profile" : "Save quality profile"} onCancel={requestClose} disabled={busy} />}
+        footer={<DrawerFooter state={footerState} message={saveMessage} saveLabel={mode.kind === "create" ? "Create quality profile" : "Save quality profile"} onCancel={requestClose} saveEnabled={mode.kind === "create" ? true : undefined} disabled={busy} />}
       >
         {mode.kind === "create" ? (
           <DrawerSection title="Template">

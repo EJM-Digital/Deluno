@@ -282,6 +282,45 @@ public sealed class JobStoreTests
         Assert.DoesNotContain(insertedAfterPageOne.Id, returnedIds);
     }
 
+    /// <summary>
+    /// #292 — activity said "Deluno sent … to qBittorrent" while the dispatch
+    /// failed and the client's torrent list stayed empty. The line has to report
+    /// the outcome of the send, not the intent to send.
+    /// </summary>
+    [Theory]
+    [InlineData("sent", "Deluno sent Movie.2026.1080p-GROUP to qBittorrent.", "download.dispatch.recorded")]
+    [InlineData("failed", "Deluno could not send Movie.2026.1080p-GROUP to qBittorrent — unsupported-protocol.", "download.dispatch.failed")]
+    [InlineData("notFound", "Deluno could not find qBittorrent to send Movie.2026.1080p-GROUP to — unsupported-protocol.", "download.dispatch.failed")]
+    [InlineData("circuitOpen", "Deluno stopped sending to qBittorrent after repeated failures, so Movie.2026.1080p-GROUP was not sent — unsupported-protocol.", "download.dispatch.failed")]
+    public async Task RecordDownloadDispatchAsync_reports_the_outcome_of_the_send(string status, string expectedMessage, string expectedCategory)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-05-13T05:00:00Z"));
+        await InitializeJobsAsync(storage, timeProvider);
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+
+        await store.RecordDownloadDispatchAsync(
+            libraryId: "movies-main",
+            mediaType: "movies",
+            entityType: "movie",
+            entityId: "movie-1",
+            releaseName: "Movie.2026.1080p-GROUP",
+            indexerName: "Indexer One",
+            downloadClientId: "qb-1",
+            downloadClientName: "qBittorrent",
+            status: status,
+            notesJson: null,
+            grabResponseCode: null,
+            grabFailureCode: status == "sent" ? null : "unsupported-protocol",
+            cancellationToken: CancellationToken.None);
+
+        var activities = await store.ListActivityAsync(10, null, null, CancellationToken.None);
+        var dispatch = Assert.Single(activities, activity => activity.Category.StartsWith("download.dispatch.", StringComparison.Ordinal));
+
+        Assert.Equal(expectedMessage, dispatch.Message);
+        Assert.Equal(expectedCategory, dispatch.Category);
+    }
+
     [Fact]
     public async Task RecordDownloadDispatchAsync_extracts_structured_decision_telemetry_from_notes_json()
     {

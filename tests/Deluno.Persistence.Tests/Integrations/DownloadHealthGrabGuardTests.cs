@@ -29,7 +29,7 @@ public sealed class DownloadHealthGrabGuardTests
             "External qBittorrent", "qbittorrent", "localhost", 8080, null, null, null, "movies", "tv", null, 1, true), CancellationToken.None);
         var librariesRepository = new SqliteLibrariesRepository(storage.Factory, time);
         var service = new DownloadClientTelemetryService(
-            settingsRepository, healthRepository, librariesRepository, connectionsRepository, null!, null!, time, null!, null!, null!, null!, new DownloadHealthEvaluator());
+            settingsRepository, healthRepository, librariesRepository, connectionsRepository, null!, null!, time, null!, null!, null!, null!, new DownloadHealthEvaluator(), null!);
 
         var result = await service.ExecuteActionAsync(
             client.Id,
@@ -95,7 +95,7 @@ public sealed class DownloadHealthGrabGuardTests
         await dispatches.RecordDetectionAsync(dispatchId, "queue-arrival", 1024, CancellationToken.None);
 
         var service = new DownloadClientTelemetryService(
-            settingsRepository, healthRepository, librariesRepository, connectionsRepository, null!, null!, time, null!, jobs, dispatches, jobs, new DownloadHealthEvaluator());
+            settingsRepository, healthRepository, librariesRepository, connectionsRepository, null!, null!, time, null!, jobs, dispatches, jobs, new DownloadHealthEvaluator(), null!);
         var finding = new DownloadHealthFinding("critical", "client-stalled", "Stalled", "No progress", "Review", false, false, StrikeCount: 3);
         var item = new DownloadQueueItem("queue-arrival", client.Id, client.Name, client.Protocol, "movies", "Arrival", "Arrival.2016.1080p.WEB",
             "deluno-movies", DownloadQueueStatuses.Stalled, 15, 0, 0, 1024, 128, 0, "Fixture", null, time.GetUtcNow(), HealthFindings: [finding]);

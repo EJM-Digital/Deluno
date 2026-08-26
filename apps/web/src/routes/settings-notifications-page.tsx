@@ -257,7 +257,7 @@ export function SettingsNotificationsPage() {
         title={mode.kind === "create" ? "New webhook" : editing?.name ?? form.name}
         description={mode.kind === "create" ? "Deluno POSTs a JSON payload to this URL." : `Webhook · ${eventLabel(form.eventFilters)}`}
         onSubmit={handleSubmit}
-        footer={<DrawerFooter state={footerState} message={saveMessage} saveLabel={mode.kind === "create" ? "Add webhook" : "Save webhook"} onCancel={requestClose} disabled={busy !== null} />}
+        footer={<DrawerFooter state={footerState} message={saveMessage} saveLabel={mode.kind === "create" ? "Add webhook" : "Save webhook"} onCancel={requestClose} saveEnabled={mode.kind === "create" ? true : undefined} disabled={busy !== null} />}
       >
         <DrawerSection title="Basics">
           <FieldRow>

@@ -29,7 +29,8 @@ public sealed class DownloadClientTelemetryService(
     IJobScheduler jobScheduler,
     IDownloadDispatchesRepository dispatchesRepository,
     IActivityFeedRepository activityFeedRepository,
-    IRecoveryHealthEvaluator healthEvaluator)
+    IRecoveryHealthEvaluator healthEvaluator,
+    IProcessorRepository processorRepository)
     : IDownloadClientTelemetryService
 {
     public async Task<DownloadTelemetryOverview> GetOverviewAsync(CancellationToken cancellationToken)
@@ -42,6 +43,11 @@ public sealed class DownloadClientTelemetryService(
         var routeCategoriesByLibrary = await LoadRouteCategoriesAsync(libraries, cancellationToken);
         var dispatches = await jobQueueRepository.ListDownloadDispatchesAsync(100, null, cancellationToken);
         var importJobs = await jobQueueRepository.ListAsync(200, cancellationToken);
+        // The hand-off is the only thing that knows a download in
+        // C:\...\Downloads-Complete and a refined file in C:\...\Refined are
+        // the same item; without it the queue never learns its import finished
+        // (#280).
+        var handoffs = await processorRepository.ListProcessorHandoffsAsync(null, 250, cancellationToken);
         var snapshots = new List<DownloadClientTelemetrySnapshot>();
 
         foreach (var client in clients.OrderBy(item => item.Priority).ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase))
@@ -66,6 +72,7 @@ public sealed class DownloadClientTelemetryService(
                     libraries,
                     clientDispatches,
                     importJobs,
+                    handoffs,
                     routeCategoriesByLibrary));
                 continue;
             }
@@ -578,6 +585,7 @@ public sealed class DownloadClientTelemetryService(
         IReadOnlyList<LibraryItem> libraries,
         IReadOnlyList<DownloadDispatchItem> dispatches,
         IReadOnlyList<JobQueueItem> importJobs,
+        IReadOnlyList<ProcessorHandoffItem> handoffs,
         IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> routeCategoriesByLibrary)
     {
         if (snapshot.Queue.Count == 0)
@@ -591,6 +599,19 @@ public sealed class DownloadClientTelemetryService(
             .Where(item => !string.IsNullOrWhiteSpace(item.SourcePath))
             .GroupBy(item => NormalizeSourceKey(item.SourcePath!), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.OrderByDescending(item => item.Job.CreatedUtc).First().Job, StringComparer.OrdinalIgnoreCase);
+        var jobsById = importJobs.ToDictionary(job => job.Id, StringComparer.OrdinalIgnoreCase);
+
+        var clientHandoffs = handoffs
+            .Where(handoff => string.Equals(handoff.ClientId, snapshot.ClientId, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(handoff => handoff.UpdatedUtc)
+            .ToArray();
+        var handoffsByQueueItem = clientHandoffs
+            .GroupBy(handoff => handoff.QueueItemId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        var handoffsBySource = clientHandoffs
+            .Where(handoff => !string.IsNullOrWhiteSpace(handoff.SourcePath))
+            .GroupBy(handoff => NormalizeSourceKey(handoff.SourcePath), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
 
         var queue = snapshot.Queue.Select(item =>
         {
@@ -613,19 +634,29 @@ public sealed class DownloadClientTelemetryService(
             }
 
             var library = ResolveLibraryForQueueItem(item, libraries, dispatches, routeCategoriesByLibrary);
-            if (library is not null)
+            var resolvedItem = library is null
+                ? item
+                : item with { LibraryId = library.Id, MediaType = library.MediaType };
+
+            // A refined item is imported from the processor output path while it
+            // still sits in the client queue under its download path, so matching
+            // the two by path can never work. The hand-off record is what joins
+            // them, and reading its lifecycle here is what finally lets an item
+            // leave the Processing stage: without it a completed import still
+            // reported processingCount 1 for ever (#280).
+            var handoff = handoffsByQueueItem.GetValueOrDefault(item.Id)
+                ?? (string.IsNullOrWhiteSpace(item.SourcePath) ? null : handoffsBySource.GetValueOrDefault(NormalizeSourceKey(item.SourcePath)));
+            if (handoff is not null)
             {
-                var resolvedItem = item with
-                {
-                    LibraryId = library.Id,
-                    MediaType = library.MediaType
-                };
-                return string.Equals(library.ImportWorkflow, "refine-before-import", StringComparison.OrdinalIgnoreCase)
-                    ? resolvedItem with { Status = DownloadQueueStatuses.WaitingForProcessor }
-                    : resolvedItem;
+                return resolvedItem with { Status = ProcessorHandoffQueueStatus.Resolve(handoff, jobsById, resolvedItem.Status) };
             }
 
-            return item;
+            if (library is not null && string.Equals(library.ImportWorkflow, "refine-before-import", StringComparison.OrdinalIgnoreCase))
+            {
+                return resolvedItem with { Status = DownloadQueueStatuses.WaitingForProcessor };
+            }
+
+            return resolvedItem;
         }).ToArray();
 
         return snapshot with
@@ -634,7 +665,6 @@ public sealed class DownloadClientTelemetryService(
             Summary = Summarize(queue)
         };
     }
-
     private static LibraryItem? ResolveLibraryForQueueItem(
         DownloadQueueItem item,
         IReadOnlyList<LibraryItem> libraries,
@@ -922,19 +952,7 @@ public sealed class DownloadClientTelemetryService(
             status.Equals("error", StringComparison.OrdinalIgnoreCase));
 
     private static DownloadTelemetrySummary Summarize(IEnumerable<DownloadQueueItem> queue)
-    {
-        var items = queue.ToArray();
-        return new DownloadTelemetrySummary(
-            ActiveCount: items.Count(item => item.Status == DownloadQueueStatuses.Downloading),
-            QueuedCount: items.Count(item => item.Status == DownloadQueueStatuses.Queued),
-            CompletedCount: items.Count(item => item.Status == DownloadQueueStatuses.Completed),
-            StalledCount: items.Count(item => item.Status == DownloadQueueStatuses.Stalled),
-            ProcessingCount: items.Count(item => item.Status is DownloadQueueStatuses.Processing or DownloadQueueStatuses.Processed or DownloadQueueStatuses.ProcessingFailed or DownloadQueueStatuses.WaitingForProcessor or DownloadQueueStatuses.ImportQueued),
-            ImportReadyCount: items.Count(item => item.Status is DownloadQueueStatuses.ImportReady or DownloadQueueStatuses.Completed),
-            TotalSpeedMbps: Math.Round(items.Sum(item => item.SpeedMbps), 1),
-            WaitingForProcessorCount: items.Count(item => item.Status == DownloadQueueStatuses.WaitingForProcessor),
-            TotalUploadSpeedMbps: Math.Round(items.Sum(item => item.UploadSpeedMbps), 1));
-    }
+        => DownloadQueueSummary.Of(queue);
 
     private static string InferMediaType(DownloadClientItem client, string? category)
     {
