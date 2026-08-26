@@ -31,7 +31,7 @@ import { Switch } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { CLIENT_PRESETS, INDEXER_PRESETS } from "./connections/presets";
-import { clientFormFrom, emptyClientForm, emptyIndexerForm, indexerFormFrom, sameClient, sameIndexer, sameSet, type ClientForm, type DrawerState, type IndexerForm, type Section } from "./connections/forms";
+import { STRICT_SHARING, clientFormFrom, emptyClientForm, emptyIndexerForm, indexerFormFrom, sameClient, sameIndexer, sameSet, type ClientForm, type DrawerState, type IndexerForm, type Section } from "./connections/forms";
 import { formatSeconds, healthChip, indexerHost, protocolLabel, relative, scopeLabel } from "./connections/format";
 import { ClientDrawerBody } from "./connections/client-drawer-body";
 import { IndexerDrawerBody } from "./connections/indexer-drawer-body";
@@ -251,7 +251,10 @@ export function IndexersPage() {
         const payload = {
           name: indexerForm.name.trim(),
           protocol: indexerForm.protocol,
-          privacy: "private",
+          // Only on create. The drawer has no privacy control, so sending it on
+          // every save relabelled any indexer a user merely edited as private —
+          // including public ones that had been added correctly.
+          ...(drawer.id ? {} : { privacy: "private" }),
           baseUrl: indexerForm.baseUrl.trim(),
           apiKey: indexerForm.apiKey.trim() || undefined,
           priority: Number(indexerForm.priority || 10),
@@ -260,7 +263,23 @@ export function IndexersPage() {
           categories: indexerForm.categories,
           tags: "",
           mediaScope: indexerForm.scope,
-          isEnabled: indexerForm.isEnabled
+          isEnabled: indexerForm.isEnabled,
+          // Only written when the user actually answered the question
+          // differently. A source may carry a hand-tuned rule this one control
+          // cannot express, and saving an unrelated field should not flatten it
+          // back to the canned one (#288).
+          ...(indexerForm.sharingRule === indexerInitial.sharingRule
+            ? {}
+            : indexerForm.sharingRule === "strict"
+              ? {
+                  sharingMode: "share-then-tidy",
+                  sharingForHours: STRICT_SHARING.forHours,
+                  sharingUntilRatio: STRICT_SHARING.untilRatio,
+                  sharingStuckAction: "keep-waiting",
+                  sharingStuckAfterDays: STRICT_SHARING.stuckAfterDays,
+                  clearSharingPolicy: false
+                }
+              : { clearSharingPolicy: true })
         };
         if (drawer.id) {
           await send(`/api/indexers/${drawer.id}`, "PUT", payload, "Indexer could not be saved.");
@@ -625,6 +644,7 @@ export function IndexersPage() {
           <IndexerDrawerBody
             form={indexerForm}
             setForm={setIndexerForm}
+            settings={settings}
             editing={editingIndexer}
             throttle={editingIndexerThrottle}
             errors={fieldErrors}

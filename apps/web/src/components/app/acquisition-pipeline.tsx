@@ -19,8 +19,8 @@
 import { Link } from "react-router-dom";
 import { CountUp } from "../ui/count-up";
 import { StatusLed, type LedTone } from "../ui/status-led";
-import { cn } from "../../lib/utils";
-import type { DownloadTelemetrySummary, MonitoringPerformanceSummary } from "../../lib/api";
+import { cn, formatBytes } from "../../lib/utils";
+import type { DownloadSharingSnapshot, DownloadTelemetrySummary, MonitoringPerformanceSummary } from "../../lib/api";
 import type { ActiveDownload } from "../../lib/media-types";
 
 interface Stage {
@@ -34,6 +34,7 @@ export function AcquisitionPipeline({
   summary,
   performance,
   inFlight = [],
+  sharing,
   showProcessing = false,
   className
 }: {
@@ -46,6 +47,12 @@ export function AcquisitionPipeline({
    * one screen — the counts here and the rows there (#270).
    */
   inFlight?: ActiveDownload[];
+  /**
+   * What the download clients still hold after import (#288). The last stage of
+   * the pipeline and the only one whose cost is measured in disk rather than
+   * time, so it is the one a user goes looking for when a drive fills up.
+   */
+  sharing?: DownloadSharingSnapshot | null;
   /** True when a post-processor is configured, so the extra stage is real. */
   showProcessing?: boolean;
   className?: string;
@@ -56,6 +63,8 @@ export function AcquisitionPipeline({
   // separately, so the two stages can be told apart (#270).
   const waitingForProcessor = summary.waitingForProcessorCount ?? 0;
   const importing = Math.max(0, summary.processingCount - waitingForProcessor);
+
+  const holds = sharing?.holds ?? [];
 
   const stages: Stage[] = [
     { label: "Queued", short: "Queued", count: summary.queuedCount, tone: "idle" },
@@ -68,10 +77,20 @@ export function AcquisitionPipeline({
       ? [{ label: "Processing", short: "Process", count: waitingForProcessor, tone: "info" as LedTone }]
       : []),
     { label: "Ready to import", short: "Ready", count: summary.importReadyCount, tone: "idle" },
-    { label: "Importing", short: "Import", count: importing, tone: "ok" }
+    { label: "Importing", short: "Import", count: importing, tone: "ok" },
+    // The tail of the flow, and the only stage that is already *finished* —
+    // these are in the library, and what is left is an obligation to the site
+    // the release came from. It appears only once there is something in it, so
+    // an install that reclaims immediately never carries a permanent zero.
+    ...(holds.length
+      ? [{ label: "Sharing", short: "Share", count: holds.length, tone: "info" as LedTone }]
+      : [])
   ];
 
-  const total = stages.reduce((sum, stage) => sum + stage.count, 0);
+  // Sharing is deliberately outside the count: everything else here is on its
+  // way to the library, and folding in work that has already arrived would
+  // make "in the pipeline" mean two different things at once.
+  const total = stages.reduce((sum, stage) => sum + stage.count, 0) - holds.length;
   const timings = buildTimings(performance);
   const moving = summary.activeCount > 0 || summary.processingCount > 0;
 
@@ -173,6 +192,8 @@ export function AcquisitionPipeline({
         </div>
       ) : null}
 
+      {holds.length ? <SharingHolds sharing={sharing!} /> : null}
+
       {timings.length ? (
         // How fast the pipeline actually runs, averaged over completed work.
         // Absent until Deluno has measured enough of it to say.
@@ -185,6 +206,70 @@ export function AcquisitionPipeline({
         </footer>
       ) : null}
     </section>
+  );
+}
+
+/**
+ * What the download clients are still holding, and what it is costing (#288).
+ *
+ * This is the answer to "why is my drive full" — the question that otherwise
+ * sends someone into a torrent client, which is exactly the tool Deluno exists
+ * to replace. Every title here is already safely in the library; what is shown
+ * is the *other* copy, still being shared because the site it came from expects
+ * it.
+ *
+ * The sentence on each row is the evaluator's own, recorded when it decided.
+ * Nothing is reworded here, so what the dashboard says and what Deluno will
+ * actually do cannot drift apart.
+ */
+function SharingHolds({ sharing }: { sharing: DownloadSharingSnapshot }) {
+  const { holds, extraBytes, driveNote } = sharing;
+  const needsYou = holds.some((hold) => hold.needsYou);
+
+  return (
+    <div className="relative border-t border-hairline">
+      <div className="flex items-baseline justify-between gap-3 px-[var(--card-pad-x)] pt-2">
+        <span className="flex items-center gap-1.5 text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+          <StatusLed tone={needsYou ? "warn" : "info"} size={5} pulse={false} />
+          Finished, still sharing
+        </span>
+        <span className="shrink-0 text-[length:var(--type-micro)] tabular-nums text-muted-foreground">
+          {/* Zero extra bytes is not nothing to say — it is the whole benefit of
+              having downloads and library share one set of file data, and a
+              user who reads it stops worrying about the number of titles.
+
+              A total is only worth stating when there is something to total. On
+              a single hold it would sit directly above that row's own size and
+              print the same number twice. */}
+          {extraBytes <= 0
+            ? "no extra space"
+            : holds.length > 1
+              ? `${holds.length} titles · using ${formatBytes(extraBytes)}`
+              : null}
+        </span>
+      </div>
+
+      <ul className={cn("max-h-[112px] overflow-y-auto", driveNote ? null : "pb-2")}>
+        {holds.slice(0, 8).map((hold) => (
+          <li
+            key={`${hold.clientId}:${hold.queueItemId}`}
+            className="flex items-baseline justify-between gap-2 px-[var(--card-pad-x)] py-1"
+          >
+            <span className="min-w-0 flex-1 truncate text-[length:var(--type-caption)] text-foreground">
+              <span className="font-medium">{hold.title}</span>
+              <span className="text-muted-foreground"> · {hold.detail}</span>
+            </span>
+            <span className="shrink-0 text-[length:var(--type-micro)] tabular-nums text-muted-foreground">
+              {hold.sharesLibraryCopy ? "shares your copy" : formatBytes(hold.sizeBytes)}
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      {driveNote ? (
+        <p className="px-[var(--card-pad-x)] pb-2 text-[length:var(--type-micro)] text-muted-foreground">{driveNote}</p>
+      ) : null}
+    </div>
   );
 }
 

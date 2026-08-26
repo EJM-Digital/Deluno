@@ -315,7 +315,11 @@ public sealed class DelunoHeartbeatWorker(
                     downloadClientTelemetryService,
                     scope.ServiceProvider.GetRequiredService<IPlatformSettingsRepository>(),
                     scope.ServiceProvider.GetRequiredService<IConnectionsRepository>(),
+                    librariesRepository,
                     activityFeedRepository,
+                    scope.ServiceProvider.GetRequiredService<IDownloadSharingRepository>(),
+                    movieCatalogRepository,
+                    seriesCatalogRepository,
                     scope.ServiceProvider.GetRequiredService<SharingReclaimService>(),
                     stoppingToken);
             }

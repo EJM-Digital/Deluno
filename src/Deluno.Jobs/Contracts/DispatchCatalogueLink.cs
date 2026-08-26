@@ -14,8 +14,15 @@ namespace Deluno.Jobs.Contracts;
 /// which source's rule applies to it (#288). Empty when the dispatch predates
 /// the field or the grab recorded no source.
 /// </param>
+/// <param name="LibraryId">
+/// The library the release was grabbed for. Needed to tell whether the download
+/// client's copy and the library's are one set of file data or two — the
+/// difference between sharing costing nothing and sharing filling a drive
+/// (#288). Empty where the dispatch recorded no library.
+/// </param>
 public sealed record DispatchCatalogueLink(
     string DispatchId,
     string EntityType,
     string EntityId,
-    string IndexerName = "");
+    string IndexerName = "",
+    string LibraryId = "");

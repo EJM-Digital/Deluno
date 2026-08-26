@@ -291,6 +291,16 @@ export interface IndexerItem {
   disabledReason: string | null;
   createdUtc: string;
   updatedUtc: string;
+  /**
+   * This source's own sharing rule (#288). Null everywhere means "inherit the
+   * global setting", which is what almost every source does — the requirement
+   * comes from the site, so only a site that is stricter has to say anything.
+   */
+  sharingMode?: string | null;
+  sharingForHours?: number | null;
+  sharingUntilRatio?: number | null;
+  sharingStuckAction?: string | null;
+  sharingStuckAfterDays?: number | null;
 }
 
 export interface OutboundThrottleHostState {
@@ -613,6 +623,36 @@ export interface DownloadTelemetryOverview {
   summary: DownloadTelemetrySummary;
   clients: DownloadClientTelemetrySnapshot[];
   capturedUtc: string;
+}
+
+/** One finished download the client is still sharing, and why (#288). */
+export interface DownloadSharingHold {
+  clientId: string;
+  clientName: string;
+  queueItemId: string;
+  title: string;
+  /**
+   * The evaluator's own words, recorded when it decided — never rewritten here.
+   * States only what its heading does not already say: "2 days left", not
+   * "Still sharing — 2 days left."
+   */
+  detail: string;
+  sizeBytes: number;
+  /** The rule can no longer be met and Deluno was told to ask rather than act. */
+  needsYou: boolean;
+  /** This copy and the library's are one set of file data, so sharing costs nothing. */
+  sharesLibraryCopy: boolean;
+}
+
+/** What the download clients are still holding after import (#288). */
+export interface DownloadSharingSnapshot {
+  holds: DownloadSharingHold[];
+  /** Disk held that the library copy does not already account for. */
+  extraBytes: number;
+  /** Present only when the two copies are genuinely two. */
+  driveNote: string | null;
+  /** Null when no sharing pass has run recently enough to be worth showing. */
+  observedUtc: string | null;
 }
 
 export interface ConnectionTestResponse {

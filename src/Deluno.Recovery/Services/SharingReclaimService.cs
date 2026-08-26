@@ -12,7 +12,12 @@ public sealed record SharingReclaimOutcome(
     SharingAction Action,
     string Reason,
     bool Reclaimed,
-    string? Warning = null);
+    string? Warning = null,
+    /// <summary>
+    /// The same fact without the part a surrounding heading already states.
+    /// See <see cref="SharingDecision.Detail"/>.
+    /// </summary>
+    string? Detail = null);
 
 /// <summary>
 /// Turns a sharing decision into the one action Deluno is allowed to take:
@@ -52,19 +57,39 @@ public sealed class SharingReclaimService(IDownloadClientActionGateway actions)
 
         if (decision.Action != SharingAction.Reclaim)
         {
-            return new(candidate.QueueItemId, candidate.Title, decision.Action, decision.Reason, Reclaimed: false);
-        }
-
-        var result = await actions.RemoveWithDataAsync(candidate.ClientId, candidate.QueueItemId, cancellationToken);
-        return result.Succeeded
-            ? new(candidate.QueueItemId, candidate.Title, decision.Action, decision.Reason, Reclaimed: true)
-            : new(
+            return new(
                 candidate.QueueItemId,
                 candidate.Title,
                 decision.Action,
                 decision.Reason,
                 Reclaimed: false,
-                Warning: $"Deluno asked {candidate.ClientName} to remove this and it did not: {result.Message}");
+                Detail: decision.DetailOrReason);
+        }
+
+        var result = await actions.RemoveWithDataAsync(candidate.ClientId, candidate.QueueItemId, cancellationToken);
+        if (result.Succeeded)
+        {
+            return new(
+                candidate.QueueItemId,
+                candidate.Title,
+                decision.Action,
+                decision.Reason,
+                Reclaimed: true,
+                Detail: decision.DetailOrReason);
+        }
+
+        // A client that refuses to let go is the one case where the detail is
+        // not a shorter form of the reason but a different fact entirely: the
+        // rule was met, and the removal is what failed.
+        var warning = $"Deluno asked {candidate.ClientName} to remove this and it did not: {result.Message}";
+        return new(
+            candidate.QueueItemId,
+            candidate.Title,
+            decision.Action,
+            decision.Reason,
+            Reclaimed: false,
+            Warning: warning,
+            Detail: $"{candidate.ClientName} would not let go of this — {result.Message}");
     }
 
     /// <summary>

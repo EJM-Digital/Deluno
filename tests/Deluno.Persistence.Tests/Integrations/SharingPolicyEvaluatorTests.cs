@@ -162,6 +162,34 @@ public sealed class SharingPolicyEvaluatorTests
         Assert.Contains("1.00", decision.Reason);
     }
 
+    /// <summary>
+    /// The dashboard heads this list "Finished, still sharing", so a row that
+    /// then reads "Still sharing — 2 days left" states the same thing twice.
+    /// The detail is the same fact with that half removed; the whole sentence
+    /// stays available for the activity feed, where nothing has said it yet.
+    /// </summary>
+    [Fact]
+    public void The_detail_leaves_out_what_its_heading_already_says()
+    {
+        var decision = Evaluate(Policy(forHours: 72), seedingMinutes: 24 * 60);
+
+        Assert.Equal("2 days left", decision.Detail);
+        Assert.Equal("Still sharing — 2 days left.", decision.Reason);
+        Assert.DoesNotContain("still sharing", decision.Detail!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Waiting_for_a_decision_says_so_in_the_detail()
+    {
+        var decision = Evaluate(
+            Policy(forHours: null, untilRatio: 2.0, stuck: SharingPolicy.StuckAsk, stuckAfterDays: 14),
+            ratio: 0.30,
+            seedingMinutes: 15 * 24 * 60);
+
+        Assert.Equal(SharingAction.Ask, decision.Action);
+        Assert.Contains("waiting for you to decide", decision.DetailOrReason, StringComparison.OrdinalIgnoreCase);
+    }
+
     // ── Inheritance ───────────────────────────────────────────────────────
 
     [Fact]

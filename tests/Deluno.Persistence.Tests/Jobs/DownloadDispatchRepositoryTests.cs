@@ -62,6 +62,37 @@ public sealed class DownloadDispatchRepositoryTests
         await command.ExecuteNonQueryAsync(CancellationToken.None);
     }
 
+    /// <summary>
+    /// The sharing pass reads this link to find both the site whose rule applies
+    /// and the library the release landed in — the second of which decides
+    /// whether the download client's copy costs any disk at all (#288). Losing
+    /// either makes Deluno charge a hardlinked download full price on the
+    /// dashboard, or apply the wrong site's sharing rule to it.
+    /// </summary>
+    [Fact]
+    public async Task The_dispatch_link_carries_the_source_and_the_library_it_was_grabbed_for()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T04:00:00Z"));
+
+        await new JobsSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        await InsertDispatchAsync(storage.Factory, "dispatch-a", "movies-main", "movie-1", "Sintel.2010.1080p");
+
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var link = await store.FindRecentDispatchLinkAsync("qbittorrent-main", "Sintel.2010.1080p", CancellationToken.None);
+
+        Assert.NotNull(link);
+        Assert.Equal("dispatch-a", link.DispatchId);
+        Assert.Equal("movie", link.EntityType);
+        Assert.Equal("movie-1", link.EntityId);
+        Assert.Equal("test-indexer", link.IndexerName);
+        Assert.Equal("movies-main", link.LibraryId);
+    }
+
     [Fact]
     public async Task QueryDispatches_uses_a_keyset_token_when_a_newer_dispatch_arrives_mid_walk()
     {
