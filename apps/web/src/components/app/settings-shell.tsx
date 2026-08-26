@@ -37,7 +37,6 @@ export const configurationNavAreas = [
     label: "Media Management",
     icon: "library",
     to: "/settings/libraries",
-    accent: "yellow",
     tabsInToolbar: true,
     items: librarySetupNavItems
   },
@@ -46,7 +45,6 @@ export const configurationNavAreas = [
     label: "Quality & Release",
     icon: "plans",
     to: "/settings/profiles",
-    accent: "blue",
     tabsInToolbar: true,
     items: [
       { to: "/settings/profiles", label: "Quality Profiles", end: false },
@@ -60,7 +58,6 @@ export const configurationNavAreas = [
     label: "Find & Download",
     icon: "connections",
     to: "/indexers/indexers",
-    accent: "green",
     tabsInToolbar: true,
     items: [
       { to: "/indexers/indexers", label: "Indexers", end: false },
@@ -73,7 +70,6 @@ export const configurationNavAreas = [
     label: "Automation & Recovery",
     icon: "automation",
     to: "/search-cycles",
-    accent: "orange",
     tabsInToolbar: true,
     items: automationNavItems
   },
@@ -82,7 +78,6 @@ export const configurationNavAreas = [
     label: "Discover Media",
     icon: "discover",
     to: "/settings/lists",
-    accent: "violet",
     tabsInToolbar: true,
     items: [{ to: "/settings/lists", label: "Import Lists", end: false }]
   }
@@ -118,7 +113,6 @@ export const maintenanceNavItems = [
     label: "Preferences",
     icon: "setup",
     to: "/settings/general",
-    accent: "blue",
     tabsInToolbar: true,
     items: systemSettingsNavItems
   },
@@ -127,7 +121,6 @@ export const maintenanceNavItems = [
     label: "System",
     icon: "system",
     to: "/system",
-    accent: "cyan",
     tabsInToolbar: true,
     items: systemHealthNavItems
   }
@@ -331,7 +324,7 @@ export function SettingsWorkspaceLayout() {
 export function SystemWorkspaceLayout() {
   return (
     <div className="flex flex-col gap-[var(--page-gap)]">
-      <PageToolbar tabs={systemHealthNavItems} accent="cyan" />
+      <PageToolbar tabs={systemHealthNavItems} />
       <SystemWorkspaceContext.Provider value>
         <Outlet />
       </SystemWorkspaceContext.Provider>

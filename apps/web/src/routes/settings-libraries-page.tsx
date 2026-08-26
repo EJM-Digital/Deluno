@@ -249,7 +249,7 @@ export function SettingsLibrariesPage() {
 
   return (
     <div className="grid gap-[var(--page-gap)]">
-      <PageToolbar tabs={setupTabs} accent="yellow" actions={<PageToolbarAction onClick={openCreate}>New library</PageToolbarAction>} />
+      <PageToolbar tabs={setupTabs} actions={<PageToolbarAction onClick={openCreate}>New library</PageToolbarAction>} />
 
       <ListCard
         title="Libraries"

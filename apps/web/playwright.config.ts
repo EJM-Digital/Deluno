@@ -20,6 +20,20 @@ const dotnetCommand = process.platform === "win32" && fs.existsSync(repoLocalDot
 // the source revision under test, not an older artifact left in bin/Release.
 const backendCommand = `${dotnetCommand} run --project ../../src/Deluno.Host/Deluno.Host.csproj --configuration Release --no-launch-profile`;
 
+/**
+ * #291 — decision: `baseURL` stays on the preview server, and a named set of
+ * journeys runs against Deluno.Host instead.
+ *
+ * The preview server is faster and keeps the UI suite decoupled from host build
+ * times, which is worth keeping for 260 tests. But it does not exist in a real
+ * install, so nothing was walking the path that actually ships — which is how an
+ * app that rendered as raw source in every browser passed the whole suite.
+ *
+ * So: the `shipped` project below points a real browser at the host itself and
+ * runs `tests/shipped/`, the short list of journeys that answer "does the
+ * installed app work at all". Anything about how the binary serves its own front
+ * end — content types, the SPA fallback, asset paths — belongs there.
+ */
 export default defineConfig({
   testDir: "./tests",
   // The smoke suite shares one disposable API and static production-bundle server.
@@ -79,14 +93,22 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
+      testIgnore: /shipped[\\/]/,
       use: { ...devices["Desktop Chrome"] }
     },
     {
       name: "mobile",
+      testIgnore: /shipped[\\/]/,
       use: {
         ...devices["Pixel 7"],
         browserName: "chromium"
       }
+    },
+    {
+      // The thing that actually ships: Deluno.Host serving its own front end.
+      name: "shipped",
+      testMatch: /shipped[\\/].*\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"], baseURL: smokeApiUrl }
     }
   ]
 });

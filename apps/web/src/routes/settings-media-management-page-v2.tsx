@@ -152,7 +152,7 @@ function FileHandlingPage() {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-[var(--page-gap)]" noValidate>
-      <PageToolbar tabs={librarySetupNavItems} accent="yellow" />
+      <PageToolbar tabs={librarySetupNavItems} />
 
       <ListCard title="Naming" count="The titles people see in your library">
         <div className="grid md:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.8fr)]">
@@ -266,7 +266,7 @@ function ImportPolicyPage() {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-[var(--page-gap)]" noValidate>
-      <PageToolbar tabs={librarySetupNavItems} accent="yellow" />
+      <PageToolbar tabs={librarySetupNavItems} />
 
       <ListCard title="Import Policy" count="What Deluno does after a download finishes">
         <ImportPolicyFields
@@ -473,7 +473,7 @@ function ProcessingWorkflowPage() {
 
   return (
     <div className="grid gap-[var(--page-gap)]">
-      <PageToolbar tabs={librarySetupNavItems} accent="yellow" actions={<PageToolbarAction variant="outline" onClick={openCallback}>Connect processor</PageToolbarAction>} />
+      <PageToolbar tabs={librarySetupNavItems} actions={<PageToolbarAction variant="outline" onClick={openCallback}>Connect processor</PageToolbarAction>} />
 
       <ListCard title="Finished download workflow" count="Select a library to choose what happens next">
         {libraries.length === 0 ? (

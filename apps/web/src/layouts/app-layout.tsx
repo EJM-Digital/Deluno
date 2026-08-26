@@ -33,7 +33,6 @@ import { commandPaletteShortcut } from "../lib/platform-shortcuts";
 import { UnsavedChangesProvider } from "../components/shell/unsaved-changes-provider";
 import { configurationNavAreas, maintenanceNavItems, settingsPageMeta } from "../components/app/settings-shell";
 import { DelunoNavGlyph, type DelunoNavGlyphKind } from "../components/shell/deluno-nav-glyph";
-import { TOOLBAR_ACCENT_COLOURS, type ToolbarAccent } from "../components/ui/page-toolbar";
 
 /** The shape both sidebar area lists share. */
 interface NavArea {
@@ -41,49 +40,33 @@ interface NavArea {
   label: string;
   icon: DelunoNavGlyphKind;
   to: string;
-  accent: ToolbarAccent;
   tabsInToolbar: boolean;
   items: readonly { to: string; label: string; end: boolean }[];
 }
 
-function navAccentStyle(accent: ToolbarAccent) {
-  const colour = TOOLBAR_ACCENT_COLOURS[accent];
-  return {
-    "--nav-accent": `hsl(${colour})`,
-    "--nav-accent-soft": `hsl(${colour} / 0.14)`,
-    "--nav-accent-border": `hsl(${colour} / 0.3)`
-  } as CSSProperties;
-}
-
 /**
- * The accent of the area the current route belongs to, or null for pages that
- * belong to no area (login, setup, a media detail page).
+ * Navigation is monochrome and the accent marks only where you are (#290).
  *
- * Primary buttons take this, so a toolbar's "New …" and the empty-state button
- * for the same action can no longer be two different colours (#256). The
- * toolbar already painted its own primary this way; everything else on the
- * page kept the global blue and fought it.
+ * Six per-area hues used to be lit at rest, and three of them were the exact
+ * values of `--success`, `--warning` and `--info`. Colour was doing two
+ * incompatible jobs: green meant *Healthy* on the dashboard and *Find &
+ * Download* in the sidebar, permanently. Healthy is a colour you scan for the
+ * absence of, so a permanently part-green sidebar made that scan meaningless.
+ * Hue now belongs to state, and the one accent left is the brand blue that
+ * buttons, links and focus rings already use.
+ *
+ * `--page-accent` keeps its name and its job from #256 — a toolbar's "New …"
+ * and the empty-state button for the same action are still one colour — it is
+ * simply the same colour everywhere now.
  */
-function pageAccentFor(pathname: string): ToolbarAccent | null {
-  const areas = [...configurationNavAreas, ...maintenanceNavItems];
-  const area = areas.find((candidate) => candidate.match(pathname));
-  if (area) return area.accent;
-
-  const media = [...libraryNav, ...operationsNav].find((item) =>
-    item.end ? pathname === item.to : pathname.startsWith(item.to)
-  );
-  return media?.accent ?? null;
-}
-
-function pageAccentStyle(accent: ToolbarAccent | null): CSSProperties {
-  if (!accent) return {};
-  const colour = TOOLBAR_ACCENT_COLOURS[accent];
-  return {
-    "--page-accent": `hsl(${colour})`,
-    "--page-accent-image": `linear-gradient(to bottom, hsl(${colour}), hsl(${colour}))`,
-    "--page-accent-foreground": "hsl(var(--background))"
-  } as CSSProperties;
-}
+const NAV_ACCENT_STYLE = {
+  "--nav-accent": "hsl(var(--primary))",
+  "--nav-accent-soft": "hsl(var(--primary) / 0.14)",
+  "--nav-accent-border": "hsl(var(--primary) / 0.3)",
+  "--page-accent": "hsl(var(--primary))",
+  "--page-accent-image": "linear-gradient(to bottom, hsl(var(--primary)), hsl(var(--primary)))",
+  "--page-accent-foreground": "hsl(var(--background))"
+} as CSSProperties;
 
 function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
@@ -93,15 +76,15 @@ function isEditableTarget(target: EventTarget | null) {
 }
 
 const libraryNav = [
-  { to: "/", label: "Dashboard", icon: "dashboard", end: true, attention: "none" as const, accent: "blue" as const },
-  { to: "/movies", label: "Movies", icon: "movies", end: false, attention: "movies" as const, accent: "yellow" as const },
-  { to: "/tv", label: "TV Shows", icon: "shows", end: false, attention: "tv" as const, accent: "yellow" as const },
-  { to: "/calendar", label: "Schedule", icon: "schedule", end: false, attention: "none" as const, accent: "blue" as const }
+  { to: "/", label: "Dashboard", icon: "dashboard", end: true, attention: "none" as const },
+  { to: "/movies", label: "Movies", icon: "movies", end: false, attention: "movies" as const },
+  { to: "/tv", label: "TV Shows", icon: "shows", end: false, attention: "tv" as const },
+  { to: "/calendar", label: "Schedule", icon: "schedule", end: false, attention: "none" as const }
 ] as const;
 
 const operationsNav = [
-  { to: "/queue", label: "Transfers", icon: "transfers", end: false, attention: "activity" as const, accent: "orange" as const },
-  { to: "/activity", label: "Activity", icon: "activity", end: false, attention: "activity" as const, accent: "green" as const }
+  { to: "/queue", label: "Transfers", icon: "transfers", end: false, attention: "activity" as const },
+  { to: "/activity", label: "Activity", icon: "activity", end: false, attention: "activity" as const }
 ] as const;
 
 const densityChoices: Density[] = ["compact", "comfortable", "spacious", "expanded"];
@@ -286,7 +269,7 @@ function AppLayoutContent() {
               id="main-content"
               className="w-full min-w-0"
               style={{
-                ...pageAccentStyle(pageAccentFor(location.pathname)),
+                ...NAV_ACCENT_STYLE,
                 paddingInline: "var(--content-pad-inline)",
                 // Toolbar pages use the same flush title → rail rhythm as the
                 // settings reference page. Ordinary pages retain the normal
@@ -565,10 +548,9 @@ function AreaRow({
 }) {
   const showChildren = !area.tabsInToolbar && area.items.some((item) => item.to !== area.to);
   const areaIsActive = area.match(pathname);
-  const accentStyle = navAccentStyle(area.accent);
 
   return (
-    <div style={accentStyle}>
+    <div style={NAV_ACCENT_STYLE}>
       <div className="flex min-h-[var(--shell-pill-height)] items-center gap-1">
         <NavLink
           to={area.to}
@@ -584,7 +566,7 @@ function AreaRow({
                 "flex h-[var(--shell-icon-col)] w-[var(--shell-icon-col)] shrink-0 items-center justify-center rounded-[8px] border transition-colors",
                 isActive || areaIsActive
                   ? "border-[var(--nav-accent-border)] bg-transparent text-[var(--nav-accent)]"
-                  : "border-hairline/70 bg-surface-2/70 text-[var(--nav-accent)] opacity-75 group-hover:border-[var(--nav-accent-border)] group-hover:opacity-100"
+                  : "border-hairline/70 bg-surface-2/70 text-muted-foreground group-hover:border-[var(--nav-accent-border)] group-hover:text-[var(--nav-accent)]"
               )}
             >
               <DelunoNavGlyph kind={area.icon} className="h-[var(--shell-icon-size)] w-[var(--shell-icon-size)]" />
@@ -675,16 +657,15 @@ function SidebarItem({
   item,
   count
 }: {
-  item: { to: string; label: string; icon: DelunoNavGlyphKind; end: boolean; accent: ToolbarAccent };
+  item: { to: string; label: string; icon: DelunoNavGlyphKind; end: boolean };
   count: number;
 }) {
-  const accentStyle = navAccentStyle(item.accent);
 
   return (
     <NavLink
       to={item.to}
       end={item.end}
-      style={accentStyle}
+      style={NAV_ACCENT_STYLE}
       className={({ isActive }) =>
         cn(
           "group relative flex min-h-[var(--shell-pill-height)] items-center gap-2.5 rounded-lg px-[var(--shell-nav-inset)] text-[length:var(--shell-nav-size)] font-semibold transition-colors duration-150",
@@ -700,7 +681,7 @@ function SidebarItem({
                 "flex h-[var(--shell-icon-col)] w-[var(--shell-icon-col)] shrink-0 items-center justify-center rounded-[8px] border transition-colors",
                 isActive
                 ? "border-[var(--nav-accent-border)] bg-transparent text-[var(--nav-accent)]"
-                : "border-hairline/70 bg-surface-2/70 text-[var(--nav-accent)] opacity-75 group-hover:border-[var(--nav-accent-border)] group-hover:opacity-100"
+                : "border-hairline/70 bg-surface-2/70 text-muted-foreground group-hover:border-[var(--nav-accent-border)] group-hover:text-[var(--nav-accent)]"
             )}
           >
             <DelunoNavGlyph kind={item.icon} className="h-[var(--shell-icon-size)] w-[var(--shell-icon-size)]" />

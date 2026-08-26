@@ -109,7 +109,7 @@ export function SettingsMetadataPage() {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-[var(--page-gap)]" noValidate>
-      <PageToolbar tabs={librarySetupNavItems} accent="yellow" />
+      <PageToolbar tabs={librarySetupNavItems} />
 
       <ListCard title="Metadata files" count="Optional information stored beside your media">
         <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">

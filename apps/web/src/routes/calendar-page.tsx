@@ -154,7 +154,6 @@ export function CalendarPage() {
   return (
     <div className="grid gap-[var(--page-gap)]">
       <PageToolbar
-        accent="blue"
         left={
           <SegmentedControl<Scope>
             aria-label="Range"

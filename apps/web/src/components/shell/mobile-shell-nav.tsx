@@ -7,7 +7,6 @@ import { cn } from "../../lib/utils";
 import type { AttentionSnapshot } from "../../lib/use-attention";
 import { configurationNavAreas, maintenanceNavItems } from "../app/settings-shell";
 import { DelunoNavGlyph, type DelunoNavGlyphKind } from "./deluno-nav-glyph";
-import { TOOLBAR_ACCENT_COLOURS, type ToolbarAccent } from "../ui/page-toolbar";
 
 /** The shape both sidebar area lists share. */
 interface MobileNavArea {
@@ -15,31 +14,28 @@ interface MobileNavArea {
   label: string;
   icon: DelunoNavGlyphKind;
   to: string;
-  accent: ToolbarAccent;
   tabsInToolbar: boolean;
   items: readonly { to: string; label: string; end: boolean }[];
 }
 
 const PRIMARY = [
-  { to: "/", label: "Dashboard", icon: "dashboard", end: true as const, accent: "blue" as const },
-  { to: "/movies", label: "Movies", icon: "movies", end: false as const, accent: "yellow" as const },
-  { to: "/tv", label: "TV", icon: "shows", end: false as const, accent: "yellow" as const },
-  { to: "/queue", label: "Transfers", icon: "transfers", end: false as const, accent: "orange" as const }
+  { to: "/", label: "Dashboard", icon: "dashboard", end: true as const },
+  { to: "/movies", label: "Movies", icon: "movies", end: false as const },
+  { to: "/tv", label: "TV", icon: "shows", end: false as const },
+  { to: "/queue", label: "Transfers", icon: "transfers", end: false as const }
 ] as const;
 
 const DRAWER_LINKS = [
-  { to: "/calendar", label: "Schedule", icon: "schedule", group: "Your Media" as const, accent: "blue" as const },
-  { to: "/activity", label: "Activity", icon: "activity", group: "Live operations" as const, accent: "green" as const }
+  { to: "/calendar", label: "Schedule", icon: "schedule", group: "Your Media" as const },
+  { to: "/activity", label: "Activity", icon: "activity", group: "Live operations" as const }
 ] as const;
 
-function navAccentStyle(accent: ToolbarAccent) {
-  const colour = TOOLBAR_ACCENT_COLOURS[accent];
-  return {
-    "--nav-accent": `hsl(${colour})`,
-    "--nav-accent-soft": `hsl(${colour} / 0.14)`,
-    "--nav-accent-border": `hsl(${colour} / 0.3)`
-  } as CSSProperties;
-}
+/** One accent, the brand blue, marking only the active item (#290). */
+const NAV_ACCENT_STYLE = {
+  "--nav-accent": "hsl(var(--primary))",
+  "--nav-accent-soft": "hsl(var(--primary) / 0.14)",
+  "--nav-accent-border": "hsl(var(--primary) / 0.3)"
+} as CSSProperties;
 
 function moreTabActive(pathname: string): boolean {
   if (pathname.startsWith("/calendar")) return true;
@@ -98,7 +94,7 @@ export function MobileShellNav({ attention, user, onLogout }: MobileShellNavProp
                 <NavLink
                   to={tab.to}
                   end={tab.end}
-                  style={navAccentStyle(tab.accent)}
+                  style={NAV_ACCENT_STYLE}
                   className={({ isActive }) =>
                     cn(
                       "relative flex min-w-0 w-full flex-col items-center justify-center gap-0.5 px-0.5",
@@ -113,7 +109,7 @@ export function MobileShellNav({ attention, user, onLogout }: MobileShellNavProp
                       <span className="relative flex h-[var(--control-height-icon)] w-[var(--control-height-icon)] shrink-0 items-center justify-center rounded-xl transition-colors">
                         <DelunoNavGlyph
                           kind={tab.icon}
-                          className={cn("h-[calc(var(--shell-icon-size)+0.35rem)] w-[calc(var(--shell-icon-size)+0.35rem)]", isActive ? "text-[var(--nav-accent)]" : "text-[var(--nav-accent)] opacity-75")}
+                          className={cn("h-[calc(var(--shell-icon-size)+0.35rem)] w-[calc(var(--shell-icon-size)+0.35rem)]", isActive ? "text-[var(--nav-accent)]" : "text-muted-foreground")}
                         />
                         {"attention" in tab && tab.attention ? (
                           <AttentionDot
@@ -202,7 +198,7 @@ export function MobileShellNav({ attention, user, onLogout }: MobileShellNavProp
                       <SheetClose asChild>
                         <NavLink
                           to={item.to}
-                          style={navAccentStyle(item.accent)}
+                          style={NAV_ACCENT_STYLE}
                           className={cn(
                             "relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-dynamic-base font-medium transition-colors",
                             isActive
@@ -212,7 +208,7 @@ export function MobileShellNav({ attention, user, onLogout }: MobileShellNavProp
                         >
                           <DelunoNavGlyph
                             kind={item.icon as DelunoNavGlyphKind}
-                            className={cn("h-5 w-5 shrink-0", isActive ? "text-[var(--nav-accent)]" : "text-[var(--nav-accent)] opacity-75")}
+                            className={cn("h-5 w-5 shrink-0", isActive ? "text-[var(--nav-accent)]" : "text-muted-foreground")}
                           />
                           <span className="flex-1">{item.label}</span>
                         </NavLink>
@@ -271,21 +267,20 @@ function MobileAreaRow({
 }) {
   const showChildren = !area.tabsInToolbar && area.items.some((item) => item.to !== area.to);
   const isActive = area.match(pathname);
-  const accentStyle = navAccentStyle(area.accent);
 
   return (
-    <div style={accentStyle}>
+    <div style={NAV_ACCENT_STYLE}>
       <div className="flex min-h-11 items-center gap-1 rounded-xl">
         <SheetClose asChild>
           <NavLink
             to={area.to}
-            style={accentStyle}
+            style={NAV_ACCENT_STYLE}
             className={cn(
               "flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 text-dynamic-base font-bold transition-colors",
               isActive ? "text-[var(--nav-accent)]" : "text-muted-foreground hover:text-[var(--nav-accent)]"
             )}
           >
-            <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg", isActive ? "border border-[var(--nav-accent-border)] text-[var(--nav-accent)]" : "bg-muted/35 text-[var(--nav-accent)] opacity-75")}>
+            <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg", isActive ? "border border-[var(--nav-accent-border)] text-[var(--nav-accent)]" : "bg-muted/35 text-muted-foreground")}>
               <DelunoNavGlyph kind={area.icon} className="h-4 w-4" />
             </span>
             <span className="min-w-0 truncate">{area.label}</span>
