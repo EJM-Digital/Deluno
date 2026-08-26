@@ -41,6 +41,9 @@ export function sameClient(a: ClientForm, b: ClientForm) { return (Object.keys(a
  */
 export function clientFormErrors(form: ClientForm): Record<string, string> {
   const errors: Record<string, string> = {};
+  if (!CLIENT_PRESETS.some((item) => item.protocol === form.protocol)) {
+    errors.protocol = "Choose the download client you actually run.";
+  }
   if (!form.name.trim()) errors.name = "Give this client a name.";
   if (!form.host.trim()) errors.host = "Enter the host or IP.";
   if (!form.port.trim() || Number.isNaN(Number(form.port))) errors.port = "Enter a port number.";
