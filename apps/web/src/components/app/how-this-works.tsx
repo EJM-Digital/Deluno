@@ -7,15 +7,10 @@
  * which one do I touch first". So the lead states the shape of the area in one
  * breath, and the steps are the order things actually happen in.
  *
- * **It collapses, and the choice is one preference, not one per area.** An
- * explainer is furniture for someone who read it once; seven of them, always
- * open, is the same thing said seven times and a chunk of every pane spent on
- * it. Collapse any one and they all stay collapsed until you open one again.
- * A first-run install sees them open.
- *
- * **It is deliberately not tinted.** Hue in this app belongs to state (#290),
- * and an explainer is not a state — it is the same on the day everything is
- * broken as on the day nothing is.
+ * **It starts collapsed, and each area remembers its own answer.** An explainer
+ * is furniture for someone who read it once, so it asks for a click rather than
+ * a chunk of every pane. Open Media Management and Quality & Release stays shut:
+ * knowing how one area fits together says nothing about needing the next.
  *
  * Rules the copy keeps, so seven of these do not read as seven different apps:
  *
@@ -25,50 +20,37 @@
  * - **Two to four steps.** More than four is a manual, and belongs in docs.
  * - **Name the thing the user will see**, in the words the UI uses for it.
  */
-import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { ChevronDown } from "lucide-react";
+import { useCallback, useState, type ReactNode } from "react";
+import { ChevronDown, Info } from "lucide-react";
 import { cn } from "../../lib/utils";
 
-const STORAGE_KEY = "deluno-how-this-works";
-const CHANGE_EVENT = "deluno-how-this-works-change";
+const storageKey = (id: string) => `deluno-how-this-works:${id}`;
 
-function readCollapsed() {
+function readCollapsed(id: string) {
   try {
-    return window.localStorage.getItem(STORAGE_KEY) === "collapsed";
+    return window.localStorage.getItem(storageKey(id)) !== "expanded";
   } catch {
     // Private windows and blocked site data both throw here. An explainer that
     // cannot remember your choice is a small loss; one that crashes the page is
     // not acceptable.
-    return false;
+    return true;
   }
 }
 
-/**
- * One answer for every area. Panels listen for each other's changes so
- * collapsing one does not leave the next page you open still expanded.
- */
-function useCollapsedPreference(): [boolean, (next: boolean) => void] {
-  const [collapsed, setCollapsed] = useState(readCollapsed);
+function useCollapsedPreference(id: string): [boolean, (next: boolean) => void] {
+  const [collapsed, setCollapsed] = useState(() => readCollapsed(id));
 
-  useEffect(() => {
-    const sync = () => setCollapsed(readCollapsed());
-    window.addEventListener(CHANGE_EVENT, sync);
-    window.addEventListener("storage", sync);
-    return () => {
-      window.removeEventListener(CHANGE_EVENT, sync);
-      window.removeEventListener("storage", sync);
-    };
-  }, []);
-
-  const update = useCallback((next: boolean) => {
-    setCollapsed(next);
-    try {
-      window.localStorage.setItem(STORAGE_KEY, next ? "collapsed" : "expanded");
-    } catch {
-      // Remembering is the nice-to-have; collapsing right now still worked.
-    }
-    window.dispatchEvent(new Event(CHANGE_EVENT));
-  }, []);
+  const update = useCallback(
+    (next: boolean) => {
+      setCollapsed(next);
+      try {
+        window.localStorage.setItem(storageKey(id), next ? "collapsed" : "expanded");
+      } catch {
+        // Remembering is the nice-to-have; opening it right now still worked.
+      }
+    },
+    [id]
+  );
 
   return [collapsed, update];
 }
@@ -85,36 +67,34 @@ export function HowThisWorks({
   steps,
   className
 }: {
-  /** Unique per page; used to label the region for screen readers. */
+  /** Unique per page; labels the region and keys its open/closed memory. */
   id: string;
   lead: ReactNode;
   steps: readonly HowThisWorksStep[];
   className?: string;
 }) {
-  const [collapsed, setCollapsed] = useCollapsedPreference();
+  const [collapsed, setCollapsed] = useCollapsedPreference(id);
   const titleId = `${id}-how-this-works`;
   const bodyId = `${id}-how-this-works-body`;
 
   return (
-    <section aria-labelledby={titleId} className={cn("mb-4 overflow-hidden rounded-2xl border border-hairline bg-surface-2/40", className)}>
+    <section aria-labelledby={titleId} className={cn("mb-4 overflow-hidden rounded-2xl border border-info/20 bg-info/[0.04]", className)}>
       <h2 id={titleId}>
         <button
           type="button"
           aria-expanded={!collapsed}
           aria-controls={bodyId}
           onClick={() => setCollapsed(!collapsed)}
-          // Says what the click will do, rather than explaining afterwards why
-          // the next area is also closed. The alternative — a note on every
-          // collapsed panel — is the same sentence on seven pages.
-          title={collapsed ? "Show this on every area" : "Hide this on every area"}
-          className="flex w-full items-center gap-2 px-[var(--card-pad-x)] py-3 text-left transition-colors hover:bg-surface-2/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex w-full items-center gap-3 px-[var(--card-pad-x)] py-3 text-left transition-colors hover:bg-info/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <ChevronDown aria-hidden className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200", collapsed && "-rotate-90")} />
-          {/* Nothing else may go in here: the button is the heading's content,
-              so anything added becomes part of the heading's accessible name.
-              State is already carried by aria-expanded, and the "every area"
-              nuance by the title above. */}
+          {/* Nothing without aria-hidden may go in here: the button is the
+              heading's content, so anything readable becomes part of the
+              heading's accessible name. State is carried by aria-expanded. */}
+          <span aria-hidden className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-info/25 bg-info/10 text-info">
+            <Info className="h-4 w-4" />
+          </span>
           <span className="text-[length:var(--type-card-title)] font-semibold text-foreground">How this works</span>
+          <ChevronDown aria-hidden className={cn("ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200", collapsed && "-rotate-90")} />
         </button>
       </h2>
       <div id={bodyId} hidden={collapsed}>
@@ -122,7 +102,7 @@ export function HowThisWorks({
         {steps.length > 0 ? (
           <ol
             className={cn(
-              "grid border-t border-hairline",
+              "grid border-t border-info/15",
               steps.length === 2 ? "md:grid-cols-2" : steps.length === 4 ? "md:grid-cols-4" : "md:grid-cols-3"
             )}
           >
@@ -130,7 +110,7 @@ export function HowThisWorks({
               <li
                 key={step.title}
                 className={cn(
-                  "border-hairline px-[var(--card-pad-x)] py-3",
+                  "border-info/15 px-[var(--card-pad-x)] py-3",
                   index < steps.length - 1 && "md:border-r"
                 )}
               >
