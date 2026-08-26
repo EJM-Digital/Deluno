@@ -21,7 +21,6 @@ import { Drawer, DrawerDanger, DrawerFooter, DrawerSection, type DrawerSaveState
 import { Field, FieldRow } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
-import { HowThisWorks } from "../components/app/how-this-works";
 import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
 import { PresetField } from "../components/ui/preset-field";
 import { SegmentedControl } from "../components/ui/segmented-control";
@@ -336,15 +335,6 @@ export function SettingsListsPage() {
         }
       />
 
-      <HowThisWorks
-        id="discover-media"
-        lead="An import list is a source of titles, not a source of files — a public list, a watchlist, a collection — that Deluno keeps your library in step with. It only decides what to look for; finding and downloading is still the rest of the app's job."
-        steps={[
-          { title: "Point Deluno at a list", body: "Give it the list's address and say which library the titles belong in." },
-          { title: "Preview before you commit", body: "See exactly what would be added, and approve titles one at a time if you would rather not take all of them." },
-          { title: "Let it keep up", body: "Each sync adds what is new. Taking a title off the list never deletes anything already in your library." }
-        ]}
-      />
 
       <ListCard title="Import Lists" count={intakeSources.length ? `${intakeSources.length} ${intakeSources.length === 1 ? "list" : "lists"} · ${intakeSources.filter((item) => item.isEnabled).length} enabled · add titles from watchlists and feeds` : undefined}>
         {intakeSources.length === 0 ? (

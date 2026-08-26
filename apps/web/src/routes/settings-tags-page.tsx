@@ -2,7 +2,7 @@
  * Tags — list → drawer. Contracts: GET/POST /api/tags, PUT/DELETE /api/tags/{id}.
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { Link, useLoaderData, useRevalidator } from "react-router-dom";
+import { useLoaderData, useRevalidator } from "react-router-dom";
 import { Plus } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
@@ -143,28 +143,11 @@ export function SettingsTagsPage() {
         }
       />
 
-      <ListCard title="How tags are used" count="A tag is a label you can reuse across Deluno">
-        <div className="grid divide-y divide-hairline md:grid-cols-3 md:divide-x md:divide-y-0">
-          <div className="grid gap-1.5 p-[var(--card-pad-x)]">
-            <p className="text-[length:var(--type-body-sm)] font-semibold text-foreground">Route downloads</p>
-            <p className="text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">Use required or excluded tags in <Link to="/indexers/library-routing" className="text-info underline underline-offset-2">Library Routing</Link> when an indexer or download client uses categories or labels.</p>
-          </div>
-          <div className="grid gap-1.5 p-[var(--card-pad-x)]">
-            <p className="text-[length:var(--type-body-sm)] font-semibold text-foreground">Choose destinations</p>
-            <p className="text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">A <Link to="/settings/destination-rules" className="text-info underline underline-offset-2">Destination Rule</Link> can match a tag and send that title to a different folder instead of the library default.</p>
-          </div>
-          <div className="grid gap-1.5 p-[var(--card-pad-x)]">
-            <p className="text-[length:var(--type-body-sm)] font-semibold text-foreground">Organise media</p>
-            <p className="text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">Apply tags to <Link to="/movies" className="text-info underline underline-offset-2">movies</Link> or <Link to="/tv" className="text-info underline underline-offset-2">TV shows</Link> in bulk, then use them to find and manage related media.</p>
-          </div>
-        </div>
-      </ListCard>
-
-      <ListCard title="Tags" count={tags.length ? `${tags.length} ${tags.length === 1 ? "tag" : "tags"} · reusable labels for routing, destinations, and media` : undefined}>
+      <ListCard title="Tags" count={tags.length ? `${tags.length} ${tags.length === 1 ? "tag" : "tags"}` : undefined}>
         {tags.length === 0 ? (
           <ListEmpty
             title="No tags yet"
-            description="Create a label once, then reuse it in Library Routing, Destination Rules, or on your movies and shows. A tag does nothing until you apply it somewhere."
+            description="Making one takes a name and a colour. What it does depends on where you apply it afterwards."
             actions={
               <Button type="button" size="sm" onClick={() => open(null)}>
                 <Plus className="h-3.5 w-3.5" />

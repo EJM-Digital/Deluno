@@ -661,10 +661,18 @@ test.describe("dashboard workflow", () => {
     await expect(tabs.getByRole("link", { name: "Library Routing", exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Indexers", exact: true })).toBeVisible();
 
+    // The explainer belongs to the area, so it is here on the tab you land on
+    // and still here three tabs along. It starts collapsed (#296).
+    const explainer = page.getByRole("button", { name: "How this works", exact: true });
+    await expect(explainer).toHaveAttribute("aria-expanded", "false");
+
     await tabs.getByRole("link", { name: "Library Routing", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Library Routing", exact: true })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "How this works", exact: true })).toBeVisible();
-    await expect(page.getByText(/Add a category only if needed/)).toBeVisible();
+    await expect(explainer).toBeVisible();
+
+    await explainer.click();
+    await expect(page.getByText(/Add somewhere to search/)).toBeVisible();
+    await expect(page.getByText(/Tell each library which to use/)).toBeVisible();
   });
 
   test("gives downloads and imports a clear next step", async ({ page }) => {

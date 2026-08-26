@@ -20,7 +20,6 @@ import { Drawer, DrawerFooter, DrawerSection, type DrawerSaveState } from "../co
 import { Field, FieldRow } from "../components/ui/field";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { PageFooter } from "../components/ui/page-footer";
-import { HowThisWorks } from "../components/app/how-this-works";
 import { PageToolbar } from "../components/ui/page-toolbar";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { ListGroupHeader, MediaTypeFilter, useMediaTypeSplit } from "../components/ui/media-type-split";
@@ -346,15 +345,6 @@ export function SearchCyclesPage() {
         }
       />
 
-      <HowThisWorks
-        id="automation"
-        lead="Deluno can keep looking on its own — for the titles you do not have yet, and for better copies of the ones you do. This is where you say how often it looks, how much it takes on at a time, and what it should do when a download goes wrong."
-        steps={[
-          { title: "Turn it on, one library at a time", body: "Each library runs to its own schedule, so a large catalogue and a small one need not search at the same pace." },
-          { title: "Choose what it looks for", body: "Titles with no file at all, better copies of what you already have, or both. Each runs as its own cycle with its own limit." },
-          { title: "Decide how failures end", body: "How long to wait before trying again, when to stop retrying a release, and what happens to a download that never finishes." }
-        ]}
-      />
 
       {view === "overview" ? (
         <SummaryStrip

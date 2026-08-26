@@ -22,7 +22,6 @@ import { Drawer, DrawerDanger, DrawerFooter, DrawerSection, type DrawerSaveState
 import { Field, FieldRow } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
-import { HowThisWorks } from "../components/app/how-this-works";
 import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
 import { ListGroupHeader, MediaTypeFilter, useMediaTypeSplit } from "../components/ui/media-type-split";
 import { SegmentedControl } from "../components/ui/segmented-control";
@@ -303,15 +302,6 @@ export function SettingsProfilesPage() {
         }
       />
 
-      <HowThisWorks
-        id="quality-and-release"
-        lead="Deluno scores every release it finds and takes the best one that passes. Four things shape that score, and they stack: the qualities you accept, how big a file of that quality should be, the words you want or refuse in a release name, and — last — the Library Profile that points one of your libraries at a particular set of those choices."
-        steps={[
-          { title: "Say which qualities you accept", body: "A Quality Profile lists the qualities you will take, best first, and the one good enough to stop upgrading at." },
-          { title: "Add the details that decide close calls", body: "Size Rules rule out files too small or too large to be what they claim. Release Preferences add or subtract points for things like a preferred group or an unwanted codec." },
-          { title: "Point a library at it", body: "A Library Profile attaches those choices to Movies, TV Shows, or any library you have made — so different libraries can want different things." }
-        ]}
-      />
 
       <ListCard title="Quality Profiles" count={qualityProfiles.length ? `${qualityProfiles.length} ${qualityProfiles.length === 1 ? "profile" : "profiles"} · complete quality decisions used by Library Profiles` : undefined}>
         {qualityProfiles.length === 0 ? (
