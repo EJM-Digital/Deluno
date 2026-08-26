@@ -2075,14 +2075,13 @@ public sealed class SqliteJobStore(
             grabResponseJson: notesJson,
             cancellationToken: cancellationToken);
 
-        await realtimeEventPublisher.PublishDownloadProgressAsync(
-            dispatchId,
-            releaseName,
-            0,
-            0,
-            null,
-            string.Equals(status, "failed", StringComparison.OrdinalIgnoreCase) ? "failed" : "downloading",
-            cancellationToken);
+        // No DownloadProgress here any more (#273). This fired once per grab with
+        // progress and speed both zero, under the *dispatch* id while the
+        // frontend keys its rows by the download client's queue-item id — so it
+        // announced a transfer with a number that was false and an id that
+        // matched nothing. DownloadProgressPublisher reports the client's own
+        // readings under the client's own id; that a grab happened is already
+        // said by DispatchGrabCompleted and by the activity event below.
         await realtimeEventPublisher.PublishActivityEventAddedAsync(
             Guid.CreateVersion7().ToString("N"),
             $"Deluno sent {releaseName} to {downloadClientName}.",

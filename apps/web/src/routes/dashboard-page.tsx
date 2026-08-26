@@ -54,7 +54,6 @@ import {
   writeStoredHistoryDays,
   type HistoryDays
 } from "../lib/dashboard-history-range";
-import { ACTIVE_PIPELINE_REFRESH_MS, isPipelineMoving } from "../lib/pipeline-activity";
 import { useCoalescedRevalidate } from "../hooks/use-visible-interval";
 import { StatusLed, type LedTone } from "../components/ui/status-led";
 import { RealtimeGroups, useSignalREvent, useSignalRResync } from "../lib/use-signalr";
@@ -349,21 +348,16 @@ function useDashboardData(initial: DashboardLoaderData, historyDays: HistoryDays
     initialData: historyDays === DEFAULT_HISTORY_DAYS ? source.metrics : undefined
   });
 
-  // The one query the pipeline actually moves on: its stage counts and every
-  // progress bar under them come from here, and nothing else refreshes them.
-  // `DownloadProgress` is published once per grab with progress and speed both
-  // zero, so it announces that a transfer exists rather than how far along it
-  // is — on the shared 60s heartbeat that left a transfer visibly stuck at one
-  // percentage for a minute at a time.
-  //
-  // So it polls on the work rather than the clock: a few seconds while anything
-  // is in flight, back to the heartbeat the moment the pipeline empties.
+  // The pipeline's stage counts, and the set of transfers that exist. It sits on
+  // the ordinary heartbeat again (#273): a real `DownloadProgress` publisher now
+  // carries how far along each transfer is, so the bars move on events and this
+  // no longer has to poll every three seconds to look alive. A transfer changing
+  // stage still invalidates it, because that is a count rather than a reading.
   const telemetry = useQuery({
     ...DASHBOARD_REFRESH,
     queryKey: ["telemetry"],
     queryFn: () => fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry").catch(() => EMPTY_TELEMETRY),
-    initialData: source.telemetry,
-    refetchInterval: (query) => (isPipelineMoving(query.state.data) ? ACTIVE_PIPELINE_REFRESH_MS : DASHBOARD_REFRESH.refetchInterval)
+    initialData: source.telemetry
   });
 
   // A minute-resolution series, so refreshing faster than the sampler writes
@@ -409,6 +403,10 @@ export function DashboardPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [liveSpeedMbps, setLiveSpeedMbps] = useState(() => data.speedMbps);
+  // The newest reading per download-client queue item, laid over what telemetry
+  // last returned. Cleared down to whatever telemetry still knows about, so a
+  // finished transfer cannot leave a stale bar behind (#273).
+  const [liveProgress, setLiveProgress] = useState<Record<string, { progress: number; speedMbps: number; status: string }>>({});
   // Upload has no realtime publisher of its own, so it follows the telemetry
   // poll rather than being held in state pretending otherwise.
   const liveUploadMbps = data.uploadMbps;
@@ -440,20 +438,50 @@ export function DashboardPage() {
   useSignalREvent("IndexerChanged", RealtimeGroups.Dashboard, () => invalidate([["indexers"], ["dashboard-metrics"]]));
   useSignalREvent("DownloadClientChanged", RealtimeGroups.Dashboard, () => invalidate([["download-clients"], ["telemetry"], ["dashboard-metrics"]]));
   useSignalRResync(() => { void queryClient.invalidateQueries(); });
+  // Real readings from the download client, keyed by its own queue-item id
+  // (#273). They are applied over the telemetry rows rather than triggering a
+  // refetch: a bar that only moves when the poll comes round is a bar that
+  // jumps, and asking the client again on every event would undo the point of
+  // being told.
   useSignalREvent("DownloadProgress", RealtimeGroups.Queue, (event) => {
-    // Published once, when a grab is dispatched, with progress and speed both
-    // zero. Taking that literally blanked the hero to Idle at the exact moment
-    // a download started; the guard also means a real streaming publisher
-    // would start working here without another change.
-    if (event.speedMbps > 0) {
-      setLiveSpeedMbps(event.speedMbps);
-    }
-    invalidate([["telemetry"]]);
+    setLiveProgress((current) => {
+      // A transfer changing *stage* moves the counts above the rows, and those
+      // come from telemetry rather than from this event — so a status change is
+      // the one reading worth a refetch. Progress never is: that is the whole
+      // reason for being told rather than asking.
+      if (current[event.id] && current[event.id].status !== event.status) {
+        invalidate([["telemetry"]]);
+      }
+
+      return {
+        ...current,
+        [event.id]: { progress: event.progress, speedMbps: event.speedMbps, status: event.status }
+      };
+    });
   });
 
   useEffect(() => {
     setLiveSpeedMbps(data.speedMbps);
   }, [data.speedMbps]);
+
+  // Telemetry is the authority on which transfers exist; events are only the
+  // authority on how far along they are. Dropping overlays for rows telemetry
+  // no longer lists is what stops a completed download lingering at 87%.
+  const inFlightIds = data.activeDownloads.map((download) => download.id).join(",");
+  useEffect(() => {
+    const alive = new Set(inFlightIds ? inFlightIds.split(",") : []);
+    setLiveProgress((current) => {
+      const next = Object.fromEntries(Object.entries(current).filter(([id]) => alive.has(id)));
+      return Object.keys(next).length === Object.keys(current).length ? current : next;
+    });
+  }, [inFlightIds]);
+
+  // The live speed the card shows is the sum of what the client last said about
+  // each transfer, so it moves with the bars rather than with the poll.
+  const eventSpeedMbps = data.activeDownloads.reduce(
+    (total, download) => total + (liveProgress[download.id]?.speedMbps ?? download.speedMbps),
+    0
+  );
 
   useEffect(() => {
     writeStoredHistoryDays(historyDays);
@@ -635,7 +663,7 @@ export function DashboardPage() {
             a question it has to be able to answer. */}
         <MetricChart
           label="Speed"
-          value={`${formatSpeed(liveSpeedMbps)} down`}
+          value={`${formatSpeed(data.activeDownloads.length ? eventSpeedMbps : liveSpeedMbps)} down`}
           help={`${formatSpeed(liveUploadMbps)} up · peak ${formatSpeed(peakSpeed(data.throughput))} over the last ${data.throughput?.hours ?? 6} hours`}
           series={throughputSeries(data.throughput, "down")}
           compare={{
@@ -654,7 +682,7 @@ export function DashboardPage() {
           className="xl:col-span-2"
           summary={data.sources.telemetry.summary}
           performance={data.monitoring?.performance}
-          inFlight={data.activeDownloads}
+          inFlight={data.activeDownloads.map((download) => ({ ...download, ...liveProgress[download.id] }))}
           sharing={data.sharing}
           showProcessing={data.hasProcessor}
         />
