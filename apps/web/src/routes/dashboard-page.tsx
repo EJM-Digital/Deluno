@@ -613,13 +613,17 @@ export function DashboardPage() {
           decisions above, then the three live panels. Each list panel caps its
           own height and scrolls inside itself, so one busy panel cannot push
           the rest of the board off the bottom of the page (#270). */}
+      {/* Side by side these read left-to-right: how it is, then what wants you.
+          Stacked on a phone they read top-to-bottom, and a diagnostics panel
+          above the list of things asking for a decision is the wrong way round —
+          so the two swap below the breakpoint and nowhere else (#278). */}
       <div className="grid gap-[var(--grid-gap)] xl:grid-cols-3">
-        <SystemPulse snapshot={data.monitoring} className="xl:col-span-2" />
+        <SystemPulse snapshot={data.monitoring} className="order-2 xl:order-1 xl:col-span-2" />
 
         <ListCard
           title="Needs you"
           count={attention.length === 0 ? "nothing right now" : `${attention.length}`}
-          className="xl:row-span-1"
+          className="order-1 xl:order-2 xl:row-span-1"
         >
           {attention.length === 0 ? (
             <ListEmpty title="Nothing needs a decision" description="Deluno will raise anything that wants your attention here." />
