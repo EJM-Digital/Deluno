@@ -41,6 +41,7 @@ public static class WorkerServiceCollectionExtensions
         // a second instance would reset this one's baseline (#272).
         services.AddSingleton<IMachineProbe, MachineProbe>();
         services.AddHostedService<MachineTelemetrySampler>();
+        services.AddHostedService<DownloadProgressPublisher>();
         return services;
     }
 }
