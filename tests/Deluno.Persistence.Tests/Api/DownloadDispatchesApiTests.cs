@@ -44,6 +44,8 @@ public sealed class DownloadDispatchesApiTests : IAsyncDisposable
                         services.AddSingleton<IJobScheduler, TestJobScheduler>();
                         services.AddSingleton<IDownloadDispatchesRepository>(
                             new SqliteDownloadDispatchesRepository(_storage.Factory, timeProvider));
+                        services.AddSingleton<IMachineTelemetryRepository>(
+                            new SqliteMachineTelemetryRepository(_storage.Factory));
                     })
                     .Configure(app =>
                     {

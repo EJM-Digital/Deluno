@@ -89,6 +89,7 @@ GET /api/monitoring/dashboard
 GET /api/monitoring/diagnostics
 GET /api/monitoring/export/influx
 GET /api/monitoring/export/prometheus
+GET /api/monitoring/machine
 GET /api/movies/calendar
 GET /api/movies/duplicates
 GET /api/movies/import-recovery

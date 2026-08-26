@@ -235,6 +235,34 @@ export interface MonitoringPerformanceSummary {
   apiLatency: MonitoringApiLatencySnapshot;
 }
 
+/**
+ * One reading of how hard the machine is working (#272).
+ *
+ * Nulls are meaningful: a whole-volume figure comes from the volume itself and
+ * can be refused. An absent cell says "not measured"; a zero would say "idle",
+ * which is a different and possibly false claim.
+ */
+export interface MachineTelemetrySample {
+  capturedUtc: string;
+  /** Deluno's own share of the machine, already divided by processor count. */
+  cpuPercent: number;
+  memoryBytes: number;
+  totalMemoryBytes: number | null;
+  memoryPercent: number | null;
+  /** What Deluno itself is doing to the disk — answers "is this Deluno?". */
+  processReadBytesPerSecond: number;
+  processWriteBytesPerSecond: number;
+  /** The whole volume, including everything else on the machine. */
+  diskBusyPercent: number | null;
+  diskReadBytesPerSecond: number | null;
+  diskWriteBytesPerSecond: number | null;
+}
+
+export interface MachineTelemetryWindow {
+  hours: number;
+  samples: MachineTelemetrySample[];
+}
+
 export interface MonitoringDashboardSnapshot {
   generatedUtc: string;
   readiness: MonitoringReadinessSummary;
@@ -242,6 +270,8 @@ export interface MonitoringDashboardSnapshot {
   services: MonitoringServiceSummary;
   performance: MonitoringPerformanceSummary;
   alerts: MonitoringAlertItem[];
+  /** Null before the sampler has run, or where the machine cannot be read. */
+  machine: MachineTelemetrySample | null;
 }
 
 export interface DownloadDispatchItem {
