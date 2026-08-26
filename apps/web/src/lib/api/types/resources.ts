@@ -271,6 +271,15 @@ export interface IndexerItem {
   id: string;
   name: string;
   protocol: string;
+  /**
+   * What the app you migrated from called this source: "private",
+   * "semi-private", "public", or "unknown" for anything Deluno added itself.
+   *
+   * Provenance, not configuration. Deluno branches on none of it — the sharing
+   * rule below is what changes behaviour — so nothing sets it and nothing
+   * displays it. It earns its place by pre-answering the sharing question for
+   * an imported private tracker (#288).
+   */
   privacy: string;
   baseUrl: string;
   apiKey?: string | null;

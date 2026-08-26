@@ -217,7 +217,7 @@ public sealed class SqliteConnectionsRepository(
             Id: Guid.CreateVersion7().ToString("N"),
             Name: NormalizeName(request.Name) ?? "New indexer",
             Protocol: NormalizeIndexerProtocol(request.Protocol),
-            Privacy: NormalizeIndexerPrivacy(request.Privacy),
+            Privacy: IndexerPrivacy.Normalize(request.Privacy),
             BaseUrl: NormalizePath(request.BaseUrl) ?? string.Empty,
             ApiKey: NormalizeName(request.ApiKey),
             Priority: request.Priority is >= 1 ? request.Priority.Value : 100,
@@ -312,7 +312,7 @@ public sealed class SqliteConnectionsRepository(
 
         var newName     = NormalizeName(request.Name) ?? existing.Name;
         var newProtocol = request.Protocol is not null ? NormalizeIndexerProtocol(request.Protocol) : existing.Protocol;
-        var newPrivacy  = request.Privacy is not null ? NormalizeIndexerPrivacy(request.Privacy) : existing.Privacy;
+        var newPrivacy  = request.Privacy is not null ? IndexerPrivacy.Normalize(request.Privacy) : existing.Privacy;
         var newBaseUrl  = NormalizePath(request.BaseUrl) ?? existing.BaseUrl;
         var newApiKey   = request.ApiKey is not null ? NormalizeName(request.ApiKey) : existing.ApiKey;
         var newPriority = request.Priority is >= 1 ? request.Priority.Value : existing.Priority;
@@ -922,16 +922,6 @@ public sealed class SqliteConnectionsRepository(
             "shows" => "tv",
             "series" => "tv",
             _ => "both"
-        };
-    }
-
-    private static string NormalizeIndexerPrivacy(string? value)
-    {
-        var normalized = value?.Trim().ToLowerInvariant();
-        return normalized switch
-        {
-            "private" => "private",
-            _ => "public"
         };
     }
 

@@ -31,7 +31,7 @@ import { Switch } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { CLIENT_PRESETS, INDEXER_PRESETS } from "./connections/presets";
-import { STRICT_SHARING, clientFormFrom, emptyClientForm, emptyIndexerForm, indexerFormFrom, sameClient, sameIndexer, sameSet, type ClientForm, type DrawerState, type IndexerForm, type Section } from "./connections/forms";
+import { STRICT_SHARING, clientFormFrom, emptyClientForm, emptyIndexerForm, indexerFormFrom, sameClient, sameIndexer, sameSet, sharingRuleFrom, type ClientForm, type DrawerState, type IndexerForm, type Section } from "./connections/forms";
 import { formatSeconds, healthChip, indexerHost, protocolLabel, relative, scopeLabel } from "./connections/format";
 import { ClientDrawerBody } from "./connections/client-drawer-body";
 import { IndexerDrawerBody } from "./connections/indexer-drawer-body";
@@ -251,10 +251,11 @@ export function IndexersPage() {
         const payload = {
           name: indexerForm.name.trim(),
           protocol: indexerForm.protocol,
-          // Only on create. The drawer has no privacy control, so sending it on
-          // every save relabelled any indexer a user merely edited as private —
-          // including public ones that had been added correctly.
-          ...(drawer.id ? {} : { privacy: "private" }),
+          // Privacy is not sent at all. Deluno branches on none of it, nobody
+          // can set it here, and guessing "private" for every hand-added source
+          // was inventing provenance. It stays a fact a migration imports from
+          // the app you came from, where it seeds the sharing rule that does
+          // change behaviour.
           baseUrl: indexerForm.baseUrl.trim(),
           apiKey: indexerForm.apiKey.trim() || undefined,
           priority: Number(indexerForm.priority || 10),
@@ -473,7 +474,12 @@ export function IndexersPage() {
                 return (
                   <ListRow key={item.id} onClick={() => openIndexer(item)} selected={drawer.kind === "indexer" && drawer.id === item.id}>
                     <ListNameCell name={item.name} sub={<span className="font-mono">{item.baseUrl}</span>} />
-                    <ListCell primary={protocolLabel(item.protocol)} secondary={item.privacy === "private" ? "Private" : "Public"} />
+                    {/* "Private"/"Public" was a label nobody could set, Deluno
+                        never read, and two normalisers disagreed about. What a
+                        person actually wants to know about a source at a glance
+                        is what it expects back — and only when that differs from
+                        their normal rule. */}
+                    <ListCell primary={protocolLabel(item.protocol)} secondary={sharingRuleFrom(item) === "strict" ? "Strict sharing" : undefined} />
                     <ListCell primary={scopeLabel(item.mediaScope)} secondary={`Priority ${item.priority}`} />
                     <ListCell numeric primary={relative(item.lastHealthTestUtc)} secondary={item.consecutiveFailures > 0 ? `${item.consecutiveFailures} consecutive failure${item.consecutiveFailures === 1 ? "" : "s"}` : item.lastHealthLatencyMs != null ? `${item.lastHealthLatencyMs} ms` : item.lastHealthMessage ?? "—"} />
                     <ListCell primary={<span aria-live="polite">{throttle?.waiting ? `${throttle.waiting} request${throttle.waiting === 1 ? "" : "s"} waiting` : throttle?.nextPermitInSeconds ? `Next in ${formatSeconds(throttle.nextPermitInSeconds)}` : "Ready"}</span>} secondary={throttle ? `Deluno is pacing ${throttle.host}` : "No recent requests"} />

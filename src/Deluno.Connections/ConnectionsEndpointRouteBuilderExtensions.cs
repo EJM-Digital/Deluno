@@ -90,7 +90,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
                 "draft",
                 request.Name?.Trim() ?? "Draft indexer",
                 NormalizeIndexerProtocol(request.Protocol),
-                NormalizeIndexerPrivacy(request.Privacy),
+                IndexerPrivacy.Normalize(request.Privacy),
                 request.BaseUrl?.Trim() ?? string.Empty,
                 request.ApiKey,
                 request.Priority ?? 10,
@@ -614,15 +614,6 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             "newznab" => "newznab",
             "rss" => "rss",
             _ => "torznab"
-        };
-
-    private static string NormalizeIndexerPrivacy(string? value)
-        => value?.Trim().ToLowerInvariant() switch
-        {
-            "public" => "public",
-            "semi-private" => "semi-private",
-            "usenet" => "usenet",
-            _ => "private"
         };
 
     private static string NormalizeMediaScope(string? value)
