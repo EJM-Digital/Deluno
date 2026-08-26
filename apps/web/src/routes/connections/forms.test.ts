@@ -27,6 +27,21 @@ describe("create form defaults", () => {
 });
 
 describe("client validation", () => {
+  /**
+   * #292 — a client saved by an older Deluno can carry a protocol nothing can
+   * dispatch to. The drawer now lets the reader change it, so the form has to
+   * refuse to save it unchanged.
+   */
+  it("refuses a protocol Deluno cannot send to", () => {
+    expect(clientFormErrors({ ...emptyClientForm(), protocol: "torrent" }).protocol).toBeTruthy();
+  });
+
+  it("accepts every protocol the client picker offers", () => {
+    for (const preset of CLIENT_PRESETS) {
+      expect(clientFormErrors({ ...emptyClientForm(), protocol: preset.protocol })).toEqual({});
+    }
+  });
+
   it("rejects a port that is not a number", () => {
     expect(clientFormErrors({ ...emptyClientForm(), port: "eight" }).port).toBeTruthy();
   });

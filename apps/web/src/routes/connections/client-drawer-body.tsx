@@ -46,6 +46,21 @@ export function ClientDrawerBody({
 }) {
   const [pathMappingOpen, setPathMappingOpen] = useState(false);
   const preset = CLIENT_PRESETS.find((item) => item.protocol === form.protocol);
+  /**
+   * A client saved by an older Deluno can carry a protocol nothing can dispatch
+   * to — "torrent", "usenet", "custom". The connection test now says so and
+   * tells the reader to change it (#292), so the control that changes it has to
+   * be reachable: locking the picker on every existing client left that
+   * instruction impossible to follow. The picker also has to admit what is
+   * stored, because a Select whose value matches no option silently displays
+   * the first one, which had this reading "qBittorrent" while the client was a
+   * 'torrent' client and could receive nothing.
+   */
+  const unusableProtocol = Boolean(editing) && !CLIENT_PRESETS.some((item) => item.protocol === form.protocol);
+  const clientOptions = [
+    ...(unusableProtocol ? [{ value: form.protocol, label: `${form.protocol} — Deluno cannot send to this` }] : []),
+    ...CLIENT_PRESETS.map((item) => ({ value: item.protocol, label: `${item.label} · ${item.kind}` }))
+  ];
   const chip = editing ? healthChip(editing) : null;
   const sameCategory = form.moviesCategory && form.moviesCategory === form.tvCategory;
 
@@ -73,8 +88,8 @@ export function ClientDrawerBody({
           <Field label="Name" error={errors.name}>
             <Input value={form.name} onChange={(event) => { clearError("name"); setForm((current) => ({ ...current, name: event.target.value })); }} placeholder={preset?.label ?? "Download client"} autoComplete="off" />
           </Field>
-          <Field label="Client" help={editing ? undefined : preset?.setupHint}>
-            <Select value={form.protocol} disabled={Boolean(editing)} onChange={(event) => choosePreset(event.target.value)} options={CLIENT_PRESETS.map((item) => ({ value: item.protocol, label: `${item.label} · ${item.kind}` }))} />
+          <Field label="Client" help={unusableProtocol ? "Deluno cannot send downloads to this kind of client. Pick the one you actually run." : editing ? undefined : preset?.setupHint}>
+            <Select value={form.protocol} disabled={Boolean(editing) && !unusableProtocol} onChange={(event) => choosePreset(event.target.value)} options={clientOptions} />
           </Field>
         </FieldRow>
         <FieldRow>
