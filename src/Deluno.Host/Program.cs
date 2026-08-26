@@ -297,6 +297,12 @@ app.MapFallback(async context =>
     var indexPath = Path.Combine(
         app.Environment.WebRootPath ?? app.Environment.ContentRootPath,
         "index.html");
+
+    // SendFileAsync does not infer a content type, and Deluno sends
+    // X-Content-Type-Options: nosniff, so without this the browser is told not to
+    // guess and renders index.html as plain text. Every client-side route comes
+    // through here, so the whole app looks like raw source until it is set.
+    context.Response.ContentType = "text/html; charset=utf-8";
     await context.Response.SendFileAsync(indexPath);
 });
 
