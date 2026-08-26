@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Deluno.Contracts;
+using Deluno.Connections.Data;
 using Deluno.Infrastructure.Observability;
 using Deluno.Jobs.Data;
 using Deluno.Jobs.Decisions;
@@ -32,6 +33,7 @@ public sealed partial class ImportPipelineService(
     IOutboundNotificationService? outboundNotificationService,
     IImportResolutionsRepository? importResolutionsRepository,
     IDownloadDispatchesRepository? downloadDispatchesRepository,
+    IConnectionsRepository? connectionsRepository,
     ILogger<ImportPipelineService> logger,
     IRealtimeEventPublisher? realtimeEventPublisher)
     : IImportPipelineService
@@ -345,7 +347,10 @@ public sealed partial class ImportPipelineService(
                 }
             }
 
-            var cleanup = ApplyWorkflowCleanup(preview.SourcePath, matchedLibrary);
+            var cleanup = ApplyWorkflowCleanup(
+                preview.SourcePath,
+                matchedLibrary,
+                await IsStillSharedByClientAsync(request.DispatchId, cancellationToken));
 
             await activityFeedRepository.RecordActivityAsync(
                 "filesystem.import.completed",
@@ -1179,11 +1184,71 @@ public sealed partial class ImportPipelineService(
         }
     }
 
-    private WorkflowCleanupResult ApplyWorkflowCleanup(string sourcePath, LibraryItem? library)
+    /// <summary>
+    /// Whether the download client that fetched this still believes it owns the
+    /// file, because it is still sharing it (#287).
+    ///
+    /// Deleting such a file is not cleanup, it is sabotage: the torrent stays
+    /// registered against data that has vanished, the client errors it, sharing
+    /// stops, and on a private tracker that is the user's ratio or their
+    /// account. Usenet has no such phase, so the ordinary delete is correct
+    /// there and stays.
+    ///
+    /// An unknown answer counts as still shared. Leaving a file behind wastes
+    /// disk and says so on the dashboard; deleting one wrongly cannot be undone.
+    /// </summary>
+    private async Task<bool> IsStillSharedByClientAsync(string? dispatchId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(dispatchId) || downloadDispatchesRepository is null)
+        {
+            // No dispatch behind it: a manual import, a watched folder or an
+            // existing-library scan. No client owns it, so nobody else is going
+            // to tidy it up.
+            return false;
+        }
+
+        try
+        {
+            var dispatch = await downloadDispatchesRepository.GetDispatchAsync(dispatchId, cancellationToken);
+            if (dispatch is null || connectionsRepository is null)
+            {
+                return true;
+            }
+
+            var clients = await connectionsRepository.ListDownloadClientsAsync(cancellationToken);
+            var client = clients.FirstOrDefault(item =>
+                string.Equals(item.Id, dispatch.DownloadClientId, StringComparison.OrdinalIgnoreCase));
+
+            return client is null || DownloadProtocols.HasSharingPhase(client.Protocol);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(
+                exception,
+                "Could not tell whether a download client still owns {DispatchId}; leaving the source file alone.",
+                dispatchId);
+            return true;
+        }
+    }
+
+    private WorkflowCleanupResult ApplyWorkflowCleanup(string sourcePath, LibraryItem? library, bool stillSharedByClient)
     {
         if (library is null || !string.Equals(library.CleanupMode, "remove-source-after-import", StringComparison.OrdinalIgnoreCase))
         {
             return new WorkflowCleanupResult("keep-source", false, 0, "Source kept because this workflow is configured to retain completed downloads.");
+        }
+
+        // The sharing rule owns this file now. It knows how long the site the
+        // release came from expects it to be shared, and it removes it through
+        // the client rather than behind its back (#288). Two settings deleting
+        // the same file on different schedules is how the seeding bug happened.
+        if (stillSharedByClient)
+        {
+            return new WorkflowCleanupResult(
+                "share-then-remove",
+                false,
+                0,
+                "The download client is still sharing this, so Deluno left its copy alone. It will ask the client to remove it once your sharing rule is met.");
         }
 
         var sourceRemoved = false;

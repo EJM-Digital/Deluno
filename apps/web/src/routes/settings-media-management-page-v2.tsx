@@ -598,6 +598,15 @@ function ProcessingWorkflowPage() {
                 />
               </Field>
               <SwitchRow label="Remove empty source folders too" description={workflow.cleanupMode === "remove-source-after-import" ? "Only folders left empty by this import are removed. Deluno never removes the configured download root." : "Choose Remove after import to turn this on."} checked={workflow.removeEmptySourceFolders} onCheckedChange={(checked) => setWorkflow((current) => ({ ...current, removeEmptySourceFolders: checked }))} disabled={workflow.cleanupMode !== "remove-source-after-import"} />
+              {/* Two settings used to be able to delete the same file on
+                  different schedules, and this one deleting a torrent the client
+                  was still sharing is what broke seeding (#287). Each now has a
+                  domain, said once, where the choice is being made. */}
+              {workflow.cleanupMode === "remove-source-after-import" ? (
+                <p className="text-[length:var(--type-caption)] text-muted-foreground">
+                  This covers files Deluno found on disk. Anything it downloaded through a search source is handled by your sharing rule under Automation &amp; Recovery instead, so a download still being shared is never deleted out from under its client.
+                </p>
+              ) : null}
             </DrawerSection>
           </>
         ) : null}

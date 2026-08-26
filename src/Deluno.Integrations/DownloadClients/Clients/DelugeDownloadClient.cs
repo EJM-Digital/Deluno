@@ -41,13 +41,18 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
 
     public override async Task<DownloadClientActionResult> ExecuteActionAsync(DownloadClientItem client, string action, string queueItemId, CancellationToken cancellationToken)
     {
-        var method = action switch { "pause" => "core.pause_torrent", "resume" => "core.resume_torrent", "delete" => "core.remove_torrent", "recheck" => "core.force_recheck", _ => null };
+        var method = action switch { "pause" => "core.pause_torrent", "resume" => "core.resume_torrent", "delete" or "delete-with-data" => "core.remove_torrent", "recheck" => "core.force_recheck", _ => null };
         if (method is null) return DownloadClientHelpers.Unsupported(client, queueItemId, action, "Deluge");
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
         if (baseUri is null) return DownloadClientHelpers.MissingAddress(client, queueItemId, action);
         var http = CreateHttp();
         await LoginAsync(http, baseUri, client, cancellationToken);
-        object[] parameters = action == "delete" ? [new[] { queueItemId }, false] : [new[] { queueItemId }];
+        // core.remove_torrent's second argument is remove_data. False forgets the
+        // torrent and leaves the file; true is the only form Deluno may use on
+        // something still being shared (#287).
+        object[] parameters = action is "delete" or "delete-with-data"
+            ? [new[] { queueItemId }, action == "delete-with-data"]
+            : [new[] { queueItemId }];
         await DownloadClientHelpers.PostJsonAsync<DelugeResponse<object>>(http, new Uri(baseUri, "json"), new DelugeRequest(method, parameters, 3), cancellationToken);
         return DownloadClientHelpers.ActionSuccess(client, queueItemId, action, "Deluge action sent.");
     }
