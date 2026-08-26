@@ -110,8 +110,11 @@ export function HowThisWorks({
           className="flex w-full items-center gap-2 px-[var(--card-pad-x)] py-3 text-left transition-colors hover:bg-surface-2/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <ChevronDown aria-hidden className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200", collapsed && "-rotate-90")} />
+          {/* Nothing else may go in here: the button is the heading's content,
+              so anything added becomes part of the heading's accessible name.
+              State is already carried by aria-expanded, and the "every area"
+              nuance by the title above. */}
           <span className="text-[length:var(--type-card-title)] font-semibold text-foreground">How this works</span>
-          <span className="sr-only">{collapsed ? " — show this on every area" : " — hide this on every area"}</span>
         </button>
       </h2>
       <div id={bodyId} hidden={collapsed}>
