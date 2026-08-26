@@ -1,9 +1,9 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { FileInput, FolderTree, HelpCircle, Image, MapPinned, SlidersHorizontal, Tags, Workflow } from "lucide-react";
+import { CONFIGURATION_AREAS } from "../../lib/configuration-areas";
 import { cn } from "../../lib/utils";
 import { GlossaryModal } from "../ui/glossary-modal";
-import { HowThisWorks } from "./how-this-works";
 import { PageToolbar } from "../ui/page-toolbar";
 
 export const librarySetupNavItems = [
@@ -32,9 +32,19 @@ export const automationNavItems = [
  * toolbar is the only way between siblings. Areas still holding an unconverted
  * page keep their children, because collapsing them would leave no way in.
  */
+/**
+ * One matcher per area, shared with the explainer that opens it, so the tabs an
+ * area shows and the words that describe them cannot drift apart.
+ */
+function configurationAreaMatch(id: string) {
+  const area = CONFIGURATION_AREAS.find((item) => item.id === id);
+  if (!area) throw new Error(`Unknown configuration area: ${id}`);
+  return area.match;
+}
+
 export const configurationNavAreas = [
   {
-    match: (path: string) => path === "/settings" || librarySetupNavItems.some((item) => path.startsWith(item.to)),
+    match: configurationAreaMatch("media-management"),
     label: "Media Management",
     icon: "library",
     to: "/settings/libraries",
@@ -42,7 +52,7 @@ export const configurationNavAreas = [
     items: librarySetupNavItems
   },
   {
-    match: (path: string) => path.startsWith("/settings/policy-sets") || path.startsWith("/settings/profiles") || path.startsWith("/settings/quality") || path.startsWith("/settings/custom-formats"),
+    match: configurationAreaMatch("quality-and-release"),
     label: "Quality & Release",
     icon: "plans",
     to: "/settings/profiles",
@@ -55,7 +65,7 @@ export const configurationNavAreas = [
     ]
   },
   {
-    match: (path: string) => path.startsWith("/indexers"),
+    match: configurationAreaMatch("find-and-download"),
     label: "Find & Download",
     icon: "connections",
     to: "/indexers/indexers",
@@ -67,7 +77,7 @@ export const configurationNavAreas = [
     ]
   },
   {
-    match: (path: string) => path.startsWith("/search-cycles") || path.startsWith("/settings/automation"),
+    match: configurationAreaMatch("automation-and-recovery"),
     label: "Automation & Recovery",
     icon: "automation",
     to: "/search-cycles",
@@ -75,7 +85,7 @@ export const configurationNavAreas = [
     items: automationNavItems
   },
   {
-    match: (path: string) => path.startsWith("/settings/lists"),
+    match: configurationAreaMatch("discover-media"),
     label: "Discover Media",
     icon: "discover",
     to: "/settings/lists",
@@ -110,7 +120,7 @@ export const systemHealthNavItems = [
  */
 export const maintenanceNavItems = [
   {
-    match: (path: string) => systemSettingsNavItems.some((item) => path.startsWith(item.to)),
+    match: configurationAreaMatch("preferences"),
     label: "Preferences",
     icon: "setup",
     to: "/settings/general",
@@ -118,7 +128,9 @@ export const maintenanceNavItems = [
     items: systemSettingsNavItems
   },
   {
-    match: (path: string) => path.startsWith("/system") || path.startsWith("/setup-guide"),
+    // The guided setup is its own screen, but it lives in System as far as the
+    // sidebar is concerned, so the area stays lit while you are in it.
+    match: (path: string) => configurationAreaMatch("system")(path) || path.startsWith("/setup-guide"),
     label: "System",
     icon: "system",
     to: "/system",
@@ -326,11 +338,6 @@ export function SystemWorkspaceLayout() {
   return (
     <div className="flex flex-col gap-[var(--page-gap)]">
       <PageToolbar tabs={systemHealthNavItems} />
-      <HowThisWorks
-        id="system"
-        lead="The state of the installation rather than its contents: whether Deluno is healthy and what it is waiting on, a record of what changed and who changed it, backups to take before you touch something, updates, and the API keys anything outside Deluno needs in order to talk to it."
-        steps={[]}
-      />
       <SystemWorkspaceContext.Provider value>
         <Outlet />
       </SystemWorkspaceContext.Provider>

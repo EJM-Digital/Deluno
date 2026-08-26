@@ -24,7 +24,6 @@ import { configurationNavAreas } from "../components/app/settings-shell";
 import { Button } from "../components/ui/button";
 import { Chip } from "../components/ui/chip";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
-import { HowThisWorks } from "../components/app/how-this-works";
 import { Drawer, DrawerFooter, type DrawerSaveState } from "../components/ui/drawer";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
@@ -457,17 +456,6 @@ export function IndexersPage() {
     <div className="grid gap-[var(--page-gap)]">
       <PageToolbar tabs={TABS} actions={toolbarAction} />
 
-      {/* Outside the section switch, because it explains how the three tabs
-          relate — which is exactly what you cannot see from any one of them. */}
-      <HowThisWorks
-        id="find-and-download"
-        lead="Deluno needs two things before it can fetch anything: somewhere to search, and something to do the downloading. Neither belongs to a library on its own — the library is what says which of them to use."
-        steps={[
-          { title: "Add somewhere to search", body: "An indexer is a search source. Deluno asks every one a library is linked to, then compares what comes back before it picks a release." },
-          { title: "Add something to download with", body: "qBittorrent, SABnzbd or another client. Deluno hands the release over and watches it until the file is finished." },
-          { title: "Tell each library which to use", body: "A library can search everywhere and download anywhere, or be pinned to its own source and client. Nothing runs for a library until it has both." }
-        ]}
-      />
 
       {section === "indexers" ? (
         <ListCard title="Indexers" count={indexers.length ? `${indexers.length} ${indexers.length === 1 ? "indexer" : "indexers"} · ${healthyIndexers}/${enabledIndexers} healthy` : undefined}>
