@@ -58,20 +58,45 @@ public sealed class ProcessorConnectionServiceTests
         Assert.Contains("rejected", result.Message, StringComparison.OrdinalIgnoreCase);
     }
 
-    [Fact]
-    public async Task TestAsync_treats_a_webhook_that_rejects_head_as_reachable()
+    [Theory]
+    // 405 is what the spec says a POST-only route should answer a HEAD with.
+    [InlineData(HttpStatusCode.MethodNotAllowed, 405)]
+    // 404 is what FastAPI actually answers, and Weir is a FastAPI app. Treating
+    // this as unreachable reported a working processor as broken.
+    [InlineData(HttpStatusCode.NotFound, 404)]
+    [InlineData(HttpStatusCode.NotImplemented, 501)]
+    [InlineData(HttpStatusCode.BadRequest, 400)]
+    [InlineData(HttpStatusCode.InternalServerError, 500)]
+    public async Task TestAsync_treats_any_answer_to_the_head_probe_as_reachable(HttpStatusCode status, int expected)
     {
-        var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.MethodNotAllowed));
+        var handler = new StubHandler(_ => new HttpResponseMessage(status));
         var service = new ProcessorConnectionService(new StubHttpClientFactory(new HttpClient(handler)));
         var connection = new ProcessorConnectionItem(
-            "connection-1", "FileFlows", "fileflows-webhook", "https://processor.example.test/webhook",
-            "Authorization", null, true, "unknown", null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+            "connection-1", "Weir", "generic-webhook", "https://processor.example.test/webhook",
+            "X-Webhook-Secret", null, true, "unknown", null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
 
         var result = await service.TestAsync(connection, CancellationToken.None);
 
         Assert.True(result.IsReachable);
         Assert.Equal("degraded", result.Status);
-        Assert.Equal(405, result.StatusCode);
+        Assert.Equal(expected, result.StatusCode);
+        Assert.Contains("reachable", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task TestAsync_reports_a_processor_it_cannot_reach_at_all_as_unreachable()
+    {
+        var handler = new StubHandler(_ => throw new HttpRequestException("no route to host"));
+        var service = new ProcessorConnectionService(new StubHttpClientFactory(new HttpClient(handler)));
+        var connection = new ProcessorConnectionItem(
+            "connection-1", "Weir", "generic-webhook", "https://processor.example.test/webhook",
+            "X-Webhook-Secret", null, true, "unknown", null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+
+        var result = await service.TestAsync(connection, CancellationToken.None);
+
+        Assert.False(result.IsReachable);
+        Assert.Equal("unreachable", result.Status);
+        Assert.Null(result.StatusCode);
     }
 
     private sealed class StubHttpClientFactory(HttpClient client) : IHttpClientFactory

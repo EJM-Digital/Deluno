@@ -29,13 +29,24 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
                 return new ProcessorConnectionTestResult(connection.Id, true, "healthy", "Processor endpoint responded successfully.", statusCode, latency);
             }
 
+            // A HEAD probe answers one question: did something answer? Any HTTP status
+            // means the processor is there, so only a transport failure counts as
+            // unreachable — and that is handled in the catch below.
+            //
+            // The exception is a rejected credential, which is reachable but not usable
+            // and is worth surfacing on its own, because it is the one failure the
+            // operator can fix from this screen.
+            //
+            // Everything else is inconclusive rather than bad. Processors answer a HEAD
+            // on a POST-only route in whichever way their framework happens to: 405 is
+            // the letter of the spec, but FastAPI — which Weir and plenty of others
+            // are built on — returns 404, and treating that as "unreachable" reported a
+            // working processor as broken.
             return response.StatusCode switch
             {
                 System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden
                     => new ProcessorConnectionTestResult(connection.Id, false, "degraded", "Processor endpoint is reachable but rejected the configured credential.", statusCode, latency),
-                System.Net.HttpStatusCode.MethodNotAllowed
-                    => new ProcessorConnectionTestResult(connection.Id, true, "degraded", "Processor endpoint is reachable but does not support Deluno's safe connection check. Deluno will validate it when the first hand-off is submitted.", statusCode, latency),
-                _ => new ProcessorConnectionTestResult(connection.Id, false, "degraded", $"Processor endpoint responded with HTTP {statusCode}.", statusCode, latency)
+                _ => new ProcessorConnectionTestResult(connection.Id, true, "degraded", $"Processor endpoint is reachable but answered Deluno's safe connection check with HTTP {statusCode}, so it does not support that check. Deluno will validate the endpoint when the first hand-off is submitted.", statusCode, latency)
             };
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested && (exception is HttpRequestException or TaskCanceledException))
