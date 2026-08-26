@@ -103,11 +103,15 @@ export function HowThisWorks({
           aria-expanded={!collapsed}
           aria-controls={bodyId}
           onClick={() => setCollapsed(!collapsed)}
+          // Says what the click will do, rather than explaining afterwards why
+          // the next area is also closed. The alternative — a note on every
+          // collapsed panel — is the same sentence on seven pages.
+          title={collapsed ? "Show this on every area" : "Hide this on every area"}
           className="flex w-full items-center gap-2 px-[var(--card-pad-x)] py-3 text-left transition-colors hover:bg-surface-2/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <ChevronDown aria-hidden className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200", collapsed && "-rotate-90")} />
           <span className="text-[length:var(--type-card-title)] font-semibold text-foreground">How this works</span>
-          {collapsed ? <span className="truncate text-[length:var(--type-caption)] text-muted-foreground">— hidden on every area until you open one</span> : null}
+          <span className="sr-only">{collapsed ? " — show this on every area" : " — hide this on every area"}</span>
         </button>
       </h2>
       <div id={bodyId} hidden={collapsed}>
