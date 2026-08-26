@@ -1608,7 +1608,6 @@ function buildIndexerPayload(form: GuideForm) {
   return {
     name: form.indexerName.trim() || "Primary indexer",
     protocol: form.indexerProtocol,
-    privacy: form.indexerProtocol === "newznab" ? "usenet" : "private",
     baseUrl: form.indexerUrl.trim(),
     apiKey: form.indexerApiKey.trim() || null,
     priority: 10,

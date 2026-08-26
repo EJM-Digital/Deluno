@@ -306,10 +306,59 @@ public sealed class MigrationAssistantServiceTests
         Assert.Equal(2, (await repository.ListMigrationAuditReportsAsync(10, CancellationToken.None)).Count);
     }
 
-    private static MigrationImportRequest CreateRadarrRequest()
+    /// <summary>
+    /// A tracker the old app called private polices sharing, and #288 is what
+    /// Deluno does about that. Carrying the label across a migration but not
+    /// the obligation would let Deluno reclaim after three days on a site that
+    /// bans for it — and nobody migrating from Prowlarr should have to know
+    /// that and go back through every source by hand.
+    ///
+    /// This is the only job the privacy field has. Nothing else reads it.
+    /// </summary>
+    [Theory]
+    [InlineData("private", true)]
+    // Prowlarr writes it camel-cased, and semi-private trackers police sharing
+    // exactly the same way.
+    [InlineData("semiPrivate", true)]
+    [InlineData("public", false)]
+    // An export that does not say gets no claim either way. This used to
+    // default to "private", which was a harmless mislabel while nothing read it
+    // and would now put a strict rule on an open index.
+    [InlineData(null, false)]
+    public async Task ApplyAsync_gives_an_imported_private_tracker_the_strict_sharing_rule(string? privacy, bool expectStrict)
     {
-        const string payload =
-            """
+        using var storage = TestStorage.Create();
+        var service = await CreateServiceAsync(storage);
+
+        await service.ApplyAsync(CreateRadarrRequest(privacy), CancellationToken.None);
+
+        var indexer = Assert.Single(await CreateConnectionsRepository(storage).ListIndexersAsync(CancellationToken.None));
+
+        if (expectStrict)
+        {
+            Assert.Equal(SharingPolicy.Strict.Mode, indexer.SharingMode);
+            Assert.Equal(SharingPolicy.Strict.ForHours, indexer.SharingForHours);
+            Assert.Equal(SharingPolicy.Strict.UntilRatio, indexer.SharingUntilRatio);
+            Assert.Equal(SharingPolicy.Strict.StuckAction, indexer.SharingStuckAction);
+            Assert.Equal(SharingPolicy.Strict.StuckAfterDays, indexer.SharingStuckAfterDays);
+        }
+        else
+        {
+            // Every field null means "inherit the global rule", which is what a
+            // source Deluno knows nothing special about should do.
+            Assert.Null(indexer.SharingMode);
+            Assert.Null(indexer.SharingForHours);
+            Assert.Null(indexer.SharingUntilRatio);
+            Assert.Null(indexer.SharingStuckAction);
+            Assert.Null(indexer.SharingStuckAfterDays);
+        }
+    }
+
+    private static MigrationImportRequest CreateRadarrRequest(string? indexerPrivacy = null)
+    {
+        var privacyLine = indexerPrivacy is null ? string.Empty : $"\"privacy\": \"{indexerPrivacy}\",";
+        var payload =
+            $$"""
             {
               "qualityProfiles": [
                 {
@@ -329,6 +378,7 @@ public sealed class MigrationAssistantServiceTests
                 {
                   "name": "Migrated Torrent",
                   "protocol": "torrent",
+                  {{privacyLine}}
                   "baseUrl": "https://indexer.example/api",
                   "apiKey": "secret",
                   "categories": [2000, 2010],

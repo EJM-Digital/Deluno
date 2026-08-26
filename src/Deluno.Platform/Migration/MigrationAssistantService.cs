@@ -169,18 +169,34 @@ public sealed class MigrationAssistantService(
                 }
                 case "indexer":
                 {
+                    var privacy = GetData(operation, "privacy");
+
+                    // The one job the privacy field has (#288). A tracker the
+                    // old app called private polices sharing, and a migration
+                    // that carried the label but not the obligation would let
+                    // Deluno reclaim after three days on a site that bans for
+                    // it. Nobody migrating from Prowlarr should have to know
+                    // that and go back through every source by hand.
+                    var strict = IndexerPrivacy.ExpectsSharing(privacy);
+
                     var created = await connectionsRepository.CreateIndexerAsync(
                         new CreateIndexerRequest(
                             GetData(operation, "name"),
                             GetData(operation, "protocol"),
-                            GetData(operation, "privacy"),
+                            privacy,
                             GetData(operation, "baseUrl"),
                             GetData(operation, "apiKey"),
                             ParseInt(GetData(operation, "priority"), 100),
                             GetData(operation, "categories"),
                             GetData(operation, "tags"),
                             GetData(operation, "mediaScope"),
-                            ParseBool(GetData(operation, "isEnabled"), defaultValue: true)),
+                            ParseBool(GetData(operation, "isEnabled"), defaultValue: true),
+                            RequestIntervalSeconds: null,
+                            SharingMode: strict ? SharingPolicy.Strict.Mode : null,
+                            SharingForHours: strict ? SharingPolicy.Strict.ForHours : null,
+                            SharingUntilRatio: strict ? SharingPolicy.Strict.UntilRatio : null,
+                            SharingStuckAction: strict ? SharingPolicy.Strict.StuckAction : null,
+                            SharingStuckAfterDays: strict ? SharingPolicy.Strict.StuckAfterDays : null),
                         cancellationToken);
                     applied.Add(new MigrationAppliedItem(operation.Id, operation.TargetType, operation.Name, created.Id, "created"));
                     break;
@@ -422,7 +438,10 @@ public sealed class MigrationAssistantService(
             {
                 ["name"] = name,
                 ["protocol"] = protocol,
-                ["privacy"] = ReadString(item, "privacy") ?? "private",
+                // No default. This used to fall back to "private", which was a
+                // harmless mislabel while nothing read it and is now a claim
+                // that would put a strict sharing rule on an open index.
+                ["privacy"] = ReadString(item, "privacy"),
                 ["baseUrl"] = baseUrl,
                 ["apiKey"] = ReadFieldValue(item, "apiKey"),
                 ["priority"] = ReadInt(item, "priority")?.ToString(CultureInfo.InvariantCulture) ?? "100",

@@ -46,6 +46,23 @@ public sealed record SharingPolicy(
     public static SharingPolicy Default { get; } =
         new(ModeShareThenTidy, ForHours: 72, UntilRatio: null, StuckGiveUp, StuckAfterDays: 14);
 
+    /// <summary>
+    /// What "this site is strict" means, in one place.
+    ///
+    /// A private tracker's own rules are usually some form of "keep sharing for
+    /// a long time, give back at least what you took, and do not stop early" —
+    /// so that is what this says, rather than a number a beginner would have to
+    /// invent. Deluno never gives up on its own here: on a site that polices
+    /// hit-and-runs, reclaiming space is not worth an account.
+    ///
+    /// The web app mirrors these values in <c>STRICT_SHARING</c>
+    /// (apps/web/src/routes/connections/forms.ts) the same way it mirrors
+    /// <see cref="Default"/> in its settings snapshot. Change one, change both;
+    /// both are pinned by tests.
+    /// </summary>
+    public static SharingPolicy Strict { get; } =
+        new(ModeShareThenTidy, ForHours: 336, UntilRatio: 1.0, StuckKeepWaiting, StuckAfterDays: 14);
+
     public static string NormalizeMode(string? value)
         => value?.Trim().ToLowerInvariant() switch
         {
