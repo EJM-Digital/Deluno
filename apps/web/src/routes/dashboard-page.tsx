@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight } from "lucide-react";
 import { Link, useLoaderData, useNavigate } from "react-router-dom";
 import type { ActiveDownload, IndexerHealthItem, MediaItem } from "../lib/media-types";
@@ -297,39 +297,49 @@ const MONITORING_REFRESH = {
   refetchIntervalInBackground: false
 } as const;
 
+/**
+ * Every dashboard query, one hook each (#281).
+ *
+ * These used to be one `useQueries` tuple. TanStack infers that tuple element
+ * by element, and past roughly twenty entries — or the moment one entry gains
+ * an options callback — the inference collapses and *every* result silently
+ * widens to `{}`. It is a cliff, not a slope, and it cost two debugging
+ * sessions: nothing errors, the data still arrives, and the types quietly stop
+ * protecting anything.
+ *
+ * So the tuple is gone. The only thing it ever bought was brevity, and each
+ * hook now keeps its own type, its own cadence and its own options with no
+ * ceiling to hit. Adding the next one cannot break the ones already here.
+ *
+ * The typed boundary below is deliberate and worth keeping: `buildDashboardData`
+ * takes strongly typed parameters, which is the only reason the collapse was
+ * ever visible rather than silent.
+ */
 function useDashboardData(initial: DashboardLoaderData, historyDays: HistoryDays) {
   const source = initial.sources;
-  const [moviePage, movieWanted, showPage, showWanted, indexers, clients, libraries, automation, searchCycles, retryWindows, upcomingEpisodes, setupProgress, settings, policySets, qualityProfiles, monitoring, activity, processors] = useQueries({
-    queries: [
-      { ...DASHBOARD_REFRESH, queryKey: ["movies"], queryFn: () => fetchJson<CataloguePage<MovieListItem>>("/api/movies/page?pageSize=14&sort=added&direction=desc").catch(() => emptyDashboardSources().moviePage), initialData: source.moviePage },
-      { ...DASHBOARD_REFRESH, queryKey: ["movies", "wanted"], queryFn: () => fetchJson<MovieWantedSummary>("/api/movies/wanted").catch(() => EMPTY_MOVIE_WANTED), initialData: source.movieWanted },
-      { ...DASHBOARD_REFRESH, queryKey: ["series"], queryFn: () => fetchJson<CataloguePage<SeriesListItem>>("/api/series/page?pageSize=14&sort=added&direction=desc").catch(() => emptyDashboardSources().showPage), initialData: source.showPage },
-      { ...DASHBOARD_REFRESH, queryKey: ["series", "wanted"], queryFn: () => fetchJson<SeriesWantedSummary>("/api/series/wanted").catch(() => EMPTY_SERIES_WANTED), initialData: source.showWanted },
-      { ...DASHBOARD_REFRESH, queryKey: ["indexers"], queryFn: () => fetchJson<IndexerItem[]>("/api/indexers").catch(() => []), initialData: source.indexers },
-      { ...DASHBOARD_REFRESH, queryKey: ["download-clients"], queryFn: () => fetchJson<DownloadClientItem[]>("/api/download-clients").catch(() => []), initialData: source.clients },
-      { ...DASHBOARD_REFRESH, queryKey: ["libraries"], queryFn: () => fetchJson<LibraryItem[]>("/api/libraries").catch(() => []), initialData: source.libraries },
-      { ...DASHBOARD_REFRESH, queryKey: ["library-automation"], queryFn: () => fetchPageItems<LibraryAutomationStateItem>("/api/library-automation?pageSize=50").catch(() => []), initialData: source.automation },
-      { ...DASHBOARD_REFRESH, queryKey: ["search-cycles"], queryFn: () => fetchPageItems<SearchCycleRunItem>("/api/search-cycles?pageSize=8").catch(() => []), initialData: source.searchCycles },
-      { ...DASHBOARD_REFRESH, queryKey: ["search-retry-windows"], queryFn: () => fetchPageItems<SearchRetryWindowItem>("/api/search-retry-windows?pageSize=8").catch(() => []), initialData: source.retryWindows },
-      { ...DASHBOARD_REFRESH, queryKey: ["series", "upcoming"], queryFn: () => fetchJson<SeriesUpcomingEpisodeItem[]>("/api/series/upcoming?take=12&hours=72").catch(() => []), initialData: source.upcomingEpisodes },
-      { ...DASHBOARD_REFRESH, queryKey: ["setup-progress"], queryFn: () => fetchJson<SetupProgressItem>("/api/setup/progress").catch(() => EMPTY_SETUP_PROGRESS), initialData: source.setupProgress },
-      { ...DASHBOARD_REFRESH, queryKey: ["settings"], queryFn: () => fetchJson<PlatformSettingsSnapshot>("/api/settings").catch(() => emptyPlatformSettingsSnapshot), initialData: source.settings },
-      { ...DASHBOARD_REFRESH, queryKey: ["policy-sets"], queryFn: () => fetchJson<PolicySetItem[]>("/api/policy-sets").catch(() => []), initialData: source.policySets },
-      { ...DASHBOARD_REFRESH, queryKey: ["quality-profiles"], queryFn: () => fetchJson<QualityProfileItem[]>("/api/quality-profiles").catch(() => []), initialData: source.qualityProfiles },
-      { ...MONITORING_REFRESH, queryKey: ["monitoring-dashboard"], queryFn: () => fetchJson<MonitoringDashboardSnapshot>("/api/monitoring/dashboard").catch(() => null), initialData: source.monitoring },
-      { ...DASHBOARD_REFRESH, queryKey: ["activity", "dashboard"], queryFn: () => fetchPageItems<ActivityEventItem>("/api/activity?pageSize=10").catch(() => []), initialData: source.activity },
-      { ...DASHBOARD_REFRESH, queryKey: ["processor-connections"], queryFn: () => fetchJson<ProcessorConnectionItem[]>("/api/integrations/processors/connections").catch(() => []), initialData: source.processors }
-    ]
-  });
 
-  // Kept out of the `useQueries` tuple above: TanStack infers that tuple
-  // element by element, and past twenty entries the inference collapses and
-  // every result silently widens to `{}`.
-  //
-  // A minute-resolution series, so refreshing faster than the sampler writes
-  // would only redraw the same points.
-  // Also kept out of the tuple, and not only for the inference cliff above:
-  // the window is part of the cache key, so every range keeps its own entry and
+  const moviePage = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["movies"], queryFn: () => fetchJson<CataloguePage<MovieListItem>>("/api/movies/page?pageSize=14&sort=added&direction=desc").catch(() => emptyDashboardSources().moviePage), initialData: source.moviePage });
+  const movieWanted = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["movies", "wanted"], queryFn: () => fetchJson<MovieWantedSummary>("/api/movies/wanted").catch(() => EMPTY_MOVIE_WANTED), initialData: source.movieWanted });
+  const showPage = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["series"], queryFn: () => fetchJson<CataloguePage<SeriesListItem>>("/api/series/page?pageSize=14&sort=added&direction=desc").catch(() => emptyDashboardSources().showPage), initialData: source.showPage });
+  const showWanted = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["series", "wanted"], queryFn: () => fetchJson<SeriesWantedSummary>("/api/series/wanted").catch(() => EMPTY_SERIES_WANTED), initialData: source.showWanted });
+  const indexers = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["indexers"], queryFn: () => fetchJson<IndexerItem[]>("/api/indexers").catch((): IndexerItem[] => []), initialData: source.indexers });
+  const clients = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["download-clients"], queryFn: () => fetchJson<DownloadClientItem[]>("/api/download-clients").catch((): DownloadClientItem[] => []), initialData: source.clients });
+  const libraries = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["libraries"], queryFn: () => fetchJson<LibraryItem[]>("/api/libraries").catch((): LibraryItem[] => []), initialData: source.libraries });
+  const automation = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["library-automation"], queryFn: () => fetchPageItems<LibraryAutomationStateItem>("/api/library-automation?pageSize=50").catch((): LibraryAutomationStateItem[] => []), initialData: source.automation });
+  const searchCycles = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["search-cycles"], queryFn: () => fetchPageItems<SearchCycleRunItem>("/api/search-cycles?pageSize=8").catch((): SearchCycleRunItem[] => []), initialData: source.searchCycles });
+  const retryWindows = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["search-retry-windows"], queryFn: () => fetchPageItems<SearchRetryWindowItem>("/api/search-retry-windows?pageSize=8").catch((): SearchRetryWindowItem[] => []), initialData: source.retryWindows });
+  const upcomingEpisodes = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["series", "upcoming"], queryFn: () => fetchJson<SeriesUpcomingEpisodeItem[]>("/api/series/upcoming?take=12&hours=72").catch((): SeriesUpcomingEpisodeItem[] => []), initialData: source.upcomingEpisodes });
+  const setupProgress = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["setup-progress"], queryFn: () => fetchJson<SetupProgressItem>("/api/setup/progress").catch(() => EMPTY_SETUP_PROGRESS), initialData: source.setupProgress });
+  const settings = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["settings"], queryFn: () => fetchJson<PlatformSettingsSnapshot>("/api/settings").catch(() => emptyPlatformSettingsSnapshot), initialData: source.settings });
+  const policySets = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["policy-sets"], queryFn: () => fetchJson<PolicySetItem[]>("/api/policy-sets").catch((): PolicySetItem[] => []), initialData: source.policySets });
+  const qualityProfiles = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["quality-profiles"], queryFn: () => fetchJson<QualityProfileItem[]>("/api/quality-profiles").catch((): QualityProfileItem[] => []), initialData: source.qualityProfiles });
+  const activity = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["activity", "dashboard"], queryFn: () => fetchPageItems<ActivityEventItem>("/api/activity?pageSize=10").catch((): ActivityEventItem[] => []), initialData: source.activity });
+  const processors = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["processor-connections"], queryFn: () => fetchJson<ProcessorConnectionItem[]>("/api/integrations/processors/connections").catch((): ProcessorConnectionItem[] => []), initialData: source.processors });
+
+  // Health moves on its own clock — see MONITORING_REFRESH.
+  const monitoring = useQuery({ ...MONITORING_REFRESH, queryKey: ["monitoring-dashboard"], queryFn: () => fetchJson<MonitoringDashboardSnapshot>("/api/monitoring/dashboard").catch(() => null), initialData: source.monitoring });
+
+  // The window is part of the cache key, so every range keeps its own entry and
   // switching back to one already read is instant. The loader only ever fetches
   // the default window, so that is the only key it can legitimately seed.
   const metrics = useQuery({
@@ -347,9 +357,7 @@ function useDashboardData(initial: DashboardLoaderData, historyDays: HistoryDays
   // percentage for a minute at a time.
   //
   // So it polls on the work rather than the clock: a few seconds while anything
-  // is in flight, back to the heartbeat the moment the pipeline empties. It
-  // also has to live outside the tuple above — a `refetchInterval` callback on
-  // one entry is enough to collapse the inference for every entry.
+  // is in flight, back to the heartbeat the moment the pipeline empties.
   const telemetry = useQuery({
     ...DASHBOARD_REFRESH,
     queryKey: ["telemetry"],
@@ -358,24 +366,15 @@ function useDashboardData(initial: DashboardLoaderData, historyDays: HistoryDays
     refetchInterval: (query) => (isPipelineMoving(query.state.data) ? ACTIVE_PIPELINE_REFRESH_MS : DASHBOARD_REFRESH.refetchInterval)
   });
 
-  const throughput = useQuery({
-    ...MONITORING_REFRESH,
-    queryKey: ["download-throughput"],
-    queryFn: () => fetchJson<DownloadThroughputWindow>("/api/download-clients/throughput?hours=6").catch(() => null),
-    initialData: source.throughput
-  });
+  // A minute-resolution series, so refreshing faster than the sampler writes
+  // would only redraw the same points.
+  const throughput = useQuery({ ...MONITORING_REFRESH, queryKey: ["download-throughput"], queryFn: () => fetchJson<DownloadThroughputWindow>("/api/download-clients/throughput?hours=6").catch(() => null), initialData: source.throughput });
 
   // What the clients still hold after import (#288). Written by the worker's
   // sharing pass rather than measured here, so it moves on that pass's clock —
   // and the numbers on it are days and gigabytes, which do not reward polling
-  // any harder than the heartbeat. Outside the tuple above for the same reason
-  // as the rest: past twenty entries its inference collapses.
-  const sharing = useQuery({
-    ...DASHBOARD_REFRESH,
-    queryKey: ["download-sharing"],
-    queryFn: () => fetchJson<DownloadSharingSnapshot>("/api/download-clients/sharing").catch(() => EMPTY_SHARING),
-    initialData: source.sharing
-  });
+  // any harder than the heartbeat.
+  const sharing = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["download-sharing"], queryFn: () => fetchJson<DownloadSharingSnapshot>("/api/download-clients/sharing").catch(() => EMPTY_SHARING), initialData: source.sharing });
 
   return buildDashboardData({
     moviePage: moviePage.data ?? source.moviePage,
