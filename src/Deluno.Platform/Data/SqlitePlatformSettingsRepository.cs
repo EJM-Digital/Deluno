@@ -181,11 +181,20 @@ public sealed class SqlitePlatformSettingsRepository(
         await UpsertSettingAsync(connection, transaction, "cleanup.blockReleaseAfterThreshold", request.CleanupBlockReleaseAfterThreshold is false ? "false" : "true", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "cleanup.queueReplacementAfterThreshold", request.CleanupQueueReplacementAfterThreshold is false ? "false" : "true", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "cleanup.removeClientEntryAfterThreshold", request.CleanupRemoveClientEntryAfterThreshold == true ? "true" : "false", updatedUtc, cancellationToken);
-        await UpsertSettingAsync(connection, transaction, "sharing.mode", SharingPolicy.NormalizeMode(request.SharingMode), updatedUtc, cancellationToken);
-        await UpsertSettingAsync(connection, transaction, "sharing.forHours", request.SharingForHours?.ToString(CultureInfo.InvariantCulture) ?? string.Empty, updatedUtc, cancellationToken);
-        await UpsertSettingAsync(connection, transaction, "sharing.untilRatio", request.SharingUntilRatio?.ToString(CultureInfo.InvariantCulture) ?? string.Empty, updatedUtc, cancellationToken);
-        await UpsertSettingAsync(connection, transaction, "sharing.stuckAction", SharingPolicy.NormalizeStuckAction(request.SharingStuckAction), updatedUtc, cancellationToken);
-        await UpsertSettingAsync(connection, transaction, "sharing.stuckAfterDays", (request.SharingStuckAfterDays is > 0 ? request.SharingStuckAfterDays.Value : SharingPolicy.Default.StuckAfterDays).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
+        // The sharing rule is written only when the caller is actually setting
+        // it. Writing it on every settings PATCH meant that saving anything
+        // else — a metadata key, a rename format — silently cleared both
+        // targets, because "absent" and "deliberately cleared" are stored the
+        // same way and an untouched PATCH carries neither. Mode is the marker:
+        // the whole rule is submitted together or not at all.
+        if (!string.IsNullOrWhiteSpace(request.SharingMode))
+        {
+            await UpsertSettingAsync(connection, transaction, "sharing.mode", SharingPolicy.NormalizeMode(request.SharingMode), updatedUtc, cancellationToken);
+            await UpsertSettingAsync(connection, transaction, "sharing.forHours", request.SharingForHours?.ToString(CultureInfo.InvariantCulture) ?? string.Empty, updatedUtc, cancellationToken);
+            await UpsertSettingAsync(connection, transaction, "sharing.untilRatio", request.SharingUntilRatio?.ToString(CultureInfo.InvariantCulture) ?? string.Empty, updatedUtc, cancellationToken);
+            await UpsertSettingAsync(connection, transaction, "sharing.stuckAction", SharingPolicy.NormalizeStuckAction(request.SharingStuckAction), updatedUtc, cancellationToken);
+            await UpsertSettingAsync(connection, transaction, "sharing.stuckAfterDays", (request.SharingStuckAfterDays is > 0 ? request.SharingStuckAfterDays.Value : SharingPolicy.Default.StuckAfterDays).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
+        }
         await UpsertSettingAsync(connection, transaction, "cleanup.purgePayloadAfterThreshold", request.CleanupPurgePayloadAfterThreshold == true ? "true" : "false", updatedUtc, cancellationToken);
         if (!string.IsNullOrWhiteSpace(request.MetadataTmdbApiKey))
         {

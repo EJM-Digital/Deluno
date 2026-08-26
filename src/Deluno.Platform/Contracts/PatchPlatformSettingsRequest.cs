@@ -45,4 +45,11 @@ public sealed record PatchPlatformSettingsRequest(
     bool? CleanupBlockReleaseAfterThreshold = null,
     bool? CleanupQueueReplacementAfterThreshold = null,
     bool? CleanupRemoveClientEntryAfterThreshold = null,
-    bool? CleanupPurgePayloadAfterThreshold = null);
+    bool? CleanupPurgePayloadAfterThreshold = null,
+    string? SharingMode = null,
+    // Explicit null means "clear this half of the rule", which is why the
+    // merger below cannot use ?? for these two the way every other field does.
+    double? SharingUntilRatio = null,
+    int? SharingForHours = null,
+    string? SharingStuckAction = null,
+    int? SharingStuckAfterDays = null);
