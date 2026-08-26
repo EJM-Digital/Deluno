@@ -45,5 +45,14 @@ public static class PlatformSettingsPatchMerger
             CleanupBlockReleaseAfterThreshold: patch.CleanupBlockReleaseAfterThreshold ?? current.CleanupBlockReleaseAfterThreshold,
             CleanupQueueReplacementAfterThreshold: patch.CleanupQueueReplacementAfterThreshold ?? current.CleanupQueueReplacementAfterThreshold,
             CleanupRemoveClientEntryAfterThreshold: patch.CleanupRemoveClientEntryAfterThreshold ?? current.CleanupRemoveClientEntryAfterThreshold,
-            CleanupPurgePayloadAfterThreshold: patch.CleanupPurgePayloadAfterThreshold ?? current.CleanupPurgePayloadAfterThreshold);
+            CleanupPurgePayloadAfterThreshold: patch.CleanupPurgePayloadAfterThreshold ?? current.CleanupPurgePayloadAfterThreshold,
+            SharingMode: patch.SharingMode ?? current.SharingMode,
+            // The two targets carry meaning in their absence: a patch that sets
+            // the mode is submitting the whole rule, so a missing target there
+            // means "this half is not part of it" rather than "leave it as it
+            // was". Only a patch that does not touch sharing at all inherits.
+            SharingForHours: patch.SharingMode is null ? current.SharingForHours : patch.SharingForHours,
+            SharingUntilRatio: patch.SharingMode is null ? current.SharingUntilRatio : patch.SharingUntilRatio,
+            SharingStuckAction: patch.SharingStuckAction ?? current.SharingStuckAction,
+            SharingStuckAfterDays: patch.SharingStuckAfterDays ?? current.SharingStuckAfterDays);
 }
