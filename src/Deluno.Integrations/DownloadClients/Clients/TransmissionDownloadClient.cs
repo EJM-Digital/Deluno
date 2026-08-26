@@ -38,12 +38,15 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
 
     public override async Task<DownloadClientActionResult> ExecuteActionAsync(DownloadClientItem client, string action, string queueItemId, CancellationToken cancellationToken)
     {
-        var method = action switch { "pause" => "torrent-stop", "resume" => "torrent-start", "delete" => "torrent-remove", "recheck" => "torrent-verify", _ => null };
+        var method = action switch { "pause" => "torrent-stop", "resume" => "torrent-start", "delete" or "delete-with-data" => "torrent-remove", "recheck" => "torrent-verify", _ => null };
         if (method is null) return DownloadClientHelpers.Unsupported(client, queueItemId, action, "Transmission");
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
         if (baseUri is null) return DownloadClientHelpers.MissingAddress(client, queueItemId, action);
         var arguments = new Dictionary<string, object> { ["ids"] = new[] { DownloadClientHelpers.ParseId(queueItemId) } };
-        if (action == "delete") arguments["delete-local-data"] = false;
+        // The whole point of the distinction: "delete" forgets the torrent and
+        // leaves the file, "delete-with-data" asks Transmission to remove both.
+        // Deluno never deletes a shared file itself (#287).
+        if (action is "delete" or "delete-with-data") arguments["delete-local-data"] = action == "delete-with-data";
         await SendAsync(client, baseUri, new TransmissionRequest(method, arguments), cancellationToken);
         return DownloadClientHelpers.ActionSuccess(client, queueItemId, action, "Transmission action sent.");
     }

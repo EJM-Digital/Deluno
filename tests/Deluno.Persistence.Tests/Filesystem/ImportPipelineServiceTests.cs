@@ -1,3 +1,5 @@
+using Deluno.Connections.Contracts;
+using Deluno.Connections.Data;
 using Deluno.Filesystem;
 using Deluno.Infrastructure.Storage.Migrations;
 using Deluno.Jobs.Data;
@@ -510,6 +512,140 @@ public sealed class ImportPipelineServiceTests
         Assert.False(File.Exists(artifactPath));
     }
 
+    /// <summary>
+    /// Cleanup must never delete a file a torrent client is still sharing (#287).
+    ///
+    /// This is the bug in its original shape: turn cleanup on, import a torrent,
+    /// and Deluno deleted the completed file directly. The torrent stayed
+    /// registered against data that had vanished, so the client errored it,
+    /// seeding stopped, and on a private tracker that is the user's ratio or
+    /// their account. Deluno caused it and said nothing.
+    ///
+    /// The file now stays, and the sharing rule removes it through the client
+    /// once the obligation to the site is discharged (#288).
+    /// </summary>
+    [Theory]
+    [InlineData("qbittorrent", false)]
+    [InlineData("transmission", false)]
+    [InlineData("deluge", false)]
+    // Usenet has no sharing phase, so nobody is left holding a broken torrent
+    // and the ordinary delete is the correct thing to do.
+    [InlineData("sabnzbd", true)]
+    [InlineData("nzbget", true)]
+    public async Task Cleanup_only_deletes_a_completed_download_no_client_is_still_sharing(
+        string protocol,
+        bool expectRemoved)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-26T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Interstellar.2014.WEB.1080p.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath, cleanupMode: "remove-source-after-import");
+
+        var connections = new SqliteConnectionsRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
+        var client = await connections.CreateDownloadClientAsync(
+            new CreateDownloadClientRequest(
+                Name: "Test client", Protocol: protocol, Host: "localhost", Port: 8080,
+                Username: null, Password: null, EndpointUrl: "http://localhost:8080",
+                MoviesCategory: "movies", TvCategory: "tv", CategoryTemplate: null,
+                Priority: 1, IsEnabled: true),
+            CancellationToken.None);
+
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var dispatchId = await jobStore.RecordDownloadDispatchAsync(
+            libraryId: "movies-main", mediaType: "movies", entityType: "movie", entityId: "movie-123",
+            releaseName: "Interstellar.2014.WEB.1080p", indexerName: "TestIndexer",
+            downloadClientId: client.Id, downloadClientName: client.Name,
+            status: "sent", notesJson: null, cancellationToken: CancellationToken.None);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = new ImportPipelineService(
+            platform, libraries, movies,
+            new SqliteSeriesCatalogRepository(storage.Factory, timeProvider),
+            jobStore, new SuccessfulProbeService(),
+            new MediaDecisionService(new VersionedMediaPolicyEngine()),
+            null,
+            new NullImportResolutionsRepository(),
+            new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider),
+            connections,
+            NullLogger<ImportPipelineService>.Instance,
+            null);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath, FileName: null, MediaType: "movies",
+                    Title: "Interstellar", Year: 2014, Genres: null, Tags: null,
+                    Studio: null, OriginalLanguage: null),
+                TransferMode: "copy", Overwrite: true, AllowCopyFallback: true)
+            {
+                DispatchId = dispatchId
+            },
+            CancellationToken.None);
+
+        Assert.True(result.Response?.Executed);
+        Assert.Equal(expectRemoved, !File.Exists(sourcePath));
+
+        if (!expectRemoved)
+        {
+            // And it says so, rather than leaving the user to wonder why the
+            // download drive did not shrink.
+            Assert.Contains("still sharing", result.Response!.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    /// <summary>
+    /// A file no download client ever owned — a manual import, a watched folder,
+    /// an existing-library scan — has nobody else to tidy it, so cleanup still
+    /// removes it directly.
+    /// </summary>
+    [Fact]
+    public async Task Cleanup_still_removes_a_source_that_never_came_from_a_client()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-26T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Interstellar.2014.WEB.1080p.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath, cleanupMode: "remove-source-after-import");
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath, FileName: null, MediaType: "movies",
+                    Title: "Interstellar", Year: 2014, Genres: null, Tags: null,
+                    Studio: null, OriginalLanguage: null),
+                TransferMode: "copy", Overwrite: true, AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Response?.Executed);
+        Assert.False(File.Exists(sourcePath));
+    }
+
     [Fact]
     public async Task Import_with_dispatchId_records_resolution()
     {
@@ -562,6 +698,7 @@ public sealed class ImportPipelineServiceTests
             null, // IOutboundNotificationService — not needed in tests
             importResolutions,
             dispatches,
+            null,
             NullLogger<ImportPipelineService>.Instance,
             realtime);
 
@@ -649,6 +786,7 @@ public sealed class ImportPipelineServiceTests
             new MediaDecisionService(new VersionedMediaPolicyEngine()),
             null, // IOutboundNotificationService — not needed in tests
             new NullImportResolutionsRepository(),
+            null,
             null,
             NullLogger<ImportPipelineService>.Instance,
             null);

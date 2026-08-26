@@ -1,4 +1,5 @@
 using Deluno.Connections.Contracts;
+using Deluno.Contracts;
 using Deluno.Platform.Contracts;
 using Deluno.Recovery.Policies;
 
@@ -137,10 +138,11 @@ public sealed record SharingReclaimCandidate(
 {
     /// <summary>
     /// Usenet has no sharing phase, so there is no obligation to discharge and
-    /// nothing to wait for.
+    /// nothing to wait for. The same judgement decides whether the import
+    /// pipeline may delete a completed file itself, so it is made in one place
+    /// (<see cref="DownloadProtocols.HasSharingPhase"/>) rather than twice.
     /// </summary>
-    public bool SupportsSharing => !string.Equals(Protocol, "sabnzbd", StringComparison.OrdinalIgnoreCase)
-                                   && !string.Equals(Protocol, "nzbget", StringComparison.OrdinalIgnoreCase);
+    public bool SupportsSharing => DownloadProtocols.HasSharingPhase(Protocol);
 }
 
 /// <summary>

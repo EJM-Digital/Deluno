@@ -1396,6 +1396,16 @@ public sealed class SqliteJobStore(
         return Page<DownloadDispatchItem>.Of(items, nextPageToken);
     }
 
+    /// <summary>
+    /// The dispatch behind a release a download client is holding.
+    ///
+    /// The window used to be six hours, which quietly excluded the case that
+    /// matters most: a large torrent takes longer than that to download, so by
+    /// the time it had imported and started sharing, nothing could find the
+    /// dispatch and the sharing rule skipped it entirely (#287). It is bounded
+    /// only to keep the scan off very old rows; the client id and release name
+    /// together are specific enough, and the newest match wins.
+    /// </summary>
     public async Task<DispatchCatalogueLink?> FindRecentDispatchLinkAsync(
         string downloadClientId,
         string releaseName,
@@ -1411,7 +1421,7 @@ public sealed class SqliteJobStore(
             SELECT id, entity_type, entity_id, indexer_name, library_id FROM download_dispatches
             WHERE download_client_id = @downloadClientId
               AND release_name = @releaseName
-              AND created_utc > datetime('now', '-6 hours')
+              AND created_utc > datetime('now', '-90 days')
             ORDER BY created_utc DESC
             LIMIT 1;
             """;
