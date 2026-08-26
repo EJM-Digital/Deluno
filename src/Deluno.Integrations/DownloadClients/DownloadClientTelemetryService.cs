@@ -480,6 +480,21 @@ public sealed class DownloadClientTelemetryService(
             DedupeKey: $"download-health-replacement:{dispatch.Id}"), cancellationToken);
     }
 
+    public async Task<DownloadClientActionResult> ReclaimCompletedAsync(
+        string clientId,
+        string queueItemId,
+        CancellationToken cancellationToken)
+    {
+        var clients = await connectionsRepository.ListDownloadClientsAsync(cancellationToken);
+        var client = clients.FirstOrDefault(item => string.Equals(item.Id, clientId, StringComparison.OrdinalIgnoreCase));
+        if (client is null)
+        {
+            return new DownloadClientActionResult(clientId, queueItemId, "delete-with-data", false, "Download client was not found.");
+        }
+
+        return await ExecuteActionCoreAsync(client, "delete-with-data", queueItemId, cancellationToken);
+    }
+
     private Task<DownloadClientActionResult> ExecuteOwnedRemediationRemovalAsync(
         DownloadClientItem client,
         string queueItemId,

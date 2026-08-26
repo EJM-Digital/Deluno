@@ -13,6 +13,8 @@ using Deluno.Worker.Jobs;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Deluno.Connections.Data;
+using Deluno.Recovery.Services;
 
 namespace Deluno.Worker.Services;
 
@@ -306,6 +308,15 @@ public sealed class DelunoHeartbeatWorker(
                     movieCatalogRepository,
                     seriesCatalogRepository,
                     timeProvider,
+                    stoppingToken);
+
+                // After importing, let go of anything that has finished sharing.
+                await workPlanner.PlanSharingReclaimAsync(
+                    downloadClientTelemetryService,
+                    scope.ServiceProvider.GetRequiredService<IPlatformSettingsRepository>(),
+                    scope.ServiceProvider.GetRequiredService<IConnectionsRepository>(),
+                    activityFeedRepository,
+                    scope.ServiceProvider.GetRequiredService<SharingReclaimService>(),
                     stoppingToken);
             }
 

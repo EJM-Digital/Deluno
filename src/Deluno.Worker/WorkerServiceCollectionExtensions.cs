@@ -10,6 +10,9 @@ public static class WorkerServiceCollectionExtensions
 {
     public static IServiceCollection AddDelunoWorkerModule(this IServiceCollection services)
     {
+        // The only way the sharing rule can touch a download client: through
+        // the client's own action path, never the filesystem (#287, #288).
+        services.AddSingleton<Deluno.Recovery.Services.IDownloadClientActionGateway, Services.DownloadClientReclaimGateway>();
         services.AddHttpClient("deluno-intake", client => client.Timeout = TimeSpan.FromSeconds(20));
         services.AddScoped<IntakeSyncService>();
         services.AddScoped<IIntakeSyncService>(serviceProvider => serviceProvider.GetRequiredService<IntakeSyncService>());

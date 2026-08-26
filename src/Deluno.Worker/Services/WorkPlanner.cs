@@ -10,7 +10,9 @@ using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
+using Deluno.Connections.Data;
 using Deluno.Recovery.Contracts;
+using Deluno.Recovery.Services;
 using Deluno.Series.Contracts;
 using Deluno.Series.Data;
 using Deluno.Worker.Intake;
@@ -261,6 +263,109 @@ public sealed class WorkPlanner(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogWarning(ex, "Library import resume pass failed.");
+        }
+    }
+
+    /// <summary>
+    /// Lets go of downloads that have finished sharing (#288).
+    ///
+    /// Runs after the import pass, over items the client still holds. Each one
+    /// is measured against the rule its search source carries — the global rule
+    /// with that source's override laid over it — and reclaimed only when the
+    /// obligation is discharged. Anything still sharing is left exactly where it
+    /// is; anything Deluno does not recognise is never touched, because an item
+    /// with no dispatch behind it was not put there by Deluno.
+    /// </summary>
+    public async Task PlanSharingReclaimAsync(
+        IDownloadClientTelemetryService downloadClientTelemetryService,
+        IPlatformSettingsRepository platformSettingsRepository,
+        IConnectionsRepository connectionsRepository,
+        IActivityFeedRepository activityFeedRepository,
+        SharingReclaimService reclaimService,
+        CancellationToken cancellationToken)
+    {
+        if (!await jobQueueRepository.TryClaimScheduledPassAsync("sharing.reclaim", TimeSpan.FromSeconds(30), cancellationToken))
+        {
+            return;
+        }
+
+        var settings = await platformSettingsRepository.GetAsync(cancellationToken);
+        var globalPolicy = new SharingPolicy(
+            settings.SharingMode,
+            settings.SharingForHours,
+            settings.SharingUntilRatio,
+            settings.SharingStuckAction,
+            settings.SharingStuckAfterDays);
+
+        // Nothing to do at all when the user has told Deluno to keep its hands
+        // off, and no reason to read telemetry to find that out.
+        if (string.Equals(SharingPolicy.NormalizeMode(globalPolicy.Mode), SharingPolicy.ModeLeaveAlone, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        DownloadTelemetryOverview overview;
+        try
+        {
+            overview = await downloadClientTelemetryService.GetOverviewAsync(cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Sharing reclaim pass could not read download client telemetry.");
+            return;
+        }
+
+        var indexers = await connectionsRepository.ListIndexersAsync(cancellationToken);
+        var indexersByName = indexers
+            .GroupBy(indexer => indexer.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+
+        foreach (var item in overview.Clients.SelectMany(client => client.Queue))
+        {
+            if (!string.Equals(item.Status, DownloadQueueStatuses.Imported, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            // Only items Deluno itself dispatched. Something a user added by
+            // hand is theirs, and reclaiming it would be Deluno deleting a file
+            // it was never asked to manage.
+            var dispatch = await jobQueueRepository.FindRecentDispatchLinkAsync(item.ClientId, item.ReleaseName, cancellationToken);
+            if (dispatch is null)
+            {
+                continue;
+            }
+
+            indexersByName.TryGetValue(dispatch.IndexerName ?? string.Empty, out var source);
+
+            var outcome = await reclaimService.ReconcileAsync(
+                new SharingReclaimCandidate(
+                    item.Id,
+                    item.ClientId,
+                    item.ClientName,
+                    item.Title,
+                    item.Protocol,
+                    item.Ratio,
+                    item.SeedingMinutes),
+                globalPolicy,
+                source,
+                cancellationToken);
+
+            if (outcome.Reclaimed)
+            {
+                await activityFeedRepository.RecordActivityAsync(
+                    "download.sharing.reclaimed",
+                    $"{item.Title} finished sharing and was removed from {item.ClientName}. {outcome.Reason}",
+                    null,
+                    null,
+                    dispatch.EntityType,
+                    dispatch.EntityId,
+                    cancellationToken);
+            }
+            else if (outcome.Warning is not null)
+            {
+                logger.LogWarning("Sharing reclaim for {Title} did not complete: {Warning}", item.Title, outcome.Warning);
+            }
         }
     }
 
