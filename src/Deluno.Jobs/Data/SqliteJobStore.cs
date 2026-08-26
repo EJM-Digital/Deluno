@@ -1627,15 +1627,19 @@ public sealed class SqliteJobStore(
             .ThenBy(item => item.Library.LibraryName, StringComparer.OrdinalIgnoreCase)
             .Select(item => item.Library)
             .ToArray();
-        var plannedLibraryIds = orderedLibraries
-            .Select(library => library.LibraryId)
-            .Where(libraryId => !string.IsNullOrWhiteSpace(libraryId))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        // Only libraries whose state actually moved. Announcing every library the
+        // planner merely *looked at* meant an idle dashboard refetching three
+        // queries every thirty seconds for a change that had not happened — the
+        // storage layer was already guarded against writing nothing, and the
+        // wire was not (#274).
+        var changedLibraryIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var library in orderedLibraries)
         {
-            await UpsertLibraryAutomationStateAsync(connection, transaction, library, now, cancellationToken);
+            if (await UpsertLibraryAutomationStateAsync(connection, transaction, library, now, cancellationToken))
+            {
+                changedLibraryIds.Add(library.LibraryId);
+            }
 
             stateByLibraryId.TryGetValue(library.LibraryId, out var state);
             state ??= new LibraryAutomationStateItem(
@@ -1661,7 +1665,7 @@ public sealed class SqliteJobStore(
 
             if (!library.AutoSearchEnabled && !state.SearchRequested)
             {
-                await UpdateAutomationIdleAsync(
+                if (await UpdateAutomationIdleAsync(
                     connection,
                     transaction,
                     library.LibraryId,
@@ -1672,7 +1676,10 @@ public sealed class SqliteJobStore(
                     nextUpgradeSearchUtc: null,
                     searchRequested: false,
                     updatedUtc: now,
-                    cancellationToken: cancellationToken);
+                    cancellationToken: cancellationToken))
+                {
+                    changedLibraryIds.Add(library.LibraryId);
+                }
 
                 continue;
             }
@@ -1705,11 +1712,14 @@ public sealed class SqliteJobStore(
                     if (missingDue) missingNextSearchUtc = nextWindowOpen;
                     if (upgradeDue) upgradeNextSearchUtc = nextWindowOpen;
 
-                    await UpdateAutomationIdleAsync(
+                    if (await UpdateAutomationIdleAsync(
                         connection, transaction,
                         library.LibraryId, library.LibraryName, library.MediaType,
                         "idle", missingNextSearchUtc, upgradeNextSearchUtc, searchRequested: false,
-                        updatedUtc: now, cancellationToken: cancellationToken);
+                        updatedUtc: now, cancellationToken: cancellationToken))
+                    {
+                        changedLibraryIds.Add(library.LibraryId);
+                    }
 
                     continue;
                 }
@@ -1822,6 +1832,9 @@ public sealed class SqliteJobStore(
                 AddParameter(update, "@lastJobId", job.Id);
                 AddParameter(update, "@updatedUtc", now.ToString("O"));
                 await update.ExecuteNonQueryAsync(cancellationToken);
+                // Queueing a search always moves the state — status, last job and
+                // next search all change — so this one is unconditional.
+                changedLibraryIds.Add(library.LibraryId);
 
                 await InsertActivityAsync(connection, transaction, "job.queued", FormatQueuedMessage(job.JobType, job.Source, job.PayloadJson), job.PayloadJson, job.Id, job.RelatedEntityType, job.RelatedEntityId, now, cancellationToken);
             }
@@ -1835,12 +1848,15 @@ public sealed class SqliteJobStore(
 
             if (!queuedForLibrary && (hasPendingForLibrary || manualRequest))
             {
-                await UpdateAutomationIdleAsync(connection, transaction, library.LibraryId, library.LibraryName, library.MediaType, "queued", missingNextSearchUtc, upgradeNextSearchUtc, searchRequested: false, updatedUtc: now, cancellationToken: cancellationToken);
+                if (await UpdateAutomationIdleAsync(connection, transaction, library.LibraryId, library.LibraryName, library.MediaType, "queued", missingNextSearchUtc, upgradeNextSearchUtc, searchRequested: false, updatedUtc: now, cancellationToken: cancellationToken))
+                {
+                    changedLibraryIds.Add(library.LibraryId);
+                }
             }
         }
 
         await transaction.CommitAsync(cancellationToken);
-        foreach (var libraryId in plannedLibraryIds)
+        foreach (var libraryId in changedLibraryIds)
         {
             await realtimeEventPublisher.PublishEntityChangedAsync("AutomationState", libraryId, cancellationToken);
         }
@@ -2611,7 +2627,8 @@ public sealed class SqliteJobStore(
     /// from updated_utc, which no caller uses as a liveness signal.
     /// "IS NOT" rather than "&lt;&gt;" so a NULL on either side compares correctly.
     /// </summary>
-    private static async Task UpsertLibraryAutomationStateAsync(
+    /// <summary>Returns true when a row actually changed, so callers can announce only that.</summary>
+    private static async Task<bool> UpsertLibraryAutomationStateAsync(
         System.Data.Common.DbConnection connection,
         System.Data.Common.DbTransaction transaction,
         LibraryAutomationPlanItem library,
@@ -2642,7 +2659,7 @@ public sealed class SqliteJobStore(
         AddParameter(command, "@libraryName", library.LibraryName);
         AddParameter(command, "@mediaType", library.MediaType);
         AddParameter(command, "@updatedUtc", now.ToString("O"));
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
     /// <summary>
@@ -2655,7 +2672,8 @@ public sealed class SqliteJobStore(
     /// from the comparison on purpose: it is the field that always differs, and
     /// nothing treats it as a liveness signal.
     /// </summary>
-    private static async Task UpdateAutomationIdleAsync(
+    /// <summary>Returns true when a row actually changed, so callers can announce only that.</summary>
+    private static async Task<bool> UpdateAutomationIdleAsync(
         System.Data.Common.DbConnection connection,
         System.Data.Common.DbTransaction transaction,
         string libraryId,
@@ -2703,7 +2721,7 @@ public sealed class SqliteJobStore(
         AddParameter(command, "@nextUpgradeSearchUtc", nextUpgradeSearchUtc?.ToString("O"));
         AddParameter(command, "@searchRequested", searchRequested ? 1 : 0);
         AddParameter(command, "@updatedUtc", updatedUtc.ToString("O"));
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
     private static DateTimeOffset NextSearchAfterQueue(
