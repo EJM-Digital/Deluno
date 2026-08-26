@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useLoaderData, useLocation, useNavigate, useRevalidator } from "react-router-dom";
-import { Info, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import {
   fetchJson,
   readValidationProblem,
@@ -24,6 +24,7 @@ import { configurationNavAreas } from "../components/app/settings-shell";
 import { Button } from "../components/ui/button";
 import { Chip } from "../components/ui/chip";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
+import { HowThisWorks } from "../components/app/how-this-works";
 import { Drawer, DrawerFooter, type DrawerSaveState } from "../components/ui/drawer";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
@@ -561,33 +562,15 @@ export function IndexersPage() {
 
       {section === "routing" ? (
         <>
-          <section aria-labelledby="library-routing-help-title" className="mb-4 overflow-hidden rounded-2xl border border-info/20 bg-info/[0.04]">
-            <div className="flex gap-3 px-[var(--card-pad-x)] py-3">
-              <span aria-hidden className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-info/25 bg-info/10 text-info">
-                <Info className="h-4 w-4" />
-              </span>
-              <div className="min-w-0">
-                <h2 id="library-routing-help-title" className="text-[length:var(--type-card-title)] font-semibold text-foreground">How this works</h2>
-                <p className="mt-1 max-w-4xl text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">
-                  Deluno starts with the library you add a title to — for example Movies, TV Shows, or a custom library. That library decides which sources to search, which download app to use, and where the finished file belongs. A category is optional: it is only a name Deluno sends to the download app, not a tag you add to the movie in Deluno.
-                </p>
-              </div>
-            </div>
-            <div className="grid border-t border-info/15 md:grid-cols-3">
-              <div className="border-info/15 px-[var(--card-pad-x)] py-3 md:border-r">
-                <p className="text-[length:var(--type-caption)] font-semibold text-foreground">1. The library comes first</p>
-                <p className="mt-1 text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">When you add a title, Deluno knows whether it belongs in Movies, TV Shows, or another library.</p>
-              </div>
-              <div className="border-info/15 px-[var(--card-pad-x)] py-3 md:border-r">
-                <p className="text-[length:var(--type-caption)] font-semibold text-foreground">2. Deluno sends the file</p>
-                <p className="mt-1 text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">The selected download app, such as SABnzbd or qBittorrent, does the actual downloading.</p>
-              </div>
-              <div className="px-[var(--card-pad-x)] py-3">
-                <p className="text-[length:var(--type-caption)] font-semibold text-foreground">3. Add a category only if needed</p>
-                <p className="mt-1 text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">If the download app has its own category or folder rule, enter the matching category here. Deluno uses the same name when the file finishes.</p>
-              </div>
-            </div>
-          </section>
+          <HowThisWorks
+            id="library-routing"
+            lead="Deluno starts with the library you add a title to — for example Movies, TV Shows, or a custom library. That library decides which sources to search, which download app to use, and where the finished file belongs. A category is optional: it is only a name Deluno sends to the download app, not a tag you add to the movie in Deluno."
+            steps={[
+              { title: "The library comes first", body: "When you add a title, Deluno knows whether it belongs in Movies, TV Shows, or another library." },
+              { title: "Deluno sends the file", body: "The selected download app, such as SABnzbd or qBittorrent, does the actual downloading." },
+              { title: "Add a category only if needed", body: "If the download app has its own category or folder rule, enter the matching category here. Deluno uses the same name when the file finishes." }
+            ]}
+          />
           <ListCard title="Library routing" count={libraries.length ? `${libraries.length} ${libraries.length === 1 ? "library" : "libraries"}` : undefined}>
           {libraries.length === 0 ? (
             <ListEmpty title="No libraries yet" description="Create a Movies or TV library first, then choose its search and download connections here." />

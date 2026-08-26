@@ -35,6 +35,7 @@ import {
   ListRow,
   ListTable
 } from "../components/ui/list-card";
+import { HowThisWorks } from "../components/app/how-this-works";
 import { PageToolbar } from "../components/ui/page-toolbar";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { SummaryStrip } from "../components/ui/summary-strip";
@@ -147,6 +148,16 @@ export function ActivityPage() {
             </Button>
           </>
         }
+      />
+
+      <HowThisWorks
+        id="activity"
+        lead="Activity answers why, not just what. Deluno keeps the reasoning behind every search and grab — the release it chose, the ones it passed over, and the rule that turned each of them down — so a film that has not arrived can be traced rather than guessed at."
+        steps={[
+          { title: "Start with what stopped", body: "A file that arrived but never reached a library is listed with the reason it was held and an action you can take." },
+          { title: "Then read what was tried", body: "Every search and grab, in the order it happened, with the release Deluno sent and the outcome it got back." },
+          { title: "The reasoning is kept", body: "Scores, matched rules and rejection reasons are stored with the event, so you can still see why a release was refused long after the search." }
+        ]}
       />
 
       <SummaryStrip
