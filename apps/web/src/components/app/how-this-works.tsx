@@ -97,8 +97,11 @@ export function HowThisWorks({
           <ChevronDown aria-hidden className={cn("ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200", collapsed && "-rotate-90")} />
         </button>
       </h2>
-      <div id={bodyId} hidden={collapsed}>
-        <p className="max-w-4xl px-[var(--card-pad-x)] pb-3 text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">{lead}</p>
+      {/* The rule lives on the body rather than under the heading, so a
+          collapsed panel is one clean row and not a row with a line hanging
+          off it. */}
+      <div id={bodyId} hidden={collapsed} className="border-t border-info/15">
+        <p className="max-w-4xl px-[var(--card-pad-x)] py-3 text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">{lead}</p>
         {steps.length > 0 ? (
           <ol
             className={cn(
