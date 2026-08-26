@@ -512,6 +512,8 @@ public sealed class WorkPlanner(
             jobScheduler,
             processorRepository,
             activityFeedRepository,
+            movieCatalogRepository,
+            seriesCatalogRepository,
             libraries,
             knownImportSources,
             cancellationToken);
@@ -837,10 +839,12 @@ public sealed class WorkPlanner(
     /// one stable path component lets Deluno match the output to a durable
     /// hand-off without guessing from a release title.
     /// </summary>
-    private static async Task ReconcileMatchedProcessorOutputsAsync(
+    private async Task ReconcileMatchedProcessorOutputsAsync(
         IJobScheduler jobScheduler,
         IProcessorRepository processorRepository,
         IActivityFeedRepository activityFeedRepository,
+        IMovieCatalogRepository movieCatalogRepository,
+        ISeriesCatalogRepository seriesCatalogRepository,
         IReadOnlyList<LibraryItem> libraries,
         ISet<string> knownImportSources,
         CancellationToken cancellationToken)
@@ -872,33 +876,49 @@ public sealed class WorkPlanner(
             }
 
             var outputPath = candidates[0];
-            var importPayload = new
-            {
-                preview = new
-                {
-                    sourcePath = outputPath,
-                    fileName = Path.GetFileName(outputPath),
-                    mediaType = library.MediaType,
-                    title = Path.GetFileNameWithoutExtension(outputPath),
-                    year = (int?)null,
-                    genres = Array.Empty<string>(),
-                    tags = new[] { "processed" },
-                    studio = (string?)null,
-                    originalLanguage = (string?)null
-                },
-                transferMode = "auto",
-                overwrite = false,
-                allowCopyFallback = true,
-                forceReplacement = false
-            };
+
+            // Name from the catalogue, exactly as the direct-import path does.
+            // This used to build the whole import out of the output file name:
+            // title = the release name, year = null. So a refined film landed as
+            // "Big.Buck.Bunny.2008.1080p.WEB-DL.x264-DELUNO (Unknown Year)", and
+            // with no RelatedEntityId the catalogue never learned it had arrived
+            // — the film stayed Missing and Deluno would grab it all over again.
+            // #268 fixed precisely this for downloads that import directly; the
+            // sibling path never got the same treatment.
+            var dispatch = await jobQueueRepository.FindRecentDispatchLinkAsync(
+                handoff.ClientId,
+                handoff.ReleaseName,
+                cancellationToken);
+            var (catalogueTitle, catalogueYear) = await ResolveCatalogueNamingAsync(
+                dispatch,
+                movieCatalogRepository,
+                seriesCatalogRepository,
+                cancellationToken);
+
+            var importRequest = new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: outputPath,
+                    FileName: Path.GetFileName(outputPath),
+                    MediaType: library.MediaType,
+                    Title: catalogueTitle ?? Path.GetFileNameWithoutExtension(outputPath),
+                    Year: catalogueYear ?? InferYear(handoff.ReleaseName),
+                    Genres: [],
+                    Tags: ["processed"],
+                    Studio: null,
+                    OriginalLanguage: null),
+                TransferMode: "auto",
+                Overwrite: false,
+                AllowCopyFallback: true,
+                ForceReplacement: false,
+                DispatchId: dispatch?.DispatchId);
 
             var importJob = await jobScheduler.EnqueueAsync(
                 new EnqueueJobRequest(
                     JobType: "filesystem.import.execute",
                     Source: "processor-output-watch",
-                    PayloadJson: JsonSerializer.Serialize(importPayload),
+                    PayloadJson: JsonSerializer.Serialize(importRequest, PayloadJsonOptions),
                     RelatedEntityType: library.MediaType == "tv" ? "series" : "movie",
-                    RelatedEntityId: null,
+                    RelatedEntityId: dispatch?.EntityId,
                     IdempotencyKey: $"processor-output:{library.Id}:{Path.GetFullPath(outputPath).ToLowerInvariant()}"),
                 cancellationToken);
 
