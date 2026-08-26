@@ -529,6 +529,9 @@ export function DashboardPage() {
         tone={heroState.tone}
         speedMbps={liveSpeedMbps}
         transferCount={data.activeDownloadCount}
+        // Nothing in the library is the one state where the dashboard has a
+        // single obvious next step, so it says so where the headline already is.
+        action={data.totalCount === 0 ? { label: "Add a movie", to: "/movies?add=true" } : undefined}
         stats={[
           {
             label: "In your library",

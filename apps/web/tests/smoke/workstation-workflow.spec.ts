@@ -132,8 +132,14 @@ test.describe("dashboard workflow", () => {
     const guidedSetupBox = await guidedSetup.boundingBox();
     const setupProgressBox = await setupProgress.boundingBox();
     expect(guidedSetupBox?.y).toBeLessThan(setupProgressBox?.y ?? Number.POSITIVE_INFINITY);
-    await expect(page.getByRole("heading", { name: "Recently added" })).toBeVisible();
-    await expect(page.getByText("Nothing in the library yet", { exact: true })).toBeVisible();
+    // Recently added no longer renders while the library is empty: the hero
+    // already states it and offers the action, and saying it twice on one
+    // screen reads as a bug rather than emphasis (#270, #275). The intent of
+    // this test is unchanged — the dashboard states what is true instead of
+    // inventing activity — so it now checks where that statement actually is.
+    await expect(page.getByRole("heading", { name: "Recently added" })).toHaveCount(0);
+    await expect(page.getByText("In your library", { exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Add a movie" })).toBeVisible();
   });
 
   test("makes library display, server-backed order, and refine controls readable", async ({ page }) => {

@@ -148,9 +148,14 @@ test.describe("first-run and auth screens", () => {
 
     await expect(page.getByRole("heading", { name: "Setup Overview" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Find & Download" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "First Acquisition" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Discover Media" })).toBeVisible();
     await expect(page.getByText(/Optionally configure import lists/)).toBeVisible();
-    await expect(page.getByText(/required steps complete/)).toBeVisible();
+    await expect(page.getByText(/steps complete/)).toBeVisible();
+
+    // "First Acquisition" is deliberately gone. Running a search, download and
+    // import is using Deluno, not configuring it, and as a required step it
+    // meant setup never finished — a fully configured install still read 4/5
+    // and kept a setup banner above every live number on the dashboard.
+    await expect(page.getByRole("heading", { name: "First Acquisition" })).toHaveCount(0);
   });
 });
