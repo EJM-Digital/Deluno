@@ -104,6 +104,7 @@ public abstract class DownloadClientBase : IDownloadClient
             items.Count(item => item.Status is DownloadQueueStatuses.Processing or DownloadQueueStatuses.Processed or DownloadQueueStatuses.ProcessingFailed or DownloadQueueStatuses.WaitingForProcessor or DownloadQueueStatuses.ImportQueued),
             items.Count(item => item.Status is DownloadQueueStatuses.ImportReady or DownloadQueueStatuses.Completed),
             Math.Round(items.Sum(item => item.SpeedMbps), 1),
-            items.Count(item => item.Status == DownloadQueueStatuses.WaitingForProcessor));
+            items.Count(item => item.Status == DownloadQueueStatuses.WaitingForProcessor),
+            Math.Round(items.Sum(item => item.UploadSpeedMbps), 1));
     }
 }

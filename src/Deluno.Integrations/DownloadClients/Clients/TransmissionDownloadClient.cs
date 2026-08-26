@@ -24,7 +24,7 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
         if (baseUri is null) return null;
         var response = await SendAsync(client, baseUri, new TransmissionRequest("torrent-get", new()
         {
-            ["fields"] = new[] { "id", "name", "status", "percentDone", "rateDownload", "eta", "totalSize", "downloadedEver", "peersConnected", "addedDate", "doneDate", "downloadDir", "labels", "error", "errorString" }
+            ["fields"] = new[] { "id", "name", "status", "percentDone", "rateDownload", "rateUpload", "eta", "totalSize", "downloadedEver", "peersConnected", "addedDate", "doneDate", "downloadDir", "labels", "error", "errorString" }
         }), cancellationToken);
         var queue = (response.Arguments?.Torrents ?? []).Select(item => new DownloadQueueItem(
             item.Id?.ToString(CultureInfo.InvariantCulture) ?? item.Name ?? Guid.CreateVersion7().ToString("N"), client.Id, client.Name, client.Protocol,
@@ -32,7 +32,8 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
             item.Name ?? "Unknown Transmission item", item.Labels?.FirstOrDefault() ?? string.Empty, NormalizeStatus(item.Status?.ToString(CultureInfo.InvariantCulture), item.PercentDone, item.Error, item.ErrorString),
             Math.Clamp(Math.Round((item.PercentDone ?? 0) * 100, 1), 0, 100), Math.Round((item.RateDownload ?? 0) / 1_000_000d, 1), Math.Max(0, item.Eta ?? 0),
             item.TotalSize ?? 0, item.DownloadedEver ?? 0, item.PeersConnected ?? 0, "Transmission", string.IsNullOrWhiteSpace(item.ErrorString) ? null : item.ErrorString,
-            DownloadClientHelpers.FromUnix(item.AddedDate), DownloadClientHelpers.ResolveDownloadPath(item.DownloadDir, item.Name))).ToArray();
+            DownloadClientHelpers.FromUnix(item.AddedDate), DownloadClientHelpers.ResolveDownloadPath(item.DownloadDir, item.Name),
+            UploadSpeedMbps: Math.Round((item.RateUpload ?? 0) / 1_000_000d, 1))).ToArray();
         return CreateSnapshot(client, queue, capturedUtc, "healthy", $"Connected to Transmission at {baseUri.Host}:{baseUri.Port}.");
     }
 
@@ -80,5 +81,5 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
     private sealed record TransmissionRequest([property: JsonPropertyName("method")] string Method, [property: JsonPropertyName("arguments")] Dictionary<string, object> Arguments);
     private sealed record TransmissionResponse([property: JsonPropertyName("arguments")] TransmissionArguments? Arguments);
     private sealed record TransmissionArguments([property: JsonPropertyName("torrents")] IReadOnlyList<TransmissionTorrent>? Torrents);
-    private sealed record TransmissionTorrent([property: JsonPropertyName("id")] int? Id, [property: JsonPropertyName("name")] string? Name, [property: JsonPropertyName("status")] int? Status, [property: JsonPropertyName("percentDone")] double? PercentDone, [property: JsonPropertyName("rateDownload")] long? RateDownload, [property: JsonPropertyName("eta")] int? Eta, [property: JsonPropertyName("totalSize")] long? TotalSize, [property: JsonPropertyName("downloadedEver")] long? DownloadedEver, [property: JsonPropertyName("peersConnected")] int? PeersConnected, [property: JsonPropertyName("addedDate")] long? AddedDate, [property: JsonPropertyName("downloadDir")] string? DownloadDir, [property: JsonPropertyName("labels")] IReadOnlyList<string>? Labels, [property: JsonPropertyName("error")] int? Error, [property: JsonPropertyName("errorString")] string? ErrorString);
+    private sealed record TransmissionTorrent([property: JsonPropertyName("id")] int? Id, [property: JsonPropertyName("name")] string? Name, [property: JsonPropertyName("status")] int? Status, [property: JsonPropertyName("percentDone")] double? PercentDone, [property: JsonPropertyName("rateDownload")] long? RateDownload, [property: JsonPropertyName("rateUpload")] long? RateUpload, [property: JsonPropertyName("eta")] int? Eta, [property: JsonPropertyName("totalSize")] long? TotalSize, [property: JsonPropertyName("downloadedEver")] long? DownloadedEver, [property: JsonPropertyName("peersConnected")] int? PeersConnected, [property: JsonPropertyName("addedDate")] long? AddedDate, [property: JsonPropertyName("downloadDir")] string? DownloadDir, [property: JsonPropertyName("labels")] IReadOnlyList<string>? Labels, [property: JsonPropertyName("error")] int? Error, [property: JsonPropertyName("errorString")] string? ErrorString);
 }

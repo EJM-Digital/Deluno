@@ -8,8 +8,8 @@ using Microsoft.Extensions.Logging;
 namespace Deluno.Worker.Services;
 
 /// <summary>
-/// Records combined download throughput on a fixed cadence, so the dashboard
-/// can show what the speed has been rather than only what it is.
+/// Records combined throughput, both directions, on a fixed cadence, so the
+/// dashboard can show what the speed has been rather than only what it is.
 ///
 /// Everything else on that dashboard counts stored rows; speed is a measurement
 /// and nothing was measuring it. Without this the live wave could only ever
@@ -108,7 +108,8 @@ public sealed class DownloadThroughputSampler(
             new DownloadThroughputSample(
                 CapturedUtc: now,
                 SpeedMbps: overview.Summary.TotalSpeedMbps,
-                ActiveCount: overview.Summary.ActiveCount),
+                ActiveCount: overview.Summary.ActiveCount,
+                UploadMbps: overview.Summary.TotalUploadSpeedMbps),
             cancellationToken);
 
         if (now - _lastPruneUtc < PruneInterval)

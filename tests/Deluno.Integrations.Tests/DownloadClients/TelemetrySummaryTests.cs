@@ -67,7 +67,7 @@ public sealed class TelemetrySummaryTests
             => nativeStatus ?? DownloadQueueStatuses.Queued;
     }
 
-    private static DownloadQueueItem Item(string id, string status) => new(
+    private static DownloadQueueItem Item(string id, string status, double speedMbps = 0, double uploadMbps = 0) => new(
         Id: id,
         ClientId: "client-1",
         ClientName: "Test",
@@ -78,14 +78,15 @@ public sealed class TelemetrySummaryTests
         Category: "movies",
         Status: status,
         Progress: 100,
-        SpeedMbps: 0,
+        SpeedMbps: speedMbps,
         EtaSeconds: 0,
         SizeBytes: 0,
         DownloadedBytes: 0,
         Peers: 0,
         IndexerName: "indexer",
         ErrorMessage: null,
-        AddedUtc: DateTimeOffset.UnixEpoch);
+        AddedUtc: DateTimeOffset.UnixEpoch,
+        UploadSpeedMbps: uploadMbps);
 
     [Fact]
     public void Waiting_for_a_processor_is_counted_apart_from_import_work()
@@ -114,6 +115,40 @@ public sealed class TelemetrySummaryTests
 
         Assert.Equal(1, summary.ProcessingCount);
         Assert.Equal(0, summary.WaitingForProcessorCount);
+    }
+
+    /// <summary>
+    /// Both directions are summed, not just download (#289).
+    ///
+    /// Deluno holds files back so a site's sharing rule can be met (#288), so
+    /// "am I actually seeding?" is a question the dashboard has to answer — and
+    /// it cannot if the only number that reaches it is the download total.
+    /// </summary>
+    [Fact]
+    public void Speed_is_totalled_in_both_directions()
+    {
+        var summary = new TestClient().Summarise([
+            Item("a", DownloadQueueStatuses.Downloading, speedMbps: 4.5, uploadMbps: 0.2),
+            Item("b", DownloadQueueStatuses.ImportReady, speedMbps: 0, uploadMbps: 1.3)
+        ]);
+
+        Assert.Equal(4.5, summary.TotalSpeedMbps);
+        Assert.Equal(1.5, summary.TotalUploadSpeedMbps);
+    }
+
+    /// <summary>
+    /// A seeding install is not an idle one. Nothing downloading while
+    /// something uploads used to read as "Idle" on every speed surface.
+    /// </summary>
+    [Fact]
+    public void An_install_that_is_only_seeding_still_reports_a_reading()
+    {
+        var summary = new TestClient().Summarise([
+            Item("a", DownloadQueueStatuses.Imported, speedMbps: 0, uploadMbps: 0.7)
+        ]);
+
+        Assert.Equal(0, summary.TotalSpeedMbps);
+        Assert.Equal(0.7, summary.TotalUploadSpeedMbps);
     }
 
     [Fact]

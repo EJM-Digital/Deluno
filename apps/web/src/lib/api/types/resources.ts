@@ -407,6 +407,8 @@ export interface DownloadTelemetrySummary {
   processingCount: number;
   importReadyCount: number;
   totalSpeedMbps: number;
+  /** Combined upload across every client, in MB/s. Sharing is a first-class concern (#288). */
+  totalUploadSpeedMbps: number;
   /** The processor share of processingCount — held back awaiting a cleaned output. */
   waitingForProcessorCount: number;
 }
@@ -606,11 +608,13 @@ export interface DownloadClientTelemetrySnapshot {
   historyTruncated: boolean;
 }
 
-/** One stored reading of combined download throughput. */
+/** One stored reading of combined throughput, both directions. */
 export interface DownloadThroughputSample {
   capturedUtc: string;
   speedMbps: number;
   activeCount: number;
+  /** Zero on readings taken before upload was measured, which is the truth about them. */
+  uploadMbps: number;
 }
 
 /** A stored window of throughput readings, oldest first. */

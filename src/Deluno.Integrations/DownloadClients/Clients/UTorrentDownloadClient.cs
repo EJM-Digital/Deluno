@@ -37,12 +37,16 @@ public sealed class UTorrentDownloadClient : DownloadClientBase
             var size = item.Count > 3 ? AsInt64(item[3]) : 0;
             var progress = item.Count > 4 ? Math.Round(AsDouble(item[4]) / 10d, 1) : 0;
             var speed = item.Count > 9 ? AsDouble(item[9]) / 1_000_000d : 0;
+            // uTorrent's list array is positional: index 8 is upload rate in
+            // bytes per second, index 9 is download.
+            var uploadSpeed = item.Count > 8 ? AsDouble(item[8]) / 1_000_000d : 0;
             var category = item.Count > 11 ? AsString(item[11]) : string.Empty;
             return new DownloadQueueItem(hash, client.Id, client.Name, client.Protocol, DownloadClientHelpers.InferMediaType(client, category), DownloadClientHelpers.CleanReleaseTitle(name), name,
                 category, progress >= 100 ? DownloadQueueStatuses.ImportReady : speed > 0 ? DownloadQueueStatuses.Downloading : DownloadQueueStatuses.Queued,
                 Math.Clamp(progress, 0, 100), Math.Round(speed, 1), item.Count > 10 ? Math.Max(0, Convert.ToInt32(AsDouble(item[10]))) : 0, size,
                 (long)(size * (progress / 100d)), item.Count > 12 ? Convert.ToInt32(AsDouble(item[12])) : 0, "uTorrent", null,
-                item.Count > 23 ? DownloadClientHelpers.FromUnix(Convert.ToInt64(AsDouble(item[23]))) : capturedUtc);
+                item.Count > 23 ? DownloadClientHelpers.FromUnix(Convert.ToInt64(AsDouble(item[23]))) : capturedUtc,
+                UploadSpeedMbps: Math.Round(uploadSpeed, 1));
         }).ToArray();
         return CreateSnapshot(client, queue, capturedUtc, "healthy", $"Connected to uTorrent at {baseUri.Host}:{baseUri.Port}.");
     }
