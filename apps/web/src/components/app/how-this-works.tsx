@@ -77,8 +77,11 @@ export function HowThisWorks({
   const titleId = `${id}-how-this-works`;
   const bodyId = `${id}-how-this-works-body`;
 
+  // No bottom margin: every page that hosts one of these already lays its
+  // children out on `--page-gap`, so a margin here made the gap under the panel
+  // nearly double every other gap on the page.
   return (
-    <section aria-labelledby={titleId} className={cn("mb-4 overflow-hidden rounded-2xl border border-info/20 bg-info/[0.04]", className)}>
+    <section aria-labelledby={titleId} className={cn("overflow-hidden rounded-2xl border border-info/20 bg-info/[0.04]", className)}>
       <h2 id={titleId}>
         <button
           type="button"

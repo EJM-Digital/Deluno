@@ -457,6 +457,18 @@ export function IndexersPage() {
     <div className="grid gap-[var(--page-gap)]">
       <PageToolbar tabs={TABS} actions={toolbarAction} />
 
+      {/* Outside the section switch, because it explains how the three tabs
+          relate — which is exactly what you cannot see from any one of them. */}
+      <HowThisWorks
+        id="find-and-download"
+        lead="Deluno needs two things before it can fetch anything: somewhere to search, and something to do the downloading. Neither belongs to a library on its own — the library is what says which of them to use."
+        steps={[
+          { title: "Add somewhere to search", body: "An indexer is a search source. Deluno asks every one a library is linked to, then compares what comes back before it picks a release." },
+          { title: "Add something to download with", body: "qBittorrent, SABnzbd or another client. Deluno hands the release over and watches it until the file is finished." },
+          { title: "Tell each library which to use", body: "A library can search everywhere and download anywhere, or be pinned to its own source and client. Nothing runs for a library until it has both." }
+        ]}
+      />
+
       {section === "indexers" ? (
         <ListCard title="Indexers" count={indexers.length ? `${indexers.length} ${indexers.length === 1 ? "indexer" : "indexers"} · ${healthyIndexers}/${enabledIndexers} healthy` : undefined}>
           {indexers.length === 0 ? (
@@ -562,15 +574,9 @@ export function IndexersPage() {
 
       {section === "routing" ? (
         <>
-          <HowThisWorks
-            id="library-routing"
-            lead="Deluno starts with the library you add a title to — for example Movies, TV Shows, or a custom library. That library decides which sources to search, which download app to use, and where the finished file belongs. A category is optional: it is only a name Deluno sends to the download app, not a tag you add to the movie in Deluno."
-            steps={[
-              { title: "The library comes first", body: "When you add a title, Deluno knows whether it belongs in Movies, TV Shows, or another library." },
-              { title: "Deluno sends the file", body: "The selected download app, such as SABnzbd or qBittorrent, does the actual downloading." },
-              { title: "Add a category only if needed", body: "If the download app has its own category or folder rule, enter the matching category here. Deluno uses the same name when the file finishes." }
-            ]}
-          />
+          {/* The routing explainer that used to sit here said what the routing
+              drawer already says beside the field itself, in more detail and in
+              the place you actually need it. One subject, one home. */}
           <ListCard title="Library routing" count={libraries.length ? `${libraries.length} ${libraries.length === 1 ? "library" : "libraries"}` : undefined}>
           {libraries.length === 0 ? (
             <ListEmpty title="No libraries yet" description="Create a Movies or TV library first, then choose its search and download connections here." />
