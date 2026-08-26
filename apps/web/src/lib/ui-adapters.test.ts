@@ -51,6 +51,29 @@ describe("UI adapters", () => {
       }
     });
 
+    it("never offers Downloading as a release status either", () => {
+      // The sibling of the bug above, and the half #299 left behind: the filter
+      // answered "Downloading" for `waiting`, which the server sets on a film
+      // that has a file and meets its target (#300).
+      for (const hasFile of [true, false]) {
+        for (const status of ["waiting", "covered", "upgrade", "missing"]) {
+          expect(adaptMovieItems([movie({ hasFile })], wanted(status))[0].releaseStatus).not.toBe("Downloading");
+        }
+      }
+    });
+
+    it("gives the release status the same words the title shows", () => {
+      expect(adaptMovieItems([movie({})], wanted("covered"))[0].releaseStatus).toBe("Complete");
+      expect(adaptMovieItems([movie({})], wanted("upgrade"))[0].releaseStatus).toBe("Upgrade wanted");
+      expect(adaptMovieItems([movie({ hasFile: false })], wanted("missing"))[0].releaseStatus).toBe("Missing");
+    });
+
+    it("claims only what it knows when a title has no wanted record", () => {
+      const none = { recentItems: [] } as unknown as MovieWantedSummary;
+      expect(adaptMovieItems([movie({})], none)[0].releaseStatus).toBe("On disk");
+      expect(adaptMovieItems([movie({ hasFile: false })], none)[0].releaseStatus).toBe("Missing");
+    });
+
     it("applies the same rule to shows", () => {
       const show = (hasFile: boolean) =>
         ({ id: "series-1", title: "Severance", startYear: 2022, posterUrl: null, backdropUrl: null, currentQuality: null, hasFile, monitored: true, fileSizeBytes: null, rating: 8, ratings: [], genres: "", createdUtc: "2024-01-01T00:00:00Z", overview: null, metadataJson: "{}" }) as unknown as SeriesListItem;

@@ -9,6 +9,7 @@ import type {
   SeriesWantedSummary
 } from "./api";
 import { downloadQueueStatuses } from "./download-telemetry";
+import { wantedStatusPresentation } from "./media-status-presentation";
 import type { ActiveDownload, IndexerHealthItem, MediaItem, MediaStatus } from "./media-types";
 
 function hashValue(value: string) {
@@ -100,6 +101,25 @@ function readRating(
  * carries no live transfer state. Showing progress on a card needs the download
  * telemetry wired in, not a wanted status pressed into service as a stand-in.
  */
+/**
+ * What the Release status filter offers, in the words the rest of the UI uses.
+ *
+ * It used to answer "Downloading" for anything `waiting` — the last of the
+ * three places #299 found, and the one it did not fix, because the sibling line
+ * above it was the visible symptom. The server sets `waiting` on a title that
+ * *has* a file and is at or above target (#300), so filtering for Downloading
+ * returned exactly the finished titles.
+ *
+ * The rest of it mixed vocabularies too: raw engine tokens for a tracked title,
+ * human words for an untracked one. Now every value is a label the user has
+ * already seen on the title itself, and the fallback claims only what a missing
+ * wanted record can support — whether the file is there.
+ */
+function releaseStatusLabel(wantedStatus: string | undefined, hasFile: boolean) {
+  if (wantedStatus) return wantedStatusPresentation(wantedStatus).label;
+  return hasFile ? "On disk" : "Missing";
+}
+
 function mediaAvailabilityStatus(hasFile: boolean): MediaStatus {
   return hasFile ? "downloaded" : "missing";
 }
@@ -143,9 +163,7 @@ export function adaptMovieItems(items: MovieListItem[], wanted: MovieWantedSumma
       audioChannels: item.audioChannels ?? readString(meta, "audioChannels"),
       language: readString(meta, "language"),
       hdrFormat: readString(meta, "hdrFormat"),
-      releaseStatus: wantedItem?.wantedStatus === "waiting"
-        ? "Downloading"
-        : wantedItem?.wantedStatus ?? (item.hasFile ? "Available" : "Missing"),
+      releaseStatus: releaseStatusLabel(wantedItem?.wantedStatus, item.hasFile),
       certification: readString(meta, "certification"),
       collection: readString(meta, "collection"),
       minimumAvailability: readString(meta, "minimumAvailability"),
@@ -214,9 +232,7 @@ export function adaptSeriesItems(items: SeriesListItem[], wanted: SeriesWantedSu
       audioChannels: item.audioChannels ?? readString(meta, "audioChannels"),
       language: readString(meta, "language"),
       hdrFormat: readString(meta, "hdrFormat"),
-      releaseStatus: wantedItem?.wantedStatus === "waiting"
-        ? "Downloading"
-        : wantedItem?.wantedStatus ?? (item.hasFile ? "Available" : "Missing"),
+      releaseStatus: releaseStatusLabel(wantedItem?.wantedStatus, item.hasFile),
       certification: readString(meta, "certification"),
       collection: readString(meta, "collection"),
       minimumAvailability: readString(meta, "minimumAvailability"),
