@@ -118,7 +118,14 @@ public static class MediaGrabHandler
         }
 
         var platformSettings = await platformSettingsRepository.GetAsync(cancellationToken);
-        var category = kind == MediaKind.Movie && library.MediaType != "tv" ? "movies" : "tv";
+        // The per-library routing override, or nothing. It must not be a literal:
+        // passing "movies" here looked like a category and behaved like one, so
+        // DownloadClientHelpers.ResolveCategory never reached its fallback and
+        // the Movies/TV categories configured on the client were dead settings.
+        // Every grab landed in a category named "movies", which on a fresh
+        // client does not exist — so the download saved to the client's default
+        // folder instead of the one the library and its processor watch.
+        var category = string.IsNullOrWhiteSpace(downloadClient.Category) ? null : downloadClient.Category.Trim();
         var forceOverride = request.Force == true;
         var overrideReason = string.IsNullOrWhiteSpace(request.OverrideReason)
             ? "User manually forced this release from search results."
