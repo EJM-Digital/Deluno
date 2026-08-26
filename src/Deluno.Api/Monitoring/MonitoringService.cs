@@ -16,6 +16,7 @@ public sealed class MonitoringService(
     IDelunoReadinessService readinessService,
     IDispatchMetricsRepository dispatchMetricsRepository,
     IJobQueueRepository jobQueueRepository,
+    IMachineTelemetryRepository machineTelemetryRepository,
     IConnectionsRepository connectionsRepository,
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
     IOptions<StoragePathOptions> storageOptions,
@@ -34,6 +35,7 @@ public sealed class MonitoringService(
         var services = await ReadServiceSummaryAsync(dispatch.RecoveryCasesOpenCount, cancellationToken);
         var performance = await ReadPerformanceSummaryAsync(dispatch, cancellationToken);
         var alerts = await BuildAlertsAsync(now, readiness, storage, dispatch, cancellationToken);
+        var machine = await ReadMachineSampleAsync(cancellationToken);
 
         return new MonitoringDashboardSnapshot(
             GeneratedUtc: now,
@@ -45,7 +47,26 @@ public sealed class MonitoringService(
             Storage: storage,
             Services: services,
             Performance: performance,
-            Alerts: alerts);
+            Alerts: alerts,
+            Machine: machine);
+    }
+
+    /// <summary>
+    /// The newest machine reading, or null. A dashboard cell that is absent
+    /// says "not measured"; one showing zero would say "idle", which is a
+    /// different and possibly false claim.
+    /// </summary>
+    private async Task<MachineTelemetrySample?> ReadMachineSampleAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await machineTelemetryRepository.GetLatestAsync(cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogDebug(exception, "Machine telemetry was unavailable for the monitoring snapshot.");
+            return null;
+        }
     }
 
     public async Task<IReadOnlyList<MonitoringAlertItem>> GetAlertsAsync(CancellationToken cancellationToken)

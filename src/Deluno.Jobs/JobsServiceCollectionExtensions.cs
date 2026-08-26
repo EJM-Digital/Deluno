@@ -27,6 +27,10 @@ public static class JobsServiceCollectionExtensions
         services.AddSingleton<IDownloadThroughputRepository>(provider =>
             provider.GetRequiredService<SqliteDownloadThroughputRepository>());
 
+        services.AddSingleton<SqliteMachineTelemetryRepository>();
+        services.AddSingleton<IMachineTelemetryRepository>(provider =>
+            provider.GetRequiredService<SqliteMachineTelemetryRepository>());
+
         services.AddSingleton<IJobLaneSignal, JobLaneSignal>();
 
         services.AddSingleton<SqliteJobStore>();

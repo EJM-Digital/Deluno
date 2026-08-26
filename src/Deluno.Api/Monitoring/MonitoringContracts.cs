@@ -2,13 +2,21 @@ using Deluno.Contracts;
 
 namespace Deluno.Api.Monitoring;
 
+/// <param name="Machine">
+/// How hard the machine is working (#272). Null before the sampler has run, or
+/// where it cannot read — the dashboard simply says nothing rather than
+/// claiming an idle machine. It is the newest stored reading rather than a
+/// fresh probe: rates are measured between calls, so a second prober would
+/// reset the sampler's baseline and both would report nonsense.
+/// </param>
 public sealed record MonitoringDashboardSnapshot(
     DateTimeOffset GeneratedUtc,
     MonitoringReadinessSummary Readiness,
     MonitoringStorageSummary Storage,
     MonitoringServiceSummary Services,
     MonitoringPerformanceSummary Performance,
-    IReadOnlyList<MonitoringAlertItem> Alerts);
+    IReadOnlyList<MonitoringAlertItem> Alerts,
+    MachineTelemetrySample? Machine = null);
 
 public sealed record MonitoringReadinessSummary(
     string Status,

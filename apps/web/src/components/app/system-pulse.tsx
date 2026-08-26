@@ -20,7 +20,7 @@ import { CountUp } from "../ui/count-up";
 import { RadialGauge } from "../ui/radial-gauge";
 import { StatusLed, type LedTone } from "../ui/status-led";
 import { cn } from "../../lib/utils";
-import type { MonitoringDashboardSnapshot } from "../../lib/api";
+import type { MachineTelemetrySample, MonitoringDashboardSnapshot } from "../../lib/api";
 
 /** Below this much free space, storage stops being background information. */
 const STORAGE_WARN_PERCENT = 15;
@@ -28,6 +28,9 @@ const STORAGE_DANGER_PERCENT = 5;
 
 /** A local API answering slower than this is worth noticing. */
 const LATENCY_WARN_MS = 750;
+
+/** Above this, a machine reading stops being background information (#272). */
+const MACHINE_WARN_PERCENT = 85;
 
 interface PulseCell {
   label: string;
@@ -50,7 +53,7 @@ export function SystemPulse({ snapshot, className }: { snapshot: MonitoringDashb
     );
   }
 
-  const { readiness, storage, performance } = snapshot;
+  const { readiness, storage, performance, machine } = snapshot;
   const latency = performance.apiLatency;
   const cells = buildCells(snapshot);
   const worst = worstTone(cells.map((cell) => cell.tone).concat(readiness.ready ? "ok" : "danger"));
@@ -59,7 +62,7 @@ export function SystemPulse({ snapshot, className }: { snapshot: MonitoringDashb
     <section
       aria-label="System status"
       className={cn(
-        "relative overflow-hidden rounded-2xl border bg-card shadow-card",
+        "relative flex flex-col overflow-hidden rounded-2xl border bg-card shadow-card",
         className,
         worst === "danger"
           ? "border-destructive/30 dark:border-destructive/25"
@@ -78,7 +81,7 @@ export function SystemPulse({ snapshot, className }: { snapshot: MonitoringDashb
         )}
       />
 
-      <div className="relative grid h-full gap-[var(--grid-gap)] p-[var(--card-pad-x)] lg:grid-cols-[auto_minmax(0,1fr)] lg:items-stretch">
+      <div className="relative grid flex-1 gap-[var(--grid-gap)] p-[var(--card-pad-x)] lg:grid-cols-[auto_minmax(0,1fr)] lg:items-stretch">
         <StorageDial storage={storage} />
 
         <div className="grid min-w-0 grid-cols-2 gap-px overflow-hidden rounded-xl bg-hairline/70 sm:grid-cols-3 xl:grid-cols-5 dark:bg-white/[0.06]">
@@ -116,8 +119,83 @@ export function SystemPulse({ snapshot, className }: { snapshot: MonitoringDashb
           />
         </div>
       </div>
+
+      {machine ? <MachineStrip machine={machine} /> : null}
     </section>
   );
+}
+
+/**
+ * How hard the machine is working (#272).
+ *
+ * Deluno could say how full a drive was and nothing about how busy it was, so
+ * when an import crawled it could not say whether the cause was Deluno, the
+ * disk, or something else on the box — a question the arr suite also fails to
+ * answer.
+ *
+ * A strip rather than three more tiles, deliberately. These are numbers people
+ * go looking for when something is slow, not numbers they scan every visit, and
+ * this pane is held to fitting one screen: a tile row would have cost real
+ * height for readings that are usually unremarkable.
+ *
+ * Both disk figures are here because having only one cannot tell "Deluno is
+ * hammering the disk" from "something else is", which is the whole question.
+ */
+function MachineStrip({ machine }: { machine: MachineTelemetrySample }) {
+  const readings: { label: string; value: string; tone: LedTone }[] = [
+    {
+      label: "CPU",
+      value: `${machine.cpuPercent.toFixed(0)}%`,
+      tone: machine.cpuPercent >= MACHINE_WARN_PERCENT ? "warn" : "idle"
+    },
+    {
+      label: "Memory",
+      value: machine.totalMemoryBytes
+        ? `${formatBytes(machine.memoryBytes)} of ${formatBytes(machine.totalMemoryBytes)}`
+        : formatBytes(machine.memoryBytes),
+      tone: (machine.memoryPercent ?? 0) >= MACHINE_WARN_PERCENT ? "warn" : "idle"
+    },
+    {
+      label: "Deluno disk",
+      value: `${formatBytes(machine.processReadBytesPerSecond + machine.processWriteBytesPerSecond)}/s`,
+      tone: "idle"
+    },
+    {
+      label: "Library drive",
+      value: describeDrive(machine),
+      // Null busy is not zero busy: the volume can refuse the reading, and an
+      // absent figure has to read as "not measured" rather than "idle".
+      tone: (machine.diskBusyPercent ?? 0) >= MACHINE_WARN_PERCENT ? "warn" : "idle"
+    }
+  ];
+
+  return (
+    <div className="relative flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-hairline px-[var(--card-pad-x)] py-1.5">
+      {readings.map((reading) => (
+        <span key={reading.label} className="flex items-center gap-1.5 text-[length:var(--type-micro)]">
+          <StatusLed tone={reading.tone} size={5} />
+          <span className="text-muted-foreground">{reading.label}</span>
+          <span className={cn("font-medium tabular-nums", reading.tone === "warn" ? "text-warning" : "text-foreground")}>
+            {reading.value}
+          </span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The whole volume, including everything else on the machine — which is the
+ * half that tells you the slow import is not Deluno's doing. Absent when the
+ * volume refuses the reading, and absent has to look different from idle.
+ */
+function describeDrive(machine: MachineTelemetrySample) {
+  if (machine.diskBusyPercent === null) {
+    return "not measured";
+  }
+
+  const total = (machine.diskReadBytesPerSecond ?? 0) + (machine.diskWriteBytesPerSecond ?? 0);
+  return `${formatBytes(total)}/s · ${machine.diskBusyPercent.toFixed(0)}% busy`;
 }
 
 function PulseTile({ cell }: { cell: PulseCell }) {

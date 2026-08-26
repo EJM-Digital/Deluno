@@ -1,6 +1,8 @@
 using System.Globalization;
 using Deluno.Contracts;
+using Deluno.Jobs.Data;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 
@@ -18,6 +20,25 @@ public static class MonitoringEndpointRouteBuilderExtensions
         {
             var snapshot = await service.GetDashboardAsync(cancellationToken);
             return Results.Ok(snapshot);
+        });
+
+        // The stored counterpart to the live reading on /dashboard: what the
+        // machine has been doing, rather than what it is doing now (#272).
+        monitoring.MapGet("/machine", async (
+            int? hours,
+            // Explicit, not inferred. A minimal-API GET whose parameter the host
+            // has not registered is inferred as a *body* parameter, and that
+            // does not fail on this route — it fails the whole route table.
+            [FromServices] IMachineTelemetryRepository machineTelemetryRepository,
+            TimeProvider timeProvider,
+            CancellationToken cancellationToken) =>
+        {
+            // Bounded by the sampler's own retention: asking for a week cannot
+            // conjure history that was never kept.
+            var window = Math.Clamp(hours ?? 6, 1, 48);
+            var since = timeProvider.GetUtcNow().AddHours(-window);
+            var samples = await machineTelemetryRepository.ListSamplesAsync(since, cancellationToken);
+            return Results.Ok(new MachineTelemetryWindow(window, samples));
         });
 
         monitoring.MapGet("/alerts", async (
