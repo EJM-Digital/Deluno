@@ -35,6 +35,21 @@ public static class DownloadClientEndpointRouteBuilderExtensions
             return Results.Ok(overview);
         });
 
+        // What the clients are still holding after import, and why (#288).
+        //
+        // Read from what the worker's last sharing pass decided rather than
+        // recomputed here: this is the surface that answers "why is my drive
+        // full", and an answer worked out separately from the action could
+        // contradict it.
+        endpoints.MapGet("/api/download-clients/sharing", async (
+            HttpContext httpContext,
+            IDownloadSharingRepository sharingRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            return denied ?? Results.Ok(await sharingRepository.GetSnapshotAsync(cancellationToken));
+        });
+
         // The stored counterpart to the live telemetry above: what the speed
         // has been, rather than what it is this second. Kept separate because
         // the two answer different questions and have very different costs.

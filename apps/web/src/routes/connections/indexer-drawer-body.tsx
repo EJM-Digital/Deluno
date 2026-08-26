@@ -1,5 +1,5 @@
 import { Loader2, RefreshCw, Wifi } from "lucide-react";
-import type { IndexerItem, OutboundThrottleHostState } from "../../lib/api";
+import type { IndexerItem, OutboundThrottleHostState, PlatformSettingsSnapshot } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import { Chip } from "../../components/ui/chip";
 import { Disclosure } from "../../components/ui/disclosure";
@@ -11,12 +11,14 @@ import { SegmentedControl } from "../../components/ui/segmented-control";
 import { Select } from "../../components/ui/select";
 import { SwitchRow } from "../../components/ui/switch";
 import { INDEXER_PRESETS, PRIORITY_OPTIONS, type IndexerProtocol, type MediaScope } from "./presets";
-import type { IndexerForm } from "./forms";
+import type { IndexerForm, SharingRule } from "./forms";
+import { describeGlobalSharingRule, describeStrictSharingRule } from "../../lib/sharing-rule";
 import { formatSeconds, healthChip, relative } from "./format";
 export function IndexerDrawerBody({
   form,
   setForm,
   editing,
+  settings,
   throttle,
   errors,
   clearError,
@@ -32,6 +34,8 @@ export function IndexerDrawerBody({
   form: IndexerForm;
   setForm: (updater: (current: IndexerForm) => IndexerForm) => void;
   editing: IndexerItem | null;
+  /** Only for stating the user's own sharing rule back to them (#288). */
+  settings: PlatformSettingsSnapshot;
   throttle: OutboundThrottleHostState | null;
   errors: Record<string, string>;
   clearError: (key: string) => void;
@@ -88,6 +92,29 @@ export function IndexerDrawerBody({
           </Field>
         </FieldRow>
         <SwitchRow label="Enabled" description="Included in automatic and interactive searches." checked={form.isEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, isEnabled: checked }))} />
+      </DrawerSection>
+
+      {/* Asked here, while the user is looking at the site's own rules, rather
+          than left for them to discover after an account is banned (#288). One
+          question: is this site stricter than the rule you already made? The
+          five settings behind the answer are Deluno's problem, not theirs. */}
+      <DrawerSection title="Sharing">
+        <Field
+          label="Does this site expect you to keep sharing?"
+          help="Most public sites do not care. Private trackers usually do, and can penalise an account that stops early."
+        >
+          <SegmentedControl<SharingRule>
+            value={form.sharingRule}
+            onValueChange={(sharingRule) => setForm((current) => ({ ...current, sharingRule }))}
+            options={[
+              { value: "inherit", label: "No, my normal rule" },
+              { value: "strict", label: "Yes, it is strict" }
+            ]}
+          />
+        </Field>
+        <p className="text-[length:var(--type-caption)] text-muted-foreground">
+          {form.sharingRule === "strict" ? describeStrictSharingRule() : describeGlobalSharingRule(settings)}
+        </p>
       </DrawerSection>
 
       <DrawerSection title="Categories" aside={form.categories ? `${form.categories.split(",").filter(Boolean).length} selected` : undefined}>

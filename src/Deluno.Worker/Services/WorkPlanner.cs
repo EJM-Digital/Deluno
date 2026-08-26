@@ -12,6 +12,7 @@ using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Deluno.Connections.Data;
 using Deluno.Recovery.Contracts;
+using Deluno.Recovery.Policies;
 using Deluno.Recovery.Services;
 using Deluno.Series.Contracts;
 using Deluno.Series.Data;
@@ -267,7 +268,8 @@ public sealed class WorkPlanner(
     }
 
     /// <summary>
-    /// Lets go of downloads that have finished sharing (#288).
+    /// Lets go of downloads that have finished sharing, and records what is
+    /// still being held (#288).
     ///
     /// Runs after the import pass, over items the client still holds. Each one
     /// is measured against the rule its search source carries — the global rule
@@ -275,12 +277,22 @@ public sealed class WorkPlanner(
     /// obligation is discharged. Anything still sharing is left exactly where it
     /// is; anything Deluno does not recognise is never touched, because an item
     /// with no dispatch behind it was not put there by Deluno.
+    ///
+    /// The pass also writes down what it decided, because "why is my drive
+    /// full" is a question a user should be able to answer from the dashboard
+    /// rather than by opening a torrent client. Storing the evaluator's own
+    /// sentence — rather than recomputing one for display — is what stops the
+    /// explanation and the action from ever disagreeing.
     /// </summary>
     public async Task PlanSharingReclaimAsync(
         IDownloadClientTelemetryService downloadClientTelemetryService,
         IPlatformSettingsRepository platformSettingsRepository,
         IConnectionsRepository connectionsRepository,
+        ILibrariesRepository librariesRepository,
         IActivityFeedRepository activityFeedRepository,
+        IDownloadSharingRepository sharingRepository,
+        IMovieCatalogRepository movieCatalogRepository,
+        ISeriesCatalogRepository seriesCatalogRepository,
         SharingReclaimService reclaimService,
         CancellationToken cancellationToken)
     {
@@ -298,7 +310,9 @@ public sealed class WorkPlanner(
             settings.SharingStuckAfterDays);
 
         // Nothing to do at all when the user has told Deluno to keep its hands
-        // off, and no reason to read telemetry to find that out.
+        // off, and no reason to read telemetry to find that out. The stored
+        // picture ages out on its own, so the dashboard stops claiming to be
+        // holding anything within a pass or two of the mode changing.
         if (string.Equals(SharingPolicy.NormalizeMode(globalPolicy.Mode), SharingPolicy.ModeLeaveAlone, StringComparison.Ordinal))
         {
             return;
@@ -319,6 +333,13 @@ public sealed class WorkPlanner(
         var indexersByName = indexers
             .GroupBy(indexer => indexer.Name, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+
+        var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+        var librariesById = libraries.ToDictionary(library => library.Id, StringComparer.OrdinalIgnoreCase);
+
+        // What the clients are still holding, for the dashboard to explain.
+        var holds = new List<DownloadSharingHold>();
+        string? driveNote = null;
 
         foreach (var item in overview.Clients.SelectMany(client => client.Queue))
         {
@@ -361,12 +382,90 @@ public sealed class WorkPlanner(
                     dispatch.EntityType,
                     dispatch.EntityId,
                     cancellationToken);
+                continue;
             }
-            else if (outcome.Warning is not null)
+
+            if (outcome.Warning is not null)
             {
                 logger.LogWarning("Sharing reclaim for {Title} did not complete: {Warning}", item.Title, outcome.Warning);
             }
+
+            // Everything that survived the pass is still on the disk. Where the
+            // client put it decides whether that costs anything: the library's
+            // copy and this one may be the same file data, in which case saying
+            // it uses gigabytes would be a lie.
+            //
+            // The library comes from the dispatch rather than the queue item:
+            // telemetry stops resolving a library once an import job has claimed
+            // an item, which is precisely the state everything here is in.
+            librariesById.TryGetValue(
+                string.IsNullOrWhiteSpace(dispatch.LibraryId) ? item.LibraryId ?? string.Empty : dispatch.LibraryId,
+                out var library);
+            var downloadPath = item.SourcePath ?? library?.DownloadsPath;
+            var libraryPath = library?.RootPath;
+
+            holds.Add(new DownloadSharingHold(
+                item.ClientId,
+                item.ClientName,
+                item.Id,
+                // The catalogue's title, not the release string. Somebody
+                // reading a dashboard to find out what is holding their disk
+                // should see "Big Buck Bunny", not
+                // "Big.Buck.Bunny.2008.1080p.WEB-DL.x264-DELUNO".
+                await ResolveCatalogueTitleAsync(
+                    dispatch,
+                    movieCatalogRepository,
+                    seriesCatalogRepository,
+                    item.Title,
+                    cancellationToken),
+                outcome.Detail ?? outcome.Reason,
+                Math.Max(0, item.SizeBytes),
+                NeedsYou: outcome.Action == SharingAction.Ask || outcome.Warning is not null,
+                SharesLibraryCopy: SharingFootprint.SharesOneCopy(downloadPath, libraryPath, settings.UseHardlinks)));
+
+            driveNote ??= SharingFootprint.Describe(downloadPath, libraryPath, settings.UseHardlinks);
         }
+
+        await sharingRepository.ReplaceHoldsAsync(holds, driveNote, cancellationToken);
+    }
+
+    /// <summary>
+    /// The title a person recognises, falling back to whatever the download
+    /// client called it when the catalogue no longer has the item — a title
+    /// deleted while its download was still sharing, most obviously.
+    /// </summary>
+    private async Task<string> ResolveCatalogueTitleAsync(
+        DispatchCatalogueLink dispatch,
+        IMovieCatalogRepository movieCatalogRepository,
+        ISeriesCatalogRepository seriesCatalogRepository,
+        string fallback,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(dispatch.EntityId))
+        {
+            return fallback;
+        }
+
+        try
+        {
+            if (string.Equals(dispatch.EntityType, "movie", StringComparison.OrdinalIgnoreCase))
+            {
+                var movie = await movieCatalogRepository.GetByIdAsync(dispatch.EntityId, cancellationToken);
+                return string.IsNullOrWhiteSpace(movie?.Title) ? fallback : movie.Title;
+            }
+
+            if (string.Equals(dispatch.EntityType, "series", StringComparison.OrdinalIgnoreCase))
+            {
+                var series = await seriesCatalogRepository.GetByIdAsync(dispatch.EntityId, cancellationToken);
+                return string.IsNullOrWhiteSpace(series?.Title) ? fallback : series.Title;
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogDebug(ex, "Could not resolve a catalogue title for dispatch {DispatchId}.", dispatch.DispatchId);
+        }
+
+        return fallback;
     }
 
     public async Task PlanImportAutomationAsync(

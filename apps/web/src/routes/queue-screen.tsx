@@ -42,6 +42,7 @@ import {
   type SeriesImportRecoverySummary
 } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
+import { formatBytes } from "../lib/utils";
 import { resolveImportSourcePath } from "../lib/import-source";
 import { JOB_STATUS, isJobActive, isJobDeadLettered, isJobFailed, type JobStatus } from "../lib/job-status-constants";
 import { downloadQueueStatuses, isImportReadyStatus, isProcessingStatus, queueStatusLabel } from "../lib/download-telemetry";
@@ -1474,13 +1475,6 @@ function formatEta(seconds: number) {
   if (seconds < 60) return `${Math.round(seconds)}s left`;
   if (seconds < 3600) return `${Math.round(seconds / 60)}m left`;
   return `${(seconds / 3600).toFixed(1)}h left`;
-}
-
-function formatBytes(value: number) {
-  if (!value) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
-  return `${(value / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
 function formatDateTime(value: string) {

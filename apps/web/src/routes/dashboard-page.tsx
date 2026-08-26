@@ -9,6 +9,7 @@ import {
   fetchJson, fetchPageItems,
   type ActivityEventItem,
   type DownloadClientItem,
+  type DownloadSharingSnapshot,
   type DownloadTelemetryOverview,
   type DownloadThroughputWindow,
   type IndexerItem,
@@ -87,6 +88,8 @@ interface DashboardLoaderData {
   hasProcessor: boolean;
   /** Stored throughput readings for the speed chart. */
   throughput: DownloadThroughputWindow | null;
+  /** Finished downloads the clients are still sharing, and what they cost. */
+  sharing: DownloadSharingSnapshot;
   /** Combined client throughput right now, in MB/s. */
   speedMbps: number;
   activeDownloads: ActiveDownload[];
@@ -138,6 +141,8 @@ interface DashboardSources {
   processors: ProcessorConnectionItem[];
   /** Stored throughput readings — what the speed has been, not what it is now. */
   throughput: DownloadThroughputWindow | null;
+  /** What the download clients still hold after import, and why (#288). */
+  sharing: DownloadSharingSnapshot;
 }
 
 function emptyDashboardSources(): DashboardSources {
@@ -150,7 +155,8 @@ function emptyDashboardSources(): DashboardSources {
     indexers: [], clients: [], libraries: [], automation: [], searchCycles: [], retryWindows: [], upcomingEpisodes: [],
     setupProgress: EMPTY_SETUP_PROGRESS,
     settings: emptyPlatformSettingsSnapshot,
-    policySets: [], qualityProfiles: [], metrics: null, monitoring: null, activity: [], processors: [], throughput: null
+    policySets: [], qualityProfiles: [], metrics: null, monitoring: null, activity: [], processors: [], throughput: null,
+    sharing: EMPTY_SHARING
   };
 }
 
@@ -173,6 +179,7 @@ const EMPTY_TELEMETRY: DownloadTelemetryOverview = {
   clients: [],
   capturedUtc: new Date(0).toISOString()
 };
+const EMPTY_SHARING: DownloadSharingSnapshot = { holds: [], extraBytes: 0, driveNote: null, observedUtc: null };
 const EMPTY_SETUP_PROGRESS: SetupProgressItem = { lastCompletedStep: 0, isSkipped: false, isCompleted: false, updatedUtc: new Date(0).toISOString() };
 
 export async function dashboardLoader(): Promise<DashboardLoaderData> {
@@ -197,18 +204,19 @@ export async function dashboardLoader(): Promise<DashboardLoaderData> {
 
   // A dashboard that cannot draw its charts or read its own health still has to
   // render, so these degrade to a stated gap rather than an error page.
-  const [metrics, monitoring, activity, processors, throughput] = await Promise.all([
+  const [metrics, monitoring, activity, processors, throughput, sharing] = await Promise.all([
     fetchJson<DashboardMetrics>("/api/dashboard/metrics?days=30").catch(() => null),
     fetchJson<MonitoringDashboardSnapshot>("/api/monitoring/dashboard").catch(() => null),
     fetchPageItems<ActivityEventItem>("/api/activity?pageSize=10").catch((): ActivityEventItem[] => []),
     fetchJson<ProcessorConnectionItem[]>("/api/integrations/processors/connections").catch((): ProcessorConnectionItem[] => []),
-    fetchJson<DownloadThroughputWindow>("/api/download-clients/throughput?hours=6").catch(() => null)
+    fetchJson<DownloadThroughputWindow>("/api/download-clients/throughput?hours=6").catch(() => null),
+    fetchJson<DownloadSharingSnapshot>("/api/download-clients/sharing").catch(() => EMPTY_SHARING)
   ]);
 
   return buildDashboardData({
     moviePage, movieWanted, showPage, showWanted, telemetry, indexers, clients,
     libraries, automation, searchCycles, retryWindows, upcomingEpisodes,
-    setupProgress, settings, policySets, qualityProfiles, metrics, monitoring, activity, processors, throughput
+    setupProgress, settings, policySets, qualityProfiles, metrics, monitoring, activity, processors, throughput, sharing
   });
 }
 
@@ -216,7 +224,7 @@ function buildDashboardData(sources: DashboardSources): DashboardLoaderData {
   const {
     moviePage, movieWanted, showPage, showWanted, telemetry, indexers, clients,
     libraries, automation, searchCycles, retryWindows, upcomingEpisodes,
-    setupProgress, settings, policySets, qualityProfiles, metrics, monitoring, activity, processors, throughput
+    setupProgress, settings, policySets, qualityProfiles, metrics, monitoring, activity, processors, throughput, sharing
   } = sources;
   const adaptedMovies = adaptMovieItems(moviePage.items, movieWanted);
   const adaptedShows = adaptSeriesItems(showPage.items, showWanted);
@@ -234,6 +242,7 @@ function buildDashboardData(sources: DashboardSources): DashboardLoaderData {
     // refining media before import.
     hasProcessor: processors.some((processor) => processor.isEnabled),
     throughput,
+    sharing,
     speedMbps: telemetry.summary.totalSpeedMbps,
     activeDownloads,
     // Downloading means downloading. Counting import-ready items here made
@@ -354,6 +363,18 @@ function useDashboardData(initial: DashboardLoaderData, historyDays: HistoryDays
     initialData: source.throughput
   });
 
+  // What the clients still hold after import (#288). Written by the worker's
+  // sharing pass rather than measured here, so it moves on that pass's clock —
+  // and the numbers on it are days and gigabytes, which do not reward polling
+  // any harder than the heartbeat. Outside the tuple above for the same reason
+  // as the rest: past twenty entries its inference collapses.
+  const sharing = useQuery({
+    ...DASHBOARD_REFRESH,
+    queryKey: ["download-sharing"],
+    queryFn: () => fetchJson<DownloadSharingSnapshot>("/api/download-clients/sharing").catch(() => EMPTY_SHARING),
+    initialData: source.sharing
+  });
+
   return buildDashboardData({
     moviePage: moviePage.data ?? source.moviePage,
     movieWanted: movieWanted.data ?? source.movieWanted,
@@ -375,7 +396,8 @@ function useDashboardData(initial: DashboardLoaderData, historyDays: HistoryDays
     monitoring: monitoring.data ?? source.monitoring,
     activity: activity.data ?? source.activity,
     processors: processors.data ?? source.processors,
-    throughput: throughput.data ?? source.throughput
+    throughput: throughput.data ?? source.throughput,
+    sharing: sharing.data ?? source.sharing
   });
 }
 
@@ -618,6 +640,7 @@ export function DashboardPage() {
           summary={data.sources.telemetry.summary}
           performance={data.monitoring?.performance}
           inFlight={data.activeDownloads}
+          sharing={data.sharing}
           showProcessing={data.hasProcessor}
         />
 

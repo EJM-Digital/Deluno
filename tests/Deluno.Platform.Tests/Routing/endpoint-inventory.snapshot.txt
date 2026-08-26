@@ -41,6 +41,7 @@ GET /api/decisions
 GET /api/destination-rules/
 GET /api/diagnostics/secrets-backend
 GET /api/download-clients/
+GET /api/download-clients/sharing
 GET /api/download-clients/telemetry
 GET /api/download-clients/throughput
 GET /api/download-clients/{clientId}/queue/{queueItemId}/cleanup-preview

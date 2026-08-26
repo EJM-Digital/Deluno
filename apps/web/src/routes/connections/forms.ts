@@ -1,9 +1,29 @@
 import type { DownloadClientItem, IndexerItem } from "../../lib/api";
 import { CLIENT_PRESETS, INDEXER_PRESETS, type IndexerProtocol, type MediaScope } from "./presets";
 
-export interface IndexerForm { name: string; protocol: IndexerProtocol; scope: MediaScope; baseUrl: string; apiKey: string; priority: string; requestIntervalSeconds: string; categories: string; isEnabled: boolean; }
-export function emptyIndexerForm(): IndexerForm { return { name: "", protocol: "newznab", scope: "both", baseUrl: "", apiKey: "", priority: "10", requestIntervalSeconds: "", categories: INDEXER_PRESETS[1]!.defaultCategories("both"), isEnabled: true }; }
-export function indexerFormFrom(item: IndexerItem): IndexerForm { return { name: item.name, protocol: (["torznab", "newznab", "rss", "custom"].includes(item.protocol) ? item.protocol : "custom") as IndexerProtocol, scope: item.mediaScope ?? "both", baseUrl: item.baseUrl, apiKey: "", priority: String(item.priority), requestIntervalSeconds: item.requestIntervalSeconds == null ? "" : String(item.requestIntervalSeconds), categories: item.categories, isEnabled: item.isEnabled }; }
+/**
+ * How strict this site is about sharing (#288).
+ *
+ * One answer, not five dials. The five columns behind it are a rule the user
+ * has already made once, globally; all a source has to say is whether it is the
+ * exception. "strict" is what a private tracker needs and what its own rules
+ * describe: keep sharing a long time, give back at least what you took, and
+ * never stop early on your own.
+ */
+export type SharingRule = "inherit" | "strict";
+
+export const STRICT_SHARING = { forHours: 336, untilRatio: 1, stuckAfterDays: 14 } as const;
+
+export function sharingRuleFrom(item: IndexerItem): SharingRule {
+  return item.sharingMode || item.sharingForHours != null || item.sharingUntilRatio != null ||
+    item.sharingStuckAction || item.sharingStuckAfterDays != null
+    ? "strict"
+    : "inherit";
+}
+
+export interface IndexerForm { name: string; protocol: IndexerProtocol; scope: MediaScope; baseUrl: string; apiKey: string; priority: string; requestIntervalSeconds: string; categories: string; isEnabled: boolean; sharingRule: SharingRule; }
+export function emptyIndexerForm(): IndexerForm { return { name: "", protocol: "newznab", scope: "both", baseUrl: "", apiKey: "", priority: "10", requestIntervalSeconds: "", categories: INDEXER_PRESETS[1]!.defaultCategories("both"), isEnabled: true, sharingRule: "inherit" }; }
+export function indexerFormFrom(item: IndexerItem): IndexerForm { return { name: item.name, protocol: (["torznab", "newznab", "rss", "custom"].includes(item.protocol) ? item.protocol : "custom") as IndexerProtocol, scope: item.mediaScope ?? "both", baseUrl: item.baseUrl, apiKey: "", priority: String(item.priority), requestIntervalSeconds: item.requestIntervalSeconds == null ? "" : String(item.requestIntervalSeconds), categories: item.categories, isEnabled: item.isEnabled, sharingRule: sharingRuleFrom(item) }; }
 export function sameIndexer(a: IndexerForm, b: IndexerForm) { return (Object.keys(a) as (keyof IndexerForm)[]).every((key) => a[key] === b[key]); }
 
 export interface ClientForm { name: string; protocol: string; host: string; port: string; username: string; password: string; moviesCategory: string; tvCategory: string; priority: string; isEnabled: boolean; }

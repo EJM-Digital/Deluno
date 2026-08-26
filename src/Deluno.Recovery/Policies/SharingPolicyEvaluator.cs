@@ -23,7 +23,21 @@ public enum SharingAction
 /// for the dashboard, not for a log: "still sharing for 2 more days" rather than
 /// "seedingMinutes 2880 &lt; forHours 4320".
 /// </summary>
-public sealed record SharingDecision(SharingAction Action, string Reason);
+/// <param name="Reason">
+/// The whole sentence, standing on its own. This is what goes in the activity
+/// feed, where nothing around it has already said what happened.
+/// </param>
+/// <param name="Detail">
+/// The same fact with the part the surrounding context already supplies taken
+/// out — "2 days left" rather than "Still sharing — 2 days left." A dashboard
+/// section headed "Finished, still sharing" that then says "still sharing" on
+/// every row is stating the same thing twice, which is a defect and not a
+/// flourish. Falls back to the whole sentence where there is no shorter form.
+/// </param>
+public sealed record SharingDecision(SharingAction Action, string Reason, string? Detail = null)
+{
+    public string DetailOrReason => string.IsNullOrWhiteSpace(Detail) ? Reason : Detail;
+}
 
 /// <summary>
 /// Decides when a completed, imported download has finished its obligation to
@@ -95,17 +109,20 @@ public static class SharingPolicyEvaluator
             {
                 SharingPolicy.StuckKeepWaiting => new(
                     SharingAction.Wait,
-                    $"Still sharing after {policy.StuckAfterDays} days and {shortfall}. Deluno is set to keep waiting."),
+                    $"Still sharing after {policy.StuckAfterDays} days and {shortfall}. Deluno is set to keep waiting.",
+                    $"{policy.StuckAfterDays} days in, {shortfall} — set to keep waiting"),
                 SharingPolicy.StuckAsk => new(
                     SharingAction.Ask,
-                    $"Shared for {policy.StuckAfterDays} days and {shortfall}. Deluno is waiting for you to decide."),
+                    $"Shared for {policy.StuckAfterDays} days and {shortfall}. Deluno is waiting for you to decide.",
+                    $"{policy.StuckAfterDays} days in, {shortfall} — waiting for you to decide"),
                 _ => new(
                     SharingAction.Reclaim,
                     $"Gave up after {policy.StuckAfterDays} days: {shortfall}.")
             };
         }
 
-        return new(SharingAction.Wait, DescribeRemaining(policy, ratio, sharedMinutes, timeMet, ratioMet));
+        var remaining = DescribeRemaining(policy, ratio, sharedMinutes, timeMet, ratioMet);
+        return new(SharingAction.Wait, $"Still sharing{(remaining is null ? string.Empty : $" — {remaining}")}.", remaining);
     }
 
     private static string DescribeMet(SharingPolicy policy, double? ratio, int sharedMinutes)
@@ -126,7 +143,12 @@ public static class SharingPolicyEvaluator
         return $"shared for {FormatDuration(sharedMinutes)}, short of the target";
     }
 
-    private static string DescribeRemaining(SharingPolicy policy, double? ratio, int sharedMinutes, bool timeMet, bool ratioMet)
+    /// <summary>
+    /// What is left to do, or null when the rule cannot say — the caller wraps
+    /// it into a sentence and also keeps it on its own for surfaces that have
+    /// already said "still sharing" in their heading.
+    /// </summary>
+    private static string? DescribeRemaining(SharingPolicy policy, double? ratio, int sharedMinutes, bool timeMet, bool ratioMet)
     {
         var parts = new List<string>();
 
@@ -140,9 +162,7 @@ public static class SharingPolicyEvaluator
             parts.Add($"ratio {ratio ?? 0:0.00} of {policy.UntilRatio.Value:0.00}");
         }
 
-        return parts.Count == 0
-            ? "Still sharing."
-            : $"Still sharing — {string.Join(", ", parts)}.";
+        return parts.Count == 0 ? null : string.Join(", ", parts);
     }
 
     /// <summary>Whole units, in the words a person uses: "2 days", "4 hours", "20 minutes".</summary>
