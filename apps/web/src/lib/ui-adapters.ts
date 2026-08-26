@@ -9,7 +9,7 @@ import type {
   SeriesWantedSummary
 } from "./api";
 import { downloadQueueStatuses } from "./download-telemetry";
-import type { ActiveDownload, IndexerHealthItem, MediaItem } from "./media-types";
+import type { ActiveDownload, IndexerHealthItem, MediaItem, MediaStatus } from "./media-types";
 
 function hashValue(value: string) {
   let hash = 0;
@@ -82,6 +82,28 @@ function readRating(
   return rating.score;
 }
 
+/**
+ * The availability chip on a media card: does Deluno have the file, or not.
+ *
+ * Nothing else belongs in it. It used to read the wanted status first and show
+ * "Downloading" for anything `waiting`, which was wrong three ways over: the
+ * server sets `waiting` on a film that *has* a file and is already at or above
+ * target quality, this file's own WANTED_STATUS_PRESENTATION describes it as
+ * "not searchable yet", and neither of those is downloading. Because it was
+ * tested before `hasFile`, a film that had been imported and verified showed on
+ * its card as still coming down.
+ *
+ * Monitoring is likewise a separate automation preference and must never become
+ * the visible availability state: a missing monitored title stays Missing.
+ *
+ * Why no "Downloading" here at all: this adapter is fed the catalogue, which
+ * carries no live transfer state. Showing progress on a card needs the download
+ * telemetry wired in, not a wanted status pressed into service as a stand-in.
+ */
+function mediaAvailabilityStatus(hasFile: boolean): MediaStatus {
+  return hasFile ? "downloaded" : "missing";
+}
+
 export function adaptMovieItems(items: MovieListItem[], wanted: MovieWantedSummary): MediaItem[] {
   const wantedMap = new Map(wanted.recentItems.map((item) => [item.movieId, item]));
 
@@ -98,15 +120,7 @@ export function adaptMovieItems(items: MovieListItem[], wanted: MovieWantedSumma
       poster: item.posterUrl,
       backdrop: item.backdropUrl,
       quality: item.currentQuality ?? wantedItem?.currentQuality ?? wantedItem?.targetQuality ?? null,
-      // A title without a file is Missing whether or not it is monitored.
-      // Monitoring is a separate automation preference and must never become
-      // the visible availability state.
-      status:
-        wantedItem?.wantedStatus === "waiting"
-          ? "downloading"
-          : item.hasFile
-            ? "downloaded"
-            : "missing",
+      status: mediaAvailabilityStatus(item.hasFile),
       monitored: item.monitored,
       sizeGb: item.fileSizeBytes != null ? item.fileSizeBytes / 1024 / 1024 / 1024 : readNumber(meta, "sizeGb", "sizeGB", "sizeOnDiskGb"),
       rating: item.rating,
@@ -176,15 +190,7 @@ export function adaptSeriesItems(items: SeriesListItem[], wanted: SeriesWantedSu
       poster: item.posterUrl,
       backdrop: item.backdropUrl,
       quality: item.currentQuality ?? wantedItem?.currentQuality ?? wantedItem?.targetQuality ?? null,
-      // A title without a file is Missing whether or not it is monitored.
-      // Monitoring is a separate automation preference and must never become
-      // the visible availability state.
-      status:
-        wantedItem?.wantedStatus === "waiting"
-          ? "downloading"
-          : item.hasFile
-            ? "downloaded"
-            : "missing",
+      status: mediaAvailabilityStatus(item.hasFile),
       monitored: item.monitored,
       sizeGb: item.fileSizeBytes != null ? item.fileSizeBytes / 1024 / 1024 / 1024 : readNumber(meta, "sizeGb", "sizeGB", "sizeOnDiskGb"),
       rating: item.rating,

@@ -15,6 +15,52 @@ describe("UI adapters", () => {
     expect(adaptSeriesItems([], seriesWanted)).toEqual([]);
   });
 
+  /**
+   * The availability chip answers one question: does Deluno have the file.
+   * It used to read the wanted status first and show "Downloading" for anything
+   * `waiting` — which the server sets on a film that *has* a file and already
+   * meets or beats its target quality. So an imported, verified film displayed
+   * on its card as still coming down.
+   */
+  describe("the availability chip", () => {
+    const movie = (overrides: Record<string, unknown>) =>
+      ({ id: "movie-1", title: "Arrival", releaseYear: 2016, posterUrl: null, backdropUrl: null, currentQuality: "WEB 2160p", hasFile: true, monitored: true, fileSizeBytes: 1024 ** 3, rating: 8, ratings: [], genres: "", createdUtc: "2024-01-01T00:00:00Z", overview: null, metadataJson: "{}", ...overrides }) as unknown as MovieListItem;
+    const wanted = (wantedStatus: string) =>
+      ({ recentItems: [{ movieId: "movie-1", wantedStatus, wantedReason: "", currentQuality: "WEB 2160p", targetQuality: "WEB 1080p" }] }) as MovieWantedSummary;
+
+    it("says downloaded for a film on disk, whatever it is waiting for", () => {
+      for (const status of ["waiting", "covered", "upgrade", "missing"]) {
+        expect(adaptMovieItems([movie({})], wanted(status))[0].status).toBe("downloaded");
+      }
+    });
+
+    it("says missing for a film with no file, whatever it is waiting for", () => {
+      for (const status of ["waiting", "covered", "upgrade", "missing"]) {
+        expect(adaptMovieItems([movie({ hasFile: false })], wanted(status))[0].status).toBe("missing");
+      }
+    });
+
+    it("never claims a catalogue item is downloading", () => {
+      // This adapter is fed the catalogue, which carries no live transfer
+      // state. Progress on a card needs telemetry wired in, not a wanted
+      // status pressed into service as a stand-in.
+      for (const hasFile of [true, false]) {
+        for (const status of ["waiting", "covered", "upgrade", "missing"]) {
+          expect(adaptMovieItems([movie({ hasFile })], wanted(status))[0].status).not.toBe("downloading");
+        }
+      }
+    });
+
+    it("applies the same rule to shows", () => {
+      const show = (hasFile: boolean) =>
+        ({ id: "series-1", title: "Severance", startYear: 2022, posterUrl: null, backdropUrl: null, currentQuality: null, hasFile, monitored: true, fileSizeBytes: null, rating: 8, ratings: [], genres: "", createdUtc: "2024-01-01T00:00:00Z", overview: null, metadataJson: "{}" }) as unknown as SeriesListItem;
+      const seriesWanted = { recentItems: [{ seriesId: "series-1", wantedStatus: "waiting", wantedReason: "" }] } as unknown as SeriesWantedSummary;
+
+      expect(adaptSeriesItems([show(true)], seriesWanted)[0].status).toBe("downloaded");
+      expect(adaptSeriesItems([show(false)], seriesWanted)[0].status).toBe("missing");
+    });
+  });
+
   it("adapts active and telemetry downloads while respecting their visible limits", () => {
     const dispatch = { id: "dispatch-1", releaseName: "Arrival.2016.1080p", indexerName: "Example" } as DownloadDispatchItem;
     const telemetry = { clients: [{ queue: [{ id: "queue-1", title: "Arrival", releaseName: "Arrival.2016", category: "movies", protocol: "qbittorrent", progress: 42.3, speedMbps: 12.4, etaSeconds: 61, peers: 8, indexerName: "Example", clientName: "qBittorrent", status: "downloading", addedUtc: "2024-01-01T00:00:00Z" }] }] } as DownloadTelemetryOverview;
