@@ -543,7 +543,17 @@ public sealed class WorkPlanner(
         await downloadClientTelemetryService.RunConfiguredHealthRemediationAsync(telemetry, cancellationToken);
         foreach (var item in telemetry.Clients.SelectMany(client => client.Queue))
         {
-            if (item.Status is not ("importReady" or "completed"))
+            // `waitingForProcessor` belongs here too, and leaving it out deadlocked the
+            // Processing stage. GetOverviewAsync rewrites a finished download in a
+            // refine-before-import library to that status so the dashboard can show the
+            // stage — and this loop reads the same enriched snapshot. So the status that
+            // made the stage appear was the status that stopped the hand-off being
+            // created, and the item sat in Processing for ever.
+            //
+            // It is the right set to accept: that status is only ever produced for a
+            // completed download in a library that refines before importing, which is
+            // exactly what needs handing to a processor.
+            if (item.Status is not ("importReady" or "completed" or "waitingForProcessor"))
             {
                 continue;
             }
