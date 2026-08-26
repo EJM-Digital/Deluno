@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { FileInput, FolderTree, HelpCircle, Image, MapPinned, SlidersHorizontal, Tags, Workflow } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { GlossaryModal } from "../ui/glossary-modal";
+import { HowThisWorks } from "./how-this-works";
 import { PageToolbar } from "../ui/page-toolbar";
 
 export const librarySetupNavItems = [
@@ -325,6 +326,11 @@ export function SystemWorkspaceLayout() {
   return (
     <div className="flex flex-col gap-[var(--page-gap)]">
       <PageToolbar tabs={systemHealthNavItems} />
+      <HowThisWorks
+        id="system"
+        lead="The state of the installation rather than its contents: whether Deluno is healthy and what it is waiting on, a record of what changed and who changed it, backups to take before you touch something, updates, and the API keys anything outside Deluno needs in order to talk to it."
+        steps={[]}
+      />
       <SystemWorkspaceContext.Provider value>
         <Outlet />
       </SystemWorkspaceContext.Provider>

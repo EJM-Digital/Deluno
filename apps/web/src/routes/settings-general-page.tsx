@@ -13,6 +13,7 @@ import { Field, FieldRow } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { ListCard } from "../components/ui/list-card";
 import { PageFooter } from "../components/ui/page-footer";
+import { HowThisWorks } from "../components/app/how-this-works";
 import { PageToolbar } from "../components/ui/page-toolbar";
 import { PresetField } from "../components/ui/preset-field";
 import { systemSettingsNavItems } from "../components/app/settings-shell";
@@ -87,6 +88,12 @@ export function SettingsGeneralPage() {
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-[var(--page-gap)]" noValidate>
       <PageToolbar tabs={systemSettingsNavItems} />
+
+      <HowThisWorks
+        id="preferences"
+        lead="How this installation behaves, rather than what it manages. Nothing on these tabs changes a library or a title — they change Deluno itself: what it calls itself and where it listens, how it looks, who it tells when something happens, and how to bring settings across from the app you used before."
+        steps={[]}
+      />
 
       <ListCard title="Instance and host" count="How this installation names and serves itself">
         <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">

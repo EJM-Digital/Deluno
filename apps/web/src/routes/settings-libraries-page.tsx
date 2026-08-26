@@ -18,6 +18,7 @@ import { Drawer, DrawerDanger, DrawerFooter, type DrawerSaveState } from "../com
 import { Field, FieldRow } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
+import { HowThisWorks } from "../components/app/how-this-works";
 import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
 import { PathInput } from "../components/ui/path-input";
 import { SegmentedControl } from "../components/ui/segmented-control";
@@ -250,6 +251,16 @@ export function SettingsLibrariesPage() {
   return (
     <div className="grid gap-[var(--page-gap)]">
       <PageToolbar tabs={setupTabs} actions={<PageToolbarAction onClick={openCreate}>New library</PageToolbarAction>} />
+
+      <HowThisWorks
+        id="media-management"
+        lead="A library is the thing everything else here hangs off. It says what kind of media it holds, which folder the finished files live in, and what happens to a download on its way there. The tabs above follow that journey, in the order a file travels it."
+        steps={[
+          { title: "Make a library and give it a folder", body: "Movies, TV shows, or one of your own. Imported files end up in the folder you name here, so pick one Deluno can write to." },
+          { title: "Say what happens when a download finishes", body: "Import it straight away, or hold it until an external processor has produced a cleaned copy — and choose whether the original is kept afterwards." },
+          { title: "Say how the file should be named and where it lands", body: "Naming rules turn a release name into a tidy filename. A final destination can send particular titles to a different folder from the rest of the library." }
+        ]}
+      />
 
       <ListCard
         title="Libraries"
