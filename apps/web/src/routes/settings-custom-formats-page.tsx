@@ -528,6 +528,7 @@ export function SettingsCustomFormatsPage() {
             message={ruleMessage}
             saveLabel={editing ? "Save rule" : "Create rule"}
             onCancel={() => setDrawer(null)}
+            saveEnabled={editing ? undefined : true}
             disabled={busy !== null}
           />
         }

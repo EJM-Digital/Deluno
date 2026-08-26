@@ -284,4 +284,40 @@ public sealed class DownloadClientPersistenceTests
 
         Assert.False(deleted);
     }
+
+    // ── protocol catalogue (#292) ─────────────────────────────────────────────
+
+    /// <summary>
+    /// The API now refuses to write a protocol nothing can dispatch to, but
+    /// storage still has to read back a row a previous version wrote, or an
+    /// upgrade would silently rewrite somebody's connection.
+    /// </summary>
+    [Theory]
+    [InlineData("torrent")]
+    [InlineData("usenet")]
+    [InlineData("custom")]
+    public async Task Legacy_protocols_remain_loadable(string protocol)
+    {
+        using var storage = TestStorage.Create();
+        var repo = await CreateRepositoryAsync(storage);
+
+        var created = await repo.CreateDownloadClientAsync(BaseCreateRequest() with { Protocol = protocol }, CancellationToken.None);
+
+        Assert.Equal(protocol, created.Protocol);
+        Assert.Equal(protocol, Assert.Single(await repo.ListDownloadClientsAsync(CancellationToken.None)).Protocol);
+    }
+
+    [Fact]
+    public async Task An_unknown_protocol_is_refused_by_storage()
+    {
+        using var storage = TestStorage.Create();
+        var repo = await CreateRepositoryAsync(storage);
+
+        var error = await Assert.ThrowsAsync<ArgumentException>(
+            () => repo.CreateDownloadClientAsync(BaseCreateRequest() with { Protocol = "carrier-pigeon" }, CancellationToken.None));
+
+        // The message names what a user may actually choose, not the wider set
+        // storage will still read back.
+        Assert.Contains("Supported protocols: deluge, nzbget, qbittorrent, sabnzbd, transmission, utorrent.", error.Message, StringComparison.Ordinal);
+    }
 }

@@ -471,6 +471,7 @@ export function SettingsPolicySetsPage() {
             message={saveMessage}
             saveLabel={mode.kind === "create" ? "Create library profile" : "Save library profile"}
             onCancel={requestClose}
+            saveEnabled={mode.kind === "create" ? true : undefined}
             disabled={busy}
           />
         }

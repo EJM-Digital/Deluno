@@ -94,17 +94,5 @@ public abstract class DownloadClientBase : IDownloadClient
             .ToArray();
 
     private static DownloadTelemetrySummary Summarize(IEnumerable<DownloadQueueItem> queue)
-    {
-        var items = queue.ToArray();
-        return new DownloadTelemetrySummary(
-            items.Count(item => item.Status == DownloadQueueStatuses.Downloading),
-            items.Count(item => item.Status == DownloadQueueStatuses.Queued),
-            items.Count(item => item.Status == DownloadQueueStatuses.Completed),
-            items.Count(item => item.Status == DownloadQueueStatuses.Stalled),
-            items.Count(item => item.Status is DownloadQueueStatuses.Processing or DownloadQueueStatuses.Processed or DownloadQueueStatuses.ProcessingFailed or DownloadQueueStatuses.WaitingForProcessor or DownloadQueueStatuses.ImportQueued),
-            items.Count(item => item.Status is DownloadQueueStatuses.ImportReady or DownloadQueueStatuses.Completed),
-            Math.Round(items.Sum(item => item.SpeedMbps), 1),
-            items.Count(item => item.Status == DownloadQueueStatuses.WaitingForProcessor),
-            Math.Round(items.Sum(item => item.UploadSpeedMbps), 1));
-    }
+        => DownloadQueueSummary.Of(queue);
 }

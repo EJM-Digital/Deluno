@@ -338,6 +338,7 @@ export function SettingsLibrariesPage() {
             message={saveMessage}
             saveLabel={mode.kind === "create" ? "Create library" : "Save library"}
             onCancel={requestClose}
+            saveEnabled={mode.kind === "create" ? true : undefined}
             disabled={busy}
           />
         }
