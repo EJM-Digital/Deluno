@@ -932,7 +932,8 @@ public sealed class DownloadClientTelemetryService(
             ProcessingCount: items.Count(item => item.Status is DownloadQueueStatuses.Processing or DownloadQueueStatuses.Processed or DownloadQueueStatuses.ProcessingFailed or DownloadQueueStatuses.WaitingForProcessor or DownloadQueueStatuses.ImportQueued),
             ImportReadyCount: items.Count(item => item.Status is DownloadQueueStatuses.ImportReady or DownloadQueueStatuses.Completed),
             TotalSpeedMbps: Math.Round(items.Sum(item => item.SpeedMbps), 1),
-            WaitingForProcessorCount: items.Count(item => item.Status == DownloadQueueStatuses.WaitingForProcessor));
+            WaitingForProcessorCount: items.Count(item => item.Status == DownloadQueueStatuses.WaitingForProcessor),
+            TotalUploadSpeedMbps: Math.Round(items.Sum(item => item.UploadSpeedMbps), 1));
     }
 
     private static string InferMediaType(DownloadClientItem client, string? category)

@@ -90,8 +90,9 @@ interface DashboardLoaderData {
   throughput: DownloadThroughputWindow | null;
   /** Finished downloads the clients are still sharing, and what they cost. */
   sharing: DownloadSharingSnapshot;
-  /** Combined client throughput right now, in MB/s. */
+  /** Combined client throughput right now, in MB/s, both directions. */
   speedMbps: number;
+  uploadMbps: number;
   activeDownloads: ActiveDownload[];
   activeDownloadCount: number;
   /** Finished in the client and waiting on import — in the pipeline, not transferring. */
@@ -175,7 +176,7 @@ interface DashboardUpcomingItem {
 const EMPTY_MOVIE_WANTED: MovieWantedSummary = { totalWanted: 0, missingCount: 0, upgradeCount: 0, waitingCount: 0, recentItems: [] };
 const EMPTY_SERIES_WANTED: SeriesWantedSummary = { totalWanted: 0, missingCount: 0, upgradeCount: 0, waitingCount: 0, recentItems: [] };
 const EMPTY_TELEMETRY: DownloadTelemetryOverview = {
-  summary: { activeCount: 0, queuedCount: 0, completedCount: 0, stalledCount: 0, processingCount: 0, importReadyCount: 0, totalSpeedMbps: 0, waitingForProcessorCount: 0 },
+  summary: { activeCount: 0, queuedCount: 0, completedCount: 0, stalledCount: 0, processingCount: 0, importReadyCount: 0, totalSpeedMbps: 0, totalUploadSpeedMbps: 0, waitingForProcessorCount: 0 },
   clients: [],
   capturedUtc: new Date(0).toISOString()
 };
@@ -244,6 +245,7 @@ function buildDashboardData(sources: DashboardSources): DashboardLoaderData {
     throughput,
     sharing,
     speedMbps: telemetry.summary.totalSpeedMbps,
+    uploadMbps: telemetry.summary.totalUploadSpeedMbps ?? 0,
     activeDownloads,
     // Downloading means downloading. Counting import-ready items here made
     // the stat read "1" with nothing transferring, beside a card row sitting
@@ -408,6 +410,9 @@ export function DashboardPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [liveSpeedMbps, setLiveSpeedMbps] = useState(() => data.speedMbps);
+  // Upload has no realtime publisher of its own, so it follows the telemetry
+  // poll rather than being held in state pretending otherwise.
+  const liveUploadMbps = data.uploadMbps;
   const librarySubjects = useMemo(
     () => data.sources.libraries.map((library) => RealtimeGroups.Library(library.id)),
     [data.sources.libraries]
@@ -549,8 +554,6 @@ export function DashboardPage() {
         headline={heroState.headline}
         detail={heroState.detail}
         tone={heroState.tone}
-        speedMbps={liveSpeedMbps}
-        transferCount={data.activeDownloadCount}
         // Nothing in the library is the one state where the dashboard has a
         // single obvious next step, so it says so where the headline already is.
         action={data.totalCount === 0 ? { label: "Add a movie", to: "/movies?add=true" } : undefined}
@@ -624,16 +627,29 @@ export function DashboardPage() {
           hero's live wave cannot answer — that window starts empty every time
           the page opens, so "was it slow overnight" needs stored readings. */}
       <div className="grid gap-[var(--grid-gap)] xl:grid-cols-3">
+        {/* One speed surface, both directions (#289, #276).
+            The reading is live and the shape behind it is stored, so the same
+            card answers "what is it doing now" and "was it slow overnight" —
+            the two questions that used to need two cards saying "Idle" at each
+            other. Upload is here because Deluno now holds files back so a
+            site's sharing rule can be met, which makes "am I actually seeding?"
+            a question it has to be able to answer. */}
         <MetricChart
-          label="Download speed"
-          value={formatSpeed(peakSpeed(data.throughput))}
-          help={`peak over the last ${data.throughput?.hours ?? 6} hours`}
-          series={throughputSeries(data.throughput)}
+          label="Speed"
+          value={`${formatSpeed(liveSpeedMbps)} down`}
+          help={`${formatSpeed(liveUploadMbps)} up · peak ${formatSpeed(peakSpeed(data.throughput))} over the last ${data.throughput?.hours ?? 6} hours`}
+          series={throughputSeries(data.throughput, "down")}
+          compare={{
+            series: throughputSeries(data.throughput, "up"),
+            label: "upload",
+            tone: "primary",
+            value: "upload"
+          }}
           tone="success"
           size="lg"
           axis="time"
           formatValue={(tenths) => `${(tenths / 10).toFixed(1)} MB/s`}
-          emptyLabel="Nothing has downloaded in this window"
+          emptyLabel="Nothing has moved in either direction in this window"
         />
         <AcquisitionPipeline
           className="xl:col-span-2"
@@ -1031,20 +1047,31 @@ function formatDashboardTime(date: Date) {
  * precision than that anyway, and rounding to whole MB/s would flatten every
  * slow transfer to zero.
  */
-function throughputSeries(window: DownloadThroughputWindow | null): MetricPoint[] {
+/**
+ * `MetricPoint.value` is an integer, so a series in MB/s is carried in tenths
+ * and scaled back by the chart's own `formatValue`.
+ */
+function throughputSeries(window: DownloadThroughputWindow | null, direction: "down" | "up"): MetricPoint[] {
   return (window?.samples ?? []).map((sample) => ({
     date: sample.capturedUtc,
-    value: Math.round(sample.speedMbps * 10)
+    value: Math.round((direction === "down" ? sample.speedMbps : sample.uploadMbps ?? 0) * 10)
   }));
 }
 
 function peakSpeed(window: DownloadThroughputWindow | null) {
   const samples = window?.samples ?? [];
-  return samples.length === 0 ? 0 : Math.max(...samples.map((sample) => sample.speedMbps));
+  return samples.length === 0
+    ? 0
+    : Math.max(...samples.map((sample) => Math.max(sample.speedMbps, sample.uploadMbps ?? 0)));
 }
 
+/**
+ * Always a reading, never a word. "Idle" was the same sentence the hero was
+ * already saying a foot higher (#276), and it hid the difference between
+ * nothing downloading and nothing at all: a seeding install is not idle.
+ */
 function formatSpeed(mbps: number) {
-  return mbps <= 0 ? "Idle" : `${mbps.toFixed(1)} MB/s`;
+  return `${Math.max(0, mbps).toFixed(1)} MB/s`;
 }
 
 /** Totals a day series. */

@@ -40,6 +40,42 @@ public sealed class DownloadThroughputRepositoryTests
         Assert.Equal(Now, sample.CapturedUtc);
     }
 
+    /// <summary>
+    /// Upload is a first-class reading now that Deluno holds files back so a
+    /// site's sharing rule can be met (#288, #289). A chart that can only draw
+    /// download cannot answer "am I actually seeding?".
+    /// </summary>
+    [Fact]
+    public async Task Both_directions_survive_the_round_trip()
+    {
+        using var storage = await StorageAsync();
+        var repository = new SqliteDownloadThroughputRepository(storage.Factory);
+
+        await repository.RecordSampleAsync(new DownloadThroughputSample(Now, 12.5, 3, UploadMbps: 0.75), CancellationToken.None);
+
+        var sample = Assert.Single(await repository.ListSamplesAsync(Now.AddHours(-1), CancellationToken.None));
+        Assert.Equal(12.5, sample.SpeedMbps);
+        Assert.Equal(0.75, sample.UploadMbps);
+    }
+
+    /// <summary>
+    /// Readings taken before upload was measured come back as zero rather than
+    /// failing to parse. That zero is the truth about them — Deluno genuinely
+    /// did not know — and a chart drawing a flat line at the left is honest in
+    /// a way a backfilled guess would not be.
+    /// </summary>
+    [Fact]
+    public async Task A_reading_from_before_upload_was_measured_still_reads()
+    {
+        using var storage = await StorageAsync();
+        var repository = new SqliteDownloadThroughputRepository(storage.Factory);
+
+        await repository.RecordSampleAsync(new DownloadThroughputSample(Now, 4, 1), CancellationToken.None);
+
+        var sample = Assert.Single(await repository.ListSamplesAsync(Now.AddHours(-1), CancellationToken.None));
+        Assert.Equal(0, sample.UploadMbps);
+    }
+
     [Fact]
     public async Task Readings_come_back_oldest_first_so_a_chart_reads_left_to_right()
     {

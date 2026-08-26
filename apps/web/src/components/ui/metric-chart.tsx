@@ -43,8 +43,15 @@ interface MetricChartProps {
   /** One short line saying what the number means. */
   help?: string;
   series: MetricPoint[];
-  /** A second, worse series drawn as a line over the first — failures against attempts. */
-  compare?: { series: MetricPoint[]; label: string; tone: MetricTone };
+  /**
+   * A second series drawn as a line over the first — failures against attempts,
+   * or upload against download.
+   *
+   * `value` replaces the header's running total for a series where a total
+   * means nothing: adding up speed readings gives a number in no unit at all,
+   * so a speed comparison states its own reading instead.
+   */
+  compare?: { series: MetricPoint[]; label: string; tone: MetricTone; value?: string };
   tone?: MetricTone;
   /** Cumulative series start high and stay high; their floor should not be zero. */
   zeroBased?: boolean;
@@ -171,10 +178,13 @@ export function MetricChart({
           <span
             className={cn(
               "text-[length:var(--type-caption)] font-medium",
-              compareTotal > 0 ? TONE[compare.tone].text : "text-muted-foreground"
+              // A stated value is a legend for the second line, so it always
+              // carries that line's colour. A running total only earns it when
+              // there is actually something to report.
+              compare.value !== undefined || compareTotal > 0 ? TONE[compare.tone].text : "text-muted-foreground"
             )}
           >
-            {compareTotal} {compare.label.toLowerCase()}
+            {compare.value ?? `${compareTotal} ${compare.label.toLowerCase()}`}
           </span>
         ) : null}
       </header>

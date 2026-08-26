@@ -20,16 +20,18 @@ public sealed class SqliteDownloadThroughputRepository(
         // replaces the reading rather than putting two points on one x.
         command.CommandText =
             """
-            INSERT INTO download_throughput_samples (captured_utc, speed_mbps, active_count)
-            VALUES (@capturedUtc, @speedMbps, @activeCount)
+            INSERT INTO download_throughput_samples (captured_utc, speed_mbps, active_count, upload_mbps)
+            VALUES (@capturedUtc, @speedMbps, @activeCount, @uploadMbps)
             ON CONFLICT(captured_utc) DO UPDATE SET
                 speed_mbps = excluded.speed_mbps,
-                active_count = excluded.active_count;
+                active_count = excluded.active_count,
+                upload_mbps = excluded.upload_mbps;
             """;
 
         AddParameter(command, "@capturedUtc", Format(sample.CapturedUtc));
         AddParameter(command, "@speedMbps", sample.SpeedMbps);
         AddParameter(command, "@activeCount", sample.ActiveCount);
+        AddParameter(command, "@uploadMbps", sample.UploadMbps);
 
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
@@ -45,7 +47,7 @@ public sealed class SqliteDownloadThroughputRepository(
         using var command = connection.CreateCommand();
         command.CommandText =
             """
-            SELECT captured_utc, speed_mbps, active_count
+            SELECT captured_utc, speed_mbps, active_count, upload_mbps
             FROM download_throughput_samples
             WHERE captured_utc >= @sinceUtc
             ORDER BY captured_utc ASC;
@@ -60,7 +62,8 @@ public sealed class SqliteDownloadThroughputRepository(
             samples.Add(new DownloadThroughputSample(
                 CapturedUtc: DateTimeOffset.Parse(reader.GetString(0), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
                 SpeedMbps: reader.GetDouble(1),
-                ActiveCount: reader.GetInt32(2)));
+                ActiveCount: reader.GetInt32(2),
+                UploadMbps: reader.IsDBNull(3) ? 0 : reader.GetDouble(3)));
         }
 
         return samples;

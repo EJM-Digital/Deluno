@@ -44,7 +44,13 @@ public sealed record DownloadTelemetrySummary(
     /// importing and the cleaned output has not arrived. A subset of
     /// <see cref="ProcessingCount"/>; the remainder is import work.
     /// </summary>
-    int WaitingForProcessorCount = 0);
+    int WaitingForProcessorCount = 0,
+    /// <summary>
+    /// Combined upload across every client, in MB/s. Deluno holds files back so
+    /// a site's sharing rule can be met (#288), which makes "am I actually
+    /// seeding?" a question it has to be able to answer (#289).
+    /// </summary>
+    double TotalUploadSpeedMbps = 0);
 
 public sealed record DownloadQueueItem(
     string Id,
@@ -78,7 +84,12 @@ public sealed record DownloadQueueItem(
     /// How long the client has been sharing this item since it completed. Null
     /// where the protocol has no sharing phase.
     /// </summary>
-    int? SeedingMinutes = null);
+    int? SeedingMinutes = null,
+    /// <summary>
+    /// What this item is currently giving back, in MB/s. Always zero on usenet,
+    /// which has nothing to upload.
+    /// </summary>
+    double UploadSpeedMbps = 0);
 
 /// <summary>
 /// An observational queue-health signal. These findings never cause Deluno to remove

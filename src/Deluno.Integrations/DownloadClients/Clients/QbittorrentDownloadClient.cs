@@ -60,7 +60,8 @@ public sealed class QbittorrentDownloadClient : DownloadClientBase
             // costs no extra request. seeding_time is seconds since the torrent
             // completed; it is 0 while still downloading.
             Ratio: item.Ratio,
-            SeedingMinutes: item.SeedingTimeSeconds is null ? null : (int)Math.Clamp(item.SeedingTimeSeconds.Value / 60, 0, int.MaxValue))).ToArray();
+            SeedingMinutes: item.SeedingTimeSeconds is null ? null : (int)Math.Clamp(item.SeedingTimeSeconds.Value / 60, 0, int.MaxValue),
+            UploadSpeedMbps: Math.Round((item.UploadSpeed ?? 0) / 1_000_000d, 1))).ToArray();
         return CreateSnapshot(client, queue, capturedUtc, "healthy", $"Connected to qBittorrent at {baseUri.Host}:{baseUri.Port}.");
     }
 
@@ -188,6 +189,7 @@ public sealed class QbittorrentDownloadClient : DownloadClientBase
         [property: JsonPropertyName("state")] string? State,
         [property: JsonPropertyName("progress")] double? Progress,
         [property: JsonPropertyName("dlspeed")] long? DownloadSpeed,
+        [property: JsonPropertyName("upspeed")] long? UploadSpeed,
         [property: JsonPropertyName("eta")] long? Eta,
         [property: JsonPropertyName("size")] long? Size,
         [property: JsonPropertyName("downloaded")] long? Downloaded,
