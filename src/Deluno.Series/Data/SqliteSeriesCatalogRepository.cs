@@ -518,6 +518,14 @@ public sealed class SqliteSeriesCatalogRepository(
     private static string CatalogueHasFileFor(string? libraryId)
         => $"EXISTS(SELECT 1 FROM series_wanted_state w WHERE w.series_id = s.id{CatalogueStateScope(libraryId)} AND w.has_file = 1)";
 
+    /// <summary>
+    /// "This entry is in one particular wanted state." The counts the toolbar
+    /// prints need Quality met and Upcoming, which are states rather than
+    /// file-presence facts and so cannot be derived from <c>has_file</c>.
+    /// </summary>
+    private static string CatalogueWantedIs(string? libraryId, string wantedStatus)
+        => $"EXISTS(SELECT 1 FROM series_wanted_state w WHERE w.series_id = s.id{CatalogueStateScope(libraryId)} AND w.wanted_status = '{wantedStatus}')";
+
     private static string CatalogueUpgradeFor(string? libraryId)
         => $"EXISTS(SELECT 1 FROM series_wanted_state w WHERE w.series_id = s.id{CatalogueStateScope(libraryId)} AND w.has_file = 1 AND w.quality_cutoff_met = 0)";
 
@@ -803,7 +811,9 @@ public sealed class SqliteSeriesCatalogRepository(
                 SUM(CASE WHEN s.monitored = 0 THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {CatalogueHasFileFor(libraryId)} THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {CatalogueHasFileFor(libraryId)} THEN 0 ELSE 1 END),
-                SUM(CASE WHEN {CatalogueUpgradeFor(libraryId)} THEN 1 ELSE 0 END)
+                SUM(CASE WHEN {CatalogueUpgradeFor(libraryId)} THEN 1 ELSE 0 END),
+                SUM(CASE WHEN {CatalogueWantedIs(libraryId, "covered")} THEN 1 ELSE 0 END),
+                SUM(CASE WHEN {CatalogueWantedIs(libraryId, "upcoming")} THEN 1 ELSE 0 END)
             FROM series_entries s
             WHERE {where};
             """;
@@ -813,7 +823,7 @@ public sealed class SqliteSeriesCatalogRepository(
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken))
         {
-            return new CatalogueFacets(0, 0, 0, 0, 0, 0);
+            return new CatalogueFacets(0, 0, 0, 0, 0, 0, 0, 0);
         }
 
         return new CatalogueFacets(
@@ -822,7 +832,9 @@ public sealed class SqliteSeriesCatalogRepository(
             Unmonitored: reader.IsDBNull(2) ? 0 : reader.GetInt32(2),
             Downloaded: reader.IsDBNull(3) ? 0 : reader.GetInt32(3),
             Missing: reader.IsDBNull(4) ? 0 : reader.GetInt32(4),
-            Upgrades: reader.IsDBNull(5) ? 0 : reader.GetInt32(5));
+            Upgrades: reader.IsDBNull(5) ? 0 : reader.GetInt32(5),
+            Covered: reader.IsDBNull(6) ? 0 : reader.GetInt32(6),
+            Upcoming: reader.IsDBNull(7) ? 0 : reader.GetInt32(7));
     }
 
     private static int SelectFacetTotal(CatalogueFacets facets, string status)

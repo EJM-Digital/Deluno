@@ -53,6 +53,21 @@ export interface MediaItem {
   language?: string | null;
   hdrFormat?: string | null;
   releaseStatus?: string | null;
+  /**
+   * The stored wanted status — `missing`, `upgrade`, `covered` or `upcoming`.
+   * The mark on the poster is derived from this and the episode counts below,
+   * never from `status`, which only says whether a file exists.
+   */
+  wantedStatus?: string | null;
+  /**
+   * What a show's episodes add up to, counted over what has aired. A film
+   * leaves these undefined and gets no bar.
+   */
+  episodeCount?: number;
+  airedEpisodeCount?: number;
+  airedWithFileCount?: number;
+  airedUpgradableCount?: number;
+  nextAirDateUtc?: string | null;
   certification?: string | null;
   collection?: string | null;
   minimumAvailability?: string | null;

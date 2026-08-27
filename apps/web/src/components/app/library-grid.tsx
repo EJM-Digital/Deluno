@@ -7,6 +7,7 @@ import { MEDIA_STATUS_PRESENTATION, mediaStatusIsActive } from "../../lib/media-
 import type { Density } from "../../lib/use-density";
 import { cn } from "../../lib/utils";
 import { Badge } from "../ui/badge";
+import { TitleMarkBar, TitleMarkDot } from "../ui/title-mark";
 
 export type CardSize = "sm" | "md" | "lg";
 export interface DisplayOptions {
@@ -218,25 +219,24 @@ function PosterCard({
             className="h-full w-full transition-transform duration-500 group-hover:scale-[1.04]"
           />
 
-          {/* The poster marker always represents lifecycle state. Monitoring is
-              shown only as quiet supporting text below, never as a colour. */}
-          {displayOptions.showStatusPill && size !== "sm" ? (
+          {/*
+            One dot and one bar, and nothing else — see DESIGN-001.
+
+            The dot was a lifecycle *chip* derived from `status`, which only ever
+            said whether a file existed: a film below its target quality looked
+            identical to a finished one, and monitoring had to be repeated as
+            supporting text underneath because a chip could not carry it. The dot
+            says which of the four rungs the title is on, and a half says you are
+            not monitoring it.
+          */}
+          {displayOptions.showStatusPill ? (
             <div className="absolute right-1.5 top-1.5 z-10">
-              <StatusPill status={item.status} />
+              <TitleMarkDot item={item} size={size === "sm" ? 9 : 11} />
             </div>
-          ) : displayOptions.showStatusPill ? (
-            <span
-              role="img"
-              aria-label={MEDIA_STATUS_PRESENTATION[item.status].label}
-              title={MEDIA_STATUS_PRESENTATION[item.status].label}
-              className={cn(
-                "absolute right-1.5 top-1.5 z-10 inline-flex h-2 w-2 items-center justify-center rounded-full ring-1",
-                MEDIA_STATUS_PRESENTATION[item.status].dot,
-                "ring-background/90",
-                mediaStatusIsActive(item.status) && "animate-pulse"
-              )}
-            />
           ) : null}
+
+          {/* What you asked for beyond the title. A film has no bar. */}
+          <TitleMarkBar item={item} />
 
           {/* Gradient overlay — condenses on small */}
           <div className={cn(
@@ -309,25 +309,6 @@ function PosterCard({
           </div>
         ) : null}
       </div>
-    </div>
-  );
-}
-
-function StatusPill({ status }: { status: MediaStatus }) {
-  const config = MEDIA_STATUS_PRESENTATION[status];
-
-  return (
-    <div
-      role="img"
-      aria-label={config.label}
-      title={config.label}
-      className={cn(
-        "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[length:var(--library-badge-size)] font-bold uppercase tracking-wider backdrop-blur-md",
-        config.tone
-      )}
-    >
-      <span className={cn("h-1.5 w-1.5 rounded-full", config.dot, mediaStatusIsActive(status) && "animate-pulse")} />
-      {config.compactLabel}
     </div>
   );
 }
