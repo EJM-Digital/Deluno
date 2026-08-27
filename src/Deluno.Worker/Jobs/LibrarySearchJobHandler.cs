@@ -404,6 +404,48 @@ public sealed class LibrarySearchJobHandler(
                 cancellationToken);
         }
 
+        // The episodes the series pass cannot reach (#303).
+        //
+        // `library.search` searches at the series level — a season pack, a
+        // series-level release. Individual episodes have their own job type,
+        // `episode.search`, their own handler and their own planner, and until
+        // now nothing called the planner: three pieces that each worked and
+        // never met. A show missing four scattered episodes was searched for as
+        // a show, found nothing at that level, and the four were never asked
+        // for.
+        //
+        // Planned here rather than in the heartbeat's automation lane, which is
+        // where the missing call was expected. The lane would have needed its
+        // own copy of every gate this cycle already passed — the time-of-day
+        // window, the search interval, missing-versus-upgrade, the manual
+        // override and `MaxItemsPerRun` — and a second copy of a scheduling
+        // rule is how the last four defects in this codebase were built. Riding
+        // on the cycle, the episode pass is due exactly when the series pass is
+        // due, and asks for the same half of the work.
+        var eligibleEpisodes = (await seriesCatalogRepository.ListEligibleWantedEpisodesAsync(
+            payload.LibraryId,
+            payload.MaxItems,
+            now,
+            seriesIgnoreRetryWindow,
+            cancellationToken,
+            searchStatus))
+            .Where(episode => string.IsNullOrWhiteSpace(payload.TargetEntityId) || string.Equals(episode.SeriesId, payload.TargetEntityId, StringComparison.OrdinalIgnoreCase))
+            .Select(episode => new EpisodeSearchPlanItem(
+                EpisodeId: episode.EpisodeId,
+                SeriesId: episode.SeriesId,
+                SeasonNumber: episode.SeasonNumber,
+                EpisodeNumber: episode.EpisodeNumber,
+                // An episode with no title yet is still worth searching for; the
+                // plan payload names it by its code, which is what an indexer
+                // query uses anyway.
+                Title: episode.Title ?? $"S{episode.SeasonNumber:00}E{episode.EpisodeNumber:00}"))
+            .ToArray();
+
+        // The planner de-duplicates against jobs already queued for the same
+        // episode, so a cycle that runs while the last one is still working
+        // through its episodes adds nothing rather than doubling it.
+        await jobQueueRepository.PlanEpisodeSearchesAsync(payload.LibraryId, eligibleEpisodes, cancellationToken);
+
         await jobQueueRepository.RecordSearchCycleRunAsync(
             new RecordSearchCycleRunRequest(
                 payload.LibraryId,

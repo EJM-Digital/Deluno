@@ -8,7 +8,6 @@
  *
  * Contracts: GET /api/series/calendar?from&to, GET /api/movies/calendar?from&to.
  */
-import type { Tone } from "../lib/status-tones";
 import { useMemo, useState } from "react";
 import { useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
 import { CalendarPlus, ChevronLeft, ChevronRight } from "lucide-react";
@@ -17,7 +16,6 @@ import { cn } from "../lib/utils";
 import { CalendarSubscribeDrawer } from "../components/app/calendar-subscribe-drawer";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
-import { Chip } from "../components/ui/chip";
 import { ListGroupHeader } from "../components/ui/media-type-split";
 import {
   LIST_TRACK,
@@ -31,7 +29,8 @@ import {
 import { PageToolbar } from "../components/ui/page-toolbar";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { SummaryStrip } from "../components/ui/summary-strip";
-import { wantedStatusPresentation } from "../lib/media-status-presentation";
+import { TitleMarkDot, TitleMarkLabel } from "../components/ui/title-mark";
+import type { TitleMarkInput } from "../components/ui/title-mark";
 
 interface SeriesCalendarEpisode {
   episodeId: string;
@@ -42,7 +41,6 @@ interface SeriesCalendarEpisode {
   episodeNumber: number;
   title: string | null;
   airDateUtc: string;
-  hasFile: boolean;
   monitored: boolean;
   wantedStatus: string;
 }
@@ -54,8 +52,9 @@ interface MovieCalendarEntry {
   posterUrl: string | null;
   kind: "inCinemas" | "digital" | "physical";
   date: string;
-  hasFile: boolean;
   monitored: boolean;
+  /** The stored wanted status, so the calendar shows the mark the card shows. */
+  wantedStatus: string;
 }
 
 interface CalendarLoaderData {
@@ -94,7 +93,15 @@ interface CalendarEntry {
   sub: string;
   kindLabel: string;
   detail: string;
-  status: { label: string; tone: Tone };
+  /**
+   * The mark, the same one the title's own card carries.
+   *
+   * This was a hand-written `{ label, tone }`: an aired episode with no file
+   * read blue "Missing" here and red Missing on its poster, and a monitored
+   * film with no file read blue "Watching for it" — a phrase that appears
+   * nowhere else in Deluno. Two vocabularies for one state (#302).
+   */
+  mark: TitleMarkInput;
   href: string;
 }
 
@@ -261,9 +268,15 @@ export function CalendarPage() {
                       className={cn(
                         "w-full truncate rounded-[6px] border px-1.5 py-1 text-left text-[length:var(--type-micro)] leading-tight transition-colors",
                         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                        entryChipClass(entry)
+                        "border-hairline bg-surface-2 text-foreground hover:bg-surface-3"
                       )}
                     >
+                      {/* The dot carries the colour, as it does everywhere else.
+                          The chip used to be tinted end to end in the tone, which
+                          is a second way of saying the same thing and left a
+                          month grid where every colour meant something different
+                          from the shelf it links to. */}
+                      <TitleMarkDot item={entry.mark} size={7} className="mr-1 align-middle" />
                       <span className="font-semibold">{entry.sub}</span> {entry.name}
                     </button>
                   ))}
@@ -318,7 +331,7 @@ export function CalendarPage() {
                     <ListCell primary={formatTime(entry.date)} />
                     <ListCell primary={entry.detail} />
                     <ListCell>
-                      <Chip tone={entry.status.tone}>{entry.status.label}</Chip>
+                      <TitleMarkLabel item={entry.mark} />
                     </ListCell>
                   </ListRow>
                 ))}
@@ -387,23 +400,8 @@ function buildWeeks(
   return weeks;
 }
 
-/** The chip carries the status colour, so a month reads at a glance. */
-function entryChipClass(entry: CalendarEntry) {
-  switch (entry.status.tone) {
-    case "ok":
-      return "border-success/30 bg-success/10 text-success hover:bg-success/15";
-    case "warn":
-      return "border-warning/30 bg-warning/10 text-warning hover:bg-warning/15";
-    case "info":
-      return "border-info/30 bg-info/10 text-info hover:bg-info/15";
-    default:
-      return "border-hairline bg-surface-2 text-muted-foreground hover:bg-surface-3";
-  }
-}
-
 function buildEntries(data: CalendarLoaderData): CalendarEntry[] {
   const episodes = data.episodes.map<CalendarEntry>((episode) => {
-    const status = wantedStatusPresentation(episode.wantedStatus);
     return {
       id: `episode:${episode.episodeId}`,
       date: new Date(episode.airDateUtc),
@@ -411,9 +409,7 @@ function buildEntries(data: CalendarLoaderData): CalendarEntry[] {
       sub: `S${String(episode.seasonNumber).padStart(2, "0")}E${String(episode.episodeNumber).padStart(2, "0")}`,
       kindLabel: "Episode",
       detail: episode.title ?? "Episode title pending",
-      status: episode.hasFile
-        ? { label: "On disk", tone: "ok" as const }
-        : { label: status.label, tone: status.tone },
+      mark: { monitored: episode.monitored, wantedStatus: episode.wantedStatus },
       href: `/tv/${episode.seriesId}`
     };
   });
@@ -425,11 +421,7 @@ function buildEntries(data: CalendarLoaderData): CalendarEntry[] {
     sub: movie.releaseYear ? String(movie.releaseYear) : "Film",
     kindLabel: movieKindLabel(movie.kind),
     detail: movieKindDetail(movie.kind),
-    status: movie.hasFile
-      ? { label: "On disk", tone: "ok" as const }
-      : movie.monitored
-        ? { label: "Watching for it", tone: "info" as const }
-        : { label: "Not monitored", tone: "idle" as const },
+    mark: { monitored: movie.monitored, wantedStatus: movie.wantedStatus },
     href: `/movies/${movie.movieId}`
   }));
 

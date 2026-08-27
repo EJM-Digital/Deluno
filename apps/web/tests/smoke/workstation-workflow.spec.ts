@@ -295,6 +295,54 @@ test.describe("dashboard workflow", () => {
             // side are the same grey.
             await expect(smallMark).toHaveClass(/linear-gradient/);
           }
+
+          // The list view and the detail page are the half of DESIGN-001 step 4
+          // that the first pass missed: both still drew the old availability
+          // chip, whose only input was "is there a file" and whose missing case
+          // was amber — the one signal reserved for "a person has to act"
+          // (#302). A shelf and a list of the same library must not disagree.
+          //
+          // The Display panel is still open from the poster-size checks above,
+          // so it is not re-opened here: the toolbar button toggles, and
+          // pressing it again would close the panel this line needs.
+          // Anchored on the choice's own description: once a view is picked the
+          // Display button's meta line repeats its name, so a bare
+          // /Compact list/ matches the toolbar button as well as the choice.
+          await page.getByRole("button", { name: /Compact list More titles/ }).click();
+
+          const row = page.getByRole("row").filter({ hasText: title }).first();
+          await expect(row).toBeVisible();
+          const rowMark = row.getByRole("img", { name: markName, exact: true });
+          await expect(rowMark).toBeVisible();
+          // The row's mark wears the same colour as the poster's: red, or red
+          // halved with grey when nothing is watching it. It used to be an
+          // *amber* chip here — the one signal reserved for "a person must act"
+          // — while the shelf two clicks away called the same title red.
+          //
+          // Asserted on the dot rather than by sweeping the row for amber: the
+          // rating star is a gold star, which is a rating convention rather than
+          // a state, and a rule about state colours should not reach it.
+          await expect(rowMark.locator("span").first())
+            .toHaveClass(monitored ? /bg-destructive/ : /linear-gradient/);
+          // One mark per row. The row used to state monitoring three times over
+          // — a halved dot beside the title, the word in the meta line under it,
+          // and the status cell — for one fact. The mark keeps its own
+          // "· not monitored"; what had to go is the meta line's copy of it, so
+          // this pins that line to the two things only it can say.
+          await expect(row.getByText(/^(Movie|TV) · \d{4}$/)).toBeVisible();
+
+          // The title cell, not the row: only that cell carries the navigation
+          // handler, and on a narrow viewport the row's centre lands on a cell
+          // that has none.
+          await row.getByText(title).click();
+          await expect(page.getByRole("heading", { name: new RegExp(title) })).toBeVisible();
+          // The detail header was two badges: "Monitored" in words, and a status
+          // badge that chose its own colour — amber for Missing and Upgradable.
+          await expect(page.getByRole("img", { name: markName, exact: true }).first()).toBeVisible();
+          await page.goBack();
+          // Back on the library the panel is closed again, so this one does open it.
+          await page.getByRole("button", { name: /^Display/ }).click();
+          await page.getByRole("button", { name: /Poster grid Artwork/ }).click();
         } finally {
           if (created) {
             await api.post(scenario.removePath, {

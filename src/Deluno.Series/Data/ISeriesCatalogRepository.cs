@@ -286,11 +286,24 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
         CancellationToken cancellationToken);
 
     /// <summary>List episodes eligible for search in a library</summary>
+    /// <summary>
+    /// The episodes a library owes you: aired, monitored, still short, and past
+    /// their retry window.
+    ///
+    /// Signature mirrors <see cref="ListEligibleWantedAsync"/> deliberately —
+    /// the series pass and the episode pass are the same cycle seen at two
+    /// levels, and a caller that gates one and not the other is how the two
+    /// drift apart. <paramref name="ignoreRetryWindow"/> is what a manual
+    /// "search now" sets; <paramref name="wantedStatus"/> narrows a
+    /// missing-only or upgrade-only cycle to its own half.
+    /// </summary>
     Task<IReadOnlyList<EpisodeSearchEligibilityItem>> ListEligibleWantedEpisodesAsync(
         string libraryId,
         int take,
         DateTimeOffset now,
-        CancellationToken cancellationToken);
+        bool ignoreRetryWindow,
+        CancellationToken cancellationToken,
+        string? wantedStatus = null);
 
     /// <summary>Get target quality for a specific episode</summary>
     Task<string?> GetEpisodeTargetQualityAsync(

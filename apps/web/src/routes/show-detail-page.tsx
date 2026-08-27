@@ -57,7 +57,8 @@ import { Select } from "../components/ui/select";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { Switch } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
-import { wantedStatusPresentation } from "../lib/media-status-presentation";
+import { wantedStatusPresentation } from "../lib/status-tones";
+import { TitleMarkLabel } from "../components/ui/title-mark";
 
 interface ShowDetailLoaderData {
   activity: ActivityEventItem[];
@@ -591,8 +592,29 @@ export function ShowDetailPage() {
               </div>
               {series.originalTitle && series.originalTitle !== series.title ? <p className="mt-1 text-sm text-muted-foreground">Also known as {series.originalTitle}</p> : null}
               <div className="mt-4 flex flex-wrap gap-2">
-                <Badge variant="default">{series.monitored ? "Monitored" : "Not monitored"}</Badge>
-                {wantedItem ? <Badge variant={wantedItem.wantedStatus === "missing" || wantedItem.wantedStatus === "upgrade" ? "warning" : "info"}>{wantedStatusPresentation(wantedItem.wantedStatus).label}</Badge> : null}
+                {/*
+                  The mark, and nothing beside it about monitoring.
+
+                  This was two badges: "Monitored" in words, and a status badge
+                  that chose its own colour — amber for Missing and Upgradable,
+                  blue for the rest. Amber is the signal that means a person is
+                  needed, and neither of those needs one (#302); the poster's own
+                  mark had already called them red and green. The halved dot says
+                  monitoring, which is what it is for.
+                */}
+                <TitleMarkLabel
+                  className="rounded-full border border-hairline bg-surface-2 px-2.5 py-1 text-xs font-medium"
+                  item={{
+                    monitored: series.monitored,
+                    wantedStatus: wantedItem?.wantedStatus,
+                    // A show is judged on its episodes, not on its own row —
+                    // the lowest rung any aired episode is on, so the header
+                    // never says more than the season list underneath it.
+                    airedEpisodeCount: progress.aired,
+                    airedWithFileCount: progress.held,
+                    airedUpgradableCount: progress.upgradable
+                  }}
+                />
                 {importCases.length ? <Badge variant="warning">{importCases.length} import issue{importCases.length === 1 ? "" : "s"}</Badge> : null}
                 {series.genres?.split(",").map((genre) => <span key={genre} className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">{genre.trim()}</span>)}
               </div>
@@ -670,9 +692,14 @@ export function ShowDetailPage() {
             cells={[
               { label: "Episodes", value: inventory.episodeCount, help: `${inventory.seasonCount} season${inventory.seasonCount === 1 ? "" : "s"}` },
               { label: "On disk", value: inventory.importedEpisodeCount, help: "imported and verified" },
-              { label: "Missing", value: missingCount, tone: missingCount > 0 ? "warning" : undefined, help: "aired, no file yet" },
+              // The mark's own red, not amber. These two are counts of work
+              // Deluno is already doing on its schedule — amber claims a person
+              // has to act, and spending it here is what teaches people to stop
+              // reading it (#302). Red is Missing and green is Upgradable, the
+              // same two colours as the dots on the episodes below.
+              { label: "Missing", value: missingCount, tone: missingCount > 0 ? "danger" : undefined, help: "aired, no file yet" },
               { label: "Upcoming", value: upcomingCount, help: upcomingCount ? "not aired yet" : "nothing scheduled" },
-              { label: "Upgrades", value: upgradeCount, tone: upgradeCount > 0 ? "warning" : undefined, help: "better release wanted" },
+              { label: "Upgrades", value: upgradeCount, tone: upgradeCount > 0 ? "success" : undefined, help: "better release wanted" },
               { label: "Monitored", value: monitoredCount, help: `of ${inventory.episodeCount} watched` }
             ]}
           />
@@ -764,10 +791,13 @@ export function ShowDetailPage() {
               />
             ) : (
               <ListTable
+                // No File column. It could only ever say "On disk" or "Not
+                // imported" — the Status cell two columns along, in different
+                // words, on every row. Status says which of the four rungs the
+                // episode is on, which is strictly more.
                 columns={[
                   { label: "Episode" },
                   { label: "Aired" },
-                  { label: "File" },
                   { label: "Last search" },
                   { label: "Status", width: LIST_TRACK.status },
                   { label: "On", width: LIST_TRACK.toggle, mobile: true }
@@ -820,15 +850,10 @@ export function ShowDetailPage() {
                       >
                         <ListNameCell name={formatEpisodeCode(episode)} sub={episode.title ?? "Episode title pending"} />
                         <ListCell primary={episode.airDateUtc ? formatDate(episode.airDateUtc) : "—"} />
-                        <ListCell primary={episode.hasFile ? "On disk" : "Not imported"} />
                         <ListCell primary={episode.lastSearchUtc ? formatDateTime(episode.lastSearchUtc) : "Never"} />
                         <ListCell>
-                          <Chip
-                            tone={wantedStatusPresentation(episode.wantedStatus).tone}
-                            title={wantedStatusPresentation(episode.wantedStatus).hint}
-                          >
-                            {wantedStatusPresentation(episode.wantedStatus).label}
-                          </Chip>
+                          {/* An episode is a title. Same five marks (DESIGN-001). */}
+                          <TitleMarkLabel item={{ monitored: episode.monitored, wantedStatus: episode.wantedStatus }} />
                         </ListCell>
                         <div role="cell" className="flex justify-start">
                           <Switch
@@ -1067,8 +1092,7 @@ export function ShowDetailPage() {
                 items={[
                   { label: "Season", value: formatSeasonLabel(openEpisode.seasonNumber) },
                   { label: "Episode", value: `#${openEpisode.episodeNumber}` },
-                  { label: "First aired", value: openEpisode.airDateUtc ? formatDate(openEpisode.airDateUtc) : "Not announced" },
-                  { label: "File", value: openEpisode.hasFile ? "On disk" : "Not imported" }
+                  { label: "First aired", value: openEpisode.airDateUtc ? formatDate(openEpisode.airDateUtc) : "Not announced" }
                 ]}
               />
             </DrawerSection>

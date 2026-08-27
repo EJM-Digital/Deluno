@@ -2,8 +2,7 @@ import { Play, ShieldCheck, Star } from "lucide-react";
 import { useEffect, useLayoutEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import type { MediaItem, MediaStatus } from "../../lib/media-types";
-import { MEDIA_STATUS_PRESENTATION, mediaStatusIsActive } from "../../lib/media-status-presentation";
+import type { MediaItem } from "../../lib/media-types";
 import type { Density } from "../../lib/use-density";
 import { cn } from "../../lib/utils";
 import { Badge } from "../ui/badge";
@@ -315,15 +314,6 @@ function PosterCard({
       </div>
     </div>
   );
-}
-
-export function StatusDot({ status }: { status: MediaStatus }) {
-  return <span className={cn("h-2 w-2 shrink-0 rounded-full", MEDIA_STATUS_PRESENTATION[status].dot, mediaStatusIsActive(status) && "animate-pulse")} />;
-}
-
-export function StatusBadge({ status }: { status: MediaStatus }) {
-  const config = MEDIA_STATUS_PRESENTATION[status];
-  return <Badge variant={config.variant}>{config.label}</Badge>;
 }
 
 export function PosterArtwork({

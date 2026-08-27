@@ -119,14 +119,27 @@ export function TitleMarkBar({ item, className }: { item: TitleMarkInput; classN
   );
 }
 
-/** The dot with its name beside it, for a list row or a detail header. */
+/**
+ * The dot with its name beside it, for a list row or a detail header.
+ *
+ * One image carrying the whole mark, rather than a dot and some loose text: a
+ * screen reader gets "Missing · not monitored" once, in the order a sighted
+ * reader gets it, instead of a decorative dot followed by two unrelated
+ * fragments. The dot inside is hidden for the same reason.
+ */
 export function TitleMarkLabel({ item, className }: { item: TitleMarkInput; className?: string }) {
   const mark = titleMark(item);
   const presentation = TITLE_MARK_PRESENTATION[mark];
   const half = !item.monitored && presentation.canBeHalf;
+  const label = half ? `${presentation.label} · not monitored` : presentation.label;
 
   return (
-    <span className={cn("inline-flex items-center gap-1.5 whitespace-nowrap", className)}>
+    <span
+      role="img"
+      aria-label={label}
+      title={half ? `${presentation.hint} Deluno is not watching this one.` : presentation.hint}
+      className={cn("inline-flex items-center gap-1.5 whitespace-nowrap", className)}
+    >
       <TitleMarkDot item={item} size={10} decorative />
       <span>{presentation.label}</span>
       {half ? <span className="text-muted-foreground">· not monitored</span> : null}

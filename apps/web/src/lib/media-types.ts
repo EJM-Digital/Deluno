@@ -1,15 +1,18 @@
-export type MediaStatus =
-  | "downloaded"
-  | "downloading"
-  | "missing"
-  | "processing"
-  | "processed"
-  | "importReady"
-  | "waitingForProcessor"
-  | "importQueued"
-  | "importFailed"
-  | "imported"
-  | "processingFailed";
+/**
+ * A title has no lifecycle status of its own.
+ *
+ * `MediaStatus` used to live here — eleven values, of which a `MediaItem` could
+ * only ever hold two: `downloaded` and `missing`, both derived from `hasFile`
+ * alone. The other nine described a *transfer*, not a title, and nothing ever
+ * set them on one. Between them and `MEDIA_STATUS_PRESENTATION` they were a
+ * second colouring of states the one table already answers for, and they
+ * coloured a missing title amber — the signal that is supposed to mean a person
+ * is needed (#302).
+ *
+ * What a title is doing now reads from `wantedStatus` and the episode counts
+ * below, through `titleMark()` in `lib/status-tones.ts`. What a transfer is
+ * doing reads from `STATUS_PRESENTATION`. Neither borrows the other's words.
+ */
 export type MediaType = "movie" | "show";
 
 export interface MediaItem {
@@ -20,7 +23,6 @@ export interface MediaItem {
   poster: string | null;
   backdrop: string | null;
   quality: string | null;
-  status: MediaStatus;
   monitored: boolean;
   sizeGb: number | null;
   rating: number | null;

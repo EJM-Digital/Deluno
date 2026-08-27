@@ -2319,10 +2319,18 @@ public sealed class SqliteMovieCatalogRepository(
             cancellationToken);
 
         using var command = connection.CreateCommand();
+        // One joined wanted-state row, not a correlated EXISTS. The calendar was
+        // the last place still asking "is there a file anywhere for this movie"
+        // as its own subquery, which is the shape CatalogueWantedState exists to
+        // replace — and it could only ever answer that one question, so the
+        // calendar had to invent its own words ("Watching for it") for a state
+        // the rest of Deluno already names. It carries the wanted status now, so
+        // a film on the calendar shows the same mark as the film on the shelf.
         command.CommandText =
-            """
-            SELECT id, title, release_year, poster_url, monitored, kind, date,
-                   EXISTS (SELECT 1 FROM movie_wanted_state w WHERE w.movie_id = m.id AND w.has_file = 1)
+            $"""
+            SELECT m.id, m.title, m.release_year, m.poster_url, m.monitored, m.kind, m.date,
+                   {CatalogueWantedState.HasFileColumn},
+                   ws.wanted_status
             FROM (
                 SELECT id, title, release_year, poster_url, monitored, 'inCinemas' AS kind, in_cinemas_date AS date
                 FROM movie_entries WHERE in_cinemas_date IS NOT NULL
@@ -2333,8 +2341,9 @@ public sealed class SqliteMovieCatalogRepository(
                 SELECT id, title, release_year, poster_url, monitored, 'physical', physical_release_date
                 FROM movie_entries WHERE physical_release_date IS NOT NULL
             ) AS m
-            WHERE date >= @fromDate AND date < @toDate
-            ORDER BY date ASC, title ASC
+            {CatalogueWantedState.Join("m", "movie_wanted_state", "movie_id", scopedToLibrary: false)}
+            WHERE m.date >= @fromDate AND m.date < @toDate
+            ORDER BY m.date ASC, m.title ASC
             LIMIT @take;
             """;
         AddParameter(command, "@fromDate", fromDate.ToString("yyyy-MM-dd"));
@@ -2358,7 +2367,8 @@ public sealed class SqliteMovieCatalogRepository(
                 Kind: reader.GetString(5),
                 Date: date,
                 HasFile: reader.GetInt64(7) == 1,
-                Monitored: reader.GetInt32(4) == 1));
+                Monitored: reader.GetInt32(4) == 1,
+                WantedStatus: reader.IsDBNull(8) ? null : reader.GetString(8)));
         }
 
         return items;

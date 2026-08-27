@@ -18,4 +18,6 @@ src/Deluno.Host/data/
 .deluno/
 .claire/
 apps/web/test-results/
+# Belt and braces: the same folder if anything ever writes it at the root.
+/test-results/
 apps/web/playwright-report/

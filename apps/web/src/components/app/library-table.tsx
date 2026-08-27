@@ -5,7 +5,8 @@ import type { MediaItem } from "../../lib/media-types";
 import { formatBytesFromGb } from "../../lib/utils";
 import { Badge } from "../ui/badge";
 import { Checkbox } from "../ui/checkbox";
-import { PosterArtwork, shortQuality, StatusBadge, StatusDot } from "./library-grid";
+import { PosterArtwork, shortQuality } from "./library-grid";
+import { TitleMarkLabel } from "../ui/title-mark";
 
 export function LibraryTable(
 {
@@ -177,13 +178,15 @@ export function LibraryTable(
                       compact
                     />
                     <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <StatusDot status={item.status} />
-                        <p className="truncate font-medium text-foreground">{item.title}</p>
-                      </div>
+                      {/*
+                        No mark here. The row has a Status column, and the mark
+                        belongs in it — a dot beside the title and a dot in that
+                        column are one fact stated twice, which is what the row
+                        already did with "Monitored" while the dot was halved.
+                      */}
+                      <p className="truncate font-medium text-foreground">{item.title}</p>
                       <p className="text-[length:var(--type-caption)] text-muted-foreground">
                         {item.type === "movie" ? "Movie" : "TV"} · {item.year}
-                        {item.monitored ? " · Monitored" : " · Not monitored"}
                       </p>
                     </div>
                   </div>
@@ -192,7 +195,7 @@ export function LibraryTable(
                   <Badge>{item.quality ? shortQuality(item.quality) : "Unknown"}</Badge>
                 </td>
                 <td>
-                  <StatusBadge status={item.status} />
+                  <TitleMarkLabel item={item} />
                 </td>
                 <td className="hidden text-muted-foreground lg:table-cell">
                   {item.genres.slice(0, 2).join(", ")}

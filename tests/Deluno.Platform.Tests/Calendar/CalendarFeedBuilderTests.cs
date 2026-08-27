@@ -37,7 +37,8 @@ public sealed class CalendarFeedBuilderTests
             Kind: kind,
             Date: new DateOnly(2026, 9, 5),
             HasFile: false,
-            Monitored: true);
+            Monitored: true,
+            WantedStatus: "missing");
 
     private static IReadOnlyList<string> Lines(string feed)
         => feed.Split("\r\n", StringSplitOptions.RemoveEmptyEntries);

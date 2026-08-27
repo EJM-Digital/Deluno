@@ -3,7 +3,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight } from "lucide-react";
 import { Link, useLoaderData, useNavigate } from "react-router-dom";
 import type { ActiveDownload, IndexerHealthItem, MediaItem } from "../lib/media-types";
-import { MEDIA_STATUS_PRESENTATION, mediaStatusIsActive } from "../lib/media-status-presentation";
 import {
   emptyPlatformSettingsSnapshot,
   fetchJson, fetchPageItems,
@@ -46,6 +45,7 @@ import { Button } from "../components/ui/button";
 import { ListCard, ListEmpty } from "../components/ui/list-card";
 import { MetricChart, type MetricPoint } from "../components/ui/metric-chart";
 import { SegmentedControl } from "../components/ui/segmented-control";
+import { TitleMarkDot } from "../components/ui/title-mark";
 import {
   DEFAULT_HISTORY_DAYS,
   HISTORY_RANGES,
@@ -532,28 +532,18 @@ export function DashboardPage() {
         href: item.href,
         action: item.action
       })),
-    ...(data.missingCount > 0
-      ? [{
-          id: "missing",
-          tone: "warn" as SetupAttentionTone,
-          title: `${data.missingCount} ${data.missingCount === 1 ? "title is" : "titles are"} still missing`,
-          // The heading above this already pluralises; this line did not, so a
-          // single missing film read "1 movies and 0 TV shows".
-          text: `${data.movieMissingCount} ${data.movieMissingCount === 1 ? "movie" : "movies"} and ${data.showMissingCount} ${data.showMissingCount === 1 ? "TV show" : "TV shows"} have no acceptable release yet.`,
-          href: "/movies",
-          action: "Review"
-        }]
-      : []),
-    ...(data.retryWindows.length > 0
-      ? [{
-          id: "retries",
-          tone: "warn" as SetupAttentionTone,
-          title: `${data.retryWindows.length} retry ${data.retryWindows.length === 1 ? "window" : "windows"} pending`,
-          text: "A search or download failed and is waiting before it tries again.",
-          href: "/system/audit",
-          action: "See activity"
-        }]
-      : [])
+    // Two entries used to sit here and neither needed a person (#302).
+    //
+    // A count of missing titles, amber: Deluno searches for those on its own
+    // schedule, and the count is already in the strip above in the Missing red.
+    // And a count of pending retry windows, amber, described in its own text as
+    // "waiting before it tries again" — the same self-resolving state the audit
+    // ruled blue for a rate-limited indexer.
+    //
+    // Between them they made this card read **2** on an install where the
+    // sidebar was simultaneously saying "All good · Nothing needs you". A badge
+    // that lights up when nothing is wrong is how people learn to stop looking
+    // at it. What is left here genuinely stops until somebody acts.
   ];
 
   function dismissOnboarding() {
@@ -593,19 +583,31 @@ export function DashboardPage() {
             help: data.totalCount > 0 ? `${data.movieCount} movies · ${data.showCount} shows` : data.configuredLibraryCount > 0 ? "no media yet" : "no library set up yet",
             href: "/movies"
           },
-          { label: "Watching for", value: data.monitoredCount, help: "Deluno keeps looking for these", href: "/search-cycles" },
+          // The mark's names, not three of this page's own. "Watching for",
+          // "Still missing" and "Could be upgraded" were invented here for
+          // states the rest of Deluno already names — and *Still missing* was
+          // amber, the signal that means a person has to act, for titles being
+          // searched for on schedule (#302, DESIGN-001).
           {
-            label: "Still missing",
-            value: data.missingCount,
-            help: data.missingCount === 0 ? "nothing missing" : "no acceptable release yet",
-            tone: data.missingCount > 0 ? "warn" : "default",
-            href: "/search-cycles/missing"
+            label: "Quality met",
+            value: data.coveredCount,
+            help: data.coveredCount === 0 ? "nothing at target yet" : "Deluno has stopped looking",
+            mark: "covered" as const,
+            href: "/movies?status=covered"
           },
           {
-            label: "Could be upgraded",
+            label: "Upgradable",
             value: data.upgradeCount,
             help: data.upgradeCount === 0 ? "everything meets its profile" : "a better release would be accepted",
+            mark: "upgrade" as const,
             href: "/search-cycles/upgrades"
+          },
+          {
+            label: "Missing",
+            value: data.missingCount,
+            help: data.missingCount === 0 ? "nothing missing" : "no acceptable release yet",
+            mark: "missing" as const,
+            href: "/search-cycles/missing"
           }
         ]}
       />
@@ -740,9 +742,14 @@ export function DashboardPage() {
           )}
         </ListCard>
         <LibraryComposition
-          onDisk={Math.max(0, data.totalCount - data.missingCount - data.upgradeCount)}
+          // `covered` is on the payload and always was. This used to subtract
+          // its way to a bucket it called "On disk" — a word DESIGN-001 retired,
+          // and one that spanned two rungs, so it could never tell you which of
+          // them still had work outstanding.
+          covered={data.coveredCount}
           missing={data.missingCount}
           upgradable={data.upgradeCount}
+          upcoming={data.upcomingCount}
           movieCount={data.movieCount}
           showCount={data.showCount}
         />
@@ -915,7 +922,7 @@ function PosterPreview({ item }: { item: MediaItem }) {
           </Badge>
         </div>
         <div className="absolute right-2 top-2">
-          <span className={cn("block h-2.5 w-2.5 rounded-full ring-2 ring-background/70", statusDot(item.status))} />
+          <TitleMarkDot item={item} size={10} />
         </div>
         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background/95 via-background/55 to-transparent p-3 pt-12">
           <p className="line-clamp-1 text-[length:var(--type-body-sm)] font-semibold text-foreground">{item.title}</p>
@@ -947,10 +954,6 @@ function Artwork({
       <span className="px-2 font-display text-lg font-bold tracking-tight">{title.slice(0, 2).toUpperCase()}</span>
     </span>
   );
-}
-
-function statusDot(status: MediaItem["status"]) {
-  return cn(MEDIA_STATUS_PRESENTATION[status].dot, mediaStatusIsActive(status) && "animate-pulse");
 }
 
 function shortQuality(value: string | null) {

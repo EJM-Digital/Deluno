@@ -1,9 +1,20 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { test, expect } from "@playwright/test";
 import { authenticateAndNavigate } from "../helpers/auth-helper";
 
-const reviewDir = process.env.DELUNO_MOBILE_REVIEW_DIR ?? path.join(process.cwd(), "test-results", "mobile-review");
+/**
+ * Anchored to this file, not to `process.cwd()`.
+ *
+ * With cwd, the screenshots landed in `apps/web/test-results/` when the suite
+ * was run through the workspace script and in `<repo>/test-results/` when it
+ * was run from the root — and only the first of those is in `.gitignore`, so
+ * running it the other way left untracked artefacts sitting in `git status`,
+ * ready to be swept into somebody's commit.
+ */
+const reviewDir = process.env.DELUNO_MOBILE_REVIEW_DIR
+  ?? path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "test-results", "mobile-review");
 
 /**
  * A look at the pages on a phone, rather than an assertion that their elements

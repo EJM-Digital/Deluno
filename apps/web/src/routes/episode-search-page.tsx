@@ -14,7 +14,6 @@ import { ArrowLeft, LoaderCircle, Search } from "lucide-react";
 import { fetchJson } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
 import { Button } from "../components/ui/button";
-import { Chip } from "../components/ui/chip";
 import { ListGroupHeader } from "../components/ui/media-type-split";
 import {
   LIST_TRACK,
@@ -29,7 +28,7 @@ import { PageToolbar } from "../components/ui/page-toolbar";
 import { Select } from "../components/ui/select";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { toast } from "../components/shell/toaster";
-import { wantedStatusPresentation } from "../lib/media-status-presentation";
+import { TitleMarkLabel } from "../components/ui/title-mark";
 import { describeSearchReason } from "../lib/search-reasons";
 
 interface WantedEpisode {
@@ -235,7 +234,6 @@ export function EpisodeSearchPage() {
                   }
                 />
                 {group.map((episode) => {
-                  const status = wantedStatusPresentation(episode.wantedStatus);
                   return (
                     <ListRow key={episode.episodeId} onClick={() => navigate(`/tv/${episode.seriesId}`)}>
                       <ListNameCell name={code(episode)} sub={episode.title ?? "Episode title pending"} />
@@ -243,9 +241,8 @@ export function EpisodeSearchPage() {
                       <ListCell primary={episode.lastSearchUtc ? formatDateTime(episode.lastSearchUtc) : "Never"} />
                       <ListCell primary={episode.nextEligibleSearchUtc ? formatDateTime(episode.nextEligibleSearchUtc) : "Any time"} />
                       <ListCell>
-                        <Chip tone={status.tone} title={status.hint}>
-                          {status.label}
-                        </Chip>
+                        {/* An episode is a title. Same five marks (DESIGN-001). */}
+                        <TitleMarkLabel item={{ monitored: episode.monitored, wantedStatus: episode.wantedStatus }} />
                       </ListCell>
                       <div role="cell" className="flex justify-end">
                         <Button
