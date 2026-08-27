@@ -53,7 +53,7 @@ export function DashboardHero({
       aria-label="Overview"
       className={cn(
         "relative isolate overflow-hidden rounded-2xl border bg-card shadow-card",
-        tone === "danger"
+        tone === "bad"
           ? "border-destructive/30"
           : tone === "warn"
             ? "border-warning/30"
@@ -65,7 +65,7 @@ export function DashboardHero({
         aria-hidden
         className={cn(
           "pointer-events-none absolute -left-32 -top-40 -z-10 h-[28rem] w-[28rem] rounded-full blur-[110px]",
-          tone === "danger" ? "bg-destructive/15" : tone === "warn" ? "bg-warning/15" : "bg-primary/10"
+          tone === "bad" ? "bg-destructive/15" : tone === "warn" ? "bg-warning/15" : "bg-primary/10"
         )}
       />
 

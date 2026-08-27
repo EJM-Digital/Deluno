@@ -39,7 +39,7 @@ const SEVERITY_LED: Record<Severity, LedTone> = {
   info: "idle",
   success: "ok",
   warning: "warn",
-  error: "danger"
+  error: "bad"
 };
 
 export function ActivityTicker({ seed, limit = 10 }: { seed: ActivityEventItem[]; limit?: number }) {

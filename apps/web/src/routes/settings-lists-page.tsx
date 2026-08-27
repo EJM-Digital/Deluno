@@ -557,7 +557,7 @@ function ImportListPreview({
                   {entry.title}
                   {entry.year ? ` (${entry.year})` : ""}
                 </label>
-                <Chip tone={entry.action === "would add" ? "ok" : entry.action === "excluded" ? "muted" : "info"}>{entry.action}</Chip>
+                <Chip tone={entry.action === "would add" ? "ok" : entry.action === "excluded" ? "idle" : "info"}>{entry.action}</Chip>
               </div>
               <p className="mt-1 text-[length:var(--type-caption)] text-muted-foreground">{entry.reason} · {entry.matchConfidence} confidence</p>
               {selectable ? (
@@ -659,7 +659,7 @@ function hasFilters(form: ListForm) {
 }
 
 function syncChip(item: IntakeSourceItem): { tone: NonNullable<ChipProps["tone"]>; label: string } {
-  if (!item.isEnabled) return { tone: "muted", label: "Off" };
+  if (!item.isEnabled) return { tone: "idle", label: "Off" };
   if (!item.libraryId) return { tone: "warn", label: "No library" };
   switch (item.lastSyncStatus) {
     case "success":
@@ -669,7 +669,7 @@ function syncChip(item: IntakeSourceItem): { tone: NonNullable<ChipProps["tone"]
     case "error":
       return { tone: "bad", label: "Failed" };
     default:
-      return { tone: "muted", label: "Not synced" };
+      return { tone: "idle", label: "Not synced" };
   }
 }
 

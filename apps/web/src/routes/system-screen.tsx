@@ -249,14 +249,14 @@ function healthTone(status: string): NonNullable<ChipProps["tone"]> {
   if (status === "healthy" || status === "ok") return "ok";
   if (status === "degraded" || status === "warning") return "warn";
   if (status === "unhealthy" || status === "failed") return "bad";
-  return "muted";
+  return "idle";
 }
 
 function jobTone(status: string): NonNullable<ChipProps["tone"]> {
   if (status === JOB_STATUS.FAILED) return "bad";
   if (status === JOB_STATUS.COMPLETED) return "ok";
   if (isJobActive(status as JobStatus)) return "info";
-  return "muted";
+  return "idle";
 }
 
 /** "filesystem.import.execute" reads as machinery; say what it does. */

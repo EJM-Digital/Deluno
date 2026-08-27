@@ -1,3 +1,4 @@
+import type { Tone } from "../../lib/status-tones";
 import { ArrowUpRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { ReactNode } from "react";
@@ -9,14 +10,15 @@ export interface LibraryImpactLink {
   value: ReactNode;
   detail?: ReactNode;
   href: string;
-  tone?: "ok" | "info" | "warn" | "muted";
+  tone?: Tone;
 }
 
 const toneClasses: Record<NonNullable<LibraryImpactLink["tone"]>, string> = {
   ok: "border-success/30 bg-success/[0.05]",
   info: "border-info/30 bg-info/[0.05]",
   warn: "border-warning/35 bg-warning/[0.05]",
-  muted: "border-hairline bg-surface-1/35"
+  bad: "border-destructive/30 bg-destructive/[0.05]",
+  idle: "border-hairline bg-surface-1/35"
 };
 
 /** Small linked library chips for settings that affect one or more libraries. */
@@ -80,7 +82,7 @@ export function LibraryImpactPanel({
             to={item.href}
             className={cn(
               "group grid min-w-0 gap-1 rounded-[10px] border px-3 py-2.5 transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              toneClasses[item.tone ?? "muted"]
+              toneClasses[item.tone ?? "idle"]
             )}
           >
             <span className="flex min-w-0 items-center justify-between gap-2">

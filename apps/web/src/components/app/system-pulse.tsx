@@ -56,7 +56,7 @@ export function SystemPulse({ snapshot, className }: { snapshot: MonitoringDashb
   const { readiness, storage, performance, machine } = snapshot;
   const latency = performance.apiLatency;
   const cells = buildCells(snapshot);
-  const worst = worstTone(cells.map((cell) => cell.tone).concat(readiness.ready ? "ok" : "danger"));
+  const worst = worstTone(cells.map((cell) => cell.tone).concat(readiness.ready ? "ok" : "bad"));
 
   return (
     <section
@@ -64,7 +64,7 @@ export function SystemPulse({ snapshot, className }: { snapshot: MonitoringDashb
       className={cn(
         "relative flex flex-col overflow-hidden rounded-2xl border bg-card shadow-card",
         className,
-        worst === "danger"
+        worst === "bad"
           ? "border-destructive/30 dark:border-destructive/25"
           : worst === "warn"
             ? "border-warning/30 dark:border-warning/25"
@@ -77,7 +77,7 @@ export function SystemPulse({ snapshot, className }: { snapshot: MonitoringDashb
         aria-hidden
         className={cn(
           "pointer-events-none absolute -right-24 -top-28 h-64 w-64 rounded-full blur-[90px]",
-          worst === "danger" ? "bg-destructive/20" : worst === "warn" ? "bg-warning/20" : "bg-success/10"
+          worst === "bad" ? "bg-destructive/20" : worst === "warn" ? "bg-warning/20" : "bg-success/10"
         )}
       />
 
@@ -92,7 +92,7 @@ export function SystemPulse({ snapshot, className }: { snapshot: MonitoringDashb
               help: readiness.failedChecks > 0
                 ? `${readiness.failedChecks} of ${readiness.totalChecks} checks failing`
                 : `${readiness.totalChecks} checks passing`,
-              tone: readiness.ready ? "ok" : "danger",
+              tone: readiness.ready ? "ok" : "bad",
               pulse: readiness.ready,
               href: "/system"
             }}
@@ -213,7 +213,7 @@ function PulseTile({ cell }: { cell: PulseCell }) {
       <span
         className={cn(
           "block truncate text-[length:var(--type-title-sm)] font-semibold tabular-nums leading-none",
-          cell.tone === "danger" ? "text-destructive" : cell.tone === "warn" ? "text-warning" : "text-foreground"
+          cell.tone === "bad" ? "text-destructive" : cell.tone === "warn" ? "text-warning" : "text-foreground"
         )}
       >
         {cell.numeric === undefined ? cell.value : <CountUp value={cell.numeric} />}
@@ -326,7 +326,7 @@ function buildCells(snapshot: MonitoringDashboardSnapshot): PulseCell[] {
   ];
 }
 
-const TONE_RANK: Record<LedTone, number> = { danger: 3, warn: 2, info: 1, ok: 0, idle: 0 };
+const TONE_RANK: Record<LedTone, number> = { bad: 3, warn: 2, info: 1, ok: 0, idle: 0 };
 
 function worstTone(tones: LedTone[]): LedTone {
   return tones.reduce<LedTone>((worst, tone) => (TONE_RANK[tone] > TONE_RANK[worst] ? tone : worst), "ok");

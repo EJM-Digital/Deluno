@@ -14,6 +14,6 @@ describe("media status presentation", () => {
     expect(mediaStatusIsActive("downloading")).toBe(true);
     expect(mediaStatusIsActive("processing")).toBe(true);
     expect(mediaStatusIsActive("downloaded")).toBe(false);
-    expect(wantedStatusPresentation("unexpected")).toMatchObject({ label: "Tracked", tone: "muted" });
+    expect(wantedStatusPresentation("unexpected")).toMatchObject({ label: "Tracked", tone: "idle" });
   });
 });

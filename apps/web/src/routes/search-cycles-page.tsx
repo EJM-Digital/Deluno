@@ -693,12 +693,12 @@ function nextSearchLabel(view: string, library: LibraryItem, state: LibraryAutom
   return [missing, upgrades].filter(Boolean).join(" · ") || null;
 }
 function automationChip(library: LibraryItem, state: LibraryAutomationStateItem | undefined, globallyPaused: boolean): { tone: NonNullable<ChipProps["tone"]>; label: string } {
-  if (!library.autoSearchEnabled) return { tone: "muted", label: "Manual" };
+  if (!library.autoSearchEnabled) return { tone: "idle", label: "Manual" };
   if (globallyPaused) return { tone: "warn", label: "Paused" };
   if (state?.lastError) return { tone: "bad", label: "Last run failed" };
   if (state?.status === "running") return { tone: "info", label: "Searching" };
   if (state?.status === "queued") return { tone: "info", label: "Queued" };
-  return { tone: "muted", label: "Scheduled" };
+  return { tone: "idle", label: "Scheduled" };
 }
 function parseNotes(notesJson: string | null): { apiCallCount: number; queuedReleaseBytes: number } {
   if (!notesJson) return { apiCallCount: 0, queuedReleaseBytes: 0 };

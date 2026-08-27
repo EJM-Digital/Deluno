@@ -284,7 +284,7 @@ export function SettingsLibrariesPage() {
               const searchKinds = [library.missingSearchEnabled ? "Missing" : null, library.upgradeSearchEnabled ? "Upgrades" : null].filter(Boolean).join(" · ");
               const hasSearchSelection = Boolean(searchKinds);
               const scheduled = library.autoSearchEnabled && hasSearchSelection;
-              const tone = !scheduled ? "muted" : running ? "info" : "muted";
+              const tone = !scheduled ? "idle" : running ? "info" : "idle";
               const status = !hasSearchSelection ? "Not configured" : running ? "Searching" : library.autoSearchEnabled ? "Scheduled" : "Paused";
               return (
                 <ListRow key={library.id} onClick={() => openEdit(library)} selected={mode.kind === "edit" && mode.id === library.id}>

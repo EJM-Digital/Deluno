@@ -8,13 +8,18 @@
  * entirely under `prefers-reduced-motion`.
  */
 import { cn } from "../../lib/utils";
+import type { Tone } from "../../lib/status-tones";
 
-export type LedTone = "ok" | "warn" | "danger" | "info" | "idle";
+/**
+ * The same five tones `Chip` takes — see `lib/status-tones.ts`. `danger` was
+ * this component's word for what `Chip` called `bad`; there is one word now.
+ */
+export type LedTone = Tone;
 
 const TONE: Record<LedTone, { core: string; glow: string }> = {
   ok: { core: "bg-success", glow: "bg-success/45" },
   warn: { core: "bg-warning", glow: "bg-warning/50" },
-  danger: { core: "bg-destructive", glow: "bg-destructive/50" },
+  bad: { core: "bg-destructive", glow: "bg-destructive/50" },
   info: { core: "bg-info", glow: "bg-info/45" },
   idle: { core: "bg-muted-foreground/45", glow: "bg-muted-foreground/20" }
 };

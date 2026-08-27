@@ -1,4 +1,5 @@
 import type { MediaStatus } from "./media-types";
+import type { Tone } from "./status-tones";
 
 /**
  * The status shown on media is its lifecycle, never its monitoring intent.
@@ -60,7 +61,7 @@ export function mediaStatusIsActive(status: MediaStatus) {
  * over-claims: it is not the best copy in existence, it is the one your profile
  * asked for.
  */
-export const WANTED_STATUS_PRESENTATION: Record<string, { label: string; tone: "ok" | "warn" | "info" | "muted"; hint: string }> = {
+export const WANTED_STATUS_PRESENTATION: Record<string, { label: string; tone: Tone; hint: string }> = {
   missing: {
     label: "Missing",
     tone: "info",
@@ -78,7 +79,7 @@ export const WANTED_STATUS_PRESENTATION: Record<string, { label: string; tone: "
   },
   upcoming: {
     label: "Upcoming",
-    tone: "muted",
+    tone: "idle",
     hint: "Not out yet. Deluno will start looking on release."
   }
 };
@@ -87,7 +88,7 @@ export function wantedStatusPresentation(value: string) {
   return (
     WANTED_STATUS_PRESENTATION[value] ?? {
       label: "Tracked",
-      tone: "muted" as const,
+      tone: "idle" as const,
       // Reached only by a value this build does not know — a database written by
       // a newer one, say. It must not claim a state; "tracked" is the most it
       // can support from the fact that a row exists at all.

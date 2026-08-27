@@ -405,7 +405,7 @@ export function SettingsPolicySetsPage() {
                 const used = librariesByPlan.get(plan.id) ?? [];
                 const rules = splitCsv(plan.customFormatIds);
                 const profile = qualityProfiles.find((item) => item.id === plan.qualityProfileId);
-                const tone = !plan.isEnabled ? "muted" : used.length ? "ok" : "muted";
+                const tone = !plan.isEnabled ? "idle" : used.length ? "ok" : "idle";
                 const statusLabel = !plan.isEnabled ? "Off" : used.length ? "Active" : "Unused";
                 return (
                   <ListRow key={plan.id} onClick={() => openEdit(plan)} selected={mode.kind === "edit" && mode.id === plan.id}>

@@ -575,7 +575,7 @@ export function SetupGuidePage() {
               {completion.map((item) => (
                 <li key={item.label} className="flex items-center justify-between gap-2">
                   <span className="min-w-0 text-[length:var(--type-caption)] leading-snug text-muted-foreground">{item.label}</span>
-                  <Chip tone={item.done ? "ok" : "muted"}>{item.done ? "Done" : "Waiting"}</Chip>
+                  <Chip tone={item.done ? "ok" : "idle"}>{item.done ? "Done" : "Waiting"}</Chip>
                 </li>
               ))}
             </ul>

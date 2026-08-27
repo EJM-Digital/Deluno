@@ -16,6 +16,7 @@
  * Stalled is a stage, not a footnote: a transfer that has stopped looks
  * identical to one that is merely slow unless the pane says so.
  */
+import { statusTone } from "../../lib/status-tones";
 import { Link } from "react-router-dom";
 import { CountUp } from "../ui/count-up";
 import { StatusLed, type LedTone } from "../ui/status-led";
@@ -71,23 +72,23 @@ export function AcquisitionPipeline({
   const holds = sharing?.holds ?? [];
 
   const stages: Stage[] = [
-    { label: "Queued", short: "Queued", count: summary.queuedCount, tone: "idle" },
-    { label: "Downloading", short: "Down", count: summary.activeCount, tone: "info" },
-    { label: "Stalled", short: "Stalled", count: summary.stalledCount, tone: "warn" },
+    { label: "Queued", short: "Queued", count: summary.queuedCount, tone: statusTone("transfer.queued") },
+    { label: "Downloading", short: "Down", count: summary.activeCount, tone: statusTone("transfer.downloading") },
+    { label: "Stalled", short: "Stalled", count: summary.stalledCount, tone: statusTone("transfer.stalled") },
     // Only shown where a processor is actually in the loop: a library that
     // imports directly has no such stage, and a permanent empty node would
     // imply a step Deluno was skipping.
     ...(showProcessing
-      ? [{ label: "Processing", short: "Process", count: waitingForProcessor, tone: "info" as LedTone }]
+      ? [{ label: "Processing", short: "Process", count: waitingForProcessor, tone: statusTone("transfer.processing") }]
       : []),
-    { label: "Ready to import", short: "Ready", count: summary.importReadyCount, tone: "idle" },
-    { label: "Importing", short: "Import", count: importing, tone: "ok" },
+    { label: "Ready to import", short: "Ready", count: summary.importReadyCount, tone: statusTone("transfer.importReady") },
+    { label: "Importing", short: "Import", count: importing, tone: statusTone("transfer.importing") },
     // The tail of the flow, and the only stage that is already *finished* —
     // these are in the library, and what is left is an obligation to the site
     // the release came from. It appears only once there is something in it, so
     // an install that reclaims immediately never carries a permanent zero.
     ...(holds.length
-      ? [{ label: "Sharing", short: "Share", count: holds.length, tone: "info" as LedTone }]
+      ? [{ label: "Sharing", short: "Share", count: holds.length, tone: statusTone("transfer.sharing") }]
       : [])
   ];
 
