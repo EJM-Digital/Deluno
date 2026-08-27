@@ -22,14 +22,24 @@ public sealed class SqliteMediaSubtitleRepository(
     : IMediaSubtitleRepository
 {
     /// <summary>
-    /// Files whose subtitles have never been read, or were read when the file
-    /// was a different file.
+    /// Files whose subtitles have never been read, were read when the file was
+    /// a different file, or were only half read.
     ///
     /// Bounded and indexed rather than streamed and filtered: a library scan
     /// that reads twenty thousand rows to find the eleven it has not done yet
     /// is a scan somebody notices. Size is compared as well as path because a
     /// replaced upgrade keeps the name and changes everything else about the
     /// file, subtitle tracks included.
+    ///
+    /// <para><b>A file read without ffprobe is read again once ffprobe is
+    /// there.</b> Only the subtitles beside it could be seen the first time, so
+    /// the tracks inside it are still unknown — and an install can gain ffprobe
+    /// at any point, which is exactly what the lab rig did. <c>unavailable</c>
+    /// and <c>failed</c> are treated differently on purpose, for the reason
+    /// <see cref="Deluno.Filesystem.FfprobeMediaProbeService"/> already gives:
+    /// a missing binary is an environment state that changes, and a file
+    /// ffprobe could not parse is a fact about the file. Retrying the second
+    /// one every cycle would read a corrupt file forever.</para>
     /// </summary>
     public async Task<IReadOnlyList<MediaSubtitleScanCandidate>> ListPendingScansAsync(
         MediaKind kind,
@@ -56,6 +66,7 @@ public sealed class SqliteMediaSubtitleRepository(
                     scan.{map.SubtitleMediaIdColumn} IS NULL
                  OR scan.file_path <> f.file_path
                  OR COALESCE(scan.file_size_bytes, -1) <> COALESCE(f.file_size_bytes, -1)
+                 OR scan.probe_status = 'unavailable'
               )
             LIMIT @limit;
             """;

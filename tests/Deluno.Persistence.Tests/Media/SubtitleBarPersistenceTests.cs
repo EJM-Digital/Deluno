@@ -230,6 +230,61 @@ public sealed class SubtitleBarPersistenceTests
         Assert.Single(await subtitles.ListPendingScansAsync(MediaKind.Movie, "library-movies", 50, CancellationToken.None));
     }
 
+    [Fact]
+    public async Task A_file_read_without_ffprobe_is_read_again_once_ffprobe_is_there()
+    {
+        using var storage = TestStorage.Create();
+        var movies = await CreateMoviesAsync(storage, new StubPreferences());
+        var subtitles = new SqliteMediaSubtitleRepository(storage.Factory);
+
+        await ImportMovieAsync(movies, "Arrival", 2016, @"D:\Media\Arrival (2016)\Arrival (2016).mkv");
+        var id = (await movies.ListPageAsync(new CatalogueQuery(), CancellationToken.None)).Items[0].Id;
+
+        // Only the subtitles beside it could be seen, so the tracks inside it
+        // are still unknown. An install gains ffprobe at some point — the lab
+        // rig did — and everything it half read has to be finished.
+        await subtitles.RecordScanAsync(
+            MediaKind.Movie,
+            id,
+            new MediaSubtitleScan(@"D:\Media\Arrival (2016)\Arrival (2016).mkv", 1024, "unavailable", 0, Now),
+            [],
+            CancellationToken.None);
+
+        Assert.Single(await subtitles.ListPendingScansAsync(MediaKind.Movie, "library-movies", 50, CancellationToken.None));
+
+        await subtitles.RecordScanAsync(
+            MediaKind.Movie,
+            id,
+            new MediaSubtitleScan(@"D:\Media\Arrival (2016)\Arrival (2016).mkv", 1024, "succeeded", 1, Now),
+            [Embedded("en")],
+            CancellationToken.None);
+
+        Assert.Empty(await subtitles.ListPendingScansAsync(MediaKind.Movie, "library-movies", 50, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task A_file_ffprobe_could_not_parse_is_not_read_again_every_cycle()
+    {
+        using var storage = TestStorage.Create();
+        var movies = await CreateMoviesAsync(storage, new StubPreferences());
+        var subtitles = new SqliteMediaSubtitleRepository(storage.Factory);
+
+        await ImportMovieAsync(movies, "Arrival", 2016, @"D:\Media\Arrival (2016)\Arrival (2016).mkv");
+        var id = (await movies.ListPageAsync(new CatalogueQuery(), CancellationToken.None)).Items[0].Id;
+
+        await subtitles.RecordScanAsync(
+            MediaKind.Movie,
+            id,
+            new MediaSubtitleScan(@"D:\Media\Arrival (2016)\Arrival (2016).mkv", 1024, "failed", 0, Now),
+            [],
+            CancellationToken.None);
+
+        // A missing binary is an environment state that changes. A file ffprobe
+        // cannot parse is a fact about the file, and retrying it every cycle
+        // would read a corrupt file forever.
+        Assert.Empty(await subtitles.ListPendingScansAsync(MediaKind.Movie, "library-movies", 50, CancellationToken.None));
+    }
+
     /* ------------------------------------------------------------ helpers */
 
     private static MediaSubtitleRow Embedded(string language, bool forced = false, bool hearingImpaired = false)
