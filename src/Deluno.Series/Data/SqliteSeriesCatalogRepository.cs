@@ -593,6 +593,34 @@ public sealed class SqliteSeriesCatalogRepository(
     /// one costs; the counts are a separate pass, done once per filter rather
     /// than on every page of it.
     /// </summary>
+
+    public async Task<IReadOnlyList<string>> ListGenresAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT DISTINCT genres
+            FROM series_entries
+            WHERE genres IS NOT NULL AND genres <> '';
+            """;
+
+        var genres = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            foreach (var genre in reader.GetString(0).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                genres.Add(genre);
+            }
+        }
+
+        return [.. genres];
+    }
+
     public async Task<CataloguePage<SeriesListItem>> ListPageAsync(
         CatalogueQuery query,
         CancellationToken cancellationToken)
@@ -616,6 +644,10 @@ public sealed class SqliteSeriesCatalogRepository(
                 CatalogueUpgradeFor(libraryId),
                 CatalogueWantedIs(libraryId, "covered"),
                 CatalogueWantedIs(libraryId, "upcoming")),
+            // Quality and size read `ws` — the one wanted-state row this page
+            // speaks for — rather than an EXISTS over all of them, so what the
+            // filter selects and what the row displays cannot disagree.
+            CatalogueKeyset.CustomFilters(query.Filters, "s", "start_year"),
             token is null ? string.Empty : CatalogueKeyset.SeekPredicate(sortExpression, "s", query.Descending));
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -641,6 +673,7 @@ public sealed class SqliteSeriesCatalogRepository(
 
             AddParameter(command, "@fetchCount", pageSize + 1);
             CatalogueKeyset.BindSearch(command, search);
+            CatalogueKeyset.BindCustomFilters(command, query.Filters);
             AddParameter(command, "@libraryId", libraryId);
             if (token is not null)
             {
@@ -703,7 +736,7 @@ public sealed class SqliteSeriesCatalogRepository(
             return new CataloguePage<SeriesListItem>(withSubtitles, nextPageToken, hasMore, null, null);
         }
 
-        var facets = await CountCatalogueFacetsAsync(connection, search, libraryId, status, query.Monitored, cancellationToken);
+        var facets = await CountCatalogueFacetsAsync(connection, search, libraryId, status, query.Monitored, query.Filters, cancellationToken);
 
         return new CataloguePage<SeriesListItem>(
             withSubtitles,
@@ -862,11 +895,22 @@ public sealed class SqliteSeriesCatalogRepository(
         string? libraryId,
         string status,
         bool? monitored,
+        CatalogueFilters? filters,
         CancellationToken cancellationToken)
     {
+        // The counts above the shelf count the same rows the shelf shows, so
+        // the custom filters apply here too — and the join they need is added
+        // only when one of them is actually asking for it, so an unfiltered
+        // page runs exactly the query it ran before this existed.
+        var hasCustomFilters = filters is not null && !filters.IsEmpty;
+        var wantedJoin = hasCustomFilters
+            ? CatalogueWantedState.Join("s", "series_wanted_state", "series_id", libraryId is not null)
+            : string.Empty;
+
         var where = CatalogueKeyset.CombineFilters(
             search is null ? string.Empty : CatalogueKeyset.SearchFilter("s"),
-            CatalogueLibraryFilter(libraryId));
+            CatalogueLibraryFilter(libraryId),
+            CatalogueKeyset.CustomFilters(filters, "s", "start_year"));
 
         // The two axes cross here.
         //
@@ -898,9 +942,11 @@ public sealed class SqliteSeriesCatalogRepository(
                 SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, "covered")} THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, "upcoming")} THEN 1 ELSE 0 END)
             FROM series_entries s
+            {wantedJoin}
             WHERE {where};
             """;
         CatalogueKeyset.BindSearch(command, search);
+        CatalogueKeyset.BindCustomFilters(command, filters);
         AddParameter(command, "@libraryId", libraryId);
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);

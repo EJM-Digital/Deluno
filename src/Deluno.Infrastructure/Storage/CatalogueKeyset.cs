@@ -29,6 +29,12 @@ public static class CatalogueKeyset
             CatalogueSortFields.Title => $"lower({alias}.title)",
             CatalogueSortFields.Year => $"COALESCE({alias}.{yearColumn}, -1)",
             CatalogueSortFields.Rating => $"COALESCE({alias}.rating, -1)",
+            // Both of these have had an index since V0011/V0012 and neither has
+            // ever been offered as a sort — the same shape as the codec and
+            // release-group columns the list displayed for months without
+            // anything populating them.
+            CatalogueSortFields.Runtime => $"COALESCE({alias}.runtime_minutes, -1)",
+            CatalogueSortFields.Popularity => $"COALESCE({alias}.popularity, -1)",
             _ => $"{alias}.created_utc"
         };
 
@@ -38,7 +44,11 @@ public static class CatalogueKeyset
     /// year as text would silently match nothing.
     /// </summary>
     public static bool IsNumeric(string sortField)
-        => CatalogueSortFields.Normalize(sortField) is CatalogueSortFields.Year or CatalogueSortFields.Rating;
+        => CatalogueSortFields.Normalize(sortField)
+            is CatalogueSortFields.Year
+            or CatalogueSortFields.Rating
+            or CatalogueSortFields.Runtime
+            or CatalogueSortFields.Popularity;
 
     /// <summary>
     /// <c>ORDER BY</c> for a page. Rows sharing a sort value are broken by id,
@@ -144,6 +154,146 @@ public static class CatalogueKeyset
             false => $"{alias}.monitored = 0",
             null => string.Empty
         };
+
+    /// <summary>
+    /// The custom narrowing — quality, size, genre, year, runtime, rating —
+    /// as one predicate, written once for both catalogues.
+    ///
+    /// <para>These sit in the WHERE clause beside the search and status
+    /// filters, so they narrow the rows an index walk produces rather than
+    /// changing what drives it: the page is still a seek on the sort column and
+    /// still stops as soon as it has enough rows. A filter nothing matches
+    /// costs a walk, which is the honest price of asking a question with no
+    /// answer.</para>
+    ///
+    /// <para>Quality and size read the joined wanted state, so a title with no
+    /// file matches neither — which is what a reader means. Asking for "under
+    /// 5 GB" and being shown ten titles that have no file at all would be the
+    /// same class of answer as the badge that used to show a target quality as
+    /// if it were owned.</para>
+    ///
+    /// <para>Nothing here interpolates a caller's value. Every one is a bound
+    /// parameter; the only interpolation is the parameter *names*, generated
+    /// from a count.</para>
+    /// </summary>
+    public static string CustomFilters(CatalogueFilters? filters, string alias, string yearColumn)
+    {
+        if (filters is null || filters.IsEmpty)
+        {
+            return string.Empty;
+        }
+
+        var predicates = new List<string>();
+
+        if (filters.Qualities is { Count: > 0 } qualities)
+        {
+            var names = string.Join(", ", qualities.Select((_, index) => $"@quality{index}"));
+            predicates.Add($"lower(COALESCE(ws.current_quality, '')) IN ({names})");
+        }
+
+        if (filters.Genres is { Count: > 0 } genres)
+        {
+            // Whole genres, not substrings: bracketing the list and each term in
+            // commas is what stops "Drama" matching a title tagged "Melodrama".
+            // Every genre asked for must be present, because that is what a
+            // reader means by picking two.
+            for (var index = 0; index < genres.Count; index++)
+            {
+                predicates.Add(
+                    $"(',' || replace(lower(COALESCE({alias}.genres, '')), ', ', ',') || ',') LIKE @genre{index}");
+            }
+        }
+
+        if (filters.MinSizeGb is not null)
+        {
+            predicates.Add("ws.file_size_bytes >= @minSizeBytes");
+        }
+
+        if (filters.MaxSizeGb is not null)
+        {
+            predicates.Add("ws.file_size_bytes <= @maxSizeBytes");
+        }
+
+        if (filters.MinYear is not null)
+        {
+            predicates.Add($"{alias}.{yearColumn} >= @minYear");
+        }
+
+        if (filters.MaxYear is not null)
+        {
+            predicates.Add($"{alias}.{yearColumn} <= @maxYear");
+        }
+
+        if (filters.MinRuntimeMinutes is not null)
+        {
+            predicates.Add($"{alias}.runtime_minutes >= @minRuntime");
+        }
+
+        if (filters.MaxRuntimeMinutes is not null)
+        {
+            predicates.Add($"{alias}.runtime_minutes <= @maxRuntime");
+        }
+
+        if (filters.MinRatingValue is not null)
+        {
+            predicates.Add($"{alias}.rating >= @minRating");
+        }
+
+        return predicates.Count == 0 ? string.Empty : string.Join(" AND ", predicates);
+    }
+
+    /// <summary>
+    /// Binds what <see cref="CustomFilters"/> wrote. Kept immediately beside it
+    /// for the same reason <c>PageColumns</c> and <c>Read</c> are: two lists
+    /// that must agree, in one place, so they can only disagree visibly.
+    /// </summary>
+    public static void BindCustomFilters(DbCommand command, CatalogueFilters? filters)
+    {
+        if (filters is null || filters.IsEmpty)
+        {
+            return;
+        }
+
+        if (filters.Qualities is { Count: > 0 } qualities)
+        {
+            for (var index = 0; index < qualities.Count; index++)
+            {
+                Bind(command, $"@quality{index}", qualities[index].Trim().ToLowerInvariant());
+            }
+        }
+
+        if (filters.Genres is { Count: > 0 } genres)
+        {
+            for (var index = 0; index < genres.Count; index++)
+            {
+                Bind(command, $"@genre{index}", $"%,{genres[index].Trim().ToLowerInvariant()},%");
+            }
+        }
+
+        if (filters.MinSizeGb is { } minSize)
+        {
+            Bind(command, "@minSizeBytes", (long)(minSize * 1024 * 1024 * 1024));
+        }
+
+        if (filters.MaxSizeGb is { } maxSize)
+        {
+            Bind(command, "@maxSizeBytes", (long)(maxSize * 1024 * 1024 * 1024));
+        }
+
+        if (filters.MinYear is { } minYear) Bind(command, "@minYear", minYear);
+        if (filters.MaxYear is { } maxYear) Bind(command, "@maxYear", maxYear);
+        if (filters.MinRuntimeMinutes is { } minRuntime) Bind(command, "@minRuntime", minRuntime);
+        if (filters.MaxRuntimeMinutes is { } maxRuntime) Bind(command, "@maxRuntime", maxRuntime);
+        if (filters.MinRatingValue is { } minRating) Bind(command, "@minRating", minRating);
+    }
+
+    private static void Bind(DbCommand command, string name, object value)
+    {
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = name;
+        parameter.Value = value;
+        command.Parameters.Add(parameter);
+    }
 
     /// <summary>
     /// An empty predicate means "everything", which is <c>1 = 1</c> — needed

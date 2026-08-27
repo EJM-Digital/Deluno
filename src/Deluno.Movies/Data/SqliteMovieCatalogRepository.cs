@@ -630,6 +630,34 @@ public sealed class SqliteMovieCatalogRepository(
     /// one costs; the counts are a separate pass, done once per filter rather
     /// than on every page of it.
     /// </summary>
+
+    public async Task<IReadOnlyList<string>> ListGenresAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT DISTINCT genres
+            FROM movie_entries
+            WHERE genres IS NOT NULL AND genres <> '';
+            """;
+
+        var genres = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            foreach (var genre in reader.GetString(0).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                genres.Add(genre);
+            }
+        }
+
+        return [.. genres];
+    }
+
     public async Task<CataloguePage<MovieListItem>> ListPageAsync(
         CatalogueQuery query,
         CancellationToken cancellationToken)
@@ -653,6 +681,12 @@ public sealed class SqliteMovieCatalogRepository(
                 CatalogueUpgradeFor(libraryId),
                 CatalogueWantedIs(libraryId, "covered"),
                 CatalogueWantedIs(libraryId, "upcoming")),
+            // Quality and size read `ws` — the one wanted-state row this page
+            // speaks for — rather than an EXISTS over all of them. A title held
+            // in two libraries has two files, and matching on either while
+            // displaying the other is precisely the drift the pick was
+            // introduced to end.
+            CatalogueKeyset.CustomFilters(query.Filters, "m", "release_year"),
             token is null ? string.Empty : CatalogueKeyset.SeekPredicate(sortExpression, "m", query.Descending));
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -678,6 +712,7 @@ public sealed class SqliteMovieCatalogRepository(
 
             AddParameter(command, "@fetchCount", pageSize + 1);
             CatalogueKeyset.BindSearch(command, search);
+            CatalogueKeyset.BindCustomFilters(command, query.Filters);
             AddParameter(command, "@libraryId", libraryId);
             if (token is not null)
             {
@@ -739,7 +774,7 @@ public sealed class SqliteMovieCatalogRepository(
             return new CataloguePage<MovieListItem>(withSubtitles, nextPageToken, hasMore, null, null);
         }
 
-        var facets = await CountCatalogueFacetsAsync(connection, search, libraryId, status, query.Monitored, cancellationToken);
+        var facets = await CountCatalogueFacetsAsync(connection, search, libraryId, status, query.Monitored, query.Filters, cancellationToken);
 
         return new CataloguePage<MovieListItem>(
             withSubtitles,
@@ -803,11 +838,25 @@ public sealed class SqliteMovieCatalogRepository(
         string? libraryId,
         string status,
         bool? monitored,
+        CatalogueFilters? filters,
         CancellationToken cancellationToken)
     {
+        // The counts above the shelf have to count the same rows the shelf
+        // shows, so the custom filters apply here too — and quality and size
+        // need the same picked wanted-state row the page reads them from.
+        //
+        // The join is added **only when a custom filter is asking for it**. An
+        // unfiltered page runs exactly the query it ran before this existed,
+        // which is the rule that keeps a feature nobody is using free.
+        var hasCustomFilters = filters is not null && !filters.IsEmpty;
+        var wantedJoin = hasCustomFilters
+            ? CatalogueWantedState.Join("m", "movie_wanted_state", "movie_id", libraryId is not null)
+            : string.Empty;
+
         var where = CatalogueKeyset.CombineFilters(
             search is null ? string.Empty : CatalogueKeyset.SearchFilter("m"),
-            CatalogueLibraryFilter(libraryId));
+            CatalogueLibraryFilter(libraryId),
+            CatalogueKeyset.CustomFilters(filters, "m", "release_year"));
 
         // The two axes cross here.
         //
@@ -839,9 +888,11 @@ public sealed class SqliteMovieCatalogRepository(
                 SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, "covered")} THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, "upcoming")} THEN 1 ELSE 0 END)
             FROM movie_entries m
+            {wantedJoin}
             WHERE {where};
             """;
         CatalogueKeyset.BindSearch(command, search);
+        CatalogueKeyset.BindCustomFilters(command, filters);
         AddParameter(command, "@libraryId", libraryId);
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
