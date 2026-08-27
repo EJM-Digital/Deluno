@@ -2,7 +2,7 @@ import * as React from "react";
 import { ChevronDown } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useFieldContext } from "./field";
-import { controlClassName } from "./input";
+import { bareControlClassName, controlClassName } from "./input";
 
 export interface SelectOption {
   value: string;
@@ -14,6 +14,12 @@ interface SelectProps extends Omit<React.ComponentProps<"select">, "children"> {
   options?: SelectOption[];
   /** Shown as the first, empty-value option. */
   placeholder?: string;
+  /**
+   * Whether to wear Deluno's control box. Turn it off where the select already
+   * sits inside chrome of its own — a toolbar pill, say — so it does not draw a
+   * second rounded box inside the first on hover and focus.
+   */
+  chrome?: boolean;
   children?: React.ReactNode;
 }
 
@@ -22,7 +28,7 @@ interface SelectProps extends Omit<React.ComponentProps<"select">, "children"> {
  * screen-reader and mobile behaviour come for free, and it lines up with Input.
  */
 const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
-  ({ className, id, options, placeholder, children, ...props }, ref) => {
+  ({ className, id, options, placeholder, chrome = true, children, ...props }, ref) => {
     const field = useFieldContext();
     return (
       <span className="group relative block w-full min-w-0">
@@ -32,8 +38,11 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
           aria-describedby={props["aria-describedby"] ?? field?.describedBy}
           aria-invalid={props["aria-invalid"] ?? (field?.invalid ? true : undefined)}
           className={cn(
-            controlClassName,
-            "cursor-pointer appearance-none pr-[calc(var(--field-pad-x)+1.5rem)] hover:border-foreground/20 hover:bg-surface-2 focus:bg-surface-2",
+            chrome ? controlClassName : bareControlClassName,
+            // The right padding is the gutter the chevron below sits in, so it
+            // belongs to the control whether or not the box does.
+            "cursor-pointer appearance-none pr-[calc(var(--field-pad-x)+1.5rem)]",
+            chrome && "hover:border-foreground/20 hover:bg-surface-2 focus:bg-surface-2",
             className
           )}
           {...props}
