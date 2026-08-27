@@ -72,13 +72,72 @@ ask the same question.
 So Subber's first visible act is that the bars start meaning something. Nothing
 in the mark has to change to receive it.
 
+## Settled with James
+
+**Languages are asked for per library.** Weir has one global list because
+Weir has no libraries — that is exactly where Deluno differs. Per library
+can say "English on everything, Japanese on anime", and it sits beside the
+quality profile, where "what I want for this shelf" already lives.
+
+## Bazarr parity — what to take, and what to do better
+
+The bar is Bazarr: everything that makes it good, made easier to understand and
+configure. Most of what is hard about Bazarr is hard because it is a separate
+application. Deluno is not, so a good deal of its difficulty simply does not
+arise here.
+
+### Free, because of where Deluno sits
+
+| Bazarr has | In Deluno |
+|---|---|
+| **Path mappings** — its most common support problem, because Bazarr sees different paths from the arr | **Cannot exist.** Deluno owns the file it imported. There is nothing to map. |
+| Wanted list | The bar, the Subtitles column and a filter |
+| History | Activity |
+| Provider throttling, health, anti-captcha plumbing | Connections: health, test, rate-limit backoff, "needs you" |
+| Its own scheduler and worker | The library automation cycle |
+| Notifications | Already there |
+| **Embedded subtitle detection** — knowing what is already inside the MKV so it is not fetched twice | **Already read.** `FfprobeMediaProbeService` returns `MediaSubtitleStreamInfo(Index, Codec, Language)` today. It is not yet used for anything; this is what it was for. |
+
+### Ports from Weir
+
+Eight provider clients, the search-and-write service, upgrades, backoff,
+hearing-impaired exclusion.
+
+### New, and worth it
+
+- **A language profile with a cutoff**, per library, beside the quality profile.
+  Ordered — English, then Spanish — and a cutoff that says *stop here, this is
+  good enough*, which is exactly how quality already behaves in Deluno. One idea
+  learnt once.
+- **A quality gate on the subtitle itself.** Bazarr expresses this as numeric
+  score weights, which nobody can reason about. Deluno should say what it means:
+  *must match this release* / *prefer this release* / *anything readable*, with
+  the consequence written underneath.
+- **Timing sync.** The single biggest reason anyone touches subtitles by hand.
+  Bazarr shells out to `ffsubsync`/`alass`; Deluno already ships ffprobe
+  handling, so the same shape applies.
+- **Manual search** — see what was found, its score and its source, and pick one
+  yourself. On the title's own page, not a separate screen.
+- **Blacklist** — "this one is wrong, never fetch it again", which is the only
+  honest answer when an automatic pick is bad.
+- **Forced and hearing-impaired variants** as first-class, not flags buried in
+  provider options.
+
+### What we will not do
+
+- **Forty providers.** Ship the eight that work, each with health and a test,
+  each saying plainly what an account buys you. A provider that fails silently
+  is worse than one that is absent.
+- **Separate movie and series settings for everything.** Bazarr doubles most of
+  its settings this way. Deluno has libraries; a movie library and a TV library
+  are already separate things.
+- **A seven-tab Subtitles app.** Two settings screens — providers under Find &
+  Download, languages under Quality & Release — and the rest appears where you
+  already look.
+
 ## Open questions for James
 
-1. **Where do languages get asked for?** Per library, the way a quality profile
-   is? Per title? Both? Weir had one global list, which cannot express
-   "English on everything, Japanese on anime" — and Deluno already has the
-   Library as the place a preference like this belongs.
-2. **Providers as Connections, or their own thing?** Indexers and download
+1. **Providers as Connections, or their own thing?** Indexers and download
    clients are Connections with health, test buttons and credentials. Eight
    subtitle providers look like the same shape, and would inherit health
    checking and the "needs you" rules for free.

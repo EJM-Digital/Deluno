@@ -344,11 +344,12 @@ export function ControlRail({ label, facets, actions, controls }: {
                         posters it filters to are one signal rather than two. */}
                     {/* The same diameter as the dot on a small poster. A legend
                         drawn smaller than the thing it explains is working at
-                        half strength. */}
+                        half strength — and no ring, because there is no artwork
+                        here to be separated from. */}
                     {chip.mark ? (
                       <span
                         aria-hidden
-                        className={cn("shrink-0 rounded-full ring-2 ring-black/25 dark:ring-black/45", TITLE_MARK_PRESENTATION[chip.mark].dot)}
+                        className={cn("shrink-0 rounded-full", TITLE_MARK_PRESENTATION[chip.mark].dot)}
                         style={{ width: MARK_DOT_SIZE, height: MARK_DOT_SIZE }}
                       />
                     ) : null}
