@@ -203,14 +203,32 @@ Three things worth carrying forward:
      "Find 36 missing episodes" and `MISSING 36` when only 30 have aired — the
      same mistake the bar is forbidden to make. The counts to fix it now exist
      on the payload.
-3. **One table.** State → colour → label, in one module the way
-   `lib/configuration-areas.ts` now holds the area explainers, with a test that
-   no screen hard-codes a tone. This is #302's fix.
-4. **The mark.** The dot and bar components, then the grid, list, toolbar and
-   detail page read the table.
+3. ~~**One table.** State → colour → label, in one module, with a test that no
+   screen hard-codes a tone.~~ **Done** — `lib/status-tones.ts` and
+   `status-tones.test.ts`. Four tone vocabularies merged, not two.
+4. ~~**The mark.** The dot and bar components, then the grid, list, toolbar and
+   detail page read the table.~~ **Done for the grid and the toolbar.** The dot,
+   the half and the bar are in `components/ui/title-mark.tsx`; the filter row is
+   now the legend, the counts and the filters at once. **The list view and the
+   detail pages still show the old availability chip** — they are the remaining
+   half of this step.
 5. **Live transfer state** for Downloading, wired from telemetry rather than
-   inferred.
-6. **Subber (#301)** inherits the vocabulary and needs no new words.
+   inferred. `titleMark()` already takes an `isTransferring` flag; nothing sets
+   it, and there is deliberately no Downloading chip in the filter row until
+   something does.
+6. **Subber (#301)** inherits the vocabulary and needs no new words. The bar's
+   landing site exists: `SubtitleLanguagesWanted`/`Held` on both catalogue
+   contracts, zero, with a grey bar for "asked for nothing".
+
+## Still open for James
+
+- **The half, now that medium and large posters carry the word.** The mark says
+  "MISSING" in text, the meta line below says "Monitored", and the dot is halved
+  — three statements, two of them about monitoring. On a small poster the half is
+  the only way to see it, so it earns its place there. Worth deciding whether it
+  should stay on the sizes that have room for words.
+- **Gold against green on a real shelf**, which the rig can now show: one film is
+  Quality met among ten Missing.
 
 ## Left for James's eyes
 
