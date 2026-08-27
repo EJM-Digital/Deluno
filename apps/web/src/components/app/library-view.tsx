@@ -868,15 +868,26 @@ export function LibraryView({
           }}
         />
 
-        <LibrarySelectAllToggle
-          totalCount={totalCount}
-          loadedCount={libraryItems.length}
-          filteredCount={filtered.length}
-          selectedCount={selectedCount}
-          allVisibleSelected={filtered.length > 0 && filtered.every((item) => selectedIds.includes(item.id))}
-          onToggle={toggleSelectAllVisible}
-          view={view}
-        />
+        {/*
+          The count line belongs to the shelf, not to the space above it.
+
+          It used to be a third sibling in a `space-y-[--grid-gap]` stack, so one
+          sentence sat in its own band with a full gap either side: the rail, a
+          gap, "11 titles shown", another gap, then the posters. It reads as a
+          hole. It is a caption for what is below it, so it sits close to it, and
+          the one remaining gap does the real job of separating the controls from
+          the results.
+        */}
+        <div className="space-y-[calc(var(--grid-gap)*0.4)]">
+          <LibrarySelectAllToggle
+            totalCount={totalCount}
+            loadedCount={libraryItems.length}
+            filteredCount={filtered.length}
+            selectedCount={selectedCount}
+            allVisibleSelected={filtered.length > 0 && filtered.every((item) => selectedIds.includes(item.id))}
+            onToggle={toggleSelectAllVisible}
+            view={view}
+          />
 
         {/* Action messages now surface through the global Toaster */}
 
@@ -920,6 +931,7 @@ export function LibraryView({
           onPreviousPage={() => void loadPreviousCataloguePage()}
           onNextPage={() => void loadNextCataloguePage()}
         />
+        </div>
       </section>
 
       <LibraryBulkToolsDialog
