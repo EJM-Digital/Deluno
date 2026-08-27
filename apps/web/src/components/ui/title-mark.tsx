@@ -64,11 +64,17 @@ export function TitleMarkDot({
    * "Missing" twice for one mark.
    */
   decorative = false,
+  /**
+   * Whether the dot is sitting on artwork. On a flat panel — a legend chip, a
+   * list row — there is nothing to be separated from, and the ring is only fuzz.
+   */
+  ringed = true,
   className
 }: {
   item: TitleMarkInput;
   size?: number;
   decorative?: boolean;
+  ringed?: boolean;
   className?: string;
 }) {
   const mark: TitleMark = titleMark(item);
@@ -82,9 +88,16 @@ export function TitleMarkDot({
         ? { "aria-hidden": true }
         : { role: "img", "aria-label": label, title: half ? `${presentation.hint} Deluno is not watching this one.` : presentation.hint })}
       className={cn(
-        // A ring, not a border: it keeps the dot the same diameter at
-        // every size and stops a dark mark disappearing into dark artwork.
-        "inline-block shrink-0 rounded-full ring-2 ring-black/45",
+        // A ring, not a border: it keeps the dot the same diameter at every
+        // size. It exists only to separate the mark from artwork, which can be
+        // any colour — so it is drawn where there is artwork and nowhere else.
+        //
+        // One pixel, not two. At 2px on a 13px dot the ring was nearly a third
+        // of the diameter, and semi-transparent black over a poster at that
+        // width reads as a soft grey fringe rather than an edge — it looked like
+        // the dot had a border it was never meant to have.
+        "inline-block shrink-0 rounded-full",
+        ringed && "ring-1 ring-black/60",
         // The half is a gradient rather than two elements, so the dot stays one
         // shape at every size and keeps a hard edge down the middle.
         // `currentColor` for the filled half, so the gradient is written once
@@ -163,7 +176,7 @@ export function TitleMarkLabel({ item, className }: { item: TitleMarkInput; clas
       title={half ? `${presentation.hint} Deluno is not watching this one.` : presentation.hint}
       className={cn("inline-flex items-center gap-1.5 whitespace-nowrap", className)}
     >
-      <TitleMarkDot item={item} size={10} decorative />
+      <TitleMarkDot item={item} size={10} decorative ringed={false} />
       <span>{presentation.label}</span>
       {half ? <span className="text-muted-foreground">· not monitored</span> : null}
     </span>
@@ -194,7 +207,7 @@ export function TitleMarkChip({ item, className }: { item: TitleMarkInput; class
         className
       )}
     >
-      <TitleMarkDot item={item} size={9} decorative />
+      <TitleMarkDot item={item} size={9} decorative ringed={false} />
       {presentation.label}
     </span>
   );
