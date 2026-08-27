@@ -54,7 +54,7 @@ public sealed class DownloadDispatchPollingService(
                     cancellationToken);
             }
 
-            if (dispatch.ImportStatus == "completed" && dispatch.ImportDetectedUtc is not null)
+            if (dispatch.ImportStatus == "imported" && dispatch.ImportDetectedUtc is not null)
             {
                 await realtimeEventPublisher.PublishDispatchImportCompletedAsync(
                     dispatch.Id,
@@ -425,7 +425,7 @@ public sealed class DownloadDispatchPollingService(
         command.CommandText =
             """
             SELECT id FROM download_dispatches
-            WHERE import_status = 'completed' AND archived_utc IS NULL
+            WHERE import_status = 'imported' AND archived_utc IS NULL
             ORDER BY import_detected_utc DESC
             LIMIT 100;
             """;

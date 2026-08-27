@@ -25,7 +25,7 @@ public sealed class SqliteDispatchMetricsRepository(
                 SUM(CASE WHEN grab_status = 'succeeded' THEN 1 ELSE 0 END) as successful_grabs,
                 SUM(CASE WHEN grab_status = 'failed' THEN 1 ELSE 0 END) as failed_grabs,
                 SUM(CASE WHEN detected_utc IS NOT NULL THEN 1 ELSE 0 END) as detected_downloads,
-                SUM(CASE WHEN import_status = 'completed' THEN 1 ELSE 0 END) as successful_imports,
+                SUM(CASE WHEN import_status = 'imported' THEN 1 ELSE 0 END) as successful_imports,
                 SUM(CASE WHEN import_status = 'failed' THEN 1 ELSE 0 END) as failed_imports,
                 SUM(CASE WHEN grab_status IS NULL OR import_status IS NULL OR (import_status = 'pending') THEN 1 ELSE 0 END) as active_dispatches
             FROM download_dispatches
