@@ -754,32 +754,51 @@ function ContentTopbar({
           <TopbarTitle as={ownsHeading ? "h1" : "p"}>{title}</TopbarTitle>
         </div>
 
+        {/*
+          One row, one height, one icon size.
+
+          These were three different tokens sitting side by side: the search
+          pill on `--shell-pill-height` (42px), the icon buttons on
+          `--control-height-icon` (38px) and the density menu on a third, with
+          the mobile search icon drawn a pixel larger than the bell beside it.
+          Four pixels is invisible in a diff and obvious on screen. The three
+          constants below are the row's only sizing; nothing here sets its own.
+
+          The search box is also wider and shows its label from `lg` rather than
+          `xl`. It is the only control here anybody uses on purpose, and it was
+          the first one to collapse to a bare icon.
+        */}
         <button
           type="button"
           onClick={onOpenCommand}
           aria-label={`Search & navigate (${commandShortcut.label})`}
           aria-keyshortcuts={commandShortcut.ariaKeyshortcuts}
-          className="hidden min-h-[var(--shell-pill-height)] items-center gap-2 rounded-lg border border-hairline/70 bg-card/75 px-4 text-left text-[length:var(--shell-nav-size)] font-medium text-muted-foreground transition hover:border-primary/30 hover:bg-muted/40 hover:text-foreground md:flex"
+          className={cn(
+            TOPBAR_CONTROL,
+            "hidden items-center gap-2.5 rounded-xl border border-hairline/70 bg-card/75 px-3.5 text-left text-[length:var(--shell-nav-size)] font-medium text-muted-foreground transition md:flex",
+            "lg:w-[16rem] xl:w-[20rem]",
+            "hover:border-primary/30 hover:bg-muted/40 hover:text-foreground"
+          )}
         >
-          <Search className="h-[var(--shell-icon-size-sm)] w-[var(--shell-icon-size-sm)]" />
-          <span className="hidden xl:inline">Search &amp; navigate...</span>
-          <kbd className="hidden rounded border border-hairline bg-background/70 px-1.5 py-0.5 font-mono text-[length:var(--shell-kbd-size)] text-muted-foreground/70 xl:inline">{commandShortcut.label}</kbd>
+          <Search className={cn(TOPBAR_ICON, "shrink-0")} />
+          <span className="hidden lg:inline">Search &amp; navigate...</span>
+          <kbd className="ml-auto hidden rounded border border-hairline bg-background/70 px-1.5 py-0.5 font-mono text-[length:var(--shell-kbd-size)] text-muted-foreground/70 lg:inline">{commandShortcut.label}</kbd>
         </button>
 
-        <Button type="button" variant="ghost" size="icon" onClick={() => setSearchOpen(true)} aria-label="Search & navigate" className="md:hidden">
-          <Search className="h-[var(--shell-icon-size)] w-[var(--shell-icon-size)]" />
-        </Button>
+        <button type="button" onClick={() => setSearchOpen(true)} aria-label="Search & navigate" className={cn(TOPBAR_ICON_BUTTON, "md:hidden")}>
+          <Search className={TOPBAR_ICON} />
+        </button>
 
-        <Button type="button" variant="ghost" size="icon" className="relative text-muted-foreground hover:text-foreground" aria-label="Notifications">
-          <Bell className="h-[var(--shell-icon-size-sm)] w-[var(--shell-icon-size-sm)]" strokeWidth={1.75} />
+        <button type="button" className={cn(TOPBAR_ICON_BUTTON, "relative")} aria-label="Notifications">
+          <Bell className={TOPBAR_ICON} strokeWidth={1.75} />
           {attention.failedJobs > 0 ? (
             <span className="absolute right-1.5 top-1.5 h-[5px] w-[5px] rounded-full bg-destructive shadow-[0_0_0_1.5px_hsl(var(--background)),0_0_6px_hsl(var(--destructive)/0.7)]" />
           ) : null}
-        </Button>
+        </button>
 
-        <Button type="button" variant="ghost" size="icon" className="hidden text-muted-foreground hover:text-foreground md:inline-flex" onClick={onOpenHelp} aria-label="Keyboard shortcuts">
-          <HelpCircle className="h-[var(--shell-icon-size-sm)] w-[var(--shell-icon-size-sm)]" strokeWidth={1.75} />
-        </Button>
+        <button type="button" className={cn(TOPBAR_ICON_BUTTON, "hidden md:inline-flex")} onClick={onOpenHelp} aria-label="Keyboard shortcuts">
+          <HelpCircle className={TOPBAR_ICON} strokeWidth={1.75} />
+        </button>
 
         {/*
           The same menu the library picker uses, rather than a second one that
@@ -796,7 +815,8 @@ function ContentTopbar({
           className="hidden min-[920px]:block"
           leading={<span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary shadow-[0_0_10px_hsl(var(--primary)/0.65)]" />}
           triggerClassName={cn(
-            "min-h-[var(--control-height-icon)] border px-3",
+            TOPBAR_CONTROL,
+            "rounded-xl border px-3",
             "bg-card/75 text-[length:var(--shell-nav-size)] font-semibold text-muted-foreground",
             "hover:border-primary/30 hover:bg-muted/40 hover:text-foreground",
             "border-hairline/70 data-[open=true]:border-primary/45 data-[open=true]:text-foreground",
@@ -807,11 +827,11 @@ function ContentTopbar({
         <button
           type="button"
           onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-          className="relative flex h-[var(--control-height-icon)] w-[var(--control-height-icon)] items-center justify-center rounded-xl text-muted-foreground transition hover:bg-muted/50 hover:text-foreground"
+          className={cn(TOPBAR_ICON_BUTTON, "relative")}
           aria-label={resolvedTheme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
         >
-          <SunMedium className={cn("absolute h-[var(--shell-icon-size-sm)] w-[var(--shell-icon-size-sm)] transition duration-300", resolvedTheme === "light" ? "scale-100 opacity-100" : "scale-75 opacity-0 -rotate-90")} strokeWidth={1.75} />
-          <Moon className={cn("absolute h-[var(--shell-icon-size-sm)] w-[var(--shell-icon-size-sm)] transition duration-300", resolvedTheme === "dark" ? "scale-100 opacity-100" : "scale-75 opacity-0 rotate-90")} strokeWidth={1.75} />
+          <SunMedium className={cn("absolute transition duration-300", TOPBAR_ICON, resolvedTheme === "light" ? "scale-100 opacity-100" : "scale-75 opacity-0 -rotate-90")} strokeWidth={1.75} />
+          <Moon className={cn("absolute transition duration-300", TOPBAR_ICON, resolvedTheme === "dark" ? "scale-100 opacity-100" : "scale-75 opacity-0 rotate-90")} strokeWidth={1.75} />
         </button>
 
         <WsStatusBadge className="hidden xl:inline-flex" />
@@ -836,6 +856,15 @@ function ContentTopbar({
     </header>
   );
 }
+
+/**
+ * The topbar row's three constants. Every control in it wears these and none
+ * sets its own height or icon size — that is the whole fix.
+ */
+const TOPBAR_CONTROL = "h-[var(--shell-pill-height)] shrink-0";
+const TOPBAR_ICON_BUTTON =
+  "flex h-[var(--shell-pill-height)] w-[var(--shell-pill-height)] shrink-0 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-muted/50 hover:text-foreground";
+const TOPBAR_ICON = "h-[var(--shell-icon-size)] w-[var(--shell-icon-size)]";
 
 /** What the pill says when something needs a person — the specific thing, not a total. */
 function attentionSummary(attention: AttentionSnapshot): string {
