@@ -126,6 +126,7 @@ GET /api/series/{id}/workflow-status
 GET /api/settings/
 GET /api/setup/draft
 GET /api/setup/progress
+GET /api/subtitle-languages
 GET /api/tags/
 GET /api/updates/preferences
 GET /api/updates/status

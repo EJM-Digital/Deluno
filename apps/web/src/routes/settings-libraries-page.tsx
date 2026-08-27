@@ -6,7 +6,8 @@
  *   Drawer    (identity · destination · remove)
  *
  * Contracts: POST /api/libraries, PUT /api/libraries/{id} (name/folders),
- * PUT /api/libraries/{id}/automation, DELETE /api/libraries/{id}.
+ * PUT /api/libraries/{id}/automation, PUT /api/libraries/{id}/subtitles,
+ * DELETE /api/libraries/{id}.
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useLocation, useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
@@ -24,7 +25,8 @@ import { SegmentedControl } from "../components/ui/segmented-control";
 import { Switch } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
 import { librarySetupNavItems } from "../components/app/settings-shell";
-import { emptyPlatformSettingsSnapshot, fetchJson, type LibraryItem, type PlatformSettingsSnapshot, type QualityProfileItem } from "../lib/api";
+import { emptyPlatformSettingsSnapshot, fetchJson, type LibraryItem, type PlatformSettingsSnapshot, type QualityProfileItem, type SubtitleLanguageOption } from "../lib/api";
+import { SubtitleLanguagePicker } from "../components/app/subtitle-language-picker";
 import { authedFetch } from "../lib/use-auth";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { ExistingMediaImportDialog } from "../components/app/existing-media-import-dialog";
@@ -33,27 +35,31 @@ interface LoaderData {
   libraries: LibraryItem[];
   settings: PlatformSettingsSnapshot;
   qualityProfiles: QualityProfileItem[];
+  subtitleLanguages: SubtitleLanguageOption[];
 }
 
 interface LibraryForm {
   name: string;
   mediaType: "movies" | "tv";
   rootPath: string;
+  subtitleLanguages: string[];
+  subtitleLanguageMode: "all" | "first";
 }
 
 type DrawerMode = { kind: "closed" } | { kind: "create" } | { kind: "edit"; id: string };
 
 export async function settingsLibrariesLoader(): Promise<LoaderData> {
-  const [libraries, settings, qualityProfiles] = await Promise.all([
+  const [libraries, settings, qualityProfiles, subtitleLanguages] = await Promise.all([
     fetchJson<LibraryItem[]>("/api/libraries"),
     fetchJson<PlatformSettingsSnapshot>("/api/settings").catch(() => emptyPlatformSettingsSnapshot),
-    fetchJson<QualityProfileItem[]>("/api/quality-profiles")
+    fetchJson<QualityProfileItem[]>("/api/quality-profiles"),
+    fetchJson<SubtitleLanguageOption[]>("/api/subtitle-languages").catch(() => [])
   ]);
-  return { libraries, settings, qualityProfiles };
+  return { libraries, settings, qualityProfiles, subtitleLanguages };
 }
 
 export function SettingsLibrariesPage() {
-  const { libraries, settings, qualityProfiles } = useLoaderData() as LoaderData;
+  const { libraries, settings, qualityProfiles, subtitleLanguages } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
   const location = useLocation();
   const navigate = useNavigate();
@@ -186,6 +192,16 @@ export function SettingsLibrariesPage() {
         const before = initialForm;
         if (form.name !== before.name || form.rootPath !== before.rootPath) {
           await putJson(`/api/libraries/${id}`, { name: form.name.trim(), rootPath: form.rootPath.trim() }, "Library details could not be saved.");
+        }
+        // Its own endpoint, and only when it changed: saving a name must not
+        // rewrite what the shelf wants in the way of subtitles, and changing
+        // the languages must not rewrite the folder.
+        if (!sameSubtitles(form, before)) {
+          await putJson(
+            `/api/libraries/${id}/subtitles`,
+            { languages: form.subtitleLanguages, mode: form.subtitleLanguageMode },
+            "Subtitle languages could not be saved."
+          );
         }
         library = editing!;
       }
@@ -397,6 +413,27 @@ export function SettingsLibrariesPage() {
             </div>
           </section>
 
+          {mode.kind === "edit" ? (
+            <section className="grid gap-[var(--grid-gap)] border-b border-hairline py-6 sm:grid-cols-[minmax(180px,0.7fr)_minmax(0,1.3fr)]">
+              <div className="grid content-start gap-1">
+                <h3 className="text-[length:var(--type-body-sm)] font-semibold text-foreground">Which subtitles?</h3>
+                <p className="text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">
+                  Per shelf, so &ldquo;English on everything, Japanese on anime&rdquo; is one setting each and not a compromise. Deluno reads what your
+                  files already have before it fetches anything.
+                </p>
+              </div>
+              <SubtitleLanguagePicker
+                languages={form.subtitleLanguages}
+                mode={form.subtitleLanguageMode}
+                options={subtitleLanguages}
+                disabled={busy}
+                onChange={(next) =>
+                  setForm((current) => ({ ...current, subtitleLanguages: next.languages, subtitleLanguageMode: next.mode }))
+                }
+              />
+            </section>
+          ) : null}
+
           {mode.kind === "edit" && editing ? (
             <section className="grid gap-3 border-b border-hairline py-6">
               <div>
@@ -475,7 +512,9 @@ function emptyForm(mediaType: "movies" | "tv", settings: PlatformSettingsSnapsho
   return {
     name: "",
     mediaType,
-    rootPath: defaultRoot(mediaType, settings)
+    rootPath: defaultRoot(mediaType, settings),
+    subtitleLanguages: [],
+    subtitleLanguageMode: "all"
   };
 }
 
@@ -483,7 +522,9 @@ function formFromLibrary(library: LibraryItem): LibraryForm {
   return {
     name: library.name,
     mediaType: library.mediaType === "tv" ? "tv" : "movies",
-    rootPath: library.rootPath
+    rootPath: library.rootPath,
+    subtitleLanguages: library.subtitleLanguages ?? [],
+    subtitleLanguageMode: library.subtitleLanguageMode === "first" ? "first" : "all"
   };
 }
 
@@ -491,8 +532,21 @@ function sameForm(a: LibraryForm, b: LibraryForm) {
   return (
     a.name === b.name &&
     a.mediaType === b.mediaType &&
-    a.rootPath === b.rootPath
+    a.rootPath === b.rootPath &&
+    sameSubtitles(a, b)
   );
+}
+
+/**
+ * Order counts, so this is a sequence comparison and not a set one. The mode is
+ * only part of the answer when there is more than one language to order — with
+ * one, the two modes do the same thing, and treating a stale mode as a change
+ * would mark the drawer dirty for a setting nobody can see.
+ */
+function sameSubtitles(a: LibraryForm, b: LibraryForm) {
+  if (a.subtitleLanguages.length !== b.subtitleLanguages.length) return false;
+  if (a.subtitleLanguages.some((code, index) => code !== b.subtitleLanguages[index])) return false;
+  return a.subtitleLanguages.length < 2 || a.subtitleLanguageMode === b.subtitleLanguageMode;
 }
 
 function automationPayload(library: LibraryItem, settings: Pick<LibraryItem, "autoSearchEnabled" | "missingSearchEnabled" | "upgradeSearchEnabled">) {

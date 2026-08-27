@@ -4,6 +4,7 @@ using Deluno.Quality.Contracts;
 using Deluno.Quality.Data;
 using static Deluno.Infrastructure.Storage.SqliteRecordHelpers;
 using static Deluno.Contracts.DelunoValueNormalizers;
+using Deluno.Contracts;
 
 namespace Deluno.Libraries.Data;
 
@@ -627,6 +628,41 @@ public sealed class SqliteLibrariesRepository(
     }
 
 
+    /// <summary>
+    /// Every library's wanted languages, in one small read.
+    ///
+    /// Keyed by library because that is how a catalogue page asks: the page is
+    /// a list of titles, each of which knows which shelf it is on, and a page
+    /// can hold titles from two shelves that want different things.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, LibrarySubtitlePreference>> GetSubtitlePreferencesAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT id, subtitle_languages, subtitle_language_mode
+            FROM libraries;
+            """;
+
+        var preferences = new Dictionary<string, LibrarySubtitlePreference>(StringComparer.OrdinalIgnoreCase);
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var id = reader.GetString(0);
+            preferences[id] = new LibrarySubtitlePreference(
+                LibraryId: id,
+                Languages: ParseSubtitleLanguages(reader.IsDBNull(1) ? null : reader.GetString(1)),
+                Mode: NormalizeSubtitleLanguageMode(reader.IsDBNull(2) ? null : reader.GetString(2)));
+        }
+
+        return preferences;
+    }
+
     public async Task<LibraryItem?> UpdateLibraryMediaPlanAsync(
         string id,
         UpdateLibraryMediaPlanRequest request,
@@ -1248,38 +1284,18 @@ public sealed class SqliteLibrariesRepository(
     /// <summary>
     /// Stored as a comma-separated list, read back as an ordered one.
     ///
-    /// Order is the whole point: it is the preference, and under
-    /// <c>first</c> mode it is what "first one you can get" means.
+    /// The parsing itself lives in <see cref="SubtitleLanguages"/>, with the
+    /// codes ffprobe emits and the ones a subtitle file beside a video is named
+    /// with. It used to be a private lowercase-and-dedupe here, which meant a
+    /// library asking for <c>en</c> and a file carrying <c>eng</c> were two
+    /// different languages to Deluno — the shape of defect this codebase keeps
+    /// producing, one rule written twice.
     /// </summary>
     private static IReadOnlyList<string> ParseSubtitleLanguages(string? stored)
-    {
-        if (string.IsNullOrWhiteSpace(stored))
-        {
-            return [];
-        }
+        => SubtitleLanguages.ParseList(stored);
 
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var languages = new List<string>();
-        foreach (var part in stored.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            var code = part.ToLowerInvariant();
-            // A duplicate would inflate what the bar says was asked for, and a
-            // title can never be "twice as subtitled" in one language.
-            if (seen.Add(code))
-            {
-                languages.Add(code);
-            }
-        }
-
-        return languages;
-    }
-
-    /// <summary>
-    /// Anything unrecognised is <c>all</c>. Guessing <c>first</c> would silently
-    /// stop fetching languages somebody had asked for.
-    /// </summary>
     private static string NormalizeSubtitleLanguageMode(string? value)
-        => string.Equals(value?.Trim(), "first", StringComparison.OrdinalIgnoreCase) ? "first" : "all";
+        => SubtitleLanguageModes.Normalize(value);
 
     private static DestinationRuleItem ReadDestinationRule(System.Data.Common.DbDataReader reader)
     {

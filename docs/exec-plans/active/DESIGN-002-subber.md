@@ -90,6 +90,7 @@ arise here.
 | Its own scheduler and worker | The library automation cycle |
 | Notifications | Already there |
 | **Embedded subtitle detection** — knowing what is already inside the MKV so it is not fetched twice | **Already read.** `FfprobeMediaProbeService` returns `MediaSubtitleStreamInfo(Index, Codec, Language)` today. It is not yet used for anything; this is what it was for. |
+| **Sidecar detection** — the `.srt` sitting beside the video | Read in the same pass, and the bigger half of the two — see "What *held* actually means" below. |
 
 ### Ports from Weir
 
@@ -127,6 +128,49 @@ hearing-impaired exclusion.
 - **A seven-tab Subtitles app.** Two settings screens — providers under Find &
   Download, languages under Quality & Release — and the rest appears where you
   already look.
+
+## What *held* actually means
+
+The owner, on the first draft of this: *"shouldn't the whole premise of porting
+Subber over to Deluno be that it knows when subtitles are downloaded and added?
+I get that ffprobe can detect subs in downloaded media but that should only be
+part of the equation."*
+
+He is right, and the plan said it badly. Embedded detection is one source of
+*held*, not the definition of it. Deluno holds a language for a file when any of
+three things is true, and only the third needs finding:
+
+| Source | How Deluno learns |
+|---|---|
+| **Subber fetched it** | It wrote the file. The row is recorded at that moment, with its provider — no scan involved. This is the primary path once Subber runs. |
+| **A subtitle file beside the video** — from a previous Bazarr, from the release, dropped there by hand | The folder scan |
+| **A track inside the container** | ffprobe, in the same pass |
+
+So the store is the truth and it carries a `source`. Scanning exists only to
+learn about the subtitles Deluno did not fetch — which, on the day somebody
+first asks a shelf for English, is every one of them.
+
+The sidecar half matters more than the embedded half. A library that has been
+through Bazarr is full of `Movie (2008).en.srt`, and reading only the container
+would paint every one of those posters red for a subtitle the reader is looking
+straight at.
+
+**Three things are deliberately not guessed at:**
+
+- A bare `Movie.srt` with no language in its name is recorded as `und` and
+  counts towards nothing. Reading it as the library's first wanted language
+  would be right most of the time, and when it was wrong it would stop Deluno
+  fetching a language somebody asked for and never say why.
+- A **forced** track is not coverage. A file whose only English track is forced
+  has English for four lines of Elvish. It is stored, and it does not count.
+- **Hearing-impaired** is coverage — it is watchable — and it is not counted a
+  second time beside a plain track in the same language.
+
+`en`, `eng` and `English` are one language, through
+`SubtitleLanguages.Normalize`. The library setting stores the first, ffprobe
+emits the second and a subtitle file is named any of the three; three
+vocabularies would have made a movie with `eng` embedded and `en` wanted read as
+missing.
 
 ## Settled with the owner
 
@@ -203,9 +247,22 @@ be what makes it scan.
   the existing episode rollup already costs.
 - **Series:** the page *already* makes one grouped pass over its own shows for
   `EpisodeCount`, `AiredEpisodeCount`, `AiredWithFileCount`,
-  `AiredUpgradableCount` and `NextAirDateUtc`. The subtitle sums join **that
-  pass**. A second grouped query over the same episodes for the same fifty shows
-  is exactly the overhead to refuse.
+  `AiredUpgradableCount` and `NextAirDateUtc`. The subtitle sums were to join
+  **that pass**.
+
+  **They do not, and the reason is worth keeping.** *Held* is not one number per
+  show. It only counts languages that show's own library asked for, and a page
+  can hold two libraries that asked for different ones. Folding it into the
+  progress query means either joining the subtitle rows in — which fans all five
+  existing counts out and makes every one of them depend on a `DISTINCT` — or
+  writing one library's language list into a query that serves both.
+
+  So it is its own grouped pass, over the page's own shows, keyed and indexed the
+  same way, and run **once per library present on the page** — which on a
+  library-filtered page is always one, and on a shelf nobody has asked for
+  subtitles is none. Measured at twenty thousand films
+  (`SubtitleScaleBenchmark`): **0.26 ms per hundred-title page**, and **0.014 ms**
+  for the read that decides whether to run it at all.
 - The query-plan guard is extended to cover the new columns, so a later change
   cannot quietly turn the page into a scan.
 
@@ -245,10 +302,12 @@ untouched.
 
 ## Build order
 
-1. **Languages, and nothing else.** A per-library list of wanted subtitle
-   languages with a cutoff, beside the quality profile, and the two catalogue
-   contract fields filled from it. Nothing fetches anything yet — the bars light
-   up all-red because you have asked for languages and hold none, which is the
+1. **Languages, and what you already have.** A per-library list of wanted
+   subtitle languages with a cutoff, beside the quality profile, and the two
+   catalogue contract fields filled from it. Nothing fetches anything yet — but
+   the bars are not all-red either, because the same step reads what the files
+   on disk already hold, from beside them and from inside them. A shelf full of
+   Bazarr's leftovers lights up green on the day you turn it on, which is the
    truth, and is proof the mark receives it.
 2. **Providers as Connections.** One provider end to end (Gestdown or Podnapisi
    — no account needed), with health and a test.

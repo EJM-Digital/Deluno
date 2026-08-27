@@ -8,16 +8,19 @@ using Deluno.Media;
 using Deluno.Quality;
 using Deluno.Series.Contracts;
 using Microsoft.Data.Sqlite;
+using Deluno.Libraries.Data;
 
 namespace Deluno.Series.Data;
 
 public sealed class SqliteSeriesCatalogRepository(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
     TimeProvider timeProvider,
-    IMediaStateRepository? sharedMediaStateRepository = null)
+    IMediaStateRepository? sharedMediaStateRepository = null,
+    ILibrarySubtitlePreferences? librarySubtitlePreferences = null)
     : ISeriesCatalogRepository
 {
     private readonly IMediaStateRepository? sharedMediaStateRepository = sharedMediaStateRepository;
+    private readonly ILibrarySubtitlePreferences? librarySubtitlePreferences = librarySubtitlePreferences;
 
     public async Task<SeriesListItem> AddAsync(CreateSeriesRequest request, CancellationToken cancellationToken)
     {
@@ -691,18 +694,19 @@ public sealed class SqliteSeriesCatalogRepository(
             : null;
 
         var withEpisodes = await AttachEpisodeProgressAsync(connection, items, cancellationToken);
+        var withSubtitles = await AttachSubtitleCountsAsync(connection, withEpisodes, cancellationToken);
 
         // Counting scans, so it happens once per filter rather than on every
         // page of it. A continuation page keeps the numbers the caller has.
         if (token is not null)
         {
-            return new CataloguePage<SeriesListItem>(withEpisodes, nextPageToken, hasMore, null, null);
+            return new CataloguePage<SeriesListItem>(withSubtitles, nextPageToken, hasMore, null, null);
         }
 
         var facets = await CountCatalogueFacetsAsync(connection, search, libraryId, status, query.Monitored, cancellationToken);
 
         return new CataloguePage<SeriesListItem>(
-            withEpisodes,
+            withSubtitles,
             nextPageToken,
             hasMore,
             SelectFacetTotal(facets, status),
@@ -792,6 +796,59 @@ public sealed class SqliteSeriesCatalogRepository(
         }
 
         return attached;
+    }
+
+    /// <summary>
+    /// How many subtitle languages each show on the page was asked for, per
+    /// episode, and how many it holds across the episodes it has.
+    ///
+    /// DESIGN-002 asked for this to ride the episode progress pass above.
+    /// It cannot, and the reason is worth writing down: held is not one number
+    /// per show. It is a number per language, because it only counts languages
+    /// the show's own library asked for, and a page can hold two libraries that
+    /// asked for different ones. Folding that into the progress query means
+    /// either joining the subtitle rows in — which fans every existing count
+    /// out and makes all five of them depend on a DISTINCT — or writing one
+    /// library's language list into a query that serves both.
+    ///
+    /// So it is its own grouped pass over the page's shows, keyed and indexed
+    /// the same way, and bounded by the page rather than the catalogue. It runs
+    /// once per library present on the page, which on a library-filtered page
+    /// is always one, and on a shelf nobody has asked for subtitles is none.
+    /// </summary>
+    private async Task<IReadOnlyList<SeriesListItem>> AttachSubtitleCountsAsync(
+        System.Data.Common.DbConnection connection,
+        IReadOnlyList<SeriesListItem> items,
+        CancellationToken cancellationToken)
+    {
+        if (librarySubtitlePreferences is null || items.Count == 0)
+        {
+            return items;
+        }
+
+        var preferences = await librarySubtitlePreferences.GetSubtitlePreferencesAsync(cancellationToken);
+        var counts = await CatalogueSubtitleRollup.ForPageAsync(
+            connection,
+            MediaKind.Series,
+            items.Select(item => (item.Id, item.LibraryId)).ToArray(),
+            preferences,
+            timeProvider.GetUtcNow(),
+            cancellationToken);
+
+        if (counts.Count == 0)
+        {
+            return items;
+        }
+
+        return items
+            .Select(item => counts.TryGetValue(item.Id, out var count)
+                ? item with
+                {
+                    SubtitleLanguagesWanted = count.WantedPerFile,
+                    SubtitleLanguagesHeld = count.Held
+                }
+                : item)
+            .ToArray();
     }
 
     /// <summary>

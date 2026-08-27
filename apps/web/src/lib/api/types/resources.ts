@@ -35,6 +35,16 @@ export interface LibraryItem {
   updatedUtc: string;
   defaultPolicySetId?: string | null;
   defaultPolicySetName?: string | null;
+  /** Ordered ISO 639-1 codes, most wanted first. Empty means no subtitles are wanted here. */
+  subtitleLanguages?: string[] | null;
+  /** `all` — every language listed. `first` — the first one that can be found. */
+  subtitleLanguageMode?: "all" | "first" | string;
+}
+
+/** One language Deluno can name, from GET /api/subtitle-languages. */
+export interface SubtitleLanguageOption {
+  code: string;
+  name: string;
 }
 
 export interface LibrarySourceLinkItem {
@@ -210,6 +220,9 @@ export interface MediaAudioStreamInfo {
 }
 
 export interface MediaSubtitleStreamInfo {
+  forced?: boolean;
+  hearingImpaired?: boolean;
+  title?: string | null;
   index: number;
   codec: string | null;
   language: string | null;
