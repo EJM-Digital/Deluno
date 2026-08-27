@@ -163,13 +163,19 @@ export function ControlRail({ label, facets, controls }: {
               )}
             </div>
 
-            <label className="flex min-h-[var(--library-toolbar-height)] min-w-[11rem] items-center rounded-xl bg-foreground/[0.04] px-2.5 ring-1 ring-inset ring-hairline/60 dark:bg-white/[0.05] dark:ring-white/[0.06]">
+            {/*
+              Only the left padding is overridden. `px-1` used to override both,
+              and the right half of that padding is the gutter Select reserves
+              for its own chevron — so the icon came down on top of "All
+              libraries" instead of sitting beside it.
+            */}
+            <label className="flex min-h-[var(--library-toolbar-height)] min-w-[11rem] items-center rounded-xl bg-foreground/[0.04] pl-2.5 ring-1 ring-inset ring-hairline/60 dark:bg-white/[0.05] dark:ring-white/[0.06]">
               <span className="sr-only">Library</span>
               <Select
                 aria-label="Library"
                 value={libraryId ?? ""}
                 onChange={(event) => setLibraryId(event.target.value || null)}
-                className="h-[calc(var(--library-toolbar-height)-0.5rem)] border-0 bg-transparent px-1 text-[length:var(--library-toolbar-size)] font-semibold shadow-none focus-visible:ring-0"
+                className="h-[calc(var(--library-toolbar-height)-0.5rem)] border-0 bg-transparent pl-1 text-[length:var(--library-toolbar-size)] font-semibold shadow-none focus-visible:ring-0"
                 options={[
                   { value: "", label: "All libraries" },
                   ...libraries.map((library) => ({ value: library.id, label: library.name }))
@@ -277,13 +283,21 @@ export function ControlRail({ label, facets, controls }: {
                   ) : null}
                 </div>
 
+                {/*
+                  One column, not two. Five rows across two columns leaves the
+                  fifth stranded beside an empty cell, and stops the card half
+                  the height of the choices beside it — which is the dead band
+                  that made this panel look unfinished. Stacked and divided, the
+                  rows fill the column and read the way every other settings
+                  list in Deluno does.
+                */}
                 <div className="rounded-xl border border-hairline bg-background/45 p-3">
                   <SectionLabel>What each poster shows</SectionLabel>
                   <p className="mt-1 text-[length:var(--type-caption)] text-muted-foreground">Keep the essentials visible; turn on extra metadata only when it helps your workflow.</p>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <div className="mt-2 divide-y divide-hairline">
                     <SwitchRow label="Title" description="The movie or series name" checked={displayOptions.showTitle} onCheckedChange={(showTitle) => setDisplayOptions({ ...displayOptions, showTitle })} />
                     <SwitchRow label="Year & monitoring" description="Release year and monitored state" checked={displayOptions.showMeta} onCheckedChange={(showMeta) => setDisplayOptions({ ...displayOptions, showMeta })} />
-                    <SwitchRow label="Availability" description="Missing, downloading, or imported" checked={displayOptions.showStatusPill} onCheckedChange={(showStatusPill) => setDisplayOptions({ ...displayOptions, showStatusPill })} />
+                    <SwitchRow label="Availability" description="Whether Deluno has the file yet" checked={displayOptions.showStatusPill} onCheckedChange={(showStatusPill) => setDisplayOptions({ ...displayOptions, showStatusPill })} />
                     <SwitchRow label="Quality" description="Current or target quality" checked={displayOptions.showQualityBadge} onCheckedChange={(showQualityBadge) => setDisplayOptions({ ...displayOptions, showQualityBadge })} />
                     <SwitchRow label="Rating" description="The preferred metadata score" checked={displayOptions.showRating} onCheckedChange={(showRating) => setDisplayOptions({ ...displayOptions, showRating })} />
                   </div>
