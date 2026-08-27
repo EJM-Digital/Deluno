@@ -13,6 +13,7 @@ This file is the small entry point for agent work. It is a map, not the full man
 
 ## Source Of Truth
 
+- **The bar, and the standing check every change is measured against: `docs/PRODUCT_NORTH_STAR.md`.** Read it first. It records what Deluno replaces and what "better, not merely present" means; it is where [#194](https://github.com/jampat000/Deluno/issues/194) lives now that the issue is closed.
 - Product scope: `docs/deluno-capability-map.md`
 - Architecture boundaries: `docs/ARCHITECTURE.md`
 - Frontend/backend map: `docs/deluno-frontend-backend-map.md`
