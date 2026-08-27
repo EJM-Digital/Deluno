@@ -19,6 +19,11 @@ public static class MoviesServiceCollectionExtensions
         services.TryAddSingleton<IMediaStateRepository, SqliteMediaStateRepository>();
         services.TryAddSingleton<IMediaSubtitleRepository, SqliteMediaSubtitleRepository>();
         services.AddSingleton<IMovieCatalogRepository, SqliteMovieCatalogRepository>();
+        // The quality ladder has to reach this catalogue's own database for a
+        // shelf to be sortable by quality; the model service pushes it here on
+        // save. Resolved from the repository so there is one connection, one
+        // transaction and no second copy of the table names.
+        services.AddSingleton<IQualityRankSink>(provider => provider.GetRequiredService<IMovieCatalogRepository>());
         services.AddSingleton<IMovieImportRecoveryRetentionRepository>(provider => provider.GetRequiredService<IMovieCatalogRepository>());
         services.AddSingleton<IMovieWorkflowService, MovieWorkflowService>();
         services.AddSingleton<IDispatchRecoveryHandlerComponent, MovieDispatchRecoveryHandler>();

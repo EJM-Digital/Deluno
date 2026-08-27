@@ -21,7 +21,8 @@ public static class SeriesDatabaseMigrations
         new V0013SeriesQualityProfileOverride(),
         new V0014SeriesEpisodeProgressIndex(),
         new V0015SeriesWantedStatusVocabulary(),
-        new V0016SeriesSubtitleState()
+        new V0016SeriesSubtitleState(),
+        new V0017SeriesSortableFileFacts()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

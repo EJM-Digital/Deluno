@@ -631,6 +631,57 @@ public sealed class SqliteMovieCatalogRepository(
     /// than on every page of it.
     /// </summary>
 
+
+    /// <summary>
+    /// The quality ladder, pushed into this catalogue's own database so a shelf
+    /// can be ordered by it, and the cached ranks recomputed so the new order is
+    /// true at once rather than the next time each file changes.
+    /// </summary>
+    public async Task SyncQualityRanksAsync(
+        IReadOnlyDictionary<string, int> ranks,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        using (var clear = connection.CreateCommand())
+        {
+            clear.Transaction = transaction;
+            clear.CommandText = "DELETE FROM quality_ranks;";
+            await clear.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        foreach (var (name, rank) in ranks)
+        {
+            using var insert = connection.CreateCommand();
+            insert.Transaction = transaction;
+            insert.CommandText = "INSERT OR REPLACE INTO quality_ranks (name, rank) VALUES (@name, @rank);";
+            AddParameter(insert, "@name", name);
+            AddParameter(insert, "@rank", rank);
+            await insert.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        using (var recompute = connection.CreateCommand())
+        {
+            recompute.Transaction = transaction;
+            // The same pick the trigger and CatalogueWantedState.Join use.
+            recompute.CommandText = """
+                UPDATE movie_entries SET primary_quality_rank = (
+                    SELECT (SELECT r.rank FROM quality_ranks r WHERE r.name = pick.current_quality)
+                    FROM movie_wanted_state pick
+                    WHERE pick.movie_id = movie_entries.id
+                    ORDER BY pick.has_file DESC, pick.quality_cutoff_met ASC, pick.library_id ASC
+                    LIMIT 1
+                );
+                """;
+            await recompute.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<string>> ListGenresAsync(CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(

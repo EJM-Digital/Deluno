@@ -6,7 +6,8 @@ namespace Deluno.Quality;
 
 public sealed class QualityModelService(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IEnumerable<IQualityRankSink>? qualityRankSinks = null)
     : IQualityModelService
 {
     private const string ModelVersion = "quality-model/v2";
@@ -88,6 +89,21 @@ public sealed class QualityModelService(
         AddParameter(command, "@updatedUtc", next.UpdatedUtc.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+
+        // The catalogues sort a shelf by quality, and an ORDER BY needs a number
+        // in its own database. Pushing the ladder to them here is what stops a
+        // renamed or re-ranked tier leaving every title sorted by a number this
+        // model no longer agrees with.
+        //
+        // After the commit, deliberately: the model is saved either way, and a
+        // catalogue that cannot be reached is a stale sort order, not a lost
+        // setting.
+        foreach (var sink in qualityRankSinks ?? [])
+        {
+            await sink.SyncQualityRanksAsync(
+                next.Tiers.ToDictionary(tier => tier.Name, tier => tier.Rank, StringComparer.OrdinalIgnoreCase),
+                cancellationToken);
+        }
 
         return next;
     }

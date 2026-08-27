@@ -120,19 +120,40 @@ public static class CatalogueSortFields
     /// </summary>
     public const string Popularity = "popularity";
 
+    /// <summary>How big the file is. Media is made of files, so a shelf sorts by them.</summary>
+    public const string Size = "size";
+
+    /// <summary>
+    /// How good the file is, by the quality ladder's own ranking — so
+    /// <c>Remux 2160p</c> outranks <c>WEB 2160p</c> rather than the two sorting
+    /// alphabetically, which would be meaningless.
+    /// </summary>
+    public const string Quality = "quality";
+
+    /// <summary>
+    /// Size over runtime — how much file there is per minute.
+    ///
+    /// Neither Radarr nor Sonarr offers this, and it is the question behind
+    /// every "why is this 2160p file only four gigabytes". Size alone says a
+    /// file is big; this says whether it is big for what it is.
+    /// </summary>
+    public const string Bitrate = "bitrate";
+
     /// <summary>
     /// Every sort here is a stored column on the *entries* table with an index
     /// behind it, which is what keeps page four hundred costing what page one
     /// costs.
     ///
-    /// Size and quality are deliberately absent, and it is not an oversight:
-    /// both live on the wanted state, which the page reaches through a
-    /// correlated `rowid = (SELECT … LIMIT 1)` pick. Ordering by a column on
-    /// the far side of that means running the pick for every title in the
-    /// catalogue and then sorting the lot — a full scan wearing a seek's
-    /// clothes. See DESIGN-003 for what it would take.
+    /// Size and quality describe the file rather than the title, and the file
+    /// lives on the wanted state — which the page reaches through a correlated
+    /// pick that SQLite cannot index. They are sortable anyway because V0016 and
+    /// V0017 keep the picked file's size and quality rank on the entry, updated
+    /// by a trigger so no write path can forget them. See those migrations for
+    /// the one rule that now exists in two languages, and the test that holds
+    /// the two copies together.
     /// </summary>
-    public static readonly IReadOnlyList<string> All = [Added, Title, Year, Rating, Runtime, Popularity];
+    public static readonly IReadOnlyList<string> All =
+        [Added, Title, Year, Rating, Runtime, Popularity, Size, Quality, Bitrate];
 
     public static string Normalize(string? value)
         => value?.Trim().ToLowerInvariant() switch
@@ -142,6 +163,9 @@ public static class CatalogueSortFields
             Rating => Rating,
             Runtime => Runtime,
             Popularity => Popularity,
+            Size => Size,
+            Quality => Quality,
+            Bitrate => Bitrate,
             _ => Added
         };
 }

@@ -4,7 +4,7 @@ using Deluno.Recovery.Contracts;
 
 namespace Deluno.Movies.Data;
 
-public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionRepository
+public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionRepository, Deluno.Quality.IQualityRankSink
 {
     Task<MovieListItem> AddAsync(CreateMovieRequest request, CancellationToken cancellationToken);
 

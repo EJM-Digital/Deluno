@@ -4,7 +4,7 @@ using Deluno.Recovery.Contracts;
 
 namespace Deluno.Series.Data;
 
-public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionRepository
+public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionRepository, Deluno.Quality.IQualityRankSink
 {
     Task<SeriesListItem> AddAsync(CreateSeriesRequest request, CancellationToken cancellationToken);
 

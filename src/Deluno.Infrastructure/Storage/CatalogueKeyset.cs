@@ -35,6 +35,17 @@ public static class CatalogueKeyset
             // anything populating them.
             CatalogueSortFields.Runtime => $"COALESCE({alias}.runtime_minutes, -1)",
             CatalogueSortFields.Popularity => $"COALESCE({alias}.popularity, -1)",
+            // The picked file's facts, kept on the entry by a trigger (V0016 /
+            // V0017) precisely so these two can be an index walk rather than a
+            // scan of the whole catalogue.
+            CatalogueSortFields.Size => $"COALESCE({alias}.primary_file_size_bytes, -1)",
+            CatalogueSortFields.Quality => $"COALESCE({alias}.primary_quality_rank, -1)",
+            // Spelled exactly as the expression index in V0016/V0017, because an
+            // expression index only serves an ORDER BY that matches it character
+            // for character. A stray cast or a reordered COALESCE here turns the
+            // page into a sort of the whole catalogue and nothing looks wrong.
+            CatalogueSortFields.Bitrate =>
+                $"COALESCE(CAST({alias}.primary_file_size_bytes AS REAL) / NULLIF({alias}.runtime_minutes, 0), -1)",
             _ => $"{alias}.created_utc"
         };
 
@@ -48,7 +59,10 @@ public static class CatalogueKeyset
             is CatalogueSortFields.Year
             or CatalogueSortFields.Rating
             or CatalogueSortFields.Runtime
-            or CatalogueSortFields.Popularity;
+            or CatalogueSortFields.Popularity
+            or CatalogueSortFields.Size
+            or CatalogueSortFields.Quality
+            or CatalogueSortFields.Bitrate;
 
     /// <summary>
     /// <c>ORDER BY</c> for a page. Rows sharing a sort value are broken by id,
