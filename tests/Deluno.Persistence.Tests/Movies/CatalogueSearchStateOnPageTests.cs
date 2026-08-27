@@ -90,10 +90,7 @@ public sealed class CatalogueSearchStateOnPageTests
         var movies = await CreateMoviesAsync(storage);
         var film = await movies.AddAsync(new CreateMovieRequest("Arrival", 2016, null), CancellationToken.None);
 
-        // "waiting" is what the movie vocabulary calls a title that is here and
-        // at target; #300 renames it to "covered". The point of this test is the
-        // library the state was read from, not the word it is stored under.
-        await movies.EnsureWantedStateAsync(film.Id, "library-4k", "waiting", "Meets the 4K profile.", true, "WEB 2160p", "WEB 2160p", true, CancellationToken.None);
+        await movies.EnsureWantedStateAsync(film.Id, "library-4k", "covered", "Meets the 4K profile.", true, "WEB 2160p", "WEB 2160p", true, CancellationToken.None);
         await movies.EnsureWantedStateAsync(film.Id, "library-hd", "upgrade", "Short of the HD profile.", true, "WEB 720p", "WEB 1080p", false, CancellationToken.None);
 
         var fourK = await movies.ListPageAsync(new CatalogueQuery(LibraryId: "library-4k"), CancellationToken.None);
@@ -101,7 +98,7 @@ public sealed class CatalogueSearchStateOnPageTests
 
         var inFourK = Assert.Single(fourK.Items);
         Assert.Equal("library-4k", inFourK.LibraryId);
-        Assert.Equal("waiting", inFourK.WantedStatus);
+        Assert.Equal("covered", inFourK.WantedStatus);
         Assert.Equal("WEB 2160p", inFourK.CurrentQuality);
         Assert.True(inFourK.QualityCutoffMet);
 
@@ -129,7 +126,7 @@ public sealed class CatalogueSearchStateOnPageTests
         var movies = await CreateMoviesAsync(storage);
         var film = await movies.AddAsync(new CreateMovieRequest("Arrival", 2016, null), CancellationToken.None);
 
-        await movies.EnsureWantedStateAsync(film.Id, "library-a", "waiting", "Settled here.", true, "WEB 2160p", "WEB 2160p", true, CancellationToken.None);
+        await movies.EnsureWantedStateAsync(film.Id, "library-a", "covered", "Settled here.", true, "WEB 2160p", "WEB 2160p", true, CancellationToken.None);
         await movies.EnsureWantedStateAsync(film.Id, "library-b", "upgrade", "Still short here.", true, "WEB 720p", "WEB 1080p", false, CancellationToken.None);
 
         var all = await movies.ListPageAsync(new CatalogueQuery(), CancellationToken.None);

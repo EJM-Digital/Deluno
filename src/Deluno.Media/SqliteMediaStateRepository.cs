@@ -28,7 +28,8 @@ public sealed class SqliteMediaStateRepository(
         var totalWanted = 0;
         var missingCount = 0;
         var upgradeCount = 0;
-        var waitingCount = 0;
+        var coveredCount = 0;
+        var upcomingCount = 0;
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             map.DatabaseName,
@@ -41,7 +42,8 @@ public sealed class SqliteMediaStateRepository(
                     COUNT(*),
                     SUM(CASE WHEN wanted_status = 'missing' THEN 1 ELSE 0 END),
                     SUM(CASE WHEN wanted_status = 'upgrade' THEN 1 ELSE 0 END),
-                    SUM(CASE WHEN wanted_status = 'waiting' THEN 1 ELSE 0 END)
+                    SUM(CASE WHEN wanted_status = 'covered' THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN wanted_status = 'upcoming' THEN 1 ELSE 0 END)
                 FROM {map.WantedTable};
                 """;
 
@@ -51,7 +53,8 @@ public sealed class SqliteMediaStateRepository(
                 totalWanted = reader.IsDBNull(0) ? 0 : reader.GetInt32(0);
                 missingCount = reader.IsDBNull(1) ? 0 : reader.GetInt32(1);
                 upgradeCount = reader.IsDBNull(2) ? 0 : reader.GetInt32(2);
-                waitingCount = reader.IsDBNull(3) ? 0 : reader.GetInt32(3);
+                coveredCount = reader.IsDBNull(3) ? 0 : reader.GetInt32(3);
+                upcomingCount = reader.IsDBNull(4) ? 0 : reader.GetInt32(4);
             }
         }
 
@@ -74,7 +77,7 @@ public sealed class SqliteMediaStateRepository(
             items.Add(ReadWanted(recentReader));
         }
 
-        return new MediaWantedSummary(totalWanted, missingCount, upgradeCount, waitingCount, items);
+        return new MediaWantedSummary(totalWanted, missingCount, upgradeCount, coveredCount, upcomingCount, items);
     }
 
     public async Task<IReadOnlyList<MediaWantedItem>> ListWantedByIdsAsync(
@@ -191,7 +194,7 @@ public sealed class SqliteMediaStateRepository(
         AddParameter(command, "@take", Math.Clamp(take, 1, 500));
         if (!string.IsNullOrWhiteSpace(wantedStatus))
         {
-            AddParameter(command, "@wantedStatus", NormalizeWantedStatus(wantedStatus));
+            AddParameter(command, "@wantedStatus", WantedStatuses.Normalize(wantedStatus));
         }
 
         var items = new List<MediaWantedItem>();
@@ -229,7 +232,7 @@ public sealed class SqliteMediaStateRepository(
             """;
         AddParameter(command, "@libraryId", libraryId);
         AddParameter(command, "@now", now.ToString("O"));
-        AddParameter(command, "@wantedStatus", string.IsNullOrWhiteSpace(wantedStatus) ? null : NormalizeWantedStatus(wantedStatus));
+        AddParameter(command, "@wantedStatus", string.IsNullOrWhiteSpace(wantedStatus) ? null : WantedStatuses.Normalize(wantedStatus));
         var value = await command.ExecuteScalarAsync(cancellationToken);
         return Convert.ToInt32(value, CultureInfo.InvariantCulture);
     }
@@ -275,7 +278,7 @@ public sealed class SqliteMediaStateRepository(
 
         AddParameter(command, "@mediaId", mediaId);
         AddParameter(command, "@libraryId", libraryId);
-        AddParameter(command, "@wantedStatus", NormalizeWantedStatus(wantedStatus));
+        AddParameter(command, "@wantedStatus", WantedStatuses.Normalize(wantedStatus));
         AddParameter(command, "@wantedReason", wantedReason.Trim());
         AddParameter(command, "@hasFile", hasFile ? 1 : 0);
         AddParameter(command, "@qualityCutoffMet", qualityCutoffMet ? 1 : 0);
@@ -331,6 +334,54 @@ public sealed class SqliteMediaStateRepository(
             cancellationToken,
             "AND skip_next_automation_search = 1");
 
+    /// <summary>
+    /// Whether a title is out yet, from the columns
+    /// <see cref="MediaTableMap.ReleaseColumns"/> selects.
+    ///
+    /// A film asks <see cref="MovieAvailability"/>, which is the same rule the
+    /// catalogue uses to decide whether to search at all. A show is out once any
+    /// episode has aired; with no aired episode and no air dates on record it
+    /// counts as out, because refusing to search an unsynced show would be
+    /// worse than searching one too early.
+    /// </summary>
+    private static bool IsReleased(MediaKind kind, System.Data.Common.DbDataReader reader, DateOnly today)
+    {
+        if (kind == MediaKind.Movie)
+        {
+            return MovieAvailability.IsAvailable(
+                reader.IsDBNull(6) ? null : reader.GetString(6),
+                ReadDateOnly(reader, 3),
+                ReadDateOnly(reader, 4),
+                ReadDateOnly(reader, 5),
+                today);
+        }
+
+        var earliestAirDate = reader.IsDBNull(7) ? null : reader.GetString(7);
+        if (earliestAirDate is null)
+        {
+            return true;
+        }
+
+        return DateTimeOffset.TryParse(
+            earliestAirDate,
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.RoundtripKind,
+            out var aired)
+            ? DateOnly.FromDateTime(aired.UtcDateTime) <= today
+            : true;
+    }
+
+    private static DateOnly? ReadDateOnly(System.Data.Common.DbDataReader reader, int ordinal)
+    {
+        if (reader.IsDBNull(ordinal))
+        {
+            return null;
+        }
+
+        var raw = reader.GetString(ordinal);
+        return DateOnly.TryParse(raw, System.Globalization.CultureInfo.InvariantCulture, out var value) ? value : null;
+    }
+
     public async Task<int> ReevaluateLibraryWantedStateAsync(
         MediaKind kind,
         string libraryId,
@@ -340,7 +391,8 @@ public sealed class SqliteMediaStateRepository(
         CancellationToken cancellationToken)
     {
         var map = MediaTableMap.For(kind);
-        var items = new List<(string Id, bool HasFile, string? CurrentQuality)>();
+        var items = new List<(string Id, bool HasFile, string? CurrentQuality, bool IsReleased)>();
+        var today = DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime);
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             map.DatabaseName,
             cancellationToken);
@@ -348,15 +400,21 @@ public sealed class SqliteMediaStateRepository(
         using (var command = connection.CreateCommand())
         {
             command.CommandText = $"""
-                SELECT {map.WantedMediaIdColumn}, has_file, current_quality
-                FROM {map.WantedTable}
-                WHERE library_id = @libraryId;
+                SELECT w.{map.WantedMediaIdColumn}, w.has_file, w.current_quality,
+                       {map.ReleaseColumns}
+                FROM {map.WantedTable} w
+                {map.ReleaseJoin}
+                WHERE w.library_id = @libraryId;
                 """;
             AddParameter(command, "@libraryId", libraryId);
             using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
-                items.Add((reader.GetString(0), reader.GetInt64(1) == 1, reader.IsDBNull(2) ? null : reader.GetString(2)));
+                items.Add((
+                    reader.GetString(0),
+                    reader.GetInt64(1) == 1,
+                    reader.IsDBNull(2) ? null : reader.GetString(2),
+                    IsReleased(kind, reader, today)));
             }
         }
 
@@ -369,7 +427,8 @@ public sealed class SqliteMediaStateRepository(
                 item.CurrentQuality,
                 cutoffQuality,
                 upgradeUntilCutoff,
-                upgradeUnknownItems));
+                upgradeUnknownItems,
+                IsReleased: item.IsReleased));
 
             using var update = connection.CreateCommand();
             update.CommandText = $"""
@@ -754,7 +813,7 @@ public sealed class SqliteMediaStateRepository(
             """;
         AddParameter(wanted, "@mediaId", mediaId);
         AddParameter(wanted, "@libraryId", libraryId);
-        AddParameter(wanted, "@wantedStatus", NormalizeWantedStatus(request.WantedStatus));
+        AddParameter(wanted, "@wantedStatus", WantedStatuses.Normalize(request.WantedStatus));
         AddParameter(wanted, "@wantedReason", request.WantedReason.Trim());
         AddParameter(wanted, "@currentQuality", request.CurrentQuality);
         AddParameter(wanted, "@targetQuality", request.TargetQuality);
@@ -1014,14 +1073,6 @@ public sealed class SqliteMediaStateRepository(
         => reader.IsDBNull(ordinal) || string.IsNullOrWhiteSpace(reader.GetString(ordinal))
             ? fallback
             : ParseTimestamp(reader.GetString(ordinal));
-
-    private static string NormalizeWantedStatus(string? value)
-        => value?.Trim().ToLowerInvariant() switch
-        {
-            "upgrade" => "upgrade",
-            "waiting" => "waiting",
-            _ => "missing"
-        };
 
     private static string? NormalizeExternalId(string? value)
         => string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToLowerInvariant();

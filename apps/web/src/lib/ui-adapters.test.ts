@@ -45,7 +45,7 @@ describe("UI adapters", () => {
     const adapted = adaptMovieItems(items);
 
     expect(adapted).toHaveLength(400);
-    expect(adapted.every((item) => item.releaseStatus === "Upgrade wanted")).toBe(true);
+    expect(adapted.every((item) => item.releaseStatus === "Upgradable")).toBe(true);
     expect(adapted.every((item) => item.wantedReason === "Better copy available")).toBe(true);
     expect(adapted.every((item) => item.libraryId === "library-films")).toBe(true);
     expect(adapted.every((item) => item.targetQuality === "Bluray 2160p")).toBe(true);
@@ -62,13 +62,13 @@ describe("UI adapters", () => {
     const movie = (overrides: Record<string, unknown>) =>
       ({ id: "movie-1", title: "Arrival", releaseYear: 2016, posterUrl: null, backdropUrl: null, currentQuality: "WEB 2160p", hasFile: true, monitored: true, fileSizeBytes: 1024 ** 3, rating: 8, ratings: [], genres: "", createdUtc: "2024-01-01T00:00:00Z", overview: null, metadataJson: "{}", ...overrides }) as unknown as MovieListItem;
     it("says downloaded for a film on disk, whatever it is waiting for", () => {
-      for (const wantedStatus of ["waiting", "covered", "upgrade", "missing"]) {
+      for (const wantedStatus of ["covered", "upgrade", "missing", "upcoming"]) {
         expect(adaptMovieItems([movie({ wantedStatus })])[0].status).toBe("downloaded");
       }
     });
 
     it("says missing for a film with no file, whatever it is waiting for", () => {
-      for (const wantedStatus of ["waiting", "covered", "upgrade", "missing"]) {
+      for (const wantedStatus of ["covered", "upgrade", "missing", "upcoming"]) {
         expect(adaptMovieItems([movie({ hasFile: false, wantedStatus })])[0].status).toBe("missing");
       }
     });
@@ -78,7 +78,7 @@ describe("UI adapters", () => {
       // state. Progress on a card needs telemetry wired in, not a wanted
       // status pressed into service as a stand-in.
       for (const hasFile of [true, false]) {
-        for (const wantedStatus of ["waiting", "covered", "upgrade", "missing"]) {
+        for (const wantedStatus of ["covered", "upgrade", "missing", "upcoming"]) {
           expect(adaptMovieItems([movie({ hasFile, wantedStatus })])[0].status).not.toBe("downloading");
         }
       }
@@ -89,15 +89,15 @@ describe("UI adapters", () => {
       // answered "Downloading" for `waiting`, which the server sets on a film
       // that has a file and meets its target (#300).
       for (const hasFile of [true, false]) {
-        for (const wantedStatus of ["waiting", "covered", "upgrade", "missing"]) {
+        for (const wantedStatus of ["covered", "upgrade", "missing", "upcoming"]) {
           expect(adaptMovieItems([movie({ hasFile, wantedStatus })])[0].releaseStatus).not.toBe("Downloading");
         }
       }
     });
 
     it("gives the release status the same words the title shows", () => {
-      expect(adaptMovieItems([movie({ wantedStatus: "covered" })])[0].releaseStatus).toBe("Complete");
-      expect(adaptMovieItems([movie({ wantedStatus: "upgrade" })])[0].releaseStatus).toBe("Upgrade wanted");
+      expect(adaptMovieItems([movie({ wantedStatus: "covered" })])[0].releaseStatus).toBe("Quality met");
+      expect(adaptMovieItems([movie({ wantedStatus: "upgrade" })])[0].releaseStatus).toBe("Upgradable");
       expect(adaptMovieItems([movie({ hasFile: false, wantedStatus: "missing" })])[0].releaseStatus).toBe("Missing");
     });
 

@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Migration;
 using Deluno.Series.Contracts;
@@ -52,7 +53,7 @@ public sealed class SeriesMigrationCatalogImporter(ISeriesCatalogRepository repo
             await repository.EnsureWantedStateAsync(
                 series.Id,
                 library.Id,
-                title.SourceReportsFile ? "waiting" : "missing",
+                title.SourceReportsFile ? WantedStatuses.Covered : WantedStatuses.Missing,
                 title.SourceReportsFile
                     ? "Source reports existing episodes. Deluno will keep this show waiting until a library scan reconciles file associations."
                     : "Migrated monitored show needs accepted episodes.",

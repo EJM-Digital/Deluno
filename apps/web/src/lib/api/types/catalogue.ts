@@ -101,7 +101,10 @@ export interface MovieWantedSummary {
   totalWanted: number;
   missingCount: number;
   upgradeCount: number;
-  waitingCount: number;
+  /** Titles that have what the profile asked for. `waitingCount` until #300. */
+  coveredCount: number;
+  /** Titles that are not out yet, so there is nothing to look for. */
+  upcomingCount: number;
   recentItems: MovieWantedItem[];
 }
 
@@ -246,7 +249,10 @@ export interface SeriesWantedSummary {
   totalWanted: number;
   missingCount: number;
   upgradeCount: number;
-  waitingCount: number;
+  /** Titles that have what the profile asked for. `waitingCount` until #300. */
+  coveredCount: number;
+  /** Titles that are not out yet, so there is nothing to look for. */
+  upcomingCount: number;
   recentItems: SeriesWantedItem[];
 }
 

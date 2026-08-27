@@ -37,7 +37,18 @@ public sealed record MediaWantedDecisionInput(
     string? CurrentQuality,
     string? CutoffQuality,
     bool UpgradeUntilCutoff,
-    bool UpgradeUnknownItems);
+    bool UpgradeUnknownItems,
+    /// <summary>
+    /// Whether the title is out yet — released, or aired.
+    ///
+    /// Without this, a film added six months before release was stored as
+    /// Missing and counted against the library from the day it was added, and
+    /// every search cycle went looking for something that did not exist. It
+    /// defaults to true because a caller that does not know a release date
+    /// should search rather than sit on its hands, which is what every caller
+    /// did before this existed.
+    /// </summary>
+    bool IsReleased = true);
 
 public static class MediaDecisionRules
 {

@@ -60,7 +60,7 @@ public sealed class SeriesCatalogueSyncPersistenceTests
             libraryId: "series-main",
             title: "Severance",
             startYear: 2022,
-            wantedStatus: "waiting",
+            wantedStatus: "covered",
             wantedReason: "Current file is accepted.",
             currentQuality: "WEB 1080p",
             targetQuality: "WEB 1080p",
@@ -296,7 +296,7 @@ public sealed class SeriesCatalogueSyncPersistenceTests
         // A second series that already has a file — must not appear.
         var coveredSeries = await repository.AddAsync(new CreateSeriesRequest("Silo", 2023, "tt14688458"), CancellationToken.None);
         await repository.EnsureWantedStateAsync(
-            coveredSeries.Id, "series-main", "waiting", "Current file is accepted.", true, "WEB 1080p", "WEB 1080p", true, CancellationToken.None);
+            coveredSeries.Id, "series-main", "covered", "Current file is accepted.", true, "WEB 1080p", "WEB 1080p", true, CancellationToken.None);
 
         // A third, unmonitored series — excluded unless the retry window is ignored.
         var unmonitoredSeries = await repository.AddAsync(new CreateSeriesRequest("Andor", 2022, "tt9253284"), CancellationToken.None);
@@ -348,14 +348,14 @@ public sealed class SeriesCatalogueSyncPersistenceTests
 
         var episodeIds = await GetEpisodeIdsAsync(storage, seriesId);
 
-        // The query only considers wanted_status IN ('wanted','upgrade'); mark episode 1 as
-        // 'wanted' and eligible now, episode 2 as 'wanted' but not eligible until later, and
-        // unmonitor episode 3 entirely.
+        // The query considers wanted_status IN ('missing','upgrade'). Episode 1 is
+        // missing and eligible now, episode 2 missing but not eligible until later,
+        // and episode 3 unmonitored entirely.
         await using (var connection = await storage.Factory.OpenConnectionAsync("series", CancellationToken.None))
         {
-            await SetEpisodeWantedStatusAsync(connection, episodeIds[(1, 1)], "series-main", "wanted", nextEligibleSearchUtc: null);
-            await SetEpisodeWantedStatusAsync(connection, episodeIds[(1, 2)], "series-main", "wanted", nextEligibleSearchUtc: now.AddHours(6));
-            await SetEpisodeWantedStatusAsync(connection, episodeIds[(1, 3)], "series-main", "wanted", nextEligibleSearchUtc: null);
+            await SetEpisodeWantedStatusAsync(connection, episodeIds[(1, 1)], "series-main", "missing", nextEligibleSearchUtc: null);
+            await SetEpisodeWantedStatusAsync(connection, episodeIds[(1, 2)], "series-main", "missing", nextEligibleSearchUtc: now.AddHours(6));
+            await SetEpisodeWantedStatusAsync(connection, episodeIds[(1, 3)], "series-main", "missing", nextEligibleSearchUtc: null);
         }
 
         await repository.UpdateEpisodeMonitoredAsync([episodeIds[(1, 3)]], monitored: false, CancellationToken.None);
@@ -386,7 +386,7 @@ public sealed class SeriesCatalogueSyncPersistenceTests
             libraryId: "series-main",
             title: "Severance",
             startYear: 2022,
-            wantedStatus: "waiting",
+            wantedStatus: "covered",
             wantedReason: "Current file is accepted.",
             currentQuality: "WEB 1080p",
             targetQuality: "WEB 1080p",
@@ -420,7 +420,7 @@ public sealed class SeriesCatalogueSyncPersistenceTests
             libraryId: "series-main",
             title: "Severance",
             startYear: 2022,
-            wantedStatus: "waiting",
+            wantedStatus: "covered",
             wantedReason: "Current file is accepted.",
             currentQuality: "WEB 1080p",
             targetQuality: "WEB 1080p",
@@ -450,7 +450,7 @@ public sealed class SeriesCatalogueSyncPersistenceTests
             libraryId: "series-main",
             title: "Severance",
             startYear: 2022,
-            wantedStatus: "waiting",
+            wantedStatus: "covered",
             wantedReason: "Current file is accepted.",
             currentQuality: "WEB 1080p",
             targetQuality: "WEB 1080p",

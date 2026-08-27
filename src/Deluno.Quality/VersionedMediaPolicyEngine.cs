@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using Deluno.Contracts;
 
 namespace Deluno.Quality;
 
@@ -32,8 +33,21 @@ public sealed class VersionedMediaPolicyEngine : IVersionedMediaPolicyEngine
 
         if (!input.HasFile)
         {
+            // Not out yet is not the same as not found. Saying Missing of a film
+            // that has not been released blames the library for the calendar,
+            // and sends every search cycle after something that cannot exist.
+            if (!input.IsReleased)
+            {
+                return Decision(
+                    WantedStatuses.Upcoming,
+                    $"This {mediaLabel} is not out yet. Deluno will start looking when it is.",
+                    false,
+                    normalizedCurrent,
+                    normalizedTarget);
+            }
+
             return Decision(
-                "missing",
+                WantedStatuses.Missing,
                 $"Deluno is still looking for this {mediaLabel}.",
                 false,
                 normalizedCurrent,
@@ -45,7 +59,7 @@ public sealed class VersionedMediaPolicyEngine : IVersionedMediaPolicyEngine
             if (input.UpgradeUnknownItems && !string.IsNullOrWhiteSpace(normalizedTarget))
             {
                 return Decision(
-                    "upgrade",
+                    WantedStatuses.Upgrade,
                     $"Deluno imported this {mediaLabel}, but the current quality is still unknown. It will keep checking until it reaches {normalizedTarget}.",
                     false,
                     null,
@@ -53,7 +67,7 @@ public sealed class VersionedMediaPolicyEngine : IVersionedMediaPolicyEngine
             }
 
             return Decision(
-                "waiting",
+                WantedStatuses.Covered,
                 $"This {mediaLabel} is already in your library.",
                 false,
                 null,
@@ -63,7 +77,7 @@ public sealed class VersionedMediaPolicyEngine : IVersionedMediaPolicyEngine
         if (IsAtOrAboveCutoff(normalizedCurrent, normalizedTarget))
         {
             return Decision(
-                "waiting",
+                WantedStatuses.Covered,
                 $"This {mediaLabel} already meets your target quality with {normalizedCurrent}.",
                 true,
                 normalizedCurrent,
@@ -73,7 +87,7 @@ public sealed class VersionedMediaPolicyEngine : IVersionedMediaPolicyEngine
         if (input.UpgradeUntilCutoff && !string.IsNullOrWhiteSpace(normalizedTarget))
         {
             return Decision(
-                "upgrade",
+                WantedStatuses.Upgrade,
                 $"This {mediaLabel} is currently {normalizedCurrent}. Deluno will keep looking until it reaches {normalizedTarget}.",
                 false,
                 normalizedCurrent,
@@ -81,7 +95,7 @@ public sealed class VersionedMediaPolicyEngine : IVersionedMediaPolicyEngine
         }
 
         return Decision(
-            "waiting",
+            WantedStatuses.Covered,
             $"This {mediaLabel} is currently {normalizedCurrent}.",
             false,
             normalizedCurrent,

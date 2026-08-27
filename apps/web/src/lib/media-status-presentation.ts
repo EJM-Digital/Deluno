@@ -47,31 +47,39 @@ export function mediaStatusIsActive(status: MediaStatus) {
 /**
  * What Deluno wants for a title, in the user's words rather than the engine's.
  *
- * The stored values are `covered` / `missing` / `upgrade` / `waiting`. "Covered"
- * is engine vocabulary — it means Deluno has a file that already satisfies the
- * media plan, so it has stopped looking. The label says that; the hint says why,
- * because a status word on its own is only ever half an explanation.
+ * Four stored values, one meaning each — see `DESIGN-001-title-marks.md` and
+ * #300. Until that split there were three, and one of them said three different
+ * things: `waiting` was set by the server on a title that *has* a file and
+ * already meets its target, and described here as "not searchable yet — it has
+ * not been released", which is the opposite state. Anyone reading that tooltip
+ * was told nothing had been imported precisely when something had.
+ *
+ * The names are the ones settled in DESIGN-001. *Upgradable* states a fact
+ * rather than nagging, and is the only one whose count is worth reading —
+ * "3 upgradable" is a to-do list. *Quality met* rather than "Best copy", which
+ * over-claims: it is not the best copy in existence, it is the one your profile
+ * asked for.
  */
 export const WANTED_STATUS_PRESENTATION: Record<string, { label: string; tone: "ok" | "warn" | "info" | "muted"; hint: string }> = {
-  covered: {
-    label: "Complete",
-    tone: "ok",
-    hint: "Deluno has a file that meets your Library Profile, so it has stopped looking."
-  },
   missing: {
     label: "Missing",
-    tone: "warn",
-    hint: "Nothing has been imported yet. Deluno searches for this on its schedule."
+    tone: "info",
+    hint: "It is out and Deluno does not have it yet. Deluno searches for this on its schedule."
   },
   upgrade: {
-    label: "Upgrade wanted",
+    label: "Upgradable",
     tone: "info",
-    hint: "There is a file, but it is below the quality your Library Profile asks for."
+    hint: "You have this and can watch it tonight. Deluno is still looking for a better copy."
   },
-  waiting: {
-    label: "Waiting",
+  covered: {
+    label: "Quality met",
+    tone: "ok",
+    hint: "This is the quality your Library Profile asked for, so Deluno has stopped looking."
+  },
+  upcoming: {
+    label: "Upcoming",
     tone: "muted",
-    hint: "Not searchable yet — it has not been released, or a retry window is still open."
+    hint: "Not out yet. Deluno will start looking on release."
   }
 };
 
@@ -80,7 +88,10 @@ export function wantedStatusPresentation(value: string) {
     WANTED_STATUS_PRESENTATION[value] ?? {
       label: "Tracked",
       tone: "muted" as const,
-      hint: "Deluno is keeping an eye on this title."
+      // Reached only by a value this build does not know — a database written by
+      // a newer one, say. It must not claim a state; "tracked" is the most it
+      // can support from the fact that a row exists at all.
+      hint: "Deluno holds this title but does not recognise its current state."
     }
   );
 }

@@ -989,7 +989,8 @@ public sealed class SqliteMovieCatalogRepository(
                 sharedSummary.TotalWanted,
                 sharedSummary.MissingCount,
                 sharedSummary.UpgradeCount,
-                sharedSummary.WaitingCount,
+                sharedSummary.CoveredCount,
+                sharedSummary.UpcomingCount,
                 sharedSummary.RecentItems.Select(MapWanted).ToArray());
         }
 
@@ -997,7 +998,8 @@ public sealed class SqliteMovieCatalogRepository(
         var totalWanted = 0;
         var missingCount = 0;
         var upgradeCount = 0;
-        var waitingCount = 0;
+        var coveredCount = 0;
+        var upcomingCount = 0;
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Movies,
@@ -1011,7 +1013,8 @@ public sealed class SqliteMovieCatalogRepository(
                     COUNT(*),
                     SUM(CASE WHEN wanted_status = 'missing' THEN 1 ELSE 0 END),
                     SUM(CASE WHEN wanted_status = 'upgrade' THEN 1 ELSE 0 END),
-                    SUM(CASE WHEN wanted_status = 'waiting' THEN 1 ELSE 0 END)
+                    SUM(CASE WHEN wanted_status = 'covered' THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN wanted_status = 'upcoming' THEN 1 ELSE 0 END)
                 FROM movie_wanted_state;
                 """;
 
@@ -1021,7 +1024,8 @@ public sealed class SqliteMovieCatalogRepository(
                 totalWanted = totalsReader.IsDBNull(0) ? 0 : totalsReader.GetInt32(0);
                 missingCount = totalsReader.IsDBNull(1) ? 0 : totalsReader.GetInt32(1);
                 upgradeCount = totalsReader.IsDBNull(2) ? 0 : totalsReader.GetInt32(2);
-                waitingCount = totalsReader.IsDBNull(3) ? 0 : totalsReader.GetInt32(3);
+                coveredCount = totalsReader.IsDBNull(3) ? 0 : totalsReader.GetInt32(3);
+                upcomingCount = totalsReader.IsDBNull(4) ? 0 : totalsReader.GetInt32(4);
             }
         }
 
@@ -1049,7 +1053,8 @@ public sealed class SqliteMovieCatalogRepository(
             TotalWanted: totalWanted,
             MissingCount: missingCount,
             UpgradeCount: upgradeCount,
-            WaitingCount: waitingCount,
+            CoveredCount: coveredCount,
+            UpcomingCount: upcomingCount,
             RecentItems: items);
     }
 
@@ -1182,7 +1187,7 @@ public sealed class SqliteMovieCatalogRepository(
         AddParameter(command, "@take", take);
         if (!string.IsNullOrWhiteSpace(wantedStatus))
         {
-            AddParameter(command, "@wantedStatus", NormalizeWantedStatus(wantedStatus));
+            AddParameter(command, "@wantedStatus", WantedStatuses.Normalize(wantedStatus));
         }
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -1229,7 +1234,7 @@ public sealed class SqliteMovieCatalogRepository(
 
         AddParameter(command, "@libraryId", libraryId);
         AddParameter(command, "@now", now.ToString("O"));
-        AddParameter(command, "@wantedStatus", string.IsNullOrWhiteSpace(wantedStatus) ? null : NormalizeWantedStatus(wantedStatus));
+        AddParameter(command, "@wantedStatus", string.IsNullOrWhiteSpace(wantedStatus) ? null : WantedStatuses.Normalize(wantedStatus));
         var value = await command.ExecuteScalarAsync(cancellationToken);
         return Convert.ToInt32(value, CultureInfo.InvariantCulture);
     }
@@ -1292,7 +1297,7 @@ public sealed class SqliteMovieCatalogRepository(
 
         AddParameter(command, "@movieId", movieId);
         AddParameter(command, "@libraryId", libraryId);
-        AddParameter(command, "@wantedStatus", NormalizeWantedStatus(wantedStatus));
+        AddParameter(command, "@wantedStatus", WantedStatuses.Normalize(wantedStatus));
         AddParameter(command, "@wantedReason", wantedReason.Trim());
         AddParameter(command, "@hasFile", hasFile ? 1 : 0);
         AddParameter(command, "@currentQuality", currentQuality);
@@ -1509,7 +1514,7 @@ public sealed class SqliteMovieCatalogRepository(
         AddParameter(wanted, "@audioChannels", fileFacts.AudioChannels);
         AddParameter(wanted, "@releaseGroup", fileFacts.ReleaseGroup);
         AddParameter(wanted, "@libraryId", libraryId);
-        AddParameter(wanted, "@wantedStatus", NormalizeWantedStatus(request.WantedStatus));
+        AddParameter(wanted, "@wantedStatus", WantedStatuses.Normalize(request.WantedStatus));
         AddParameter(wanted, "@wantedReason", request.WantedReason.Trim());
         AddParameter(wanted, "@currentQuality", request.CurrentQuality);
         AddParameter(wanted, "@targetQuality", request.TargetQuality);
@@ -2836,17 +2841,6 @@ public sealed class SqliteMovieCatalogRepository(
             DetailsJson: item.DetailsJson,
             DetectedUtc: item.DetectedUtc,
             ResolvedUtc: item.ResolvedUtc);
-
-    private static string NormalizeWantedStatus(string? value)
-    {
-        var normalized = value?.Trim().ToLowerInvariant();
-        return normalized switch
-        {
-            "upgrade" => "upgrade",
-            "waiting" => "waiting",
-            _ => "missing"
-        };
-    }
 
     private static DateTimeOffset ParseTimestamp(string value)
     {

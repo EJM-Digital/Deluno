@@ -70,7 +70,7 @@ public class SeriesWorkflowServiceTests
             upgradeUntilCutoff: false,
             upgradeUnknownItems: false);
 
-        Assert.Equal("waiting", result.WantedStatus);
+        Assert.Equal("covered", result.WantedStatus);
     }
 
     [Fact]
@@ -109,7 +109,7 @@ public class SeriesWorkflowServiceTests
             upgradeUntilCutoff: false,
             upgradeUnknownItems: false);
 
-        Assert.Equal("waiting", result.WantedStatus);
+        Assert.Equal("covered", result.WantedStatus);
     }
 
     // ── EvaluateCandidate ─────────────────────────────────────────────────────

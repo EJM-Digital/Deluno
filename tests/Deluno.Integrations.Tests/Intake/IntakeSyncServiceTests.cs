@@ -142,7 +142,7 @@ public sealed class IntakeSyncServiceTests
         metadata.Setup(provider => provider.SearchAsync(It.IsAny<MetadataLookupRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
         decisions.Setup(service => service.DecideWantedState(It.IsAny<MediaWantedDecisionInput>()))
-            .Returns(new LibraryQualityDecision("wanted", "Missing from the library.", false, null, "WEBDL-1080p", "test"));
+            .Returns(new LibraryQualityDecision("missing", "Missing from the library.", false, null, "WEBDL-1080p", "test"));
 
         var service = new IntakeSyncService(
             platform.Object,
@@ -222,7 +222,7 @@ public sealed class IntakeSyncServiceTests
         metadata.Setup(provider => provider.SearchAsync(It.IsAny<MetadataLookupRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
         decisions.Setup(service => service.DecideWantedState(It.IsAny<MediaWantedDecisionInput>()))
-            .Returns(new LibraryQualityDecision("wanted", "Missing from the library.", false, null, "WEBDL-1080p", "test"));
+            .Returns(new LibraryQualityDecision("missing", "Missing from the library.", false, null, "WEBDL-1080p", "test"));
 
         movies.Setup(repo => repo.FindExistingIdAsync(
                 "Arrival",

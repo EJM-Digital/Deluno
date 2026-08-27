@@ -273,7 +273,7 @@ public sealed class MigrationAssistantServiceTests
         var movieLibrary = libraries.Single(item => item.MediaType == "movies");
         var tvLibrary = libraries.Single(item => item.MediaType == "tv");
         Assert.Equal("missing", (await movies.GetMovieWantedStateAsync(movie.Id, movieLibrary.Id, CancellationToken.None))!.WantedStatus);
-        Assert.Equal("waiting", (await series.GetSeriesWantedStateAsync(show.Id, tvLibrary.Id, CancellationToken.None))!.WantedStatus);
+        Assert.Equal("covered", (await series.GetSeriesWantedStateAsync(show.Id, tvLibrary.Id, CancellationToken.None))!.WantedStatus);
 
         var repeated = await service.ApplyAsync(request, CancellationToken.None);
         Assert.Single(await movies.ListAsync(CancellationToken.None));

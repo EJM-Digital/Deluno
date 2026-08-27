@@ -73,7 +73,7 @@ public sealed class SeriesWantedStatePersistenceTests
         await repository.EnsureWantedStateAsync(
             series.Id,
             libraryId: "series-main",
-            wantedStatus: "waiting",
+            wantedStatus: "covered",
             wantedReason: "Current file is accepted.",
             hasFile: true,
             currentQuality: "WEB 1080p",
@@ -87,10 +87,10 @@ public sealed class SeriesWantedStatePersistenceTests
         Assert.Equal(1, summary.TotalWanted);
         Assert.Equal(0, summary.MissingCount);
         Assert.Equal(0, summary.UpgradeCount);
-        Assert.Equal(1, summary.WaitingCount);
+        Assert.Equal(1, summary.CoveredCount);
         Assert.Equal(series.Id, item.SeriesId);
         Assert.Equal("series-main", item.LibraryId);
-        Assert.Equal("waiting", item.WantedStatus);
+        Assert.Equal("covered", item.WantedStatus);
         Assert.True(item.HasFile);
         Assert.True(item.QualityCutoffMet);
         Assert.Equal("WEB 1080p", item.CurrentQuality);

@@ -170,8 +170,8 @@ public sealed class CataloguePagingTests
         var anime = await movies.AddAsync(new CreateMovieRequest("Anime Feature", 2020, null), CancellationToken.None);
         var general = await movies.AddAsync(new CreateMovieRequest("General Feature", 2021, null), CancellationToken.None);
 
-        await movies.EnsureWantedStateAsync(anime.Id, "library-anime", "wanted", "missing", false, null, "WEB 1080p", false, CancellationToken.None);
-        await movies.EnsureWantedStateAsync(general.Id, "library-general", "wanted", "missing", true, "WEB 720p", "WEB 1080p", false, CancellationToken.None);
+        await movies.EnsureWantedStateAsync(anime.Id, "library-anime", "missing", "Needs a file.", false, null, "WEB 1080p", false, CancellationToken.None);
+        await movies.EnsureWantedStateAsync(general.Id, "library-general", "missing", "Needs a file.", true, "WEB 720p", "WEB 1080p", false, CancellationToken.None);
 
         var page = await movies.ListPageAsync(
             new CatalogueQuery(LibraryId: "library-anime", PageSize: 10),
@@ -256,8 +256,8 @@ public sealed class CataloguePagingTests
         var anime = await series.AddAsync(new CreateSeriesRequest("Anime Series", 2020, null), CancellationToken.None);
         var general = await series.AddAsync(new CreateSeriesRequest("General Series", 2021, null), CancellationToken.None);
 
-        await series.EnsureWantedStateAsync(anime.Id, "library-anime", "wanted", "missing", false, null, "WEB 1080p", false, CancellationToken.None);
-        await series.EnsureWantedStateAsync(general.Id, "library-general", "wanted", "missing", true, "WEB 720p", "WEB 1080p", false, CancellationToken.None);
+        await series.EnsureWantedStateAsync(anime.Id, "library-anime", "missing", "Needs a file.", false, null, "WEB 1080p", false, CancellationToken.None);
+        await series.EnsureWantedStateAsync(general.Id, "library-general", "missing", "Needs a file.", true, "WEB 720p", "WEB 1080p", false, CancellationToken.None);
 
         var page = await series.ListPageAsync(
             new CatalogueQuery(LibraryId: "library-general", PageSize: 10),
