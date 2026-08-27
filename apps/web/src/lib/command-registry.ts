@@ -59,7 +59,7 @@ export const navigationCommands: CommandItem[] = [
   {
     id: "nav.movies",
     label: "Movies",
-    keywords: ["library", "films"],
+    keywords: ["library", "movies"],
     group: "navigation",
     icon: Film,
     to: "/movies",

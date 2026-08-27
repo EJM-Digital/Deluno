@@ -59,7 +59,7 @@ public sealed record MovieListItem(
     int? VoteCount = null,
     double? ApproximateBitrateMbps = null,
     /// <summary>
-    /// The search state Deluno holds for this film, from the paged catalogue
+    /// The search state Deluno holds for this movie, from the paged catalogue
     /// query's join to the wanted state.
     ///
     /// The grid used to read these from <c>/api/movies/wanted</c>, whose
@@ -67,7 +67,7 @@ public sealed record MovieListItem(
     /// cards had no status, no reason and no target quality at all and fell back
     /// to "is there a file". A page carries its own, however deep it is.
     ///
-    /// Null throughout means Deluno is not tracking the film in any library, so
+    /// Null throughout means Deluno is not tracking the movie in any library, so
     /// there is no state to report — which is not the same as a state of "no".
     /// </summary>
     string? LibraryId = null,
@@ -78,14 +78,16 @@ public sealed record MovieListItem(
     DateTimeOffset? LastSearchUtc = null,
     DateTimeOffset? NextEligibleSearchUtc = null,
     /// <summary>
-    /// The bar under the poster, for a film: subtitle languages.
+    /// The bar under the poster: the subtitle languages you asked for.
     ///
-    /// DESIGN-001 gives every title a bar — episodes on a show, subtitle
-    /// languages on a film — proportioned to what you asked for. Four languages
-    /// and you have English is a quarter green. A title that asked for nothing
-    /// keeps a grey bar that claims nothing, rather than no bar, so the shelf
-    /// does not change shape when Subber ([#301](https://github.com/jampat000/Deluno/issues/301))
+    /// DESIGN-001 gives every title a bar, and it is subtitle
+    /// languages, proportioned to what you asked for. Two languages and you have
+    /// English is half green. A title that asked for nothing keeps a grey bar
+    /// that claims nothing, rather than no bar, so the shelf does not change
+    /// shape when Subber ([#301](https://github.com/jampat000/Deluno/issues/301))
     /// starts filling these in.
+    ///
+    /// A movie is one file, so <c>Wanted</c> is simply the languages asked for.
     ///
     /// Zero until Subber exists. The contract is here now so the mark does not
     /// have to be redesigned around it later — which is the whole reason the

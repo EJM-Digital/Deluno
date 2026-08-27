@@ -14,7 +14,7 @@ public sealed class MoviesCatalogRefreshJobHandler(
 
     // Same repair as the series twin (#245): this was a stub that reported
     // success without doing anything. It now runs the per-movie refresh so a
-    // newly added film picks up metadata and release dates without a manual
+    // newly added movie picks up metadata and release dates without a manual
     // Refresh.
     public Task<string> HandleAsync(JobQueueItem job, CancellationToken cancellationToken)
         => new MoviesMetadataRefreshJobHandler(metadataProvider, movieCatalogRepository, activityFeedRepository)

@@ -107,7 +107,7 @@ function releaseStatusLabel(wantedStatus: string | undefined, hasFile: boolean) 
  * in it. That summary's `recentItems` is `LIMIT 25`, so in a library of any
  * size the lookup missed: past the first 25 titles every card lost its status,
  * its reason, its target quality and its library and fell back to "is there a
- * file". It looked right on a rig of eleven films and would have gone quietly
+ * file". It looked right on a rig of eleven movies and would have gone quietly
  * wrong at twenty thousand. The page carries its own search state now, so the
  * twenty-thousandth card says as much as the first.
  */
@@ -148,6 +148,9 @@ export function adaptMovieItems(items: MovieListItem[]): MediaItem[] {
       hdrFormat: readString(meta, "hdrFormat"),
       releaseStatus: releaseStatusLabel(item.wantedStatus ?? undefined, item.hasFile),
       wantedStatus: item.wantedStatus ?? undefined,
+      // The subtitle bar is measured over the files a title has, so whether
+      // there is one has to travel with it. It is not a state — the mark is.
+      hasFile: item.hasFile,
       subtitleLanguagesWanted: item.subtitleLanguagesWanted,
       subtitleLanguagesHeld: item.subtitleLanguagesHeld,
       certification: readString(meta, "certification"),
@@ -217,8 +220,10 @@ export function adaptSeriesItems(items: SeriesListItem[]): MediaItem[] {
       hdrFormat: readString(meta, "hdrFormat"),
       releaseStatus: releaseStatusLabel(item.wantedStatus ?? undefined, item.hasFile),
       wantedStatus: item.wantedStatus ?? undefined,
+      hasFile: item.hasFile,
       // A show's mark is the lowest rung any *aired* episode is on, so the
-      // counts travel with it. A film leaves these undefined and gets no bar.
+      // counts travel with it. `airedWithFileCount` is also how many files the
+      // show has, which is what its subtitle bar is measured over.
       episodeCount: item.episodeCount,
       airedEpisodeCount: item.airedEpisodeCount,
       airedWithFileCount: item.airedWithFileCount,

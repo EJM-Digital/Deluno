@@ -85,18 +85,25 @@ public sealed record SeriesListItem(
     int AiredUpgradableCount = 0,
     DateTimeOffset? NextAirDateUtc = null,
     /// <summary>
-    /// The bar under the poster, for a show its episodes carry it, so these stay zero.
+    /// The bar under the poster: the subtitle languages you asked for.
     ///
-    /// DESIGN-001 gives every title a bar — episodes on a show, subtitle
-    /// languages on a film — proportioned to what you asked for. Four languages
-    /// and you have English is a quarter green. A title that asked for nothing
-    /// keeps a grey bar that claims nothing, rather than no bar, so the shelf
-    /// does not change shape when Subber ([#301](https://github.com/jampat000/Deluno/issues/301))
-    /// starts filling these in.
+    /// DESIGN-001 gives every title a bar, and it is subtitle
+    /// languages, on exactly the same terms as a movie's — which is the point:
+    /// the bar used to count aired episodes here, so one strip of pixels asked a
+    /// different question on the TV shelf than on the Movies shelf, and a show
+    /// could never show its subtitle state at all.
     ///
-    /// Zero until Subber exists. The contract is here now so the mark does not
-    /// have to be redesigned around it later — which is the whole reason the
-    /// design settled the vocabulary before the feature.
+    /// <c>Wanted</c> is the languages asked for **per episode**. <c>Held</c> is
+    /// how many are present, **summed across the episodes the show has on
+    /// disk**. Thirteen episodes with two languages asked for of each is 26
+    /// slots; four episodes short a language makes the bar 22/26 green.
+    ///
+    /// Measured only over episodes on disk. Counting the ones you are missing
+    /// would drag the bar down for a reason that is not about subtitles, and the
+    /// dot above it already says the show is Missing.
+    ///
+    /// Zero until Subber ([#301](https://github.com/jampat000/Deluno/issues/301))
+    /// exists.
     /// </summary>
     int SubtitleLanguagesWanted = 0,
     int SubtitleLanguagesHeld = 0);

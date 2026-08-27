@@ -133,29 +133,58 @@ describe("the mark on a title", () => {
   });
 
   /**
-   * The bar counts what you asked for beyond the title — episodes on a show,
-   * subtitle languages on a film. A title that asked for nothing keeps a grey
-   * bar that claims nothing, rather than none: the shelf must not change shape
-   * the day Subber starts filling subtitle languages in.
+   * The bar is subtitle languages on **both** media, and nothing else.
+   *
+   * It used to be languages on a movie and aired episodes on a show, so the
+   * same strip of pixels answered two different questions depending on which
+   * shelf you were on — and a show could never show its subtitle state at all,
+   * because its bar was already spent on episodes.
    */
-  it("counts aired episodes for a show and subtitle languages for a film", () => {
-    expect(titleBar({ airedEpisodeCount: 18, airedWithFileCount: 13 }))
-      .toEqual({ held: 13, wanted: 18, noun: "aired episodes" });
+  it("asks the same question of a movie and of a show", () => {
+    // A movie: one file, two languages asked for, one held.
+    expect(titleBar({ hasFile: true, subtitleLanguagesWanted: 2, subtitleLanguagesHeld: 1 }))
+      .toEqual({ held: 1, wanted: 2, noun: "subtitle languages" });
 
-    expect(titleBar({ subtitleLanguagesWanted: 4, subtitleLanguagesHeld: 1 }))
-      .toEqual({ held: 1, wanted: 4, noun: "subtitle languages" });
+    // A show: thirteen episodes held, the same two languages asked for of each,
+    // twenty-two of the twenty-six slots filled.
+    expect(titleBar({ airedWithFileCount: 13, subtitleLanguagesWanted: 2, subtitleLanguagesHeld: 22 }))
+      .toEqual({ held: 22, wanted: 26, noun: "subtitle languages" });
   });
 
-  it("claims nothing when nothing was asked for", () => {
-    // A film with no subtitle languages configured — every film, until #301.
+  /**
+   * The rule that keeps the bar about subtitles: only the files you actually
+   * have are counted. Counting the five episodes you are missing would drag the
+   * bar down for a reason that has nothing to do with subtitles — and the dot
+   * above it already says the show is Missing.
+   */
+  it("measures only over the files a title actually has", () => {
+    // Eighteen aired, thirteen held. The bar asks about thirteen.
+    expect(titleBar({ airedEpisodeCount: 18, airedWithFileCount: 13, subtitleLanguagesWanted: 2 }).wanted)
+      .toBe(26);
+
+    // A show with nothing on disk has no subtitles to be short of.
+    expect(titleBar({ airedEpisodeCount: 18, airedWithFileCount: 0, subtitleLanguagesWanted: 2 }).wanted)
+      .toBe(0);
+
+    // And neither has a movie with no file.
+    expect(titleBar({ hasFile: false, subtitleLanguagesWanted: 2 }).wanted).toBe(0);
+  });
+
+  /**
+   * Episode counts are no longer drawn on a poster. A show that asked for no
+   * languages claims nothing, exactly as a movie does — which is the whole
+   * point of making the two shelves agree.
+   */
+  it("claims nothing when no languages were asked for", () => {
     expect(titleBar({}).wanted).toBe(0);
-    expect(titleBar({ airedEpisodeCount: 0 }).wanted).toBe(0);
+    expect(titleBar({ airedEpisodeCount: 18, airedWithFileCount: 13 }).wanted).toBe(0);
+    expect(titleBar({ hasFile: true }).wanted).toBe(0);
   });
 
   it("never counts more held than asked for", () => {
-    // An episode count that has shrunk under a stale file count would otherwise
-    // draw a bar past its own end.
-    expect(titleBar({ airedEpisodeCount: 3, airedWithFileCount: 9 }).held).toBe(3);
+    // A stale held count would otherwise draw a bar past its own end.
+    expect(titleBar({ airedWithFileCount: 3, subtitleLanguagesWanted: 1, subtitleLanguagesHeld: 9 }).held)
+      .toBe(3);
   });
 
   it("climbs in the order the design settled", () => {
@@ -333,5 +362,55 @@ describe("the retired words stay retired", () => {
     }
 
     expect(offenders).toEqual([]);
+  });
+});
+
+/**
+ * The bug that got past both of the guards above, and past me.
+ *
+ * `dashboard-hero.tsx` coloured a count with
+ * `TITLE_MARK_PRESENTATION[mark].dot.replace("bg-", "text-")`. It reads like it
+ * cannot drift — it is derived from the one table — but the class name it
+ * produces appears nowhere in the source, and Tailwind only generates the
+ * literals it can see. `text-mark-quality-met` and `text-mark-upcoming` were
+ * purged from the stylesheet, so Quality met and Upcoming rendered with **no
+ * colour**, while Missing and Upgradable survived only because other files
+ * happen to spell out `text-destructive` and `text-success`.
+ *
+ * Half a legend, and nothing failed. A derived class name cannot be checked by
+ * the compiler, the bundler, or a test that reads source — so the rule is that
+ * classes are spelled out in the table and read from it.
+ */
+describe("classes are spelled out, never derived", () => {
+  const SOURCES = import.meta.glob("../**/*.{ts,tsx}", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
+
+  it("never builds a Tailwind class by string surgery", () => {
+    const offenders: string[] = [];
+    for (const [path, source] of Object.entries(SOURCES)) {
+      const normalized = path.replace(/^\.\./, "");
+      if (normalized.endsWith("/lib/status-tones.test.ts")) continue;
+
+      source.split("\n").forEach((line, index) => {
+        if (/^\s*(\/\/|\*|\/\*)/.test(line)) return;
+        if (/\.replace\(\s*["'`](bg-|text-|border-|ring-|fill-|stroke-)/.test(line)) {
+          offenders.push(`${normalized}:${index + 1} builds a class name at runtime — Tailwind cannot see it`);
+        }
+      });
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  /**
+   * Every mark carries a full set, and the four spellings agree. A mark whose
+   * `text` names a different colour from its `dot` would put two hues on one
+   * state — the very thing the table exists to prevent.
+   */
+  it("gives every mark a dot, a text, a tint and a custom property that agree", () => {
+    for (const [mark, presentation] of Object.entries(MARKS)) {
+      const token = presentation.dot.replace("bg-", "");
+      expect(presentation.text, `${mark} text`).toBe(`text-${token}`);
+      expect(presentation.tint, `${mark} tint`).toBe(`bg-${token}/15`);
+      expect(presentation.cssVar, `${mark} cssVar`).toBe(`--${token}`);
+    }
   });
 });

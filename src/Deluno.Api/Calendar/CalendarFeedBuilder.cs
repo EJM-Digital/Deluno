@@ -88,7 +88,7 @@ public static class CalendarFeedBuilder
         => movie.HasFile
             ? "In your library."
             : movie.Monitored
-                ? "Deluno is watching for this film."
+                ? "Deluno is watching for this movie."
                 : "Not monitored.";
 
     private static string DescribeMovieKind(string kind) => kind.ToLowerInvariant() switch

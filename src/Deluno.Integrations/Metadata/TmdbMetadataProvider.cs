@@ -1641,7 +1641,7 @@ public sealed class TmdbMetadataProvider(
         [property: JsonPropertyName("vote_average")] double? VoteAverage,
         [property: JsonPropertyName("vote_count")] int? VoteCount,
         [property: JsonPropertyName("popularity")] double? Popularity,
-        // A film has one runtime; a show has a runtime per episode, and TMDB
+        // A movie has one runtime; a show has a runtime per episode, and TMDB
         // returns a list of them because it varies. The first is the useful one.
         [property: JsonPropertyName("runtime")] int? Runtime,
         [property: JsonPropertyName("episode_run_time")] IReadOnlyList<int>? EpisodeRunTime,

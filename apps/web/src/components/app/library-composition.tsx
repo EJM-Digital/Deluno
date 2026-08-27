@@ -2,7 +2,7 @@
  * What the library is actually made of (#270).
  *
  * Four flat counters tell you the totals but not the shape: whether a library
- * is mostly film or mostly television, and how much of it Deluno is still
+ * is mostly movie or mostly television, and how much of it Deluno is still
  * chasing. A ring answers both at a glance, and each segment links to the list
  * behind it.
  *
@@ -26,8 +26,8 @@ interface Segment {
   label: string;
   value: number;
   href: string;
-  /** Token name without the `--`, e.g. "success". */
-  token: string;
+  /** The custom property, e.g. `--mark-quality-met`. Taken from the one table. */
+  cssVar: string;
 }
 
 const SIZE = 120;
@@ -51,12 +51,11 @@ export function LibraryComposition({
   showCount: number;
   className?: string;
 }) {
-  // The dot class is the token: `bg-mark-quality-met` is `--mark-quality-met`.
   const segment = (mark: TitleMark, value: number, href: string): Segment => ({
     label: TITLE_MARK_PRESENTATION[mark].label,
     value: Math.max(0, value),
     href,
-    token: TITLE_MARK_PRESENTATION[mark].dot.replace("bg-", "")
+    cssVar: TITLE_MARK_PRESENTATION[mark].cssVar
   });
 
   const segments: Segment[] = [
@@ -90,7 +89,7 @@ export function LibraryComposition({
           Library
         </span>
         <span className="text-[length:var(--type-caption)] text-muted-foreground">
-          {movieCount.toLocaleString()} films · {showCount.toLocaleString()} shows
+          {movieCount.toLocaleString()} movies · {showCount.toLocaleString()} shows
         </span>
       </header>
 
@@ -112,7 +111,7 @@ export function LibraryComposition({
                 cy={SIZE / 2}
                 r={RADIUS}
                 fill="none"
-                stroke={`hsl(var(--${arc.token}))`}
+                stroke={`hsl(var(${arc.cssVar}))`}
                 strokeWidth="10"
                 strokeDasharray={`${arc.dash} ${CIRCUMFERENCE - arc.dash}`}
                 strokeDashoffset={-arc.offset}
@@ -140,7 +139,7 @@ export function LibraryComposition({
               <span
                 aria-hidden
                 className="h-2 w-2 shrink-0 rounded-full"
-                style={{ backgroundColor: `hsl(var(--${arc.token}))` }}
+                style={{ backgroundColor: `hsl(var(${arc.cssVar}))` }}
               />
               <dt className="min-w-0 flex-1 truncate text-[length:var(--type-caption)] text-muted-foreground">
                 {arc.label}

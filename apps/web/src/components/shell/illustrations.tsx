@@ -20,7 +20,7 @@ interface IllustrationProps {
 }
 
 /* ══════════════════════════════════════════════════════
-   EMPTY LIBRARY — stacked film tiles with sparkle
+   EMPTY LIBRARY — stacked movie tiles with sparkle
 ══════════════════════════════════════════════════════ */
 export function EmptyLibraryArt({ className, size = 140 }: IllustrationProps) {
   return (
@@ -82,7 +82,7 @@ export function EmptyLibraryArt({ className, size = 140 }: IllustrationProps) {
           fill="white"
           fillOpacity="0.95"
         />
-        {/* Film sprocket holes */}
+        {/* Movie sprocket holes */}
         <rect x="62" y="32" width="6" height="3" rx="1" fill="white" fillOpacity="0.4" />
         <rect x="112" y="32" width="6" height="3" rx="1" fill="white" fillOpacity="0.4" />
         <rect x="62" y="99" width="6" height="3" rx="1" fill="white" fillOpacity="0.4" />
@@ -184,7 +184,7 @@ export function NoResultsArt({ className, size = 140 }: IllustrationProps) {
 }
 
 /* ══════════════════════════════════════════════════════
-   ERROR — broken film strip with warning glow
+   ERROR — broken movie strip with warning glow
 ══════════════════════════════════════════════════════ */
 export function ErrorArt({ className, size = 140 }: IllustrationProps) {
   return (

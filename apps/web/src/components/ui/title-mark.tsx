@@ -23,6 +23,13 @@ export interface TitleMarkInput {
   monitored: boolean;
   wantedStatus?: string | null;
   isTransferring?: boolean;
+  hasFile?: boolean;
+  /**
+   * Episode counts. They decide a show's *dot* — the lowest rung any aired
+   * episode is on — and `airedWithFileCount` also says how many files a show
+   * has, which is what its subtitle bar is measured over. They are no longer
+   * drawn on a poster themselves; the show's own page carries them.
+   */
   airedEpisodeCount?: number;
   airedWithFileCount?: number;
   airedUpgradableCount?: number;
@@ -71,8 +78,14 @@ export function TitleMarkDot({
         "inline-block shrink-0 rounded-full ring-2 ring-black/45",
         // The half is a gradient rather than two elements, so the dot stays one
         // shape at every size and keeps a hard edge down the middle.
+        // `currentColor` for the filled half, so the gradient is written once
+        // rather than five times. The colour comes from the table's own `text`
+        // class — spelled out there, because a class built here with
+        // `.replace("bg-", "text-")` is invisible to Tailwind and gets purged.
+        // That is exactly what happened to Upcoming: its half rendered with no
+        // colour at all, and nothing failed.
         half ? "bg-[linear-gradient(90deg,currentColor_0_50%,hsl(var(--mark-idle))_50%_100%)]" : presentation.dot,
-        half && presentation.dot.replace("bg-", "text-"),
+        half && presentation.text,
         className
       )}
       style={{ width: size, height: size }}
@@ -81,10 +94,12 @@ export function TitleMarkDot({
 }
 
 /**
- * The bar, on the bottom edge of a poster.
+ * The bar, on the bottom edge of a poster: the subtitle languages you asked for.
  *
- * Green up to what you have, red for the rest. What it counts depends on the
- * title: aired episodes for a show, subtitle languages for a film.
+ * Green up to what you have, red for the rest — and the same question on both
+ * shelves. It used to count aired episodes on a show, so the identical strip of
+ * pixels meant one thing on Movies and another on TV, and a show had nowhere to
+ * show its subtitles at all. See `titleBar`.
  *
  * A title that asked for nothing gets a grey bar rather than no bar. It claims
  * nothing, and the shelf keeps its shape — so nothing has to be relaid out the
@@ -97,7 +112,7 @@ export function TitleMarkBar({ item, className }: { item: TitleMarkInput; classN
     return (
       <span
         aria-hidden
-        title="Nothing asked for beyond the title itself."
+        title="No subtitle languages asked for."
         className={cn("absolute inset-x-0 bottom-0 z-10 block h-1 bg-mark-idle/50", className)}
       />
     );

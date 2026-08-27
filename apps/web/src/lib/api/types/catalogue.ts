@@ -33,7 +33,7 @@ export interface MovieListItem {
   voteCount?: number | null;
   approximateBitrateMbps?: number | null;
   /**
-   * When the film is out, and when Deluno may start looking. A release year
+   * When the movie is out, and when Deluno may start looking. A release year
    * cannot say "in cinemas but not yet obtainable"; these can.
    */
   inCinemasDate?: string | null;
@@ -175,12 +175,16 @@ export interface SeriesListItem {
   lastSearchUtc?: string | null;
   nextEligibleSearchUtc?: string | null;
   /**
-   * What the show's episodes add up to — the bar under the poster, and the rung
-   * its dot sits on.
+   * What the show's episodes add up to: the rung its dot sits on, and how many
+   * files it has for the subtitle bar to be measured over.
    *
    * Counted over what has aired, never over what will exist: an ongoing show
    * measured against its eventual episode count reads permanently unfinished,
    * which is true of every ongoing show and so tells you nothing.
+   *
+   * The poster no longer draws these. A show's bar is subtitles, exactly as a
+   * movie's is, so the two shelves ask the same question; the episode counts
+   * live on the show's own page.
    */
   episodeCount?: number;
   airedEpisodeCount?: number;
@@ -188,9 +192,18 @@ export interface SeriesListItem {
   airedUpgradableCount?: number;
   nextAirDateUtc?: string | null;
   /**
-   * The bar under the poster. Zero until Subber (#301) fills subtitle languages
-   * in; the contract is here now so the mark does not have to be redesigned
-   * around it later.
+   * The bar under the poster, on the same terms as a movie's.
+   *
+   * `Wanted` is the languages asked for **per episode**; `Held` is how many are
+   * actually present, **summed across the episodes the show has**. So a show
+   * holding 13 episodes with two languages asked for of each has 26 slots, and
+   * a bar that is 22/26 green when four of them are short one language.
+   *
+   * Measured only over episodes on disk: counting the ones you are missing
+   * would drag the bar down for a reason that is not about subtitles, and the
+   * dot above it already says the show is Missing.
+   *
+   * Zero until Subber (#301) fills these in.
    */
   subtitleLanguagesWanted?: number;
   subtitleLanguagesHeld?: number;
@@ -202,7 +215,7 @@ export interface CatalogueFacets {
   unmonitored: number;
   /**
    * Has a file, whatever its quality. Still a filter, no longer a number worth
-   * printing: a film below its target is downloaded too, so the word could never
+   * printing: a movie below its target is downloaded too, so the word could never
    * tell you which titles still had work outstanding.
    */
   downloaded: number;

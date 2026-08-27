@@ -125,8 +125,28 @@ export function statusLabel(key: StatusKey): string {
 export type TitleMark = "missing" | "downloading" | "upgrade" | "covered" | "upcoming";
 
 export interface TitleMarkPresentation {
-  /** The dot's fill, as a Tailwind background class. */
+  /**
+   * Every class spelled out, never derived.
+   *
+   * These were built at the point of use by string surgery —
+   * `presentation.dot.replace("bg-", "text-")` — which produces a class name
+   * that appears nowhere in the source. Tailwind generates only the literals it
+   * can see, so `text-mark-quality-met` and `text-mark-upcoming` were **purged
+   * from the stylesheet** and the counts that asked for them rendered with no
+   * colour at all, while `text-destructive` and `text-success` survived because
+   * other files happened to spell them out. Half a legend, silently.
+   *
+   * A derived class cannot be checked by anything: not the compiler, not the
+   * bundler, not a test that reads the source. Literals can.
+   */
+  /** The dot's fill. */
   dot: string;
+  /** The same colour as text, for a count or a label. */
+  text: string;
+  /** A faint wash of it, for a chip that is carrying the colour rather than wearing it. */
+  tint: string;
+  /** The raw custom property, for an inline `hsl(var(...))` — an SVG arc, say. */
+  cssVar: string;
   label: string;
   hint: string;
   /**
@@ -144,30 +164,45 @@ export interface TitleMarkPresentation {
 export const TITLE_MARK_PRESENTATION: Record<TitleMark, TitleMarkPresentation> = {
   missing: {
     dot: "bg-destructive",
+    text: "text-destructive",
+    tint: "bg-destructive/15",
+    cssVar: "--destructive",
     label: "Missing",
     hint: "It is out and Deluno does not have it yet. Deluno searches for this on its schedule.",
     canBeHalf: true
   },
   downloading: {
     dot: "bg-info",
+    text: "text-info",
+    tint: "bg-info/15",
+    cssVar: "--info",
     label: "Downloading",
     hint: "Coming down, processing, or importing.",
     canBeHalf: false
   },
   upgrade: {
     dot: "bg-success",
+    text: "text-success",
+    tint: "bg-success/15",
+    cssVar: "--success",
     label: "Upgradable",
     hint: "You have this and can watch it tonight. Deluno is still looking for a better copy.",
     canBeHalf: true
   },
   covered: {
     dot: "bg-mark-quality-met",
+    text: "text-mark-quality-met",
+    tint: "bg-mark-quality-met/15",
+    cssVar: "--mark-quality-met",
     label: "Quality met",
     hint: "This is the quality your Library Profile asked for, so Deluno has stopped looking.",
     canBeHalf: false
   },
   upcoming: {
     dot: "bg-mark-upcoming",
+    text: "text-mark-upcoming",
+    tint: "bg-mark-upcoming/15",
+    cssVar: "--mark-upcoming",
     label: "Upcoming",
     hint: "Not out yet, or the episode has not aired. Deluno will start looking on release.",
     canBeHalf: true
@@ -184,7 +219,14 @@ export const TITLE_MARK_PRESENTATION: Record<TitleMark, TitleMarkPresentation> =
  * can support.
  */
 export const UNRECOGNISED_TITLE_MARK: TitleMarkPresentation = {
-  dot: "bg-mark-upcoming",
+  // Neutral, and deliberately not a rung's colour. It borrowed Upcoming's,
+  // which was a muted slate at the time and read as "nothing to do" — then
+  // Upcoming became violet and this would have inherited a hue that claims a
+  // place on the ladder for a state nobody here understands.
+  dot: "bg-muted-foreground",
+  text: "text-muted-foreground",
+  tint: "bg-muted-foreground/15",
+  cssVar: "--muted-foreground",
   label: "Tracked",
   hint: "Deluno holds this title but does not recognise its current state.",
   canBeHalf: false
@@ -192,7 +234,7 @@ export const UNRECOGNISED_TITLE_MARK: TitleMarkPresentation = {
 
 /**
  * The mark a stored wanted status names, for a title judged on its own row — an
- * episode, or a film, which has no episodes to be judged on instead.
+ * episode, or a movie, which has no episodes to be judged on instead.
  *
  * This used to be a second table, `WANTED_STATUS_PRESENTATION`, carrying its own
  * tones: Missing was blue there and red on the poster, Quality met green there
@@ -231,7 +273,7 @@ export function lowestMark(marks: readonly TitleMark[]): TitleMark | null {
  * The rung a title is on, from what Deluno actually knows about it.
  *
  * Deliberately not derived from `hasFile` alone, which is all the availability
- * chip ever had and is why an imported film could read *Downloading* (#299) and
+ * chip ever had and is why an imported movie could read *Downloading* (#299) and
  * a below-target one read the same as a finished one. The stored wanted status
  * says which of the four the title is on; live transfer state, when there is
  * any, outranks all of them because a transfer is happening now.
@@ -275,47 +317,69 @@ export function titleMark(item: {
 }
 
 /**
- * What you asked for beyond the title, and how much of it is here.
+ * The subtitle languages you asked for, and how many of them are actually here.
  *
- * Episodes on a show, subtitle languages on a film — DESIGN-001 gives both the
- * same bar, because both are "the extras you asked for" rather than the title
- * itself. A film short of a language is still Quality met: the bar measures the
- * extras, the dot is the title.
+ * **The bar is subtitles on both media, and nothing else.** It used to be
+ * subtitle languages on a movie and *aired episodes* on a show, which meant one
+ * strip of pixels on one shelf answered two different questions depending on
+ * which shelf you were looking at — and a show could never show its subtitle
+ * state at all, because its bar was already spent.
  *
- * Counted over what has **aired**, never what will exist, or every ongoing show
- * reads permanently unfinished, which is true of all of them and so says
- * nothing about any.
+ * A movie is one file with the languages you asked for. A show is many files
+ * with the same languages asked for of each, so it is the same sum:
  *
- * `wanted: 0` means nothing was asked for. The bar still appears, in grey,
- * claiming nothing — so a shelf does not change shape the day Subber (#301)
- * starts filling subtitle languages in.
+ *     movie:  held / wanted                       (1 file)
+ *     show:   sum(held per episode) / (episodes you hold x wanted)
+ *
+ * **Counted only over the files you actually have.** Counting the episodes you
+ * are missing would drag the bar down for a reason that has nothing to do with
+ * subtitles, and the dot above it is already saying that — a show short of an
+ * episode is Missing, in red, at the top of the same poster.
+ *
+ * Episode counts do not appear on a poster at all now. They are on the show's
+ * own page, where the season list already lives.
+ *
+ * `wanted: 0` means nothing was asked for — every title, until Subber (#301).
+ * The bar still appears, in grey, claiming nothing, so a shelf does not change
+ * shape the day the numbers start arriving.
  */
 export interface TitleBar {
   held: number;
   wanted: number;
   /** What the bar is counting, for the label a reader gets on hover. */
-  noun: "aired episodes" | "subtitle languages";
+  noun: "subtitle languages";
 }
 
 export function titleBar(item: {
+  /**
+   * Deliberately ignored. A show's aired count used to *be* the bar; it is on
+   * the show's own page now, and accepting it here without reading it is what
+   * stops a caller quietly re-introducing it.
+   */
   airedEpisodeCount?: number;
+  /** Held episodes, for a show. Absent on a movie. */
   airedWithFileCount?: number;
+  /** Whether the title itself is on disk. A movie with no file holds nothing. */
+  hasFile?: boolean;
+  /** Languages asked for, per file. */
   subtitleLanguagesWanted?: number;
+  /** Languages actually held, summed across the files the title has. */
   subtitleLanguagesHeld?: number;
 }): TitleBar {
-  // A show is measured by its episodes; a film has none, so it falls through to
-  // what Subber will fill in.
-  if (typeof item.airedEpisodeCount === "number" && item.airedEpisodeCount > 0) {
-    return {
-      held: Math.min(item.airedWithFileCount ?? 0, item.airedEpisodeCount),
-      wanted: item.airedEpisodeCount,
-      noun: "aired episodes"
-    };
-  }
+  const perFile = Math.max(0, item.subtitleLanguagesWanted ?? 0);
+  const held = Math.max(0, item.subtitleLanguagesHeld ?? 0);
+
+  // A show is judged over the episodes it holds; a movie over its one file. The
+  // `airedWithFileCount` field is what tells the two apart — a movie has none.
+  const files = typeof item.airedWithFileCount === "number"
+    ? Math.max(0, item.airedWithFileCount)
+    : item.hasFile === false ? 0 : 1;
+
+  const wanted = perFile * files;
 
   return {
-    held: item.subtitleLanguagesHeld ?? 0,
-    wanted: item.subtitleLanguagesWanted ?? 0,
+    held: Math.min(held, wanted),
+    wanted,
     noun: "subtitle languages"
   };
 }

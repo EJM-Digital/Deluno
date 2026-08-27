@@ -2,11 +2,12 @@ import React, { useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Star } from "lucide-react";
 import type { MediaItem } from "../../lib/media-types";
-import { formatBytesFromGb } from "../../lib/utils";
+import { cn, formatBytesFromGb } from "../../lib/utils";
 import { Badge } from "../ui/badge";
 import { Checkbox } from "../ui/checkbox";
 import { PosterArtwork, shortQuality } from "./library-grid";
 import { TitleMarkLabel } from "../ui/title-mark";
+import { titleBar } from "../../lib/status-tones";
 
 export function LibraryTable(
 {
@@ -133,6 +134,10 @@ export function LibraryTable(
             <th scope="col" className="col-sticky" style={{ left: 40, minWidth: 280 }}>Title</th>
             <th scope="col" className="hidden md:table-cell">Quality</th>
             <th scope="col">Status</th>
+            {/* The same question the poster's bar asks, in words. The list had
+                no subtitle state at all, so the two views of one library
+                disagreed about what they could tell you (DESIGN-001, #301). */}
+            <th scope="col" className="hidden lg:table-cell">Subtitles</th>
             <th scope="col" className="hidden lg:table-cell">Genre</th>
             <th scope="col" className="num hidden lg:table-cell">Size</th>
             <th scope="col" className="num hidden md:table-cell">Rating</th>
@@ -140,7 +145,7 @@ export function LibraryTable(
           </tr>
         </thead>
         <tbody>
-          {virtualRows.length > 0 && virtualRows[0].start > 0 ? <tr aria-hidden="true"><td colSpan={8} style={{ height: virtualRows[0].start, padding: 0 }} /></tr> : null}
+          {virtualRows.length > 0 && virtualRows[0].start > 0 ? <tr aria-hidden="true"><td colSpan={9} style={{ height: virtualRows[0].start, padding: 0 }} /></tr> : null}
           {virtualRows.map((virtualRow) => {
             const index = virtualRow.index;
             const item = items[index];
@@ -197,6 +202,9 @@ export function LibraryTable(
                 <td>
                   <TitleMarkLabel item={item} />
                 </td>
+                <td className="hidden lg:table-cell">
+                  <SubtitleCell item={item} />
+                </td>
                 <td className="hidden text-muted-foreground lg:table-cell">
                   {item.genres.slice(0, 2).join(", ")}
                 </td>
@@ -213,10 +221,43 @@ export function LibraryTable(
               </tr>
             );
           })}
-          {virtualRows.length > 0 && rowVirtualizer.getTotalSize() - virtualRows.at(-1)!.end > 0 ? <tr aria-hidden="true"><td colSpan={8} style={{ height: rowVirtualizer.getTotalSize() - virtualRows.at(-1)!.end, padding: 0 }} /></tr> : null}
+          {virtualRows.length > 0 && rowVirtualizer.getTotalSize() - virtualRows.at(-1)!.end > 0 ? <tr aria-hidden="true"><td colSpan={9} style={{ height: rowVirtualizer.getTotalSize() - virtualRows.at(-1)!.end, padding: 0 }} /></tr> : null}
         </tbody>
       </table>
     </div>
+  );
+}
+
+/**
+ * The subtitle bar, in words.
+ *
+ * A list row has room for the numbers the poster can only draw, and it is the
+ * same measure: languages asked for across the files this title actually has —
+ * one for a movie, the episodes you hold for a show. A title that asked for
+ * nothing says so rather than showing "0 of 0".
+ */
+function SubtitleCell({ item }: { item: MediaItem }) {
+  const bar = titleBar(item);
+
+  if (bar.wanted <= 0) {
+    return <span className="text-muted-foreground">Not asked for</span>;
+  }
+
+  const complete = bar.held >= bar.wanted;
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 whitespace-nowrap"
+      title={`${bar.held} of ${bar.wanted} ${bar.noun}`}
+    >
+      <span
+        aria-hidden
+        className={cn("h-1.5 w-6 shrink-0 rounded-full", complete ? "bg-success" : "bg-mark-idle")}
+        style={complete ? undefined : {
+          background: `linear-gradient(to right, hsl(var(--success)) 0 ${Math.round((bar.held / bar.wanted) * 100)}%, hsl(var(--destructive)) ${Math.round((bar.held / bar.wanted) * 100)}% 100%)`
+        }}
+      />
+      <span className="tabular">{bar.held} of {bar.wanted}</span>
+    </span>
   );
 }
 

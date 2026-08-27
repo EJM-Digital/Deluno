@@ -6,8 +6,8 @@ namespace Deluno.Platform.Migrations;
 /// A search source's own answer to "how long do I have to keep sharing this?" (#288).
 ///
 /// The requirement comes from the site a release was taken from, not from the
-/// library it landed in: a film from a private tracker must keep sharing, and
-/// the same film from a public one need not. That is the piece Radarr does not
+/// library it landed in: a movie from a private tracker must keep sharing, and
+/// the same movie from a public one need not. That is the piece Radarr does not
 /// model, and the reason its users reach for a second tool to decide what is
 /// safe to delete.
 ///

@@ -15,7 +15,7 @@ public static class ReleaseNameParser
     /// <remarks>
     /// Takes the <em>last</em> year-like token rather than the first. A title
     /// can contain a number that reads as a year, and it always precedes the
-    /// real one: "Blade.Runner.2049.2017.1080p" is the 2017 release of a film
+    /// real one: "Blade.Runner.2049.2017.1080p" is the 2017 release of a movie
     /// called Blade Runner 2049, and "2001.A.Space.Odyssey.1968" is 1968.
     /// Taking the first token named the imported folder "(2049)" (#268).
     /// </remarks>

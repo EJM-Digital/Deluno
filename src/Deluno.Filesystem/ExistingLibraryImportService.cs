@@ -826,7 +826,7 @@ public sealed class ExistingLibraryImportService(
 
     private static DetectedLibraryItem ParseTitle(string raw)
     {
-        // A hyphen in a film title is meaningful, so only remove a release
+        // A hyphen in a movie title is meaningful, so only remove a release
         // group when the filename parser recognises the final token as one.
         // The same release name still reaches the catalogue repository through
         // FilePath, where these facts are persisted independently of the title.

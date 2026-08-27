@@ -41,7 +41,7 @@ public sealed record MediaWantedDecisionInput(
     /// <summary>
     /// Whether the title is out yet — released, or aired.
     ///
-    /// Without this, a film added six months before release was stored as
+    /// Without this, a movie added six months before release was stored as
     /// Missing and counted against the library from the day it was added, and
     /// every search cycle went looking for something that did not exist. It
     /// defaults to true because a caller that does not know a release date

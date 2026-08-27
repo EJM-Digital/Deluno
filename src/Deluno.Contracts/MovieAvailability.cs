@@ -1,7 +1,7 @@
 namespace Deluno.Contracts;
 
 /// <summary>
-/// Whether a film is obtainable yet, from its release dates and the rule the
+/// Whether a movie is obtainable yet, from its release dates and the rule the
 /// user chose. Deluno searching before there is anything to find wastes every
 /// cycle and fills activity with noise, so this is a real gate, not a label.
 /// </summary>
@@ -39,7 +39,7 @@ public static class MovieAvailability
             default:
                 var obtainable = Earliest(digital, physical);
                 // With no digital or physical date at all, refusing to search would
-                // hide older films the provider has no release record for.
+                // hide older movies the provider has no release record for.
                 return obtainable is null ? Reached(inCinemas, today) || inCinemas is null : Reached(obtainable, today);
         }
     }

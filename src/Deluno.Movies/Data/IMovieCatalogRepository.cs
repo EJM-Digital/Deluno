@@ -252,7 +252,7 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
         string minimumAvailability,
         CancellationToken cancellationToken);
 
-    /// <summary>Films with a cinema, digital or physical release inside a window.</summary>
+    /// <summary>Movies with a cinema, digital or physical release inside a window.</summary>
     Task<IReadOnlyList<MovieCalendarItem>> ListCalendarMoviesAsync(
         DateOnly fromDate,
         DateOnly toDate,

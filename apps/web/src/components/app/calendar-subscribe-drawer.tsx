@@ -89,7 +89,7 @@ export function CalendarSubscribeDrawer({ open, onOpenChange }: { open: boolean;
     >
       <DrawerSection title="What you get">
         <p className="density-help leading-relaxed text-muted-foreground">
-          A read-only feed of every episode air date and film release date Deluno knows about — the previous 30 days and the
+          A read-only feed of every episode air date and movie release date Deluno knows about — the previous 30 days and the
           next 90. Your calendar app refreshes it on its own schedule, so new episodes appear without you doing anything.
         </p>
       </DrawerSection>

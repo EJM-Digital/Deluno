@@ -16,7 +16,7 @@ public sealed record MetadataSearchResult(
     string? ImdbId,
     string? ExternalUrl,
     IReadOnlyList<MetadataCastMember>? Cast = null,
-    // Movies carry several dates and they mean different things: a film can be
+    // Movies carry several dates and they mean different things: a movie can be
     // in cinemas months before it is obtainable. `Year` alone cannot express
     // "not out yet", which is what an availability rule needs to decide.
     DateOnly? InCinemasDate = null,
@@ -35,7 +35,7 @@ public sealed record MetadataSearchResult(
     int? VoteCount = null);
 
 /// <summary>
-/// When a film can actually be obtained. A cinema date is not an availability
+/// When a movie can actually be obtained. A cinema date is not an availability
 /// date — searching on it wastes every cycle until a digital release exists.
 /// </summary>
 public sealed record MetadataReleaseDates(

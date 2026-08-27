@@ -8,7 +8,7 @@ namespace Deluno.Quality;
 /// The library list has always offered sorting and searching on codec, audio,
 /// release group and path. None of it worked, because nothing ever populated
 /// those fields — the UI read them out of a provider metadata blob, and no
-/// provider knows what codec your copy of a film uses. This is where they come
+/// provider knows what codec your copy of a movie uses. This is where they come
 /// from instead.
 ///
 /// Parsed from the name rather than probed from the file, deliberately:
@@ -56,7 +56,7 @@ public static class MediaFileNameFacts
     /// 2.0 — and never two digits run together.
     ///
     /// That separator is the whole guard. Without it "2016" reads as a 2.0
-    /// layout and every film from that year claims stereo; with it, a year, a
+    /// layout and every movie from that year claims stereo; with it, a year, a
     /// resolution and a bitrate cannot be mistaken for one. The digits either
     /// side must not themselves be digits, which is what keeps "2016.2160p"
     /// from yielding "6.2".

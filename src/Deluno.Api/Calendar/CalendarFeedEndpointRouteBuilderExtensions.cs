@@ -18,7 +18,7 @@ public static class CalendarFeedEndpointRouteBuilderExtensions
     private const int MaxWindowDays = 400;
 
     /// <summary>
-    /// A subscribable iCalendar feed of upcoming episodes and film releases —
+    /// A subscribable iCalendar feed of upcoming episodes and movie releases —
     /// the Sonarr/Radarr staple Deluno was missing (#260).
     /// </summary>
     /// <remarks>

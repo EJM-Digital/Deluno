@@ -391,7 +391,7 @@ export const BUNDLED_CUSTOM_FORMATS: BundledCF[] = [
     trashId: "ae9b7c9ebde1f3bd336a8cbd1b5fbd67",
     name: "Director's Cut",
     category: "edition",
-    description: "The director's preferred version of the film.",
+    description: "The director's preferred version of the movie.",
     defaultScore: 0,
     patterns: ["\\bDIRECTOR'?S?.?CUT\\b", "\\bDC\\b"],
   },
