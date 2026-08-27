@@ -2,6 +2,7 @@ import type { MediaItem } from "../../lib/media-types";
 import { Plus } from "lucide-react";
 import type { Density } from "../../lib/use-density";
 import type { CardSize, DisplayOptions } from "./library-grid";
+import type { SortField } from "../../lib/library-filters";
 import { ProgressiveGrid } from "./library-grid";
 import { LibraryTable } from "./library-table";
 import { EmptyState } from "../shell/empty-state";
@@ -28,22 +29,23 @@ type LibraryResultsProps = {
   displayOptions: DisplayOptions;
   selectedIds: string[];
   keyBust: string;
-  isLoadingMore: boolean;
-  hasPreviousPage: boolean;
-  hasNextPage: boolean;
+  sortField: SortField;
+  sortDirection: "asc" | "desc";
+  /** Whether the whole matching library has arrived, which is what makes an empty rail stop inert. */
+  isComplete: boolean;
   onOpenCreate: () => void;
   onClearFilters: () => void;
   onSelect: (item: MediaItem) => void;
   onToggle: (id: string) => void;
   onToggleAll: () => void;
-  onPreviousPage: () => void;
-  onNextPage: () => void;
+  /** The shelf has reached its end; fetch the next slice of the library behind it. */
+  onEndReached: () => void;
 };
 
 export function LibraryResults({
   hasLoadedOnce, items, label, singular, libraryCount, hasActiveFilter, view, cardSize, density, displayOptions, selectedIds,
-  keyBust, isLoadingMore, hasPreviousPage, hasNextPage, onOpenCreate,
-  onClearFilters, onSelect, onToggle, onToggleAll, onPreviousPage, onNextPage,
+  keyBust, sortField, sortDirection, isComplete, onOpenCreate,
+  onClearFilters, onSelect, onToggle, onToggleAll, onEndReached,
 }: LibraryResultsProps) {
   return <>
     {/*
@@ -75,16 +77,16 @@ export function LibraryResults({
         learnMore={`Deluno will track up to 100,000 ${label} without breaking a sweat.`}
       />
     ) : view === "grid" ? (
-      <ProgressiveGrid items={items} cardSize={cardSize} density={density} displayOptions={displayOptions} selectedIds={selectedIds} keyBust={keyBust} onSelect={onSelect} onToggle={onToggle} onEndReached={() => undefined} />
+      <ProgressiveGrid items={items} cardSize={cardSize} density={density} displayOptions={displayOptions} selectedIds={selectedIds} keyBust={keyBust} sortField={sortField} sortDirection={sortDirection} isComplete={isComplete} onSelect={onSelect} onToggle={onToggle} onEndReached={onEndReached} />
     ) : (
-      <GlassTile className="p-0"><LibraryTable items={items} selectedIds={selectedIds} onSelect={onSelect} onToggle={onToggle} onToggleAll={onToggleAll} allSelected={items.length > 0 && items.every((item) => selectedIds.includes(item.id))} someSelected={selectedIds.length > 0 && !items.every((item) => selectedIds.includes(item.id))} onEndReached={() => undefined} /></GlassTile>
+      <GlassTile className="p-0"><LibraryTable items={items} selectedIds={selectedIds} onSelect={onSelect} onToggle={onToggle} onToggleAll={onToggleAll} allSelected={items.length > 0 && items.every((item) => selectedIds.includes(item.id))} someSelected={selectedIds.length > 0 && !items.every((item) => selectedIds.includes(item.id))} sortField={sortField} sortDirection={sortDirection} isComplete={isComplete} onEndReached={onEndReached} /></GlassTile>
     )}
-    {items.length > 0 && (hasPreviousPage || hasNextPage) ? (
-      <div className="flex items-center justify-between gap-3 border-t border-hairline pt-3">
-        <Button type="button" variant="outline" disabled={!hasPreviousPage || isLoadingMore} onClick={onPreviousPage}>Previous 100</Button>
-        <p className="text-sm text-muted-foreground">Only this page is kept in memory.</p>
-        <Button type="button" variant="outline" disabled={!hasNextPage || isLoadingMore} onClick={onNextPage}>Next 100</Button>
-      </div>
-    ) : null}
+    {/*
+      `Previous 100` / `Next 100` and the line "Only this page is kept in
+      memory" stood here. That line was an implementation detail presented as a
+      feature, and the buttons were the feature it was defending: thirty clicks
+      to reach title 3,000 of 6,000, and Ctrl+F finding one page of a library.
+      The shelf is now the whole library, so there is nothing left to page.
+    */}
   </>;
 }

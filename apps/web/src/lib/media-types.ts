@@ -36,7 +36,10 @@ export interface MediaItem {
     kind: string | null;
   }>;
   genres: string[];
+  /** Formatted for a poster line — "12 Aug". Carries no year, so nothing can bucket by it. */
   added: string;
+  /** The same moment, unformatted, for the jump rail's Added stops. */
+  addedUtc?: string | null;
   overview: string;
   network?: string;
   libraryId?: string;

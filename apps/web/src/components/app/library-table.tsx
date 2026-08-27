@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Star } from "lucide-react";
 import type { MediaItem } from "../../lib/media-types";
@@ -9,6 +9,9 @@ import { PosterArtwork } from "./library-grid";
 import { heldQualityLabel } from "../../lib/quality-label";
 import { TitleMarkLabel } from "../ui/title-mark";
 import { titleBar } from "../../lib/status-tones";
+import { buildJumpBuckets } from "../../lib/library-buckets";
+import type { SortField } from "../../lib/library-filters";
+import { JumpRail, useJumpRail } from "./library-jump-rail";
 
 export function LibraryTable(
 {
@@ -19,6 +22,9 @@ export function LibraryTable(
   onToggleAll,
   allSelected,
   someSelected,
+  sortField,
+  sortDirection,
+  isComplete,
   onEndReached
 }: {
   items: MediaItem[];
@@ -28,6 +34,9 @@ export function LibraryTable(
   onToggleAll: () => void;
   allSelected: boolean;
   someSelected: boolean;
+  sortField: SortField;
+  sortDirection: "asc" | "desc";
+  isComplete: boolean;
   onEndReached: () => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -114,8 +123,15 @@ export function LibraryTable(
     }
   }
 
+  const buckets = useMemo(
+    () => buildJumpBuckets(items, sortField, sortDirection),
+    [items, sortDirection, sortField]
+  );
+  const { show: showRail, activeIndex, jumpTo } = useJumpRail(rowVirtualizer, 1, virtualRows);
+
   return (
-    <div ref={scrollRef} className="max-h-[calc(100dvh-260px)] overflow-auto">
+    <div className="flex items-stretch gap-1">
+    <div ref={scrollRef} className="max-h-[calc(100dvh-260px)] min-w-0 flex-1 overflow-auto">
       <table
         ref={tableRef}
         className="data-table min-w-[900px] text-[length:var(--type-body-sm)]"
@@ -251,6 +267,8 @@ export function LibraryTable(
         </tbody>
       </table>
     </div>
+      {showRail ? <JumpRail buckets={buckets} activeIndex={activeIndex} isComplete={isComplete} onJump={jumpTo} /> : null}
+    </div>
   );
 }
 
@@ -259,14 +277,24 @@ export function LibraryTable(
  *
  * A list row has room for the numbers the poster can only draw, and it is the
  * same measure: languages asked for across the files this title actually has —
- * one for a movie, the episodes you hold for a show. A title that asked for
- * nothing says so rather than showing "0 of 0".
+ * one for a movie, the episodes you hold for a show.
+ *
+ * When there is nothing to measure this prints an em dash, exactly as Quality
+ * and Size do on the same row. It used to print "Not asked for", which was true
+ * of a library that wants no subtitles and a **lie** about every missing title
+ * in a library that does: the row asked for two languages and had no file to
+ * carry them, and the cell said nobody had asked.
+ *
+ * James: *"we need to stop using not asked for… if it doesn't have it it's
+ * missing plain and simple."* The row already says Missing, in the Status
+ * column, once. Saying it again here would be the same defect from the other
+ * side.
  */
 function SubtitleCell({ item }: { item: MediaItem }) {
   const bar = titleBar(item);
 
   if (bar.wanted <= 0) {
-    return <span className="text-muted-foreground">Not asked for</span>;
+    return <span className="text-muted-foreground">—</span>;
   }
 
   const complete = bar.held >= bar.wanted;

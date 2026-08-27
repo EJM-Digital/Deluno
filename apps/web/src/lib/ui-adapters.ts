@@ -156,6 +156,7 @@ export function adaptMovieItems(items: MovieListItem[]): MediaItem[] {
       ratings: item.ratings ?? [],
       genres,
       added: new Date(item.createdUtc).toLocaleDateString([], { month: "short", day: "numeric" }),
+      addedUtc: item.createdUtc,
       overview: item.overview ?? `${item.title} is tracked inside Deluno with live search state, monitoring, and acquisition history.`,
       libraryId: item.libraryId ?? undefined,
       wantedReason: item.wantedReason ?? undefined,
@@ -227,6 +228,7 @@ export function adaptSeriesItems(items: SeriesListItem[]): MediaItem[] {
       ratings: item.ratings ?? [],
       genres,
       added: new Date(item.createdUtc).toLocaleDateString([], { month: "short", day: "numeric" }),
+      addedUtc: item.createdUtc,
       overview: item.overview ?? `${item.title} is tracked inside Deluno with episode inventory, wanted state, and acquisition context.`,
       // Hardcoded to undefined because nothing ever sent one. The broker does
       // now — it is what Sonarr lets you organise a library by.

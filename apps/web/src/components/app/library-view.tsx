@@ -54,6 +54,23 @@ const catalogueCache = new Map<string, { items: MediaItem[]; totalCount: number;
 /** Only the most recent snapshot is worth keeping; this is an anti-flash buffer, not a store. */
 const CATALOGUE_CACHE_LIMIT = 8;
 
+/**
+ * The first slice is small so the shelf paints at once; the slices behind it are
+ * as large as the API will bind, because they are the difference between a
+ * twenty-thousand-title library arriving in forty requests and in two hundred.
+ * Both are the same keyset query — nothing about the page changed, only how many
+ * the client asks for and what it does with them.
+ */
+const FIRST_PAGE_SIZE = 100;
+const FILL_PAGE_SIZE = 500;
+
+/**
+ * The snapshot is an anti-flash buffer, so it keeps the first slice and not the
+ * library. Remembering twenty thousand adapted titles per query, eight queries
+ * deep, would be a cache larger than the thing it is smoothing over.
+ */
+const CATALOGUE_CACHE_ITEMS = FIRST_PAGE_SIZE;
+
 function rememberCatalogue(key: string, entry: { items: MediaItem[]; totalCount: number; facets: CatalogueFacets | null }) {
   catalogueCache.delete(key);
   catalogueCache.set(key, entry);
@@ -101,8 +118,8 @@ export function LibraryView({
     monitoring, setMonitoring, customFilters, setCustomFilters, clearCustomFilters
   } = useLibraryFilters(variant, searchParams.get("filter"));
 
-  const buildCatalogueParams = useCallback((pageToken?: string) => {
-    const params = new URLSearchParams({ pageSize: "100", sort: sortField, direction: sortDirection });
+  const buildCatalogueParams = useCallback((pageToken?: string, pageSize = FIRST_PAGE_SIZE) => {
+    const params = new URLSearchParams({ pageSize: String(pageSize), sort: sortField, direction: sortDirection });
     if (pageToken) params.set("pageToken", pageToken);
     if (query.trim()) params.set("search", query.trim());
     if (quickFilter !== "all") params.set("status", quickFilter);
@@ -130,12 +147,14 @@ export function LibraryView({
   const [totalCount, setTotalCount] = useState(() => seeded?.totalCount ?? 0);
   const [facets, setFacets] = useState<CatalogueFacets | null>(() => seeded?.facets ?? null);
   const [nextPageToken, setNextPageToken] = useState<string | null>(null);
-  const [currentPageToken, setCurrentPageToken] = useState<string | null>(null);
-  const [previousPageTokens, setPreviousPageTokens] = useState<Array<string | null>>([]);
   const [isCatalogueLoading, setIsCatalogueLoading] = useState(() => seeded === undefined);
   const hasLoadedOnceRef = useRef(seeded !== undefined);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(() => seeded !== undefined);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  // One background fill at a time. The loop below and the shelf's own
+  // end-of-list nudge both continue from the same token, and without this they
+  // would continue from it twice and append the same hundred titles.
+  const isFillingRef = useRef(false);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [isUpdatingMetadata, setIsUpdatingMetadata] = useState(false);
   const [isSearchingShown, setIsSearchingShown] = useState(false);
@@ -175,13 +194,30 @@ export function LibraryView({
     isSearchingMetadata, setIsSearchingMetadata, metadataSearchSequence
   } = useLibraryCreate(variant, searchParams.get("add") === "true");
 
+  /**
+   * One page of whichever catalogue this view is showing.
+   *
+   * Written once because it was written six times: every load path spelled out
+   * the same `variant === "movies" ? fetch movies : fetch series` and adapted
+   * the result itself, which is the shape every defect worth finding in this
+   * codebase has had — one rule in several places that cannot check each other.
+   */
+  const fetchCataloguePage = useCallback(async (params: URLSearchParams) => {
+    if (variant === "movies") {
+      const page = await fetchJson<CataloguePage<MovieListItem>>(`/api/movies/page?${params}`);
+      return { items: adaptMovieItems(page.items), page };
+    }
+
+    const page = await fetchJson<CataloguePage<SeriesListItem>>(`/api/series/page?${params}`);
+    return { items: adaptSeriesItems(page.items), page };
+  }, [variant]);
+
   useEffect(() => {
     let cancelled = false;
     // Keep the previous page visible while the next one loads (#265): zeroing
     // here flashed a "0 total" header and empty grid on every visit. Stale
     // cross-variant rows cannot appear — the `key` on LibraryView remounts the
-    // component per variant. Only pagination is reset so "load more" cannot
-    // run against a stale token mid-reload.
+    // component per variant.
     //
     // A snapshot of *this* query, if we have one, is shown at once; results
     // from a different query are never replayed here (#270).
@@ -192,41 +228,63 @@ export function LibraryView({
       setFacets(remembered.facets);
     }
     setNextPageToken(null);
-    setCurrentPageToken(null);
-    setPreviousPageTokens([]);
     setIsCatalogueLoading(true);
+    isFillingRef.current = false;
     // The delay is a debounce for typing in the search box; the first load of
     // a mounted view has nothing to debounce and used to eat it as pure lag.
     const delay = hasLoadedOnceRef.current ? 250 : 0;
+    let firstSliceLanded = false;
     const timer = window.setTimeout(async () => {
-      const params = buildCatalogueParams();
       try {
-        if (variant === "movies") {
-          const page = await fetchJson<CataloguePage<MovieListItem>>(`/api/movies/page?${params}`);
-          if (cancelled) return;
-          const items = adaptMovieItems(page.items);
-          setLibraryItems(items);
-          setTotalCount(page.totalCount ?? 0);
-          setFacets(page.facets);
-          setNextPageToken(page.nextPageToken);
-          setCurrentPageToken(null);
-          setPreviousPageTokens([]);
-          rememberCatalogue(cacheKeyRef.current, { items, totalCount: page.totalCount ?? 0, facets: page.facets });
-        } else {
-          const page = await fetchJson<CataloguePage<SeriesListItem>>(`/api/series/page?${params}`);
-          if (cancelled) return;
-          const items = adaptSeriesItems(page.items);
-          setLibraryItems(items);
-          setTotalCount(page.totalCount ?? 0);
-          setFacets(page.facets);
-          setNextPageToken(page.nextPageToken);
-          setCurrentPageToken(null);
-          setPreviousPageTokens([]);
-          rememberCatalogue(cacheKeyRef.current, { items, totalCount: page.totalCount ?? 0, facets: page.facets });
-        }
+        const { items, page } = await fetchCataloguePage(buildCatalogueParams());
+        if (cancelled) return;
+
+        setLibraryItems(items);
+        setTotalCount(page.totalCount ?? 0);
+        setFacets(page.facets);
+        setNextPageToken(page.nextPageToken);
         setSelectedIds([]);
+        firstSliceLanded = true;
+        rememberCatalogue(cacheKeyRef.current, {
+          items: items.slice(0, CATALOGUE_CACHE_ITEMS),
+          totalCount: page.totalCount ?? 0,
+          facets: page.facets
+        });
+        hasLoadedOnceRef.current = true;
+        setHasLoadedOnce(true);
+        setIsCatalogueLoading(false);
+
+        /*
+          And then the rest of it, behind the shelf the reader is already using.
+
+          This is the whole of #312. The query is unchanged — the same keyset
+          seek, so slice four hundred costs what slice one costs — and what
+          changed is that the client appends instead of replacing. One list, one
+          scrollbar, Ctrl+F over the library rather than over a page of it, and
+          a rail that can only be drawn because the rows are all here.
+
+          Only the DOM is bounded, by the virtualiser, which is why this is
+          faster than Radarr rather than the same trade: Radarr's three to five
+          seconds is twenty thousand poster elements, not twenty thousand
+          objects.
+        */
+        isFillingRef.current = true;
+        let token = page.nextPageToken;
+        setIsLoadingMore(Boolean(token));
+        while (!cancelled && token) {
+          const slice = await fetchCataloguePage(buildCatalogueParams(token, FILL_PAGE_SIZE));
+          if (cancelled) return;
+          setLibraryItems((current) => [...current, ...slice.items]);
+          token = slice.page.nextPageToken;
+          setNextPageToken(token);
+        }
       } catch {
-        if (!cancelled) {
+        if (cancelled) return;
+        // A slice that fails leaves the shelf holding what did arrive rather
+        // than emptying it; only a failed *first* slice means "we have nothing".
+        if (firstSliceLanded) {
+          toast.error("Could not load the rest of the library.");
+        } else {
           setLibraryItems([]);
           setTotalCount(0);
           setFacets(null);
@@ -235,65 +293,41 @@ export function LibraryView({
           toast.error("Could not load the library.");
         }
       } finally {
+        isFillingRef.current = false;
         if (!cancelled) {
           hasLoadedOnceRef.current = true;
           setHasLoadedOnce(true);
           setIsCatalogueLoading(false);
+          setIsLoadingMore(false);
         }
       }
     }, delay);
     return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [buildCatalogueParams, refreshVersion, setSelectedIds, variant]);
+  }, [buildCatalogueParams, fetchCataloguePage, refreshVersion, setSelectedIds, variant]);
 
-  async function loadNextCataloguePage() {
-    if (!nextPageToken || isLoadingMore || isCatalogueLoading) return;
+  /**
+   * The shelf reaching its end while titles are still outstanding.
+   *
+   * The background fill above normally gets there first, so this is the nudge
+   * for when it did not — a failed slice, or a reader who scrolls faster than
+   * the library arrives. It continues from the same token behind the same
+   * guard, so it can only ever be the fill happening sooner, never twice.
+   */
+  const loadNextCataloguePage = useCallback(async () => {
+    if (!nextPageToken || isFillingRef.current || isCatalogueLoading) return;
+    isFillingRef.current = true;
     setIsLoadingMore(true);
-    const params = buildCatalogueParams(nextPageToken);
     try {
-      if (variant === "movies") {
-        const page = await fetchJson<CataloguePage<MovieListItem>>(`/api/movies/page?${params}`);
-        setLibraryItems(adaptMovieItems(page.items));
-        setNextPageToken(page.nextPageToken);
-        setPreviousPageTokens((current) => [...current, currentPageToken]);
-        setCurrentPageToken(nextPageToken);
-      } else {
-        const page = await fetchJson<CataloguePage<SeriesListItem>>(`/api/series/page?${params}`);
-        setLibraryItems(adaptSeriesItems(page.items));
-        setNextPageToken(page.nextPageToken);
-        setPreviousPageTokens((current) => [...current, currentPageToken]);
-        setCurrentPageToken(nextPageToken);
-      }
+      const slice = await fetchCataloguePage(buildCatalogueParams(nextPageToken, FILL_PAGE_SIZE));
+      setLibraryItems((current) => [...current, ...slice.items]);
+      setNextPageToken(slice.page.nextPageToken);
     } catch {
       toast.error("Could not load more titles.");
     } finally {
+      isFillingRef.current = false;
       setIsLoadingMore(false);
     }
-  }
-
-  async function loadPreviousCataloguePage() {
-    if (previousPageTokens.length === 0 || isLoadingMore) return;
-    const previousToken = previousPageTokens[previousPageTokens.length - 1] ?? null;
-
-    setIsLoadingMore(true);
-    const params = buildCatalogueParams(previousToken ?? undefined);
-    try {
-      if (variant === "movies") {
-        const page = await fetchJson<CataloguePage<MovieListItem>>(`/api/movies/page?${params}`);
-        setLibraryItems(adaptMovieItems(page.items));
-        setNextPageToken(page.nextPageToken);
-      } else {
-        const page = await fetchJson<CataloguePage<SeriesListItem>>(`/api/series/page?${params}`);
-        setLibraryItems(adaptSeriesItems(page.items));
-        setNextPageToken(page.nextPageToken);
-      }
-      setCurrentPageToken(previousToken);
-      setPreviousPageTokens((current) => current.slice(0, -1));
-    } catch {
-      toast.error("Could not load the previous titles.");
-    } finally {
-      setIsLoadingMore(false);
-    }
-  }
+  }, [buildCatalogueParams, fetchCataloguePage, isCatalogueLoading, nextPageToken, setLibraryItems]);
 
   useEffect(() => {
     const query = createForm.title.trim();
@@ -386,6 +420,16 @@ export function LibraryView({
   // The catalogue endpoint owns filtering and ordering. A browser-side pass
   // here would quietly make the answer incomplete after the first page.
   const filtered = libraryItems;
+
+  /**
+   * Every title matching the current query is on the shelf.
+   *
+   * The jump rail is derived from those rows, so this is what separates "no
+   * titles under W" from "W has not arrived yet" — and it is the only reason
+   * the rail can be read from the shelf instead of counted a second time in
+   * SQL, where the two answers would eventually disagree.
+   */
+  const isComplete = hasLoadedOnce && !isCatalogueLoading && nextPageToken === null;
 
   const selectedCount = selectedIds.length;
   const label = variant === "movies" ? "movies" : "TV shows";
@@ -895,6 +939,7 @@ export function LibraryView({
           <LibrarySelectAllToggle
             totalCount={totalCount}
             loadedCount={libraryItems.length}
+            isLoadingMore={isLoadingMore}
             filteredCount={filtered.length}
             selectedCount={selectedCount}
             allVisibleSelected={filtered.length > 0 && filtered.every((item) => selectedIds.includes(item.id))}
@@ -929,9 +974,9 @@ export function LibraryView({
           displayOptions={displayOptions}
           selectedIds={selectedIds}
           keyBust={`${cardSize}-${libraryId ?? "all"}-${quickFilter}-${monitoring}-${query}-${sortField}-${sortDirection}-${displayOptions.showMeta}-${displayOptions.showStatusPill}-${displayOptions.showQualityBadge}-${displayOptions.showRating}`}
-          isLoadingMore={isLoadingMore}
-          hasPreviousPage={previousPageTokens.length > 0}
-          hasNextPage={Boolean(nextPageToken)}
+          sortField={sortField}
+          sortDirection={sortDirection}
+          isComplete={isComplete}
           onOpenCreate={openCreate}
           onClearFilters={() => {
             setQuickFilter("all");
@@ -943,8 +988,7 @@ export function LibraryView({
           onSelect={openWorkspace}
           onToggle={toggleSelectedId}
           onToggleAll={toggleSelectAllVisible}
-          onPreviousPage={() => void loadPreviousCataloguePage()}
-          onNextPage={() => void loadNextCataloguePage()}
+          onEndReached={() => void loadNextCataloguePage()}
         />
         </div>
       </section>
