@@ -207,6 +207,12 @@ test.describe("dashboard workflow", () => {
     await expect(page.getByRole("button", { name: "Update all metadata", exact: true })).toBeVisible();
   });
 
+  /**
+   * The mark on a title says where the title has got to; the half says whether
+   * you are monitoring it. Those are two different facts and the poster carries
+   * both without one becoming the other — which is the whole reason monitoring
+   * is a half rather than a colour of its own (DESIGN-001).
+   */
   test("uses lifecycle status, not monitoring, for movie and TV poster markers", async ({ page }) => {
     await authenticateAndNavigate(page, "/movies");
     const token = await page.evaluate(() => sessionStorage.getItem("deluno-auth-token"));
@@ -251,18 +257,35 @@ test.describe("dashboard workflow", () => {
           const titleCard = page.getByRole("button", { name: new RegExp(title) }).last();
           await expect(titleCard).toBeVisible();
 
+          // A title with no file is Missing, and Missing is red — red is freed
+          // for it because nothing on a poster is ever a failure or a machine's
+          // health. Amber would be claiming a person has to act.
+          const markName = monitored ? "Missing" : "Missing · not monitored";
+
           await page.getByRole("button", { name: /^Display/ }).click();
           await page.getByRole("button", { name: /Medium Balanced/ }).click();
-          const mediumMarker = page.getByRole("img", { name: "Missing" });
-          await expect(mediumMarker).toBeVisible();
-          await expect(mediumMarker.locator("span").first()).toHaveClass(/bg-warning/);
+          const mediumMark = page.getByRole("img", { name: markName, exact: true }).first();
+          await expect(mediumMark).toBeVisible();
+          await expect(mediumMark).not.toHaveClass(/bg-warning/);
+          await expect(mediumMark).not.toHaveClass(/bg-success/);
           await expect(titleCard.getByText(monitoringLabel, { exact: true })).toBeVisible();
 
+          // The same mark at every size — it was a chip at medium and a bare dot
+          // at small, so the two sizes could disagree about a title.
           await page.getByRole("button", { name: /Small More titles/ }).click();
-          const smallMarker = page.getByRole("img", { name: "Missing" });
-          await expect(smallMarker).toBeVisible();
-          await expect(smallMarker).toHaveClass(/bg-warning/);
-          await expect(smallMarker).not.toHaveClass(/bg-success/);
+          const smallMark = page.getByRole("img", { name: markName, exact: true }).first();
+          await expect(smallMark).toBeVisible();
+          await expect(smallMark).not.toHaveClass(/bg-success/);
+
+          if (monitored) {
+            // Solid: monitoring is not deciding anything against this title.
+            await expect(smallMark).toHaveClass(/bg-destructive/);
+          } else {
+            // Half: nothing will go looking for it, said on the dot itself
+            // rather than by draining its colour — three drained dots side by
+            // side are the same grey.
+            await expect(smallMark).toHaveClass(/linear-gradient/);
+          }
         } finally {
           if (created) {
             await api.post(scenario.removePath, {

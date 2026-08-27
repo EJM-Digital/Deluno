@@ -381,7 +381,9 @@ export function LibraryView({
   const monitoredCount = facets?.monitored ?? 0;
   const missingCount = facets?.missing ?? 0;
   const downloadingCount = 0;
-  const downloadedCount = facets?.downloaded ?? 0;
+  const coveredCount = facets?.covered ?? 0;
+  const upgradableCount = facets?.upgrades ?? 0;
+  const upcomingCount = facets?.upcoming ?? 0;
   const label = variant === "movies" ? "movies" : "TV shows";
   const singular = variant === "movies" ? "movie" : "TV show";
 
@@ -814,7 +816,9 @@ export function LibraryView({
           // grid is a fact once we have one.
           isLoading={(isRouteLoading || navigation.state !== "idle" || isCatalogueLoading) && !hasLoadedOnce}
           totalCount={totalCount}
-          downloadedCount={downloadedCount}
+          coveredCount={coveredCount}
+          upgradableCount={upgradableCount}
+          upcomingCount={upcomingCount}
           monitoredCount={monitoredCount}
           missingCount={missingCount}
           downloadingCount={downloadingCount}

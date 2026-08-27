@@ -195,3 +195,66 @@ export function lowestMark(marks: readonly TitleMark[]): TitleMark | null {
   }
   return lowest;
 }
+
+/**
+ * The rung a title is on, from what Deluno actually knows about it.
+ *
+ * Deliberately not derived from `hasFile` alone, which is all the availability
+ * chip ever had and is why an imported film could read *Downloading* (#299) and
+ * a below-target one read the same as a finished one. The stored wanted status
+ * says which of the four the title is on; live transfer state, when there is
+ * any, outranks all of them because a transfer is happening now.
+ *
+ * A show takes the lowest rung any *aired* episode is on, so it never overstates
+ * how well it is doing — thirteen of eighteen held is Missing, not Upgradable.
+ */
+export function titleMark(item: {
+  wantedStatus?: string | null;
+  /** Live, from download telemetry. Never inferred from a wanted status. */
+  isTransferring?: boolean;
+  airedEpisodeCount?: number;
+  airedWithFileCount?: number;
+  airedUpgradableCount?: number;
+  nextAirDateUtc?: string | null;
+}): TitleMark {
+  if (item.isTransferring) return "downloading";
+
+  // A show is judged on its episodes, which know more than its title-level row.
+  const aired = item.airedEpisodeCount;
+  if (typeof aired === "number") {
+    if (aired === 0) {
+      return item.nextAirDateUtc ? "upcoming" : "missing";
+    }
+    const held = item.airedWithFileCount ?? 0;
+    if (held < aired) return "missing";
+    if ((item.airedUpgradableCount ?? 0) > 0) return "upgrade";
+    return "covered";
+  }
+
+  switch (item.wantedStatus) {
+    case "covered":
+      return "covered";
+    case "upgrade":
+      return "upgrade";
+    case "upcoming":
+      return "upcoming";
+    default:
+      return "missing";
+  }
+}
+
+/**
+ * How much of what you asked for beyond the title is here — episodes on a show.
+ *
+ * Counts what has **aired**, never what will exist, or every ongoing show reads
+ * permanently unfinished, which is true of all of them and so says nothing.
+ * Returns null when nothing was asked for, and the bar then claims nothing.
+ */
+export function titleBarFraction(item: {
+  airedEpisodeCount?: number;
+  airedWithFileCount?: number;
+}): number | null {
+  const aired = item.airedEpisodeCount;
+  if (typeof aired !== "number" || aired <= 0) return null;
+  return Math.min(1, Math.max(0, (item.airedWithFileCount ?? 0) / aired));
+}

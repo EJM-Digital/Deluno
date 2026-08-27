@@ -26,13 +26,19 @@ export interface SavedFilterPreset {
   displayOptions: DisplayOptions;
 }
 
+/**
+ * "Downloaded" is gone: a film below its target quality is downloaded too, so
+ * the chip selected a set nobody was actually asking for. *Upgradable* and
+ * *Missing* between them say what it was reaching for, and say which of them
+ * still needs work. The labels are the mark names, so the chip and the dot on
+ * the poster it filters to are the same word.
+ */
 export const quickFilterConfig: Array<{ key: QuickFilter; label: string }> = [
   { key: "all", label: "All" },
   { key: "monitored", label: "Monitored" },
   { key: "unmonitored", label: "Unmonitored" },
-  { key: "downloaded", label: "Downloaded" },
   { key: "missing", label: "Missing" },
-  { key: "upgrades", label: "Upgrades" }
+  { key: "upgrades", label: "Upgradable" }
 ];
 
 export const sortFieldOptions: Array<{ value: SortField; label: string }> = [

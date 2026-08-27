@@ -186,9 +186,18 @@ export interface CatalogueFacets {
   all: number;
   monitored: number;
   unmonitored: number;
+  /**
+   * Has a file, whatever its quality. Still a filter, no longer a number worth
+   * printing: a film below its target is downloaded too, so the word could never
+   * tell you which titles still had work outstanding.
+   */
   downloaded: number;
   missing: number;
   upgrades: number;
+  /** Has what the profile asked for. Deluno has stopped looking. */
+  covered: number;
+  /** Not out yet, so its absence is not a shortfall. */
+  upcoming: number;
 }
 
 export interface CataloguePage<T> {

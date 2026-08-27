@@ -9,9 +9,11 @@ type LibrarySummaryHeaderProps = {
   /** True only while the very first page is loading — zeros are not yet facts, so the stat line shows placeholders. */
   isLoading?: boolean;
   totalCount: number;
-  downloadedCount: number;
+  coveredCount: number;
+  upgradableCount: number;
   monitoredCount: number;
   missingCount: number;
+  upcomingCount: number;
   downloadingCount: number;
   onToggleCreate: () => void;
   isUpdatingMetadata: boolean;
@@ -39,9 +41,11 @@ export function LibrarySummaryHeader({
   singular,
   isLoading = false,
   totalCount,
-  downloadedCount,
+  coveredCount,
+  upgradableCount,
   monitoredCount,
   missingCount,
+  upcomingCount,
   downloadingCount,
   onToggleCreate,
   isUpdatingMetadata,
@@ -60,14 +64,26 @@ export function LibrarySummaryHeader({
               <span className="tabular font-semibold text-foreground">{totalCount.toLocaleString()}</span>{" "}
               {totalCount === 1 ? singular.toLowerCase() : label}
             </span>
+            {/*
+              The rungs, in the order a title climbs them, each in the colour of
+              its own mark — so the line reads as the shelf below it rather than
+              as a separate vocabulary.
+
+              "Downloaded" is gone. A film below its target is downloaded too, so
+              the word could never tell you which titles still had work
+              outstanding; "quality met" and "upgradable" can, and *3 upgradable*
+              is a to-do list in a way *3 downloaded* never was. Monitored keeps
+              its filter and loses its colour — the half on every poster already
+              says it.
+            */}
             <span className="text-muted-foreground/45">·</span>
-            <span>
-              <span className={cn("tabular font-semibold", librarySummaryTone("availability", downloadedCount))}>{downloadedCount}</span> downloaded
-            </span>
+            <span><span className="tabular font-semibold text-mark-quality-met">{coveredCount}</span> quality met</span>
+            {upgradableCount > 0 ? <><span className="text-muted-foreground/45">·</span><span><span className="tabular font-semibold text-success">{upgradableCount}</span> upgradable</span></> : null}
+            {downloadingCount > 0 ? <><span className="text-muted-foreground/45">·</span><span><span className="tabular font-semibold text-info">{downloadingCount}</span> downloading</span></> : null}
+            {missingCount > 0 ? <><span className="text-muted-foreground/45">·</span><span><span className="tabular font-semibold text-destructive">{missingCount}</span> missing</span></> : null}
+            {upcomingCount > 0 ? <><span className="text-muted-foreground/45">·</span><span><span className="tabular font-semibold text-mark-upcoming">{upcomingCount}</span> upcoming</span></> : null}
             <span className="text-muted-foreground/45">·</span>
             <span><span className="tabular font-semibold text-muted-foreground">{monitoredCount}</span> monitored</span>
-            {missingCount > 0 ? <><span className="text-muted-foreground/45">·</span><span><span className="tabular font-semibold text-warning">{missingCount}</span> missing</span></> : null}
-            {downloadingCount > 0 ? <><span className="text-muted-foreground/45">·</span><span><span className="tabular font-semibold text-info">{downloadingCount}</span> downloading</span></> : null}
           </>
         )}
       </p>

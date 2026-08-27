@@ -170,6 +170,7 @@ export function adaptMovieItems(items: MovieListItem[]): MediaItem[] {
       language: readString(meta, "language"),
       hdrFormat: readString(meta, "hdrFormat"),
       releaseStatus: releaseStatusLabel(item.wantedStatus ?? undefined, item.hasFile),
+      wantedStatus: item.wantedStatus ?? undefined,
       certification: readString(meta, "certification"),
       collection: readString(meta, "collection"),
       minimumAvailability: readString(meta, "minimumAvailability"),
@@ -237,6 +238,14 @@ export function adaptSeriesItems(items: SeriesListItem[]): MediaItem[] {
       language: readString(meta, "language"),
       hdrFormat: readString(meta, "hdrFormat"),
       releaseStatus: releaseStatusLabel(item.wantedStatus ?? undefined, item.hasFile),
+      wantedStatus: item.wantedStatus ?? undefined,
+      // A show's mark is the lowest rung any *aired* episode is on, so the
+      // counts travel with it. A film leaves these undefined and gets no bar.
+      episodeCount: item.episodeCount,
+      airedEpisodeCount: item.airedEpisodeCount,
+      airedWithFileCount: item.airedWithFileCount,
+      airedUpgradableCount: item.airedUpgradableCount,
+      nextAirDateUtc: item.nextAirDateUtc ?? null,
       certification: readString(meta, "certification"),
       collection: readString(meta, "collection"),
       minimumAvailability: readString(meta, "minimumAvailability"),

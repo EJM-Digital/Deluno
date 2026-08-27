@@ -112,9 +112,19 @@ public sealed record CatalogueFacets(
     int All,
     int Monitored,
     int Unmonitored,
+    /// <summary>
+    /// Has a file, whatever its quality. Still a useful filter, but no longer a
+    /// number worth printing: a film below its target is downloaded too, so the
+    /// word could never tell you which titles still had work outstanding. The
+    /// four below can.
+    /// </summary>
     int Downloaded,
     int Missing,
-    int Upgrades);
+    int Upgrades,
+    /// <summary>Has what the profile asked for. Deluno has stopped looking.</summary>
+    int Covered = 0,
+    /// <summary>Not out yet, so its absence is not a shortfall.</summary>
+    int Upcoming = 0);
 
 /// <summary>
 /// The continuation token: the sort value of the last row on the page, and its
