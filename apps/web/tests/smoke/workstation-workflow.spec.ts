@@ -146,8 +146,12 @@ test.describe("dashboard workflow", () => {
     await authenticateAndNavigate(page, "/movies");
 
     await expect(page.getByRole("button", { name: "Update all metadata", exact: true })).toBeVisible();
-    await expect(page.getByRole("combobox", { name: "Library", exact: true })).toBeVisible();
-    await expect(page.getByRole("combobox", { name: "Library", exact: true })).toHaveValue("");
+    // The library picker is Deluno's own listbox rather than a native select —
+    // an OS-drawn popup could not match the menus beside it — so it reports the
+    // current choice as its label rather than as a form value.
+    const libraryPicker = page.getByRole("combobox", { name: "Library", exact: true });
+    await expect(libraryPicker).toBeVisible();
+    await expect(libraryPicker).toHaveText(/All libraries/);
     await page.getByRole("button", { name: /^Display/ }).click();
     await expect(page.getByRole("heading", { name: "Choose how your library feels" })).toBeVisible();
     await expect(page.getByRole("button", { name: /^Selected Poster grid/ })).toBeVisible();
