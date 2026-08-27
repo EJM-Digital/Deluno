@@ -138,7 +138,7 @@ export function LibraryView({
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [isUpdatingMetadata, setIsUpdatingMetadata] = useState(false);
-  const [isHuntingMissing, setIsHuntingMissing] = useState(false);
+  const [isSearchingShown, setIsSearchingShown] = useState(false);
 
   const compatibleLibraries = libraries
     .filter((library) => library.mediaType === (variant === "movies" ? "movies" : "tv"))
@@ -388,9 +388,6 @@ export function LibraryView({
   const filtered = libraryItems;
 
   const selectedCount = selectedIds.length;
-  // The chip row reads the facets directly; only Hunt still needs a number of
-  // its own, to say how many it is about to go after.
-  const missingCount = facets?.missing ?? 0;
   const label = variant === "movies" ? "movies" : "TV shows";
   const singular = variant === "movies" ? "movie" : "TV show";
 
@@ -756,55 +753,53 @@ export function LibraryView({
   }
 
   /**
-   * "Hunt N missing" used to render with no handler at all — a headline
-   * control on both media pages that did nothing (#252). It now queues the
-   * missing-search cycle for the libraries those titles belong to, which is
-   * what the bulk-search endpoint does with an explicit selection.
+   * Search exactly the titles on screen.
+   *
+   * This was "Hunt N missing", and it asked a different question from the one
+   * the shelf was answering. It ran its own catalogue query — library and sort
+   * only — so a typed search or a picked genre narrowed the shelf and the
+   * count on the button, and the hunt still searched everything missing in the
+   * library. It said "Hunt 5 missing" and searched ten.
+   *
+   * James: *"whatever is shown is what can be searched … if we create a filter
+   * for something specific we can only search that specific on screen."*
+   *
+   * So it searches `filtered` — the rows the grid is rendering, ids already in
+   * hand. That is the model, and it is also why the mismatch cannot return:
+   * there is no second query left to disagree with the first. Narrowing the
+   * shelf *is* choosing what to search.
+   *
+   * It does not filter to missing on the way out, either. Searching a title
+   * that already has a file is an upgrade search, and the acquisition pipeline
+   * decides what to do with it — the same decision it makes on the library's
+   * own cycle. Wanting only the missing ones is what the Missing chip is for.
    */
-  async function handleHuntMissing() {
-    if (isHuntingMissing || missingCount === 0) return;
-    setIsHuntingMissing(true);
-    const loadingId = toast.loading(`Hunting ${missingCount} missing ${missingCount === 1 ? singular : label}…`);
-    try {
-      // Ask the server which titles are missing rather than relying on the
-      // loaded page: the count on the button is a facet over the whole filtered
-      // set, so the rows it counts may not all be on screen.
-      //
-      // Built from the *same* params the page is built from, with the status
-      // pinned to missing. It used to construct its own — library and sort only
-      // — so the button counted one set and the action searched another: with a
-      // search typed, or a genre picked, it said "Hunt 5 missing" and hunted
-      // ten. The number and the action have to come from one question.
-      const params = buildCatalogueParams();
-      params.set("status", "missing");
-      const page = await fetchJson<CataloguePage<{ id: string }>>(
-        `/api/${variant === "movies" ? "movies" : "series"}/page?${params}`
-      );
-      const ids = page.items.map((item) => item.id);
-      if (ids.length === 0) {
-        toast.info("Nothing is missing right now.", { id: loadingId });
-        return;
-      }
+  async function handleSearchShown() {
+    const ids = filtered.map((item) => item.id);
+    if (isSearchingShown || ids.length === 0) return;
 
+    setIsSearchingShown(true);
+    const loadingId = toast.loading(`Searching for ${ids.length} ${ids.length === 1 ? singular : label}…`);
+    try {
       const response = await authedFetch(variant === "movies" ? "/api/movies/bulk/search" : "/api/series/bulk/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(variant === "movies" ? { movieIds: ids } : { seriesIds: ids })
       });
-      if (!response.ok) throw new Error("hunt-missing-failed");
+      if (!response.ok) throw new Error("search-shown-failed");
 
       const result = await response.json() as { searchesTriggered?: number; libraryCount?: number };
       const searches = result.searchesTriggered ?? 0;
       toast.success(
         searches > 0
-          ? `Searching for missing titles in ${searches} ${searches === 1 ? "library" : "libraries"}. Watch it in Transfers.`
+          ? `Searching in ${searches} ${searches === 1 ? "library" : "libraries"}. Watch it in Transfers.`
           : "No library was ready to search. Check that automation and a search source are configured.",
         { id: loadingId }
       );
     } catch {
-      toast.error("Could not start the hunt for missing titles.", { id: loadingId });
+      toast.error("Could not start the search.", { id: loadingId });
     } finally {
-      setIsHuntingMissing(false);
+      setIsSearchingShown(false);
     }
   }
 
@@ -867,12 +862,12 @@ export function LibraryView({
             <LibraryActions
               singular={singular}
               label={label}
-              missingCount={missingCount}
+              shownCount={filtered.length}
               onToggleCreate={() => showCreate ? closeCreate() : openCreate()}
               isUpdatingMetadata={isUpdatingMetadata}
               onUpdateMetadata={() => void handleUpdateAllMetadata()}
-              isHuntingMissing={isHuntingMissing}
-              onHuntMissing={() => void handleHuntMissing()}
+              isSearchingShown={isSearchingShown}
+              onSearchShown={() => void handleSearchShown()}
             />
           }
           controls={{

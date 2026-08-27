@@ -20,7 +20,8 @@ public static class MoviesDatabaseMigrations
         new V0012MovieMediaFacts(),
         new V0013MovieQualityProfileOverride(),
         new V0014MovieWantedStatusVocabulary(),
-        new V0015MovieSubtitleState()
+        new V0015MovieSubtitleState(),
+        new V0016MovieSortableFileFacts()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

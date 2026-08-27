@@ -77,15 +77,12 @@ export const QUICK_FILTER_MARK: Record<QuickFilter, TitleMark | null> = {
  * having fixed, left in place one line below it. The ten extra were
  * unreachable: nothing can set a sort the menu does not list.
  *
- * `runtime` and `popularity` are new here and were never new in the database —
- * both have had an index since V0011/V0012 and neither was ever offered.
- *
- * Size and quality are deliberately absent: they live on the wanted state,
- * which the catalogue page reaches through a correlated pick, so ordering by
- * them would run that pick for every title in the library and sort the lot.
- * See `CatalogueSortFields` for the full account.
+ * `runtime` and `popularity` were never new in the database — both have had an
+ * index since V0011/V0012 and neither was ever offered. `size` and `quality`
+ * describe the file, and V0016/V0017 keep the picked file's size and quality
+ * rank on the title's own row so ordering by them is an index walk.
  */
-export type SortField = "title" | "year" | "rating" | "added" | "runtime" | "popularity";
+export type SortField = "title" | "year" | "rating" | "added" | "runtime" | "popularity" | "size" | "quality" | "bitrate";
 export type SortDirection = "asc" | "desc";
 
 /**

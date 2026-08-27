@@ -114,23 +114,25 @@ export const monitoringFilterOptions: Array<{ value: MonitoringFilter; label: st
 /**
  * Every order the paged catalogue query can actually perform.
  *
- * Runtime and Popularity are new to this list and were never new to the
- * database — both have been indexed since V0011/V0012 and neither had ever been
- * offered, which is the same shape as the codec and release-group columns the
- * list displayed for months with nothing populating them.
+ * Runtime and Popularity were never new to the database — both have been
+ * indexed since V0011/V0012 and neither had ever been offered, the same shape
+ * as the codec and release-group columns the list displayed for months with
+ * nothing populating them.
  *
- * Size and quality are not here on purpose. They live on the wanted state,
- * which the page reaches through a correlated pick, so ordering by one would
- * run that pick for every title in the library and then sort the lot — a full
- * scan wearing a seek's clothes, invisible until the twenty-thousandth title.
- * An order that quietly costs that is worse than an order that is absent.
+ * Size and Quality describe the file rather than the title, and that is not a
+ * reason to leave them out: media is made of files. V0016 and V0017 keep the
+ * picked file's size and quality rank on the title's own row, updated by a
+ * trigger, so both are an index walk rather than a scan of the catalogue.
  */
 export const sortFieldOptions: Array<{ value: SortField; label: string; hint: string }> = [
   { value: "title", label: "Title", hint: "A to Z" },
   { value: "year", label: "Year", hint: "When it came out" },
-  { value: "rating", label: "Rating", hint: "The metadata score" },
   { value: "added", label: "Added", hint: "When you added it" },
+  { value: "size", label: "Size", hint: "How big the file is" },
+  { value: "quality", label: "Quality", hint: "By the ladder, not the alphabet" },
+  { value: "bitrate", label: "Bitrate", hint: "How much file there is per minute" },
   { value: "runtime", label: "Runtime", hint: "How long it runs" },
+  { value: "rating", label: "Rating", hint: "The metadata score" },
   { value: "popularity", label: "Popularity", hint: "How much the world is watching" }
 ];
 
@@ -198,7 +200,7 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
   label: string;
   variant: "movies" | "shows";
   facets: CatalogueFacets | null;
-  /** Add, Hunt and Refresh — the things you can do about what this row shows. */
+  /** Add, Search and Refresh — the things you can do about what this row shows. */
   actions?: React.ReactNode;
   controls: LibraryControls;
 }) {

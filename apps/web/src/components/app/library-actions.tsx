@@ -1,41 +1,46 @@
-import { Plus, RefreshCw, Zap } from "lucide-react";
+import { Plus, RefreshCw, Search } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 
 /**
- * The two things you can do about what the filter row shows, plus one
- * maintenance action.
+ * What you can do about the titles in front of you.
  *
  * This was a band of its own — `LibrarySummaryHeader` — carrying these buttons
- * above a line of counts. The counts were Missing, Monitored, Unmonitored and
- * Upgradable, every one of which is a chip a few pixels below with the same
- * number on it, so the screen stated the same four facts twice: once as
- * something you could click and once as something you could not. The chips kept
- * the numbers and gained the colours; the buttons moved into that row; the band
- * went.
+ * above a line of counts that repeated the chips a few pixels below. The chips
+ * kept the numbers and gained the colours; the buttons moved into that row.
  *
- * Two labelled actions at most, per the page grammar: the primary, and Hunt when
- * there is something to hunt. Refreshing metadata is rare maintenance, so it
- * stays an icon.
+ * **Search acts on what is on screen, and nothing else.** It used to be
+ * "Hunt N missing", which asked a different question from the one the shelf was
+ * showing: it built its own query — library and sort only — so with a search
+ * typed or a genre picked it said "Hunt 5 missing" and hunted ten. James, on
+ * seeing that: *"the way radarr does it is whatever is shown is what can be
+ * searched and I think we need to do the same, if we create a filter for
+ * something specific we can only search that specific on screen."*
+ *
+ * That is the model now, and it is also why the mismatch cannot come back:
+ * there is no second query to disagree with the first. The button searches the
+ * rows the grid is rendering, so narrowing the shelf *is* choosing what to
+ * search — Missing, one genre, under 5 GB, whatever the row above selects.
  */
 export function LibraryActions({
   label,
   singular,
-  missingCount,
+  shownCount,
   onToggleCreate,
   isUpdatingMetadata,
   onUpdateMetadata,
-  isHuntingMissing = false,
-  onHuntMissing
+  isSearchingShown = false,
+  onSearchShown
 }: {
   label: string;
   singular: string;
-  missingCount: number;
+  /** How many titles the grid is actually rendering — the same number the count line reads. */
+  shownCount: number;
   onToggleCreate: () => void;
   isUpdatingMetadata: boolean;
   onUpdateMetadata: () => void;
-  isHuntingMissing?: boolean;
-  onHuntMissing?: () => void;
+  isSearchingShown?: boolean;
+  onSearchShown?: () => void;
 }) {
   return (
     <>
@@ -43,18 +48,22 @@ export function LibraryActions({
         <Plus className="h-4 w-4" strokeWidth={2.5} />
         Add {singular}
       </Button>
-      {missingCount > 0 ? (
+      {shownCount > 0 ? (
         <Button
           type="button"
           size="sm"
           variant="secondary"
           className="gap-2"
-          onClick={onHuntMissing}
-          disabled={isHuntingMissing || !onHuntMissing}
-          title={`Search now for the ${missingCount} missing ${missingCount === 1 ? singular.toLowerCase() : label}`}
+          onClick={onSearchShown}
+          disabled={isSearchingShown || !onSearchShown}
+          title={
+            shownCount === 1
+              ? `Search now for the ${singular.toLowerCase()} on screen`
+              : `Search now for all ${shownCount} ${label} on screen. Narrow the shelf first to search fewer.`
+          }
         >
-          <Zap className={cn("h-4 w-4", isHuntingMissing && "animate-pulse")} />
-          {isHuntingMissing ? "Hunting…" : `Hunt ${missingCount} missing`}
+          <Search className={cn("h-4 w-4", isSearchingShown && "animate-pulse")} />
+          {isSearchingShown ? "Searching…" : `Search these ${shownCount}`}
         </Button>
       ) : null}
       <Button
