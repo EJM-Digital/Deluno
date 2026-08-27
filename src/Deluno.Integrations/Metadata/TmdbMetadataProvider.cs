@@ -661,8 +661,22 @@ public sealed class TmdbMetadataProvider(
     private static string BuildSearchCacheKey(string mediaType, string query, int? year, string? providerId)
         => BuildSearchCacheKey(ProviderName, mediaType, query, year, providerId);
 
+    /// <summary>
+    /// The shape of a cached metadata result, not the query.
+    ///
+    /// A cached payload written under an older shape is not a cheaper answer to
+    /// the same question — it is a *different* answer, missing whatever the
+    /// contract has learnt to carry since. When the broker gained runtime,
+    /// certification, studio, network and status, every install with a warm
+    /// cache would have kept serving results without them, and the only symptom
+    /// would have been columns that stayed empty for no visible reason.
+    ///
+    /// Bump this whenever <see cref="MetadataSearchResult"/> gains a field.
+    /// </summary>
+    private const string SearchCacheShape = "v2";
+
     private static string BuildSearchCacheKey(string source, string mediaType, string query, int? year, string? providerId)
-        => $"{source}:search:{mediaType}:{query.Trim().ToLowerInvariant()}:{year?.ToString(CultureInfo.InvariantCulture) ?? "any"}:{providerId?.Trim() ?? "none"}";
+        => $"{source}:search:{SearchCacheShape}:{mediaType}:{query.Trim().ToLowerInvariant()}:{year?.ToString(CultureInfo.InvariantCulture) ?? "any"}:{providerId?.Trim() ?? "none"}";
 
     private static void AddParameter(System.Data.Common.DbCommand command, string name, object? value)
     {
