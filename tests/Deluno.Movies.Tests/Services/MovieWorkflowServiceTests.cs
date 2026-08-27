@@ -45,7 +45,7 @@ public class MovieWorkflowServiceTests
             upgradeUntilCutoff: false,
             upgradeUnknownItems: false);
 
-        Assert.Equal("waiting", result.WantedStatus);
+        Assert.Equal("covered", result.WantedStatus);
     }
 
     [Fact]
@@ -296,7 +296,7 @@ public class MovieWorkflowServiceTests
             upgradeUntilCutoff: false,
             upgradeUnknownItems: false);
 
-        Assert.Equal("waiting", result.WantedStatus);
+        Assert.Equal("covered", result.WantedStatus);
     }
 
     [Fact]
@@ -309,7 +309,7 @@ public class MovieWorkflowServiceTests
             upgradeUntilCutoff: true,
             upgradeUnknownItems: false);
 
-        Assert.Equal("waiting", result.WantedStatus);
+        Assert.Equal("covered", result.WantedStatus);
     }
 
     [Fact]
@@ -322,7 +322,7 @@ public class MovieWorkflowServiceTests
             upgradeUntilCutoff: true,
             upgradeUnknownItems: false);
 
-        Assert.Equal("waiting", result.WantedStatus);
+        Assert.Equal("covered", result.WantedStatus);
     }
 
     [Fact]

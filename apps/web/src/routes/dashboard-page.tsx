@@ -109,7 +109,8 @@ interface DashboardLoaderData {
   showMissingCount: number;
   upcoming: DashboardUpcomingItem[];
   upgradeCount: number;
-  waitingCount: number;
+  coveredCount: number;
+  upcomingCount: number;
   automation: LibraryAutomationStateItem[];
   searchCycles: SearchCycleRunItem[];
   retryWindows: SearchRetryWindowItem[];
@@ -172,8 +173,8 @@ interface DashboardUpcomingItem {
   startsAt: string;
 }
 
-const EMPTY_MOVIE_WANTED: MovieWantedSummary = { totalWanted: 0, missingCount: 0, upgradeCount: 0, waitingCount: 0, recentItems: [] };
-const EMPTY_SERIES_WANTED: SeriesWantedSummary = { totalWanted: 0, missingCount: 0, upgradeCount: 0, waitingCount: 0, recentItems: [] };
+const EMPTY_MOVIE_WANTED: MovieWantedSummary = { totalWanted: 0, missingCount: 0, upgradeCount: 0, coveredCount: 0, upcomingCount: 0, recentItems: [] };
+const EMPTY_SERIES_WANTED: SeriesWantedSummary = { totalWanted: 0, missingCount: 0, upgradeCount: 0, coveredCount: 0, upcomingCount: 0, recentItems: [] };
 const EMPTY_TELEMETRY: DownloadTelemetryOverview = {
   summary: { activeCount: 0, queuedCount: 0, completedCount: 0, stalledCount: 0, processingCount: 0, importReadyCount: 0, totalSpeedMbps: 0, totalUploadSpeedMbps: 0, waitingForProcessorCount: 0 },
   clients: [],
@@ -265,7 +266,8 @@ function buildDashboardData(sources: DashboardSources): DashboardLoaderData {
     showMissingCount: showWanted.missingCount,
     upcoming: buildDashboardUpcoming(upcomingEpisodes, showWanted, movieWanted),
     upgradeCount: movieWanted.upgradeCount + showWanted.upgradeCount,
-    waitingCount: movieWanted.waitingCount + showWanted.waitingCount,
+    coveredCount: movieWanted.coveredCount + showWanted.coveredCount,
+    upcomingCount: movieWanted.upcomingCount + showWanted.upcomingCount,
     automation,
     searchCycles,
     retryWindows,

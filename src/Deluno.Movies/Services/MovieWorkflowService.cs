@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Deluno.Movies.Contracts;
 using Deluno.Platform.Contracts;
 using Deluno.Quality;
@@ -176,10 +177,10 @@ public sealed class MovieWorkflowService : IMovieWorkflowService
                 TargetQuality: targetQuality);
         }
 
-        if (wantedStatus == "missing")
+        if (wantedStatus == WantedStatuses.Missing)
         {
             return new MovieWorkflowDecision(
-                WantedStatus: "missing",
+                WantedStatus: WantedStatuses.Missing,
                 Reason: "This movie is missing from your library.",
                 IsReplacementAllowed: true,
                 QualityDelta: qualityDelta,
@@ -187,14 +188,14 @@ public sealed class MovieWorkflowService : IMovieWorkflowService
                 TargetQuality: targetQuality);
         }
 
-        if (wantedStatus == "upgrade")
+        if (wantedStatus == WantedStatuses.Upgrade)
         {
             var reason = qualityDelta.HasValue
                 ? $"Quality upgrade available: {candidateQuality} (+{qualityDelta})"
                 : "Quality upgrade available.";
 
             return new MovieWorkflowDecision(
-                WantedStatus: "upgrade",
+                WantedStatus: WantedStatuses.Upgrade,
                 Reason: reason,
                 IsReplacementAllowed: true,
                 QualityDelta: qualityDelta,
@@ -203,7 +204,7 @@ public sealed class MovieWorkflowService : IMovieWorkflowService
         }
 
         return new MovieWorkflowDecision(
-            WantedStatus: "waiting",
+            WantedStatus: WantedStatuses.Covered,
             Reason: "This movie is already at or above target quality.",
             IsReplacementAllowed: false,
             QualityDelta: qualityDelta,

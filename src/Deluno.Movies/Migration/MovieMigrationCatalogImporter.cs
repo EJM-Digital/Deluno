@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Platform.Contracts;
@@ -53,7 +54,7 @@ public sealed class MovieMigrationCatalogImporter(IMovieCatalogRepository reposi
             await repository.EnsureWantedStateAsync(
                 movie.Id,
                 library.Id,
-                title.SourceReportsFile ? "waiting" : "missing",
+                title.SourceReportsFile ? WantedStatuses.Covered : WantedStatuses.Missing,
                 title.SourceReportsFile
                     ? "Source reports an existing file. Deluno will keep this item waiting until a library scan reconciles its file association."
                     : "Migrated monitored item needs an accepted file.",

@@ -33,7 +33,7 @@ public sealed class LibraryQualityDeciderTests
             upgradeUntilCutoff: true,
             upgradeUnknownItems: true);
 
-        Assert.Equal("waiting", decision.WantedStatus);
+        Assert.Equal("covered", decision.WantedStatus);
         Assert.True(decision.QualityCutoffMet);
         Assert.Equal("Bluray 2160p", decision.CurrentQuality);
         Assert.Equal("WEB 1080p", decision.TargetQuality);
@@ -75,7 +75,7 @@ public sealed class LibraryQualityDeciderTests
             upgradeUntilCutoff: true,
             upgradeUnknownItems: true);
 
-        Assert.Equal("waiting", held.WantedStatus);
+        Assert.Equal("covered", held.WantedStatus);
         Assert.Equal("upgrade", upgraded.WantedStatus);
     }
 

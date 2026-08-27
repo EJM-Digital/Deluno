@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Deluno.Platform.Contracts;
 using Deluno.Quality;
 using Deluno.Series.Contracts;
@@ -216,10 +217,10 @@ public sealed class SeriesWorkflowService : ISeriesWorkflowService
                 TargetQuality: targetQuality);
         }
 
-        if (wantedStatus == "missing")
+        if (wantedStatus == WantedStatuses.Missing)
         {
             return new EpisodeWorkflowDecision(
-                WantedStatus: "missing",
+                WantedStatus: WantedStatuses.Missing,
                 Reason: "This episode is missing from your library.",
                 IsReplacementAllowed: true,
                 QualityDelta: qualityDelta,
@@ -227,14 +228,14 @@ public sealed class SeriesWorkflowService : ISeriesWorkflowService
                 TargetQuality: targetQuality);
         }
 
-        if (wantedStatus == "upgrade")
+        if (wantedStatus == WantedStatuses.Upgrade)
         {
             var reason = qualityDelta.HasValue
                 ? $"Quality upgrade available: {candidateQuality} (+{qualityDelta})"
                 : "Quality upgrade available.";
 
             return new EpisodeWorkflowDecision(
-                WantedStatus: "upgrade",
+                WantedStatus: WantedStatuses.Upgrade,
                 Reason: reason,
                 IsReplacementAllowed: true,
                 QualityDelta: qualityDelta,
@@ -243,7 +244,7 @@ public sealed class SeriesWorkflowService : ISeriesWorkflowService
         }
 
         return new EpisodeWorkflowDecision(
-            WantedStatus: "waiting",
+            WantedStatus: WantedStatuses.Covered,
             Reason: "This episode is already at or above target quality.",
             IsReplacementAllowed: false,
             QualityDelta: qualityDelta,

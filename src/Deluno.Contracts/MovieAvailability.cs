@@ -1,4 +1,4 @@
-namespace Deluno.Movies.Contracts;
+namespace Deluno.Contracts;
 
 /// <summary>
 /// Whether a film is obtainable yet, from its release dates and the rule the

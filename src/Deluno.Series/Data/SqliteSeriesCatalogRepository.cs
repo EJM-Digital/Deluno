@@ -1113,7 +1113,8 @@ public sealed class SqliteSeriesCatalogRepository(
                 sharedSummary.TotalWanted,
                 sharedSummary.MissingCount,
                 sharedSummary.UpgradeCount,
-                sharedSummary.WaitingCount,
+                sharedSummary.CoveredCount,
+                sharedSummary.UpcomingCount,
                 sharedSummary.RecentItems.Select(MapWanted).ToArray());
         }
 
@@ -1121,7 +1122,8 @@ public sealed class SqliteSeriesCatalogRepository(
         var totalWanted = 0;
         var missingCount = 0;
         var upgradeCount = 0;
-        var waitingCount = 0;
+        var coveredCount = 0;
+        var upcomingCount = 0;
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Series,
@@ -1135,7 +1137,8 @@ public sealed class SqliteSeriesCatalogRepository(
                     COUNT(*),
                     SUM(CASE WHEN wanted_status = 'missing' THEN 1 ELSE 0 END),
                     SUM(CASE WHEN wanted_status = 'upgrade' THEN 1 ELSE 0 END),
-                    SUM(CASE WHEN wanted_status = 'waiting' THEN 1 ELSE 0 END)
+                    SUM(CASE WHEN wanted_status = 'covered' THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN wanted_status = 'upcoming' THEN 1 ELSE 0 END)
                 FROM series_wanted_state;
                 """;
 
@@ -1145,7 +1148,8 @@ public sealed class SqliteSeriesCatalogRepository(
                 totalWanted = totalsReader.IsDBNull(0) ? 0 : totalsReader.GetInt32(0);
                 missingCount = totalsReader.IsDBNull(1) ? 0 : totalsReader.GetInt32(1);
                 upgradeCount = totalsReader.IsDBNull(2) ? 0 : totalsReader.GetInt32(2);
-                waitingCount = totalsReader.IsDBNull(3) ? 0 : totalsReader.GetInt32(3);
+                coveredCount = totalsReader.IsDBNull(3) ? 0 : totalsReader.GetInt32(3);
+                upcomingCount = totalsReader.IsDBNull(4) ? 0 : totalsReader.GetInt32(4);
             }
         }
 
@@ -1173,7 +1177,8 @@ public sealed class SqliteSeriesCatalogRepository(
             TotalWanted: totalWanted,
             MissingCount: missingCount,
             UpgradeCount: upgradeCount,
-            WaitingCount: waitingCount,
+            CoveredCount: coveredCount,
+            UpcomingCount: upcomingCount,
             RecentItems: items);
     }
 
@@ -1489,7 +1494,7 @@ public sealed class SqliteSeriesCatalogRepository(
         AddParameter(command, "@take", take);
         if (!string.IsNullOrWhiteSpace(wantedStatus))
         {
-            AddParameter(command, "@wantedStatus", NormalizeWantedStatus(wantedStatus));
+            AddParameter(command, "@wantedStatus", WantedStatuses.Normalize(wantedStatus));
         }
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -1536,7 +1541,7 @@ public sealed class SqliteSeriesCatalogRepository(
 
         AddParameter(command, "@libraryId", libraryId);
         AddParameter(command, "@now", now.ToString("O"));
-        AddParameter(command, "@wantedStatus", string.IsNullOrWhiteSpace(wantedStatus) ? null : NormalizeWantedStatus(wantedStatus));
+        AddParameter(command, "@wantedStatus", string.IsNullOrWhiteSpace(wantedStatus) ? null : WantedStatuses.Normalize(wantedStatus));
         var value = await command.ExecuteScalarAsync(cancellationToken);
         return Convert.ToInt32(value, CultureInfo.InvariantCulture);
     }
@@ -1597,7 +1602,7 @@ public sealed class SqliteSeriesCatalogRepository(
 
         AddParameter(command, "@seriesId", seriesId);
         AddParameter(command, "@libraryId", libraryId);
-        AddParameter(command, "@wantedStatus", NormalizeWantedStatus(wantedStatus));
+        AddParameter(command, "@wantedStatus", WantedStatuses.Normalize(wantedStatus));
         AddParameter(command, "@wantedReason", wantedReason.Trim());
         AddParameter(command, "@hasFile", hasFile ? 1 : 0);
         AddParameter(command, "@currentQuality", currentQuality);
@@ -1823,7 +1828,7 @@ public sealed class SqliteSeriesCatalogRepository(
             AddParameter(wanted, "@audioChannels", fileFacts.AudioChannels);
             AddParameter(wanted, "@releaseGroup", fileFacts.ReleaseGroup);
             AddParameter(wanted, "@libraryId", libraryId);
-            AddParameter(wanted, "@wantedStatus", NormalizeWantedStatus(wantedStatus));
+            AddParameter(wanted, "@wantedStatus", WantedStatuses.Normalize(wantedStatus));
             AddParameter(wanted, "@wantedReason", wantedReason.Trim());
             AddParameter(wanted, "@currentQuality", currentQuality);
             AddParameter(wanted, "@targetQuality", targetQuality);
@@ -2797,11 +2802,14 @@ public sealed class SqliteSeriesCatalogRepository(
             FROM episode_wanted_state ews
             INNER JOIN episode_entries e ON e.id = ews.episode_id
             WHERE ews.library_id = @libraryId
-              AND ews.wanted_status IN ('wanted', 'upgrade')
+              -- 'missing', not 'wanted'. This read a word nothing has ever
+              -- written, so the query matched no row in production and its test
+              -- had to seed the value by hand to pass (#300, #303).
+              AND ews.wanted_status IN ('missing', 'upgrade')
               AND (ews.next_eligible_search_utc IS NULL OR ews.next_eligible_search_utc <= @now)
               AND e.monitored = 1
             ORDER BY
-                CASE ews.wanted_status WHEN 'wanted' THEN 0 ELSE 1 END,
+                CASE ews.wanted_status WHEN 'missing' THEN 0 ELSE 1 END,
                 COALESCE(ews.last_search_utc, ews.updated_utc) ASC,
                 e.season_number ASC,
                 e.episode_number ASC
@@ -3492,17 +3500,6 @@ public sealed class SqliteSeriesCatalogRepository(
             "importfailed" => "importFailed",
             "import failed" => "importFailed",
             _ => "importFailed"
-        };
-    }
-
-    private static string NormalizeWantedStatus(string? value)
-    {
-        var normalized = value?.Trim().ToLowerInvariant();
-        return normalized switch
-        {
-            "upgrade" => "upgrade",
-            "waiting" => "waiting",
-            _ => "missing"
         };
     }
 
