@@ -282,9 +282,19 @@ export async function enforceRateLimit(cache, clientAddress, now) {
   return { allowed: true, retryAfterSeconds: 0 };
 }
 
+/**
+ * The version in this key is the *response shape*, not the query.
+ *
+ * A cached payload written under an older shape is not a cheaper answer to the
+ * same question — it is a different answer, missing whatever the mapping has
+ * learnt to send since. v3 held results with no runtime, certification, studio
+ * or status, and would have kept serving them for twelve hours after the worker
+ * that could produce them went live. Bump this whenever mapTmdbResult starts
+ * emitting something new.
+ */
 export function buildCacheKey({ query, mediaType, providerId, year }) {
   const normalized = `${mediaType}|${query.toLocaleLowerCase("en-US")}|${year ?? ""}|${providerId ?? ""}`;
-  return `search:v3:${encodeURIComponent(normalized)}`;
+  return `search:v4:${encodeURIComponent(normalized)}`;
 }
 
 export async function lookupTmdb(lookup, apiKey, request = fetch, artworkOrigin = null) {
