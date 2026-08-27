@@ -32,7 +32,34 @@ public sealed record MetadataSearchResult(
     /// </summary>
     int? RuntimeMinutes = null,
     double? Popularity = null,
-    int? VoteCount = null);
+    int? VoteCount = null,
+    /// <summary>
+    /// The rest of what a provider detail lookup already carries, and Deluno
+    /// had never asked it for.
+    ///
+    /// Three of these are not new ideas: the library adapters read
+    /// <c>certification</c>, <c>collection</c> and <c>language</c> straight out
+    /// of the stored metadata blob and have done for a long time, and nothing
+    /// ever put a value in any of them — so they read empty on every install,
+    /// the same shape as the codec and release-group columns the list displayed
+    /// for months with nothing populating them.
+    ///
+    /// The rest are what Radarr and Sonarr let a library be organised by:
+    /// studio, network, and whether a show has ended. A show that has finished
+    /// and is missing episodes is a different problem from one still airing
+    /// them, and until now Deluno could not tell the two apart.
+    /// </summary>
+    string? Certification = null,
+    string? Studio = null,
+    string? Network = null,
+    string? Collection = null,
+    string? Director = null,
+    string? TrailerUrl = null,
+    string? Tagline = null,
+    string? Homepage = null,
+    string? OriginalLanguage = null,
+    /// <summary><c>Released</c> / <c>In Production</c>, or <c>Ended</c> / <c>Returning Series</c>.</summary>
+    string? Status = null);
 
 /// <summary>
 /// When a movie can actually be obtained. A cinema date is not an availability
