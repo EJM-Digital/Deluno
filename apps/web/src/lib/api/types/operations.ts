@@ -362,6 +362,8 @@ export interface LibraryViewItem {
   libraryId: string | null;
   name: string;
   quickFilter: string;
+  /** The monitoring axis: "any" | "monitored" | "unmonitored". Null is "any". */
+  monitoring?: string | null;
   sortField: string;
   sortDirection: "asc" | "desc";
   viewMode: "grid" | "list";
@@ -441,6 +443,8 @@ export interface CreateLibraryViewRequest {
   libraryId: string | null;
   name: string;
   quickFilter: string;
+  /** The monitoring axis: "any" | "monitored" | "unmonitored". Null is "any". */
+  monitoring?: string | null;
   sortField: string;
   sortDirection: "asc" | "desc";
   viewMode: "grid" | "list";
@@ -453,6 +457,8 @@ export interface UpdateLibraryViewRequest {
   libraryId: string | null;
   name: string;
   quickFilter: string;
+  /** The monitoring axis: "any" | "monitored" | "unmonitored". Null is "any". */
+  monitoring?: string | null;
   sortField: string;
   sortDirection: "asc" | "desc";
   viewMode: "grid" | "list";

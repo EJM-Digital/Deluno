@@ -6,7 +6,7 @@ import type { MediaItem } from "../../lib/media-types";
 import type { Density } from "../../lib/use-density";
 import { cn } from "../../lib/utils";
 import { Badge } from "../ui/badge";
-import { TitleMarkBar, TitleMarkChip, TitleMarkDot } from "../ui/title-mark";
+import { MARK_DOT_SIZE, TitleMarkBar, TitleMarkChip, TitleMarkDot } from "../ui/title-mark";
 
 export type CardSize = "sm" | "md" | "lg";
 export interface DisplayOptions {
@@ -231,7 +231,7 @@ function PosterCard({
           {displayOptions.showStatusPill ? (
             <div className="absolute right-1.5 top-1.5 z-10">
               {size === "sm" ? (
-                <TitleMarkDot item={item} size={13} />
+                <TitleMarkDot item={item} size={MARK_DOT_SIZE} />
               ) : (
                 <TitleMarkChip item={item} />
               )}

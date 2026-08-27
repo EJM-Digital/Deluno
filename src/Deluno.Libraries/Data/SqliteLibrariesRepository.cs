@@ -92,7 +92,7 @@ public sealed class SqliteLibrariesRepository(
         command.CommandText =
             """
             SELECT
-                id, user_id, variant, library_id, name, quick_filter, sort_field, sort_direction,
+                id, user_id, variant, library_id, name, quick_filter, monitoring, sort_field, sort_direction,
                 view_mode, card_size, display_options_json, rules_json, created_utc, updated_utc
             FROM library_views
             WHERE user_id = @userId AND variant = @variant
@@ -176,6 +176,7 @@ public sealed class SqliteLibrariesRepository(
             LibraryId: NormalizeOptionalId(request.LibraryId),
             Name: NormalizeName(request.Name) ?? "New view",
             QuickFilter: NormalizeName(request.QuickFilter) ?? "all",
+            Monitoring: NormalizeMonitoring(request.Monitoring),
             SortField: NormalizeName(request.SortField) ?? "title",
             SortDirection: NormalizeSortDirection(request.SortDirection),
             ViewMode: NormalizeUiView(request.ViewMode),
@@ -193,11 +194,11 @@ public sealed class SqliteLibrariesRepository(
         command.CommandText =
             """
             INSERT INTO library_views (
-                id, user_id, variant, library_id, name, quick_filter, sort_field, sort_direction,
+                id, user_id, variant, library_id, name, quick_filter, monitoring, sort_field, sort_direction,
                 view_mode, card_size, display_options_json, rules_json, created_utc, updated_utc
             )
             VALUES (
-                @id, @userId, @variant, @libraryId, @name, @quickFilter, @sortField, @sortDirection,
+                @id, @userId, @variant, @libraryId, @name, @quickFilter, @monitoring, @sortField, @sortDirection,
                 @viewMode, @cardSize, @displayOptionsJson, @rulesJson, @createdUtc, @updatedUtc
             );
             """;
@@ -207,6 +208,7 @@ public sealed class SqliteLibrariesRepository(
         AddParameter(command, "@libraryId", item.LibraryId);
         AddParameter(command, "@name", item.Name);
         AddParameter(command, "@quickFilter", item.QuickFilter);
+        AddParameter(command, "@monitoring", item.Monitoring);
         AddParameter(command, "@sortField", item.SortField);
         AddParameter(command, "@sortDirection", item.SortDirection);
         AddParameter(command, "@viewMode", item.ViewMode);
@@ -290,6 +292,7 @@ public sealed class SqliteLibrariesRepository(
             SET library_id = @libraryId,
                 name = @name,
                 quick_filter = @quickFilter,
+                monitoring = @monitoring,
                 sort_field = @sortField,
                 sort_direction = @sortDirection,
                 view_mode = @viewMode,
@@ -304,6 +307,7 @@ public sealed class SqliteLibrariesRepository(
         AddParameter(command, "@libraryId", NormalizeOptionalId(request.LibraryId));
         AddParameter(command, "@name", NormalizeName(request.Name) ?? "Updated view");
         AddParameter(command, "@quickFilter", NormalizeName(request.QuickFilter) ?? "all");
+        AddParameter(command, "@monitoring", NormalizeMonitoring(request.Monitoring));
         AddParameter(command, "@sortField", NormalizeName(request.SortField) ?? "title");
         AddParameter(command, "@sortDirection", NormalizeSortDirection(request.SortDirection));
         AddParameter(command, "@viewMode", NormalizeUiView(request.ViewMode));
@@ -980,7 +984,7 @@ public sealed class SqliteLibrariesRepository(
         command.CommandText =
             """
             SELECT
-                id, user_id, variant, library_id, name, quick_filter, sort_field, sort_direction,
+                id, user_id, variant, library_id, name, quick_filter, monitoring, sort_field, sort_direction,
                 view_mode, card_size, display_options_json, rules_json, created_utc, updated_utc
             FROM library_views
             WHERE user_id = @userId AND id = @id
@@ -1202,6 +1206,19 @@ public sealed class SqliteLibrariesRepository(
     }
 
 
+    /// <summary>
+    /// Anything unrecognised is "any" — the safe answer, because narrowing a
+    /// saved view to a monitoring state its owner never chose would silently
+    /// hide titles from them.
+    /// </summary>
+    private static string NormalizeMonitoring(string? value)
+        => value?.Trim().ToLowerInvariant() switch
+        {
+            "monitored" => "monitored",
+            "unmonitored" => "unmonitored",
+            _ => "any"
+        };
+
     private static LibraryViewItem ReadLibraryView(System.Data.Common.DbDataReader reader)
     {
         return new LibraryViewItem(
@@ -1211,14 +1228,17 @@ public sealed class SqliteLibrariesRepository(
             LibraryId: reader.IsDBNull(3) ? null : reader.GetString(3),
             Name: reader.GetString(4),
             QuickFilter: reader.GetString(5),
-            SortField: reader.GetString(6),
-            SortDirection: reader.GetString(7),
-            ViewMode: reader.GetString(8),
-            CardSize: reader.GetString(9),
-            DisplayOptionsJson: reader.GetString(10),
-            RulesJson: reader.GetString(11),
-            CreatedUtc: ParseTimestamp(reader.GetString(12)),
-            UpdatedUtc: ParseTimestamp(reader.GetString(13)));
+            // Null for every view saved before the axes were split, and null
+            // means "any" — which is exactly what those views meant.
+            Monitoring: reader.IsDBNull(6) ? null : reader.GetString(6),
+            SortField: reader.GetString(7),
+            SortDirection: reader.GetString(8),
+            ViewMode: reader.GetString(9),
+            CardSize: reader.GetString(10),
+            DisplayOptionsJson: reader.GetString(11),
+            RulesJson: reader.GetString(12),
+            CreatedUtc: ParseTimestamp(reader.GetString(13)),
+            UpdatedUtc: ParseTimestamp(reader.GetString(14)));
     }
 
 

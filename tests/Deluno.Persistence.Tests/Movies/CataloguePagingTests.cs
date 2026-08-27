@@ -150,16 +150,64 @@ public sealed class CataloguePagingTests
         // Case-insensitive, and it reaches genres as well as titles.
         Assert.Equal(2, (await movies.ListPageAsync(new CatalogueQuery(Search: "NORTHERN"), CancellationToken.None)).TotalCount);
 
+        // Monitoring is its own axis now, not a status. It used to be a
+        // `CatalogueStatusFilters` value, which made it mutually exclusive with
+        // every real state — so "missing and unmonitored" could not be asked.
         var unmonitored = await movies.ListPageAsync(
-            new CatalogueQuery(Status: CatalogueStatusFilters.Unmonitored),
+            new CatalogueQuery(Monitored: false),
             CancellationToken.None);
         Assert.Equal(quiet.Id, Assert.Single(unmonitored.Items).Id);
         Assert.Equal(1, unmonitored.TotalCount);
 
-        // The facets always describe the search, not the status filter — that is
-        // what lets the filter buttons show their own counts.
-        Assert.Equal(3, unmonitored.Facets!.All);
+        // The state facets are counted inside the monitoring scope, so `All`
+        // is the one unmonitored title rather than all three.
+        Assert.Equal(1, unmonitored.Facets!.All);
+        // The monitoring counts are taken inside the *status* scope, so the
+        // monitoring control can say how many fall each side of the state you
+        // are looking at. No status here, so it is the whole searched set.
         Assert.Equal(2, unmonitored.Facets.Monitored);
+        Assert.Equal(1, unmonitored.Facets.Unmonitored);
+    }
+
+    /// <summary>
+    /// The point of splitting the axes: a state and an intent can be asked
+    /// together. Neither question can be expressed by the other — a missing
+    /// title Deluno is hunting for and a missing title you have told it to leave
+    /// alone are the same state and opposite intentions.
+    /// </summary>
+    [Fact]
+    public async Task Status_and_monitoring_narrow_movie_rows_together()
+    {
+        using var storage = TestStorage.Create();
+        var movies = await CreateMoviesAsync(storage);
+        var hunted = await movies.AddAsync(new CreateMovieRequest("Hunted", 2019, null), CancellationToken.None);
+        var ignored = await movies.AddAsync(new CreateMovieRequest("Ignored", 2020, null), CancellationToken.None);
+        var held = await movies.AddAsync(new CreateMovieRequest("Held", 2021, null), CancellationToken.None);
+
+        await movies.EnsureWantedStateAsync(hunted.Id, "library-films", "missing", "Needs a file.", false, null, "WEB 1080p", false, CancellationToken.None);
+        await movies.EnsureWantedStateAsync(ignored.Id, "library-films", "missing", "Needs a file.", false, null, "WEB 1080p", false, CancellationToken.None);
+        await movies.EnsureWantedStateAsync(held.Id, "library-films", "covered", "At target.", true, "WEB 1080p", "WEB 1080p", true, CancellationToken.None);
+        await movies.UpdateMonitoredAsync([ignored.Id], monitored: false, CancellationToken.None);
+
+        var huntedNow = await movies.ListPageAsync(
+            new CatalogueQuery(Status: CatalogueStatusFilters.Missing, Monitored: true),
+            CancellationToken.None);
+        Assert.Equal(hunted.Id, Assert.Single(huntedNow.Items).Id);
+        Assert.Equal(1, huntedNow.TotalCount);
+
+        var missingAndIgnored = await movies.ListPageAsync(
+            new CatalogueQuery(Status: CatalogueStatusFilters.Missing, Monitored: false),
+            CancellationToken.None);
+        Assert.Equal(ignored.Id, Assert.Single(missingAndIgnored.Items).Id);
+
+        // And "either" is still the default: both missing titles come back.
+        var eitherWay = await movies.ListPageAsync(
+            new CatalogueQuery(Status: CatalogueStatusFilters.Missing),
+            CancellationToken.None);
+        Assert.Equal(2, eitherWay.TotalCount);
+        // Within Missing, one of each — which is what the monitoring control shows.
+        Assert.Equal(1, eitherWay.Facets!.Monitored);
+        Assert.Equal(1, eitherWay.Facets.Unmonitored);
     }
 
     [Fact]

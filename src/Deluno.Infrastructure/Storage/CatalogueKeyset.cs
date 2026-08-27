@@ -119,8 +119,6 @@ public static class CatalogueKeyset
         string? upcomingExpression = null)
         => CatalogueStatusFilters.Normalize(status) switch
         {
-            CatalogueStatusFilters.Monitored => $"{alias}.monitored = 1",
-            CatalogueStatusFilters.Unmonitored => $"{alias}.monitored = 0",
             CatalogueStatusFilters.Downloaded => hasFileExpression,
             // Missing is a *state*, not the absence of a file: a title that is
             // not out yet has no file either, and calling it missing counted it
@@ -133,6 +131,27 @@ public static class CatalogueKeyset
             CatalogueStatusFilters.Upcoming when !string.IsNullOrWhiteSpace(upcomingExpression) => upcomingExpression,
             _ => string.Empty
         };
+
+    /// <summary>
+    /// Whether Deluno acts on the title — a separate axis from
+    /// <see cref="StatusFilter"/>, so the two can be asked together. `null` is
+    /// "either", and produces no predicate at all.
+    /// </summary>
+    public static string MonitoredFilter(bool? monitored, string alias)
+        => monitored switch
+        {
+            true => $"{alias}.monitored = 1",
+            false => $"{alias}.monitored = 0",
+            null => string.Empty
+        };
+
+    /// <summary>
+    /// An empty predicate means "everything", which is <c>1 = 1</c> — needed
+    /// wherever a predicate has to sit inside a larger expression, such as the
+    /// CASE arms the facet counts are built from.
+    /// </summary>
+    public static string Always(string predicate)
+        => string.IsNullOrWhiteSpace(predicate) ? "1 = 1" : predicate;
 
     /// <summary>
     /// Joins the filters that apply, and falls back to <c>1 = 1</c> so the
