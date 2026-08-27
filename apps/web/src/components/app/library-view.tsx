@@ -17,7 +17,7 @@ import {
   type SeriesListItem
 } from "../../lib/api";
 import { adaptMovieItems, adaptSeriesItems } from "../../lib/ui-adapters";
-import { parseDisplayOptions } from "../../lib/library-filters";
+import { isMonitoringFilter, monitoringParam, parseDisplayOptions, type MonitoringFilter } from "../../lib/library-filters";
 import { LibraryCreateDialog } from "./library-create-dialog";
 import { LibraryResults } from "./library-results";
 import { LibrarySelectionCommandBar } from "./library-selection-command-bar";
@@ -97,7 +97,8 @@ export function LibraryView({
     query, setQuery, libraryId, setLibraryId, quickFilter, setQuickFilter, view, setView, sortField, setSortField,
     sortDirection, setSortDirection, cardSize, displayOptions,
     savedPresets, setSavedPresets, newPresetName, setNewPresetName, isSavingPreset,
-    setIsSavingPreset, changeSize, updateDisplayOptions, activeFilterCount
+    setIsSavingPreset, changeSize, updateDisplayOptions, activeFilterCount,
+    monitoring, setMonitoring
   } = useLibraryFilters(variant, searchParams.get("filter"));
 
   const buildCatalogueParams = useCallback((pageToken?: string) => {
@@ -105,9 +106,13 @@ export function LibraryView({
     if (pageToken) params.set("pageToken", pageToken);
     if (query.trim()) params.set("search", query.trim());
     if (quickFilter !== "all") params.set("status", quickFilter);
+    // The other axis, sent separately so the two can narrow together. It used
+    // to be a `status` value, which made "missing and unmonitored" unaskable.
+    const monitored = monitoringParam(monitoring);
+    if (monitored !== undefined) params.set("monitored", String(monitored));
     if (libraryId) params.set("libraryId", libraryId);
     return params;
-  }, [libraryId, query, quickFilter, sortDirection, sortField]);
+  }, [libraryId, monitoring, query, quickFilter, sortDirection, sortField]);
 
   // The identity of what is on screen. A snapshot may only be replayed for the
   // exact query that produced it.
@@ -351,6 +356,7 @@ export function LibraryView({
             name: item.name,
             libraryId: item.libraryId ?? null,
             quickFilter: isQuickFilter(item.quickFilter) ? item.quickFilter : "all",
+            monitoring: isMonitoringFilter(item.monitoring ?? null) ? item.monitoring as MonitoringFilter : "any",
             sortField: isSortField(item.sortField) ? item.sortField : "title",
             sortDirection: item.sortDirection === "desc" ? "desc" : "asc",
             viewMode: item.viewMode === "list" ? "list" : "grid",
@@ -421,6 +427,7 @@ export function LibraryView({
         libraryId,
         name,
         quickFilter,
+        monitoring,
         sortField,
         sortDirection,
         viewMode: view,
@@ -444,6 +451,7 @@ export function LibraryView({
           name: created.name,
           libraryId: created.libraryId ?? null,
           quickFilter: isQuickFilter(created.quickFilter) ? created.quickFilter : "all",
+          monitoring: isMonitoringFilter(created.monitoring ?? null) ? created.monitoring as MonitoringFilter : "any",
           sortField: isSortField(created.sortField) ? created.sortField : "title",
           sortDirection: created.sortDirection === "desc" ? "desc" : "asc",
           viewMode: created.viewMode === "list" ? "list" : "grid",
@@ -463,6 +471,7 @@ export function LibraryView({
   function applyPreset(preset: SavedFilterPreset) {
     setLibraryId(preset.libraryId);
     setQuickFilter(preset.quickFilter);
+    setMonitoring(preset.monitoring);
     setSortField(preset.sortField);
     setSortDirection(preset.sortDirection);
     setView(preset.viewMode);
@@ -850,7 +859,7 @@ export function LibraryView({
             />
           }
           controls={{
-            query, setQuery, quickFilter, setQuickFilter, sortField, setSortField,
+            query, setQuery, quickFilter, setQuickFilter, monitoring, setMonitoring, sortField, setSortField,
             sortDirection, setSortDirection, view, setView, cardSize, changeSize,
             displayOptions, setDisplayOptions: updateDisplayOptions, savedPresets,
             libraryId, setLibraryId, libraries: compatibleLibraries,
@@ -889,13 +898,13 @@ export function LibraryView({
           label={label}
           singular={singular}
           libraryCount={facets?.all ?? totalCount}
-          hasActiveFilter={Boolean(query.trim()) || libraryId !== null || quickFilter !== "all"}
+          hasActiveFilter={Boolean(query.trim()) || libraryId !== null || quickFilter !== "all" || monitoring !== "any"}
           view={view}
           cardSize={cardSize}
           density={density}
           displayOptions={displayOptions}
           selectedIds={selectedIds}
-          keyBust={`${cardSize}-${libraryId ?? "all"}-${quickFilter}-${query}-${sortField}-${sortDirection}-${displayOptions.showMeta}-${displayOptions.showStatusPill}-${displayOptions.showQualityBadge}-${displayOptions.showRating}`}
+          keyBust={`${cardSize}-${libraryId ?? "all"}-${quickFilter}-${monitoring}-${query}-${sortField}-${sortDirection}-${displayOptions.showMeta}-${displayOptions.showStatusPill}-${displayOptions.showQualityBadge}-${displayOptions.showRating}`}
           isLoadingMore={isLoadingMore}
           hasPreviousPage={previousPageTokens.length > 0}
           hasNextPage={Boolean(nextPageToken)}

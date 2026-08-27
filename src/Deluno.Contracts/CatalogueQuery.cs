@@ -18,6 +18,20 @@ namespace Deluno.Contracts;
 /// One of <see cref="CatalogueStatusFilters"/>. Anything else is read as "all"
 /// rather than silently returning nothing.
 /// </param>
+/// <param name="Monitored">
+/// A **separate axis** from <paramref name="Status"/>, and deliberately so.
+///
+/// Status says what is true of a title — Missing, Upgradable, Quality met,
+/// Upcoming. Monitoring says whether Deluno will act on it. They multiply: a
+/// missing title Deluno is hunting for and a missing title you have told it to
+/// leave alone are the same state and opposite intentions, so no single value
+/// can carry both. Monitored and Unmonitored used to be two more
+/// <see cref="CatalogueStatusFilters"/> values, which made them mutually
+/// exclusive with every real state and meant "missing and unmonitored" could
+/// not be asked for at all.
+///
+/// <c>null</c> is "either".
+/// </param>
 /// <param name="LibraryId">
 /// Optional library identity. When supplied, the query and its facets are
 /// limited to media assigned to that library in wanted state.
@@ -33,17 +47,22 @@ namespace Deluno.Contracts;
 public sealed record CatalogueQuery(
     string? Search = null,
     string? Status = null,
+    bool? Monitored = null,
     string? LibraryId = null,
     string? Sort = null,
     bool Descending = true,
     int PageSize = 50,
     string? PageToken = null);
 
+/// <summary>
+/// What a title *is*. Monitoring is not in here — it is whether Deluno will act
+/// on the title, which is a different question and travels as
+/// <see cref="CatalogueQuery.Monitored"/>. It used to be two values in this
+/// list, which made "monitored" mutually exclusive with "missing".
+/// </summary>
 public static class CatalogueStatusFilters
 {
     public const string All = "all";
-    public const string Monitored = "monitored";
-    public const string Unmonitored = "unmonitored";
     public const string Downloaded = "downloaded";
     public const string Missing = "missing";
     public const string Upgrades = "upgrades";
@@ -61,8 +80,6 @@ public static class CatalogueStatusFilters
     public static string Normalize(string? value)
         => value?.Trim().ToLowerInvariant() switch
         {
-            Monitored => Monitored,
-            Unmonitored => Unmonitored,
             Downloaded => Downloaded,
             Missing => Missing,
             Upgrades => Upgrades,

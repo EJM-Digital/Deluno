@@ -15,7 +15,17 @@
 import type { TitleMark } from "./status-tones";
 
 /**
- * The filters the toolbar offers, which are the marks plus monitoring.
+ * The filters the legend row offers: **the marks, and nothing else**.
+ *
+ * Monitored and Unmonitored used to be two more values here, which was a
+ * category error with two consequences. It made monitoring *mutually exclusive*
+ * with every real state, so "missing, and I have told Deluno to leave it alone"
+ * could not be asked for at all. And it put two chips that cannot have a colour
+ * in a row whose whole job is to be the colour legend for the shelf below it.
+ *
+ * Monitoring is a separate axis — see {@link MonitoringFilter} — because it
+ * multiplies across the states rather than sitting beside them: any of these
+ * four can be monitored or not.
  *
  * `upgrades` and `covered` are the two rungs a title with a file can be on;
  * `downloaded` is deliberately not here, because it spans both and so selects a
@@ -24,8 +34,6 @@ import type { TitleMark } from "./status-tones";
  */
 export type QuickFilter =
   | "all"
-  | "monitored"
-  | "unmonitored"
   | "missing"
   /** Has a file and can still get better. The stored `upgrade`. */
   | "upgrades"
@@ -34,11 +42,27 @@ export type QuickFilter =
   /** Not out yet, so its absence is not a shortfall. */
   | "upcoming";
 
+/**
+ * Whether Deluno acts on the title. The other axis.
+ *
+ * The state says what is true; this says what Deluno does about it. A missing
+ * title being hunted for and a missing title you have excluded are the same
+ * state and opposite intentions, so one value could never carry both.
+ */
+export type MonitoringFilter = "any" | "monitored" | "unmonitored";
+
+export function isMonitoringFilter(value: string | null): value is MonitoringFilter {
+  return value === "any" || value === "monitored" || value === "unmonitored";
+}
+
+/** What the catalogue query wants: `undefined` is "either". */
+export function monitoringParam(value: MonitoringFilter): boolean | undefined {
+  return value === "any" ? undefined : value === "monitored";
+}
+
 /** The mark a quick filter selects, or null for one that is not about a mark. */
 export const QUICK_FILTER_MARK: Record<QuickFilter, TitleMark | null> = {
   all: null,
-  monitored: null,
-  unmonitored: null,
   missing: "missing",
   upgrades: "upgrade",
   covered: "covered",

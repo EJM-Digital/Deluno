@@ -43,7 +43,8 @@ public sealed class LibraryViewPersistenceTests
                 Variant: "movies",
                 LibraryId: "anime-library",
                 Name: "Anime movies",
-                QuickFilter: "all",
+                QuickFilter: "missing",
+                Monitoring: "unmonitored",
                 SortField: "title",
                 SortDirection: "asc",
                 ViewMode: "grid",
@@ -53,8 +54,16 @@ public sealed class LibraryViewPersistenceTests
             CancellationToken.None);
 
         Assert.Equal("anime-library", created.LibraryId);
+        // Both axes survive the round trip. A saved view that dropped monitoring
+        // would be lying about coming back to the same view — and while the two
+        // shared one value, "missing and unmonitored" could not be saved at all.
+        Assert.Equal("missing", created.QuickFilter);
+        Assert.Equal("unmonitored", created.Monitoring);
+
         var listed = Assert.Single(await repository.ListLibraryViewsAsync("view-user", "movies", CancellationToken.None));
         Assert.Equal("anime-library", listed.LibraryId);
+        Assert.Equal("missing", listed.QuickFilter);
+        Assert.Equal("unmonitored", listed.Monitoring);
 
         var updated = await repository.UpdateLibraryViewAsync(
             "view-user",
@@ -63,6 +72,7 @@ public sealed class LibraryViewPersistenceTests
                 LibraryId: null,
                 Name: "All movies",
                 QuickFilter: "all",
+                Monitoring: null,
                 SortField: "title",
                 SortDirection: "asc",
                 ViewMode: "grid",
@@ -73,5 +83,7 @@ public sealed class LibraryViewPersistenceTests
 
         Assert.NotNull(updated);
         Assert.Null(updated!.LibraryId);
+        // Unset normalises to "any" rather than being left null-and-ambiguous.
+        Assert.Equal("any", updated.Monitoring);
     }
 }

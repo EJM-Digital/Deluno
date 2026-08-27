@@ -1,5 +1,6 @@
-import { QUICK_FILTER_MARK, type QuickFilter, type SortDirection, type SortField } from "../../lib/library-filters";
+import { QUICK_FILTER_MARK, isMonitoringFilter, type MonitoringFilter, type QuickFilter, type SortDirection, type SortField } from "../../lib/library-filters";
 import { TITLE_MARK_PRESENTATION, type TitleMark } from "../../lib/status-tones";
+import { MARK_DOT_SIZE } from "../ui/title-mark";
 import {
   ArrowDownAZ, ArrowUpDown, ChevronDown, Filter, LayoutGrid, LayoutTemplate, List, Search, X
 } from "lucide-react";
@@ -24,12 +25,14 @@ export type ViewMode = "grid" | "list";
  * as four values while `lib/library-filters.ts` declared fourteen — one line
  * below the comment describing that exact defect.
  */
-export type { SortDirection, SortField } from "../../lib/library-filters";
+export type { MonitoringFilter, SortDirection, SortField } from "../../lib/library-filters";
 export interface SavedFilterPreset {
   id: string;
   name: string;
   libraryId: string | null;
   quickFilter: QuickFilter;
+  /** The other axis, saved with the view — dropping it would not be the same view. */
+  monitoring: MonitoringFilter;
   sortField: SortField;
   sortDirection: SortDirection;
   viewMode: ViewMode;
@@ -43,36 +46,19 @@ export interface SavedFilterPreset {
  * These used to be repeated by a summary line above them — Missing, Monitored,
  * Unmonitored and Upgradable appeared twice on the same screen, once as a
  * number you could not click and once as a chip you could. The chips won: they
- * filter, they count, and they are what you scan. Each carries its mark's colour,
- * so the row is also the legend for the shelf below it.
- *
- * "Downloaded" is gone: a movie below its target quality is downloaded too, so
- * the chip selected a set nobody was actually asking for. *Quality met* and
- * *Upgradable* between them say what it was reaching for, and say which of them
- * still needs work. Every label is a mark name, so a chip and the dot on the
- * poster it filters to are the same word.
- *
- * Downloading is deliberately absent until live transfer state is wired in
- * (DESIGN-001 step 5). A chip that can never match anything is worse than no
- * chip at all.
- */
-/**
- * One row: the legend, the counts and the filters at once.
- *
- * These used to be repeated by a summary line above them — Missing, Monitored,
- * Unmonitored and Upgradable appeared twice on the same screen, once as a
- * number you could not click and once as a chip you could. The chips won: they
  * filter, they count, and they are what you scan.
  *
- * **Every chip is colour-coded, and the colour is on the number.** It used to be
- * a 6px dot to the left of the label — too small to work as a legend for a
- * shelf of posters, and three of the seven chips had no colour at all. The
- * count is the part you actually read, so the count is what wears the mark.
+ * **Every chip is a rung, and every rung has a colour.** Monitored and
+ * Unmonitored used to sit in here too, and they were the two that could not be
+ * given a colour — because monitoring is not a state, it is whether Deluno acts
+ * on one, and it multiplies across all four. They are their own control now, so
+ * this row is honestly the legend for the shelf below it, and the two questions
+ * can be asked *together*: "missing, and I have told Deluno to leave it alone"
+ * was unaskable while they shared one value.
  *
- * Monitored and Unmonitored get the *monitoring* grammar rather than a hue:
- * a whole dot and a half dot, the same half that appears on a poster. #290 took
- * hue away from things that are not states, and monitoring is a preference, not
- * a rung.
+ * **The colour is on the number.** It used to be a 6px dot to the left of the
+ * label — too small to work as a legend for a wall of posters. The count is the
+ * part you read, so the count wears the mark.
  *
  * "Downloaded" is gone: a movie below its target quality is downloaded too, so
  * the chip selected a set nobody was actually asking for. Downloading is
@@ -82,25 +68,38 @@ export interface SavedFilterPreset {
 export interface QuickFilterChip {
   key: QuickFilter;
   label: string;
-  /** The mark this chip selects, when it selects one. */
+  /** The mark this chip selects. Only `all` has none. */
   mark: TitleMark | null;
-  /** Monitoring chips carry the half-dot grammar instead of a hue. */
-  monitoring?: "on" | "off";
 }
 
 export const quickFilterConfig: QuickFilterChip[] = (
-  ["all", "covered", "upgrades", "missing", "upcoming", "monitored", "unmonitored"] as const
+  ["all", "covered", "upgrades", "missing", "upcoming"] as const
 ).map((key) => {
   // The label and the colour come from the one table, never from here. They
   // were written out by hand — a sixth place colouring a state, three lines
   // under a comment calling this row the legend. A legend that keeps its own
   // copy of the colours is not a legend (#302).
   const mark = QUICK_FILTER_MARK[key];
-  if (mark) return { key, label: TITLE_MARK_PRESENTATION[mark].label, mark };
-  if (key === "monitored") return { key, label: "Monitored", mark: null, monitoring: "on" as const };
-  if (key === "unmonitored") return { key, label: "Unmonitored", mark: null, monitoring: "off" as const };
-  return { key, label: "All", mark: null };
+  return mark
+    ? { key, label: TITLE_MARK_PRESENTATION[mark].label, mark }
+    : { key, label: "All", mark: null };
 });
+
+/**
+ * The other axis, and why it is a control rather than two more chips.
+ *
+ * Monitoring has no colour because it is not a rung — it is a switch that
+ * applies to every rung. On a poster it is the *half* on the dot, which is the
+ * same idea: a modifier on whatever colour is already there.
+ */
+export const monitoringFilterOptions: Array<{ value: MonitoringFilter; label: string }> = [
+  // Each option names the axis, because the trigger shows the *value* and
+  // nothing else. "Any" on its own told a reader nothing about what it was any
+  // of, so the control that had just taken over Unmonitored was invisible.
+  { value: "any", label: "Any monitoring" },
+  { value: "monitored", label: "Monitored" },
+  { value: "unmonitored", label: "Not monitored" }
+];
 
 export const sortFieldOptions: Array<{ value: SortField; label: string }> = [
   { value: "title", label: "Title" },
@@ -125,6 +124,8 @@ export interface LibraryControls {
   libraries: Array<{ id: string; name: string }>;
   quickFilter: QuickFilter;
   setQuickFilter: (value: QuickFilter) => void;
+  monitoring: MonitoringFilter;
+  setMonitoring: (value: MonitoringFilter) => void;
   sortField: SortField;
   setSortField: (value: SortField) => void;
   sortDirection: SortDirection;
@@ -153,7 +154,7 @@ export function ControlRail({ label, facets, actions, controls }: {
   controls: LibraryControls;
 }) {
   const {
-    query, setQuery, libraryId, setLibraryId, libraries, quickFilter, setQuickFilter, sortField, setSortField,
+    query, setQuery, libraryId, setLibraryId, libraries, quickFilter, setQuickFilter, monitoring, setMonitoring, sortField, setSortField,
     sortDirection, setSortDirection, view, setView, cardSize, changeSize,
     displayOptions, setDisplayOptions, savedPresets, newPresetName,
     setNewPresetName, isSavingPreset, saveCurrentPreset, applyPreset,
@@ -175,8 +176,6 @@ export function ControlRail({ label, facets, actions, controls }: {
 
   const counts: Partial<Record<QuickFilter, number>> = {
     all: facets?.all ?? 0,
-    monitored: facets?.monitored ?? 0,
-    unmonitored: facets?.unmonitored ?? 0,
     missing: facets?.missing ?? 0,
     upgrades: facets?.upgrades ?? 0,
     covered: facets?.covered ?? 0,
@@ -254,6 +253,27 @@ export function ControlRail({ label, facets, actions, controls }: {
               triggerClassName="min-h-[var(--library-toolbar-height)] bg-foreground/[0.04] px-2.5 text-[length:var(--library-toolbar-size)] font-semibold ring-1 ring-inset ring-hairline/60 hover:bg-foreground/[0.07] dark:bg-white/[0.05] dark:ring-white/[0.06] dark:hover:bg-white/[0.08]"
             />
 
+            {/*
+              Monitoring, on its own. It was two chips in the legend row below —
+              the two that could not be given a colour, because monitoring is not
+              a rung but a switch that applies to all of them. Keeping it here
+              also makes the two questions independent: the row picks a state,
+              this picks an intent, and you can ask for both.
+            */}
+            <MenuSelect
+              label="Monitoring"
+              value={monitoring}
+              onChange={(value) => setMonitoring(isMonitoringFilter(value) ? value : "any")}
+              options={monitoringFilterOptions.map((option) => ({
+                value: option.value,
+                label: option.value === "any"
+                  ? option.label
+                  : `${option.label} (${option.value === "monitored" ? facets?.monitored ?? 0 : facets?.unmonitored ?? 0})`
+              }))}
+              className="min-w-[9.5rem]"
+              triggerClassName="min-h-[var(--library-toolbar-height)] bg-foreground/[0.04] px-2.5 text-[length:var(--library-toolbar-size)] font-semibold ring-1 ring-inset ring-hairline/60 hover:bg-foreground/[0.07] dark:bg-white/[0.05] dark:ring-white/[0.06] dark:hover:bg-white/[0.08]"
+            />
+
             <ToolbarMenuButton
               label="Display"
               icon={LayoutTemplate}
@@ -322,17 +342,14 @@ export function ControlRail({ label, facets, actions, controls }: {
                   >
                     {/* The mark's own colour, so the chip and the dots on the
                         posters it filters to are one signal rather than two. */}
+                    {/* The same diameter as the dot on a small poster. A legend
+                        drawn smaller than the thing it explains is working at
+                        half strength. */}
                     {chip.mark ? (
-                      <span aria-hidden className={cn("h-2 w-2 shrink-0 rounded-full", TITLE_MARK_PRESENTATION[chip.mark].dot)} />
-                    ) : chip.monitoring ? (
                       <span
                         aria-hidden
-                        className={cn(
-                          "h-2 w-2 shrink-0 rounded-full",
-                          chip.monitoring === "on"
-                            ? "bg-foreground/45"
-                            : "bg-[linear-gradient(90deg,hsl(var(--foreground)/0.45)_0_50%,hsl(var(--mark-idle))_50%_100%)]"
-                        )}
+                        className={cn("shrink-0 rounded-full ring-2 ring-black/25 dark:ring-black/45", TITLE_MARK_PRESENTATION[chip.mark].dot)}
+                        style={{ width: MARK_DOT_SIZE, height: MARK_DOT_SIZE }}
                       />
                     ) : null}
                     <span>{chip.label}</span>

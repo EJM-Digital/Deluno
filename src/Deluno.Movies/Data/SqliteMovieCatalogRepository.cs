@@ -642,6 +642,7 @@ public sealed class SqliteMovieCatalogRepository(
         var where = CatalogueKeyset.CombineFilters(
             search is null ? string.Empty : CatalogueKeyset.SearchFilter("m"),
             CatalogueLibraryFilter(libraryId),
+            CatalogueKeyset.MonitoredFilter(query.Monitored, "m"),
             CatalogueKeyset.StatusFilter(
                 status,
                 "m",
@@ -733,7 +734,7 @@ public sealed class SqliteMovieCatalogRepository(
             return new CataloguePage<MovieListItem>(items, nextPageToken, hasMore, null, null);
         }
 
-        var facets = await CountCatalogueFacetsAsync(connection, search, libraryId, cancellationToken);
+        var facets = await CountCatalogueFacetsAsync(connection, search, libraryId, status, query.Monitored, cancellationToken);
 
         return new CataloguePage<MovieListItem>(
             items,
@@ -752,24 +753,43 @@ public sealed class SqliteMovieCatalogRepository(
         System.Data.Common.DbConnection connection,
         string? search,
         string? libraryId,
+        string status,
+        bool? monitored,
         CancellationToken cancellationToken)
     {
         var where = CatalogueKeyset.CombineFilters(
             search is null ? string.Empty : CatalogueKeyset.SearchFilter("m"),
             CatalogueLibraryFilter(libraryId));
 
+        // The two axes cross here.
+        //
+        // Every *state* count is taken within the monitoring scope you have
+        // chosen, so "Missing 3" under Unmonitored means three unmonitored
+        // titles are missing. The two *monitoring* counts are taken within the
+        // status scope, so the monitoring control can say how many of the
+        // Missing titles fall each side. One pass either way — the base WHERE
+        // is the search and the library, and each axis is a CASE arm.
+        var monitoredArm = CatalogueKeyset.Always(CatalogueKeyset.MonitoredFilter(monitored, "m"));
+        var statusArm = CatalogueKeyset.Always(CatalogueKeyset.StatusFilter(
+            status,
+            "m",
+            CatalogueHasFileFor(libraryId),
+            CatalogueUpgradeFor(libraryId),
+            CatalogueWantedIs(libraryId, "covered"),
+            CatalogueWantedIs(libraryId, "upcoming")));
+
         using var command = connection.CreateCommand();
         command.CommandText =
             $"""
             SELECT
-                COUNT(*),
-                SUM(CASE WHEN m.monitored = 1 THEN 1 ELSE 0 END),
-                SUM(CASE WHEN m.monitored = 0 THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {CatalogueHasFileFor(libraryId)} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {CatalogueHasFileFor(libraryId)} OR {CatalogueWantedIs(libraryId, "upcoming")} THEN 0 ELSE 1 END),
-                SUM(CASE WHEN {CatalogueUpgradeFor(libraryId)} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {CatalogueWantedIs(libraryId, "covered")} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {CatalogueWantedIs(libraryId, "upcoming")} THEN 1 ELSE 0 END)
+                SUM(CASE WHEN {monitoredArm} THEN 1 ELSE 0 END),
+                SUM(CASE WHEN {statusArm} AND m.monitored = 1 THEN 1 ELSE 0 END),
+                SUM(CASE WHEN {statusArm} AND m.monitored = 0 THEN 1 ELSE 0 END),
+                SUM(CASE WHEN {monitoredArm} AND {CatalogueHasFileFor(libraryId)} THEN 1 ELSE 0 END),
+                SUM(CASE WHEN {monitoredArm} AND NOT ({CatalogueHasFileFor(libraryId)} OR {CatalogueWantedIs(libraryId, "upcoming")}) THEN 1 ELSE 0 END),
+                SUM(CASE WHEN {monitoredArm} AND {CatalogueUpgradeFor(libraryId)} THEN 1 ELSE 0 END),
+                SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, "covered")} THEN 1 ELSE 0 END),
+                SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, "upcoming")} THEN 1 ELSE 0 END)
             FROM movie_entries m
             WHERE {where};
             """;
@@ -783,7 +803,7 @@ public sealed class SqliteMovieCatalogRepository(
         }
 
         return new CatalogueFacets(
-            All: reader.GetInt32(0),
+            All: reader.IsDBNull(0) ? 0 : reader.GetInt32(0),
             Monitored: reader.IsDBNull(1) ? 0 : reader.GetInt32(1),
             Unmonitored: reader.IsDBNull(2) ? 0 : reader.GetInt32(2),
             Downloaded: reader.IsDBNull(3) ? 0 : reader.GetInt32(3),
@@ -794,10 +814,11 @@ public sealed class SqliteMovieCatalogRepository(
     }
 
     private static int SelectFacetTotal(CatalogueFacets facets, string status)
+        // Monitoring is not in here: the state facets are already counted within
+        // the monitoring scope, so the number for the chosen status *is* the
+        // number matching both axes.
         => status switch
         {
-            CatalogueStatusFilters.Monitored => facets.Monitored,
-            CatalogueStatusFilters.Unmonitored => facets.Unmonitored,
             CatalogueStatusFilters.Downloaded => facets.Downloaded,
             CatalogueStatusFilters.Missing => facets.Missing,
             CatalogueStatusFilters.Upgrades => facets.Upgrades,

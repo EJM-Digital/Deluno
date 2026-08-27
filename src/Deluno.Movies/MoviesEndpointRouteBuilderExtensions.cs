@@ -42,6 +42,9 @@ public static class MoviesEndpointRouteBuilderExtensions
         movies.MapGet("/page", async (
             string? search,
             string? status,
+            // A separate axis from `status`, so the two can be asked together.
+            // Absent is "either"; "true"/"false" narrow it.
+            bool? monitored,
             string? libraryId,
             string? sort,
             string? direction,
@@ -54,6 +57,7 @@ public static class MoviesEndpointRouteBuilderExtensions
                 new CatalogueQuery(
                     Search: search,
                     Status: status,
+                    Monitored: monitored,
                     LibraryId: libraryId,
                     Sort: sort,
                     Descending: !string.Equals(direction, "asc", StringComparison.OrdinalIgnoreCase),

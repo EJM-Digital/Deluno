@@ -163,10 +163,23 @@ never tell you which.
 work as a legend for a wall of posters, and three of the seven chips had no
 colour at all. The count is the part you read, so the count wears the mark.
 
-**Monitored and Unmonitored are coded, but not with a hue.** They get the
-monitoring grammar instead — a whole dot and a half dot, the same half that
-appears on a poster. #290 took hue away from things that are not states, and
-monitoring is a preference, not a rung.
+**Monitored and Unmonitored left the row entirely.** *(Revised 2026-08-27.)*
+They were the two chips that could not be given a colour, and the reason is that
+**monitoring is not a state** — it is whether Deluno acts on one, and it
+multiplies across all four rungs. Any of Missing, Upgradable, Quality met or
+Upcoming can be monitored or not.
+
+Keeping them in a row of states had a second cost, worse than the visual one:
+the two were *mutually exclusive*, because a title could only carry one filter
+value. **"Missing, and I have told Deluno to leave it alone" could not be asked
+for.** Monitoring is its own control in the toolbar now and its own axis on the
+query, so the row picks a state, the control picks an intent, and both narrow
+together. On a poster it stays what it always was — the *half* on the dot, which
+is the same idea: a modifier on whatever colour is already there.
+
+The state counts on the chips are taken inside the monitoring scope, and the
+monitoring counts inside the state scope, so each control says what choosing it
+would actually give you.
 
 ## What this means for the stored vocabulary (#300)
 

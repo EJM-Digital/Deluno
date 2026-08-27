@@ -19,6 +19,15 @@ import {
  * else.
  */
 
+/**
+ * The dot's diameter on a small poster, and therefore in the legend.
+ *
+ * One constant because the legend row exists to teach the shelf: a legend whose
+ * dots are a different size from the dots they explain is doing the job at half
+ * strength, and two hard-coded numbers would drift the first time either moved.
+ */
+export const MARK_DOT_SIZE = 13;
+
 export interface TitleMarkInput {
   monitored: boolean;
   wantedStatus?: string | null;

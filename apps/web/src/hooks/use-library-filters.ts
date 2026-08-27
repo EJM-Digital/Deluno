@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { defaultDisplayOptions } from "../lib/library-filters";
 import {
   isQuickFilter,
+  type MonitoringFilter,
   type QuickFilter,
   type SavedFilterPreset,
   type SortDirection,
@@ -37,6 +38,9 @@ export function useLibraryFilters(variant: LibraryVariant, urlFilter: string | n
   const [query, setQuery] = useState("");
   const [libraryId, setLibraryId] = useState<string | null>(null);
   const [quickFilter, setQuickFilter] = useState<QuickFilter>("all");
+  // The other axis. See `MonitoringFilter` — a state and an intent multiply,
+  // so neither can be expressed as a value of the other.
+  const [monitoring, setMonitoring] = useState<MonitoringFilter>("any");
   const [view, setView] = useState<ViewMode>("grid");
   const [sortField, setSortField] = useState<SortField>("title");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
@@ -50,6 +54,7 @@ export function useLibraryFilters(variant: LibraryVariant, urlFilter: string | n
     setSavedPresets([]);
     setLibraryId(null);
     setQuickFilter("all");
+    setMonitoring("any");
     setSortField("title");
     setSortDirection("asc");
     setCardSize(initialCardSize(variant));
@@ -74,9 +79,10 @@ export function useLibraryFilters(variant: LibraryVariant, urlFilter: string | n
 
   return {
     query, setQuery, libraryId, setLibraryId, quickFilter, setQuickFilter, view, setView, sortField, setSortField,
+    monitoring, setMonitoring,
     sortDirection, setSortDirection, cardSize, displayOptions, setDisplayOptions,
     savedPresets, setSavedPresets, newPresetName, setNewPresetName, isSavingPreset,
     setIsSavingPreset, changeSize, updateDisplayOptions,
-    activeFilterCount: Number(libraryId !== null) + Number(quickFilter !== "all")
+    activeFilterCount: Number(libraryId !== null) + Number(quickFilter !== "all") + Number(monitoring !== "any")
   };
 }
