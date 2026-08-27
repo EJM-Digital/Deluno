@@ -9,19 +9,43 @@ Walked in his live instances: **Radarr** (5,279 movies, 81.8 TiB, 56,798 history
 records), **Sonarr** (16 series, 350 episodes, 682 GiB), **Prowlarr** (12
 indexers), **Bazarr**. Everything below was seen, not remembered.
 
-## How it performs
+## How it performs — and a correction
 
 At 5,279 movies the poster grid renders the **whole library in one page** — no
 paging, an A–Z jump rail down the right edge, and the browser holds all of it.
-It is fast to scroll and slow to become interactive; screenshotting it timed out
-repeatedly, which is a fair proxy for main-thread cost.
+Screenshotting it timed out repeatedly, which I first read as a problem.
 
-Deluno pages at 100 and keeps one page in memory, which is the better engineering
-and the worse *feel*: there is no way to flick to "S". **Deluno needs the A–Z
-rail or an equivalent jump**, because keyset paging without one makes a large
-library feel further away than Radarr's does. That is the honest trade to fix.
+James, who uses it daily, corrected that:
 
-History is 2,840 pages of 20. Paged, and unremarkable.
+> *"the performance of radarr displaying 5,279 movies is perfectly fine, there
+> is the initial 3-5 seconds when going to the URL before it displays but it
+> shows a witty message to ease the pain, I dunno if what we do is a better
+> experience especially at 6000+ movies."*
+
+He is right, and it inverts the finding. The comparison that matters is not first
+paint:
+
+| | Radarr | Deluno today |
+|---|---|---|
+| First paint | 3–5s, with a message that makes the wait feel deliberate | fast, ~100 titles |
+| Reaching title 3,000 | scroll, or click "S" | **30 round trips** |
+| Ctrl+F across the library | works | finds one page |
+| Scroll to the end | works | 60 clicks at 6,000 |
+| Feels like | one library | a database you are querying |
+
+Deluno wins one row and loses four. **Paging was not the safe choice, it was the
+wrong one**, and "only this page is kept in memory" is an implementation detail
+presented as a feature.
+
+The answer is neither: one continuous **virtualised** shelf, fed by the keyset
+query in the background, with an A–Z rail. `library-grid.tsx` already imports
+`useVirtualizer`, so only visible rows are ever in the DOM — twenty thousand item
+objects is a few megabytes, where twenty thousand DOM nodes is what costs Radarr
+its five seconds. Faster than Radarr *and* better than paging. See
+[#312](https://github.com/jampat000/Deluno/issues/312).
+
+History is 2,840 pages of 20. Paged, and unremarkable — paging is right there,
+because nobody browses history.
 
 ## What Radarr has that Deluno has no answer to
 
