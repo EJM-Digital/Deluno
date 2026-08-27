@@ -102,9 +102,16 @@ export function ProgressiveGrid({
       // Resolve the density-aware CSS values in the same element that owns the
       // grid. `getComputedStyle` exposes custom properties as expressions, so a
       // hidden probe is the reliable way to obtain their computed pixel values.
+      // The probe goes in the container's *parent*, not the container.
+      //
+      // The custom properties cascade, so it measures the same thing either
+      // way — but the container is the element this ResizeObserver watches, and
+      // adding a child to it inside its own callback is a write to the thing
+      // being observed. It is the second half of the loop James saw shaking.
+      const host = container.parentElement ?? container;
       const probe = document.createElement("div");
       probe.style.cssText = `position:absolute;visibility:hidden;pointer-events:none;min-width:${gridMin};margin-left:var(--library-grid-gap);`;
-      container.appendChild(probe);
+      host.appendChild(probe);
       const minimumCardWidth = probe.getBoundingClientRect().width;
       const gap = Number.parseFloat(getComputedStyle(probe).marginLeft) || 0;
       probe.remove();
@@ -140,7 +147,7 @@ export function ProgressiveGrid({
     () => buildJumpBuckets(items, sortField, sortDirection),
     [items, sortDirection, sortField]
   );
-  const { show: showRail, activeIndex, jumpTo } = useJumpRail(virtualizer, safeColumns, virtualRows);
+  const { slotWidth, activeIndex, jumpTo } = useJumpRail(virtualizer, safeColumns, virtualRows, buckets);
 
   return (
     <div className="flex items-stretch gap-1">
@@ -161,7 +168,13 @@ export function ProgressiveGrid({
           ))}
         </div>
       </div>
-      {showRail ? <JumpRail buckets={buckets} activeIndex={activeIndex} isComplete={isComplete} onJump={jumpTo} /> : null}
+      {/*
+        Always here, and always this wide. Letting either the rail or its slot
+        come and going moved the shelf under the reader — see `useJumpRail`.
+      */}
+      <div className="hidden shrink-0 pl-1 sm:block" style={{ width: slotWidth }}>
+        <JumpRail buckets={buckets} activeIndex={activeIndex} isComplete={isComplete} onJump={jumpTo} />
+      </div>
     </div>
   );
 }

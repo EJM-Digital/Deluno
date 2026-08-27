@@ -69,7 +69,12 @@ export function JumpRail({
       // middle of it. A rail you aim at is a rail: 27 letters over 600px gives
       // every stop a target you can hit without looking, and the same spacing
       // makes six size bands read as a scale rather than a stray menu.
-      className="hidden shrink-0 flex-col items-stretch justify-evenly gap-px overflow-y-auto py-1 pl-1 sm:flex"
+      //
+      // `min-h-0` with `overflow-y-auto` so the rail can never be what makes the
+      // row taller. Without it, eleven titles on one shelf row drew an alphabet
+      // that stretched the row to fit itself — the rail deciding the height of
+      // the thing it is measuring.
+      className="hidden h-full min-h-0 w-full flex-col items-stretch justify-evenly gap-px overflow-y-auto py-1 sm:flex"
     >
       {buckets.map((bucket) => {
         const loaded = bucket.index !== null;
@@ -127,7 +132,8 @@ export function JumpRail({
 export function useJumpRail(
   virtualizer: Virtualizer<HTMLDivElement, Element>,
   columns: number,
-  virtualRows: VirtualItem[]
+  virtualRows: VirtualItem[],
+  buckets: JumpBucket[]
 ) {
   const jumpTo = useCallback(
     (index: number) => {
@@ -136,14 +142,36 @@ export function useJumpRail(
     [columns, virtualizer]
   );
 
-  // A rail is a scrolling aid, so it exists only where there is scrolling to
-  // aid. A library of eleven titles fits on one row and drew a 27-letter
-  // alphabet twice the height of its own shelf beside it — a control taller
-  // than the thing it controls.
-  const scrollElement = virtualizer.options.getScrollElement();
-  const overflows = scrollElement !== null
-    && scrollElement !== undefined
-    && virtualizer.getTotalSize() > scrollElement.clientHeight + 1;
+  /*
+    The rail is always there, and its slot is always reserved.
+
+    Both halves of that were learned the hard way, and they are the same
+    lesson.
+
+    It was not, and the result was a shelf that shook. The rail appearing took
+    ten pixels off the scroll container; ten fewer pixels re-measured the column
+    track; a different column count changed the row count; a different row count
+    changed the total size; and the total size was what decided whether the rail
+    appeared. Chrome caught it as `ResizeObserver loop completed with
+    undelivered notifications` and abandoned the pass, which is why it settled
+    on its own — and while it ran, two absolutely positioned rows drew at each
+    other's offsets. James saw it before any test did: *"it's like there are 2
+    cards overlapping and it's shaking but then it stops."*
+
+    The cycle is cut here. The slot's width is a function of the labels, which
+    come from the sort field and the rows — inputs that flow one way. Nothing
+    about the layout can reach back and change it.
+
+    And the rail itself no longer comes and goes. A first attempt drew it only
+    when the shelf overflowed, which fixed the loop and left the symptom: James,
+    on the shelf still moving under him, *"it also shifts when the A–Z appears
+    and disappears on the right, shouldn't it be there all the time?"* It should.
+    Radarr's is. A shelf that fits on screen has every stop in front of the
+    reader already, so the rail costs them nothing and never moves — and the
+    measurement, the observer and the threshold that decided it are all gone.
+  */
+  const widestLabel = buckets.reduce((widest, bucket) => Math.max(widest, bucket.label.length), 1);
+  const slotWidth = `calc(${widestLabel}ch + 1rem)`;
 
   // The first row *on screen*, not the first row rendered.
   //
@@ -156,5 +184,5 @@ export function useJumpRail(
 
   // The *end* of that row — see the comment on `activeLabel`.
   const span = Math.max(1, columns);
-  return { show: overflows, activeIndex: ((firstVisible?.index ?? 0) + 1) * span - 1, jumpTo };
+  return { slotWidth, activeIndex: ((firstVisible?.index ?? 0) + 1) * span - 1, jumpTo };
 }
