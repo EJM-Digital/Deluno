@@ -53,7 +53,7 @@ public sealed class SearchJobHandlerTests
         var downloadClientGrabService = new Mock<IDownloadClientGrabService>(MockBehavior.Strict);
         var activityFeedRepository = new Mock<IActivityFeedRepository>(MockBehavior.Strict);
 
-        var handler = new LibrarySearchJobHandler(
+        var handler = new TvLibrarySearchJobHandler(
             librariesRepository.Object,
             qualityRepository.Object,
             jobQueueRepository.Object,
@@ -123,7 +123,7 @@ public sealed class SearchJobHandlerTests
             .Callback<string, IReadOnlyList<EpisodeSearchPlanItem>, CancellationToken>((_, episodes, _) => planned = episodes)
             .Returns(Task.CompletedTask);
 
-        var handler = new LibrarySearchJobHandler(
+        var handler = new TvLibrarySearchJobHandler(
             librariesRepository.Object,
             qualityRepository.Object,
             jobQueueRepository.Object,

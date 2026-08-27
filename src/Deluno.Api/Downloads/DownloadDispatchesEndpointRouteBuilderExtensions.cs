@@ -196,7 +196,7 @@ public static class DownloadDispatchesEndpointRouteBuilderExtensions
 
         var job = await jobScheduler.EnqueueAsync(
             new EnqueueJobRequest(
-                JobType: "library.search",
+                JobType: LibrarySearchJobTypes.For(dispatch.MediaType),
                 Source: "download_dispatch.retry",
                 PayloadJson: payload,
                 RelatedEntityType: "download_dispatch",

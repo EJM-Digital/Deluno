@@ -30,7 +30,8 @@ public static class WorkerServiceCollectionExtensions
         services.AddScoped<IJobHandler, MoviesMetadataRefreshJobHandler>();
         services.AddScoped<IJobHandler, SeriesMetadataRefreshJobHandler>();
         services.AddScoped<IJobHandler, EpisodeSearchJobHandler>();
-        services.AddScoped<IJobHandler, LibrarySearchJobHandler>();
+        services.AddScoped<IJobHandler, MoviesLibrarySearchJobHandler>();
+        services.AddScoped<IJobHandler, TvLibrarySearchJobHandler>();
         services.AddScoped<JobHandlerRegistry>();
 
         services.AddScoped<WorkPlanner>();

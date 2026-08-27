@@ -54,35 +54,32 @@ public sealed class DelunoHeartbeatWorker(
         new("import", TimeSpan.FromSeconds(30), ["filesystem.import.execute", "library.import.existing"],
             BatchSize: 16, MaxConcurrency: 8),
 
-        // Indexer-bound, and wide enough that TV never queues behind movies.
+        // Searching, one lane per catalogue so neither can starve the other.
         //
-        // This was MaxConcurrency 2, on the reasoning that "each job already
-        // fans out across every configured indexer, so stacking many searches
-        // multiplies outbound requests against the same remote hosts". True —
-        // and **already handled one layer down**. `FeedMediaSearchPlanner` paces
-        // every outbound request through `outboundRequestThrottle`, keyed on the
-        // *host* rather than the indexer id, precisely because two indexer
-        // entries can point at one tracker.
+        // These were one lane at MaxConcurrency 2, to stop searches "multiplying
+        // outbound requests against the same remote hosts". That concern is
+        // real and it is **already handled one layer down**:
+        // `FeedMediaSearchPlanner` paces every request through
+        // `outboundRequestThrottle`, keyed on the *host* rather than the indexer
+        // id, precisely because two indexer entries can point at one tracker.
         //
-        // So the narrow lane was a second, cruder copy of a limit that already
-        // existed, and it was paid for in the wrong currency: it reduced load on
-        // no tracker — the throttle does that — it only made a TV search wait
-        // behind two movie searches for nobody's benefit.
+        // So the shared narrow lane protected no tracker — the throttle does
+        // that. All it did was make a TV search wait behind movie searches, and
+        // it was at its worst in exactly the case that matters: movie searches
+        // stuck against an unresponsive indexer, holding the lane while TV work
+        // sat queued behind them.
         //
-        // Measured before widening (`JobQueueContentionBenchmark`): 25
+        // Measured before splitting (`JobQueueContentionBenchmark`): 25
         // concurrent workers sustain ~4,300 lease+complete round trips a second
-        // against the shared jobs database, every lane draining evenly. The
-        // queue is not the constraint, so the width is free.
+        // against the shared jobs database, every lane draining evenly — so the
+        // queue does not care how many lanes there are.
         //
-        // Not split into per-media-type lanes, though that was considered:
-        // `library.search` is keyed on in a dozen places in `SqliteJobStore` for
-        // automation-state bookkeeping, and two of its three enqueue sites set
-        // `Source` to something other than the media type, so neither renaming
-        // the job type nor routing on `Source` is cheap or safe. A job with no
-        // lane never runs, which is exactly #303. Worth doing on its own, with
-        // its own migration and tests — not inside another feature.
-        new("search", TimeSpan.FromSeconds(30), ["library.search", "episode.search"],
-            BatchSize: 4, MaxConcurrency: 6),
+        // `episode.search` rides with TV because it is the same catalogue and
+        // the same work at a finer grain.
+        new("search.movies", TimeSpan.FromSeconds(30), [LibrarySearchJobTypes.Movies],
+            BatchSize: 4, MaxConcurrency: 4),
+        new("search.tv", TimeSpan.FromSeconds(30), [LibrarySearchJobTypes.Tv, "episode.search"],
+            BatchSize: 4, MaxConcurrency: 4),
 
         // Remote list providers, and rate-limited by them.
         new("intake", TimeSpan.FromSeconds(30), ["intake.sync"],

@@ -78,7 +78,7 @@ public sealed class DownloadRetryService(
                 {
                     await jobScheduler.EnqueueAsync(
                         new EnqueueJobRequest(
-                            JobType: "library.search",
+                            JobType: LibrarySearchJobTypes.For(dispatch.MediaType),
                             Source: "DownloadRetryService",
                             PayloadJson: jobPayload,
                             RelatedEntityType: "download_dispatch",

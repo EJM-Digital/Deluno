@@ -528,7 +528,7 @@ public sealed class SqliteJobStore(
                 job.RelatedEntityType ?? "job",
                 "queued",
                 cancellationToken);
-            if (job.JobType == "library.search" && string.Equals(job.RelatedEntityType, "library", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(job.RelatedEntityId))
+            if (LibrarySearchJobTypes.IsLibrarySearch(job.JobType) && string.Equals(job.RelatedEntityType, "library", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(job.RelatedEntityId))
             {
                 await realtimeEventPublisher.PublishEntityChangedAsync("AutomationState", job.RelatedEntityId, cancellationToken);
             }
@@ -693,7 +693,7 @@ public sealed class SqliteJobStore(
 
         await transaction.CommitAsync(cancellationToken);
         foreach (var libraryId in leasedJobs
-            .Where(job => job.JobType == "library.search" && string.Equals(job.RelatedEntityType, "library", StringComparison.OrdinalIgnoreCase))
+            .Where(job => LibrarySearchJobTypes.IsLibrarySearch(job.JobType) && string.Equals(job.RelatedEntityType, "library", StringComparison.OrdinalIgnoreCase))
             .Select(job => job.RelatedEntityId)
             .Where(id => !string.IsNullOrWhiteSpace(id))
             .Distinct(StringComparer.OrdinalIgnoreCase))
@@ -778,7 +778,7 @@ public sealed class SqliteJobStore(
             cancellationToken: cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
-        if (job.JobType == "library.search" && string.Equals(job.RelatedEntityType, "library", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(job.RelatedEntityId))
+        if (LibrarySearchJobTypes.IsLibrarySearch(job.JobType) && string.Equals(job.RelatedEntityType, "library", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(job.RelatedEntityId))
             await realtimeEventPublisher.PublishEntityChangedAsync("AutomationState", job.RelatedEntityId, cancellationToken);
         await realtimeEventPublisher.PublishQueueItemRemovedAsync(job.Id, cancellationToken);
         await realtimeEventPublisher.PublishActivityEventAddedAsync(
@@ -903,7 +903,7 @@ public sealed class SqliteJobStore(
             cancellationToken: cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
-        if (job.JobType == "library.search" && string.Equals(job.RelatedEntityType, "library", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(job.RelatedEntityId))
+        if (LibrarySearchJobTypes.IsLibrarySearch(job.JobType) && string.Equals(job.RelatedEntityType, "library", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(job.RelatedEntityId))
             await realtimeEventPublisher.PublishEntityChangedAsync("AutomationState", job.RelatedEntityId, cancellationToken);
         await realtimeEventPublisher.PublishQueueItemRemovedAsync(job.Id, cancellationToken);
         await realtimeEventPublisher.PublishQueueItemStatusChangedAsync(
@@ -1526,7 +1526,10 @@ public sealed class SqliteJobStore(
             deleteQueued.CommandText =
                 """
                 DELETE FROM job_queue
-                WHERE job_type = 'library.search'
+                -- All three names: the two current types and any legacy row
+                -- that outlived its migration. A skip that missed one would
+                -- leave the search it was asked to cancel queued and running.
+                WHERE job_type IN ('library.search.movies', 'library.search.tv', 'library.search')
                   AND status = 'queued'
                   AND related_entity_type = 'library'
                   AND related_entity_id = @libraryId;
@@ -1769,7 +1772,7 @@ public sealed class SqliteJobStore(
                 var idempotencyKey = $"library.search:{library.LibraryId}:{kind}:{(manualRequest ? "manual" : "schedule")}";
                 var job = new JobQueueItem(
                     Id: Guid.CreateVersion7().ToString("N"),
-                    JobType: "library.search",
+                    JobType: LibrarySearchJobTypes.For(library.MediaType),
                     Source: library.MediaType,
                     Status: "queued",
                     PayloadJson: payload,
@@ -2608,7 +2611,10 @@ public sealed class SqliteJobStore(
             """
             SELECT DISTINCT COALESCE(dedupe_key, 'library.search:' || related_entity_id)
             FROM job_queue
-            WHERE job_type = 'library.search'
+            -- All three names. This set is what stops a second search being
+            -- planned for a library that already has one in flight, so missing
+            -- a name here would queue duplicates rather than skip them.
+            WHERE job_type IN ('library.search.movies', 'library.search.tv', 'library.search')
               AND related_entity_type = 'library'
               AND status IN ('queued', 'running')
               AND related_entity_id IS NOT NULL;
@@ -2749,7 +2755,7 @@ public sealed class SqliteJobStore(
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        if (job.JobType != "library.search" || !string.Equals(job.RelatedEntityType, "library", StringComparison.OrdinalIgnoreCase))
+        if (!LibrarySearchJobTypes.IsLibrarySearch(job.JobType) || !string.Equals(job.RelatedEntityType, "library", StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
@@ -2780,7 +2786,7 @@ public sealed class SqliteJobStore(
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        if (job.JobType != "library.search" || !string.Equals(job.RelatedEntityType, "library", StringComparison.OrdinalIgnoreCase))
+        if (!LibrarySearchJobTypes.IsLibrarySearch(job.JobType) || !string.Equals(job.RelatedEntityType, "library", StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
@@ -2808,7 +2814,7 @@ public sealed class SqliteJobStore(
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        if (job.JobType != "library.search" || !string.Equals(job.RelatedEntityType, "library", StringComparison.OrdinalIgnoreCase))
+        if (!LibrarySearchJobTypes.IsLibrarySearch(job.JobType) || !string.Equals(job.RelatedEntityType, "library", StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
@@ -2840,7 +2846,7 @@ public sealed class SqliteJobStore(
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        if (job.JobType != "library.search" || !string.Equals(job.RelatedEntityType, "library", StringComparison.OrdinalIgnoreCase))
+        if (!LibrarySearchJobTypes.IsLibrarySearch(job.JobType) || !string.Equals(job.RelatedEntityType, "library", StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
@@ -3103,7 +3109,7 @@ public sealed class SqliteJobStore(
 
     private static string FormatQueuedMessage(string jobType, string source, string? payloadJson)
     {
-        if (jobType == "library.search")
+        if (LibrarySearchJobTypes.IsLibrarySearch(jobType))
         {
             var context = ParseLibraryPayload(payloadJson);
             if (context is not null)
@@ -3130,7 +3136,7 @@ public sealed class SqliteJobStore(
 
     private static string FormatStartedMessage(string jobType, string? payloadJson)
     {
-        if (jobType == "library.search")
+        if (LibrarySearchJobTypes.IsLibrarySearch(jobType))
         {
             var context = ParseLibraryPayload(payloadJson);
             if (context is not null)
@@ -3156,7 +3162,7 @@ public sealed class SqliteJobStore(
 
     private static string FormatQueuedTitle(string jobType, string? payloadJson)
     {
-        if (jobType == "library.search")
+        if (LibrarySearchJobTypes.IsLibrarySearch(jobType))
         {
             var context = ParseLibraryPayload(payloadJson);
             if (context is not null)
