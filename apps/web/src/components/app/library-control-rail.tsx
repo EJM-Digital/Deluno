@@ -266,8 +266,8 @@ export function ControlRail({ label, facets, controls }: {
                 description="Start with a visual poster grid or a dense list. Your choice is remembered separately for movies and TV."
                 onClose={() => setOpenPanel(null)}
               />
-              <div className="grid gap-[var(--grid-gap)] p-[calc(var(--tile-pad)*0.8)] xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)]">
-                <div className="space-y-[var(--grid-gap)]">
+              <div className="grid gap-[var(--grid-gap)] p-[calc(var(--tile-pad)*0.8)] xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)] xl:gap-0">
+                <div className="space-y-[var(--grid-gap)] xl:pr-[var(--grid-gap)]">
                   <div>
                     <SectionLabel>Layout</SectionLabel>
                     <p className="mt-1 text-[length:var(--type-caption)] text-muted-foreground">Pick the view that best fits the job in front of you.</p>
@@ -297,7 +297,14 @@ export function ControlRail({ label, facets, controls }: {
                   round it says so again. Stacked and divided, the rows read the
                   way every other settings list in Deluno does.
                 */}
-                <div>
+                {/*
+                  A rule between the two halves rather than a box around each:
+                  one line says "these are separate" where two borders said it
+                  twice. Equal gaps either side of it, and only once the panel is
+                  actually side by side — stacked, the section labels already do
+                  the separating.
+                */}
+                <div className="xl:border-l xl:border-hairline xl:pl-[var(--grid-gap)]">
                   <SectionLabel>What each poster shows</SectionLabel>
                   <p className="mt-1 text-[length:var(--type-caption)] text-muted-foreground">Keep the essentials visible; turn on extra metadata only when it helps your workflow.</p>
                   <div className="mt-2 divide-y divide-hairline">
