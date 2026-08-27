@@ -99,9 +99,11 @@ Deluno records its own reasoning, and none of it is askable:
   retry-delayed, never searched, searched N times with no grab.
 - **Wanted reason:** the sentence Deluno wrote about why a title is on the list.
 - **Policy conformance:** *below the size rule for its own quality tier* —
-  a 2160p file at 4 GB — or *above it*. That is a question about the file
-  measured against the profile, and it is the single most useful audit a media
-  library can run. It is what Cleanuparr and a spreadsheet are for today.
+  a 2160p file at 4 GB — or *above it*. A question about the file measured
+  against the profile it was accepted under, and the single most useful audit a
+  media library can run. Nothing in the arr suite asks it: Cleanuparr is about
+  stalled, slow and orphaned *downloads*, not about whether the files you
+  already keep still match the rules you set. Today this is a spreadsheet.
 - **Duplication:** held in two libraries, two files for one title.
 - **Filesystem truth:** tracked file missing from disk.
 
