@@ -1,5 +1,5 @@
 import { Play, ShieldCheck, Star } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { MediaItem, MediaStatus } from "../../lib/media-types";
@@ -62,15 +62,27 @@ export function ProgressiveGrid({
   onToggle: (id: string) => void;
   onEndReached: () => void;
 }) {
-  const parentRef = useRef<HTMLDivElement | null>(null);
+  // The scroll container is held in state rather than a ref, because `keyBust`
+  // remounts it: a ref would still point at the old node, so the measurement
+  // below would keep observing a detached element while the live one grew
+  // unmeasured. A state-backed ref callback re-runs the effect on the node that
+  // is actually on screen.
+  const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const [columns, setColumns] = useState(4);
   const gridMin = GRID_MIN_BY_DENSITY[density][cardSize];
 
   useLayoutEffect(() => {
-    const container = parentRef.current;
     if (!container) return;
 
     const updateColumns = () => {
+      // A detached or not-yet-laid-out container measures zero, and zero divided
+      // through says "one column" — which is how clicking a quick filter used to
+      // blow the grid up to a single poster the width of the page. It is not a
+      // measurement, so it must not become one: keep the last real answer and
+      // wait for the next observation.
+      const width = container.clientWidth;
+      if (width <= 0) return;
+
       // Resolve the density-aware CSS values in the same element that owns the
       // grid. `getComputedStyle` exposes custom properties as expressions, so a
       // hidden probe is the reliable way to obtain their computed pixel values.
@@ -81,15 +93,12 @@ export function ProgressiveGrid({
       const gap = Number.parseFloat(getComputedStyle(probe).marginLeft) || 0;
       probe.remove();
 
-      // Before the container has been laid out, both the probe and the
-      // container measure 0, and the division yields NaN (0/0) or Infinity.
-      // That reached `useVirtualizer` as its row count, which builds an array of
-      // that length and threw "Invalid array length", taking the whole Movies
-      // route down behind the error boundary (#270). One column is the honest
-      // fallback until a real measurement arrives — the ResizeObserver below
-      // corrects it on the next layout.
+      // A NaN or Infinite column count reached `useVirtualizer` as its row
+      // count, which builds an array of that length and threw "Invalid array
+      // length", taking the whole Movies route down behind the error boundary
+      // (#270). One column is the honest fallback for a track we cannot measure.
       const track = minimumCardWidth + gap;
-      const measured = track > 0 ? Math.floor((container.clientWidth + gap) / track) : 1;
+      const measured = track > 0 ? Math.floor((width + gap) / track) : 1;
       const nextColumns = Number.isFinite(measured) ? Math.max(1, measured) : 1;
       setColumns((current) => current === nextColumns ? current : nextColumns);
     };
@@ -98,12 +107,12 @@ export function ProgressiveGrid({
     const observer = new ResizeObserver(updateColumns);
     observer.observe(container);
     return () => observer.disconnect();
-  }, [gridMin]);
+  }, [container, gridMin]);
   // Belt and braces: the virtualiser allocates an array of this length, so it
   // must be a non-negative integer no matter what the measurement produced.
   const safeColumns = Number.isFinite(columns) && columns >= 1 ? Math.floor(columns) : 1;
   const rowCount = Math.max(0, Math.ceil(items.length / safeColumns));
-  const virtualizer = useVirtualizer({ count: rowCount, getScrollElement: () => parentRef.current, estimateSize: () => cardSize === "lg" ? 440 : cardSize === "sm" ? 245 : 340, overscan: 3 });
+  const virtualizer = useVirtualizer({ count: rowCount, getScrollElement: () => container, estimateSize: () => cardSize === "lg" ? 440 : cardSize === "sm" ? 245 : 340, overscan: 3 });
   const virtualRows = virtualizer.getVirtualItems();
 
   useEffect(() => {
@@ -113,7 +122,7 @@ export function ProgressiveGrid({
 
   return (
     <>
-      <div ref={parentRef} className="max-h-[calc(100dvh-260px)] overflow-auto" key={keyBust}>
+      <div ref={setContainer} className="max-h-[calc(100dvh-260px)] overflow-auto" key={keyBust}>
         <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
           {virtualRows.map((row) => (
             <div key={row.key} ref={virtualizer.measureElement} data-index={row.index} className="absolute left-0 top-0 w-full" style={{ transform: `translateY(${row.start}px)` }}>
