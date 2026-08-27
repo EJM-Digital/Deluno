@@ -107,7 +107,7 @@ public sealed class IntelligentRoutingService(
             """
             SELECT decision_quality
             FROM download_dispatches
-            WHERE (import_status = 'imported' OR import_status = 'completed')
+            WHERE import_status = 'imported'
               AND decision_quality IS NOT NULL
             GROUP BY decision_quality
             ORDER BY COUNT(*) DESC
@@ -120,7 +120,7 @@ public sealed class IntelligentRoutingService(
             """
             SELECT AVG(CAST(decision_custom_format_score AS REAL))
             FROM download_dispatches
-            WHERE (import_status = 'imported' OR import_status = 'completed')
+            WHERE import_status = 'imported'
               AND decision_custom_format_score IS NOT NULL;
             """,
             cancellationToken) ?? 0;
@@ -132,7 +132,7 @@ public sealed class IntelligentRoutingService(
                 """
                 SELECT decision_release_group
                 FROM download_dispatches
-                WHERE (import_status = 'imported' OR import_status = 'completed')
+                WHERE import_status = 'imported'
                   AND decision_release_group IS NOT NULL
                 GROUP BY decision_release_group
                 ORDER BY COUNT(*) DESC
@@ -164,7 +164,7 @@ public sealed class IntelligentRoutingService(
             SELECT
                 {columnName},
                 COUNT(*) AS total_count,
-                SUM(CASE WHEN import_status IN ('imported', 'completed') THEN 1 ELSE 0 END) AS success_count
+                SUM(CASE WHEN import_status = 'imported' THEN 1 ELSE 0 END) AS success_count
             FROM download_dispatches
             WHERE {columnName} IS NOT NULL
               AND decision_score IS NOT NULL

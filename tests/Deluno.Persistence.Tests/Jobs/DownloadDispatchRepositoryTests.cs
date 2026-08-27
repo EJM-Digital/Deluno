@@ -93,6 +93,76 @@ public sealed class DownloadDispatchRepositoryTests
         Assert.Equal("movies-main", link.LibraryId);
     }
 
+    /// <summary>
+    /// The word a finished import is stored under, pinned.
+    ///
+    /// Every writer has always stored <c>imported</c>; three readers asked for
+    /// <c>completed</c> and so matched nothing. The archive sweep therefore
+    /// archived nothing and every imported dispatch stayed in the active set
+    /// for good, and the dispatch metrics served zero successful imports —
+    /// both individually plausible, neither ever compared. This is the
+    /// comparison.
+    /// </summary>
+    [Fact]
+    public async Task A_finished_import_is_stored_under_one_word_whichever_one_the_caller_used()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T04:00:00Z"));
+
+        await new JobsSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var repository = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        await InsertDispatchAsync(storage.Factory, "dispatch-a", "movies-main", "movie-1", "Sintel.2010.1080p");
+        await InsertDispatchAsync(storage.Factory, "dispatch-b", "movies-main", "movie-2", "Tears.2011.1080p");
+
+        await repository.RecordImportOutcomeAsync("dispatch-a", "imported", @"C:\Library\Movies\Sintel.mkv", null, null, CancellationToken.None);
+        // The other word, which nothing writes any more but an older caller might.
+        await repository.RecordImportOutcomeAsync("dispatch-b", "completed", @"C:\Library\Movies\Tears.mkv", null, null, CancellationToken.None);
+
+        var a = await repository.GetDispatchAsync("dispatch-a", CancellationToken.None);
+        var b = await repository.GetDispatchAsync("dispatch-b", CancellationToken.None);
+
+        Assert.Equal("imported", a!.ImportStatus);
+        Assert.Equal("imported", b!.ImportStatus);
+    }
+
+    /// <summary>
+    /// The dispatch metrics, read through the production query rather than a
+    /// copy of it.
+    ///
+    /// This is the consequence that mattered. Because the readers asked for a
+    /// word nothing wrote, <c>SuccessfulImports</c> served zero for every
+    /// install that ever ran, and the sweep that retires a finished dispatch
+    /// selected nothing — so every imported dispatch stayed in the working set
+    /// the Transfers list, the metrics and the routing statistics all read.
+    /// </summary>
+    [Fact]
+    public async Task A_finished_import_counts_as_a_successful_import()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T04:00:00Z"));
+
+        await new JobsSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var repository = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        await InsertDispatchAsync(storage.Factory, "dispatch-a", "movies-main", "movie-1", "Sintel.2010.1080p");
+        await InsertDispatchAsync(storage.Factory, "dispatch-b", "movies-main", "movie-2", "Tears.2011.1080p");
+        await repository.RecordImportOutcomeAsync("dispatch-a", "imported", @"C:\Library\Movies\Sintel.mkv", null, null, CancellationToken.None);
+        await repository.RecordImportOutcomeAsync("dispatch-b", "failed", null, "import-failed", "no matching title", CancellationToken.None);
+
+        var metrics = await new SqliteDispatchMetricsRepository(storage.Factory, timeProvider)
+            .GetMetricsAsync(CancellationToken.None);
+
+        Assert.Equal(1, metrics.SuccessfulImports);
+        Assert.Equal(1, metrics.FailedImports);
+    }
+
     [Fact]
     public async Task QueryDispatches_uses_a_keyset_token_when_a_newer_dispatch_arrives_mid_walk()
     {

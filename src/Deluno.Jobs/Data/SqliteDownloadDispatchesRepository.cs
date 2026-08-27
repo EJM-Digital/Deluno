@@ -162,6 +162,24 @@ public sealed class SqliteDownloadDispatchesRepository(
         return result ?? throw new InvalidOperationException($"Dispatch {dispatchId} not found after detection");
     }
 
+    /// <summary>
+    /// One word per outcome, enforced at the door.
+    ///
+    /// <c>completed</c> and <c>imported</c> both meant "the import finished"
+    /// until V0016: every writer used <c>imported</c> and three readers asked
+    /// for <c>completed</c>, so nothing was ever archived and the
+    /// successful-import metric served zero. Normalising here is what stops a
+    /// caller reintroducing the second word — the same guard the wanted-status
+    /// repositories already use.
+    /// </summary>
+    private static string NormalizeImportStatus(string? value)
+        => value?.Trim().ToLowerInvariant() switch
+        {
+            "imported" or "completed" => "imported",
+            "failed" => "failed",
+            _ => "pending"
+        };
+
     public async Task<DownloadDispatchItem> RecordImportOutcomeAsync(
         string dispatchId,
         string importStatus,
@@ -171,6 +189,7 @@ public sealed class SqliteDownloadDispatchesRepository(
         CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
+        importStatus = NormalizeImportStatus(importStatus);
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Jobs,
@@ -253,7 +272,9 @@ public sealed class SqliteDownloadDispatchesRepository(
         if (!string.IsNullOrEmpty(filter.ImportStatus))
         {
             whereConditions.Add("import_status = @importStatus");
-            parameters["importStatus"] = filter.ImportStatus;
+            // Through the same door as a write, so a caller asking for the word
+            // this column no longer stores still gets its rows.
+            parameters["importStatus"] = NormalizeImportStatus(filter.ImportStatus);
         }
 
         if (!string.IsNullOrEmpty(filter.ClientId))

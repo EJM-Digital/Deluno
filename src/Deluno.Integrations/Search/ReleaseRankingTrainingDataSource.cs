@@ -114,8 +114,7 @@ public sealed class SqliteReleaseRankingTrainingDataSource(
 
     private static bool? ResolveLabel(string? grabStatus, string? importStatus)
     {
-        if (string.Equals(importStatus, "imported", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(importStatus, "completed", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(importStatus, "imported", StringComparison.OrdinalIgnoreCase))
         {
             return true;
         }
