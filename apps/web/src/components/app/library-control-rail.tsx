@@ -6,7 +6,7 @@ import type { CatalogueFacets } from "../../lib/api";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { Select } from "../ui/select";
+import { MenuSelect } from "../ui/menu-select";
 import { SwitchRow } from "../ui/switch";
 import type { CardSize, DisplayOptions } from "./library-grid";
 
@@ -164,30 +164,25 @@ export function ControlRail({ label, facets, controls }: {
             </div>
 
             {/*
-              The pill is the chrome, so the select inside it wears none — see
-              `bareControlClassName`. Undoing the box from here instead left it
-              still painting a hover and focus surface, which showed up as a
-              second rounded box inside this one.
-
-              Only the left padding is overridden, too. `px-1` used to override
-              both, and the right half of that padding is the gutter Select
-              reserves for its own chevron — so the icon came down on top of
-              "All libraries" instead of sitting beside it.
+              A menu Deluno draws, not a native select. The list a native select
+              opens is drawn by the operating system — square, flush, highlighted
+              in the system blue — so beside the Display and Order menus in this
+              same row it read as a different control no matter what colours it
+              was given. Same component as the density menu in the header now,
+              so there is one styled pick-one rather than two that resemble each
+              other.
             */}
-            <label className="flex min-h-[var(--library-toolbar-height)] min-w-[11rem] items-center rounded-xl bg-foreground/[0.04] pl-2.5 ring-1 ring-inset ring-hairline/60 dark:bg-white/[0.05] dark:ring-white/[0.06]">
-              <span className="sr-only">Library</span>
-              <Select
-                aria-label="Library"
-                value={libraryId ?? ""}
-                onChange={(event) => setLibraryId(event.target.value || null)}
-                chrome={false}
-                className="h-[calc(var(--library-toolbar-height)-0.5rem)] pl-1 text-[length:var(--library-toolbar-size)] font-semibold"
-                options={[
-                  { value: "", label: "All libraries" },
-                  ...libraries.map((library) => ({ value: library.id, label: library.name }))
-                ]}
-              />
-            </label>
+            <MenuSelect
+              label="Library"
+              value={libraryId ?? ""}
+              onChange={(value) => setLibraryId(value || null)}
+              options={[
+                { value: "", label: "All libraries" },
+                ...libraries.map((library) => ({ value: library.id, label: library.name }))
+              ]}
+              className="min-w-[11rem]"
+              triggerClassName="min-h-[var(--library-toolbar-height)] bg-foreground/[0.04] px-2.5 text-[length:var(--library-toolbar-size)] font-semibold ring-1 ring-inset ring-hairline/60 hover:bg-foreground/[0.07] dark:bg-white/[0.05] dark:ring-white/[0.06] dark:hover:bg-white/[0.08]"
+            />
 
             <ToolbarMenuButton
               label="Display"
