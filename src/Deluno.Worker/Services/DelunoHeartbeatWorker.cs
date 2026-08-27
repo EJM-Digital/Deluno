@@ -54,14 +54,35 @@ public sealed class DelunoHeartbeatWorker(
         new("import", TimeSpan.FromSeconds(30), ["filesystem.import.execute", "library.import.existing"],
             BatchSize: 16, MaxConcurrency: 8),
 
-        // Indexer-bound. Deliberately narrow — each job already fans out across
-        // every configured indexer internally, so stacking many searches at once
-        // multiplies outbound requests against the same remote hosts.
+        // Indexer-bound, and wide enough that TV never queues behind movies.
         //
-        // "episode.search" belongs here, not in its own lane: it contends on the
-        // exact same indexers as "library.search" and has to share the budget.
+        // This was MaxConcurrency 2, on the reasoning that "each job already
+        // fans out across every configured indexer, so stacking many searches
+        // multiplies outbound requests against the same remote hosts". True —
+        // and **already handled one layer down**. `FeedMediaSearchPlanner` paces
+        // every outbound request through `outboundRequestThrottle`, keyed on the
+        // *host* rather than the indexer id, precisely because two indexer
+        // entries can point at one tracker.
+        //
+        // So the narrow lane was a second, cruder copy of a limit that already
+        // existed, and it was paid for in the wrong currency: it reduced load on
+        // no tracker — the throttle does that — it only made a TV search wait
+        // behind two movie searches for nobody's benefit.
+        //
+        // Measured before widening (`JobQueueContentionBenchmark`): 25
+        // concurrent workers sustain ~4,300 lease+complete round trips a second
+        // against the shared jobs database, every lane draining evenly. The
+        // queue is not the constraint, so the width is free.
+        //
+        // Not split into per-media-type lanes, though that was considered:
+        // `library.search` is keyed on in a dozen places in `SqliteJobStore` for
+        // automation-state bookkeeping, and two of its three enqueue sites set
+        // `Source` to something other than the media type, so neither renaming
+        // the job type nor routing on `Source` is cheap or safe. A job with no
+        // lane never runs, which is exactly #303. Worth doing on its own, with
+        // its own migration and tests — not inside another feature.
         new("search", TimeSpan.FromSeconds(30), ["library.search", "episode.search"],
-            BatchSize: 4, MaxConcurrency: 2),
+            BatchSize: 4, MaxConcurrency: 6),
 
         // Remote list providers, and rate-limited by them.
         new("intake", TimeSpan.FromSeconds(30), ["intake.sync"],
