@@ -11,6 +11,22 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
     Task<MovieListItem?> GetByIdAsync(string id, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Every genre this catalogue actually holds, in alphabetical order.
+    ///
+    /// Served rather than derived in the browser from whatever happens to be on
+    /// the current page: a genre filter that only offers the genres visible in
+    /// the first fifty titles is a filter that hides the rest of the library
+    /// from you and never says so.
+    ///
+    /// One pass over one column, run when somebody opens the filter panel — not
+    /// on every page — because there is no index that can answer "distinct
+    /// values inside a comma-separated string" and pretending otherwise would
+    /// mean storing genres twice.
+    /// </summary>
+    Task<IReadOnlyList<string>> ListGenresAsync(CancellationToken cancellationToken);
+
+
+    /// <summary>
     /// The id of the entry this request would land on, or <c>null</c> if it
     /// would create a new one — the same matching rules
     /// <see cref="AddAsync"/> applies, asked without adding anything.

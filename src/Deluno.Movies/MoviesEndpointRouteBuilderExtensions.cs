@@ -39,6 +39,13 @@ public static class MoviesEndpointRouteBuilderExtensions
         // match and hands back a continuation token, so a caller can always tell
         // a complete answer from a partial one.
         //
+        // What the genre filter can offer. Its own endpoint rather than a facet
+        // on the page, because it is asked for once when somebody opens the
+        // filter panel and never again while they page through results.
+        movies.MapGet("/genres", async (
+            [FromServices] IMovieCatalogRepository repository,
+            CancellationToken cancellationToken) => Results.Ok(await repository.ListGenresAsync(cancellationToken)));
+
         movies.MapGet("/page", async (
             string? search,
             string? status,
@@ -50,6 +57,17 @@ public static class MoviesEndpointRouteBuilderExtensions
             string? direction,
             int? pageSize,
             string? pageToken,
+            // The custom narrowing, flat on the query string rather than a JSON
+            // blob: these travel in a URL people bookmark, share and read.
+            string? quality,
+            string? genre,
+            double? minSizeGb,
+            double? maxSizeGb,
+            int? minYear,
+            int? maxYear,
+            int? minRuntime,
+            int? maxRuntime,
+            double? minRating,
             [FromServices] IMovieCatalogRepository repository,
             CancellationToken cancellationToken) =>
         {
@@ -62,7 +80,17 @@ public static class MoviesEndpointRouteBuilderExtensions
                     Sort: sort,
                     Descending: !string.Equals(direction, "asc", StringComparison.OrdinalIgnoreCase),
                     PageSize: pageSize ?? 50,
-                    PageToken: pageToken),
+                    PageToken: pageToken,
+                    Filters: new CatalogueFilters(
+                        Qualities: CatalogueFilters.ParseList(quality),
+                        Genres: CatalogueFilters.ParseList(genre),
+                        MinSizeGb: minSizeGb,
+                        MaxSizeGb: maxSizeGb,
+                        MinYear: minYear,
+                        MaxYear: maxYear,
+                        MinRuntimeMinutes: minRuntime,
+                        MaxRuntimeMinutes: maxRuntime,
+                        MinRatingValue: minRating)),
                 cancellationToken);
 
             return Results.Ok(page);

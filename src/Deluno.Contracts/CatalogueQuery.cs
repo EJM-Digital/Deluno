@@ -44,6 +44,11 @@ namespace Deluno.Contracts;
 /// offset: it carries the last row's sort key, so page 400 costs the same as
 /// page 1 and rows inserted mid-scroll do not shift the window.
 /// </param>
+/// <param name="Filters">
+/// The narrowing beyond status and library — quality, size, genre, year,
+/// runtime, rating. Applied in SQL like everything else here, and
+/// <see cref="CatalogueFilters.None"/> costs exactly nothing.
+/// </param>
 public sealed record CatalogueQuery(
     string? Search = null,
     string? Status = null,
@@ -52,7 +57,8 @@ public sealed record CatalogueQuery(
     string? Sort = null,
     bool Descending = true,
     int PageSize = 50,
-    string? PageToken = null);
+    string? PageToken = null,
+    CatalogueFilters? Filters = null);
 
 /// <summary>
 /// What a title *is*. Monitoring is not in here — it is whether Deluno will act
@@ -105,12 +111,37 @@ public static class CatalogueSortFields
     public const string Year = "year";
     public const string Rating = "rating";
 
+    /// <summary>How long it runs. A real column on both catalogues, and indexed.</summary>
+    public const string Runtime = "runtime";
+
+    /// <summary>
+    /// How much the wider world is watching it, from the metadata provider.
+    /// Indexed alongside runtime since V0011/V0012 and never offered until now.
+    /// </summary>
+    public const string Popularity = "popularity";
+
+    /// <summary>
+    /// Every sort here is a stored column on the *entries* table with an index
+    /// behind it, which is what keeps page four hundred costing what page one
+    /// costs.
+    ///
+    /// Size and quality are deliberately absent, and it is not an oversight:
+    /// both live on the wanted state, which the page reaches through a
+    /// correlated `rowid = (SELECT … LIMIT 1)` pick. Ordering by a column on
+    /// the far side of that means running the pick for every title in the
+    /// catalogue and then sorting the lot — a full scan wearing a seek's
+    /// clothes. See DESIGN-003 for what it would take.
+    /// </summary>
+    public static readonly IReadOnlyList<string> All = [Added, Title, Year, Rating, Runtime, Popularity];
+
     public static string Normalize(string? value)
         => value?.Trim().ToLowerInvariant() switch
         {
             Title => Title,
             Year => Year,
             Rating => Rating,
+            Runtime => Runtime,
+            Popularity => Popularity,
             _ => Added
         };
 }
