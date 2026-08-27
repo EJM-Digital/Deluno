@@ -110,21 +110,20 @@ export function TitleMarkDot({
  * pixels meant one thing on Movies and another on TV, and a show had nowhere to
  * show its subtitles at all. See `titleBar`.
  *
- * A title that asked for nothing gets a grey bar rather than no bar. It claims
- * nothing, and the shelf keeps its shape — so nothing has to be relaid out the
- * day Subber (#301) starts filling subtitle languages in.
+ * **No languages asked for, no bar.** DESIGN-001 drew a grey one instead, to
+ * keep "the shelf's shape" so nothing would be relaid out when the numbers
+ * started arriving. That reason does not survive reading the CSS: the bar is
+ * `absolute ... bottom-0`, painted over the poster, and takes no layout space —
+ * adding or removing it re-lays out nothing. So the grey stripe was bought with
+ * a benefit that never existed, and paid for with a mark on every poster in the
+ * library that says nothing at all. The bar appears when it has something to
+ * say.
  */
 export function TitleMarkBar({ item, className }: { item: TitleMarkInput; className?: string }) {
   const bar = titleBar(item);
 
   if (bar.wanted <= 0) {
-    return (
-      <span
-        aria-hidden
-        title="No subtitle languages asked for."
-        className={cn("absolute inset-x-0 bottom-0 z-10 block h-1 bg-mark-idle/50", className)}
-      />
-    );
+    return null;
   }
 
   const percent = Math.round(Math.min(1, Math.max(0, bar.held / bar.wanted)) * 100);

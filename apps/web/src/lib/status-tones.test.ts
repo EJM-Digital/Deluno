@@ -171,11 +171,12 @@ describe("the mark on a title", () => {
   });
 
   /**
-   * Episode counts are no longer drawn on a poster. A show that asked for no
-   * languages claims nothing, exactly as a movie does — which is the whole
-   * point of making the two shelves agree.
+   * Episode counts are no longer drawn on a poster, so a show with no languages
+   * asked for wants nothing, exactly as a movie does — which is the whole point
+   * of making the two shelves agree. `TitleMarkBar` draws nothing at all for
+   * these; there is no layout space to hold open.
    */
-  it("claims nothing when no languages were asked for", () => {
+  it("wants nothing when no languages were asked for", () => {
     expect(titleBar({}).wanted).toBe(0);
     expect(titleBar({ airedEpisodeCount: 18, airedWithFileCount: 13 }).wanted).toBe(0);
     expect(titleBar({ hasFile: true }).wanted).toBe(0);
