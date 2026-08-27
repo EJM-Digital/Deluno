@@ -7,6 +7,9 @@ import {
   lookupSeriesCatalogue,
   lookupTmdb,
   mapTmdbResult,
+  pickCertification,
+  pickContentRating,
+  pickTrailerUrl,
   matchRoute,
   parseLookup
 } from "../src/index.js";
@@ -98,6 +101,85 @@ test("a search card has no runtime, and says so rather than inventing one", () =
 
   assert.equal(card.runtimeMinutes, null);
   assert.equal(card.popularity, 71.4);
+});
+
+test("carries the fields Deluno's catalogue has declared and never been sent", () => {
+  const detail = mapTmdbResult({
+    id: 27205,
+    title: "Inception",
+    release_date: "2010-07-15",
+    runtime: 148,
+    tagline: "Your mind is the scene of the crime.",
+    homepage: "https://www.warnerbros.com/inception",
+    original_language: "en",
+    status: "Released",
+    belongs_to_collection: { name: "The Nolan Collection" },
+    production_companies: [{ name: "Legendary Pictures" }, { name: "Syncopy" }],
+    credits: { crew: [{ job: "Editor", name: "Lee Smith" }, { job: "Director", name: "Christopher Nolan" }] },
+    release_dates: { results: [
+      { iso_3166_1: "DE", release_dates: [{ certification: "12" }] },
+      { iso_3166_1: "US", release_dates: [{ certification: "PG-13" }] }
+    ] },
+    videos: { results: [{ site: "YouTube", type: "Trailer", official: true, key: "YoHD9XEInc0" }] }
+  }, "movies");
+
+  // The library adapters already read certification, collection and language
+  // out of the stored metadata blob. Nothing had ever put them there.
+  assert.equal(detail.certification, "PG-13");
+  assert.equal(detail.collection, "The Nolan Collection");
+  assert.equal(detail.originalLanguage, "en");
+  assert.equal(detail.studio, "Legendary Pictures");
+  assert.equal(detail.director, "Christopher Nolan");
+  assert.equal(detail.status, "Released");
+  assert.equal(detail.tagline, "Your mind is the scene of the crime.");
+  assert.equal(detail.trailerUrl, "https://www.youtube.com/watch?v=YoHD9XEInc0");
+});
+
+test("prefers a certification you recognise, and takes any rather than none", () => {
+  // US first, because it is the vocabulary most people read a rating in.
+  assert.equal(pickCertification([
+    { iso_3166_1: "DE", release_dates: [{ certification: "12" }] },
+    { iso_3166_1: "US", release_dates: [{ certification: "R" }] }
+  ]), "R");
+
+  // No US entry is not "no rating".
+  assert.equal(pickCertification([
+    { iso_3166_1: "FR", release_dates: [{ certification: "16" }] }
+  ]), "16");
+
+  // A country listed with a blank certification is not a rating.
+  assert.equal(pickCertification([
+    { iso_3166_1: "US", release_dates: [{ certification: "" }] }
+  ]), null);
+  assert.equal(pickCertification(undefined), null);
+});
+
+test("a show's rating comes from content ratings, and a show says whether it has ended", () => {
+  assert.equal(pickContentRating([
+    { iso_3166_1: "AU", rating: "MA15+" },
+    { iso_3166_1: "US", rating: "TV-MA" }
+  ]), "TV-MA");
+
+  const show = mapTmdbResult({
+    id: 1396,
+    name: "Breaking Bad",
+    first_air_date: "2008-01-20",
+    status: "Ended",
+    networks: [{ name: "AMC" }],
+    content_ratings: { results: [{ iso_3166_1: "US", rating: "TV-MA" }] }
+  }, "tv");
+
+  // A show that has ended and is missing episodes is a different problem from
+  // one that is still airing them.
+  assert.equal(show.status, "Ended");
+  assert.equal(show.network, "AMC");
+  assert.equal(show.certification, "TV-MA");
+});
+
+test("links only an official YouTube trailer, and nothing else", () => {
+  assert.equal(pickTrailerUrl([{ site: "Vimeo", type: "Trailer", key: "x" }]), null);
+  assert.equal(pickTrailerUrl([{ site: "YouTube", type: "Featurette", key: "x" }]), null);
+  assert.equal(pickTrailerUrl(undefined), null);
 });
 
 test("a show takes its runtime from the episode length", () => {

@@ -318,7 +318,16 @@ async function getTmdbDetail(mediaType, providerId, apiKey, request, artworkOrig
   const kind = mediaType === "tv" ? "tv" : "movie";
   const endpoint = new URL(`https://api.themoviedb.org/3/${kind}/${providerId}`);
   endpoint.searchParams.set("api_key", apiKey);
-  endpoint.searchParams.set("append_to_response", "external_ids,credits");
+  // Everything a detail lookup can carry in one round trip, which is the whole
+  // point of a gateway: the app makes one request, TMDb sees one origin.
+  //
+  // `release_dates` and `content_ratings` are where a certification lives — the
+  // field Deluno's catalogue has declared and never filled — and `videos` is the
+  // trailer. Appending them costs nothing extra; asking for them separately
+  // would be four requests per title.
+  endpoint.searchParams.set(
+    "append_to_response",
+    "external_ids,credits,release_dates,content_ratings,videos");
   const item = await getJson(endpoint, request);
   return mapTmdbResult(item, mediaType, artworkOrigin);
 }
@@ -365,6 +374,32 @@ export function mapTmdbResult(item, mediaType, artworkOrigin = null) {
       : null;
   const popularity = Number.isFinite(item.popularity) ? item.popularity : null;
 
+  // The rest of what TMDb already had and this mapping was throwing away.
+  //
+  // Deluno's catalogue has *declared* several of these for a long time —
+  // `certification`, `collection`, `language` are read straight out of the
+  // stored metadata blob by the library adapters — and nothing has ever put a
+  // value in them, so the columns read empty on every install. They are not new
+  // features; they are the other half of features already on screen.
+  //
+  // Studio and network are what Radarr and Sonarr let you filter a library by,
+  // and status is the difference between a show that has ended and one still
+  // running, which is the single most useful thing to know about a series that
+  // is missing episodes.
+  const studio = Array.isArray(item.production_companies)
+    ? item.production_companies.map((company) => company?.name).find(Boolean) ?? null
+    : null;
+  const network = Array.isArray(item.networks)
+    ? item.networks.map((entry) => entry?.name).find(Boolean) ?? null
+    : null;
+  const collection = item.belongs_to_collection?.name ?? null;
+  const crew = Array.isArray(item.credits?.crew) ? item.credits.crew : [];
+  const director = crew.find((person) => person?.job === "Director")?.name ?? null;
+  const trailerUrl = pickTrailerUrl(item.videos?.results);
+  const certification = mediaType === "tv"
+    ? pickContentRating(item.content_ratings?.results)
+    : pickCertification(item.release_dates?.results);
+
   return {
     provider: "tmdb",
     providerId: String(item.id),
@@ -402,8 +437,65 @@ export function mapTmdbResult(item, mediaType, artworkOrigin = null) {
         }))
       : [],
     imdbId: item.external_ids?.imdb_id ?? null,
-    externalUrl
+    externalUrl,
+    certification,
+    studio,
+    network,
+    collection,
+    director,
+    trailerUrl,
+    tagline: item.tagline?.trim() || null,
+    homepage: item.homepage?.trim() || null,
+    originalLanguage: item.original_language ?? null,
+    // "Released" / "In Production" for a film; "Returning Series" / "Ended" /
+    // "Canceled" for a show. A show that has ended and is missing episodes is a
+    // different problem from one that is still airing them.
+    status: item.status ?? null
   };
+}
+
+/**
+ * A certification is per country and TMDb returns every country it knows.
+ * US first because it is the vocabulary most people recognise, then GB and AU,
+ * then whatever else carries one — better a rating from somewhere than none.
+ */
+export function pickCertification(results) {
+  if (!Array.isArray(results)) return null;
+  const preferred = ["US", "GB", "AU"];
+  const ordered = [
+    ...preferred.map((code) => results.find((entry) => entry?.iso_3166_1 === code)),
+    ...results
+  ].filter(Boolean);
+
+  for (const entry of ordered) {
+    const value = Array.isArray(entry.release_dates)
+      ? entry.release_dates.map((release) => release?.certification).find((cert) => cert)
+      : null;
+    if (value) return value;
+  }
+
+  return null;
+}
+
+/** The television twin: `content_ratings` rather than `release_dates`. */
+export function pickContentRating(results) {
+  if (!Array.isArray(results)) return null;
+  const preferred = ["US", "GB", "AU"];
+  const ordered = [
+    ...preferred.map((code) => results.find((entry) => entry?.iso_3166_1 === code)),
+    ...results
+  ].filter(Boolean);
+
+  return ordered.map((entry) => entry.rating).find((rating) => rating) ?? null;
+}
+
+/** The official YouTube trailer, if TMDb has one. Nothing else is worth linking. */
+export function pickTrailerUrl(videos) {
+  if (!Array.isArray(videos)) return null;
+  const trailer =
+    videos.find((video) => video?.site === "YouTube" && video?.type === "Trailer" && video?.official) ??
+    videos.find((video) => video?.site === "YouTube" && video?.type === "Trailer");
+  return trailer?.key ? `https://www.youtube.com/watch?v=${trailer.key}` : null;
 }
 
 function imageUrl(path, size, artworkOrigin) {

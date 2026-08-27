@@ -144,7 +144,7 @@ export function adaptMovieItems(items: MovieListItem[]): MediaItem[] {
       codec: item.videoCodec ?? readString(meta, "codec", "videoCodec"),
       audioCodec: item.audioCodec ?? readString(meta, "audioCodec"),
       audioChannels: item.audioChannels ?? readString(meta, "audioChannels"),
-      language: readString(meta, "language"),
+      language: readString(meta, "originalLanguage", "language"),
       hdrFormat: readString(meta, "hdrFormat"),
       releaseStatus: releaseStatusLabel(item.wantedStatus ?? undefined, item.hasFile),
       wantedStatus: item.wantedStatus ?? undefined,
@@ -202,7 +202,9 @@ export function adaptSeriesItems(items: SeriesListItem[]): MediaItem[] {
       genres,
       added: new Date(item.createdUtc).toLocaleDateString([], { month: "short", day: "numeric" }),
       overview: item.overview ?? `${item.title} is tracked inside Deluno with episode inventory, wanted state, and acquisition context.`,
-      network: undefined,
+      // Hardcoded to undefined because nothing ever sent one. The broker does
+      // now — it is what Sonarr lets you organise a library by.
+      network: readString(meta, "network") ?? undefined,
       libraryId: item.libraryId ?? undefined,
       wantedReason: item.wantedReason ?? undefined,
       lastSearchUtc: item.lastSearchUtc ?? undefined,
@@ -216,7 +218,7 @@ export function adaptSeriesItems(items: SeriesListItem[]): MediaItem[] {
       codec: item.videoCodec ?? readString(meta, "codec", "videoCodec"),
       audioCodec: item.audioCodec ?? readString(meta, "audioCodec"),
       audioChannels: item.audioChannels ?? readString(meta, "audioChannels"),
-      language: readString(meta, "language"),
+      language: readString(meta, "originalLanguage", "language"),
       hdrFormat: readString(meta, "hdrFormat"),
       releaseStatus: releaseStatusLabel(item.wantedStatus ?? undefined, item.hasFile),
       wantedStatus: item.wantedStatus ?? undefined,
