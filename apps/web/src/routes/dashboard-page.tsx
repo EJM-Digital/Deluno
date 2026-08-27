@@ -57,6 +57,7 @@ import {
 import { useCoalescedRevalidate } from "../hooks/use-visible-interval";
 import { StatusLed, type LedTone } from "../components/ui/status-led";
 import { RealtimeGroups, useSignalREvent, useSignalRResync } from "../lib/use-signalr";
+import { heldQualityLabel } from "../lib/quality-label";
 
 interface OutcomeSeries {
   succeeded: MetricPoint[];
@@ -928,7 +929,7 @@ function PosterPreview({ item }: { item: MediaItem }) {
           <p className="line-clamp-1 text-[length:var(--type-body-sm)] font-semibold text-foreground">{item.title}</p>
           <p className="mt-0.5 flex items-center justify-between gap-2 text-[length:var(--type-caption)] text-muted-foreground">
             <span className="tabular">{item.year ?? "Unknown"}</span>
-            <span className="tabular">{shortQuality(item.quality)}</span>
+            <span className="tabular">{heldQualityLabel(item) ?? "—"}</span>
           </p>
         </div>
       </div>
@@ -954,14 +955,6 @@ function Artwork({
       <span className="px-2 font-display text-lg font-bold tracking-tight">{title.slice(0, 2).toUpperCase()}</span>
     </span>
   );
-}
-
-function shortQuality(value: string | null) {
-  if (!value) return "Unknown";
-  if (value.includes("2160")) return "4K";
-  if (value.includes("1080")) return "1080p";
-  if (value.includes("720")) return "720p";
-  return value;
 }
 
 function buildDashboardUpcoming(
