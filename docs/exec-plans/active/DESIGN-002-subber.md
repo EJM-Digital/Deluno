@@ -72,13 +72,6 @@ ask the same question.
 So Subber's first visible act is that the bars start meaning something. Nothing
 in the mark has to change to receive it.
 
-## Settled with James
-
-**Languages are asked for per library.** Weir has one global list because
-Weir has no libraries — that is exactly where Deluno differs. Per library
-can say "English on everything, Japanese on anime", and it sits beside the
-quality profile, where "what I want for this shelf" already lives.
-
 ## Bazarr parity — what to take, and what to do better
 
 The bar is Bazarr: everything that makes it good, made easier to understand and
@@ -135,23 +128,46 @@ hearing-impaired exclusion.
   Download, languages under Quality & Release — and the rest appears where you
   already look.
 
-## Open questions for James
+## Settled with James
 
-1. **Providers as Connections, or their own thing?** Indexers and download
-   clients are Connections with health, test buttons and credentials. Eight
-   subtitle providers look like the same shape, and would inherit health
-   checking and the "needs you" rules for free.
-3. **Does a subtitle count as an upgrade?** Deluno has *Upgradable* for a title
-   below its quality profile. A subtitle that could be better is a different
-   axis — DESIGN-001 already settled that subtitles never change the dot, so
-   this is about where an upgrade appears, not what colour it is.
-4. **Weir removal** — same PR, or after Deluno's side is proven on the rig?
+**Languages are per library.** Weir has one global list because Weir has
+no libraries; that is exactly where Deluno differs. Per library can say "English
+on everything, Japanese on anime", and it belongs beside the quality profile,
+where "what I want for this shelf" already lives.
 
-## Build order (proposed)
+**Providers are Connections.** Same shape as indexers and download clients, so
+they inherit health, a test button, rate-limit backoff and the "needs you" rules
+without any of it being written twice.
 
-1. **Languages, and nothing else.** Wherever question 1 lands, plus the two
-   contract fields filled from stored state. The bars light up with a number
-   nobody has fetched yet — proof the mark receives it.
+**No new colours for subtitles.** A subtitle you have but could improve is
+*Upgradable*, one level down — so the bar is a miniature of the dot's ladder,
+using the same three colours from the same table:
+
+| Bar segment | Means |
+|---|---|
+| red | a language you asked for is missing |
+| green | you have it, and it could still get better |
+| gold | at the cutoff — Deluno has stopped looking |
+
+Nothing new to learn, and it cannot drift, because it reads
+`TITLE_MARK_PRESENTATION` like everything else. Two colours are enough until
+upgrades exist; gold arrives with them.
+
+**The dot never moves.** DESIGN-001 settled that subtitles do not change a
+title's rung, and that stands: a movie short of a language is still Quality met.
+Red on the bar means *that extra is missing*; red on the dot means *the title is
+missing*. Same word, different subject.
+
+**Weir loses Subber in the same run**, once Deluno's side is proven on the
+rig.
+
+## Build order
+
+1. **Languages, and nothing else.** A per-library list of wanted subtitle
+   languages with a cutoff, beside the quality profile, and the two catalogue
+   contract fields filled from it. Nothing fetches anything yet — the bars light
+   up all-red because you have asked for languages and hold none, which is the
+   truth, and is proof the mark receives it.
 2. **Providers as Connections.** One provider end to end (Gestdown or Podnapisi
    — no account needed), with health and a test.
 3. **Search and write**, on the existing job lane, planned from the existing
