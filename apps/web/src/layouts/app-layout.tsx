@@ -429,7 +429,7 @@ function DesktopSidebar({
           </span>
           <ChevronDown className="h-4 w-4 text-muted-foreground" />
         </button>
-        <div className="absolute bottom-0 left-[calc(100%+12px)] z-[90] w-64 overflow-hidden rounded-xl border border-hairline bg-card/95 opacity-0 shadow-lg backdrop-blur-xl transition group-focus-within:opacity-100 group-hover:opacity-100 dark:border-white/[0.07]">
+        <div className="absolute bottom-0 left-[calc(100%+12px)] z-[90] w-64 overflow-hidden rounded-xl border border-hairline bg-popover opacity-0 shadow-lg transition group-focus-within:opacity-100 group-hover:opacity-100 dark:border-white/[0.07]">
           <button
             type="button"
             onClick={() => setPasswordOpen(true)}
@@ -819,7 +819,7 @@ function ContentTopbar({
             <div
               role="menu"
               aria-label="Display density"
-              className="absolute right-0 top-[calc(100%+8px)] z-[80] w-52 overflow-hidden rounded-xl border border-hairline/80 bg-card/95 p-1.5 shadow-lg backdrop-blur-xl dark:border-white/[0.07]"
+              className="absolute right-0 top-[calc(100%+8px)] z-[80] w-52 overflow-hidden rounded-xl border border-hairline/80 bg-popover p-1.5 shadow-lg dark:border-white/[0.07]"
             >
               {densityChoices.map((choice) => {
                 const selected = choice === density;
