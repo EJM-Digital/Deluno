@@ -25,7 +25,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
   ({ className, id, options, placeholder, children, ...props }, ref) => {
     const field = useFieldContext();
     return (
-      <span className="group relative block min-w-0">
+      <span className="group relative block w-full min-w-0">
         <select
           ref={ref}
           id={id ?? field?.id}
