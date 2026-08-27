@@ -68,6 +68,49 @@ test("maps a TMDb detail response into Deluno's broker contract with gateway-cac
   assert.deepEqual(result.cast, [{ name: "Keanu Reeves", character: "Neo", profileUrl: "https://metadata.deluno.example/artwork/w185/neo.jpg" }]);
 });
 
+test("carries runtime, popularity and vote count, which Deluno has had columns for since V0012", () => {
+  const detail = mapTmdbResult({
+    id: 603,
+    title: "The Matrix",
+    release_date: "1999-03-30",
+    runtime: 136,
+    popularity: 71.4,
+    vote_count: 25000,
+    vote_average: 8.2
+  }, "movies");
+
+  assert.equal(detail.runtimeMinutes, 136);
+  assert.equal(detail.popularity, 71.4);
+  assert.equal(detail.voteCount, 25000);
+});
+
+test("a search card has no runtime, and says so rather than inventing one", () => {
+  // TMDb returns runtime only on a detail lookup. Null here is the truth; the
+  // repository COALESCEs it so a later detail refresh fills it in without an
+  // earlier search blanking what it found.
+  const card = mapTmdbResult({
+    id: 603,
+    title: "The Matrix",
+    release_date: "1999-03-30",
+    popularity: 71.4,
+    vote_count: 25000
+  }, "movies");
+
+  assert.equal(card.runtimeMinutes, null);
+  assert.equal(card.popularity, 71.4);
+});
+
+test("a show takes its runtime from the episode length", () => {
+  const show = mapTmdbResult({
+    id: 1396,
+    name: "Breaking Bad",
+    first_air_date: "2008-01-20",
+    episode_run_time: [45, 47]
+  }, "tv");
+
+  assert.equal(show.runtimeMinutes, 45);
+});
+
 test("rate-limits a client after the configured request window", async () => {
   const values = new Map();
   const cache = {

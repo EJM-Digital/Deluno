@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { defaultDisplayOptions } from "../lib/library-filters";
+import { customFilterCount, defaultDisplayOptions, emptyCustomFilters, type CustomFilters } from "../lib/library-filters";
 import {
   isQuickFilter,
   type MonitoringFilter,
@@ -46,6 +46,7 @@ export function useLibraryFilters(variant: LibraryVariant, urlFilter: string | n
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [cardSize, setCardSize] = useState<CardSize>(() => initialCardSize(variant));
   const [displayOptions, setDisplayOptions] = useState<DisplayOptions>(() => initialDisplayOptions(variant));
+  const [customFilters, setCustomFilters] = useState<CustomFilters>(() => emptyCustomFilters());
   const [savedPresets, setSavedPresets] = useState<SavedFilterPreset[]>([]);
   const [newPresetName, setNewPresetName] = useState("");
   const [isSavingPreset, setIsSavingPreset] = useState(false);
@@ -59,6 +60,9 @@ export function useLibraryFilters(variant: LibraryVariant, urlFilter: string | n
     setSortDirection("asc");
     setCardSize(initialCardSize(variant));
     setDisplayOptions(initialDisplayOptions(variant));
+    // Movies and TV do not share a quality tier list or a genre list, and a
+    // 4K-Remux filter carried across to the TV shelf would silently empty it.
+    setCustomFilters(emptyCustomFilters());
   }, [variant]);
 
   useEffect(() => {
@@ -80,9 +84,19 @@ export function useLibraryFilters(variant: LibraryVariant, urlFilter: string | n
   return {
     query, setQuery, libraryId, setLibraryId, quickFilter, setQuickFilter, view, setView, sortField, setSortField,
     monitoring, setMonitoring,
+    customFilters, setCustomFilters,
+    clearCustomFilters: () => setCustomFilters(emptyCustomFilters()),
     sortDirection, setSortDirection, cardSize, displayOptions, setDisplayOptions,
     savedPresets, setSavedPresets, newPresetName, setNewPresetName, isSavingPreset,
     setIsSavingPreset, changeSize, updateDisplayOptions,
-    activeFilterCount: Number(libraryId !== null) + Number(quickFilter !== "all") + Number(monitoring !== "any")
+    // Every question being asked of the shelf, counted onto one badge. The
+    // library and the quick filter are visible on screen; the custom ones live
+    // behind a button, and a narrowed shelf that looks unnarrowed is how people
+    // lose half their library and conclude Deluno has.
+    activeFilterCount:
+      Number(libraryId !== null) +
+      Number(quickFilter !== "all") +
+      Number(monitoring !== "any") +
+      customFilterCount(customFilters)
   };
 }
