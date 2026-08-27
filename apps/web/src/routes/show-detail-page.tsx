@@ -29,6 +29,7 @@ import {
   type SeriesSearchHistoryItem
 } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
+import { isEpisodeMissing, isEpisodeUpcoming, summariseEpisodes } from "../lib/episode-progress";
 import { describeSearchReason } from "../lib/search-reasons";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -151,8 +152,13 @@ export function ShowDetailPage() {
     [episodeFilter, inventory.episodes, query]
   );
   const visibleSeasons = useMemo(() => buildSeasonGroups(visibleEpisodes), [visibleEpisodes]);
-  const missingCount = inventory.episodes.filter((item) => item.wantedStatus === "missing" || !item.hasFile).length;
-  const upgradeCount = inventory.episodes.filter((item) => item.wantedStatus === "upgrade").length;
+  // Counted over what has aired. `|| !item.hasFile` used to pull in every
+  // episode still to come, so a show mid-season offered to "find" episodes that
+  // did not exist yet — Slow Horses read 36 missing when 30 had aired.
+  const progress = useMemo(() => summariseEpisodes(inventory.episodes), [inventory.episodes]);
+  const missingCount = progress.missing;
+  const upcomingCount = progress.upcoming;
+  const upgradeCount = progress.upgradable;
   const monitoredCount = inventory.episodes.filter((item) => item.monitored).length;
   const openEpisode = inventory.episodes.find((item) => item.episodeId === openEpisodeId) ?? null;
 
@@ -199,12 +205,22 @@ export function ShowDetailPage() {
         : missingCount > 0
           ? {
               eyebrow: "Episodes missing",
+              // Aired episodes only. Offering to find one that has not aired is
+              // offering to fail, and it used to offer for every one of them.
               title: `Find ${missingCount} missing episode${missingCount === 1 ? "" : "s"}`,
               description: "Deluno can search every indexer you have connected using this show's Library Profile.",
               action: "Search now",
               onAction: () => void handleSearchNow("automatic")
             }
-          : null;
+          : upcomingCount > 0
+            ? {
+                eyebrow: "Up to date",
+                title: `Every aired episode is here`,
+                description: `${upcomingCount} episode${upcomingCount === 1 ? " has" : "s have"} not aired yet. Deluno will look as each one does.`,
+                action: null,
+                onAction: null
+              }
+            : null;
 
   async function handleEpisodeMonitoring(episodeIds: string[], monitored: boolean) {
     if (!episodeIds.length) return;
@@ -635,9 +651,13 @@ export function ShowDetailPage() {
             <ListRow>
               <ListNameCell name={nextStep.title} sub={nextStep.description} />
               <div role="cell" className="flex justify-end">
-                <Button type="button" size="sm" onClick={nextStep.onAction} disabled={busyAction !== null}>
-                  {nextStep.action}
-                </Button>
+                {/* Some next steps are a statement rather than an offer — there
+                    is nothing to do about an episode that has not aired. */}
+                {nextStep.action && nextStep.onAction ? (
+                  <Button type="button" size="sm" onClick={nextStep.onAction} disabled={busyAction !== null}>
+                    {nextStep.action}
+                  </Button>
+                ) : null}
               </div>
             </ListRow>
           </ListTable>
@@ -650,7 +670,8 @@ export function ShowDetailPage() {
             cells={[
               { label: "Episodes", value: inventory.episodeCount, help: `${inventory.seasonCount} season${inventory.seasonCount === 1 ? "" : "s"}` },
               { label: "On disk", value: inventory.importedEpisodeCount, help: "imported and verified" },
-              { label: "Missing", value: missingCount, tone: missingCount > 0 ? "warning" : undefined, help: "no file yet" },
+              { label: "Missing", value: missingCount, tone: missingCount > 0 ? "warning" : undefined, help: "aired, no file yet" },
+              { label: "Upcoming", value: upcomingCount, help: upcomingCount ? "not aired yet" : "nothing scheduled" },
               { label: "Upgrades", value: upgradeCount, tone: upgradeCount > 0 ? "warning" : undefined, help: "better release wanted" },
               { label: "Monitored", value: monitoredCount, help: `of ${inventory.episodeCount} watched` }
             ]}
@@ -756,7 +777,7 @@ export function ShowDetailPage() {
                   <Fragment key={season.seasonNumber}>
                     <ListGroupHeader
                       label={formatSeasonLabel(season.seasonNumber)}
-                      detail={`${season.episodes.length} episodes · ${season.importedCount} on disk · ${season.missingCount} missing`}
+                      detail={`${season.episodes.length} episodes · ${season.importedCount} on disk · ${season.missingCount} missing${season.upcomingCount ? ` · ${season.upcomingCount} upcoming` : ""}`}
                       actions={
                         <>
                         <Button
@@ -1352,7 +1373,8 @@ function buildSeasonGroups(episodes: SeriesEpisodeInventoryItem[]) {
         seasonNumber,
         episodes: sorted,
         importedCount: sorted.filter((item) => item.hasFile).length,
-        missingCount: sorted.filter((item) => item.wantedStatus === "missing" || !item.hasFile).length,
+        missingCount: sorted.filter((item) => isEpisodeMissing(item)).length,
+        upcomingCount: sorted.filter((item) => isEpisodeUpcoming(item)).length,
         monitoredCount: sorted.filter((item) => item.monitored).length
       };
     });
