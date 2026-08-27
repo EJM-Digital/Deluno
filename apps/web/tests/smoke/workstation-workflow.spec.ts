@@ -152,23 +152,26 @@ test.describe("dashboard workflow", () => {
     const libraryPicker = page.getByRole("combobox", { name: "Library", exact: true });
     await expect(libraryPicker).toBeVisible();
     await expect(libraryPicker).toHaveText(/All libraries/);
-    await page.getByRole("button", { name: /^Display/ }).click();
+    // One panel, not three. Display and Order were the same question asked
+    // twice and were merged behind `View`; saved views moved in with them.
+    //
+    // This spec asked for the old three until now, and had been failing on
+    // `main` since that merge landed — which is worth more attention than the
+    // fix: a suite reported as 272 green was 268 green and four red, and
+    // nothing said so. The bar is that a passing suite means the shipped screen
+    // is the screen under test.
+    await page.getByRole("button", { name: /^View/ }).click();
     await expect(page.getByRole("heading", { name: "Choose how your library feels" })).toBeVisible();
     await expect(page.getByRole("button", { name: /^Selected Poster grid/ })).toBeVisible();
     await expect(page.getByRole("button", { name: /^Compact list/ })).toBeVisible();
     await expect(page.getByText("What each poster shows", { exact: true })).toBeVisible();
 
-    await page.getByRole("button", { name: /^Order/ }).click();
-    await expect(page.getByRole("heading", { name: "Put the right titles first" })).toBeVisible();
-    await expect(page.getByText("Every available order is performed by the paged catalogue query.", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Ascending" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Descending" })).toBeVisible();
+    await expect(page.getByText("Every order here is performed by the paged catalogue query, on an indexed column, so page four hundred costs what page one costs.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Ascending/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Descending/ })).toBeVisible();
 
-    // "Refine · Quick filters" was a promise the panel never kept: it holds
-    // saved views and nothing else, and the filtering is the chip row outside
-    // it. The name matches the contents now.
-    await page.getByRole("button", { name: /^Views/ }).click();
-    await expect(page.getByRole("heading", { name: "Come back to this exact view" })).toBeVisible();
+    // Saved views sit with the filters they save, not with the layout.
+    await page.getByRole("button", { name: /^Filters/ }).click();
     await expect(page.getByText("Saved library views", { exact: true })).toBeVisible();
 
     // The chips are the filters, and each is also the legend for the mark it
@@ -271,7 +274,7 @@ test.describe("dashboard workflow", () => {
           // health. Amber would be claiming a person has to act.
           const markName = monitored ? "Missing" : "Missing · not monitored";
 
-          await page.getByRole("button", { name: /^Display/ }).click();
+          await page.getByRole("button", { name: /^View/ }).click();
           await page.getByRole("button", { name: /Medium Balanced/ }).click();
           const mediumMark = page.getByRole("img", { name: markName, exact: true }).first();
           await expect(mediumMark).toBeVisible();
@@ -348,7 +351,7 @@ test.describe("dashboard workflow", () => {
           await expect(page.getByRole("img", { name: markName, exact: true }).first()).toBeVisible();
           await page.goBack();
           // Back on the library the panel is closed again, so this one does open it.
-          await page.getByRole("button", { name: /^Display/ }).click();
+          await page.getByRole("button", { name: /^View/ }).click();
           await page.getByRole("button", { name: /Poster grid Artwork/ }).click();
         } finally {
           if (created) {

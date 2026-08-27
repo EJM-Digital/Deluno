@@ -22,6 +22,25 @@ Expects source media at `C:\Deluno\e2e\data\bbb.mp4` and writes torrents to `C:\
 
 Add it to Deluno as a Torznab indexer at `http://192.168.1.102:9117/api`. Any API key is accepted.
 
+## `seed-library.py`
+
+Fills a movies catalogue with N synthetic titles, because a shelf built for
+20,000 cannot be judged on the rig's eleven films.
+
+```bash
+python scripts/lab/seed-library.py C:\path\to\movies.db 20000
+```
+
+Every seeded row carries a `seed` id prefix, so undoing it is
+`DELETE FROM movie_entries WHERE id LIKE 'seed%';`. Edit the VM's database the
+documented way — stop the host, copy `movies.db` *and* its `-wal`/`-shm` down,
+run this locally, move the VM's stale sidecars aside, copy back — or the stale
+WAL silently reverts it.
+
+Used for [#312](https://github.com/jampat000/Deluno/issues/312): 20,000 titles
+reached the client in 1.4 s over 41 requests, for 27.8 MB of heap and 3,507 DOM
+nodes.
+
 ## `watch-pipeline.ps1`
 
 One call that prints where an acquisition has got to: the telemetry summary, each queue item's status, the processor hand-offs with their output paths and import job ids, the job queue, and the dispatch/processing/import activity. It is the fastest way to answer "is it stuck, and where".

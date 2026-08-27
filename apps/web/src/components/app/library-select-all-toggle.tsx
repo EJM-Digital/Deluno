@@ -3,6 +3,8 @@ import { cn } from "../../lib/utils";
 type LibrarySelectAllToggleProps = {
   totalCount: number;
   loadedCount: number;
+  /** The shelf is still filling behind the reader, so the number below it is not final yet. */
+  isLoadingMore: boolean;
   filteredCount: number;
   selectedCount: number;
   allVisibleSelected: boolean;
@@ -13,6 +15,7 @@ type LibrarySelectAllToggleProps = {
 export function LibrarySelectAllToggle({
   totalCount,
   loadedCount,
+  isLoadingMore,
   filteredCount,
   selectedCount,
   allVisibleSelected,
@@ -23,8 +26,20 @@ export function LibrarySelectAllToggle({
 
   return (
     <div className="flex items-center justify-between gap-3">
+      {/*
+        The shelf is one continuous list now, so this counts what is on it and
+        says plainly when the rest is still on its way. It used to be the
+        caption for a hundred-title page — "Showing 100 loaded of 6,000" — which
+        was true and told a reader nothing they could act on.
+      */}
       <p className="text-[length:var(--library-toolbar-size)] font-medium text-muted-foreground">
-        {totalCount > loadedCount ? <>Showing <span className="font-bold tabular text-foreground">{filteredCount}</span> loaded of {totalCount.toLocaleString()}</> : <><span className="font-bold tabular text-foreground">{filteredCount}</span> {filteredCount === 1 ? "title" : "titles"} shown</>}
+        {isLoadingMore && totalCount > loadedCount ? (
+          <>Showing <span className="font-bold tabular text-foreground">{filteredCount.toLocaleString()}</span> of {totalCount.toLocaleString()} <span className="animate-pulse">— still loading</span></>
+        ) : totalCount > loadedCount ? (
+          <>Showing <span className="font-bold tabular text-foreground">{filteredCount.toLocaleString()}</span> of {totalCount.toLocaleString()}</>
+        ) : (
+          <><span className="font-bold tabular text-foreground">{filteredCount.toLocaleString()}</span> {filteredCount === 1 ? "title" : "titles"} shown</>
+        )}
       </p>
       <button
         type="button"
@@ -50,7 +65,7 @@ export function LibrarySelectAllToggle({
             </svg>
           ) : selectedCount > 0 ? <span className="h-0.5 w-2 rounded-full bg-primary" /> : null}
         </span>
-        {selectedCount > 0 ? `${selectedCount} selected` : "Select all on this page"}
+        {selectedCount > 0 ? `${selectedCount} selected` : "Select all shown"}
       </button>
     </div>
   );

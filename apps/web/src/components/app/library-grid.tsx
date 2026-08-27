@@ -1,8 +1,11 @@
 import { Play, ShieldCheck, Star } from "lucide-react";
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { MediaItem } from "../../lib/media-types";
+import { buildJumpBuckets } from "../../lib/library-buckets";
+import type { SortField } from "../../lib/library-filters";
+import { JumpRail, useJumpRail } from "./library-jump-rail";
 import { heldQualityLabel } from "../../lib/quality-label";
 import type { Density } from "../../lib/use-density";
 import { cn } from "../../lib/utils";
@@ -38,10 +41,15 @@ const SHOW_META: Record<CardSize, boolean> = { sm: false, md: true, lg: true };
 /* ═══════════════ PRIMITIVES ═══════════════ */
 
 /**
- * Poster grid with progressive hydration. Renders an initial batch of
- * cards synchronously and then reveals subsequent batches as an
- * intersection sentinel scrolls into view. Keeps first paint cheap
- * when a library has 10k+ titles while still feeling instantaneous.
+ * One continuous shelf, virtualised.
+ *
+ * This used to be one hundred titles behind `Previous 100` / `Next 100`, and a
+ * line of copy calling that a feature. Reaching title 3,000 of 6,000 was thirty
+ * round trips and Ctrl+F found one page of them. Radarr renders its whole
+ * 5,279-title library in one page behind a three-to-five second witty message
+ * and is better for it — so the shelf is now the whole library too, fed in the
+ * background by the same keyset query and drawn a screen at a time, which is the
+ * part Radarr pays five seconds for and this does not.
  */
 export function ProgressiveGrid({
   items,
@@ -50,6 +58,9 @@ export function ProgressiveGrid({
   displayOptions,
   selectedIds,
   keyBust,
+  sortField,
+  sortDirection,
+  isComplete,
   onSelect,
   onToggle,
   onEndReached
@@ -60,6 +71,9 @@ export function ProgressiveGrid({
   displayOptions: DisplayOptions;
   selectedIds: string[];
   keyBust: string;
+  sortField: SortField;
+  sortDirection: "asc" | "desc";
+  isComplete: boolean;
   onSelect: (item: MediaItem) => void;
   onToggle: (id: string) => void;
   onEndReached: () => void;
@@ -122,13 +136,19 @@ export function ProgressiveGrid({
     if (lastRow && lastRow.index >= rowCount - 2) onEndReached();
   }, [onEndReached, rowCount, virtualRows]);
 
+  const buckets = useMemo(
+    () => buildJumpBuckets(items, sortField, sortDirection),
+    [items, sortDirection, sortField]
+  );
+  const { show: showRail, activeIndex, jumpTo } = useJumpRail(virtualizer, safeColumns, virtualRows);
+
   return (
-    <>
+    <div className="flex items-stretch gap-1">
       {/*
         Room at the top for the hover lift. `-translate-y-1` moves a card 4px up,
         and without this the top row lifts out of the scroll box and is cut.
       */}
-      <div ref={setContainer} className="max-h-[calc(100dvh-260px)] overflow-auto pt-1.5" key={keyBust}>
+      <div ref={setContainer} className="max-h-[calc(100dvh-260px)] min-w-0 flex-1 overflow-auto pt-1.5" key={keyBust}>
         <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
           {virtualRows.map((row) => (
             <div key={row.key} ref={virtualizer.measureElement} data-index={row.index} className="absolute left-0 top-0 w-full" style={{ transform: `translateY(${row.start}px)` }}>
@@ -141,7 +161,8 @@ export function ProgressiveGrid({
           ))}
         </div>
       </div>
-    </>
+      {showRail ? <JumpRail buckets={buckets} activeIndex={activeIndex} isComplete={isComplete} onJump={jumpTo} /> : null}
+    </div>
   );
 }
 
