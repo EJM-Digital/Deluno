@@ -127,7 +127,7 @@ export function LibraryTable(
     () => buildJumpBuckets(items, sortField, sortDirection),
     [items, sortDirection, sortField]
   );
-  const { show: showRail, activeIndex, jumpTo } = useJumpRail(rowVirtualizer, 1, virtualRows);
+  const { slotWidth, activeIndex, jumpTo } = useJumpRail(rowVirtualizer, 1, virtualRows, buckets);
 
   return (
     <div className="flex items-stretch gap-1">
@@ -267,7 +267,10 @@ export function LibraryTable(
         </tbody>
       </table>
     </div>
-      {showRail ? <JumpRail buckets={buckets} activeIndex={activeIndex} isComplete={isComplete} onJump={jumpTo} /> : null}
+      {/* Always here, and always this wide — see `useJumpRail`. */}
+      <div className="hidden shrink-0 pl-1 sm:block" style={{ width: slotWidth }}>
+        <JumpRail buckets={buckets} activeIndex={activeIndex} isComplete={isComplete} onJump={jumpTo} />
+      </div>
     </div>
   );
 }
