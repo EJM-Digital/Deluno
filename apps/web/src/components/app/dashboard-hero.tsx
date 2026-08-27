@@ -17,6 +17,7 @@
 import { Link } from "react-router-dom";
 import { CountUp } from "../ui/count-up";
 import { StatusLed, type LedTone } from "../ui/status-led";
+import { TITLE_MARK_PRESENTATION, type TitleMark } from "../../lib/status-tones";
 import { cn } from "../../lib/utils";
 
 interface HeroStat {
@@ -24,7 +25,15 @@ interface HeroStat {
   value: number;
   help: string;
   href: string;
-  tone?: "default" | "warn";
+  /**
+   * Which rung this count is of, when it is one.
+   *
+   * The number then wears that mark's colour, from the one table. It used to be
+   * `tone?: "default" | "warn"`, and *Still missing* asked for `warn` — amber,
+   * which means "a person is needed", for titles Deluno is already searching for
+   * on its schedule (#302). A count of a rung is coloured like the rung.
+   */
+  mark?: TitleMark;
 }
 
 export function DashboardHero({
@@ -107,7 +116,7 @@ export function DashboardHero({
             <span
               className={cn(
                 "font-display text-[length:var(--type-title-md)] font-semibold tabular-nums leading-none tracking-[-0.03em]",
-                stat.tone === "warn" ? "text-warning" : "text-foreground"
+                stat.mark ? TITLE_MARK_PRESENTATION[stat.mark].dot.replace("bg-", "text-") : "text-foreground"
               )}
             >
               <CountUp value={stat.value} />

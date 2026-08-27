@@ -14,4 +14,14 @@ public sealed record MovieCalendarItem(
     string Kind,
     DateOnly Date,
     bool HasFile,
-    bool Monitored);
+    bool Monitored,
+    /// <summary>
+    /// The stored wanted status — <c>missing</c>, <c>upgrade</c>, <c>covered</c>
+    /// or <c>upcoming</c>. Null when Deluno tracks the film in no library.
+    ///
+    /// The calendar draws the same mark as the shelf from this. Without it the
+    /// page had only <see cref="HasFile"/> and had to invent its own words for
+    /// what it saw — "Watching for it" in blue, for a title the shelf beside it
+    /// was calling Missing in red (#302).
+    /// </summary>
+    string? WantedStatus);

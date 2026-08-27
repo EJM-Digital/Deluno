@@ -1,30 +1,60 @@
-import type { MediaItem } from "./media-types";
+/**
+ * What a library's toolbar can ask for: which titles, in what order, drawn how.
+ *
+ * It used to hold a client-side filter engine as well — `filterAndSortLibraryItems`,
+ * `matchesCustomRule`, `resolveRuleValue` and a 45-value `FilterField` union.
+ * Nothing imported any of it: the catalogue is paged and filtered by the server
+ * (`library-view.tsx` sends `status`, `sort` and `direction`), so the engine was
+ * a second, unreachable definition of the same states — and it disagreed with
+ * the live one. Its `downloading` and `needsAttention` branches tested
+ * `MediaItem.status` values nothing ever set, so both could only ever match
+ * nothing; its `missing` branch meant "no file", which is not what Missing
+ * means; and `isUpgradeCandidate` re-derived Upgradable from a quality-string
+ * comparison rather than the stored wanted status. See #302.
+ */
+import type { TitleMark } from "./status-tones";
 
+/**
+ * The filters the toolbar offers, which are the marks plus monitoring.
+ *
+ * `upgrades` and `covered` are the two rungs a title with a file can be on;
+ * `downloaded` is deliberately not here, because it spans both and so selects a
+ * set nobody asks for. Downloading joins the list when live transfer state does
+ * (DESIGN-001 step 5) — a chip that can never match is worse than no chip.
+ */
 export type QuickFilter =
   | "all"
   | "monitored"
   | "unmonitored"
-  | "downloaded"
-  | "downloading"
   | "missing"
+  /** Has a file and can still get better. The stored `upgrade`. */
   | "upgrades"
   /** Has what the profile asked for — the rung above `upgrades`. */
   | "covered"
   /** Not out yet, so its absence is not a shortfall. */
-  | "upcoming"
-  | "needsAttention";
-export type SortField = "title" | "year" | "rating" | "quality" | "added" | "size" | "status" | "bitrate" | "releaseGroup" | "codec" | "runtime" | "tmdbVotes" | "popularity" | "path";
-export type SortDirection = "asc" | "desc";
-export type FilterField =
-  | "title" | "status" | "monitored" | "quality" | "genre" | "year" | "rating" | "sizeGb" | "bitrateMbps" | "network" | "releaseGroup" | "tags" | "source" | "codec" | "audioCodec" | "audioChannels" | "language" | "hdrFormat" | "releaseStatus" | "certification" | "collection" | "minimumAvailability" | "consideredAvailable" | "digitalRelease" | "physicalRelease" | "releaseDate" | "inCinemas" | "originalLanguage" | "originalTitle" | "path" | "qualityProfile" | "runtimeMinutes" | "studio" | "tmdbRating" | "tmdbVotes" | "imdbRating" | "imdbVotes" | "traktRating" | "traktVotes" | "tomatoRating" | "tomatoVotes" | "popularity" | "keywords" | "wantedReason" | "currentQuality" | "targetQuality" | "type";
-export type FilterComparator = "contains" | "equals" | "notEquals" | "gt" | "gte" | "lt" | "lte";
+  | "upcoming";
 
-export interface CustomFilterRule {
-  id: string;
-  field: FilterField;
-  comparator: FilterComparator;
-  value: string;
-}
+/** The mark a quick filter selects, or null for one that is not about a mark. */
+export const QUICK_FILTER_MARK: Record<QuickFilter, TitleMark | null> = {
+  all: null,
+  monitored: null,
+  unmonitored: null,
+  missing: "missing",
+  upgrades: "upgrade",
+  covered: "covered",
+  upcoming: "upcoming"
+};
+
+/**
+ * One union, and the four values the sort menu actually offers.
+ *
+ * This was fourteen values here and four in `library-control-rail.tsx` — the
+ * same redeclaration the QuickFilter comment in that file describes itself as
+ * having fixed, left in place one line below it. The ten extra were unreachable:
+ * nothing can set a sort the menu does not list.
+ */
+export type SortField = "title" | "year" | "rating" | "added";
+export type SortDirection = "asc" | "desc";
 
 export interface DisplayOptions {
   showTitle: boolean;
@@ -32,21 +62,6 @@ export interface DisplayOptions {
   showStatusPill: boolean;
   showQualityBadge: boolean;
   showRating: boolean;
-}
-
-const numericFilterFields = new Set<FilterField>(["year", "rating", "sizeGb", "bitrateMbps", "runtimeMinutes", "tmdbRating", "tmdbVotes", "imdbRating", "imdbVotes", "traktRating", "traktVotes", "tomatoRating", "tomatoVotes", "popularity"]);
-const equalityFilterFields = new Set<FilterField>(["status", "monitored", "source", "codec", "audioCodec", "audioChannels", "language", "hdrFormat", "releaseStatus", "certification", "minimumAvailability", "consideredAvailable", "originalLanguage", "qualityProfile", "type"]);
-
-export function isUpgradeCandidate(item: MediaItem) {
-  return item.wantedReason?.toLowerCase().includes("upgrade") === true ||
-    (item.status === "downloaded" &&
-      Boolean(item.currentQuality) &&
-      Boolean(item.targetQuality) &&
-      item.currentQuality !== item.targetQuality);
-}
-
-export function isAttentionCandidate(item: MediaItem) {
-  return item.status === "importFailed" || item.status === "processingFailed";
 }
 
 export function defaultDisplayOptions(): DisplayOptions {
@@ -67,143 +82,4 @@ export function parseDisplayOptions(raw: string | null | undefined): DisplayOpti
   } catch {
     return defaultDisplayOptions();
   }
-}
-
-export function parseCustomRules(raw: string | null | undefined): CustomFilterRule[] {
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw) as Array<Partial<CustomFilterRule>>;
-    return Array.isArray(parsed)
-      ? parsed.map((rule) => ({ id: rule.id ?? crypto.randomUUID(), field: rule.field ?? "title", comparator: rule.comparator ?? "contains", value: rule.value ?? "" }))
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-export function defaultComparatorForField(field: FilterField): FilterComparator {
-  if (numericFilterFields.has(field)) return "gte";
-  return equalityFilterFields.has(field) ? "equals" : "contains";
-}
-
-export function comparatorsForField(field: FilterField): FilterComparator[] {
-  if (numericFilterFields.has(field)) return ["equals", "gt", "gte", "lt", "lte"];
-  return equalityFilterFields.has(field) ? ["equals", "notEquals"] : ["contains", "equals", "notEquals"];
-}
-
-export function matchesCustomRule(item: MediaItem, rule: CustomFilterRule) {
-  if (!rule.value.trim()) return true;
-  const rawValue = resolveRuleValue(item, rule.field);
-  if (rawValue === null || rawValue === undefined) return false;
-
-  if (typeof rawValue === "number") {
-    const target = Number(rule.value);
-    if (Number.isNaN(target)) return false;
-    switch (rule.comparator) {
-      case "equals": return rawValue === target;
-      case "gt": return rawValue > target;
-      case "gte": return rawValue >= target;
-      case "lt": return rawValue < target;
-      case "lte": return rawValue <= target;
-      default: return false;
-    }
-  }
-
-  const normalizedValue = String(rawValue).toLowerCase();
-  const normalizedTarget = rule.value.toLowerCase();
-  switch (rule.comparator) {
-    case "contains": return normalizedValue.includes(normalizedTarget);
-    case "equals": return normalizedValue === normalizedTarget;
-    case "notEquals": return normalizedValue !== normalizedTarget;
-    default: return false;
-  }
-}
-
-export function resolveRuleValue(item: MediaItem, field: FilterField): string | number | boolean | null | undefined {
-  switch (field) {
-    case "title": return item.title;
-    case "status": return item.status;
-    case "monitored": return item.monitored;
-    case "quality": return item.quality;
-    case "genre": return item.genres.join(" ");
-    case "year": return item.year;
-    case "rating": return item.rating;
-    case "sizeGb": return item.sizeGb;
-    case "bitrateMbps": return item.bitrateMbps ?? null;
-    case "network": return item.network ?? null;
-    case "releaseGroup": return item.releaseGroup ?? null;
-    case "tags": return item.tags?.join(" ") ?? null;
-    case "source": return item.source ?? null;
-    case "codec": return item.codec ?? null;
-    case "audioCodec": return item.audioCodec ?? null;
-    case "audioChannels": return item.audioChannels ?? null;
-    case "language": return item.language ?? null;
-    case "hdrFormat": return item.hdrFormat ?? null;
-    case "releaseStatus": return item.releaseStatus ?? null;
-    case "certification": return item.certification ?? null;
-    case "collection": return item.collection ?? null;
-    case "minimumAvailability": return item.minimumAvailability ?? null;
-    case "consideredAvailable": return item.consideredAvailable ?? null;
-    case "digitalRelease": return item.digitalRelease ?? null;
-    case "physicalRelease": return item.physicalRelease ?? null;
-    case "releaseDate": return item.releaseDate ?? null;
-    case "inCinemas": return item.inCinemas ?? null;
-    case "originalLanguage": return item.originalLanguage ?? null;
-    case "originalTitle": return item.originalTitle ?? null;
-    case "path": return item.path ?? null;
-    case "qualityProfile": return item.qualityProfile ?? null;
-    case "runtimeMinutes": return item.runtimeMinutes ?? null;
-    case "studio": return item.studio ?? null;
-    case "tmdbRating": return item.tmdbRating ?? null;
-    case "tmdbVotes": return item.tmdbVotes ?? null;
-    case "imdbRating": return item.imdbRating ?? null;
-    case "imdbVotes": return item.imdbVotes ?? null;
-    case "traktRating": return item.traktRating ?? null;
-    case "traktVotes": return item.traktVotes ?? null;
-    case "tomatoRating": return item.tomatoRating ?? null;
-    case "tomatoVotes": return item.tomatoVotes ?? null;
-    case "popularity": return item.popularity ?? null;
-    case "keywords": return item.keywords?.join(" ") ?? null;
-    case "wantedReason": return item.wantedReason ?? null;
-    case "currentQuality": return item.currentQuality ?? null;
-    case "targetQuality": return item.targetQuality ?? null;
-    case "type": return item.type;
-    default: return null;
-  }
-}
-
-export function filterAndSortLibraryItems(items: MediaItem[], options: { query: string; quickFilter: QuickFilter; customRules: CustomFilterRule[]; sortField: SortField; sortDirection: SortDirection }): MediaItem[] {
-  const result = items.filter((item) => {
-    const matchesQuery = [item.title, item.genres.join(" "), item.network ?? "", item.quality, item.wantedReason ?? "", item.releaseGroup ?? "", item.codec ?? "", item.audioCodec ?? "", item.audioChannels ?? "", (item.tags ?? []).join(" "), item.path ?? ""].join(" ").toLowerCase().includes(options.query.toLowerCase());
-    const matchesQuick = options.quickFilter === "all" ||
-      (options.quickFilter === "monitored" && item.monitored) ||
-      (options.quickFilter === "unmonitored" && !item.monitored) ||
-      (options.quickFilter === "downloaded" && item.status === "downloaded") ||
-      (options.quickFilter === "downloading" && item.status === "downloading") ||
-      (options.quickFilter === "missing" && item.status === "missing") ||
-      (options.quickFilter === "upgrades" && isUpgradeCandidate(item)) ||
-      (options.quickFilter === "needsAttention" && isAttentionCandidate(item));
-    return matchesQuery && matchesQuick && options.customRules.every((rule) => matchesCustomRule(item, rule));
-  });
-
-  // `filter` produced a fresh array, so this in-place sort cannot mutate a caller-owned list.
-  return result.sort((left, right) => {
-    const modifier = options.sortDirection === "asc" ? 1 : -1;
-    switch (options.sortField) {
-      case "year": return ((left.year ?? 0) - (right.year ?? 0)) * modifier;
-      case "rating": return ((left.rating ?? 0) - (right.rating ?? 0)) * modifier;
-      case "quality": return (left.quality ?? "").localeCompare(right.quality ?? "") * modifier;
-      case "added": return left.added.localeCompare(right.added) * modifier;
-      case "size": return ((left.sizeGb ?? 0) - (right.sizeGb ?? 0)) * modifier;
-      case "status": return left.status.localeCompare(right.status) * modifier;
-      case "bitrate": return ((left.bitrateMbps ?? 0) - (right.bitrateMbps ?? 0)) * modifier;
-      case "releaseGroup": return (left.releaseGroup ?? "").localeCompare(right.releaseGroup ?? "") * modifier;
-      case "codec": return (left.codec ?? "").localeCompare(right.codec ?? "") * modifier;
-      case "runtime": return ((left.runtimeMinutes ?? 0) - (right.runtimeMinutes ?? 0)) * modifier;
-      case "tmdbVotes": return ((left.tmdbVotes ?? 0) - (right.tmdbVotes ?? 0)) * modifier;
-      case "popularity": return ((left.popularity ?? 0) - (right.popularity ?? 0)) * modifier;
-      case "path": return (left.path ?? "").localeCompare(right.path ?? "") * modifier;
-      default: return left.title.localeCompare(right.title) * modifier;
-    }
-  });
 }

@@ -1,4 +1,5 @@
-import type { QuickFilter } from "../../lib/library-filters";
+import { QUICK_FILTER_MARK, type QuickFilter, type SortDirection, type SortField } from "../../lib/library-filters";
+import { TITLE_MARK_PRESENTATION } from "../../lib/status-tones";
 import {
   ArrowDownAZ, ArrowUpDown, ChevronDown, Filter, LayoutGrid, LayoutTemplate, List, Search, X
 } from "lucide-react";
@@ -18,8 +19,12 @@ import type { CardSize, DisplayOptions } from "./library-grid";
  */
 export type { QuickFilter } from "../../lib/library-filters";
 export type ViewMode = "grid" | "list";
-export type SortField = "title" | "year" | "rating" | "added";
-export type SortDirection = "asc" | "desc";
+/**
+ * Re-exported for the same reason `QuickFilter` is. These were redeclared here
+ * as four values while `lib/library-filters.ts` declared fourteen — one line
+ * below the comment describing that exact defect.
+ */
+export type { SortDirection, SortField } from "../../lib/library-filters";
 export interface SavedFilterPreset {
   id: string;
   name: string;
@@ -51,15 +56,18 @@ export interface SavedFilterPreset {
  * (DESIGN-001 step 5). A chip that can never match anything is worse than no
  * chip at all.
  */
-export const quickFilterConfig: Array<{ key: QuickFilter; label: string; dot?: string }> = [
-  { key: "all", label: "All" },
-  { key: "covered", label: "Quality met", dot: "bg-mark-quality-met" },
-  { key: "upgrades", label: "Upgradable", dot: "bg-success" },
-  { key: "missing", label: "Missing", dot: "bg-destructive" },
-  { key: "upcoming", label: "Upcoming", dot: "bg-mark-upcoming" },
-  { key: "monitored", label: "Monitored" },
-  { key: "unmonitored", label: "Unmonitored" }
-];
+export const quickFilterConfig: Array<{ key: QuickFilter; label: string; dot?: string }> = (
+  ["all", "covered", "upgrades", "missing", "upcoming", "monitored", "unmonitored"] as const
+).map((key) => {
+  // The label and the dot come from the one table, not from here. They were
+  // written out by hand — a sixth place colouring a state, three lines under a
+  // comment calling this row the legend. A legend that keeps its own copy of the
+  // colours is not a legend (#302).
+  const mark = QUICK_FILTER_MARK[key];
+  if (!mark) return { key, label: key === "all" ? "All" : key === "monitored" ? "Monitored" : "Unmonitored" };
+  const presentation = TITLE_MARK_PRESENTATION[mark];
+  return { key, label: presentation.label, dot: presentation.dot };
+});
 
 export const sortFieldOptions: Array<{ value: SortField; label: string }> = [
   { value: "title", label: "Title" },
@@ -136,7 +144,6 @@ export function ControlRail({ label, facets, actions, controls }: {
     all: facets?.all ?? 0,
     monitored: facets?.monitored ?? 0,
     unmonitored: facets?.unmonitored ?? 0,
-    downloaded: facets?.downloaded ?? 0,
     missing: facets?.missing ?? 0,
     upgrades: facets?.upgrades ?? 0,
     covered: facets?.covered ?? 0,
@@ -357,7 +364,7 @@ export function ControlRail({ label, facets, actions, controls }: {
                   <div className="mt-2 divide-y divide-hairline xl:flex xl:flex-1 xl:flex-col xl:[&>div]:flex-1">
                     <SwitchRow label="Title" description="The movie or series name" checked={displayOptions.showTitle} onCheckedChange={(showTitle) => setDisplayOptions({ ...displayOptions, showTitle })} />
                     <SwitchRow label="Year & monitoring" description="Release year and monitored state" checked={displayOptions.showMeta} onCheckedChange={(showMeta) => setDisplayOptions({ ...displayOptions, showMeta })} />
-                    <SwitchRow label="Availability" description="Whether Deluno has the file yet" checked={displayOptions.showStatusPill} onCheckedChange={(showStatusPill) => setDisplayOptions({ ...displayOptions, showStatusPill })} />
+                    <SwitchRow label="Status mark" description="Missing, Upgradable, Quality met or Upcoming" checked={displayOptions.showStatusPill} onCheckedChange={(showStatusPill) => setDisplayOptions({ ...displayOptions, showStatusPill })} />
                     <SwitchRow label="Quality" description="Current or target quality" checked={displayOptions.showQualityBadge} onCheckedChange={(showQualityBadge) => setDisplayOptions({ ...displayOptions, showQualityBadge })} />
                     <SwitchRow label="Rating" description="The preferred metadata score" checked={displayOptions.showRating} onCheckedChange={(showRating) => setDisplayOptions({ ...displayOptions, showRating })} />
                   </div>

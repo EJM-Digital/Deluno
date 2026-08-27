@@ -207,11 +207,80 @@ Three things worth carrying forward:
    screen hard-codes a tone.~~ **Done** — `lib/status-tones.ts` and
    `status-tones.test.ts`. Four tone vocabularies merged, not two.
 4. ~~**The mark.** The dot and bar components, then the grid, list, toolbar and
-   detail page read the table.~~ **Done for the grid and the toolbar.** The dot,
-   the half and the bar are in `components/ui/title-mark.tsx`; the filter row is
-   now the legend, the counts and the filters at once. **The list view and the
-   detail pages still show the old availability chip** — they are the remaining
-   half of this step.
+   detail page read the table.~~ **Done.** The dot, the half and the bar are in
+   `components/ui/title-mark.tsx`, and the grid, the list, the toolbar, both
+   detail pages, the dashboard shelf, the calendar and the two episode lists all
+   read them.
+
+   The first pass finished the grid and the toolbar and stopped there, and the
+   guard test did not notice, because it watched for one spelling of the defect —
+   `tone="x"` beside a state's label — and **four more tables were spelling it
+   other ways**:
+
+   - `MEDIA_STATUS_PRESENTATION`, a `bg-*`/`variant` map over an eleven-value
+     `MediaStatus`. A `MediaItem` could only ever hold two of those values,
+     `downloaded` and `missing`, both from `hasFile` alone; the other nine
+     described a transfer and nothing ever set them on a title. It painted the
+     missing case **amber** — the one signal reserved for "a person is needed".
+   - `WANTED_STATUS_PRESENTATION`, a *second* colouring of the four stored wanted
+     statuses: Missing blue there and red on the poster, Quality met green there
+     and gold on the poster.
+   - `quickFilterConfig`, which wrote the mark colours out by hand three lines
+     under a comment calling that row the legend.
+   - The two detail-page headers, each picking a Badge `variant` per status —
+     amber for Missing and Upgradable.
+
+   And a fifth that was pure dead weight: `filterAndSortLibraryItems` and its
+   45-value `FilterField` union, imported by nothing since the catalogue became
+   server-paged. Its `downloading` and `needsAttention` branches tested values
+   nothing ever set, so both could only match nothing; its `missing` branch meant
+   "no file"; and `isUpgradeCandidate` re-derived Upgradable from a
+   quality-string comparison rather than the stored status. Four definitions of
+   Upgradable, one of them unreachable.
+
+   All five are gone. `MediaItem` has no `status` at all now — what a title is
+   doing comes from `wantedStatus` and the episode counts, through `titleMark()`.
+   The guard is restated in the shape the offenders actually took: outside
+   `status-tones.ts`, no module may put a colour on the same line as a mark's
+   name, whether it spells the colour `tone`, `variant` or `bg-*`.
+
+   **Three restatements went with them**, all found by looking at the running
+   app rather than by any test. A film's summary strip said **FILE: Missing** in
+   amber beside **CUTOFF: Below target** in amber — the mark, twice, in the one
+   colour it is never allowed to wear, and "below target" claimed a comparison
+   against a file that did not exist. It is three cells now: quality, monitoring,
+   import issues, none of them the mark. Every episode row carried a **File**
+   column saying "Not imported" next to a **Status** column saying "Missing";
+   the column is gone. And the show strip spent amber on its Missing and
+   Upgrades counts, which are work Deluno is already doing — they wear the marks'
+   own red and green.
+
+   **And the dashboard, which had survived both passes** because a screen that
+   invents a *new name* for a state has no mark label on the line for a colour
+   rule to notice. Its opening strip counted "Watching for", "Still missing" —
+   in amber — and "Could be upgraded"; the ring beside it drew "On disk", "Still
+   missing" and **"Upgradeable"**, one letter off the mark it was drawing, which
+   is how you can tell it was written from memory rather than read from the
+   table. Both read the table now, and the strip is the design's own counts line:
+   *In your library · Quality met · Upgradable · Missing*. The ring also stopped
+   subtracting its way to a bucket — `coveredCount` was on the payload the whole
+   time. A second guard covers this shape: the names DESIGN-001 retired may not
+   come back.
+
+   Needs You went with them. It carried "16 titles are still missing" and "N
+   retry windows pending", both amber, on an install whose sidebar was
+   simultaneously saying *All good · Nothing needs you*. Neither needs a person —
+   Deluno searches on its schedule, and a retry window says in its own text that
+   it will try again. A badge that lights up when nothing is wrong is how people
+   learn to stop looking at it.
+
+   Two smaller things fell out of it too. The list row said monitoring three
+   times over — a halved dot, the word in the meta line, and the status cell — so it
+   says it once, in the Status column. And the calendar was the last place still
+   asking "is there a file for this anywhere" as its own correlated subquery,
+   which is why it had to invent *"Watching for it"* in blue for a title the
+   shelf beside it was calling Missing in red; `MovieCalendarItem` carries the
+   wanted status now, through the same one-row join every other page uses.
 5. **Live transfer state** for Downloading, wired from telemetry rather than
    inferred. `titleMark()` already takes an `isTransferring` flag; nothing sets
    it, and there is deliberately no Downloading chip in the filter row until
@@ -219,6 +288,28 @@ Three things worth carrying forward:
 6. **Subber (#301)** inherits the vocabulary and needs no new words. The bar's
    landing site exists: `SubtitleLanguagesWanted`/`Held` on both catalogue
    contracts, zero, with a grey bar for "asked for nothing".
+
+## Related, and settled while finishing step 4
+
+**#303 — automatic per-episode search.** Three pieces that each worked and never
+met: the `episode.search` job type, `EpisodeSearchJobHandler`, and
+`PlanEpisodeSearchesAsync`, which nothing called. A show missing four scattered
+episodes was searched for as a *show*, found nothing at the series level, and the
+four were never asked for.
+
+The planning was expected to go in the heartbeat's automation lane, beside
+`PlanLibrarySearchesAsync`. It went **inside the library search cycle** instead —
+at the end of `LibrarySearchJobHandler.SearchSeriesAsync`. The lane would have
+needed its own copy of every gate the cycle has already passed: the time-of-day
+window, the search interval, missing-versus-upgrade, the manual override and
+`MaxItemsPerRun`. A second copy of a scheduling rule is how the last four defects
+in this codebase were built. Riding on the cycle, the episode pass is due exactly
+when the series pass is due and asks for the same half of the work.
+
+`ListEligibleWantedEpisodesAsync` grew `ignoreRetryWindow` and `wantedStatus` to
+mirror `ListEligibleWantedAsync` exactly — without them a manual "search now"
+would have skipped the episode half, and an upgrade-only cycle would have gone
+looking for missing episodes anyway.
 
 ## Still open for James
 

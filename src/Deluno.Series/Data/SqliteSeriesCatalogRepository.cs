@@ -2803,7 +2803,9 @@ public sealed class SqliteSeriesCatalogRepository(
         string libraryId,
         int take,
         DateTimeOffset now,
-        CancellationToken cancellationToken)
+        bool ignoreRetryWindow,
+        CancellationToken cancellationToken,
+        string? wantedStatus = null)
     {
         var items = new List<EpisodeSearchEligibilityItem>();
 
@@ -2824,7 +2826,8 @@ public sealed class SqliteSeriesCatalogRepository(
               -- written, so the query matched no row in production and its test
               -- had to seed the value by hand to pass (#300, #303).
               AND ews.wanted_status IN ('missing', 'upgrade')
-              AND (ews.next_eligible_search_utc IS NULL OR ews.next_eligible_search_utc <= @now)
+              AND (@wantedStatus IS NULL OR ews.wanted_status = @wantedStatus)
+              AND (@ignoreRetryWindow = 1 OR ews.next_eligible_search_utc IS NULL OR ews.next_eligible_search_utc <= @now)
               AND e.monitored = 1
             ORDER BY
                 CASE ews.wanted_status WHEN 'missing' THEN 0 ELSE 1 END,
@@ -2837,6 +2840,8 @@ public sealed class SqliteSeriesCatalogRepository(
         AddParameter(command, "@libraryId", libraryId);
         AddParameter(command, "@now", now.ToString("O"));
         AddParameter(command, "@take", take);
+        AddParameter(command, "@ignoreRetryWindow", ignoreRetryWindow ? 1 : 0);
+        AddParameter(command, "@wantedStatus", wantedStatus);
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))

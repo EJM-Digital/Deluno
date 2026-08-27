@@ -6,13 +6,20 @@
  * chasing. A ring answers both at a glance, and each segment links to the list
  * behind it.
  *
- * The segments are counts, not estimates — on disk, being searched for, and
- * upgradeable are disjoint states of the same catalogue, so the ring always
- * sums to the whole. Every segment also prints its own number, so the drawing
- * is never the only way to read it.
+ * The segments are the four rungs of the mark (DESIGN-001) — disjoint states of
+ * the same catalogue, so the ring always sums to the whole. Every segment also
+ * prints its own number, so the drawing is never the only way to read it.
+ *
+ * Both the words and the colours come from `TITLE_MARK_PRESENTATION`. They used
+ * to be written out here: *On disk* in green, *Still missing* in **amber** and
+ * *Upgradeable* in blue — three names for states the rest of Deluno already
+ * names, one of them spelled differently from the mark it drew ("Upgradeable"
+ * against "Upgradable"), and the amber one claiming a person was needed for
+ * titles Deluno searches for on its own schedule (#302).
  */
 import { Link } from "react-router-dom";
 import { CountUp } from "../ui/count-up";
+import { TITLE_MARK_PRESENTATION, type TitleMark } from "../../lib/status-tones";
 import { cn } from "../../lib/utils";
 
 interface Segment {
@@ -28,24 +35,37 @@ const RADIUS = 48;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
 export function LibraryComposition({
-  onDisk,
+  covered,
   missing,
   upgradable,
+  upcoming = 0,
   movieCount,
   showCount,
   className
 }: {
-  onDisk: number;
+  covered: number;
   missing: number;
   upgradable: number;
+  upcoming?: number;
   movieCount: number;
   showCount: number;
   className?: string;
 }) {
+  // The dot class is the token: `bg-mark-quality-met` is `--mark-quality-met`.
+  const segment = (mark: TitleMark, value: number, href: string): Segment => ({
+    label: TITLE_MARK_PRESENTATION[mark].label,
+    value: Math.max(0, value),
+    href,
+    token: TITLE_MARK_PRESENTATION[mark].dot.replace("bg-", "")
+  });
+
   const segments: Segment[] = [
-    { label: "On disk", value: Math.max(0, onDisk), href: "/movies", token: "success" },
-    { label: "Still missing", value: Math.max(0, missing), href: "/search-cycles/missing", token: "warning" },
-    { label: "Upgradeable", value: Math.max(0, upgradable), href: "/search-cycles/upgrades", token: "info" }
+    segment("covered", covered, "/movies?status=covered"),
+    segment("upgrade", upgradable, "/search-cycles/upgrades"),
+    segment("missing", missing, "/search-cycles/missing"),
+    // Only when there is one. A zero segment draws nothing and still takes a
+    // legend row, which is a fourth line saying "no".
+    ...(upcoming > 0 ? [segment("upcoming", upcoming, "/movies?status=upcoming")] : [])
   ];
 
   const total = segments.reduce((sum, segment) => sum + segment.value, 0);

@@ -7,8 +7,8 @@ import type {
   SeriesListItem
 } from "./api";
 import { downloadQueueStatuses } from "./download-telemetry";
-import { wantedStatusPresentation } from "./media-status-presentation";
-import type { ActiveDownload, IndexerHealthItem, MediaItem, MediaStatus } from "./media-types";
+import { wantedStatusPresentation } from "./status-tones";
+import type { ActiveDownload, IndexerHealthItem, MediaItem } from "./media-types";
 
 function hashValue(value: string) {
   let hash = 0;
@@ -82,24 +82,6 @@ function readRating(
 }
 
 /**
- * The availability chip on a media card: does Deluno have the file, or not.
- *
- * Nothing else belongs in it. It used to read the wanted status first and show
- * "Downloading" for anything `waiting`, which was wrong three ways over: the
- * server sets `waiting` on a film that *has* a file and is already at or above
- * target quality, this file's own WANTED_STATUS_PRESENTATION describes it as
- * "not searchable yet", and neither of those is downloading. Because it was
- * tested before `hasFile`, a film that had been imported and verified showed on
- * its card as still coming down.
- *
- * Monitoring is likewise a separate automation preference and must never become
- * the visible availability state: a missing monitored title stays Missing.
- *
- * Why no "Downloading" here at all: this adapter is fed the catalogue, which
- * carries no live transfer state. Showing progress on a card needs the download
- * telemetry wired in, not a wanted status pressed into service as a stand-in.
- */
-/**
  * What the Release status filter offers, in the words the rest of the UI uses.
  *
  * It used to answer "Downloading" for anything `waiting` — the last of the
@@ -116,10 +98,6 @@ function readRating(
 function releaseStatusLabel(wantedStatus: string | undefined, hasFile: boolean) {
   if (wantedStatus) return wantedStatusPresentation(wantedStatus).label;
   return hasFile ? "On disk" : "Missing";
-}
-
-function mediaAvailabilityStatus(hasFile: boolean): MediaStatus {
-  return hasFile ? "downloaded" : "missing";
 }
 
 /**
@@ -146,7 +124,6 @@ export function adaptMovieItems(items: MovieListItem[]): MediaItem[] {
       poster: item.posterUrl,
       backdrop: item.backdropUrl,
       quality: item.currentQuality ?? item.targetQuality ?? null,
-      status: mediaAvailabilityStatus(item.hasFile),
       monitored: item.monitored,
       sizeGb: item.fileSizeBytes != null ? item.fileSizeBytes / 1024 / 1024 / 1024 : readNumber(meta, "sizeGb", "sizeGB", "sizeOnDiskGb"),
       rating: item.rating,
@@ -215,7 +192,6 @@ export function adaptSeriesItems(items: SeriesListItem[]): MediaItem[] {
       poster: item.posterUrl,
       backdrop: item.backdropUrl,
       quality: item.currentQuality ?? item.targetQuality ?? null,
-      status: mediaAvailabilityStatus(item.hasFile),
       monitored: item.monitored,
       sizeGb: item.fileSizeBytes != null ? item.fileSizeBytes / 1024 / 1024 / 1024 : readNumber(meta, "sizeGb", "sizeGB", "sizeOnDiskGb"),
       rating: item.rating,

@@ -52,7 +52,7 @@ import { SegmentedControl } from "../components/ui/segmented-control";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { Switch } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
-import { wantedStatusPresentation } from "../lib/media-status-presentation";
+import { TitleMarkLabel } from "../components/ui/title-mark";
 
 interface MovieDetailLoaderData {
   activity: ActivityEventItem[];
@@ -488,8 +488,20 @@ export function MovieDetailPage() {
               </div>
               {movie.originalTitle && movie.originalTitle !== movie.title ? <p className="mt-1 text-sm text-muted-foreground">Also known as {movie.originalTitle}</p> : null}
               <div className="mt-4 flex flex-wrap gap-2">
-                <Badge variant="default">{movie.monitored ? "Monitored" : "Not monitored"}</Badge>
-                {wantedItem ? <Badge variant={wantedItem.wantedStatus === "missing" || wantedItem.wantedStatus === "upgrade" ? "warning" : "info"}>{wantedStatusPresentation(wantedItem.wantedStatus).label}</Badge> : null}
+                {/*
+                  The mark, and nothing beside it about monitoring.
+
+                  This was two badges: "Monitored" in words, and a status badge
+                  that chose its own colour — amber for Missing and Upgradable,
+                  blue for the rest. Amber is the signal that means a person is
+                  needed, and neither of those needs one (#302); the poster's own
+                  mark had already called them red and green. The halved dot says
+                  monitoring, which is what it is for.
+                */}
+                <TitleMarkLabel
+                  className="rounded-full border border-hairline bg-surface-2 px-2.5 py-1 text-xs font-medium"
+                  item={{ monitored: movie.monitored, wantedStatus: wantedItem?.wantedStatus }}
+                />
                 {importCases.length ? <Badge variant="warning">{importCases.length} import issue{importCases.length === 1 ? "" : "s"}</Badge> : null}
                 {movie.genres?.split(",").map((genre) => <span key={genre} className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">{genre.trim()}</span>)}
               </div>
@@ -542,32 +554,42 @@ export function MovieDetailPage() {
         </CardContent>
       </Card>
 
+      {/*
+        Three cells, and none of them the mark.
+
+        This was five. **File** said "On disk" or "Missing" — the mark in the
+        header, restated in words and in a *second* colour, and the missing case
+        was amber, the one signal reserved for "a person is needed". Nobody is
+        needed: Deluno searches for it on its schedule. **Cutoff** said "Met" or
+        "Below target", which is the difference between Quality met and
+        Upgradable — the mark again — and on a film with no file at all it read
+        "Below target", claiming a comparison against a file that does not exist.
+
+        What is left is what the mark cannot say: which quality is actually
+        there, whether automation is on, and whether anything is stuck. See
+        DESIGN-001 and #302.
+      */}
       <SummaryStrip
         cells={[
           {
-            label: "File",
-            value: movie.hasFile ? "On disk" : "Missing",
-            tone: movie.hasFile ? undefined : "warning",
-            help: movie.hasFile ? "imported and verified" : "nothing imported yet"
-          },
-          { label: "Quality", value: currentQuality ?? "Unknown", help: `plan asks for ${targetQuality}` },
-          {
-            label: "Cutoff",
-            value: cutoffMet === true ? "Met" : cutoffMet === false ? "Below target" : "No data",
-            tone: cutoffMet === false ? "warning" : cutoffMet === true ? "success" : undefined,
+            label: "Quality",
+            value: currentQuality ?? (movie.hasFile ? "Unknown" : "Nothing yet"),
+            tone: cutoffMet === true ? "success" : undefined,
             // "last delta 0" told the user nothing they could act on (#259).
             // Say what the comparison meant instead of printing its number.
-            help: cutoffMet === true
-              ? `meets ${targetQuality}`
-              : cutoffMet === false
-                ? `wants ${targetQuality}`
-                : lastDelta === null
-                  ? "nothing compared yet"
-                  : lastDelta > 0
-                    ? "last release scored better"
-                    : lastDelta < 0
-                      ? "last release scored worse"
-                      : "last release scored the same"
+            help: !movie.hasFile
+              ? `waiting for ${targetQuality}`
+              : cutoffMet === true
+                ? `meets ${targetQuality}`
+                : cutoffMet === false
+                  ? `plan asks for ${targetQuality}`
+                  : lastDelta === null
+                    ? `plan asks for ${targetQuality}`
+                    : lastDelta > 0
+                      ? "last release scored better"
+                      : lastDelta < 0
+                        ? "last release scored worse"
+                        : "last release scored the same"
           },
           { label: "Monitoring", value: movie.monitored ? "On" : "Paused", help: movie.monitored ? "searched on schedule" : "no automatic searches" },
           {

@@ -145,7 +145,7 @@ export const TITLE_MARK_PRESENTATION: Record<TitleMark, TitleMarkPresentation> =
   missing: {
     dot: "bg-destructive",
     label: "Missing",
-    hint: "It is out and Deluno does not have it yet.",
+    hint: "It is out and Deluno does not have it yet. Deluno searches for this on its schedule.",
     canBeHalf: true
   },
   downloading: {
@@ -157,22 +157,53 @@ export const TITLE_MARK_PRESENTATION: Record<TitleMark, TitleMarkPresentation> =
   upgrade: {
     dot: "bg-success",
     label: "Upgradable",
-    hint: "Here and watchable tonight, with room to get better.",
+    hint: "You have this and can watch it tonight. Deluno is still looking for a better copy.",
     canBeHalf: true
   },
   covered: {
     dot: "bg-mark-quality-met",
     label: "Quality met",
-    hint: "The quality your profile asked for. Deluno has stopped looking.",
+    hint: "This is the quality your Library Profile asked for, so Deluno has stopped looking.",
     canBeHalf: false
   },
   upcoming: {
     dot: "bg-mark-upcoming",
     label: "Upcoming",
-    hint: "Not out yet, or the episode has not aired.",
+    hint: "Not out yet, or the episode has not aired. Deluno will start looking on release.",
     canBeHalf: true
   }
 };
+
+/**
+ * What a title whose stored state this build does not recognise gets.
+ *
+ * Reached only by a value written by a newer build. It deliberately claims no
+ * rung: `titleMark` coerces an unrecognised value to *Missing*, and Missing
+ * means "go and download this" — the wrong thing to tell a reader about a state
+ * nobody here understands. "Tracked" is the most the mere existence of a row
+ * can support.
+ */
+export const UNRECOGNISED_TITLE_MARK: TitleMarkPresentation = {
+  dot: "bg-mark-upcoming",
+  label: "Tracked",
+  hint: "Deluno holds this title but does not recognise its current state.",
+  canBeHalf: false
+};
+
+/**
+ * The mark a stored wanted status names, for a title judged on its own row — an
+ * episode, or a film, which has no episodes to be judged on instead.
+ *
+ * This used to be a second table, `WANTED_STATUS_PRESENTATION`, carrying its own
+ * tones: Missing was blue there and red on the poster, Quality met green there
+ * and gold on the poster. Same four states, two colourings — the whole of #302
+ * in one file. There is one table now, and this reads it.
+ */
+export function wantedStatusPresentation(value: string | null | undefined): TitleMarkPresentation {
+  const known: readonly string[] = ["missing", "upgrade", "covered", "upcoming"];
+  if (!value || !known.includes(value)) return UNRECOGNISED_TITLE_MARK;
+  return TITLE_MARK_PRESENTATION[value as TitleMark];
+}
 
 /** The order a title climbs. Lower index is a lower rung. */
 export const TITLE_MARK_LADDER: readonly TitleMark[] = [

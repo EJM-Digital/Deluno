@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   STATUS_PRESENTATION,
+  TITLE_MARK_PRESENTATION as MARKS,
+  wantedStatusPresentation,
   TITLE_MARK_LADDER,
   TITLE_MARK_PRESENTATION,
+  titleMark,
   TONE_MEANING,
   lowestMark,
   titleBar,
@@ -177,7 +180,6 @@ describe("no screen colours a state itself", () => {
   const ALLOWED = [
     "/lib/status-tones.ts",
     "/lib/status-tones.test.ts",
-    "/lib/media-status-presentation.ts",
     "/lib/job-status-constants.ts",
     "/components/ui/chip.tsx",
     "/components/ui/status-led.tsx"
@@ -206,6 +208,128 @@ describe("no screen colours a state itself", () => {
           offenders.push(`${normalized}: "${label}" is coloured here rather than in STATUS_PRESENTATION`);
         }
       }
+    }
+
+    expect(offenders).toEqual([]);
+  });
+});
+
+/**
+ * The guard the first pass at this issue was missing.
+ *
+ * It watched for `tone="x"` beside a state's label — and every table that
+ * survived #302's first attempt named its colours some other way. There were
+ * four of them:
+ *
+ * - `MEDIA_STATUS_PRESENTATION`, a `bg-*`/`variant` map that coloured a missing
+ *   title amber;
+ * - `WANTED_STATUS_PRESENTATION`, which gave the same four wanted statuses a
+ *   *second* set of tones — Missing blue here, red on the poster;
+ * - `quickFilterConfig`, which wrote the mark colours out by hand three lines
+ *   under a comment calling that row the legend;
+ * - the two detail-page headers, which picked a Badge `variant` per status.
+ *
+ * So the rule is stated in the shape the offenders actually took: outside the
+ * one table, no module may sit a mark's name next to a colour.
+ */
+describe("no second table", () => {
+  const SOURCES = import.meta.glob("../**/*.{ts,tsx}", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
+
+  const ALLOWED = ["/lib/status-tones.ts", "/lib/status-tones.test.ts"];
+
+  const MARK_LABELS = Object.values(MARKS).map((presentation) => presentation.label);
+
+  it("does not name a colour beside a mark's label", () => {
+    // A Tailwind colour class or a Badge/Chip variant, on the same line as the
+    // words the marks own.
+    const COLOUR = /(bg-(destructive|success|info|warning|mark-[a-z-]+)|(variant|token)[=:]\s*"?(warning|success|info|destructive|mark-[a-z-]+))/;
+    const offenders: string[] = [];
+
+    for (const [path, source] of Object.entries(SOURCES)) {
+      const normalized = path.replace(/^\.\./, "");
+      if (ALLOWED.some((allowed) => normalized.endsWith(allowed))) continue;
+
+      source.split("\n").forEach((line, index) => {
+        if (!COLOUR.test(line)) return;
+        for (const label of MARK_LABELS) {
+          if (line.includes(`"${label}"`) || line.includes(`>${label}<`)) {
+            offenders.push(`${normalized}:${index + 1} colours "${label}" itself`);
+          }
+        }
+      });
+    }
+
+    expect(offenders).toEqual([]);
+  });
+
+  /**
+   * The four stored wanted statuses and the five marks are one vocabulary, not
+   * two that happen to agree today. `wantedStatusPresentation` must hand back
+   * the very object `TITLE_MARK_PRESENTATION` holds — not a copy of it.
+   */
+  it("resolves a stored wanted status to the mark's own entry", () => {
+    for (const stored of ["missing", "upgrade", "covered", "upcoming"] as const) {
+      expect(wantedStatusPresentation(stored)).toBe(MARKS[titleMark({ wantedStatus: stored })]);
+    }
+  });
+
+  /**
+   * A value written by a newer build must not be read as Missing, which means
+   * "go and download this". `titleMark` coerces it there because something has
+   * to be drawn; the label a reader sees must not make that claim.
+   */
+  it("refuses to name a rung for a value it does not recognise", () => {
+    for (const unknown of ["waiting", "", null, undefined, "brand-new-state"]) {
+      expect(wantedStatusPresentation(unknown).label).toBe("Tracked");
+    }
+  });
+});
+
+/**
+ * The guard the colour rule cannot be.
+ *
+ * A screen that invents its own *name* for a state slips past every check about
+ * colour, because there is no mark label on the line to notice. The dashboard
+ * did exactly that and survived two passes at #302: its opening strip counted
+ * "Watching for", "Still missing" and "Could be upgraded", and the library ring
+ * beside it drew "On disk", "Still missing" and **"Upgradeable"** — one letter
+ * off the mark it was drawing, which is how you can tell it was written from
+ * memory rather than read from the table.
+ *
+ * DESIGN-001 settled these names against real alternatives, and the reasoning is
+ * recorded there. A retired one reappearing means somebody rebuilt a vocabulary
+ * instead of importing it.
+ */
+describe("the retired words stay retired", () => {
+  const SOURCES = import.meta.glob("../**/*.{ts,tsx}", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
+
+  const RETIRED: Array<[string, string]> = [
+    ["Upgradeable", "Upgradable — one word, spelled the way the table spells it"],
+    ["Still missing", "Missing"],
+    ["Could be upgraded", "Upgradable"],
+    ["Watching for it", "the mark, which already says whether Deluno is looking"],
+    ["Best copy", "Quality met — Best copy over-claims (DESIGN-001)"],
+    ["Upgrade needed", "Upgradable — it states a fact rather than nagging"]
+  ];
+
+  it("does not reintroduce a name DESIGN-001 replaced", () => {
+    const offenders: string[] = [];
+
+    for (const [path, source] of Object.entries(SOURCES)) {
+      const normalized = path.replace(/^\.\./, "");
+      // This file names them in order to forbid them.
+      if (normalized.endsWith("/lib/status-tones.test.ts")) continue;
+
+      source.split("\n").forEach((line, index) => {
+        // Only user-facing strings and JSX text, not prose in a comment
+        // explaining why the word went.
+        if (/^\s*(\/\/|\*|\/\*)/.test(line)) return;
+        for (const [word, instead] of RETIRED) {
+          if (line.includes(`"${word}`) || line.includes(`>${word}<`)) {
+            offenders.push(`${normalized}:${index + 1} says "${word}" — use ${instead}`);
+          }
+        }
+      });
     }
 
     expect(offenders).toEqual([]);

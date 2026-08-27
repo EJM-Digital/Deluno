@@ -360,10 +360,27 @@ public sealed class SeriesCatalogueSyncPersistenceTests
 
         await repository.UpdateEpisodeMonitoredAsync([episodeIds[(1, 3)]], monitored: false, CancellationToken.None);
 
-        var eligible = await repository.ListEligibleWantedEpisodesAsync("series-main", 10, now, CancellationToken.None);
+        var eligible = await repository.ListEligibleWantedEpisodesAsync(
+            "series-main", 10, now, ignoreRetryWindow: false, CancellationToken.None);
 
         Assert.Single(eligible);
         Assert.Equal(episodeIds[(1, 1)], eligible[0].EpisodeId);
+
+        // A manual "search now" ignores the retry window, the way the series-level
+        // pass already does — episode 2 is inside its window and comes back too.
+        // Episode 3 stays out: unmonitored is a decision, not a delay.
+        var manual = await repository.ListEligibleWantedEpisodesAsync(
+            "series-main", 10, now, ignoreRetryWindow: true, CancellationToken.None);
+
+        Assert.Equal(2, manual.Count);
+        Assert.DoesNotContain(manual, item => item.EpisodeId == episodeIds[(1, 3)]);
+
+        // An upgrade-only cycle must not pick up missing episodes, or a library
+        // with upgrades on and missing off would search for missing ones anyway.
+        var upgradesOnly = await repository.ListEligibleWantedEpisodesAsync(
+            "series-main", 10, now, ignoreRetryWindow: true, CancellationToken.None, wantedStatus: "upgrade");
+
+        Assert.Empty(upgradesOnly);
     }
 
     [Fact]
