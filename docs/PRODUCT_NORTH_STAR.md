@@ -77,16 +77,36 @@ against constantly. This is that place.
 So the bar is not "Deluno has a feature for that". It is: **someone who uninstalls
 all eight apps must not miss any of them.**
 
-| It replaces | Which means Deluno owes |
-|---|---|
-| **Radarr** | movies: catalogue, quality profiles, search, import, rename, recovery |
-| **Sonarr** | TV, at season and episode grain, with air dates and monitoring |
-| **Prowlarr** | indexers managed in one place, with health, tests and rate limits |
-| **Huntarr** | finding what is missing and what could be better, on a schedule that does not hammer trackers |
-| **Cleanuparr** | stalled, blocked, malware-shaped and orphaned downloads, cleaned up safely |
-| **Recyclarr / Trash Guides** | quality definitions and custom formats that are good by default, without importing YAML |
-| **Upgradarr** | upgrades to a cutoff, and stopping there |
-| **Bazarr** *(added by [#301](https://github.com/jampat000/Deluno/issues/301))* | subtitles: languages, providers, upgrades, and knowing what you already have |
+Each of these was read from its own documentation and source rather than from
+memory, because a replacement list nobody has checked is a list of assumptions.
+What each one actually does, and therefore what Deluno owes:
+
+| It replaces | What that tool actually does | So Deluno owes |
+|---|---|---|
+| **Radarr** | Movie PVR: catalogue, quality profiles and custom formats, RSS and interactive search, import and rename, failed-download handling, collections, calendar, lists | All of it, at 5,000+ titles, with filtering and sorting past what Radarr offers ([#306](https://github.com/jampat000/Deluno/issues/306)–[#310](https://github.com/jampat000/Deluno/issues/310)) |
+| **Sonarr** | The same for TV, at series/season/episode grain: specials, multi-episode releases, air dates, scene numbering | Episode-grain everything, not a movie engine with seasons bolted on |
+| **Prowlarr** | Indexer **manager and proxy**: 24 usenet indexers, 500+ trackers, Generic Newznab/Torznab, Cardigann YML definitions, per-indexer proxy (SOCKS4/5, HTTP, FlareSolverr), health, history, stats. Syncs config *into* the arrs; downloads nothing itself | Indexers configured once, with health, tests, rate limits and per-indexer proxying — and **no sync step**, because there is nothing to sync into |
+| **Huntarr** | Actively hunts library gaps the arrs' RSS never revisits — missing and cutoff-unmet — in small indexer-safe batches with hourly caps, pausing when the queue fills | The library automation cycle: window, interval, `MaxItemsPerRun`, retry delay. **Already built** |
+| **Cleanuparr** | Download-side cleanup: strike system for failed imports, stalled and metadata-stuck torrents, low-speed and slow-completion blocks, malware-pattern blocking, seed-time purging, orphaned/unlinked file removal. Also triggers replacement searches | Recovery, dead-letter, stalled and blocked handling, orphan cleanup — all explainable and previewable |
+| **Recyclarr** | Syncs TRaSH Guides **into** Radarr/Sonarr: quality profiles, custom formats and scores, quality definitions (size ranges per tier), naming schemes. Config-sync only — touches no media | Good defaults **built in**, versioned and previewable, with no YAML and no second tool to run |
+| **TRaSH Guides** | Documentation, not software: custom formats, quality/size definitions, naming, and hardlink-safe folder structure | The guidance encoded as defaults you can see and override, not a wiki you have to read first |
+| **Upgradarr** | Walks the whole library looking for better releases, one title per cycle, with a configurable pause (default 5 min) so trackers do not ban you | Upgrade search paced by the same cycle, to a cutoff, and stopping there |
+| **Bazarr** | Subtitles for whatever Sonarr/Radarr already indexed — 184 languages, 50+ providers, forced/foreign variants, upgrades, history, manual search. **Cannot scan disk itself** | Subtitles as part of the library, not a companion to it ([#301](https://github.com/jampat000/Deluno/issues/301)) |
+
+### Two things that list makes obvious
+
+**Most of these exist only because the arrs are separate applications.** Prowlarr
+syncs config into other apps; Recyclarr syncs config into other apps; Bazarr
+cannot see the disk and has to ask Radarr what exists; Huntarr and Upgradarr both
+exist to do a search the arrs could have paced themselves. Deluno is one
+application, so a large part of what these tools *are* simply does not arise —
+that is the saving, and it is also the risk, because rebuilding their
+architecture inside Deluno would import the problem along with the feature.
+
+**Replacing a tool means replacing its ceiling too.** Radarr states in its own
+Custom Filters dialog that filters are "available only for the properties of a
+movie, they are not available for properties of the file(s) you may have". Doing
+what Radarr does is the floor. See DESIGN-004.
 
 ### The standing check
 
@@ -96,6 +116,13 @@ checked" #194 asked for, and it is why the issue can close: the check outlives i
 1. **Which of those apps does this belong to, and is Deluno's version better —
    not merely present?** A feature that exists but is worse than the tool it
    replaces is a reason someone reinstalls that tool.
+
+   **"Better" includes the count.** James, on being shown that Deluno had 6
+   filter fields to Radarr's 33 while gaining an axis Radarr does not have:
+   *"shouldn't we add the missing and more as you suggested — instead of being
+   ahead we will still be behind."* Right. A new axis does not excuse a smaller
+   number on an old one. Where a tool offers N of something, Deluno offers all N
+   and then more.
 2. **Is it simpler than the thing it replaces?** Simplicity is the product. If
    the answer is a new setting, ask first whether Deluno can decide and explain
    the consequence once in plain words.

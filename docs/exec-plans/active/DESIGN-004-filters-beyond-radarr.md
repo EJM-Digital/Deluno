@@ -32,8 +32,27 @@ TMDb Votes, Tomato Rating, Trakt Rating, Trakt Votes, Year.
 less than or equal — plus contains / does not contain / starts with / ends with
 on text and list fields.
 
-Deluno today: **6 filter fields, 9 sorts, 11 poster options, 2 views.** On the
-raw count we are behind, and that is the first thing to fix.
+## The scoreboard, and the target
+
+| | Radarr | Deluno today | Target |
+|---|---|---|---|
+| Filter fields | 33 | 6 | **all 33, plus the file, time and decision axes** |
+| Sorts | 21 | 9 | **all 21, plus bitrate and subtitle coverage** |
+| Poster options | 14 | 11 | **all 14, plus the 7 Deluno already has that Radarr lacks** |
+| Views | 3 (Table / Posters / **Overview**) | 2 | **3+** |
+
+James, on seeing that table: *"shouldn't we add the missing and more as you
+suggested — instead of being ahead we will still be behind."*
+
+He is right, and it is worth stating as a rule rather than a reaction: **a new
+axis does not excuse a smaller number on an old one.** Being the only tool that
+can filter by audio channels is no comfort to somebody who cannot filter by
+certification. So the order is: reach parity on every count first, then extend.
+
+Deluno already has seven poster options Radarr does not — size, genres, runtime,
+release group, codec, added, and the subtitle bar — and two sorts it does not
+(bitrate, and quality by ladder rank rather than profile name). Those stay. The
+target is the union, not the swap.
 
 ## The sentence that decides the strategy
 
