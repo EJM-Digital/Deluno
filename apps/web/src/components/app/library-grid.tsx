@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { MediaItem } from "../../lib/media-types";
+import { heldQualityLabel } from "../../lib/quality-label";
 import type { Density } from "../../lib/use-density";
 import { cn } from "../../lib/utils";
 import { Badge } from "../ui/badge";
@@ -287,9 +288,9 @@ function PosterCard({
                       {item.rating.toFixed(1)}
                     </span>
                   ) : <span />}
-                  {displayOptions.showQualityBadge && item.quality ? (
-                    <Badge className="bg-white/15 px-1.5 py-0 text-[length:var(--library-badge-size)] font-bold text-[hsl(var(--media-foreground))] backdrop-blur-sm">
-                      {shortQuality(item.quality)}
+                  {displayOptions.showQualityBadge && heldQualityLabel(item) ? (
+                    <Badge className="whitespace-nowrap bg-white/15 px-1.5 py-0 text-[length:var(--library-badge-size)] font-bold text-[hsl(var(--media-foreground))] backdrop-blur-sm">
+                      {heldQualityLabel(item)}
                     </Badge>
                   ) : null}
                 </div>
@@ -363,10 +364,4 @@ export function PosterArtwork({
   );
 }
 
-export function shortQuality(value: string) {
-  if (value.includes("2160")) return "4K";
-  if (value.includes("1080")) return "1080p";
-  if (value.includes("720")) return "720p";
-  return value;
-}
 

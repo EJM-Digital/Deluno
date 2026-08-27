@@ -5,7 +5,8 @@ import type { MediaItem } from "../../lib/media-types";
 import { cn, formatBytesFromGb } from "../../lib/utils";
 import { Badge } from "../ui/badge";
 import { Checkbox } from "../ui/checkbox";
-import { PosterArtwork, shortQuality } from "./library-grid";
+import { PosterArtwork } from "./library-grid";
+import { heldQualityLabel } from "../../lib/quality-label";
 import { TitleMarkLabel } from "../ui/title-mark";
 import { titleBar } from "../../lib/status-tones";
 
@@ -197,7 +198,18 @@ export function LibraryTable(
                   </div>
                 </td>
                 <td className="hidden md:table-cell">
-                  <Badge>{item.quality ? shortQuality(item.quality) : "Unknown"}</Badge>
+                  {/*
+                    What the file is, at the grain the ladder uses — a Remux and
+                    a WEB at the same resolution are different files and this
+                    column used to call them the same thing.
+
+                    A title with no file gets a dash rather than "Unknown": it is
+                    not that the quality is unknown, it is that there is nothing
+                    to have a quality. The mark in the next column says why.
+                  */}
+                  {heldQualityLabel(item)
+                    ? <Badge className="whitespace-nowrap">{heldQualityLabel(item)}</Badge>
+                    : <span className="text-muted-foreground">—</span>}
                 </td>
                 <td>
                   <TitleMarkLabel item={item} />
@@ -209,13 +221,27 @@ export function LibraryTable(
                   {item.genres.slice(0, 2).join(", ")}
                 </td>
                 <td className="num hidden text-muted-foreground lg:table-cell">
-                  {formatBytesFromGb(item.sizeGb)}
+                  {/*
+                    Same dash, same reason as Quality: a title with no file has
+                    no size, and "Unknown" claims the number exists and could not
+                    be read. Ten rows of "Unknown" down a column is a screen
+                    saying it does not know things it knows perfectly well.
+                  */}
+                  {item.hasFile === false ? "—" : formatBytesFromGb(item.sizeGb)}
                 </td>
                 <td className="num hidden md:table-cell">
-                  <span className="inline-flex items-center gap-1 text-foreground">
-                    <Star className="h-3 w-3 fill-warning text-warning" />
-                    {item.rating !== null ? item.rating.toFixed(1) : "Unknown"}
-                  </span>
+                  {/*
+                    A filled star beside the word "Unknown" reads as a rating.
+                    No rating, no star.
+                  */}
+                  {item.rating !== null ? (
+                    <span className="inline-flex items-center gap-1 text-foreground">
+                      <Star className="h-3 w-3 fill-warning text-warning" />
+                      {item.rating.toFixed(1)}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
                 </td>
                 <td className="hidden text-muted-foreground xl:table-cell">{item.added}</td>
               </tr>
