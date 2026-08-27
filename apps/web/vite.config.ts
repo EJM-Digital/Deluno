@@ -23,9 +23,20 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        entryFileNames: "assets/deluno.js",
-        chunkFileNames: "assets/[name].js",
-        assetFileNames: "assets/[name][extname]",
+        /*
+          Content-hashed, so a deploy cannot leave a browser running yesterday's
+          bundle.
+
+          These were fixed names — `assets/deluno.js` — which meant a new build
+          landed on disk under a name the browser already had cached, and kept
+          serving the old one until someone thought to hard-reload. A fix that
+          had shipped correctly looked exactly like a fix that had not worked,
+          which cost a wrong diagnosis. `index.html` is never cached (it is the
+          app shell the host rewrites to), so it always names the current hashes.
+        */
+        entryFileNames: "assets/deluno.[hash].js",
+        chunkFileNames: "assets/[name].[hash].js",
+        assetFileNames: "assets/[name].[hash][extname]",
         manualChunks(id) {
           if (!id.includes("node_modules")) {
             return;

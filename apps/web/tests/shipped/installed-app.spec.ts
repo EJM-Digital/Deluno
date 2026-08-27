@@ -28,10 +28,19 @@ test.describe("the installed app", () => {
     await expect(page.locator("body")).not.toContainText("<!doctype html>", { ignoreCase: true });
   });
 
-  test("serves its script bundle as script", async ({ request }) => {
+  test("serves its script bundle as script", async ({ page, request }) => {
     // nosniff means a bundle sent as text/plain is refused and the app never
     // boots — the same class of failure as the HTML one, one layer down.
-    const response = await request.get("/assets/deluno.js");
+    //
+    // The bundle is content-hashed, so its name is read off the shell rather
+    // than assumed. That hashing is the point: a fixed name let a deployed fix
+    // keep serving out of a browser cache and look like a fix that had failed.
+    await page.goto("/");
+    const bundle = await page.locator('script[src*="/assets/deluno."]').first().getAttribute("src");
+
+    expect(bundle, "the app shell should name a hashed entry bundle").toMatch(/\/assets\/deluno\.[^.]+\.js$/);
+
+    const response = await request.get(bundle!);
 
     expect(response.status()).toBe(200);
     expect(response.headers()["content-type"] ?? "").toContain("javascript");
