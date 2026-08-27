@@ -132,34 +132,77 @@ Four stored values, one meaning each, replacing the three that shared a word:
 deriving it from a wanted status is exactly the bug #299 fixed. It has to come
 from download telemetry.
 
-## Before any of this can be drawn — the blocker
+## Before any of this can be drawn — the blocker (**cleared 2026-08-27**)
 
-**The library grid does not currently receive the data this design needs.**
+**The library grid did not receive the data this design needs.**
 
-- `MovieListItem` and `SeriesListItem` carry `monitored`, `hasFile` and
+- `MovieListItem` and `SeriesListItem` carried `monitored`, `hasFile` and
   `currentQuality` — **no wanted status, no cutoff flag, no release dates, no
   episode counts** (`apps/web/src/lib/api/types/catalogue.ts`).
-- `ListPageAsync` in `SqliteMovieCatalogRepository` selects `FROM movie_entries m`
+- `ListPageAsync` in `SqliteMovieCatalogRepository` selected `FROM movie_entries m`
   with **no join to `movie_wanted_state`**.
-- The wanted status the grid does use comes from `/api/movies/wanted`, whose
-  `recentItems` is **`LIMIT 25`**. So at most 25 titles in a library have a
-  wanted status on the grid; every other card falls back to `hasFile`.
+- The wanted status the grid did use came from `/api/movies/wanted`, whose
+  `recentItems` is **`LIMIT 25`**. So at most 25 titles in a library had a
+  wanted status on the grid; every other card fell back to `hasFile`.
 
-That last one is why this looks fine on the lab rig — it has 11 films, all
-inside the 25 — and would silently degrade at the 20,000-item scale invariant.
+That last one is why it looked fine on the lab rig — 11 films, all inside the
+25 — and would have degraded silently at the 20,000-item invariant.
 
-**So the first task is data, not colour:** put `wantedStatus`,
-`qualityCutoffMet`, the release/air dates and (for series) the aired/held
-episode counts onto the paged catalogue payload, with a `LEFT JOIN` to the
-wanted state in the same database. Nothing visual should be attempted first.
+### What landed
+
+Both catalogue pages now carry their own search state, from a `LEFT JOIN` that
+binds **one** wanted-state row per title (`CatalogueWantedState`, shared by both
+repositories). `wantedStatus`, `wantedReason`, `libraryId`, `targetQuality`,
+`qualityCutoffMet`, `lastSearchUtc` and `nextEligibleSearchUtc` ride the page;
+the movie payload already carried the release dates and now exposes them to the
+web contract. Series pages additionally carry `episodeCount`,
+`airedEpisodeCount`, `airedWithFileCount`, `airedUpgradableCount` and
+`nextAirDateUtc`, from one grouped pass over the page's own shows.
+
+`/api/movies/wanted` is no longer fetched by the grid at all.
+
+Three things worth carrying forward:
+
+- **The same join replaced eight correlated subqueries per row**, which could
+  not keep their own answers together: each took the first row with a non-null
+  value for *its* column, so a title in two libraries could report one library's
+  quality beside another's file path. One row now answers for the title, and it
+  is deliberately the row the Downloaded and Upgrades filters select on, so the
+  card and the filter that produced it agree.
+- **The page is still a seek.** A grouped subquery or an aggregate join would
+  have materialised every wanted row before returning fifty.
+  `The_page_reaches_the_wanted_state_by_key_and_never_scans_it` asserts the query
+  plan, because nothing about a wrong plan looks wrong until the twenty-thousandth
+  title.
+- **The same defect lived next door, on the detail pages.** `movie-detail-page`
+  and `show-detail-page` searched that same 25-item summary for the one title
+  they were already showing — so opening the 26th-most-recently-touched title
+  lost its library, its target quality and its cutoff, and left a Defer button
+  that could only 404. Fixed the same way: `GetByIdAsync` carries the state, on
+  both the shared-media-state path and the repositories' own.
 
 ## Build order
 
-1. **Data.** Extend the paged catalogue query and contracts as above. Test at
-   scale, not on eleven films.
+1. ~~**Data.** Extend the paged catalogue query and contracts as above. Test at
+   scale, not on eleven films.~~ **Done** — `CatalogueSearchStateOnPageTests`,
+   including a 2,000-title walk and a query-plan guard.
 2. **#300's split.** Rename `waiting` → `covered`, add `upcoming` set from
    release and air dates, teach the episode paths the same words, migrate.
    Pin with the test the issue asks for.
+
+   Two things the data work turned up for this step:
+   - **`episode_wanted_state` already writes `covered` and `missing`** while
+     `movie_wanted_state` writes `waiting`, `upgrade` and `missing`. The episode
+     vocabulary is already half-way to the target; the film one is not.
+   - **`NormalizeWantedStatus` coerces anything it does not recognise to
+     `missing`.** A typo, or a new value written before the reader learns it,
+     becomes "go and download this" rather than an error. Worth making loud as
+     part of the rename, since the rename is exactly when a value gets written
+     that an old reader does not know.
+   - **The show detail page overstates what is missing.** Slow Horses reads
+     "Find 36 missing episodes" and `MISSING 36` when only 30 have aired — the
+     same mistake the bar is forbidden to make. The counts to fix it now exist
+     on the payload.
 3. **One table.** State → colour → label, in one module the way
    `lib/configuration-areas.ts` now holds the area explainers, with a test that
    no screen hard-codes a tone. This is #302's fix.
