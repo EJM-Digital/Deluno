@@ -25,8 +25,7 @@ import {
   type SeriesImportRecoverySummary,
   type SeriesInventoryDetail,
   type SeriesListItem,
-  type SeriesSearchHistoryItem,
-  type SeriesWantedSummary
+  type SeriesSearchHistoryItem
 } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
 import { describeSearchReason } from "../lib/search-reasons";
@@ -69,7 +68,6 @@ interface ShowDetailLoaderData {
   removalPreview: MediaRemovalPreview;
   searchHistory: SeriesSearchHistoryItem[];
   series: SeriesListItem;
-  wanted: SeriesWantedSummary;
 }
 
 type DetailSection = "episodes" | "destination" | "history";
@@ -81,10 +79,9 @@ export async function showDetailLoader({
   params: { id?: string };
 }): Promise<ShowDetailLoaderData> {
   const id = params.id!;
-  const [series, wanted, searchHistory, dispatches, importRecovery, inventory, activity, decisions, libraries, origins, removalPreview] =
+  const [series, searchHistory, dispatches, importRecovery, inventory, activity, decisions, libraries, origins, removalPreview] =
     await Promise.all([
       fetchJson<SeriesListItem>(`/api/series/${id}`),
-      fetchJson<SeriesWantedSummary>("/api/series/wanted"),
       fetchJson<SeriesSearchHistoryItem[]>("/api/series/search-history"),
       fetchPageItems<DownloadDispatchItem>("/api/download-dispatches?mediaType=tv&pageSize=20"),
       fetchJson<SeriesImportRecoverySummary>("/api/series/import-recovery"),
@@ -98,12 +95,12 @@ export async function showDetailLoader({
       fetchJson<MediaRemovalPreview>(`/api/series/${id}/removal-preview`).catch(() => ({ filePaths: [], folderPaths: [], warnings: [] }))
     ]);
 
-  return { activity, decisions, importRecovery, inventory, libraries, origins, removalPreview, searchHistory, series, wanted, dispatches };
+  return { activity, decisions, importRecovery, inventory, libraries, origins, removalPreview, searchHistory, series, dispatches };
 }
 
 export function ShowDetailPage() {
   const loaderData = useLoaderData() as ShowDetailLoaderData;
-  const { activity, decisions, dispatches, importRecovery, inventory, libraries, origins, removalPreview, searchHistory, series, wanted } = loaderData;
+  const { activity, decisions, dispatches, importRecovery, inventory, libraries, origins, removalPreview, searchHistory, series } = loaderData;
   const navigate = useNavigate();
   const revalidator = useRevalidator();
 
@@ -120,7 +117,26 @@ export function ShowDetailPage() {
   const [query, setQuery] = useState("");
   const [section, setSection] = useState<DetailSection>("episodes");
 
-  const wantedItem = wanted.recentItems.find((item) => item.seriesId === series.id) ?? null;
+  /*
+    The title's own record carries its search state.
+
+    This used to search the wanted summary — a list of the 25 most recently
+    updated titles — for the one title the page was already showing. Open the
+    26th and the lookup missed: no library, no target quality, no cutoff, and a
+    Defer button that could only 404. The same defect the grid had, on the
+    screen that shows a single title, found by asking where else that shape
+    lived.
+  */
+  const wantedItem = series.wantedStatus
+    ? {
+        libraryId: series.libraryId ?? "",
+        wantedStatus: series.wantedStatus,
+        wantedReason: series.wantedReason ?? "",
+        currentQuality: series.currentQuality ?? null,
+        targetQuality: series.targetQuality ?? null,
+        qualityCutoffMet: series.qualityCutoffMet ?? false
+      }
+    : null;
   const library = wantedItem ? libraries.find((item) => item.id === wantedItem.libraryId) ?? null : null;
   const seriesSearches = searchHistory.filter((item) => item.seriesId === series.id);
   const seriesDispatches = dispatches.filter((item) => item.entityId === series.id);

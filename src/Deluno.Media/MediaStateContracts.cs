@@ -113,7 +113,25 @@ public sealed record MediaEntryDetails(
     string? MetadataJson,
     DateTimeOffset? MetadataUpdatedUtc,
     DateTimeOffset CreatedUtc,
-    DateTimeOffset UpdatedUtc);
+    DateTimeOffset UpdatedUtc,
+    /// <summary>
+    /// The search state Deluno holds for this title, from the one wanted-state
+    /// row it speaks for.
+    ///
+    /// A detail page used to find this by searching the wanted summary — a list
+    /// of the 25 most recently updated titles — for the one title it was already
+    /// showing. Open the 26th and the page lost the library, the target quality
+    /// and the cutoff, and quietly fell back to defaults. The same defect the
+    /// grid had, on the screen that shows a single title.
+    /// </summary>
+    string? LibraryId = null,
+    string? WantedStatus = null,
+    string? WantedReason = null,
+    string? CurrentQuality = null,
+    string? TargetQuality = null,
+    bool? QualityCutoffMet = null,
+    DateTimeOffset? LastSearchUtc = null,
+    DateTimeOffset? NextEligibleSearchUtc = null);
 
 public sealed record MediaExistingImportRequest(
     string Title,

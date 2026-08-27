@@ -32,6 +32,30 @@ export interface MovieListItem {
   popularity?: number | null;
   voteCount?: number | null;
   approximateBitrateMbps?: number | null;
+  /**
+   * When the film is out, and when Deluno may start looking. A release year
+   * cannot say "in cinemas but not yet obtainable"; these can.
+   */
+  inCinemasDate?: string | null;
+  digitalReleaseDate?: string | null;
+  physicalReleaseDate?: string | null;
+  minimumAvailability?: string | null;
+  isAvailable?: boolean | null;
+  /**
+   * The search state Deluno holds, carried by the page itself.
+   *
+   * These used to be read from the wanted summary, whose `recentItems` is
+   * capped at 25 — so past the first 25 titles every card lost its status and
+   * fell back to "is there a file". Null throughout means Deluno is not
+   * tracking the title in any library, which is not the same as a state of no.
+   */
+  libraryId?: string | null;
+  wantedStatus?: string | null;
+  wantedReason?: string | null;
+  targetQuality?: string | null;
+  qualityCutoffMet?: boolean | null;
+  lastSearchUtc?: string | null;
+  nextEligibleSearchUtc?: string | null;
 }
 
 export interface MovieImportRecoveryCase {
@@ -125,6 +149,34 @@ export interface SeriesListItem {
   popularity?: number | null;
   voteCount?: number | null;
   approximateBitrateMbps?: number | null;
+  /**
+   * The search state Deluno holds, carried by the page itself.
+   *
+   * These used to be read from the wanted summary, whose `recentItems` is
+   * capped at 25 — so past the first 25 titles every card lost its status and
+   * fell back to "is there a file". Null throughout means Deluno is not
+   * tracking the title in any library, which is not the same as a state of no.
+   */
+  libraryId?: string | null;
+  wantedStatus?: string | null;
+  wantedReason?: string | null;
+  targetQuality?: string | null;
+  qualityCutoffMet?: boolean | null;
+  lastSearchUtc?: string | null;
+  nextEligibleSearchUtc?: string | null;
+  /**
+   * What the show's episodes add up to — the bar under the poster, and the rung
+   * its dot sits on.
+   *
+   * Counted over what has aired, never over what will exist: an ongoing show
+   * measured against its eventual episode count reads permanently unfinished,
+   * which is true of every ongoing show and so tells you nothing.
+   */
+  episodeCount?: number;
+  airedEpisodeCount?: number;
+  airedWithFileCount?: number;
+  airedUpgradableCount?: number;
+  nextAirDateUtc?: string | null;
 }
 
 export interface CatalogueFacets {

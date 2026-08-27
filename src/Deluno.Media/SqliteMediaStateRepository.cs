@@ -837,7 +837,7 @@ public sealed class SqliteMediaStateRepository(
                 {map.EntryAlias}.{map.YearColumn},
                 {map.EntryAlias}.imdb_id,
                 {map.EntryAlias}.monitored,
-                COALESCE(MAX(w.has_file), 0),
+                {CatalogueWantedState.HasFileColumn},
                 {map.EntryAlias}.metadata_provider,
                 {map.EntryAlias}.metadata_provider_id,
                 {map.EntryAlias}.original_title,
@@ -850,38 +850,54 @@ public sealed class SqliteMediaStateRepository(
                 {map.EntryAlias}.metadata_json,
                 {map.EntryAlias}.metadata_updated_utc,
                 {map.EntryAlias}.created_utc,
-                {map.EntryAlias}.updated_utc
+                {map.EntryAlias}.updated_utc,
+                ws.current_quality,
+            {CatalogueWantedState.PageColumns}
             FROM {map.EntryTable} {map.EntryAlias}
-            LEFT JOIN {map.WantedTable} w ON w.{map.WantedMediaIdColumn} = {map.EntryAlias}.id
+            {CatalogueWantedState.Join(map.EntryAlias, map.WantedTable, map.WantedMediaIdColumn, scopedToLibrary: false)}
             WHERE {map.EntryAlias}.id = @id
-            GROUP BY {map.EntryAlias}.id
             LIMIT 1;
             """;
         AddParameter(command, "@id", id);
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        return await reader.ReadAsync(cancellationToken)
-            ? new MediaEntryDetails(
-                reader.GetString(0),
-                reader.GetString(1),
-                ReadNullableInt(reader, 2),
-                ReadNullableString(reader, 3),
-                reader.GetInt64(4) == 1,
-                reader.GetInt64(5) == 1,
-                ReadNullableString(reader, 6),
-                ReadNullableString(reader, 7),
-                ReadNullableString(reader, 8),
-                ReadNullableString(reader, 9),
-                ReadNullableString(reader, 10),
-                ReadNullableString(reader, 11),
-                reader.IsDBNull(12) ? null : reader.GetDouble(12),
-                ReadNullableString(reader, 13),
-                ReadNullableString(reader, 14),
-                ReadNullableString(reader, 15),
-                ReadNullableTimestamp(reader, 16),
-                ParseTimestamp(reader.GetString(17)),
-                ParseTimestamp(reader.GetString(18)))
-            : null;
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        // Ordinal 19 is the current quality; the seven search-state columns
+        // follow it, in the order CatalogueWantedState.PageColumns declares.
+        var wanted = CatalogueWantedState.Read(reader, 20);
+
+        return new MediaEntryDetails(
+            reader.GetString(0),
+            reader.GetString(1),
+            ReadNullableInt(reader, 2),
+            ReadNullableString(reader, 3),
+            reader.GetInt64(4) == 1,
+            reader.GetInt64(5) == 1,
+            ReadNullableString(reader, 6),
+            ReadNullableString(reader, 7),
+            ReadNullableString(reader, 8),
+            ReadNullableString(reader, 9),
+            ReadNullableString(reader, 10),
+            ReadNullableString(reader, 11),
+            reader.IsDBNull(12) ? null : reader.GetDouble(12),
+            ReadNullableString(reader, 13),
+            ReadNullableString(reader, 14),
+            ReadNullableString(reader, 15),
+            ReadNullableTimestamp(reader, 16),
+            ParseTimestamp(reader.GetString(17)),
+            ParseTimestamp(reader.GetString(18)),
+            CurrentQuality: ReadNullableString(reader, 19),
+            LibraryId: wanted.LibraryId,
+            WantedStatus: wanted.WantedStatus,
+            WantedReason: wanted.WantedReason,
+            TargetQuality: wanted.TargetQuality,
+            QualityCutoffMet: wanted.QualityCutoffMet,
+            LastSearchUtc: wanted.LastSearchUtc,
+            NextEligibleSearchUtc: wanted.NextEligibleSearchUtc);
     }
 
     public async Task<MediaDailyMetrics> GetDailyMetricsAsync(

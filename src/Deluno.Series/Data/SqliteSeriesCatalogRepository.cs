@@ -189,7 +189,15 @@ public sealed class SqliteSeriesCatalogRepository(
                     MetadataJson: entry.MetadataJson,
                     MetadataUpdatedUtc: entry.MetadataUpdatedUtc,
                     CreatedUtc: entry.CreatedUtc,
-                    UpdatedUtc: entry.UpdatedUtc);
+                    UpdatedUtc: entry.UpdatedUtc,
+                    CurrentQuality: entry.CurrentQuality,
+                    LibraryId: entry.LibraryId,
+                    WantedStatus: entry.WantedStatus,
+                    WantedReason: entry.WantedReason,
+                    TargetQuality: entry.TargetQuality,
+                    QualityCutoffMet: entry.QualityCutoffMet,
+                    LastSearchUtc: entry.LastSearchUtc,
+                    NextEligibleSearchUtc: entry.NextEligibleSearchUtc);
         }
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -198,14 +206,14 @@ public sealed class SqliteSeriesCatalogRepository(
 
         using var command = connection.CreateCommand();
         command.CommandText =
-            """
+            $"""
             SELECT
                 s.id,
                 s.title,
                 s.start_year,
                 s.imdb_id,
                 s.monitored,
-                COALESCE(MAX(w.has_file), 0) AS has_file,
+                {CatalogueWantedState.HasFileColumn},
                 s.metadata_provider,
                 s.metadata_provider_id,
                 s.original_title,
@@ -218,20 +226,38 @@ public sealed class SqliteSeriesCatalogRepository(
                 s.metadata_json,
                 s.metadata_updated_utc,
                 s.created_utc,
-                s.updated_utc
+                s.updated_utc,
+                ws.current_quality,
+            {CatalogueWantedState.PageColumns}
             FROM series_entries s
-            LEFT JOIN series_wanted_state w ON w.series_id = s.id
+            {CatalogueWantedState.Join("s", "series_wanted_state", "series_id", scopedToLibrary: false)}
             WHERE s.id = @id
-            GROUP BY s.id
             LIMIT 1;
             """;
 
         AddParameter(command, "@id", id);
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        return await reader.ReadAsync(cancellationToken)
-            ? ReadSeries(reader)
-            : null;
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        // Ordinal 19 is the current quality; the search state follows it, in the
+        // order CatalogueWantedState.PageColumns declares.
+        var singleWanted = CatalogueWantedState.Read(reader, 20);
+
+        return ReadSeries(reader) with
+        {
+            CurrentQuality = reader.IsDBNull(19) ? null : reader.GetString(19),
+            LibraryId = singleWanted.LibraryId,
+            WantedStatus = singleWanted.WantedStatus,
+            WantedReason = singleWanted.WantedReason,
+            TargetQuality = singleWanted.TargetQuality,
+            QualityCutoffMet = singleWanted.QualityCutoffMet,
+            LastSearchUtc = singleWanted.LastSearchUtc,
+            NextEligibleSearchUtc = singleWanted.NextEligibleSearchUtc
+        };
     }
 
     private static async Task<SeriesListItem?> FindExistingSeriesAsync(
@@ -496,22 +522,31 @@ public sealed class SqliteSeriesCatalogRepository(
         => $"EXISTS(SELECT 1 FROM series_wanted_state w WHERE w.series_id = s.id{CatalogueStateScope(libraryId)} AND w.has_file = 1 AND w.quality_cutoff_met = 0)";
 
     /// <summary>
-    /// The projection a catalogue page returns. Matches <see cref="ReadSeries"/>
-    /// ordinal for ordinal, then adds the two fields the list actually displays
-    /// and previously read out of an empty metadata blob — the file size and the
-    /// current quality, which live in the wanted state, not in provider
-    /// metadata.
+    /// Where <see cref="CatalogueWantedState.PageColumns"/> begins in the page
+    /// projection below. Named rather than counted at the call site, because
+    /// every ordinal from there on moves together.
     /// </summary>
-    private static string CataloguePageColumnsFor(string? libraryId)
-    {
-        var scope = CatalogueStateScope(libraryId);
-        return $"""
+    private const int WantedStateOrdinal = 29;
+
+    /// <summary>
+    /// The projection a catalogue page returns. Matches <see cref="ReadSeries"/>
+    /// ordinal for ordinal, then the file's own facts — size, quality, codecs —
+    /// which the list displays and once read out of an empty metadata blob, and
+    /// finally the search state, which the grid used to fetch separately from a
+    /// summary capped at 25 titles.
+    ///
+    /// All of it comes from the single wanted-state row
+    /// <see cref="CatalogueWantedState.Join"/> binds, so the fields describe one
+    /// library's copy rather than a different one each.
+    /// </summary>
+    private static string CataloguePageColumns =>
+        $"""
             s.id,
             s.title,
             s.start_year,
             s.imdb_id,
             s.monitored,
-            EXISTS(SELECT 1 FROM series_wanted_state w WHERE w.series_id = s.id{scope} AND w.has_file = 1) AS has_file,
+            {CatalogueWantedState.HasFileColumn},
             s.metadata_provider,
             s.metadata_provider_id,
             s.original_title,
@@ -525,18 +560,18 @@ public sealed class SqliteSeriesCatalogRepository(
             s.metadata_updated_utc,
             s.created_utc,
             s.updated_utc,
-            (SELECT MAX(w.file_size_bytes) FROM series_wanted_state w WHERE w.series_id = s.id{scope}) AS file_size_bytes,
-            (SELECT w.current_quality FROM series_wanted_state w WHERE w.series_id = s.id{scope} AND w.current_quality IS NOT NULL LIMIT 1) AS current_quality,
-            (SELECT w.file_path FROM series_wanted_state w WHERE w.series_id = s.id{scope} AND w.file_path IS NOT NULL LIMIT 1) AS file_path,
-            (SELECT w.video_codec FROM series_wanted_state w WHERE w.series_id = s.id{scope} AND w.video_codec IS NOT NULL LIMIT 1) AS video_codec,
-            (SELECT w.audio_codec FROM series_wanted_state w WHERE w.series_id = s.id{scope} AND w.audio_codec IS NOT NULL LIMIT 1) AS audio_codec,
-            (SELECT w.audio_channels FROM series_wanted_state w WHERE w.series_id = s.id{scope} AND w.audio_channels IS NOT NULL LIMIT 1) AS audio_channels,
-            (SELECT w.release_group FROM series_wanted_state w WHERE w.series_id = s.id{scope} AND w.release_group IS NOT NULL LIMIT 1) AS release_group,
+            ws.file_size_bytes,
+            ws.current_quality,
+            ws.file_path,
+            ws.video_codec,
+            ws.audio_codec,
+            ws.audio_channels,
+            ws.release_group,
             s.runtime_minutes,
             s.popularity,
-            s.vote_count
+            s.vote_count,
+        {CatalogueWantedState.PageColumns}
         """;
-    }
 
     /// <summary>
     /// One page of the catalogue — searched, filtered, sorted and counted in SQL.
@@ -577,9 +612,10 @@ public sealed class SqliteSeriesCatalogRepository(
             command.CommandText =
                 $"""
                 SELECT
-                {CataloguePageColumnsFor(libraryId)},
+                {CataloguePageColumns},
                     {sortExpression} AS sort_value
                 FROM series_entries s
+                {CatalogueWantedState.Join("s", "series_wanted_state", "series_id", libraryId is not null)}
                 WHERE {where}
                 ORDER BY {CatalogueKeyset.OrderBy(sortExpression, "s", query.Descending)}
                 LIMIT @fetchCount;
@@ -599,6 +635,8 @@ public sealed class SqliteSeriesCatalogRepository(
                 var fileSizeBytes = reader.IsDBNull(19) ? (long?)null : reader.GetInt64(19);
                 var runtimeMinutes = reader.IsDBNull(26) ? (int?)null : reader.GetInt32(26);
 
+                var wanted = CatalogueWantedState.Read(reader, WantedStateOrdinal);
+
                 items.Add(ReadSeries(reader) with
                 {
                     FileSizeBytes = fileSizeBytes,
@@ -613,10 +651,17 @@ public sealed class SqliteSeriesCatalogRepository(
                     VoteCount = reader.IsDBNull(28) ? null : reader.GetInt32(28),
                     // Derived here rather than stored, so it cannot go stale
                     // against either the file or the runtime it comes from.
-                    ApproximateBitrateMbps = MediaFileFacts.ApproximateBitrateMbps(fileSizeBytes, runtimeMinutes)
+                    ApproximateBitrateMbps = MediaFileFacts.ApproximateBitrateMbps(fileSizeBytes, runtimeMinutes),
+                    LibraryId = wanted.LibraryId,
+                    WantedStatus = wanted.WantedStatus,
+                    WantedReason = wanted.WantedReason,
+                    TargetQuality = wanted.TargetQuality,
+                    QualityCutoffMet = wanted.QualityCutoffMet,
+                    LastSearchUtc = wanted.LastSearchUtc,
+                    NextEligibleSearchUtc = wanted.NextEligibleSearchUtc
                 });
 
-                sortValues.Add(CatalogueKeyset.ReadSortValue(reader, 29));
+                sortValues.Add(CatalogueKeyset.ReadSortValue(reader, WantedStateOrdinal + CatalogueWantedState.PageColumnCount));
             }
         }
 
@@ -630,21 +675,108 @@ public sealed class SqliteSeriesCatalogRepository(
             ? new CataloguePageToken(sortValues[pageSize - 1], items[^1].Id).Encode()
             : null;
 
+        var withEpisodes = await AttachEpisodeProgressAsync(connection, items, cancellationToken);
+
         // Counting scans, so it happens once per filter rather than on every
         // page of it. A continuation page keeps the numbers the caller has.
         if (token is not null)
         {
-            return new CataloguePage<SeriesListItem>(items, nextPageToken, hasMore, null, null);
+            return new CataloguePage<SeriesListItem>(withEpisodes, nextPageToken, hasMore, null, null);
         }
 
         var facets = await CountCatalogueFacetsAsync(connection, search, libraryId, cancellationToken);
 
         return new CataloguePage<SeriesListItem>(
-            items,
+            withEpisodes,
             nextPageToken,
             hasMore,
             SelectFacetTotal(facets, status),
             facets);
+    }
+
+    /// <summary>
+    /// How far through its aired episodes each show on the page is.
+    ///
+    /// One grouped pass over the page's shows, rather than five aggregates per
+    /// row inside the page query: the work is bounded by the page, not by the
+    /// catalogue, so page four hundred of twenty thousand shows costs what page
+    /// one costs — which is the whole point of the seek above it.
+    ///
+    /// Aired means aired: an episode with no air date, or one still to come, is
+    /// not something the library is missing, and counting it as such would leave
+    /// every ongoing show permanently short of itself.
+    /// </summary>
+    private async Task<IReadOnlyList<SeriesListItem>> AttachEpisodeProgressAsync(
+        System.Data.Common.DbConnection connection,
+        List<SeriesListItem> items,
+        CancellationToken cancellationToken)
+    {
+        if (items.Count == 0)
+        {
+            return items;
+        }
+
+        var now = timeProvider.GetUtcNow().ToString("O");
+        var idParameters = string.Join(", ", items.Select((_, index) => $"@id{index}"));
+
+        var progress = new Dictionary<string, (int Total, int Aired, int AiredWithFile, int AiredUpgradable, string? NextAir)>(items.Count);
+
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                $"""
+                SELECT
+                    e.series_id,
+                    COUNT(*),
+                    SUM(CASE WHEN e.air_date_utc IS NOT NULL AND e.air_date_utc <= @now THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN e.air_date_utc IS NOT NULL AND e.air_date_utc <= @now AND e.has_file = 1 THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN e.air_date_utc IS NOT NULL AND e.air_date_utc <= @now AND e.has_file = 1 AND e.quality_cutoff_met = 0 THEN 1 ELSE 0 END),
+                    MIN(CASE WHEN e.air_date_utc > @now THEN e.air_date_utc END)
+                FROM episode_entries e
+                WHERE e.series_id IN ({idParameters})
+                GROUP BY e.series_id;
+                """;
+
+            AddParameter(command, "@now", now);
+            for (var index = 0; index < items.Count; index++)
+            {
+                AddParameter(command, $"@id{index}", items[index].Id);
+            }
+
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                progress[reader.GetString(0)] = (
+                    reader.GetInt32(1),
+                    reader.IsDBNull(2) ? 0 : reader.GetInt32(2),
+                    reader.IsDBNull(3) ? 0 : reader.GetInt32(3),
+                    reader.IsDBNull(4) ? 0 : reader.GetInt32(4),
+                    reader.IsDBNull(5) ? null : reader.GetString(5));
+            }
+        }
+
+        var attached = new List<SeriesListItem>(items.Count);
+        foreach (var item in items)
+        {
+            if (!progress.TryGetValue(item.Id, out var counts))
+            {
+                // A show whose episodes Deluno has not catalogued yet. Zero
+                // episodes is the truth; it is not zero of some known total.
+                attached.Add(item);
+                continue;
+            }
+
+            attached.Add(item with
+            {
+                EpisodeCount = counts.Total,
+                AiredEpisodeCount = counts.Aired,
+                AiredWithFileCount = counts.AiredWithFile,
+                AiredUpgradableCount = counts.AiredUpgradable,
+                NextAirDateUtc = counts.NextAir is null ? null : ParseTimestamp(counts.NextAir)
+            });
+        }
+
+        return attached;
     }
 
     /// <summary>

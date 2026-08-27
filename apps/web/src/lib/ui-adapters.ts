@@ -4,9 +4,7 @@ import type {
   DownloadTelemetryOverview,
   IndexerItem,
   MovieListItem,
-  MovieWantedSummary,
-  SeriesListItem,
-  SeriesWantedSummary
+  SeriesListItem
 } from "./api";
 import { downloadQueueStatuses } from "./download-telemetry";
 import { wantedStatusPresentation } from "./media-status-presentation";
@@ -124,11 +122,19 @@ function mediaAvailabilityStatus(hasFile: boolean): MediaStatus {
   return hasFile ? "downloaded" : "missing";
 }
 
-export function adaptMovieItems(items: MovieListItem[], wanted: MovieWantedSummary): MediaItem[] {
-  const wantedMap = new Map(wanted.recentItems.map((item) => [item.movieId, item]));
-
+/**
+ * The catalogue page, in the shape the grid draws.
+ *
+ * It used to take the wanted summary alongside the page and look each title up
+ * in it. That summary's `recentItems` is `LIMIT 25`, so in a library of any
+ * size the lookup missed: past the first 25 titles every card lost its status,
+ * its reason, its target quality and its library and fell back to "is there a
+ * file". It looked right on a rig of eleven films and would have gone quietly
+ * wrong at twenty thousand. The page carries its own search state now, so the
+ * twenty-thousandth card says as much as the first.
+ */
+export function adaptMovieItems(items: MovieListItem[]): MediaItem[] {
   return items.map((item) => {
-    const wantedItem = wantedMap.get(item.id);
     const meta = parseMetadataJson(item.metadataJson);
     const genres = splitGenres(item.genres);
 
@@ -139,7 +145,7 @@ export function adaptMovieItems(items: MovieListItem[], wanted: MovieWantedSumma
       type: "movie",
       poster: item.posterUrl,
       backdrop: item.backdropUrl,
-      quality: item.currentQuality ?? wantedItem?.currentQuality ?? wantedItem?.targetQuality ?? null,
+      quality: item.currentQuality ?? item.targetQuality ?? null,
       status: mediaAvailabilityStatus(item.hasFile),
       monitored: item.monitored,
       sizeGb: item.fileSizeBytes != null ? item.fileSizeBytes / 1024 / 1024 / 1024 : readNumber(meta, "sizeGb", "sizeGB", "sizeOnDiskGb"),
@@ -148,12 +154,12 @@ export function adaptMovieItems(items: MovieListItem[], wanted: MovieWantedSumma
       genres,
       added: new Date(item.createdUtc).toLocaleDateString([], { month: "short", day: "numeric" }),
       overview: item.overview ?? `${item.title} is tracked inside Deluno with live search state, monitoring, and acquisition history.`,
-      libraryId: wantedItem?.libraryId,
-      wantedReason: wantedItem?.wantedReason,
-      lastSearchUtc: wantedItem?.lastSearchUtc,
-      nextEligibleSearchUtc: wantedItem?.nextEligibleSearchUtc,
-      currentQuality: wantedItem?.currentQuality,
-      targetQuality: wantedItem?.targetQuality,
+      libraryId: item.libraryId ?? undefined,
+      wantedReason: item.wantedReason ?? undefined,
+      lastSearchUtc: item.lastSearchUtc ?? undefined,
+      nextEligibleSearchUtc: item.nextEligibleSearchUtc ?? undefined,
+      currentQuality: item.currentQuality ?? undefined,
+      targetQuality: item.targetQuality ?? undefined,
       bitrateMbps: item.approximateBitrateMbps ?? readNumber(meta, "bitrateMbps", "bitrate"),
       releaseGroup: item.releaseGroup ?? readString(meta, "releaseGroup"),
       tags: readStringArray(meta, "tags"),
@@ -163,7 +169,7 @@ export function adaptMovieItems(items: MovieListItem[], wanted: MovieWantedSumma
       audioChannels: item.audioChannels ?? readString(meta, "audioChannels"),
       language: readString(meta, "language"),
       hdrFormat: readString(meta, "hdrFormat"),
-      releaseStatus: releaseStatusLabel(wantedItem?.wantedStatus, item.hasFile),
+      releaseStatus: releaseStatusLabel(item.wantedStatus ?? undefined, item.hasFile),
       certification: readString(meta, "certification"),
       collection: readString(meta, "collection"),
       minimumAvailability: readString(meta, "minimumAvailability"),
@@ -192,11 +198,9 @@ export function adaptMovieItems(items: MovieListItem[], wanted: MovieWantedSumma
   });
 }
 
-export function adaptSeriesItems(items: SeriesListItem[], wanted: SeriesWantedSummary): MediaItem[] {
-  const wantedMap = new Map(wanted.recentItems.map((item) => [item.seriesId, item]));
-
+/** The series half of {@link adaptMovieItems}, and the same reason for it. */
+export function adaptSeriesItems(items: SeriesListItem[]): MediaItem[] {
   return items.map((item) => {
-    const wantedItem = wantedMap.get(item.id);
     const meta = parseMetadataJson(item.metadataJson);
     const genres = splitGenres(item.genres);
 
@@ -207,7 +211,7 @@ export function adaptSeriesItems(items: SeriesListItem[], wanted: SeriesWantedSu
       type: "show",
       poster: item.posterUrl,
       backdrop: item.backdropUrl,
-      quality: item.currentQuality ?? wantedItem?.currentQuality ?? wantedItem?.targetQuality ?? null,
+      quality: item.currentQuality ?? item.targetQuality ?? null,
       status: mediaAvailabilityStatus(item.hasFile),
       monitored: item.monitored,
       sizeGb: item.fileSizeBytes != null ? item.fileSizeBytes / 1024 / 1024 / 1024 : readNumber(meta, "sizeGb", "sizeGB", "sizeOnDiskGb"),
@@ -217,12 +221,12 @@ export function adaptSeriesItems(items: SeriesListItem[], wanted: SeriesWantedSu
       added: new Date(item.createdUtc).toLocaleDateString([], { month: "short", day: "numeric" }),
       overview: item.overview ?? `${item.title} is tracked inside Deluno with episode inventory, wanted state, and acquisition context.`,
       network: undefined,
-      libraryId: wantedItem?.libraryId,
-      wantedReason: wantedItem?.wantedReason,
-      lastSearchUtc: wantedItem?.lastSearchUtc,
-      nextEligibleSearchUtc: wantedItem?.nextEligibleSearchUtc,
-      currentQuality: wantedItem?.currentQuality,
-      targetQuality: wantedItem?.targetQuality,
+      libraryId: item.libraryId ?? undefined,
+      wantedReason: item.wantedReason ?? undefined,
+      lastSearchUtc: item.lastSearchUtc ?? undefined,
+      nextEligibleSearchUtc: item.nextEligibleSearchUtc ?? undefined,
+      currentQuality: item.currentQuality ?? undefined,
+      targetQuality: item.targetQuality ?? undefined,
       bitrateMbps: item.approximateBitrateMbps ?? readNumber(meta, "bitrateMbps", "bitrate"),
       releaseGroup: item.releaseGroup ?? readString(meta, "releaseGroup"),
       tags: readStringArray(meta, "tags"),
@@ -232,7 +236,7 @@ export function adaptSeriesItems(items: SeriesListItem[], wanted: SeriesWantedSu
       audioChannels: item.audioChannels ?? readString(meta, "audioChannels"),
       language: readString(meta, "language"),
       hdrFormat: readString(meta, "hdrFormat"),
-      releaseStatus: releaseStatusLabel(wantedItem?.wantedStatus, item.hasFile),
+      releaseStatus: releaseStatusLabel(item.wantedStatus ?? undefined, item.hasFile),
       certification: readString(meta, "certification"),
       collection: readString(meta, "collection"),
       minimumAvailability: readString(meta, "minimumAvailability"),

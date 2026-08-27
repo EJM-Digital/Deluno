@@ -198,7 +198,15 @@ public sealed class SqliteMovieCatalogRepository(
                 DigitalReleaseDate: availability.DigitalReleaseDate,
                 PhysicalReleaseDate: availability.PhysicalReleaseDate,
                 MinimumAvailability: availability.MinimumAvailability,
-                IsAvailable: availability.IsAvailable);
+                IsAvailable: availability.IsAvailable,
+                CurrentQuality: entry.CurrentQuality,
+                LibraryId: entry.LibraryId,
+                WantedStatus: entry.WantedStatus,
+                WantedReason: entry.WantedReason,
+                TargetQuality: entry.TargetQuality,
+                QualityCutoffMet: entry.QualityCutoffMet,
+                LastSearchUtc: entry.LastSearchUtc,
+                NextEligibleSearchUtc: entry.NextEligibleSearchUtc);
         }
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -207,14 +215,14 @@ public sealed class SqliteMovieCatalogRepository(
 
         using var command = connection.CreateCommand();
         command.CommandText =
-            """
+            $"""
             SELECT
                 m.id,
                 m.title,
                 m.release_year,
                 m.imdb_id,
                 m.monitored,
-                COALESCE(MAX(w.has_file), 0) AS has_file,
+                {CatalogueWantedState.HasFileColumn},
                 m.metadata_provider,
                 m.metadata_provider_id,
                 m.original_title,
@@ -231,20 +239,38 @@ public sealed class SqliteMovieCatalogRepository(
                 m.in_cinemas_date,
                 m.digital_release_date,
                 m.physical_release_date,
-                m.minimum_availability
+                m.minimum_availability,
+                ws.current_quality,
+            {CatalogueWantedState.PageColumns}
             FROM movie_entries m
-            LEFT JOIN movie_wanted_state w ON w.movie_id = m.id
+            {CatalogueWantedState.Join("m", "movie_wanted_state", "movie_id", scopedToLibrary: false)}
             WHERE m.id = @id
-            GROUP BY m.id
             LIMIT 1;
             """;
 
         AddParameter(command, "@id", id);
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        return await reader.ReadAsync(cancellationToken)
-            ? ReadMovie(reader)
-            : null;
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        // Ordinal 23 is the current quality; the search state follows it, in the
+        // order CatalogueWantedState.PageColumns declares.
+        var wanted = CatalogueWantedState.Read(reader, 24);
+
+        return ReadMovie(reader) with
+        {
+            CurrentQuality = reader.IsDBNull(23) ? null : reader.GetString(23),
+            LibraryId = wanted.LibraryId,
+            WantedStatus = wanted.WantedStatus,
+            WantedReason = wanted.WantedReason,
+            TargetQuality = wanted.TargetQuality,
+            QualityCutoffMet = wanted.QualityCutoffMet,
+            LastSearchUtc = wanted.LastSearchUtc,
+            NextEligibleSearchUtc = wanted.NextEligibleSearchUtc
+        };
     }
 
     private static async Task<MovieListItem?> FindExistingMovieAsync(
@@ -529,22 +555,31 @@ public sealed class SqliteMovieCatalogRepository(
         => $"EXISTS(SELECT 1 FROM movie_wanted_state w WHERE w.movie_id = m.id{CatalogueStateScope(libraryId)} AND w.has_file = 1 AND w.quality_cutoff_met = 0)";
 
     /// <summary>
-    /// The projection a catalogue page returns. Matches <see cref="ReadMovie"/>
-    /// ordinal for ordinal, then adds the two fields the list actually displays
-    /// and previously read out of an empty metadata blob — the file size and the
-    /// current quality, which live in the wanted state, not in provider
-    /// metadata.
+    /// Where <see cref="CatalogueWantedState.PageColumns"/> begins in the page
+    /// projection below. Named rather than counted at the call site, because
+    /// every ordinal from there on moves together.
     /// </summary>
-    private static string CataloguePageColumnsFor(string? libraryId)
-    {
-        var scope = CatalogueStateScope(libraryId);
-        return $"""
+    private const int WantedStateOrdinal = 33;
+
+    /// <summary>
+    /// The projection a catalogue page returns. Matches <see cref="ReadMovie"/>
+    /// ordinal for ordinal, then the file's own facts — size, quality, codecs —
+    /// which the list displays and once read out of an empty metadata blob, and
+    /// finally the search state, which the grid used to fetch separately from a
+    /// summary capped at 25 titles.
+    ///
+    /// All of it comes from the single wanted-state row
+    /// <see cref="CatalogueWantedState.Join"/> binds, so the fields describe one
+    /// library's copy rather than a different one each.
+    /// </summary>
+    private static string CataloguePageColumns =>
+        $"""
             m.id,
             m.title,
             m.release_year,
             m.imdb_id,
             m.monitored,
-            EXISTS(SELECT 1 FROM movie_wanted_state w WHERE w.movie_id = m.id{scope} AND w.has_file = 1) AS has_file,
+            {CatalogueWantedState.HasFileColumn},
             m.metadata_provider,
             m.metadata_provider_id,
             m.original_title,
@@ -562,18 +597,18 @@ public sealed class SqliteMovieCatalogRepository(
             m.digital_release_date,
             m.physical_release_date,
             m.minimum_availability,
-            (SELECT MAX(w.file_size_bytes) FROM movie_wanted_state w WHERE w.movie_id = m.id{scope}) AS file_size_bytes,
-            (SELECT w.current_quality FROM movie_wanted_state w WHERE w.movie_id = m.id{scope} AND w.current_quality IS NOT NULL LIMIT 1) AS current_quality,
-            (SELECT w.file_path FROM movie_wanted_state w WHERE w.movie_id = m.id{scope} AND w.file_path IS NOT NULL LIMIT 1) AS file_path,
-            (SELECT w.video_codec FROM movie_wanted_state w WHERE w.movie_id = m.id{scope} AND w.video_codec IS NOT NULL LIMIT 1) AS video_codec,
-            (SELECT w.audio_codec FROM movie_wanted_state w WHERE w.movie_id = m.id{scope} AND w.audio_codec IS NOT NULL LIMIT 1) AS audio_codec,
-            (SELECT w.audio_channels FROM movie_wanted_state w WHERE w.movie_id = m.id{scope} AND w.audio_channels IS NOT NULL LIMIT 1) AS audio_channels,
-            (SELECT w.release_group FROM movie_wanted_state w WHERE w.movie_id = m.id{scope} AND w.release_group IS NOT NULL LIMIT 1) AS release_group,
+            ws.file_size_bytes,
+            ws.current_quality,
+            ws.file_path,
+            ws.video_codec,
+            ws.audio_codec,
+            ws.audio_channels,
+            ws.release_group,
             m.runtime_minutes,
             m.popularity,
-            m.vote_count
+            m.vote_count,
+        {CatalogueWantedState.PageColumns}
         """;
-    }
 
     /// <summary>
     /// One page of the catalogue — searched, filtered, sorted and counted in SQL.
@@ -614,9 +649,10 @@ public sealed class SqliteMovieCatalogRepository(
             command.CommandText =
                 $"""
                 SELECT
-                {CataloguePageColumnsFor(libraryId)},
+                {CataloguePageColumns},
                     {sortExpression} AS sort_value
                 FROM movie_entries m
+                {CatalogueWantedState.Join("m", "movie_wanted_state", "movie_id", libraryId is not null)}
                 WHERE {where}
                 ORDER BY {CatalogueKeyset.OrderBy(sortExpression, "m", query.Descending)}
                 LIMIT @fetchCount;
@@ -636,6 +672,8 @@ public sealed class SqliteMovieCatalogRepository(
                 var fileSizeBytes = reader.IsDBNull(23) ? (long?)null : reader.GetInt64(23);
                 var runtimeMinutes = reader.IsDBNull(30) ? (int?)null : reader.GetInt32(30);
 
+                var wanted = CatalogueWantedState.Read(reader, WantedStateOrdinal);
+
                 items.Add(ReadMovie(reader) with
                 {
                     FileSizeBytes = fileSizeBytes,
@@ -650,10 +688,17 @@ public sealed class SqliteMovieCatalogRepository(
                     VoteCount = reader.IsDBNull(32) ? null : reader.GetInt32(32),
                     // Derived here rather than stored, so it cannot go stale
                     // against either the file or the runtime it comes from.
-                    ApproximateBitrateMbps = MediaFileFacts.ApproximateBitrateMbps(fileSizeBytes, runtimeMinutes)
+                    ApproximateBitrateMbps = MediaFileFacts.ApproximateBitrateMbps(fileSizeBytes, runtimeMinutes),
+                    LibraryId = wanted.LibraryId,
+                    WantedStatus = wanted.WantedStatus,
+                    WantedReason = wanted.WantedReason,
+                    TargetQuality = wanted.TargetQuality,
+                    QualityCutoffMet = wanted.QualityCutoffMet,
+                    LastSearchUtc = wanted.LastSearchUtc,
+                    NextEligibleSearchUtc = wanted.NextEligibleSearchUtc
                 });
 
-                sortValues.Add(CatalogueKeyset.ReadSortValue(reader, 33));
+                sortValues.Add(CatalogueKeyset.ReadSortValue(reader, WantedStateOrdinal + CatalogueWantedState.PageColumnCount));
             }
         }
 

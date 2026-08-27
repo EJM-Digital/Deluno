@@ -226,8 +226,8 @@ function buildDashboardData(sources: DashboardSources): DashboardLoaderData {
     libraries, automation, searchCycles, retryWindows, upcomingEpisodes,
     setupProgress, settings, policySets, qualityProfiles, metrics, monitoring, activity, processors, throughput, sharing
   } = sources;
-  const adaptedMovies = adaptMovieItems(moviePage.items, movieWanted);
-  const adaptedShows = adaptSeriesItems(showPage.items, showWanted);
+  const adaptedMovies = adaptMovieItems(moviePage.items);
+  const adaptedShows = adaptSeriesItems(showPage.items);
   const activeDownloads = adaptTelemetryDownloads(telemetry);
   const indexerHealth = adaptIndexerHealth(indexers, clients);
   const monitoredCount = (moviePage.facets?.monitored ?? 0) + (showPage.facets?.monitored ?? 0);

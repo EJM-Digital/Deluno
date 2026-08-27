@@ -23,8 +23,7 @@ import {
   type MetadataCastMember,
   type MovieImportRecoverySummary,
   type MovieListItem,
-  type MovieSearchHistoryItem,
-  type MovieWantedSummary
+  type MovieSearchHistoryItem
 } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
 import { describeSearchReason } from "../lib/search-reasons";
@@ -64,7 +63,6 @@ interface MovieDetailLoaderData {
   origins: IntakeTitleOriginItem[];
   removalPreview: MediaRemovalPreview;
   searchHistory: MovieSearchHistoryItem[];
-  wanted: MovieWantedSummary;
   workflowStatus: MovieWorkflowStatus | null;
 }
 
@@ -90,9 +88,8 @@ export async function movieDetailLoader({
   params: { id?: string };
 }): Promise<MovieDetailLoaderData> {
   const id = params.id!;
-  const [movie, wanted, searchHistory, dispatches, importRecovery, activity, decisions, libraries, workflowStatus, origins, removalPreview] = await Promise.all([
+  const [movie, searchHistory, dispatches, importRecovery, activity, decisions, libraries, workflowStatus, origins, removalPreview] = await Promise.all([
     fetchJson<MovieListItem>(`/api/movies/${id}`),
-    fetchJson<MovieWantedSummary>("/api/movies/wanted"),
     fetchJson<MovieSearchHistoryItem[]>("/api/movies/search-history"),
     fetchPageItems<DownloadDispatchItem>("/api/download-dispatches?mediaType=movies&pageSize=20"),
     fetchJson<MovieImportRecoverySummary>("/api/movies/import-recovery"),
@@ -104,12 +101,12 @@ export async function movieDetailLoader({
     fetchJson<MediaRemovalPreview>(`/api/movies/${id}/removal-preview`).catch(() => ({ filePaths: [], folderPaths: [], warnings: [] }))
   ]);
 
-  return { activity, decisions, dispatches, importRecovery, libraries, movie, origins, removalPreview, searchHistory, wanted, workflowStatus };
+  return { activity, decisions, dispatches, importRecovery, libraries, movie, origins, removalPreview, searchHistory, workflowStatus };
 }
 
 export function MovieDetailPage() {
   const loaderData = useLoaderData() as MovieDetailLoaderData;
-  const { activity, decisions, dispatches, importRecovery, libraries, movie, origins, removalPreview, searchHistory, wanted, workflowStatus } = loaderData;
+  const { activity, decisions, dispatches, importRecovery, libraries, movie, origins, removalPreview, searchHistory, workflowStatus } = loaderData;
   const navigate = useNavigate();
   const revalidator = useRevalidator();
 
@@ -122,7 +119,26 @@ export function MovieDetailPage() {
   const [openSearchId, setOpenSearchId] = useState<string | null>(null);
   const [section, setSection] = useState<DetailSection>("destination");
 
-  const wantedItem = wanted.recentItems.find((item) => item.movieId === movie.id) ?? null;
+  /*
+    The title's own record carries its search state.
+
+    This used to search the wanted summary — a list of the 25 most recently
+    updated titles — for the one title the page was already showing. Open the
+    26th and the lookup missed: no library, no target quality, no cutoff, and a
+    Defer button that could only 404. The same defect the grid had, on the
+    screen that shows a single title, found by asking where else that shape
+    lived.
+  */
+  const wantedItem = movie.wantedStatus
+    ? {
+        libraryId: movie.libraryId ?? "",
+        wantedStatus: movie.wantedStatus,
+        wantedReason: movie.wantedReason ?? "",
+        currentQuality: movie.currentQuality ?? null,
+        targetQuality: movie.targetQuality ?? null,
+        qualityCutoffMet: movie.qualityCutoffMet ?? false
+      }
+    : null;
   const library = wantedItem ? libraries.find((item) => item.id === wantedItem.libraryId) ?? null : null;
   const movieSearches = searchHistory.filter((item) => item.movieId === movie.id);
   const movieDispatches = dispatches.filter((item) => item.entityId === movie.id);
