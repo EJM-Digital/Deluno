@@ -49,4 +49,38 @@ public sealed record SeriesListItem(
     int? RuntimeMinutes = null,
     double? Popularity = null,
     int? VoteCount = null,
-    double? ApproximateBitrateMbps = null);
+    double? ApproximateBitrateMbps = null,
+    /// <summary>
+    /// The search state Deluno holds for this show, from the paged catalogue
+    /// query's join to the wanted state.
+    ///
+    /// The grid used to read these from <c>/api/series/wanted</c>, whose
+    /// <c>recentItems</c> is capped at 25 — so in a library of any size, most
+    /// cards had no status, no reason and no target quality at all and fell back
+    /// to "is there a file". A page carries its own, however deep it is.
+    ///
+    /// Null throughout means Deluno is not tracking the show in any library, so
+    /// there is no state to report — which is not the same as a state of "no".
+    /// </summary>
+    string? LibraryId = null,
+    string? WantedStatus = null,
+    string? WantedReason = null,
+    string? TargetQuality = null,
+    bool? QualityCutoffMet = null,
+    DateTimeOffset? LastSearchUtc = null,
+    DateTimeOffset? NextEligibleSearchUtc = null,
+    /// <summary>
+    /// What the show's episodes add up to — the bar under the poster, and the
+    /// rung its dot sits on.
+    ///
+    /// Counted over what has <em>aired</em>, never over what will exist: an
+    /// ongoing show measured against its eventual episode count reads
+    /// permanently unfinished, which is true of every ongoing show and therefore
+    /// tells you nothing. <c>NextAirDateUtc</c> is the first episode still to
+    /// come, and is what makes Upcoming a state rather than a guess.
+    /// </summary>
+    int EpisodeCount = 0,
+    int AiredEpisodeCount = 0,
+    int AiredWithFileCount = 0,
+    int AiredUpgradableCount = 0,
+    DateTimeOffset? NextAirDateUtc = null);

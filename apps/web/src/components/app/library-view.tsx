@@ -14,9 +14,7 @@ import {
   type MetadataProviderStatus,
   type MetadataSearchResult,
   type MovieListItem,
-  type MovieWantedSummary,
-  type SeriesListItem,
-  type SeriesWantedSummary
+  type SeriesListItem
 } from "../../lib/api";
 import { adaptMovieItems, adaptSeriesItems } from "../../lib/ui-adapters";
 import { parseDisplayOptions } from "../../lib/library-filters";
@@ -196,12 +194,9 @@ export function LibraryView({
       const params = buildCatalogueParams();
       try {
         if (variant === "movies") {
-          const [page, wanted] = await Promise.all([
-            fetchJson<CataloguePage<MovieListItem>>(`/api/movies/page?${params}`),
-            fetchJson<MovieWantedSummary>("/api/movies/wanted")
-          ]);
+          const page = await fetchJson<CataloguePage<MovieListItem>>(`/api/movies/page?${params}`);
           if (cancelled) return;
-          const items = adaptMovieItems(page.items, wanted);
+          const items = adaptMovieItems(page.items);
           setLibraryItems(items);
           setTotalCount(page.totalCount ?? 0);
           setFacets(page.facets);
@@ -210,12 +205,9 @@ export function LibraryView({
           setPreviousPageTokens([]);
           rememberCatalogue(cacheKeyRef.current, { items, totalCount: page.totalCount ?? 0, facets: page.facets });
         } else {
-          const [page, wanted] = await Promise.all([
-            fetchJson<CataloguePage<SeriesListItem>>(`/api/series/page?${params}`),
-            fetchJson<SeriesWantedSummary>("/api/series/wanted")
-          ]);
+          const page = await fetchJson<CataloguePage<SeriesListItem>>(`/api/series/page?${params}`);
           if (cancelled) return;
-          const items = adaptSeriesItems(page.items, wanted);
+          const items = adaptSeriesItems(page.items);
           setLibraryItems(items);
           setTotalCount(page.totalCount ?? 0);
           setFacets(page.facets);
@@ -251,20 +243,14 @@ export function LibraryView({
     const params = buildCatalogueParams(nextPageToken);
     try {
       if (variant === "movies") {
-        const [page, wanted] = await Promise.all([
-          fetchJson<CataloguePage<MovieListItem>>(`/api/movies/page?${params}`),
-          fetchJson<MovieWantedSummary>("/api/movies/wanted")
-        ]);
-        setLibraryItems(adaptMovieItems(page.items, wanted));
+        const page = await fetchJson<CataloguePage<MovieListItem>>(`/api/movies/page?${params}`);
+        setLibraryItems(adaptMovieItems(page.items));
         setNextPageToken(page.nextPageToken);
         setPreviousPageTokens((current) => [...current, currentPageToken]);
         setCurrentPageToken(nextPageToken);
       } else {
-        const [page, wanted] = await Promise.all([
-          fetchJson<CataloguePage<SeriesListItem>>(`/api/series/page?${params}`),
-          fetchJson<SeriesWantedSummary>("/api/series/wanted")
-        ]);
-        setLibraryItems(adaptSeriesItems(page.items, wanted));
+        const page = await fetchJson<CataloguePage<SeriesListItem>>(`/api/series/page?${params}`);
+        setLibraryItems(adaptSeriesItems(page.items));
         setNextPageToken(page.nextPageToken);
         setPreviousPageTokens((current) => [...current, currentPageToken]);
         setCurrentPageToken(nextPageToken);
@@ -284,18 +270,12 @@ export function LibraryView({
     const params = buildCatalogueParams(previousToken ?? undefined);
     try {
       if (variant === "movies") {
-        const [page, wanted] = await Promise.all([
-          fetchJson<CataloguePage<MovieListItem>>(`/api/movies/page?${params}`),
-          fetchJson<MovieWantedSummary>("/api/movies/wanted")
-        ]);
-        setLibraryItems(adaptMovieItems(page.items, wanted));
+        const page = await fetchJson<CataloguePage<MovieListItem>>(`/api/movies/page?${params}`);
+        setLibraryItems(adaptMovieItems(page.items));
         setNextPageToken(page.nextPageToken);
       } else {
-        const [page, wanted] = await Promise.all([
-          fetchJson<CataloguePage<SeriesListItem>>(`/api/series/page?${params}`),
-          fetchJson<SeriesWantedSummary>("/api/series/wanted")
-        ]);
-        setLibraryItems(adaptSeriesItems(page.items, wanted));
+        const page = await fetchJson<CataloguePage<SeriesListItem>>(`/api/series/page?${params}`);
+        setLibraryItems(adaptSeriesItems(page.items));
         setNextPageToken(page.nextPageToken);
       }
       setCurrentPageToken(previousToken);

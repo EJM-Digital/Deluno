@@ -1,18 +1,54 @@
 import { describe, expect, it } from "vitest";
-import type { DownloadClientItem, DownloadDispatchItem, DownloadTelemetryOverview, IndexerItem, MovieListItem, MovieWantedSummary, SeriesListItem, SeriesWantedSummary } from "./api";
+import type { DownloadClientItem, DownloadDispatchItem, DownloadTelemetryOverview, IndexerItem, MovieListItem, SeriesListItem } from "./api";
 import { adaptActiveDownloads, adaptIndexerHealth, adaptMovieItems, adaptSeriesItems, adaptTelemetryDownloads } from "./ui-adapters";
 
 describe("UI adapters", () => {
   it("adapts representative movie and series data and accepts empty lists", () => {
-    const movie = { id: "movie-1", title: "Arrival", releaseYear: 2016, posterUrl: null, backdropUrl: null, currentQuality: "WEB 1080p", hasFile: true, monitored: true, fileSizeBytes: 1024 ** 3, rating: 8, ratings: [], genres: "Drama, Science Fiction", createdUtc: "2024-01-01T00:00:00Z", overview: null, metadataJson: '{"codec":"H.265","keywords":"alien, language"}' } as unknown as MovieListItem;
+    const movie = { id: "movie-1", title: "Arrival", releaseYear: 2016, posterUrl: null, backdropUrl: null, currentQuality: "WEB 1080p", targetQuality: "Bluray 2160p", wantedStatus: "upgrade", wantedReason: "Quality upgrade", hasFile: true, monitored: true, fileSizeBytes: 1024 ** 3, rating: 8, ratings: [], genres: "Drama, Science Fiction", createdUtc: "2024-01-01T00:00:00Z", overview: null, metadataJson: '{"codec":"H.265","keywords":"alien, language"}' } as unknown as MovieListItem;
     const series = { id: "series-1", title: "The Expanse", startYear: 2015, posterUrl: null, backdropUrl: null, currentQuality: null, hasFile: false, monitored: false, fileSizeBytes: null, rating: 8.5, ratings: [], genres: "Drama, Science Fiction", createdUtc: "2024-01-01T00:00:00Z", overview: null, metadataJson: "{}" } as unknown as SeriesListItem;
-    const movieWanted = { recentItems: [{ movieId: "movie-1", wantedStatus: "upgrade", wantedReason: "Quality upgrade", currentQuality: "WEB 1080p", targetQuality: "Bluray 2160p" }] } as MovieWantedSummary;
-    const seriesWanted = { recentItems: [] } as unknown as SeriesWantedSummary;
 
-    expect(adaptMovieItems([movie], movieWanted)[0]).toMatchObject({ id: "movie-1", type: "movie", status: "downloaded", codec: "H.265", keywords: ["alien", "language"], currentQuality: "WEB 1080p", targetQuality: "Bluray 2160p" });
-    expect(adaptSeriesItems([series], seriesWanted)[0]).toMatchObject({ id: "series-1", type: "show", status: "missing", monitored: false });
-    expect(adaptMovieItems([], movieWanted)).toEqual([]);
-    expect(adaptSeriesItems([], seriesWanted)).toEqual([]);
+    expect(adaptMovieItems([movie])[0]).toMatchObject({ id: "movie-1", type: "movie", status: "downloaded", codec: "H.265", keywords: ["alien", "language"], currentQuality: "WEB 1080p", targetQuality: "Bluray 2160p" });
+    expect(adaptSeriesItems([series])[0]).toMatchObject({ id: "series-1", type: "show", status: "missing", monitored: false });
+    expect(adaptMovieItems([])).toEqual([]);
+    expect(adaptSeriesItems([])).toEqual([]);
+  });
+
+  /**
+   * The search state has to come off the page item, because the summary it used
+   * to come from — `/api/movies/wanted` — returns at most 25 `recentItems`. Any
+   * title past the 25th had no entry in that map, so its card silently lost its
+   * status, its reason and its target quality and fell back to "is there a
+   * file". Eleven films on a lab rig all fit inside 25; twenty thousand do not.
+   */
+  it("reads every title's search state from the title, however deep the page", () => {
+    const items = Array.from({ length: 400 }, (_, index) => ({
+      id: `movie-${index}`,
+      title: `Title ${index}`,
+      releaseYear: 2016,
+      posterUrl: null,
+      backdropUrl: null,
+      hasFile: true,
+      monitored: true,
+      currentQuality: "WEB 1080p",
+      targetQuality: "Bluray 2160p",
+      wantedStatus: "upgrade",
+      wantedReason: "Better copy available",
+      libraryId: "library-films",
+      rating: null,
+      ratings: [],
+      genres: "",
+      createdUtc: "2024-01-01T00:00:00Z",
+      overview: null,
+      metadataJson: "{}"
+    })) as unknown as MovieListItem[];
+
+    const adapted = adaptMovieItems(items);
+
+    expect(adapted).toHaveLength(400);
+    expect(adapted.every((item) => item.releaseStatus === "Upgrade wanted")).toBe(true);
+    expect(adapted.every((item) => item.wantedReason === "Better copy available")).toBe(true);
+    expect(adapted.every((item) => item.libraryId === "library-films")).toBe(true);
+    expect(adapted.every((item) => item.targetQuality === "Bluray 2160p")).toBe(true);
   });
 
   /**
@@ -25,18 +61,15 @@ describe("UI adapters", () => {
   describe("the availability chip", () => {
     const movie = (overrides: Record<string, unknown>) =>
       ({ id: "movie-1", title: "Arrival", releaseYear: 2016, posterUrl: null, backdropUrl: null, currentQuality: "WEB 2160p", hasFile: true, monitored: true, fileSizeBytes: 1024 ** 3, rating: 8, ratings: [], genres: "", createdUtc: "2024-01-01T00:00:00Z", overview: null, metadataJson: "{}", ...overrides }) as unknown as MovieListItem;
-    const wanted = (wantedStatus: string) =>
-      ({ recentItems: [{ movieId: "movie-1", wantedStatus, wantedReason: "", currentQuality: "WEB 2160p", targetQuality: "WEB 1080p" }] }) as MovieWantedSummary;
-
     it("says downloaded for a film on disk, whatever it is waiting for", () => {
-      for (const status of ["waiting", "covered", "upgrade", "missing"]) {
-        expect(adaptMovieItems([movie({})], wanted(status))[0].status).toBe("downloaded");
+      for (const wantedStatus of ["waiting", "covered", "upgrade", "missing"]) {
+        expect(adaptMovieItems([movie({ wantedStatus })])[0].status).toBe("downloaded");
       }
     });
 
     it("says missing for a film with no file, whatever it is waiting for", () => {
-      for (const status of ["waiting", "covered", "upgrade", "missing"]) {
-        expect(adaptMovieItems([movie({ hasFile: false })], wanted(status))[0].status).toBe("missing");
+      for (const wantedStatus of ["waiting", "covered", "upgrade", "missing"]) {
+        expect(adaptMovieItems([movie({ hasFile: false, wantedStatus })])[0].status).toBe("missing");
       }
     });
 
@@ -45,8 +78,8 @@ describe("UI adapters", () => {
       // state. Progress on a card needs telemetry wired in, not a wanted
       // status pressed into service as a stand-in.
       for (const hasFile of [true, false]) {
-        for (const status of ["waiting", "covered", "upgrade", "missing"]) {
-          expect(adaptMovieItems([movie({ hasFile })], wanted(status))[0].status).not.toBe("downloading");
+        for (const wantedStatus of ["waiting", "covered", "upgrade", "missing"]) {
+          expect(adaptMovieItems([movie({ hasFile, wantedStatus })])[0].status).not.toBe("downloading");
         }
       }
     });
@@ -56,31 +89,29 @@ describe("UI adapters", () => {
       // answered "Downloading" for `waiting`, which the server sets on a film
       // that has a file and meets its target (#300).
       for (const hasFile of [true, false]) {
-        for (const status of ["waiting", "covered", "upgrade", "missing"]) {
-          expect(adaptMovieItems([movie({ hasFile })], wanted(status))[0].releaseStatus).not.toBe("Downloading");
+        for (const wantedStatus of ["waiting", "covered", "upgrade", "missing"]) {
+          expect(adaptMovieItems([movie({ hasFile, wantedStatus })])[0].releaseStatus).not.toBe("Downloading");
         }
       }
     });
 
     it("gives the release status the same words the title shows", () => {
-      expect(adaptMovieItems([movie({})], wanted("covered"))[0].releaseStatus).toBe("Complete");
-      expect(adaptMovieItems([movie({})], wanted("upgrade"))[0].releaseStatus).toBe("Upgrade wanted");
-      expect(adaptMovieItems([movie({ hasFile: false })], wanted("missing"))[0].releaseStatus).toBe("Missing");
+      expect(adaptMovieItems([movie({ wantedStatus: "covered" })])[0].releaseStatus).toBe("Complete");
+      expect(adaptMovieItems([movie({ wantedStatus: "upgrade" })])[0].releaseStatus).toBe("Upgrade wanted");
+      expect(adaptMovieItems([movie({ hasFile: false, wantedStatus: "missing" })])[0].releaseStatus).toBe("Missing");
     });
 
     it("claims only what it knows when a title has no wanted record", () => {
-      const none = { recentItems: [] } as unknown as MovieWantedSummary;
-      expect(adaptMovieItems([movie({})], none)[0].releaseStatus).toBe("On disk");
-      expect(adaptMovieItems([movie({ hasFile: false })], none)[0].releaseStatus).toBe("Missing");
+      expect(adaptMovieItems([movie({})])[0].releaseStatus).toBe("On disk");
+      expect(adaptMovieItems([movie({ hasFile: false })])[0].releaseStatus).toBe("Missing");
     });
 
     it("applies the same rule to shows", () => {
       const show = (hasFile: boolean) =>
-        ({ id: "series-1", title: "Severance", startYear: 2022, posterUrl: null, backdropUrl: null, currentQuality: null, hasFile, monitored: true, fileSizeBytes: null, rating: 8, ratings: [], genres: "", createdUtc: "2024-01-01T00:00:00Z", overview: null, metadataJson: "{}" }) as unknown as SeriesListItem;
-      const seriesWanted = { recentItems: [{ seriesId: "series-1", wantedStatus: "waiting", wantedReason: "" }] } as unknown as SeriesWantedSummary;
+        ({ id: "series-1", title: "Severance", startYear: 2022, posterUrl: null, backdropUrl: null, currentQuality: null, hasFile, monitored: true, wantedStatus: "waiting", wantedReason: "", fileSizeBytes: null, rating: 8, ratings: [], genres: "", createdUtc: "2024-01-01T00:00:00Z", overview: null, metadataJson: "{}" }) as unknown as SeriesListItem;
 
-      expect(adaptSeriesItems([show(true)], seriesWanted)[0].status).toBe("downloaded");
-      expect(adaptSeriesItems([show(false)], seriesWanted)[0].status).toBe("missing");
+      expect(adaptSeriesItems([show(true)])[0].status).toBe("downloaded");
+      expect(adaptSeriesItems([show(false)])[0].status).toBe("missing");
     });
   });
 

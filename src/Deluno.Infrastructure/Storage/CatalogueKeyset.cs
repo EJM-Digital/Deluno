@@ -101,14 +101,6 @@ public static class CatalogueKeyset
     }
 
     /// <summary>
-    /// "This entry has a file in some library." Both catalogues answer it the
-    /// same way and both need it in three places — the projection, the status
-    /// filter and the facet counts — so it is written once.
-    /// </summary>
-    public static string HasFileExpression(string alias, string wantedTable, string foreignKey)
-        => $"EXISTS(SELECT 1 FROM {wantedTable} w WHERE w.{foreignKey} = {alias}.id AND w.has_file = 1)";
-
-    /// <summary>
     /// Free-text search over title and genres.
     ///
     /// A leading wildcard cannot use an index, so this scans the entries table.

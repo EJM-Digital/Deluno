@@ -57,4 +57,23 @@ public sealed record MovieListItem(
     int? RuntimeMinutes = null,
     double? Popularity = null,
     int? VoteCount = null,
-    double? ApproximateBitrateMbps = null);
+    double? ApproximateBitrateMbps = null,
+    /// <summary>
+    /// The search state Deluno holds for this film, from the paged catalogue
+    /// query's join to the wanted state.
+    ///
+    /// The grid used to read these from <c>/api/movies/wanted</c>, whose
+    /// <c>recentItems</c> is capped at 25 — so in a library of any size, most
+    /// cards had no status, no reason and no target quality at all and fell back
+    /// to "is there a file". A page carries its own, however deep it is.
+    ///
+    /// Null throughout means Deluno is not tracking the film in any library, so
+    /// there is no state to report — which is not the same as a state of "no".
+    /// </summary>
+    string? LibraryId = null,
+    string? WantedStatus = null,
+    string? WantedReason = null,
+    string? TargetQuality = null,
+    bool? QualityCutoffMet = null,
+    DateTimeOffset? LastSearchUtc = null,
+    DateTimeOffset? NextEligibleSearchUtc = null);
