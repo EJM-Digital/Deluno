@@ -335,7 +335,14 @@ test.describe("dashboard workflow", () => {
           // handler, and on a narrow viewport the row's centre lands on a cell
           // that has none.
           await row.getByText(title).click();
-          await expect(page.getByRole("heading", { name: new RegExp(title) })).toBeVisible();
+          // A generous window on this one assertion, and only this one. The
+          // detail route's loader fans out over a dozen endpoints, and with the
+          // chromium, mobile and shipped projects all running it can outlast the
+          // default five seconds — it failed here in a full run and passed on
+          // its own, twice. Waiting longer is the honest fix; retrying the whole
+          // spec would only hide how slow the route is under load.
+          await expect(page.getByRole("heading", { name: new RegExp(title) }))
+            .toBeVisible({ timeout: 20_000 });
           // The detail header was two badges: "Monitored" in words, and a status
           // badge that chose its own colour — amber for Missing and Upgradable.
           await expect(page.getByRole("img", { name: markName, exact: true }).first()).toBeVisible();

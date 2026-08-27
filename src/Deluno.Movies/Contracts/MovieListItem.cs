@@ -82,10 +82,9 @@ public sealed record MovieListItem(
     ///
     /// DESIGN-001 gives every title a bar, and it is subtitle
     /// languages, proportioned to what you asked for. Two languages and you have
-    /// English is half green. A title that asked for nothing keeps a grey bar
-    /// that claims nothing, rather than no bar, so the shelf does not change
-    /// shape when Subber ([#301](https://github.com/jampat000/Deluno/issues/301))
-    /// starts filling these in.
+    /// English is half green. Zero means no languages were asked for, and a
+    /// title with none draws no bar at all — the bar is painted over the poster
+    /// and takes no layout space, so there is nothing to hold a place for.
     ///
     /// A movie is one file, so <c>Wanted</c> is simply the languages asked for.
     ///

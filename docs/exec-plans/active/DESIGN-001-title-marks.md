@@ -109,7 +109,13 @@ bottom edge of the poster.
 - **Shows: the same sum, over the episodes you hold.** Thirteen episodes with
   the same two languages asked for of each is 26 slots; four episodes short a
   language makes it 22/26 green.
-- **Asked for nothing:** the bar stays grey and claims nothing.
+- **No languages asked for: no bar.** *(Revised 2026-08-27.)* It used to draw a
+  grey one, to keep "the shelf's shape" so nothing was relaid out when the
+  numbers started arriving. That reason does not survive reading the CSS — the
+  bar is `absolute … bottom-0`, painted over the poster, and takes no layout
+  space, so adding or removing it re-lays out nothing. The grey stripe bought a
+  benefit that never existed and paid for it with a mark on every poster in the
+  library that said nothing at all.
 
 **Counted only over the files a title actually has.** Counting the episodes you
 are missing would drag the bar down for a reason that has nothing to do with
@@ -351,7 +357,7 @@ Three things worth carrying forward:
    something does.
 6. **Subber (#301)** inherits the vocabulary and needs no new words. The bar's
    landing site exists: `SubtitleLanguagesWanted`/`Held` on both catalogue
-   contracts, zero, with a grey bar for "asked for nothing".
+   contracts, zero, and a title with no languages asked for draws no bar.
 
 ## Related, and settled while finishing step 4
 
