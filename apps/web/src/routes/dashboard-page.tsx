@@ -844,7 +844,7 @@ function describeSystem(data: DashboardLoaderData, healthIssues: number): { head
     return {
       headline: "Deluno is not ready",
       detail: `${readiness.failedChecks} of ${readiness.totalChecks} readiness checks are failing. Nothing will be searched or imported until they pass.`,
-      tone: "danger"
+      tone: "bad"
     };
   }
 
@@ -852,7 +852,7 @@ function describeSystem(data: DashboardLoaderData, healthIssues: number): { head
     return {
       headline: "Running out of space",
       detail: "The drive holding your library is nearly full. Imports will start failing before it is completely gone.",
-      tone: "danger"
+      tone: "bad"
     };
   }
 

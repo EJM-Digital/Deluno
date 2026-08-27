@@ -1,5 +1,6 @@
 // Shared job status constants - use these instead of string literals throughout the app
 // This ensures consistency and reduces duplication
+import { statusTone, type Tone } from "./status-tones";
 
 export const JOB_STATUS = {
   QUEUED: "queued",
@@ -50,21 +51,28 @@ export const getJobStatusLabel = (status: JobStatus): string => {
   return labels[status] ?? status;
 };
 
-// Status color variants for UI (Tailwind/CSS)
-export const getJobStatusVariant = (
-  status: JobStatus
-): "default" | "secondary" | "destructive" | "outline" | "success" | "warning" => {
+/**
+ * The tone a job status wears, from the one table.
+ *
+ * Running was amber and Queued was grey. #290 names both blue by name: a job in
+ * flight is motion and a queued one is motion that has not started, and neither
+ * needs a person — which is exactly what amber had been claiming of every job
+ * Deluno ran. A dead letter keeps amber, because it is out of retries and does
+ * need one.
+ */
+export const getJobStatusTone = (status: JobStatus): Tone => {
   switch (status) {
     case JOB_STATUS.QUEUED:
-      return "secondary";
+      return statusTone("job.queued");
     case JOB_STATUS.RUNNING:
-      return "warning";
+      return statusTone("job.running");
     case JOB_STATUS.COMPLETED:
-      return "success";
-    case JOB_STATUS.FAILED:
+      return statusTone("job.completed");
     case JOB_STATUS.DEAD_LETTER:
-      return "destructive";
+      return statusTone("job.deadLetter");
+    case JOB_STATUS.FAILED:
+      return statusTone("job.failed");
     default:
-      return "default";
+      return "idle";
   }
 };

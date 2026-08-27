@@ -320,7 +320,7 @@ export function SettingsMigrationPage() {
                   <ListNameCell name={item.name} sub={item.targetType === "indexer" ? "Indexer" : "Download client"} />
                   <ListCell primary={result?.message ?? "Not tested yet"} secondary={result?.latencyMs != null ? `${result.latencyMs} ms` : undefined} />
                   <ListCell mobile>
-                    <Chip tone={result ? (result.healthStatus === "healthy" ? "ok" : "warn") : "muted"}>{result?.healthStatus ?? "Untested"}</Chip>
+                    <Chip tone={result ? (result.healthStatus === "healthy" ? "ok" : "warn") : "idle"}>{result?.healthStatus ?? "Untested"}</Chip>
                   </ListCell>
                 </ListRow>
               );
@@ -428,5 +428,5 @@ function actionTone(action: string): NonNullable<ChipProps["tone"]> {
   if (action === "create") return "ok";
   if (action === "unsupported" || action === "conflict") return "warn";
   if (action === "report") return "info";
-  return "muted";
+  return "idle";
 }

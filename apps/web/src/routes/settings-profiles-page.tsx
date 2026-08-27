@@ -331,7 +331,7 @@ export function SettingsProfilesPage() {
                   <ListCell primary={profile.cutoffQuality} secondary={profile.upgradeUntilCutoff ? "Upgrades until this tier" : "No upgrades"} />
                   <ListCell numeric primary={used.length ? `${used.length} ${used.length === 1 ? "library" : "libraries"}` : <span className="text-muted-foreground">Not assigned</span>} secondary={used.map((library) => library.name).join(", ") || "Assigned from a library or plan"} />
                   <ListCell mobile>
-                    <Chip tone={unknownTiers.length ? "warn" : formats.length ? "info" : "muted"}>{unknownTiers.length ? "Check tiers" : formats.length ? `${formats.length} format${formats.length === 1 ? "" : "s"}` : "No formats"}</Chip>
+                    <Chip tone={unknownTiers.length ? "warn" : formats.length ? "info" : "idle"}>{unknownTiers.length ? "Check tiers" : formats.length ? `${formats.length} format${formats.length === 1 ? "" : "s"}` : "No formats"}</Chip>
                   </ListCell>
                 </ListRow>
               );

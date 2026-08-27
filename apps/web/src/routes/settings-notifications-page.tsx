@@ -239,7 +239,7 @@ export function SettingsNotificationsPage() {
             <ListNameCell name="Send notifications" sub="Master switch. When off, no webhook fires — including tests." />
             <ListCell primary="All webhooks" secondary={`${webhooks.length} configured`} />
             <ListCell mobile>
-              <Chip tone={settings.enableNotifications ? "ok" : "muted"}>{settings.enableNotifications ? "Sending" : "Paused"}</Chip>
+              <Chip tone={settings.enableNotifications ? "ok" : "idle"}>{settings.enableNotifications ? "Sending" : "Paused"}</Chip>
             </ListCell>
             <ListCell mobile>
               <Switch size="sm" aria-label="Send notifications" checked={settings.enableNotifications} disabled={busy === "global"} onCheckedChange={(checked) => void toggleGlobal(checked)} />
@@ -320,10 +320,10 @@ function eventLabel(value: string) {
   return EVENT_OPTIONS.find((option) => option.value === value)?.label.split(" — ")[0] ?? value;
 }
 function statusChip(webhook: NotificationWebhookItem, globallyEnabled: boolean): { tone: NonNullable<ChipProps["tone"]>; label: string } {
-  if (!webhook.isEnabled) return { tone: "muted", label: "Off" };
+  if (!webhook.isEnabled) return { tone: "idle", label: "Off" };
   if (!globallyEnabled) return { tone: "warn", label: "Paused" };
   if (webhook.lastError) return { tone: "bad", label: "Failing" };
-  return webhook.lastFiredUtc ? { tone: "ok", label: "Delivering" } : { tone: "muted", label: "Untested" };
+  return webhook.lastFiredUtc ? { tone: "ok", label: "Delivering" } : { tone: "idle", label: "Untested" };
 }
 function relative(iso: string) {
   const minutes = Math.round(Math.abs(Date.now() - new Date(iso).getTime()) / 60000);

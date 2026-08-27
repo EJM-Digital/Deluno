@@ -322,7 +322,7 @@ export function SettingsDestinationRulesPage() {
                 <ListCell primary={<LibraryImpactLinks libraries={librariesByRule.get(rule.id) ?? []} />} secondary={librariesByRule.has(rule.id) ? "Applied through a Library Profile" : "Library folder remains the default"} />
                 <ListCell numeric align="end" primary={String(rule.priority)} />
                 <ListCell mobile>
-                  <Chip tone={rule.isEnabled ? "ok" : "muted"}>{rule.isEnabled ? "Active" : "Off"}</Chip>
+                  <Chip tone={rule.isEnabled ? "ok" : "idle"}>{rule.isEnabled ? "Active" : "Off"}</Chip>
                 </ListCell>
                 <ListCell mobile>
                   <Switch size="sm" aria-label={`${rule.isEnabled ? "Pause" : "Enable"} ${rule.name}`} checked={rule.isEnabled} disabled={togglingId === rule.id} onCheckedChange={(checked) => void toggleEnabled(rule, checked)} />
@@ -438,8 +438,8 @@ export function SettingsDestinationRulesPage() {
             {testResult ? (
               <DrawerSection title="Result" aside={testResult.matchedRuleName ? `rule: ${testResult.matchedRuleName}` : "library default"}>
                 <div className="flex flex-wrap gap-1.5">
-                  <Chip tone={testResult.matchedRuleName ? "ok" : "muted"}>{testResult.matchedRuleName ? `Rule: ${testResult.matchedRuleName}` : "Default root"}</Chip>
-                  <Chip tone={testResult.preferredTransferMode === "hardlink" ? "info" : "muted"}>{testResult.preferredTransferMode === "hardlink" ? "Single-copy link" : testResult.preferredTransferMode}</Chip>
+                  <Chip tone={testResult.matchedRuleName ? "ok" : "idle"}>{testResult.matchedRuleName ? `Rule: ${testResult.matchedRuleName}` : "Default root"}</Chip>
+                  <Chip tone={testResult.preferredTransferMode === "hardlink" ? "info" : "idle"}>{testResult.preferredTransferMode === "hardlink" ? "Single-copy link" : testResult.preferredTransferMode}</Chip>
                   <Chip tone={testResult.hardlinkAvailable ? "ok" : "warn"}>{testResult.hardlinkAvailable ? "Single-copy link available" : "Copy required"}</Chip>
                 </div>
                 <p className="text-[length:var(--type-body-sm)] text-muted-foreground">{testResult.explanation}</p>

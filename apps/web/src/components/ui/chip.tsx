@@ -4,6 +4,12 @@ import { cn } from "../../lib/utils";
 
 /**
  * Chip — the one status pill. Dot + short label, semantic tone.
+ *
+ * Its tones are `lib/status-tones.ts`'s `Tone`, which `StatusLed` also takes.
+ * They used to be two vocabularies for the same five ideas — `muted` here and
+ * `idle` there, `bad` here and `danger` there — so nothing could assert that a
+ * state was coloured the same way in both. Do not choose a tone at the point of
+ * use: look the state up in `STATUS_PRESENTATION` and pass what it says.
  * Use for health/state in list rows and drawer key/value lines.
  * (Badge remains for small square-ish tags such as media type.)
  */
@@ -16,10 +22,10 @@ const chipVariants = cva(
         warn: "border-warning/30 bg-warning/10 text-warning",
         bad: "border-destructive/30 bg-destructive/10 text-destructive",
         info: "border-info/30 bg-info/10 text-info",
-        muted: "border-hairline bg-surface-2 text-muted-foreground"
+        idle: "border-hairline bg-surface-2 text-muted-foreground"
       }
     },
-    defaultVariants: { tone: "muted" }
+    defaultVariants: { tone: "idle" }
   }
 );
 

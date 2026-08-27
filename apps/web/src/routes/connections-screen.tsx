@@ -549,7 +549,7 @@ export function IndexersPage() {
               <ListNameCell name="Remove items from the client queue" sub="A confirmed, manual Remove on Transfers. Automatic cleanup is configured in Automation & Recovery." />
                 <ListCell primary="All download clients" secondary="SABnzbd, qBittorrent, …" />
                 <ListCell mobile>
-                  <Chip tone={settings.removeCompletedDownloads ? "ok" : "muted"}>{settings.removeCompletedDownloads ? "Allowed" : "Blocked"}</Chip>
+                  <Chip tone={settings.removeCompletedDownloads ? "ok" : "idle"}>{settings.removeCompletedDownloads ? "Allowed" : "Blocked"}</Chip>
                 </ListCell>
                 <ListCell mobile>
                   <Switch size="sm" aria-label="Allow removing client queue entries" checked={settings.removeCompletedDownloads} disabled={busy === "permission"} onCheckedChange={(checked) => void setRemovalPermission(checked)} />

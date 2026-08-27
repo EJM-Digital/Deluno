@@ -99,7 +99,7 @@ export function RoutingDrawerBody({
                         onChange={(event) => onCategoryChange(item.id, event.target.value)}
                       />
                       <div className="flex flex-wrap items-center gap-2">
-                        <Chip tone={routeCategory ? "info" : "muted"}>
+                        <Chip tone={routeCategory ? "info" : "idle"}>
                           {routeCategory ? `Library category: ${routeCategory}` : "Using client default"}
                         </Chip>
                         <span className="text-[length:var(--type-caption)] text-muted-foreground">
@@ -120,7 +120,7 @@ export function RoutingDrawerBody({
                           {busy === `category:${item.id}` ? "Checking…" : "Check category"}
                         </Button>
                         {categoryChecks[item.id] ? (
-                          <Chip tone={categoryChecks[item.id].status === "ready" ? "ok" : categoryChecks[item.id].status === "missing" ? "warn" : categoryChecks[item.id].status === "unreachable" ? "bad" : "muted"}>
+                          <Chip tone={categoryChecks[item.id].status === "ready" ? "ok" : categoryChecks[item.id].status === "missing" ? "warn" : categoryChecks[item.id].status === "unreachable" ? "bad" : "idle"}>
                             {categoryChecks[item.id].status === "ready" ? "Ready" : categoryChecks[item.id].status === "missing" ? "Not found" : categoryChecks[item.id].status === "unreachable" ? "Could not check" : "Manual check needed"}
                           </Chip>
                         ) : null}

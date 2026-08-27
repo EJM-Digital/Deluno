@@ -8,6 +8,7 @@
  *
  * Contracts: GET /api/series/calendar?from&to, GET /api/movies/calendar?from&to.
  */
+import type { Tone } from "../lib/status-tones";
 import { useMemo, useState } from "react";
 import { useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
 import { CalendarPlus, ChevronLeft, ChevronRight } from "lucide-react";
@@ -93,7 +94,7 @@ interface CalendarEntry {
   sub: string;
   kindLabel: string;
   detail: string;
-  status: { label: string; tone: "ok" | "warn" | "info" | "muted" };
+  status: { label: string; tone: Tone };
   href: string;
 }
 
@@ -428,7 +429,7 @@ function buildEntries(data: CalendarLoaderData): CalendarEntry[] {
       ? { label: "On disk", tone: "ok" as const }
       : movie.monitored
         ? { label: "Watching for it", tone: "info" as const }
-        : { label: "Not monitored", tone: "muted" as const },
+        : { label: "Not monitored", tone: "idle" as const },
     href: `/movies/${movie.movieId}`
   }));
 

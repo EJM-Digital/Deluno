@@ -388,7 +388,7 @@ export function SettingsCustomFormatsPage() {
                 <ListCell primary={bundle.bestFor} secondary={bundle.description} />
                 <ListCell numeric primary={`${progress.applied} of ${progress.total}`} secondary="applied" />
                 <ListCell mobile>
-                  <Chip tone={complete ? "ok" : progress.applied ? "info" : "muted"}>{complete ? "Applied" : progress.applied ? "Partly applied" : "Not applied"}</Chip>
+                  <Chip tone={complete ? "ok" : progress.applied ? "info" : "idle"}>{complete ? "Applied" : progress.applied ? "Partly applied" : "Not applied"}</Chip>
                 </ListCell>
               </ListRow>
             );
@@ -433,7 +433,7 @@ export function SettingsCustomFormatsPage() {
                         scoring 0 inside a 1080p profile looked banned (#257).
                         Only a negative score is an active penalty.
                       */}
-                      <Chip tone={format.score <= -10000 ? "bad" : format.score > 0 ? "ok" : format.score < 0 ? "warn" : "muted"}>
+                      <Chip tone={format.score <= -10000 ? "bad" : format.score > 0 ? "ok" : format.score < 0 ? "warn" : "idle"}>
                         {format.score <= -10000 ? "Blocked" : format.score > 0 ? "Preferred" : format.score < 0 ? "Avoided" : "Neutral"}
                       </Chip>
                     </ListCell>
@@ -468,7 +468,7 @@ export function SettingsCustomFormatsPage() {
               {safeguards.neverGrab.length ? (
                 <div className="flex flex-wrap gap-2">
                   {safeguards.neverGrab.map((rule) => (
-                    <Chip key={rule} tone="muted">
+                    <Chip key={rule} tone="idle">
                       {rule}
                       <button
                         type="button"
@@ -815,7 +815,7 @@ export function SettingsCustomFormatsPage() {
                       </span>
                       <span className="flex shrink-0 items-center gap-2">
                         <span className="text-[length:var(--type-caption)] tabular-nums text-muted-foreground">{scoreLabel(result.score)}</span>
-                        <Chip tone={result.isMatch ? "ok" : "muted"}>{result.isMatch ? "Matched" : "No match"}</Chip>
+                        <Chip tone={result.isMatch ? "ok" : "idle"}>{result.isMatch ? "Matched" : "No match"}</Chip>
                       </span>
                     </div>
                     {result.isMatch && result.matchedConditions.length ? (

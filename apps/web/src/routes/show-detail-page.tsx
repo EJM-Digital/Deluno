@@ -10,6 +10,7 @@
  * /api/series/{id}/search, /grab, /episodes/search, /seasons/{n}/search,
  * /automation/defer, /automation/skip-once, /api/series/bulk.
  */
+import type { Tone } from "../lib/status-tones";
 import { Fragment, useMemo, useState } from "react";
 import { Link, useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
 import { ArrowLeft, LoaderCircle, RefreshCw, Search, Trash2 } from "lucide-react";
@@ -1534,7 +1535,7 @@ function formatSearchScope(item: SeriesSearchHistoryItem) {
   return "Whole show";
 }
 
-function searchOutcomeTone(outcome: string): "ok" | "warn" | "bad" | "muted" {
+function searchOutcomeTone(outcome: string): Tone {
   switch (outcome) {
     case "matched":
       return "ok";
@@ -1543,7 +1544,7 @@ function searchOutcomeTone(outcome: string): "ok" | "warn" | "bad" | "muted" {
     case "blocked":
       return "warn";
     default:
-      return "muted";
+      return "idle";
   }
 }
 

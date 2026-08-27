@@ -703,7 +703,7 @@ function healthTone(status: string): NonNullable<ChipProps["tone"]> {
     case "untested":
       return "warn";
     case "unknown":
-      return "muted";
+      return "idle";
     default:
       return "bad";
   }

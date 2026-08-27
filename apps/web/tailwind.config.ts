@@ -96,6 +96,14 @@ const config: Config = {
           DEFAULT: "hsl(var(--info))",
           foreground: "hsl(var(--info-foreground))"
         },
+        // The two rungs of DESIGN-001's ladder that no operational tone covers.
+        // Missing, Downloading and Upgradable already are destructive, info and
+        // success at exactly these values.
+        mark: {
+          "quality-met": "hsl(var(--mark-quality-met))",
+          upcoming: "hsl(var(--mark-upcoming))",
+          idle: "hsl(var(--mark-idle))"
+        },
         card: {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",

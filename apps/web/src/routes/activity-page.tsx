@@ -10,6 +10,7 @@
  * /api/movies/import-recovery, /api/series/import-recovery;
  * POST /api/jobs/retry-failed.
  */
+import type { Tone } from "../lib/status-tones";
 import { useMemo, useRef, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { RefreshCw } from "lucide-react";
@@ -21,7 +22,7 @@ import {
   type MovieImportRecoverySummary,
   type SeriesImportRecoverySummary
 } from "../lib/api";
-import { JOB_STATUS, isJobActive, isJobFailed, isJobInProgress, isJobSuccessful, type JobStatus } from "../lib/job-status-constants";
+import { getJobStatusTone, JOB_STATUS, isJobActive, isJobFailed, isJobInProgress, isJobSuccessful, type JobStatus } from "../lib/job-status-constants";
 import { authedFetch } from "../lib/use-auth";
 import { Button } from "../components/ui/button";
 import { Chip } from "../components/ui/chip";
@@ -376,19 +377,13 @@ function formatJobStatus(status: string) {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
-function jobTone(status: string): "ok" | "warn" | "bad" | "info" | "muted" {
-  switch (status) {
-    case JOB_STATUS.COMPLETED:
-      return "ok";
-    case JOB_STATUS.RUNNING:
-      return "info";
-    case JOB_STATUS.QUEUED:
-      return "muted";
-    case JOB_STATUS.FAILED:
-      return "bad";
-    default:
-      return "warn";
-  }
+/**
+ * Queued was grey here, which is the colour for nothing happening — a queued job
+ * is motion that has not started. The table decides now, and this screen no
+ * longer holds an opinion of its own.
+ */
+function jobTone(status: string): Tone {
+  return getJobStatusTone(status as JobStatus);
 }
 
 function dispatchTone(status: string): "ok" | "warn" | "bad" | "info" {

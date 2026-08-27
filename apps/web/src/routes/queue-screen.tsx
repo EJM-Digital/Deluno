@@ -17,6 +17,7 @@
  * /api/integrations/processors/handoffs; POST …/queue/actions, …/jobs/retry-failed,
  * …/handoffs/{id}/retry, /api/filesystem/import/{preview,jobs,execute}.
  */
+import { statusPresentation, statusTone } from "../lib/status-tones";
 import { useMemo, useRef, useState } from "react";
 import { Link, useLoaderData, useRevalidator } from "react-router-dom";
 import { Loader2, Pause, Play, RefreshCw, RotateCw, Trash2, Upload } from "lucide-react";
@@ -490,7 +491,7 @@ export function QueuePage() {
                   />
                   <ListCell primary={item.clientName} secondary={item.indexerName || undefined} />
                   <ListCell mobile>
-                    <Chip tone={needsAttention ? chip.tone : transferring ? "info" : "muted"}>{chip.label}</Chip>
+                    <Chip tone={needsAttention ? chip.tone : transferring ? "info" : "idle"}>{chip.label}</Chip>
                   </ListCell>
                 </ListRow>
               );
@@ -1042,9 +1043,11 @@ function ImportPreviewFacts({ preview }: { preview: ImportPreviewResponse }) {
 }
 
 function queueChip(item: DownloadQueueItem): { tone: NonNullable<ChipProps["tone"]>; label: string } {
-  if (item.errorMessage || item.status === downloadQueueStatuses.stalled) return { tone: "bad", label: queueStatusLabel(item.status) };
-  if (item.healthFindings?.length) return { tone: "warn", label: "Needs a look" };
-  if (isImportReadyStatus(item.status)) return { tone: "ok", label: "Ready to import" };
+  if (item.errorMessage || item.status === downloadQueueStatuses.stalled) return { tone: statusTone("transfer.stalled"), label: queueStatusLabel(item.status) };
+  if (item.healthFindings?.length) return statusPresentation("transfer.needsALook");
+  // Was green here and grey in the pipeline strip. Green is the colour for
+  // done, and a release waiting to be imported is mid-pipeline.
+  if (isImportReadyStatus(item.status)) return statusPresentation("transfer.importReady");
   if (isProcessingStatus(item.status)) return { tone: "info", label: queueStatusLabel(item.status) };
   return { tone: "info", label: queueStatusLabel(item.status) };
 }
@@ -1145,7 +1148,7 @@ function processorConnectionTone(connection: ProcessorConnectionItem): NonNullab
   if (!connection.isEnabled || connection.healthStatus === "unreachable") return "bad";
   if (connection.healthStatus === "degraded") return "warn";
   if (connection.healthStatus === "healthy") return "ok";
-  return "muted";
+  return "idle";
 }
 
 function isDispatchFailure(dispatch: DownloadDispatchItem) {
@@ -1289,7 +1292,7 @@ function buildActivity({
       sub: dispatch.mediaType === "tv" ? "TV" : "Movies",
       detail: dispatchActivityDetail(dispatch),
       extra: dispatch.importedFilePath ?? (isDispatchFailure(dispatch) ? dispatchFailureDetail(dispatch) : undefined),
-      tone: isDispatchFailure(dispatch) ? "bad" : dispatch.importedFilePath ? "ok" : "muted",
+      tone: isDispatchFailure(dispatch) ? "bad" : dispatch.importedFilePath ? "ok" : "idle",
       status: dispatchStageLabel(dispatch),
       whenUtc: dispatch.importCompletedUtc ?? dispatch.detectedUtc ?? dispatch.grabAttemptedUtc ?? dispatch.createdUtc
     });
