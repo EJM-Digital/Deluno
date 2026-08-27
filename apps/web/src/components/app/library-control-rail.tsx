@@ -304,10 +304,16 @@ export function ControlRail({ label, facets, controls }: {
                   actually side by side — stacked, the section labels already do
                   the separating.
                 */}
-                <div className="xl:border-l xl:border-hairline xl:pl-[var(--grid-gap)]">
+                <div className="xl:flex xl:flex-col xl:border-l xl:border-hairline xl:pl-[var(--grid-gap)]">
                   <SectionLabel>What each poster shows</SectionLabel>
                   <p className="mt-1 text-[length:var(--type-caption)] text-muted-foreground">Keep the essentials visible; turn on extra metadata only when it helps your workflow.</p>
-                  <div className="mt-2 divide-y divide-hairline">
+                  {/*
+                    The rows share out whatever height the choices opposite them
+                    take, rather than stopping short and leaving the panel
+                    lopsided. Stretching beats a hand-picked row height, which
+                    would only be right at one density.
+                  */}
+                  <div className="mt-2 divide-y divide-hairline xl:flex xl:flex-1 xl:flex-col xl:[&>div]:flex-1">
                     <SwitchRow label="Title" description="The movie or series name" checked={displayOptions.showTitle} onCheckedChange={(showTitle) => setDisplayOptions({ ...displayOptions, showTitle })} />
                     <SwitchRow label="Year & monitoring" description="Release year and monitored state" checked={displayOptions.showMeta} onCheckedChange={(showMeta) => setDisplayOptions({ ...displayOptions, showMeta })} />
                     <SwitchRow label="Availability" description="Whether Deluno has the file yet" checked={displayOptions.showStatusPill} onCheckedChange={(showStatusPill) => setDisplayOptions({ ...displayOptions, showStatusPill })} />
