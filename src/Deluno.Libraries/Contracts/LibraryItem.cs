@@ -34,4 +34,21 @@ public sealed record LibraryItem(
     string? DefaultPolicySetId = null,
     string? DefaultPolicySetName = null,
     string CleanupMode = "keep-source",
-    bool RemoveEmptySourceFolders = false);
+    bool RemoveEmptySourceFolders = false,
+    /// <summary>
+    /// Ordered ISO 639-1 codes, most wanted first. Empty means no subtitles are
+    /// wanted here, and a title that wants none draws no bar (DESIGN-001).
+    /// </summary>
+    IReadOnlyList<string>? SubtitleLanguages = null,
+    /// <summary>
+    /// How many of <see cref="SubtitleLanguages"/> a file needs.
+    ///
+    /// <c>all</c> — every language listed. <c>first</c> — the first one that can
+    /// be found, in order, and then stop.
+    ///
+    /// Bazarr expresses this as an ordered list plus a cutoff *position*, which
+    /// conflates two different intentions: "English and Japanese" and "English,
+    /// or Spanish if English is unavailable". These are the two intentions, in
+    /// two words, and they are what the bar counts.
+    /// </summary>
+    string SubtitleLanguageMode = "all");

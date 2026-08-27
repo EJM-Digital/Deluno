@@ -32,7 +32,8 @@ public sealed class SqliteLibrariesRepository(
                 l.auto_search_enabled, l.missing_search_enabled, l.upgrade_search_enabled, l.search_interval_hours,
                 l.retry_delay_hours, l.max_items_per_run, l.search_window_start_hour, l.search_window_end_hour,
                 l.created_utc, l.updated_utc, l.default_policy_set_id, p.name,
-                l.cleanup_mode, l.remove_empty_source_folders
+                l.cleanup_mode, l.remove_empty_source_folders,
+                l.subtitle_languages, l.subtitle_language_mode
             FROM libraries l
             LEFT JOIN quality_profiles q ON q.id = l.quality_profile_id
             LEFT JOIN policy_sets p ON p.id = l.default_policy_set_id
@@ -574,6 +575,58 @@ public sealed class SqliteLibrariesRepository(
     }
 
 
+    /// <summary>
+    /// The subtitle languages this library wants, and how many of them it needs.
+    ///
+    /// Its own method for the same reason the quality profile has one: these are
+    /// a decision a person makes on their own, not a field inside a form that
+    /// rewrites nine other things when it saves.
+    /// </summary>
+    public async Task<LibraryItem?> UpdateLibrarySubtitlesAsync(
+        string id,
+        UpdateLibrarySubtitlesRequest request,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        var library = await GetLibraryAsync(connection, id, cancellationToken);
+        if (library is null)
+        {
+            return null;
+        }
+
+        // Normalised on the way in as well as on the way out: a code stored with
+        // stray case or a duplicate would inflate what the bar says was asked
+        // for, and the bar is the only place these numbers are ever seen.
+        var languages = string.Join(
+            ',',
+            ParseSubtitleLanguages(request.Languages is null ? null : string.Join(',', request.Languages)));
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE libraries
+            SET
+                subtitle_languages = @languages,
+                subtitle_language_mode = @mode,
+                updated_utc = @updatedUtc
+            WHERE id = @id;
+            """;
+
+        AddParameter(command, "@id", id);
+        AddParameter(command, "@languages", languages);
+        AddParameter(command, "@mode", NormalizeSubtitleLanguageMode(request.Mode));
+        AddParameter(command, "@updatedUtc", now.ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+
+        return await GetLibraryAsync(connection, id, cancellationToken);
+    }
+
+
     public async Task<LibraryItem?> UpdateLibraryMediaPlanAsync(
         string id,
         UpdateLibraryMediaPlanRequest request,
@@ -879,7 +932,8 @@ public sealed class SqliteLibrariesRepository(
                 l.auto_search_enabled, l.missing_search_enabled, l.upgrade_search_enabled, l.search_interval_hours,
                 l.retry_delay_hours, l.max_items_per_run, l.search_window_start_hour, l.search_window_end_hour,
                 l.created_utc, l.updated_utc, l.default_policy_set_id, p.name,
-                l.cleanup_mode, l.remove_empty_source_folders
+                l.cleanup_mode, l.remove_empty_source_folders,
+                l.subtitle_languages, l.subtitle_language_mode
             FROM libraries l
             LEFT JOIN quality_profiles q ON q.id = l.quality_profile_id
             LEFT JOIN policy_sets p ON p.id = l.default_policy_set_id
@@ -1185,9 +1239,47 @@ public sealed class SqliteLibrariesRepository(
             DefaultPolicySetId: reader.IsDBNull(26) ? null : reader.GetString(26),
             DefaultPolicySetName: reader.IsDBNull(27) ? null : reader.GetString(27),
             CleanupMode: reader.IsDBNull(28) ? "keep-source" : NormalizeCleanupMode(reader.GetString(28)),
-            RemoveEmptySourceFolders: !reader.IsDBNull(29) && reader.GetInt64(29) == 1);
+            RemoveEmptySourceFolders: !reader.IsDBNull(29) && reader.GetInt64(29) == 1,
+            SubtitleLanguages: ParseSubtitleLanguages(reader.IsDBNull(30) ? null : reader.GetString(30)),
+            SubtitleLanguageMode: NormalizeSubtitleLanguageMode(reader.IsDBNull(31) ? null : reader.GetString(31)));
     }
 
+
+    /// <summary>
+    /// Stored as a comma-separated list, read back as an ordered one.
+    ///
+    /// Order is the whole point: it is the preference, and under
+    /// <c>first</c> mode it is what "first one you can get" means.
+    /// </summary>
+    private static IReadOnlyList<string> ParseSubtitleLanguages(string? stored)
+    {
+        if (string.IsNullOrWhiteSpace(stored))
+        {
+            return [];
+        }
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var languages = new List<string>();
+        foreach (var part in stored.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var code = part.ToLowerInvariant();
+            // A duplicate would inflate what the bar says was asked for, and a
+            // title can never be "twice as subtitled" in one language.
+            if (seen.Add(code))
+            {
+                languages.Add(code);
+            }
+        }
+
+        return languages;
+    }
+
+    /// <summary>
+    /// Anything unrecognised is <c>all</c>. Guessing <c>first</c> would silently
+    /// stop fetching languages somebody had asked for.
+    /// </summary>
+    private static string NormalizeSubtitleLanguageMode(string? value)
+        => string.Equals(value?.Trim(), "first", StringComparison.OrdinalIgnoreCase) ? "first" : "all";
 
     private static DestinationRuleItem ReadDestinationRule(System.Data.Common.DbDataReader reader)
     {

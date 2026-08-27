@@ -44,6 +44,11 @@ public interface ILibrariesRepository
         UpdateLibraryDetailsRequest request,
         CancellationToken cancellationToken);
 
+    Task<LibraryItem?> UpdateLibrarySubtitlesAsync(
+        string id,
+        UpdateLibrarySubtitlesRequest request,
+        CancellationToken cancellationToken);
+
     Task<LibraryItem?> UpdateLibraryQualityProfileAsync(
         string id,
         UpdateLibraryQualityProfileRequest request,

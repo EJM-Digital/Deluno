@@ -161,6 +161,88 @@ missing*. Same word, different subject.
 **Weir loses Subber in the same run**, once Deluno's side is proven on the
 rig.
 
+## Architecture — the rules this feature is held to
+
+James: *"make sure architecturally it's solid, we don't want any overlaps or
+overhead or conflicts with any of the other functions."* These are the specific
+ways this feature could break Deluno, and what stops each.
+
+### 1. One subtitle store, not two — ADR-001 is explicit
+
+[ADR-001](ADR-001-module-boundaries.md) records that Movies and Series are
+parallel copies of one engine, that fourteen repository methods already exist
+twice with the same shape, and that the duplication is **"actively
+reproducing"** — `GetDailyMetricsAsync` was added to both by copy-paste in a
+single session. Step 2 of that ADR is to merge them into `Deluno.Media`.
+
+Adding `movie_subtitle_*` and `episode_subtitle_*` as two hand-written copies
+would be adding to the pile Step 2 has to clear, in the same week the ADR was
+written.
+
+**So subtitle state is shared from the first line.** `Deluno.Media` already has
+the pattern: `MediaTableMap.For(MediaKind)` maps one shared SQL body onto each
+catalogue's own database and table names, with the identifiers allow-listed so
+nothing interpolates caller input. Subtitles extend that map rather than forking
+it.
+
+The one real asymmetry, and it is a fact about the domain rather than a copy: a
+movie's subtitle belongs to **the movie**, a show's belongs to **an episode**.
+So the map pairs `movie_subtitle_state(movie_id)` with
+`episode_subtitle_state(episode_id)` — still one shape and one body, and it is
+also exactly what makes a show's bar the sum over the episodes it holds.
+
+### 2. The catalogue page must stay a seek
+
+`CatalogueSearchStateOnPageTests` asserts the query plan, "because nothing about
+a wrong plan looks wrong until the twenty-thousandth title". Subtitles must not
+be what makes it scan.
+
+- **Movies:** one indexed lookup per row on `(movie_id)`. The eight correlated
+  subqueries that DESIGN-001 replaced were expensive because there were eight
+  and they disagreed; one indexed range scan per row on a fifty-row page is what
+  the existing episode rollup already costs.
+- **Series:** the page *already* makes one grouped pass over its own shows for
+  `EpisodeCount`, `AiredEpisodeCount`, `AiredWithFileCount`,
+  `AiredUpgradableCount` and `NextAirDateUtc`. The subtitle sums join **that
+  pass**. A second grouped query over the same episodes for the same fifty shows
+  is exactly the overhead to refuse.
+- The query-plan guard is extended to cover the new columns, so a later change
+  cannot quietly turn the page into a scan.
+
+### 3. No second scheduler, no second lane, no second worker
+
+Restated because it is the failure this feature is most likely to cause, and
+because Weir's Subber ships all three. Searches are planned from the
+library's existing cycle, exactly as per-episode search now is
+([#303](https://github.com/jampat000/Deluno/issues/303)) — which inherits the
+time-of-day window, the interval, missing-versus-upgrade, the manual override
+and `MaxItemsPerRun` for free, and cannot drift from them.
+
+Saving a language list therefore **enqueues nothing**. It changes what is
+wanted; the cycle decides when to act.
+
+### 4. Providers are Connections, not a parallel registry
+
+Health, test, rate-limit backoff, credential storage and the "needs you" rules
+already exist and are already correct. A `subber_providers` table beside
+`indexers` would be a second answer to "is this source working", which is the
+`AUDIT-002` defect one layer out.
+
+### 5. Files are written by the code that already owns files
+
+`Deluno.Filesystem` owns paths, imports and probing. A subtitle lands beside its
+video through that, not through a private writer with its own idea of where
+things go — and **no path mapping**, because Deluno imported the file and knows
+where it is.
+
+### 6. Nothing new on the hot read paths
+
+`SubtitleLanguagesWanted` is derived from the library's list, which is a short
+string already loaded with the library. `Held` is a count. Neither adds a table
+join to the wanted-state path, and neither changes what `titleMark()` returns —
+DESIGN-001 settled that subtitles never move the dot, so the mark's inputs are
+untouched.
+
 ## Build order
 
 1. **Languages, and nothing else.** A per-library list of wanted subtitle

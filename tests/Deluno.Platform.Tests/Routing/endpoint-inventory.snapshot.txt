@@ -265,6 +265,7 @@ PUT /api/libraries/{id}/automation
 PUT /api/libraries/{id}/media-plan
 PUT /api/libraries/{id}/quality-profile
 PUT /api/libraries/{id}/routing
+PUT /api/libraries/{id}/subtitles
 PUT /api/libraries/{id}/workflow
 PUT /api/library-views/{id}
 PUT /api/movies/monitoring
