@@ -107,7 +107,10 @@ public sealed class FfprobeMediaProbeService : IMediaProbeService
                 .Select(stream => new MediaSubtitleStreamInfo(
                     stream.Index,
                     stream.CodecName,
-                    LanguageOf(stream)))
+                    LanguageOf(stream),
+                    IsDisposed(stream, "forced"),
+                    IsDisposed(stream, "hearing_impaired"),
+                    TitleOf(stream)))
                 .ToArray();
 
             return new MediaProbeInfo(
@@ -153,6 +156,14 @@ public sealed class FfprobeMediaProbeService : IMediaProbeService
         // 3. System PATH
         return "ffprobe";
     }
+
+    private static bool IsDisposed(FfprobeStream stream, string flag)
+        => stream.Disposition is not null && stream.Disposition.TryGetValue(flag, out var value) && value == 1;
+
+    private static string? TitleOf(FfprobeStream stream)
+        => stream.Tags is not null && stream.Tags.TryGetValue("title", out var title) && !string.IsNullOrWhiteSpace(title)
+            ? title
+            : null;
 
     private static string? LanguageOf(FfprobeStream stream)
         => stream.Tags is not null && stream.Tags.TryGetValue("language", out var language)
@@ -210,5 +221,6 @@ public sealed class FfprobeMediaProbeService : IMediaProbeService
         [property: JsonPropertyName("channels")] int? Channels,
         [property: JsonPropertyName("channel_layout")] string? ChannelLayout,
         [property: JsonPropertyName("sample_rate")] string? SampleRate,
-        [property: JsonPropertyName("tags")] IReadOnlyDictionary<string, string>? Tags);
+        [property: JsonPropertyName("tags")] IReadOnlyDictionary<string, string>? Tags,
+        [property: JsonPropertyName("disposition")] IReadOnlyDictionary<string, int>? Disposition);
 }

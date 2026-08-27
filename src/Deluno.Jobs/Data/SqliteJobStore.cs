@@ -1737,6 +1737,55 @@ public sealed class SqliteJobStore(
             var hasPendingForLibrary = false;
             var attemptedKinds = 0;
 
+            // Reading what the files already have, planned by the same cycle
+            // that plans the searching and gated by the same window — DESIGN-002
+            // rule 3, no second scheduler. It runs before the searches for the
+            // obvious reason: knowing which subtitles you already hold is what
+            // decides which ones are worth fetching.
+            //
+            // It does not touch the automation state or the next-search clock.
+            // Those belong to searching, and a subtitle scan is not a search;
+            // borrowing them would make a library read "queued" for work that
+            // never reaches an indexer.
+            if (library.WantsSubtitles)
+            {
+                var subtitleDedupeKey = $"library.subtitles.scan:{library.LibraryId}";
+                if (!pendingJobKeys.Contains(subtitleDedupeKey) &&
+                    await FindDuplicateActiveJobAsync(connection, transaction, subtitleDedupeKey, subtitleDedupeKey, cancellationToken) is null)
+                {
+                    var subtitleJob = new JobQueueItem(
+                        Id: Guid.CreateVersion7().ToString("N"),
+                        JobType: "library.subtitles.scan",
+                        Source: library.MediaType,
+                        Status: "queued",
+                        PayloadJson: JsonSerializer.Serialize(new
+                        {
+                            libraryId = library.LibraryId,
+                            libraryName = library.LibraryName,
+                            mediaType = library.MediaType
+                        }),
+                        Attempts: 0,
+                        CreatedUtc: now,
+                        ScheduledUtc: now,
+                        StartedUtc: null,
+                        CompletedUtc: null,
+                        LeasedUntilUtc: null,
+                        WorkerId: null,
+                        LastError: null,
+                        RelatedEntityType: "library",
+                        RelatedEntityId: library.LibraryId,
+                        IdempotencyKey: subtitleDedupeKey,
+                        DedupeKey: subtitleDedupeKey,
+                        MaxAttempts: DefaultMaxAttempts,
+                        LastAttemptUtc: null,
+                        NextAttemptUtc: now);
+
+                    await InsertJobAsync(connection, transaction, subtitleJob, cancellationToken);
+                    queuedAny = true;
+                    await InsertActivityAsync(connection, transaction, "job.queued", FormatQueuedMessage(subtitleJob.JobType, subtitleJob.Source, subtitleJob.PayloadJson), subtitleJob.PayloadJson, subtitleJob.Id, subtitleJob.RelatedEntityType, subtitleJob.RelatedEntityId, now, cancellationToken);
+                }
+            }
+
             foreach (var (kind, enabled, due) in new[]
             {
                 (Kind: "missing", Enabled: library.MissingSearchEnabled, Due: missingDue),
@@ -1842,14 +1891,27 @@ public sealed class SqliteJobStore(
                 await InsertActivityAsync(connection, transaction, "job.queued", FormatQueuedMessage(job.JobType, job.Source, job.PayloadJson), job.PayloadJson, job.Id, job.RelatedEntityType, job.RelatedEntityId, now, cancellationToken);
             }
 
-            if (manualRequest && attemptedKinds == 0)
+            // A manual request against a library with both search types off has
+            // nothing to queue, so it is consumed rather than retried forever on
+            // every planner tick.
+            //
+            // It was already meant to be, and was not: clearing the local flag
+            // is what stopped the branch below — the only place that writes
+            // `search_requested = 0` — from ever running for this case. Both
+            // libraries on the lab rig had been sitting at "requested" for days
+            // because of it, re-entering the cycle every thirty seconds.
+            //
+            // Invisible until #301 gave the cycle something to do here: a
+            // subtitle scan was then queued on every one of those ticks. The
+            // same defect, in the shape this codebase keeps producing it — a
+            // decision recorded in one place and read from another.
+            var consumeManualRequest = manualRequest && attemptedKinds == 0;
+            if (consumeManualRequest)
             {
-                // A manual request against a library with both search types off
-                // is consumed rather than retried forever on every planner tick.
                 manualRequest = false;
             }
 
-            if (!queuedForLibrary && (hasPendingForLibrary || manualRequest))
+            if (!queuedForLibrary && (hasPendingForLibrary || manualRequest || consumeManualRequest))
             {
                 if (await UpdateAutomationIdleAsync(connection, transaction, library.LibraryId, library.LibraryName, library.MediaType, "queued", missingNextSearchUtc, upgradeNextSearchUtc, searchRequested: false, updatedUtc: now, cancellationToken: cancellationToken))
                 {
@@ -3123,6 +3185,7 @@ public sealed class SqliteJobStore(
 
         return jobType switch
         {
+            "library.subtitles.scan" => "Added a subtitle check to the queue.",
             "movies.catalog.refresh" => "Added a movie check to the queue.",
             "series.catalog.refresh" => "Added a TV show check to the queue.",
             "filesystem.import.execute" => "Added a file import to the queue.",
@@ -3149,6 +3212,7 @@ public sealed class SqliteJobStore(
 
         return jobType switch
         {
+            "library.subtitles.scan" => "Started reading your files for subtitles.",
             "movies.catalog.refresh" => "Started checking your movie library.",
             "series.catalog.refresh" => "Started checking your TV show library.",
             "filesystem.import.execute" => "Started importing a completed download.",
@@ -3174,6 +3238,7 @@ public sealed class SqliteJobStore(
         return jobType switch
         {
             "filesystem.import.execute" => "File import",
+            "library.subtitles.scan" => "Subtitle check",
             "movies.metadata.refresh" => "Movie metadata refresh",
             "series.metadata.refresh" => "TV metadata refresh",
             "movies.quality.recalculate" => "Movie quality refresh",

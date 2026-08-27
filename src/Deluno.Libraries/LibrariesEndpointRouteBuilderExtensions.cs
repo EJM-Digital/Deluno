@@ -335,6 +335,14 @@ public static class LibrariesEndpointRouteBuilderExtensions
             return Results.Ok(item);
         });
 
+        // The languages Deluno can name, so the picker and the parser cannot
+        // drift apart. Served rather than duplicated in TypeScript: a code the
+        // browser offered that the server did not recognise would be dropped on
+        // save, and the only sign would be a language quietly missing from the
+        // list you just wrote.
+        endpoints.MapGet("/api/subtitle-languages", (HttpContext httpContext) =>
+            Results.Ok(SubtitleLanguages.All.Select(language => new { code = language.Code, name = language.Name })));
+
         // Which subtitle languages this library wants (#301, DESIGN-002).
         //
         // No job is enqueued here. Changing the languages changes what the bar

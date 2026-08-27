@@ -51,7 +51,12 @@ public sealed class DelunoHeartbeatWorker(
         // Each of its jobs is one bounded slice of a library scan, so it queues
         // and drains like any other import rather than holding a lease for
         // hours.
-        new("import", TimeSpan.FromSeconds(30), ["filesystem.import.execute", "library.import.existing"],
+        // "library.subtitles.scan" is here for the same reason: it is a
+        // directory listing and an ffprobe per file, which is the import lane's
+        // resource exactly. It is deliberately not on a search lane — reading
+        // what a file already contains has nothing to do with an indexer, and
+        // putting it there would make a subtitle scan able to delay a search.
+        new("import", TimeSpan.FromSeconds(30), ["filesystem.import.execute", "library.import.existing", "library.subtitles.scan"],
             BatchSize: 16, MaxConcurrency: 8),
 
         // Searching, one lane per catalogue so neither can starve the other.
@@ -305,7 +310,8 @@ public sealed class DelunoHeartbeatWorker(
                         RetryDelayHours: library.RetryDelayHours,
                         MaxItemsPerRun: library.MaxItemsPerRun,
                         SearchWindowStartHour: library.SearchWindowStartHour,
-                        SearchWindowEndHour: library.SearchWindowEndHour))
+                        SearchWindowEndHour: library.SearchWindowEndHour,
+                        WantsSubtitles: library.SubtitleLanguages is { Count: > 0 }))
                     .ToArray();
 
                 await jobQueueRepository.PlanLibrarySearchesAsync(automationPlans, stoppingToken);

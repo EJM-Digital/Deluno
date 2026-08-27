@@ -17,6 +17,7 @@ public static class MoviesServiceCollectionExtensions
     public static IServiceCollection AddDelunoMoviesModule(this IServiceCollection services)
     {
         services.TryAddSingleton<IMediaStateRepository, SqliteMediaStateRepository>();
+        services.TryAddSingleton<IMediaSubtitleRepository, SqliteMediaSubtitleRepository>();
         services.AddSingleton<IMovieCatalogRepository, SqliteMovieCatalogRepository>();
         services.AddSingleton<IMovieImportRecoveryRetentionRepository>(provider => provider.GetRequiredService<IMovieCatalogRepository>());
         services.AddSingleton<IMovieWorkflowService, MovieWorkflowService>();

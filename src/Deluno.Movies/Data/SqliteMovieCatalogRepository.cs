@@ -8,16 +8,19 @@ using Deluno.Media;
 using Deluno.Movies.Contracts;
 using Deluno.Quality;
 using Microsoft.Data.Sqlite;
+using Deluno.Libraries.Data;
 
 namespace Deluno.Movies.Data;
 
 public sealed class SqliteMovieCatalogRepository(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
     TimeProvider timeProvider,
-    IMediaStateRepository? sharedMediaStateRepository = null)
+    IMediaStateRepository? sharedMediaStateRepository = null,
+    ILibrarySubtitlePreferences? librarySubtitlePreferences = null)
     : IMovieCatalogRepository
 {
     private readonly IMediaStateRepository? sharedMediaStateRepository = sharedMediaStateRepository;
+    private readonly ILibrarySubtitlePreferences? librarySubtitlePreferences = librarySubtitlePreferences;
 
     public async Task<MovieListItem> AddAsync(CreateMovieRequest request, CancellationToken cancellationToken)
     {
@@ -727,21 +730,66 @@ public sealed class SqliteMovieCatalogRepository(
             ? new CataloguePageToken(sortValues[pageSize - 1], items[^1].Id).Encode()
             : null;
 
+        var withSubtitles = await AttachSubtitleCountsAsync(connection, items, cancellationToken);
+
         // Counting scans, so it happens once per filter rather than on every
         // page of it. A continuation page keeps the numbers the caller has.
         if (token is not null)
         {
-            return new CataloguePage<MovieListItem>(items, nextPageToken, hasMore, null, null);
+            return new CataloguePage<MovieListItem>(withSubtitles, nextPageToken, hasMore, null, null);
         }
 
         var facets = await CountCatalogueFacetsAsync(connection, search, libraryId, status, query.Monitored, cancellationToken);
 
         return new CataloguePage<MovieListItem>(
-            items,
+            withSubtitles,
             nextPageToken,
             hasMore,
             SelectFacetTotal(facets, status),
             facets);
+    }
+
+    /// <summary>
+    /// How many subtitle languages each movie on the page was asked for, and
+    /// how many it holds.
+    ///
+    /// One indexed range scan over the page's own ids, and only for libraries
+    /// that have asked for a language — so a shelf nobody has turned subtitles
+    /// on for adds no query at all, and the page costs what it costs today.
+    /// </summary>
+    private async Task<IReadOnlyList<MovieListItem>> AttachSubtitleCountsAsync(
+        System.Data.Common.DbConnection connection,
+        List<MovieListItem> items,
+        CancellationToken cancellationToken)
+    {
+        if (librarySubtitlePreferences is null || items.Count == 0)
+        {
+            return items;
+        }
+
+        var preferences = await librarySubtitlePreferences.GetSubtitlePreferencesAsync(cancellationToken);
+        var counts = await CatalogueSubtitleRollup.ForPageAsync(
+            connection,
+            MediaKind.Movie,
+            items.Select(item => (item.Id, item.LibraryId)).ToArray(),
+            preferences,
+            timeProvider.GetUtcNow(),
+            cancellationToken);
+
+        if (counts.Count == 0)
+        {
+            return items;
+        }
+
+        return items
+            .Select(item => counts.TryGetValue(item.Id, out var count)
+                ? item with
+                {
+                    SubtitleLanguagesWanted = count.WantedPerFile,
+                    SubtitleLanguagesHeld = count.Held
+                }
+                : item)
+            .ToArray();
     }
 
     /// <summary>

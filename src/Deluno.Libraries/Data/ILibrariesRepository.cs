@@ -2,7 +2,7 @@ using Deluno.Libraries.Contracts;
 
 namespace Deluno.Libraries.Data;
 
-public interface ILibrariesRepository
+public interface ILibrariesRepository : ILibrarySubtitlePreferences
 {
     Task<IReadOnlyList<LibraryItem>> ListLibrariesAsync(CancellationToken cancellationToken);
 

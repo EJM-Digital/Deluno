@@ -16,6 +16,7 @@ public static class SeriesServiceCollectionExtensions
     public static IServiceCollection AddDelunoSeriesModule(this IServiceCollection services)
     {
         services.TryAddSingleton<IMediaStateRepository, SqliteMediaStateRepository>();
+        services.TryAddSingleton<IMediaSubtitleRepository, SqliteMediaSubtitleRepository>();
         services.AddSingleton<ISeriesCatalogRepository, SqliteSeriesCatalogRepository>();
         services.AddSingleton<ISeriesImportRecoveryRetentionRepository>(provider => provider.GetRequiredService<ISeriesCatalogRepository>());
         services.AddSingleton<ISeriesWorkflowService, SeriesWorkflowService>();
