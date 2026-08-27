@@ -642,7 +642,13 @@ public sealed class SqliteMovieCatalogRepository(
         var where = CatalogueKeyset.CombineFilters(
             search is null ? string.Empty : CatalogueKeyset.SearchFilter("m"),
             CatalogueLibraryFilter(libraryId),
-            CatalogueKeyset.StatusFilter(status, "m", CatalogueHasFileFor(libraryId), CatalogueUpgradeFor(libraryId)),
+            CatalogueKeyset.StatusFilter(
+                status,
+                "m",
+                CatalogueHasFileFor(libraryId),
+                CatalogueUpgradeFor(libraryId),
+                CatalogueWantedIs(libraryId, "covered"),
+                CatalogueWantedIs(libraryId, "upcoming")),
             token is null ? string.Empty : CatalogueKeyset.SeekPredicate(sortExpression, "m", query.Descending));
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -760,7 +766,7 @@ public sealed class SqliteMovieCatalogRepository(
                 SUM(CASE WHEN m.monitored = 1 THEN 1 ELSE 0 END),
                 SUM(CASE WHEN m.monitored = 0 THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {CatalogueHasFileFor(libraryId)} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {CatalogueHasFileFor(libraryId)} THEN 0 ELSE 1 END),
+                SUM(CASE WHEN {CatalogueHasFileFor(libraryId)} OR {CatalogueWantedIs(libraryId, "upcoming")} THEN 0 ELSE 1 END),
                 SUM(CASE WHEN {CatalogueUpgradeFor(libraryId)} THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {CatalogueWantedIs(libraryId, "covered")} THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {CatalogueWantedIs(libraryId, "upcoming")} THEN 1 ELSE 0 END)

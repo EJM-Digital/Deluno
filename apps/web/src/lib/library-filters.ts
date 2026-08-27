@@ -8,6 +8,10 @@ export type QuickFilter =
   | "downloading"
   | "missing"
   | "upgrades"
+  /** Has what the profile asked for — the rung above `upgrades`. */
+  | "covered"
+  /** Not out yet, so its absence is not a shortfall. */
+  | "upcoming"
   | "needsAttention";
 export type SortField = "title" | "year" | "rating" | "quality" | "added" | "size" | "status" | "bitrate" | "releaseGroup" | "codec" | "runtime" | "tmdbVotes" | "popularity" | "path";
 export type SortDirection = "asc" | "desc";

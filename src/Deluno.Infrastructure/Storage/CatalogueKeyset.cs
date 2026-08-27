@@ -110,14 +110,27 @@ public static class CatalogueKeyset
     public static string SearchFilter(string alias)
         => $"(lower({alias}.title) LIKE @search OR lower(COALESCE({alias}.genres, '')) LIKE @search)";
 
-    public static string StatusFilter(string status, string alias, string hasFileExpression, string? upgradeExpression = null)
+    public static string StatusFilter(
+        string status,
+        string alias,
+        string hasFileExpression,
+        string? upgradeExpression = null,
+        string? coveredExpression = null,
+        string? upcomingExpression = null)
         => CatalogueStatusFilters.Normalize(status) switch
         {
             CatalogueStatusFilters.Monitored => $"{alias}.monitored = 1",
             CatalogueStatusFilters.Unmonitored => $"{alias}.monitored = 0",
             CatalogueStatusFilters.Downloaded => hasFileExpression,
+            // Missing is a *state*, not the absence of a file: a title that is
+            // not out yet has no file either, and calling it missing counted it
+            // against the library from the day it was added.
+            CatalogueStatusFilters.Missing when !string.IsNullOrWhiteSpace(upcomingExpression)
+                => $"NOT {hasFileExpression} AND NOT {upcomingExpression}",
             CatalogueStatusFilters.Missing => $"NOT {hasFileExpression}",
             CatalogueStatusFilters.Upgrades when !string.IsNullOrWhiteSpace(upgradeExpression) => upgradeExpression,
+            CatalogueStatusFilters.Covered when !string.IsNullOrWhiteSpace(coveredExpression) => coveredExpression,
+            CatalogueStatusFilters.Upcoming when !string.IsNullOrWhiteSpace(upcomingExpression) => upcomingExpression,
             _ => string.Empty
         };
 

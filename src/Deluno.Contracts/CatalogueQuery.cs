@@ -48,6 +48,16 @@ public static class CatalogueStatusFilters
     public const string Missing = "missing";
     public const string Upgrades = "upgrades";
 
+    /// <summary>
+    /// Has what the profile asked for. The counterpart to <c>Upgrades</c>: those
+    /// two together are what <c>Downloaded</c> could never separate, since a film
+    /// below its target is downloaded too.
+    /// </summary>
+    public const string Covered = "covered";
+
+    /// <summary>Not out yet, so its absence is not a shortfall.</summary>
+    public const string Upcoming = "upcoming";
+
     public static string Normalize(string? value)
         => value?.Trim().ToLowerInvariant() switch
         {
@@ -56,6 +66,8 @@ public static class CatalogueStatusFilters
             Downloaded => Downloaded,
             Missing => Missing,
             Upgrades => Upgrades,
+            Covered => Covered,
+            Upcoming => Upcoming,
             _ => All
         };
 }

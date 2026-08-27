@@ -76,4 +76,20 @@ public sealed record MovieListItem(
     string? TargetQuality = null,
     bool? QualityCutoffMet = null,
     DateTimeOffset? LastSearchUtc = null,
-    DateTimeOffset? NextEligibleSearchUtc = null);
+    DateTimeOffset? NextEligibleSearchUtc = null,
+    /// <summary>
+    /// The bar under the poster, for a film: subtitle languages.
+    ///
+    /// DESIGN-001 gives every title a bar — episodes on a show, subtitle
+    /// languages on a film — proportioned to what you asked for. Four languages
+    /// and you have English is a quarter green. A title that asked for nothing
+    /// keeps a grey bar that claims nothing, rather than no bar, so the shelf
+    /// does not change shape when Subber ([#301](https://github.com/jampat000/Deluno/issues/301))
+    /// starts filling these in.
+    ///
+    /// Zero until Subber exists. The contract is here now so the mark does not
+    /// have to be redesigned around it later — which is the whole reason the
+    /// design settled the vocabulary before the feature.
+    /// </summary>
+    int SubtitleLanguagesWanted = 0,
+    int SubtitleLanguagesHeld = 0);

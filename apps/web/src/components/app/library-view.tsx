@@ -36,7 +36,7 @@ import { toast } from "../shell/toaster";
 import { ConfirmDialog } from "../ui/confirm-dialog";
 import { LibraryBulkToolsDialog } from "./library-bulk-tools-dialog";
 import { LibrarySelectAllToggle } from "./library-select-all-toggle";
-import { LibrarySummaryHeader } from "./library-summary-header";
+import { LibraryActions } from "./library-actions";
 
 type Variant = "movies" | "shows";
 
@@ -91,7 +91,6 @@ export function LibraryView({
   variant: Variant;
 }) {
   const navigate = useNavigate();
-  const navigation = useNavigation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { density } = useDensity();
   const {
@@ -378,12 +377,9 @@ export function LibraryView({
   const filtered = libraryItems;
 
   const selectedCount = selectedIds.length;
-  const monitoredCount = facets?.monitored ?? 0;
+  // The chip row reads the facets directly; only Hunt still needs a number of
+  // its own, to say how many it is about to go after.
   const missingCount = facets?.missing ?? 0;
-  const downloadingCount = 0;
-  const coveredCount = facets?.covered ?? 0;
-  const upgradableCount = facets?.upgrades ?? 0;
-  const upcomingCount = facets?.upcoming ?? 0;
   const label = variant === "movies" ? "movies" : "TV shows";
   const singular = variant === "movies" ? "movie" : "TV show";
 
@@ -808,26 +804,14 @@ export function LibraryView({
   return (
     <>
       <section className="space-y-[var(--grid-gap)]">
-        <LibrarySummaryHeader
-          label={label}
-          singular={singular}
-          // Route transitions count here but not for the grid: the header's
-          // numbers are unknown until the first load lands, whereas an empty
-          // grid is a fact once we have one.
-          isLoading={(isRouteLoading || navigation.state !== "idle" || isCatalogueLoading) && !hasLoadedOnce}
-          totalCount={totalCount}
-          coveredCount={coveredCount}
-          upgradableCount={upgradableCount}
-          upcomingCount={upcomingCount}
-          monitoredCount={monitoredCount}
-          missingCount={missingCount}
-          downloadingCount={downloadingCount}
-          onToggleCreate={() => showCreate ? closeCreate() : openCreate()}
-          isUpdatingMetadata={isUpdatingMetadata}
-          onUpdateMetadata={() => void handleUpdateAllMetadata()}
-          isHuntingMissing={isHuntingMissing}
-          onHuntMissing={() => void handleHuntMissing()}
-        />
+        {/*
+          The summary band is gone. It counted Missing, Monitored, Unmonitored
+          and Upgradable directly above a row of chips carrying the same four
+          numbers — the same fact twice, once clickable and once not — and its
+          three buttons now sit in that row instead. One row: search, scope,
+          display, the filters that are also the legend, and the two things you
+          can do about them.
+        */}
         <LibraryCreateDialog
           open={showCreate}
           onOpenChange={(open) => (open ? openCreate() : closeCreate())}
@@ -853,6 +837,18 @@ export function LibraryView({
         <ControlRail
           label={label}
           facets={facets}
+          actions={
+            <LibraryActions
+              singular={singular}
+              label={label}
+              missingCount={missingCount}
+              onToggleCreate={() => showCreate ? closeCreate() : openCreate()}
+              isUpdatingMetadata={isUpdatingMetadata}
+              onUpdateMetadata={() => void handleUpdateAllMetadata()}
+              isHuntingMissing={isHuntingMissing}
+              onHuntMissing={() => void handleHuntMissing()}
+            />
+          }
           controls={{
             query, setQuery, quickFilter, setQuickFilter, sortField, setSortField,
             sortDirection, setSortDirection, view, setView, cardSize, changeSize,

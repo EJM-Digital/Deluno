@@ -68,6 +68,9 @@ export interface MediaItem {
   airedWithFileCount?: number;
   airedUpgradableCount?: number;
   nextAirDateUtc?: string | null;
+  /** The bar under a film's poster. Zero until Subber (#301). */
+  subtitleLanguagesWanted?: number;
+  subtitleLanguagesHeld?: number;
   certification?: string | null;
   collection?: string | null;
   minimumAvailability?: string | null;

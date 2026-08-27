@@ -56,6 +56,13 @@ export interface MovieListItem {
   qualityCutoffMet?: boolean | null;
   lastSearchUtc?: string | null;
   nextEligibleSearchUtc?: string | null;
+  /**
+   * The bar under the poster. Zero until Subber (#301) fills subtitle languages
+   * in; the contract is here now so the mark does not have to be redesigned
+   * around it later.
+   */
+  subtitleLanguagesWanted?: number;
+  subtitleLanguagesHeld?: number;
 }
 
 export interface MovieImportRecoveryCase {
@@ -180,6 +187,13 @@ export interface SeriesListItem {
   airedWithFileCount?: number;
   airedUpgradableCount?: number;
   nextAirDateUtc?: string | null;
+  /**
+   * The bar under the poster. Zero until Subber (#301) fills subtitle languages
+   * in; the contract is here now so the mark does not have to be redesigned
+   * around it later.
+   */
+  subtitleLanguagesWanted?: number;
+  subtitleLanguagesHeld?: number;
 }
 
 export interface CatalogueFacets {
