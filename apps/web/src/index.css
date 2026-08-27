@@ -220,9 +220,19 @@
     color-scheme: dark;
   }
 
+  /*
+    The dropdown a native select opens is drawn by the browser, and on Windows
+    it takes its colours from the select itself — so a select with a transparent
+    background, which is what one sitting inside chrome of its own wants, opened
+    a white list with a blue highlight in the middle of a dark app.
+    `color-scheme` alone does not cover it once a background has been set.
+    Naming the popover colours here fixes every select at once, in both themes.
+  */
   select option {
     font-family: inherit;
     font-size: var(--field-control-size);
+    background-color: hsl(var(--popover));
+    color: hsl(var(--popover-foreground));
   }
 
   :where(button, [role="button"], a, input, select, textarea) {
