@@ -27,11 +27,37 @@ function splitGenres(value: string | null | undefined) {
   return parsed;
 }
 
+/**
+ * The stored provider blob, with its keys folded to lower case.
+ *
+ * **This is a fix, and the defect it fixes was total.** `metadata_json` is
+ * `JsonSerializer.Serialize(match)` with default options, so it is
+ * *PascalCase* — `"Certification"`, `"Studio"`, `"OriginalLanguage"`. Every
+ * reader below asked for camelCase and did an exact-key lookup, so every one of
+ * them returned null for every title on every install, always.
+ *
+ * That is not one field. It is certification, collection, studio, language,
+ * path, quality profile, tags, source, HDR format, release dates, and the
+ * external ratings and vote counts — a whole family of things the library list
+ * and both detail pages display, reading keys that were never in the payload.
+ * The columns simply looked like the provider had not sent anything.
+ *
+ * Folding the case here rather than changing the serializer fixes every blob
+ * already on disk without a migration, and keeps working if the server ever
+ * does switch to camelCase. Callers still ask in camelCase, which is what the
+ * rest of the front end speaks; only the lookup is case-blind.
+ */
 function parseMetadataJson(value: string | null | undefined): Record<string, unknown> {
   if (!value) return {};
   try {
     const parsed = JSON.parse(value);
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+
+    const folded: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(parsed as Record<string, unknown>)) {
+      folded[key.toLowerCase()] = entry;
+    }
+    return folded;
   } catch {
     return {};
   }
@@ -39,7 +65,7 @@ function parseMetadataJson(value: string | null | undefined): Record<string, unk
 
 function readString(meta: Record<string, unknown>, ...keys: string[]) {
   for (const key of keys) {
-    const value = meta[key];
+    const value = meta[key.toLowerCase()];
     if (typeof value === "string" && value.trim()) return value.trim();
   }
   return null;
@@ -47,7 +73,7 @@ function readString(meta: Record<string, unknown>, ...keys: string[]) {
 
 function readNumber(meta: Record<string, unknown>, ...keys: string[]) {
   for (const key of keys) {
-    const value = meta[key];
+    const value = meta[key.toLowerCase()];
     if (typeof value === "number" && Number.isFinite(value)) return value;
     if (typeof value === "string") {
       const parsed = Number(value);
@@ -59,7 +85,7 @@ function readNumber(meta: Record<string, unknown>, ...keys: string[]) {
 
 function readStringArray(meta: Record<string, unknown>, ...keys: string[]) {
   for (const key of keys) {
-    const value = meta[key];
+    const value = meta[key.toLowerCase()];
     if (Array.isArray(value)) {
       return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
     }
