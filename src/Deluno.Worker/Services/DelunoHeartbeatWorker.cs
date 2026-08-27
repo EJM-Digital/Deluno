@@ -244,6 +244,10 @@ public sealed class DelunoHeartbeatWorker(
         // pacing a backlog by the interval.
         var drainImmediately = false;
 
+        // What this lane is running right now. Kept across ticks, so a tick can
+        // top the lane up rather than waiting for the previous batch to drain.
+        var inFlight = new List<Task>();
+
         while (!stoppingToken.IsCancellationRequested)
         {
             if (!drainImmediately)
@@ -365,14 +369,33 @@ public sealed class DelunoHeartbeatWorker(
                 continue;
             }
 
-            // Lease a batch, not a single job. One job per tick made sustained
-            // throughput a function of the timer — the 2-second import lane
-            // could never exceed 30 jobs a minute however much was queued.
+            // Lease only what there is room to start.
+            //
+            // This used to lease a whole batch and then `await` all of it before
+            // going round again, which made the batch a **barrier**: a lane with
+            // one slow job sat with its other slots empty and leased nothing new
+            // until that job finished. A single search stuck behind an
+            // unresponsive indexer held up every search behind it, and a large
+            // import held up fifteen small ones — not because anything was
+            // contended, but because they were in the same batch.
+            //
+            // Now each lane keeps up to MaxConcurrency jobs in flight and tops
+            // up as each one finishes. Nothing waits on anything except a real
+            // shortage of slots.
+            inFlight.RemoveAll(task => task.IsCompleted);
+            var freeSlots = lane.MaxConcurrency - inFlight.Count;
+            if (freeSlots <= 0)
+            {
+                // Every slot busy. Come back when one frees rather than leasing
+                // work this lane has nowhere to run.
+                continue;
+            }
+
             var jobs = await jobQueueRepository.LeaseBatchAsync(
                 $"{_workerId}-{lane.Name}",
                 TimeSpan.FromMinutes(2),
                 lane.JobTypes,
-                lane.BatchSize,
+                Math.Min(lane.BatchSize, freeSlots),
                 stoppingToken);
 
             if (jobs.Count == 0)
@@ -381,52 +404,63 @@ public sealed class DelunoHeartbeatWorker(
                 continue;
             }
 
-            // A full batch means the backlog may not be drained yet. Loop
-            // straight round instead of waiting out the interval — otherwise a
-            // 500-job backlog is still paced by the backstop.
-            if (jobs.Count == lane.BatchSize)
+            // Took everything offered, so there may well be more queued. Go
+            // straight round rather than pacing a backlog by the interval.
+            if (jobs.Count == Math.Min(lane.BatchSize, freeSlots))
             {
                 drainImmediately = true;
             }
 
-            // Only reached when there is a job, so it never costs anything on an
-            // idle tick.
-            var handlerRegistry = services.GetRequiredService<JobHandlerRegistry>();
+            foreach (var job in jobs)
+            {
+                inFlight.Add(RunJobAsync(lane, job, stoppingToken));
+            }
+        }
 
-            // Jobs in a batch are independent, so they run together rather than
-            // queueing behind each other. Failure stays per job: one job's
-            // exception is recorded against that job and does not touch the rest.
-            //
-            // Handlers are resolved once per job from the batch's shared DI
-            // scope. They must stay stateless — a scope is shared across every
-            // job running concurrently in this batch.
-            await Parallel.ForEachAsync(
-                jobs,
-                new ParallelOptions
-                {
-                    MaxDegreeOfParallelism = lane.MaxConcurrency,
-                    CancellationToken = stoppingToken
-                },
-                async (job, token) =>
-                {
-                    try
-                    {
-                        logger.LogInformation("Processing job {JobId} of type {JobType} on lane {LaneName}.", job.Id, job.JobType, lane.Name);
-                        var handler = handlerRegistry.Resolve(job.JobType);
-                        var message = await handler.HandleAsync(job, token);
+        // Shutdown: let what is running finish rather than abandoning leases
+        // that would then have to be recovered on the next start.
+        if (inFlight.Count > 0)
+        {
+            await Task.WhenAll(inFlight);
+        }
+    }
 
-                        await jobQueueRepository.CompleteAsync(job.Id, $"{_workerId}-{lane.Name}", message, token);
-                    }
-                    catch (OperationCanceledException) when (token.IsCancellationRequested)
-                    {
-                        throw;
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogError(ex, "Worker {WorkerId} lane {LaneName} failed processing job {JobId}.", _workerId, lane.Name, job.Id);
-                        await jobQueueRepository.FailAsync(job.Id, $"{_workerId}-{lane.Name}", ex.Message, CancellationToken.None);
-                    }
-                });
+    /// <summary>
+    /// One job, start to finish, in its own DI scope.
+    ///
+    /// Its own scope because a job now outlives the tick that leased it — and
+    /// because it is safer besides: the previous shape shared one scope across
+    /// every job running concurrently in a batch, which quietly required every
+    /// handler to be stateless. A scope per job removes that requirement rather
+    /// than documenting it.
+    ///
+    /// Failure stays per job. One job's exception is recorded against that job
+    /// and touches nothing else in the lane.
+    /// </summary>
+    private async Task RunJobAsync(JobLane lane, JobQueueItem job, CancellationToken stoppingToken)
+    {
+        var workerId = $"{_workerId}-{lane.Name}";
+
+        using var scope = scopeFactory.CreateScope();
+        var jobQueueRepository = scope.ServiceProvider.GetRequiredService<IJobQueueRepository>();
+
+        try
+        {
+            logger.LogInformation("Processing job {JobId} of type {JobType} on lane {LaneName}.", job.Id, job.JobType, lane.Name);
+            var handler = scope.ServiceProvider.GetRequiredService<JobHandlerRegistry>().Resolve(job.JobType);
+            var message = await handler.HandleAsync(job, stoppingToken);
+
+            await jobQueueRepository.CompleteAsync(job.Id, workerId, message, stoppingToken);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // Shutting down. Leave the lease to expire and be recovered on the
+            // next start rather than recording a failure the job did not have.
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Worker {WorkerId} lane {LaneName} failed processing job {JobId}.", _workerId, lane.Name, job.Id);
+            await jobQueueRepository.FailAsync(job.Id, workerId, ex.Message, CancellationToken.None);
         }
     }
 
