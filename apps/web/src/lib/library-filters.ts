@@ -70,39 +70,146 @@ export const QUICK_FILTER_MARK: Record<QuickFilter, TitleMark | null> = {
 };
 
 /**
- * One union, and the four values the sort menu actually offers.
+ * Every sort the server can actually perform, and no more.
  *
- * This was fourteen values here and four in `library-control-rail.tsx` — the
+ * It was once fourteen values here and four in `library-control-rail.tsx` — the
  * same redeclaration the QuickFilter comment in that file describes itself as
- * having fixed, left in place one line below it. The ten extra were unreachable:
- * nothing can set a sort the menu does not list.
+ * having fixed, left in place one line below it. The ten extra were
+ * unreachable: nothing can set a sort the menu does not list.
+ *
+ * `runtime` and `popularity` are new here and were never new in the database —
+ * both have had an index since V0011/V0012 and neither was ever offered.
+ *
+ * Size and quality are deliberately absent: they live on the wanted state,
+ * which the catalogue page reaches through a correlated pick, so ordering by
+ * them would run that pick for every title in the library and sort the lot.
+ * See `CatalogueSortFields` for the full account.
  */
-export type SortField = "title" | "year" | "rating" | "added";
+export type SortField = "title" | "year" | "rating" | "added" | "runtime" | "popularity";
 export type SortDirection = "asc" | "desc";
 
+/**
+ * The narrowing beyond a status and a library.
+ *
+ * The shape mirrors `CatalogueFilters` on the server one for one, because it is
+ * sent straight to it. Deliberately not a generic field/operator/value engine:
+ * the last one of those lived in this very file, could express filters nothing
+ * could answer, and two of its branches matched zero rows forever without
+ * anybody noticing (#302).
+ */
+export interface CustomFilters {
+  /** Quality tiers as the ladder names them — `WEB 2160p`, `Remux 1080p`. */
+  qualities: string[];
+  /** Every genre listed must be present. */
+  genres: string[];
+  minSizeGb: number | null;
+  maxSizeGb: number | null;
+  minYear: number | null;
+  maxYear: number | null;
+  minRuntime: number | null;
+  maxRuntime: number | null;
+  minRating: number | null;
+}
+
+export function emptyCustomFilters(): CustomFilters {
+  return {
+    qualities: [], genres: [],
+    minSizeGb: null, maxSizeGb: null,
+    minYear: null, maxYear: null,
+    minRuntime: null, maxRuntime: null,
+    minRating: null
+  };
+}
+
+/**
+ * How many questions this is asking. Drives the number on the Filters button,
+ * so a narrowed shelf can never look like an unnarrowed one — which is the way
+ * people lose half their library and conclude Deluno has.
+ */
+export function customFilterCount(filters: CustomFilters): number {
+  return (
+    (filters.qualities.length > 0 ? 1 : 0) +
+    (filters.genres.length > 0 ? 1 : 0) +
+    (filters.minSizeGb !== null || filters.maxSizeGb !== null ? 1 : 0) +
+    (filters.minYear !== null || filters.maxYear !== null ? 1 : 0) +
+    (filters.minRuntime !== null || filters.maxRuntime !== null ? 1 : 0) +
+    (filters.minRating !== null ? 1 : 0)
+  );
+}
+
+/** Writes the filters onto a catalogue request. Only what is set is sent. */
+export function applyCustomFilters(params: URLSearchParams, filters: CustomFilters) {
+  if (filters.qualities.length) params.set("quality", filters.qualities.join(","));
+  if (filters.genres.length) params.set("genre", filters.genres.join(","));
+  if (filters.minSizeGb !== null) params.set("minSizeGb", String(filters.minSizeGb));
+  if (filters.maxSizeGb !== null) params.set("maxSizeGb", String(filters.maxSizeGb));
+  if (filters.minYear !== null) params.set("minYear", String(filters.minYear));
+  if (filters.maxYear !== null) params.set("maxYear", String(filters.maxYear));
+  if (filters.minRuntime !== null) params.set("minRuntime", String(filters.minRuntime));
+  if (filters.maxRuntime !== null) params.set("maxRuntime", String(filters.maxRuntime));
+  if (filters.minRating !== null) params.set("minRating", String(filters.minRating));
+}
+
+/**
+ * Reads the custom filters back off a saved view.
+ *
+ * Anything unreadable is "no filters", never a partial set: a saved view that
+ * silently narrowed by half of what you saved would be worse than one that
+ * narrowed by none of it, because you would not be able to tell.
+ */
+export function parseCustomFilters(raw: string | null | undefined): CustomFilters {
+  if (!raw) return emptyCustomFilters();
+  try {
+    const parsed = JSON.parse(raw) as Partial<CustomFilters>;
+    // An array is the legacy `rulesJson` value the browser-side rule engine
+    // left behind (#302). It is not a filter set, and reading it as one would
+    // spread an array's indices over these fields.
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") return emptyCustomFilters();
+    return { ...emptyCustomFilters(), ...parsed };
+  } catch {
+    return emptyCustomFilters();
+  }
+}
+
+/**
+ * What a poster may carry, beyond the artwork.
+ *
+ * This interface was declared twice — here and in `library-grid.tsx` — with the
+ * same five fields, in a file whose own header describes that exact defect. The
+ * grid re-exports this one now, so adding an option cannot leave half the app
+ * behind.
+ *
+ * The extras all land on one line under the title rather than one row each. Six
+ * new switches each claiming their own line would bury the artwork the grid
+ * exists to show; joined into a sentence, a card stays calm however many are on.
+ */
 export interface DisplayOptions {
   showTitle: boolean;
   showMeta: boolean;
   showStatusPill: boolean;
   showQualityBadge: boolean;
   showRating: boolean;
+  showSize: boolean;
+  showGenres: boolean;
+  showRuntime: boolean;
+  showReleaseGroup: boolean;
+  showCodec: boolean;
+  showAdded: boolean;
 }
 
 export function defaultDisplayOptions(): DisplayOptions {
-  return { showTitle: true, showMeta: true, showStatusPill: true, showQualityBadge: true, showRating: true };
+  return {
+    showTitle: true, showMeta: true, showStatusPill: true, showQualityBadge: true, showRating: true,
+    // Off by default. They are the answer to "show me more", and a card that
+    // arrives already carrying everything has nothing left to ask for.
+    showSize: false, showGenres: false, showRuntime: false, showReleaseGroup: false, showCodec: false, showAdded: false
+  };
 }
 
 export function parseDisplayOptions(raw: string | null | undefined): DisplayOptions {
   if (!raw) return defaultDisplayOptions();
   try {
-    const parsed = JSON.parse(raw) as Partial<DisplayOptions>;
-    return {
-      showTitle: parsed.showTitle ?? true,
-      showMeta: parsed.showMeta ?? true,
-      showStatusPill: parsed.showStatusPill ?? true,
-      showQualityBadge: parsed.showQualityBadge ?? true,
-      showRating: parsed.showRating ?? true
-    };
+    return { ...defaultDisplayOptions(), ...(JSON.parse(raw) as Partial<DisplayOptions>) };
   } catch {
     return defaultDisplayOptions();
   }

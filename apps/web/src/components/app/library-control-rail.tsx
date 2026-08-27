@@ -6,6 +6,8 @@ import {
 } from "lucide-react";
 import React, { useLayoutEffect, useRef, useState } from "react";
 import type { CatalogueFacets } from "../../lib/api";
+import type { CustomFilters } from "../../lib/library-filters";
+import { LibraryFilterPanel } from "./library-filter-panel";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -38,6 +40,14 @@ export interface SavedFilterPreset {
   viewMode: ViewMode;
   cardSize: CardSize;
   displayOptions: DisplayOptions;
+  /**
+   * The quality, size, genre, year, runtime and rating narrowing.
+   *
+   * Saved with the view, because a view that restores the shelf you were
+   * looking at but not the filters that produced it is not the view you saved —
+   * and the difference would be invisible until you counted the titles.
+   */
+  customFilters: CustomFilters;
 }
 
 /**
@@ -101,11 +111,27 @@ export const monitoringFilterOptions: Array<{ value: MonitoringFilter; label: st
   { value: "unmonitored", label: "Not monitored" }
 ];
 
-export const sortFieldOptions: Array<{ value: SortField; label: string }> = [
-  { value: "title", label: "Title" },
-  { value: "year", label: "Year" },
-  { value: "rating", label: "Rating" },
-  { value: "added", label: "Added" }
+/**
+ * Every order the paged catalogue query can actually perform.
+ *
+ * Runtime and Popularity are new to this list and were never new to the
+ * database — both have been indexed since V0011/V0012 and neither had ever been
+ * offered, which is the same shape as the codec and release-group columns the
+ * list displayed for months with nothing populating them.
+ *
+ * Size and quality are not here on purpose. They live on the wanted state,
+ * which the page reaches through a correlated pick, so ordering by one would
+ * run that pick for every title in the library and then sort the lot — a full
+ * scan wearing a seek's clothes, invisible until the twenty-thousandth title.
+ * An order that quietly costs that is worse than an order that is absent.
+ */
+export const sortFieldOptions: Array<{ value: SortField; label: string; hint: string }> = [
+  { value: "title", label: "Title", hint: "A to Z" },
+  { value: "year", label: "Year", hint: "When it came out" },
+  { value: "rating", label: "Rating", hint: "The metadata score" },
+  { value: "added", label: "Added", hint: "When you added it" },
+  { value: "runtime", label: "Runtime", hint: "How long it runs" },
+  { value: "popularity", label: "Popularity", hint: "How much the world is watching" }
 ];
 
 export function isQuickFilter(value: string | null): value is QuickFilter {
@@ -136,6 +162,9 @@ export interface LibraryControls {
   changeSize: (value: CardSize) => void;
   displayOptions: DisplayOptions;
   setDisplayOptions: (value: DisplayOptions) => void;
+  customFilters: CustomFilters;
+  setCustomFilters: (value: CustomFilters) => void;
+  clearCustomFilters: () => void;
   savedPresets: SavedFilterPreset[];
   newPresetName: string;
   setNewPresetName: (value: string) => void;
@@ -146,21 +175,42 @@ export interface LibraryControls {
   activeFilterCount: number;
 }
 
-export function ControlRail({ label, facets, actions, controls }: {
+/**
+ * Two rows, each with one job.
+ *
+ * It was one row with nine things on it — search, library, monitoring, display,
+ * order, add, hunt, refresh and views — and James read it off the page: "all too
+ * much on one line and looks so busy". The controls were not wrong; there were
+ * simply too many of them competing at the same level.
+ *
+ * So the row splits by what you are doing. **Search and act** on top: the box
+ * you type in, and the buttons that change your library. **Narrow and arrange**
+ * below: the legend chips that are also the filters and the counts, then the
+ * three menus that decide which titles and how they are drawn.
+ *
+ * Two of those menus are merges, not moves. Display and Order were one question
+ * asked twice — "how do I want to look at this" — and are one **View** panel
+ * now. Monitoring and Views were each a whole toolbar control for a single
+ * setting, and both live in **Filters** beside the quality, size and genre
+ * filters that never existed before.
+ */
+export function ControlRail({ label, variant, facets, actions, controls }: {
   label: string;
+  variant: "movies" | "shows";
   facets: CatalogueFacets | null;
-  /** Add, Hunt and Refresh — the two things you can do about what this row shows. */
+  /** Add, Hunt and Refresh — the things you can do about what this row shows. */
   actions?: React.ReactNode;
   controls: LibraryControls;
 }) {
   const {
     query, setQuery, libraryId, setLibraryId, libraries, quickFilter, setQuickFilter, monitoring, setMonitoring, sortField, setSortField,
     sortDirection, setSortDirection, view, setView, cardSize, changeSize,
-    displayOptions, setDisplayOptions, savedPresets, newPresetName,
+    displayOptions, setDisplayOptions, customFilters, setCustomFilters, clearCustomFilters,
+    savedPresets, newPresetName,
     setNewPresetName, isSavingPreset, saveCurrentPreset, applyPreset,
     deletePreset, activeFilterCount
   } = controls;
-  const [openPanel, setOpenPanel] = useState<"view" | "sort" | "filter" | null>(null);
+  const [openPanel, setOpenPanel] = useState<"view" | "filter" | null>(null);
   const pillTrackRef = useRef<HTMLDivElement>(null);
   const btnRefs = useRef<Map<QuickFilter, HTMLButtonElement | null>>(new Map());
   const [pill, setPill] = useState({ left: 0, width: 0, ready: false });
@@ -241,77 +291,17 @@ export function ControlRail({ label, facets, actions, controls }: {
               so there is one styled pick-one rather than two that resemble each
               other.
             */}
-            <MenuSelect
-              label="Library"
-              value={libraryId ?? ""}
-              onChange={(value) => setLibraryId(value || null)}
-              options={[
-                { value: "", label: "All libraries" },
-                ...libraries.map((library) => ({ value: library.id, label: library.name }))
-              ]}
-              className="min-w-[11rem]"
-              triggerClassName="min-h-[var(--library-toolbar-height)] bg-foreground/[0.04] px-2.5 text-[length:var(--library-toolbar-size)] font-semibold ring-1 ring-inset ring-hairline/60 hover:bg-foreground/[0.07] dark:bg-white/[0.05] dark:ring-white/[0.06] dark:hover:bg-white/[0.08]"
-            />
-
-            {/*
-              Monitoring, on its own. It was two chips in the legend row below —
-              the two that could not be given a colour, because monitoring is not
-              a rung but a switch that applies to all of them. Keeping it here
-              also makes the two questions independent: the row picks a state,
-              this picks an intent, and you can ask for both.
-            */}
-            <MenuSelect
-              label="Monitoring"
-              value={monitoring}
-              onChange={(value) => setMonitoring(isMonitoringFilter(value) ? value : "any")}
-              options={monitoringFilterOptions.map((option) => ({
-                value: option.value,
-                label: option.value === "any"
-                  ? option.label
-                  : `${option.label} (${option.value === "monitored" ? facets?.monitored ?? 0 : facets?.unmonitored ?? 0})`
-              }))}
-              className="min-w-[9.5rem]"
-              triggerClassName="min-h-[var(--library-toolbar-height)] bg-foreground/[0.04] px-2.5 text-[length:var(--library-toolbar-size)] font-semibold ring-1 ring-inset ring-hairline/60 hover:bg-foreground/[0.07] dark:bg-white/[0.05] dark:ring-white/[0.06] dark:hover:bg-white/[0.08]"
-            />
-
-            <ToolbarMenuButton
-              label="Display"
-              icon={LayoutTemplate}
-              active={openPanel === "view"}
-              meta={view === "grid" ? `Poster grid · ${cardSize === "sm" ? "Small" : cardSize === "lg" ? "Large" : "Medium"}` : "Compact list"}
-              onClick={() => setOpenPanel((current) => current === "view" ? null : "view")}
-            />
-            <ToolbarMenuButton
-              label="Order"
-              icon={ArrowUpDown}
-              active={openPanel === "sort"}
-              meta={`${sortFieldOptions.find((option) => option.value === sortField)?.label ?? "Title"} · ${sortDirection === "asc" ? "A–Z" : "Z–A"}`}
-              onClick={() => setOpenPanel((current) => current === "sort" ? null : "sort")}
-            />
-            {/*
-              The actions live in this row too, rather than in a band above it.
-              That band also carried a count of Missing, Monitored, Unmonitored
-              and Upgradable — every one of which is a chip six pixels below,
-              with the same number on it. One row now holds the search, the
-              scope, the display choices, the filters and the two things you can
-              do about them.
-            */}
+            {/* Search and act. Nothing here narrows anything. */}
             <div className="ml-auto flex shrink-0 flex-wrap items-center gap-2">{actions}</div>
-
-            <ToolbarMenuButton
-              label="Views"
-              icon={Filter}
-              active={openPanel === "filter"}
-              // This panel has only ever contained saved views — the filtering
-              // is the chip row below. Calling it "Refine · Quick filters"
-              // promised something it did not do.
-              meta={savedPresets.length ? `${savedPresets.length} saved` : "Save this view"}
-              onClick={() => setOpenPanel((current) => current === "filter" ? null : "filter")}
-            />
           </div>
 
-          <div className="mt-2.5">
-            <div ref={pillTrackRef} className="relative flex flex-wrap items-center gap-0.5">
+          {/*
+            Narrow and arrange. The chips are the legend, the counts and the
+            filters at once; the three menus beside them decide which titles and
+            how they are drawn.
+          */}
+          <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-2">
+            <div ref={pillTrackRef} className="relative flex flex-1 flex-wrap items-center gap-0.5">
               {pill.ready ? (
                 <div
                   aria-hidden
@@ -373,15 +363,50 @@ export function ControlRail({ label, facets, actions, controls }: {
                 );
               })}
             </div>
+
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <MenuSelect
+                label="Library"
+                value={libraryId ?? ""}
+                onChange={(value) => setLibraryId(value || null)}
+                options={[
+                  { value: "", label: "All libraries" },
+                  ...libraries.map((library) => ({ value: library.id, label: library.name }))
+                ]}
+                className="min-w-[10rem]"
+                triggerClassName="min-h-[var(--library-toolbar-height)] bg-foreground/[0.04] px-2.5 text-[length:var(--library-toolbar-size)] font-semibold ring-1 ring-inset ring-hairline/60 hover:bg-foreground/[0.07] dark:bg-white/[0.05] dark:ring-white/[0.06] dark:hover:bg-white/[0.08]"
+              />
+
+              <ToolbarMenuButton
+                label="Filters"
+                icon={Filter}
+                active={openPanel === "filter"}
+                // The number is the point. Monitoring and the quality, size and
+                // genre filters all live behind this button now, and a shelf
+                // narrowed by something you cannot see is how people lose half
+                // their library and conclude Deluno has.
+                meta={activeFilterCount > 0 ? `${activeFilterCount} narrowing` : "Nothing narrowed"}
+                onClick={() => setOpenPanel((current) => current === "filter" ? null : "filter")}
+              />
+
+              <ToolbarMenuButton
+                label="View"
+                icon={LayoutTemplate}
+                active={openPanel === "view"}
+                // Display and Order were one question asked twice.
+                meta={`${view === "grid" ? "Grid" : "List"} · ${sortFieldOptions.find((option) => option.value === sortField)?.label ?? "Title"} ${sortDirection === "asc" ? "\u2191" : "\u2193"}`}
+                onClick={() => setOpenPanel((current) => current === "view" ? null : "view")}
+              />
+            </div>
           </div>
 
           {openPanel === "view" ? (
             <div className="mt-3 overflow-hidden rounded-2xl border border-hairline bg-surface-1">
               <LibraryControlPanelHeader
                 icon={LayoutTemplate}
-                eyebrow="Display"
+                eyebrow="View"
                 title="Choose how your library feels"
-                description="Start with a visual poster grid or a dense list. Your choice is remembered separately for movies and TV."
+                description="Layout, order and what each poster carries. These were two panels — Display and Order — asking one question twice. Your choice is remembered separately for movies and TV."
                 onClose={() => setOpenPanel(null)}
               />
               <div className="grid gap-[var(--grid-gap)] p-[calc(var(--tile-pad)*0.8)] xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)] xl:gap-0">
@@ -405,6 +430,29 @@ export function ControlRail({ label, facets, actions, controls }: {
                       </div>
                     </div>
                   ) : null}
+
+                  <div>
+                    <SectionLabel>Order</SectionLabel>
+                    <p className="mt-1 text-[length:var(--type-caption)] text-muted-foreground">
+                      Every order here is performed by the paged catalogue query, on an indexed column, so page four hundred costs
+                      what page one costs.
+                    </p>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      {sortFieldOptions.map((option) => (
+                        <SortChoice
+                          key={option.value}
+                          label={option.label}
+                          hint={option.hint}
+                          selected={sortField === option.value}
+                          onClick={() => setSortField(option.value)}
+                        />
+                      ))}
+                    </div>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      <SortDirectionChoice icon={ArrowDownAZ} label="Ascending" description="A–Z, oldest first, lowest value." selected={sortDirection === "asc"} onClick={() => setSortDirection("asc")} />
+                      <SortDirectionChoice icon={ArrowUpDown} label="Descending" description="Z–A, newest first, highest value." selected={sortDirection === "desc"} onClick={() => setSortDirection("desc")} />
+                    </div>
+                  </div>
                 </div>
 
                 {/*
@@ -437,36 +485,18 @@ export function ControlRail({ label, facets, actions, controls }: {
                     <SwitchRow label="Status mark" description="Missing, Upgradable, Quality met or Upcoming" checked={displayOptions.showStatusPill} onCheckedChange={(showStatusPill) => setDisplayOptions({ ...displayOptions, showStatusPill })} />
                     <SwitchRow label="Quality" description="The tier the file actually is — WEB 2160p, Remux 1080p" checked={displayOptions.showQualityBadge} onCheckedChange={(showQualityBadge) => setDisplayOptions({ ...displayOptions, showQualityBadge })} />
                     <SwitchRow label="Rating" description="The preferred metadata score" checked={displayOptions.showRating} onCheckedChange={(showRating) => setDisplayOptions({ ...displayOptions, showRating })} />
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : null}
-
-          {openPanel === "sort" ? (
-            <div className="mt-3 overflow-hidden rounded-2xl border border-hairline bg-surface-1">
-              <LibraryControlPanelHeader
-                icon={ArrowUpDown}
-                eyebrow="Order"
-                title="Put the right titles first"
-                description="Every available order is performed by the paged catalogue query."
-                onClose={() => setOpenPanel(null)}
-              />
-              <div className="grid gap-[var(--grid-gap)] p-[calc(var(--tile-pad)*0.8)] xl:grid-cols-[minmax(0,1fr)_18rem]">
-                <div>
-                  <SectionLabel>Sort by</SectionLabel>
-                  <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                    {sortFieldOptions.map((option) => (
-                      <SortChoice key={option.value} label={option.label} selected={sortField === option.value} onClick={() => setSortField(option.value)} />
-                    ))}
-                  </div>
-                </div>
-                <div className="rounded-xl border border-hairline bg-background/45 p-3">
-                  <SectionLabel>Direction</SectionLabel>
-                  <p className="mt-1 text-[length:var(--type-caption)] text-muted-foreground">Choose whether the smallest or largest value leads.</p>
-                  <div className="mt-3 grid gap-2">
-                    <SortDirectionChoice icon={ArrowDownAZ} label="Ascending" description="A–Z, oldest first, or lowest value." selected={sortDirection === "asc"} onClick={() => setSortDirection("asc")} />
-                    <SortDirectionChoice icon={ArrowUpDown} label="Descending" description="Z–A, newest first, or highest value." selected={sortDirection === "desc"} onClick={() => setSortDirection("desc")} />
+                    {/*
+                      The extras. They share one line under the title rather than
+                      claiming a row each — six more rows would bury the artwork
+                      the grid exists to show, and a card with all six on still
+                      reads as one sentence.
+                    */}
+                    <SwitchRow label="Size" description="What the file takes on disk" checked={displayOptions.showSize} onCheckedChange={(showSize) => setDisplayOptions({ ...displayOptions, showSize })} />
+                    <SwitchRow label="Runtime" description="How long it runs" checked={displayOptions.showRuntime} onCheckedChange={(showRuntime) => setDisplayOptions({ ...displayOptions, showRuntime })} />
+                    <SwitchRow label="Genres" description="The first two it is tagged with" checked={displayOptions.showGenres} onCheckedChange={(showGenres) => setDisplayOptions({ ...displayOptions, showGenres })} />
+                    <SwitchRow label="Release group" description="Who put the release out" checked={displayOptions.showReleaseGroup} onCheckedChange={(showReleaseGroup) => setDisplayOptions({ ...displayOptions, showReleaseGroup })} />
+                    <SwitchRow label="Codec" description="Video and audio, as the file name reports them" checked={displayOptions.showCodec} onCheckedChange={(showCodec) => setDisplayOptions({ ...displayOptions, showCodec })} />
+                    <SwitchRow label="Added" description="The day it joined your library" checked={displayOptions.showAdded} onCheckedChange={(showAdded) => setDisplayOptions({ ...displayOptions, showAdded })} />
                   </div>
                 </div>
               </div>
@@ -477,11 +507,22 @@ export function ControlRail({ label, facets, actions, controls }: {
             <div className="mt-3 overflow-hidden rounded-2xl border border-hairline bg-surface-1">
               <LibraryControlPanelHeader
                 icon={Filter}
-                eyebrow="Views"
-                title="Come back to this exact view"
-                description={`You are viewing ${quickFilterConfig.find((filter) => filter.key === quickFilter)?.label.toLowerCase() ?? "all"} titles. Save the search, filter, order and display together and return to them in one click.`}
+                eyebrow="Filters"
+                title="Narrow the shelf, then keep the view"
+                description={`You are viewing ${quickFilterConfig.find((filter) => filter.key === quickFilter)?.label.toLowerCase() ?? "all"} titles. Narrow further by quality, size, genre, year, runtime or rating — every one applied by the paged catalogue query — then save the whole view and return to it in one click.`}
                 onClose={() => setOpenPanel(null)}
               />
+              <LibraryFilterPanel
+                variant={variant}
+                filters={customFilters}
+                onChange={setCustomFilters}
+                onClear={clearCustomFilters}
+                monitoring={monitoring}
+                onMonitoringChange={setMonitoring}
+                monitoredCount={facets?.monitored ?? 0}
+                unmonitoredCount={facets?.unmonitored ?? 0}
+              />
+              <div className="border-t border-hairline" />
             <div className="space-y-[calc(var(--field-group-pad)*0.8)] p-[calc(var(--tile-pad)*0.8)]">
               <div className="space-y-[calc(var(--field-group-pad)*0.8)]">
                   <div className="space-y-2">
@@ -638,11 +679,16 @@ function PosterSizeChoice({ size, selected, onClick }: { size: CardSize; selecte
   );
 }
 
-function SortChoice({ label, selected, onClick }: { label: string; selected: boolean; onClick: () => void }) {
+function SortChoice({ label, hint, selected, onClick }: { label: string; hint: string; selected: boolean; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} className={cn("flex min-h-[var(--control-height)] items-center justify-between rounded-xl border px-3 text-left text-[length:var(--type-caption)] font-semibold transition", selected ? "border-primary/35 bg-primary/[0.09] text-primary" : "border-hairline bg-background/45 text-foreground hover:border-primary/25 hover:bg-background/70")}>
-      {label}
-      {selected ? <span className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_8px_hsl(var(--primary)/0.75)]" /> : null}
+    <button type="button" onClick={onClick} className={cn("flex min-h-[var(--control-height)] items-center justify-between gap-2 rounded-xl border px-3 text-left text-[length:var(--type-caption)] font-semibold transition", selected ? "border-primary/35 bg-primary/[0.09] text-primary" : "border-hairline bg-background/45 text-foreground hover:border-primary/25 hover:bg-background/70")}>
+      <span className="min-w-0">
+        {label}
+        {/* Six orders is enough that "Popularity" needs a line saying what it
+            measures. A label you have to guess at is a control you avoid. */}
+        <span className="block truncate font-medium text-muted-foreground">{hint}</span>
+      </span>
+      {selected ? <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary shadow-[0_0_8px_hsl(var(--primary)/0.75)]" /> : null}
     </button>
   );
 }

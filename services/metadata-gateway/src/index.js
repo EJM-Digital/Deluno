@@ -348,10 +348,30 @@ export function mapTmdbResult(item, mediaType, artworkOrigin = null) {
   const votes = Number.isInteger(item.vote_count) ? item.vote_count : null;
   const externalUrl = `https://www.themoviedb.org/${kind}/${item.id}`;
 
+  // Runtime, popularity and vote count. Deluno has had columns for all three
+  // since V0012 — "the facts the library list has always displayed but never
+  // had" — and on a broker install they have been null for every title ever
+  // added, because this mapping dropped them. The columns are indexed, the
+  // repository writes them and the API accepts them; only this end was missing,
+  // so half the fix shipped and nothing said so.
+  //
+  // TMDb returns popularity and vote_count on a *search* result and runtime only
+  // on a *detail* one, which is why runtime is conditional rather than absent:
+  // a search card legitimately has none, and sending null there is honest.
+  const runtimeMinutes = Number.isInteger(item.runtime) && item.runtime > 0
+    ? item.runtime
+    : Array.isArray(item.episode_run_time)
+      ? item.episode_run_time.find((minutes) => Number.isInteger(minutes) && minutes > 0) ?? null
+      : null;
+  const popularity = Number.isFinite(item.popularity) ? item.popularity : null;
+
   return {
     provider: "tmdb",
     providerId: String(item.id),
     mediaType,
+    runtimeMinutes,
+    popularity,
+    voteCount: votes,
     title,
     originalTitle: item.original_title ?? item.original_name ?? title,
     year,

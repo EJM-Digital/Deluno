@@ -10,13 +10,14 @@ import { Badge } from "../ui/badge";
 import { MARK_DOT_SIZE, TitleMarkBar, TitleMarkChip, TitleMarkDot } from "../ui/title-mark";
 
 export type CardSize = "sm" | "md" | "lg";
-export interface DisplayOptions {
-  showTitle: boolean;
-  showMeta: boolean;
-  showStatusPill: boolean;
-  showQualityBadge: boolean;
-  showRating: boolean;
-}
+
+/**
+ * Re-exported, not redeclared. This was its own copy of the same five fields
+ * while `lib/library-filters.ts` declared another — the defect that file's own
+ * header describes, one import below it.
+ */
+import type { DisplayOptions } from "../../lib/library-filters";
+export type { DisplayOptions } from "../../lib/library-filters";
 
 const GRID_MIN_BY_DENSITY: Record<Density, Record<CardSize, string>> = {
   compact: { sm: "var(--library-card-sm)", md: "var(--library-card-md)", lg: "var(--library-card-lg)" },
@@ -296,6 +297,13 @@ function PosterCard({
                 </div>
               </div>
             ) : null}
+            {/*
+              The extras, joined into one line rather than one row each. Six
+              switches each claiming their own line would bury the artwork the
+              grid exists to show; as a sentence, a card with all six on still
+              reads as a card.
+            */}
+            {showMeta ? <PosterExtras item={item} displayOptions={displayOptions} /> : null}
           </div>
 
           {/* Hover-reveal action row */}
@@ -331,6 +339,55 @@ function PosterCard({
         ) : null}
       </div>
     </div>
+  );
+}
+
+/**
+ * Whatever else this reader asked a poster to carry, in one truncated line.
+ *
+ * Everything here is a fact about the file or the title that Deluno already
+ * holds and had nowhere to show — James: "we also need more options for what
+ * the posters can display from the metadata". Nothing is invented and nothing
+ * is guessed: a value that is not there is simply absent from the line, rather
+ * than printing "Unknown" and claiming it could not be read.
+ */
+function PosterExtras({ item, displayOptions }: { item: MediaItem; displayOptions: DisplayOptions }) {
+  const parts: string[] = [];
+
+  if (displayOptions.showRuntime && item.runtimeMinutes) {
+    const hours = Math.floor(item.runtimeMinutes / 60);
+    const minutes = item.runtimeMinutes % 60;
+    parts.push(hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`);
+  }
+
+  // A title with no file has no size, the same rule the compact list follows.
+  if (displayOptions.showSize && item.hasFile !== false && typeof item.sizeGb === "number") {
+    parts.push(`${item.sizeGb.toFixed(1)} GB`);
+  }
+
+  if (displayOptions.showGenres && item.genres.length > 0) {
+    parts.push(item.genres.slice(0, 2).join(", "));
+  }
+
+  if (displayOptions.showReleaseGroup && item.releaseGroup) {
+    parts.push(item.releaseGroup);
+  }
+
+  if (displayOptions.showCodec) {
+    const codecs = [item.codec, item.audioCodec].filter(Boolean);
+    if (codecs.length > 0) parts.push(codecs.join(" · "));
+  }
+
+  if (displayOptions.showAdded && item.added) {
+    parts.push(item.added);
+  }
+
+  if (parts.length === 0) return null;
+
+  return (
+    <p className="mt-0.5 truncate text-[length:var(--library-meta-size)] text-[hsl(var(--media-muted-foreground))]">
+      {parts.join(" · ")}
+    </p>
   );
 }
 

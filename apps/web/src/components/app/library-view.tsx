@@ -17,7 +17,7 @@ import {
   type SeriesListItem
 } from "../../lib/api";
 import { adaptMovieItems, adaptSeriesItems } from "../../lib/ui-adapters";
-import { isMonitoringFilter, monitoringParam, parseDisplayOptions, type MonitoringFilter } from "../../lib/library-filters";
+import { applyCustomFilters, isMonitoringFilter, monitoringParam, parseCustomFilters, parseDisplayOptions, type MonitoringFilter } from "../../lib/library-filters";
 import { LibraryCreateDialog } from "./library-create-dialog";
 import { LibraryResults } from "./library-results";
 import { LibrarySelectionCommandBar } from "./library-selection-command-bar";
@@ -98,7 +98,7 @@ export function LibraryView({
     sortDirection, setSortDirection, cardSize, displayOptions,
     savedPresets, setSavedPresets, newPresetName, setNewPresetName, isSavingPreset,
     setIsSavingPreset, changeSize, updateDisplayOptions, activeFilterCount,
-    monitoring, setMonitoring
+    monitoring, setMonitoring, customFilters, setCustomFilters, clearCustomFilters
   } = useLibraryFilters(variant, searchParams.get("filter"));
 
   const buildCatalogueParams = useCallback((pageToken?: string) => {
@@ -111,8 +111,12 @@ export function LibraryView({
     const monitored = monitoringParam(monitoring);
     if (monitored !== undefined) params.set("monitored", String(monitored));
     if (libraryId) params.set("libraryId", libraryId);
+    // Quality, size, genre, year, runtime, rating. Applied in SQL like
+    // everything else here; nothing is filtered in the browser, because the
+    // browser only ever has one page of a library that may hold twenty thousand.
+    applyCustomFilters(params, customFilters);
     return params;
-  }, [libraryId, monitoring, query, quickFilter, sortDirection, sortField]);
+  }, [customFilters, libraryId, monitoring, query, quickFilter, sortDirection, sortField]);
 
   // The identity of what is on screen. A snapshot may only be replayed for the
   // exact query that produced it.
@@ -361,7 +365,8 @@ export function LibraryView({
             sortDirection: item.sortDirection === "desc" ? "desc" : "asc",
             viewMode: item.viewMode === "list" ? "list" : "grid",
             cardSize: item.cardSize === "sm" || item.cardSize === "lg" ? item.cardSize : "md",
-            displayOptions: parseDisplayOptions(item.displayOptionsJson)
+            displayOptions: parseDisplayOptions(item.displayOptionsJson),
+            customFilters: parseCustomFilters(item.rulesJson)
           }))
         );
       } catch {
@@ -433,9 +438,12 @@ export function LibraryView({
         viewMode: view,
         cardSize,
         displayOptionsJson: JSON.stringify(displayOptions),
-        // Rules were a browser-only filter over an incomplete page. Persist an
-        // empty legacy value until the API exposes a server-side rule contract.
-        rulesJson: "[]"
+        // This field waited for "a server-side rule contract". It has one now:
+        // `CatalogueFilters` is applied in SQL, so what is stored here is a
+        // filter the server can actually perform rather than the browser-side
+        // rule list #302 deleted. Old rows hold `[]` and read back as no
+        // filters, which is what they meant.
+        rulesJson: JSON.stringify(customFilters)
       };
 
       const created = await fetchJson<LibraryViewItem>("/api/library-views", {
@@ -456,7 +464,8 @@ export function LibraryView({
           sortDirection: created.sortDirection === "desc" ? "desc" : "asc",
           viewMode: created.viewMode === "list" ? "list" : "grid",
           cardSize: created.cardSize === "sm" || created.cardSize === "lg" ? created.cardSize : "md",
-          displayOptions: parseDisplayOptions(created.displayOptionsJson)
+          displayOptions: parseDisplayOptions(created.displayOptionsJson),
+          customFilters: parseCustomFilters(created.rulesJson)
         }
       ]);
       setNewPresetName("");
@@ -477,6 +486,7 @@ export function LibraryView({
     setView(preset.viewMode);
     changeSize(preset.cardSize);
     updateDisplayOptions(preset.displayOptions);
+    setCustomFilters(preset.customFilters);
     toast.success(`Applied ${preset.name}`);
   }
 
@@ -757,10 +767,16 @@ export function LibraryView({
     const loadingId = toast.loading(`Hunting ${missingCount} missing ${missingCount === 1 ? singular : label}…`);
     try {
       // Ask the server which titles are missing rather than relying on the
-      // loaded page: the header count is a whole-library facet, so the rows it
-      // counts may not all be on screen.
-      const params = new URLSearchParams({ pageSize: "100", status: "missing", sort: sortField, direction: sortDirection });
-      if (libraryId) params.set("libraryId", libraryId);
+      // loaded page: the count on the button is a facet over the whole filtered
+      // set, so the rows it counts may not all be on screen.
+      //
+      // Built from the *same* params the page is built from, with the status
+      // pinned to missing. It used to construct its own — library and sort only
+      // — so the button counted one set and the action searched another: with a
+      // search typed, or a genre picked, it said "Hunt 5 missing" and hunted
+      // ten. The number and the action have to come from one question.
+      const params = buildCatalogueParams();
+      params.set("status", "missing");
       const page = await fetchJson<CataloguePage<{ id: string }>>(
         `/api/${variant === "movies" ? "movies" : "series"}/page?${params}`
       );
@@ -845,6 +861,7 @@ export function LibraryView({
         {/* ═══════ CONTROL RAIL ═══════ */}
         <ControlRail
           label={label}
+          variant={variant}
           facets={facets}
           actions={
             <LibraryActions
@@ -863,6 +880,7 @@ export function LibraryView({
             sortDirection, setSortDirection, view, setView, cardSize, changeSize,
             displayOptions, setDisplayOptions: updateDisplayOptions, savedPresets,
             libraryId, setLibraryId, libraries: compatibleLibraries,
+            customFilters, setCustomFilters, clearCustomFilters,
             newPresetName, setNewPresetName, isSavingPreset, saveCurrentPreset,
             applyPreset, deletePreset, activeFilterCount
           }}
@@ -909,7 +927,7 @@ export function LibraryView({
           label={label}
           singular={singular}
           libraryCount={facets?.all ?? totalCount}
-          hasActiveFilter={Boolean(query.trim()) || libraryId !== null || quickFilter !== "all" || monitoring !== "any"}
+          hasActiveFilter={activeFilterCount > 0 || Boolean(query.trim())}
           view={view}
           cardSize={cardSize}
           density={density}
@@ -923,6 +941,8 @@ export function LibraryView({
           onClearFilters={() => {
             setQuickFilter("all");
             setLibraryId(null);
+            setMonitoring("any");
+            clearCustomFilters();
             setQuery("");
           }}
           onSelect={openWorkspace}
