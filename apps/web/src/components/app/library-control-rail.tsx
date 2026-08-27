@@ -164,10 +164,15 @@ export function ControlRail({ label, facets, controls }: {
             </div>
 
             {/*
-              Only the left padding is overridden. `px-1` used to override both,
-              and the right half of that padding is the gutter Select reserves
-              for its own chevron — so the icon came down on top of "All
-              libraries" instead of sitting beside it.
+              The pill is the chrome, so the select inside it wears none — see
+              `bareControlClassName`. Undoing the box from here instead left it
+              still painting a hover and focus surface, which showed up as a
+              second rounded box inside this one.
+
+              Only the left padding is overridden, too. `px-1` used to override
+              both, and the right half of that padding is the gutter Select
+              reserves for its own chevron — so the icon came down on top of
+              "All libraries" instead of sitting beside it.
             */}
             <label className="flex min-h-[var(--library-toolbar-height)] min-w-[11rem] items-center rounded-xl bg-foreground/[0.04] pl-2.5 ring-1 ring-inset ring-hairline/60 dark:bg-white/[0.05] dark:ring-white/[0.06]">
               <span className="sr-only">Library</span>
@@ -175,7 +180,8 @@ export function ControlRail({ label, facets, controls }: {
                 aria-label="Library"
                 value={libraryId ?? ""}
                 onChange={(event) => setLibraryId(event.target.value || null)}
-                className="h-[calc(var(--library-toolbar-height)-0.5rem)] border-0 bg-transparent pl-1 text-[length:var(--library-toolbar-size)] font-semibold shadow-none focus-visible:ring-0"
+                chrome={false}
+                className="h-[calc(var(--library-toolbar-height)-0.5rem)] pl-1 text-[length:var(--library-toolbar-size)] font-semibold"
                 options={[
                   { value: "", label: "All libraries" },
                   ...libraries.map((library) => ({ value: library.id, label: library.name }))
@@ -272,7 +278,7 @@ export function ControlRail({ label, facets, controls }: {
                   </div>
 
                   {view === "grid" ? (
-                    <div className="rounded-xl border border-hairline bg-background/45 p-3">
+                    <div>
                       <SectionLabel>Poster size</SectionLabel>
                       <div className="mt-2 grid grid-cols-3 gap-2">
                         {(["sm", "md", "lg"] as CardSize[]).map((size) => (
@@ -284,14 +290,14 @@ export function ControlRail({ label, facets, controls }: {
                 </div>
 
                 {/*
-                  One column, not two. Five rows across two columns leaves the
-                  fifth stranded beside an empty cell, and stops the card half
-                  the height of the choices beside it — which is the dead band
-                  that made this panel look unfinished. Stacked and divided, the
-                  rows fill the column and read the way every other settings
-                  list in Deluno does.
+                  One column, not two, and no card around it. Five rows across
+                  two columns left the fifth stranded beside an empty cell, and
+                  the card then held a box open below them that nothing filled.
+                  The section label already says what this group is; a border
+                  round it says so again. Stacked and divided, the rows read the
+                  way every other settings list in Deluno does.
                 */}
-                <div className="rounded-xl border border-hairline bg-background/45 p-3">
+                <div>
                   <SectionLabel>What each poster shows</SectionLabel>
                   <p className="mt-1 text-[length:var(--type-caption)] text-muted-foreground">Keep the essentials visible; turn on extra metadata only when it helps your workflow.</p>
                   <div className="mt-2 divide-y divide-hairline">
