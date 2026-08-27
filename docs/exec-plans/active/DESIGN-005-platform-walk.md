@@ -111,6 +111,95 @@ either app and Deluno has neither.
 - Subtitle files listed separately with extension and type.
 - Cast with photos and character names, then crew.
 
+## Prowlarr — and the one screen worth stealing outright
+
+Twelve indexers. The list carries **Protocol** (torrent/nzb), **Privacy**
+(public/private), **Priority**, **Sync Profile**, Added, and **Categories**
+(Console / Movies / Audio / PC / TV / XXX / Books / Other). Per-indexer state is
+Enabled / Enabled-and-Redirected / Disabled / Error.
+
+**Stats is the screen Deluno should take.** Four tiles — Active Indexers, Total
+Queries (9.1K), Total Grabs (34), Active Apps — over four charts:
+
+- **Average indexer response time**, split into queries and grabs
+- **Indexer failure rate**
+- **Total queries per indexer**, split Search / RSS / **Auth**
+- **Successful grabs per indexer**
+
+Nine thousand queries and thirty-four grabs. That ratio is the most useful fact
+in the whole application and no other arr surfaces anything like it: it tells you
+which trackers are earning their place and which are costing you rate limit for
+nothing. Deluno has indexer health — up or down — and nothing that answers *is
+this one worth keeping*.
+
+**History** is the raw material: every single query logged with indexer, query
+text, parameters, categories, timestamp and **elapsed milliseconds**. 9,123 rows.
+
+**Sync Profiles** name a combination of RSS / Automatic Search / Interactive
+Search and apply it per app per indexer. Deluno needs the three toggles; it does
+not need the profile, because it has nothing to sync into.
+
+**System → Status** gives version, .NET version, database and *migration number*,
+data and startup directories, run mode and **uptime**.
+
+## Bazarr — and what it changes about #301
+
+This is the one that matters most, because Subber is next and DESIGN-002 was
+written without walking it.
+
+### The `und` question, answered
+DESIGN-002 deliberately refused to guess what an unknown-language subtitle is,
+and left the consequence open. **Bazarr does not guess either — it asks once.**
+Settings → Languages has *"Treat unknown language embedded subtitles track as…"*
+and the same for audio tracks, both defaulting to unset.
+
+That is the right shape and Deluno should adopt it exactly: a setting, empty by
+default so `und` counts for nothing, and when set, `und` counts as that language.
+It is the same principle as `WantedStatuses.Normalize` refusing to guess — except
+here there *is* somebody who can answer, so ask them.
+
+### Things DESIGN-002 does not cover at all
+
+- **"Treat embedded subtitles as downloaded"** — a *toggle*. Deluno always counts
+  an embedded track as held. Some people want a sidecar file regardless, because
+  players handle the two differently. It should be a choice.
+- **Sub-Zero content modifications**, applied after download: strip
+  hearing-impaired tags, remove style tags, remove emoji, OCR fixes, common
+  whitespace/punctuation fixes, fix all-uppercase, add colour, reverse RTL
+  punctuation. A whole category of "make the subtitle usable" work.
+- **Whisper as fallback** — ASR-generate a subtitle when no provider has one.
+- **Adaptive searching** — skip providers searched recently, with a first-search
+  grace window and a repeat interval. This is `next_eligible_search_utc` for
+  subtitles, and DESIGN-002 already says backoff should read the same words as
+  release search. It should.
+- **Score-threshold-driven sync** — only synchronise subtitles scoring *below*
+  96 (series) / 86 (movies), with providers excludable from sync, a choice of
+  audio-track or embedded-subtitle reference, prefer-original-language-audio,
+  framerate-mismatch handling and a max offset. DESIGN-002 says "timing sync" in
+  one line; this is what the line costs.
+- **Translation**, with its own score and a note added at the start.
+- **Custom post-processing command** after download.
+- **Language Equals** — user-defined "treat this language as that one, across all
+  providers". Deluno normalises codes; it has no user-defined equivalence.
+- **Language profiles with must-contain / must-not-contain**, richer than
+  Deluno's ordered list plus all/first.
+- **Anti-captcha provider** integration, and a per-provider HTTPS-validation
+  escape hatch.
+- **HI subtitles get their own file extension** (`video.en.sdh.srt`), and there
+  is a "single language" mode that omits the code entirely.
+
+### And one thing Deluno already got right
+Bazarr's scheduler has *"Update all episode subtitles from disk"* with a **"use
+cached embedded subtitles parser results"** toggle, explained as a disk-I/O
+trade-off. That is exactly the scan-marker in `movie_subtitle_scan` — read once,
+and not again unless the file changes. Independent arrival at the same design,
+and Bazarr had to expose it as a setting because re-parsing hurts.
+
+Bazarr's series page also shows **"5 missing subtitles"** as a warning chip and a
+per-episode Audio column beside the Subtitles column. Deluno's bar is better
+placed — on the poster, where you are already looking — but the audio language
+beside the subtitle language is a good pairing Deluno does not have.
+
 ## What Deluno already does better, and should keep
 
 - **Quality shown at ladder grain everywhere.** Radarr's poster shows the
@@ -138,3 +227,8 @@ either app and Deluno has neither.
 7. **The four rating sources**, shown and sortable separately.
 8. **Colour-impaired mode**, which Deluno needs more than Radarr does.
 9. Date/time/runtime formatting settings.
+10. **An indexer scoreboard** — response time, query volume split by kind, failure
+    rate, and query-to-grab conversion. Prowlarr's Stats page, which answers "is
+    this tracker worth keeping" and which nothing else in the suite attempts.
+11. **The Bazarr findings fold into #301** — the unknown-language setting first,
+    since it unblocks a question DESIGN-002 left open.

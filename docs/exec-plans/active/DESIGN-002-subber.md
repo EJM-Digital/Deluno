@@ -161,6 +161,13 @@ straight at.
   counts towards nothing. Reading it as the library's first wanted language
   would be right most of the time, and when it was wrong it would stop Deluno
   fetching a language somebody asked for and never say why.
+
+  **Bazarr answers this and Deluno should copy it.** Walking Bazarr
+  (DESIGN-005) turned up *"Treat unknown language embedded subtitles track
+  as…"* in its Languages settings — a setting, empty by default. It does not
+  guess either; it asks once. That is the missing half of this decision: refuse
+  to guess, and give the person who does know somewhere to say so. Empty means
+  `und` counts for nothing, which is today's behaviour.
 - A **forced** track is not coverage. A file whose only English track is forced
   has English for four lines of Elvish. It is stored, and it does not count.
 - **Hearing-impaired** is coverage — it is watchable — and it is not counted a
