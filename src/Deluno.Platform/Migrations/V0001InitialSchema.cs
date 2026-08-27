@@ -31,7 +31,8 @@ public static class PlatformDatabaseMigrations
         new V0023LibraryViewLibraryFilter(),
         new V0024LibraryWorkflowCleanup(),
         new V0025IndexerSharingPolicy(),
-        new V0026LibraryViewMonitoringFilter()
+        new V0026LibraryViewMonitoringFilter(),
+        new V0027LibrarySubtitleLanguages()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

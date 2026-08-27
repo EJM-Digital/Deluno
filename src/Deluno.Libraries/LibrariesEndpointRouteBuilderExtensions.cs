@@ -335,6 +335,38 @@ public static class LibrariesEndpointRouteBuilderExtensions
             return Results.Ok(item);
         });
 
+        // Which subtitle languages this library wants (#301, DESIGN-002).
+        //
+        // No job is enqueued here. Changing the languages changes what the bar
+        // says is wanted; it does not, on its own, mean go and fetch them —
+        // that happens on the library's own search cycle, which already has a
+        // window, an interval and a per-run cap. A second thing that reaches
+        // out the moment a setting is saved is how you end up with two
+        // schedulers, which DESIGN-002 exists to avoid.
+        endpoints.MapPut("/api/libraries/{id}/subtitles", async (
+            string id,
+            HttpContext httpContext,
+            [FromBody] UpdateLibrarySubtitlesRequest request,
+            [FromServices] ILibrariesRepository repository,
+            [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var item = await repository.UpdateLibrarySubtitlesAsync(id, request, cancellationToken);
+            if (item is null)
+            {
+                return Results.NotFound();
+            }
+
+            await realtimeEventPublisher.PublishEntityChangedAsync("Library", item.Id, cancellationToken);
+            return Results.Ok(item);
+        });
+
         endpoints.MapPut("/api/libraries/{id}/quality-profile", async (
             string id,
             HttpContext httpContext,
