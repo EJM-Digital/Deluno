@@ -100,6 +100,45 @@ describe("UI adapters", () => {
     expect(adaptTelemetryDownloads({ clients: [] } as unknown as DownloadTelemetryOverview)).toEqual([]);
   });
 
+  /**
+   * `metadata_json` is `JsonSerializer.Serialize(match)` with default options,
+   * so it is **PascalCase**. Every reader in the adapter asked for camelCase and
+   * did an exact-key lookup, so every one returned null for every title on every
+   * install — certification, collection, studio, language, path, source, HDR
+   * format, release dates and the external ratings. A whole family of fields the
+   * library list and both detail pages display, reading keys that were never in
+   * the payload, looking exactly like a provider that had sent nothing.
+   */
+  describe("the provider metadata blob", () => {
+    const withMeta = (metadataJson: string | null) =>
+      ({ id: "movie-1", title: "Inception", releaseYear: 2010, posterUrl: null, backdropUrl: null, hasFile: true, monitored: true, rating: 8.4, ratings: [], genres: "", createdUtc: "2024-01-01T00:00:00Z", overview: null, metadataJson }) as unknown as MovieListItem;
+
+    it("reads the PascalCase the server actually writes", () => {
+      const [item] = adaptMovieItems([withMeta(JSON.stringify({
+        Certification: "PG-13",
+        Studio: "Legendary Pictures",
+        Collection: "The Nolan Collection",
+        OriginalLanguage: "en"
+      }))]);
+
+      expect(item.certification).toBe("PG-13");
+      expect(item.studio).toBe("Legendary Pictures");
+      expect(item.collection).toBe("The Nolan Collection");
+      expect(item.language).toBe("en");
+    });
+
+    it("still reads camelCase, in case the server ever switches", () => {
+      const [item] = adaptMovieItems([withMeta(JSON.stringify({ certification: "R", studio: "A24" }))]);
+      expect(item.certification).toBe("R");
+      expect(item.studio).toBe("A24");
+    });
+
+    it("reports nothing rather than throwing on a blob it cannot read", () => {
+      expect(adaptMovieItems([withMeta("not json")])[0].certification).toBeNull();
+      expect(adaptMovieItems([withMeta(null)])[0].certification).toBeNull();
+    });
+  });
+
   it("combines indexer and download-client health and handles no connections", () => {
     const indexer = { id: "indexer-1", name: "Indexer", healthStatus: "healthy", lastHealthLatencyMs: 120 } as IndexerItem;
     const client = { id: "client-1", name: "Client", healthStatus: "untested", lastHealthLatencyMs: null } as DownloadClientItem;
