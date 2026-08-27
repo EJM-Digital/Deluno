@@ -65,17 +65,21 @@ function apiToTimeline(item: ActivityEventItem): TimelineEvent {
 /* ── Category config ─────────────────────────────────────────────── */
 const CAT_CONFIG: Record<
   string,
-  { icon: React.ComponentType<{ className?: string }>; rail: string; label: string }
+  // Both classes spelled out. `text-${rail.replace("bg-", "")}` built the icon
+  // colour at runtime, and Tailwind generates only the literals it can see — so
+  // any of these whose `text-` twin was not written out somewhere else in the
+  // app was purged and the icon rendered with no colour.
+  { icon: React.ComponentType<{ className?: string }>; rail: string; icon_colour: string; label: string }
 > = {
-  download: { icon: Download, rail: "bg-info", label: "Download" },
-  import: { icon: FileInput, rail: "bg-success", label: "Import" },
-  search: { icon: Search, rail: "bg-primary", label: "Search" },
-  error: { icon: XCircle, rail: "bg-destructive", label: "Error" },
-  notification: { icon: Info, rail: "bg-warning", label: "Notification" },
-  system: { icon: Settings2, rail: "bg-muted-foreground", label: "System" }
+  download: { icon: Download, rail: "bg-info", icon_colour: "text-info", label: "Download" },
+  import: { icon: FileInput, rail: "bg-success", icon_colour: "text-success", label: "Import" },
+  search: { icon: Search, rail: "bg-primary", icon_colour: "text-primary", label: "Search" },
+  error: { icon: XCircle, rail: "bg-destructive", icon_colour: "text-destructive", label: "Error" },
+  notification: { icon: Info, rail: "bg-warning", icon_colour: "text-warning", label: "Notification" },
+  system: { icon: Settings2, rail: "bg-muted-foreground", icon_colour: "text-muted-foreground", label: "System" }
 };
 
-const defaultCat = { icon: Info, rail: "bg-muted-foreground", label: "Event" };
+const defaultCat = { icon: Info, rail: "bg-muted-foreground", icon_colour: "text-muted-foreground", label: "Event" };
 
 const SEV_CONFIG: Record<Severity, { icon: React.ComponentType<{ className?: string }>; text: string; bg: string }> = {
   info: { icon: Info, text: "text-info", bg: "bg-info/10 border-info/20" },
@@ -260,7 +264,7 @@ export function AuditTimeline({ events, liveEvents = [], maxVisible = 200 }: Aud
                       "flex h-7 w-7 items-center justify-center rounded-full border border-hairline bg-card shadow-sm",
                     )}
                   >
-                    <CatIcon className={cn("h-3.5 w-3.5", `text-${cat.rail.replace("bg-", "")}`)} />
+                    <CatIcon className={cn("h-3.5 w-3.5", cat.icon_colour)} />
                   </div>
                 </div>
 

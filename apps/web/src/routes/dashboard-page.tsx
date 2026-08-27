@@ -706,7 +706,7 @@ export function DashboardPage() {
         <ListCard
           // This card carries episode air dates *and* scheduled search retries,
           // including for movies — so "Airing soon / Show / Episode" filed a
-          // film under a TV heading with an episode of "Retry" (#258).
+          // movie under a TV heading with an episode of "Retry" (#258).
           title="Coming up"
           count="next 72 hours"
           actions={

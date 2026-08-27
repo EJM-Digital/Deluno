@@ -338,7 +338,7 @@ public sealed class SqliteMediaStateRepository(
     /// Whether a title is out yet, from the columns
     /// <see cref="MediaTableMap.ReleaseColumns"/> selects.
     ///
-    /// A film asks <see cref="MovieAvailability"/>, which is the same rule the
+    /// A movie asks <see cref="MovieAvailability"/>, which is the same rule the
     /// catalogue uses to decide whether to search at all. A show is out once any
     /// episode has aired; with no aired episode and no air dates on record it
     /// counts as out, because refusing to search an unsynced show would be

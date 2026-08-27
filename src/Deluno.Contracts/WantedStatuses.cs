@@ -35,7 +35,7 @@ public static class WantedStatuses
     /// Not released, or the episode has not aired. There is nothing to find
     /// yet, so failing to find it is not a fact about the library.
     ///
-    /// New. Before this, an unreleased film was stored as <c>Missing</c> and
+    /// New. Before this, an unreleased movie was stored as <c>Missing</c> and
     /// counted against you from the day you added it.
     /// </summary>
     public const string Upcoming = "upcoming";

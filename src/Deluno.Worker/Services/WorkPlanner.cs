@@ -879,10 +879,10 @@ public sealed class WorkPlanner(
 
             // Name from the catalogue, exactly as the direct-import path does.
             // This used to build the whole import out of the output file name:
-            // title = the release name, year = null. So a refined film landed as
+            // title = the release name, year = null. So a refined movie landed as
             // "Big.Buck.Bunny.2008.1080p.WEB-DL.x264-DELUNO (Unknown Year)", and
             // with no RelatedEntityId the catalogue never learned it had arrived
-            // — the film stayed Missing and Deluno would grab it all over again.
+            // — the movie stayed Missing and Deluno would grab it all over again.
             // #268 fixed precisely this for downloads that import directly; the
             // sibling path never got the same treatment.
             var dispatch = await jobQueueRepository.FindRecentDispatchLinkAsync(

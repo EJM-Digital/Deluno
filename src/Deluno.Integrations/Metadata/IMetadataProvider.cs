@@ -17,7 +17,7 @@ public interface IMetadataProvider
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// When a film reached cinemas, digital and physical release. Returns
+    /// When a movie reached cinemas, digital and physical release. Returns
     /// <see cref="MetadataReleaseDates.None"/> when the provider cannot answer.
     /// </summary>
     Task<MetadataReleaseDates> GetMovieReleaseDatesAsync(

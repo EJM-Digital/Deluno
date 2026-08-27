@@ -3,11 +3,11 @@ using Deluno.Infrastructure.Storage.Migrations;
 namespace Deluno.Movies.Migrations;
 
 /// <summary>
-/// When a film can actually be obtained, and when Deluno may start looking.
+/// When a movie can actually be obtained, and when Deluno may start looking.
 ///
 /// A release year cannot express "in cinemas but not yet buyable", so every
-/// search for a just-released film burned a cycle against indexers that had
-/// nothing. These three dates plus a per-film minimum availability let Deluno
+/// search for a just-released movie burned a cycle against indexers that had
+/// nothing. These three dates plus a per-movie minimum availability let Deluno
 /// wait until there is something to find.
 /// </summary>
 public sealed class V0007MovieReleaseDates : SqliteSqlMigration

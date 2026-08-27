@@ -116,7 +116,7 @@ export function DashboardHero({
             <span
               className={cn(
                 "font-display text-[length:var(--type-title-md)] font-semibold tabular-nums leading-none tracking-[-0.03em]",
-                stat.mark ? TITLE_MARK_PRESENTATION[stat.mark].dot.replace("bg-", "text-") : "text-foreground"
+                stat.mark ? TITLE_MARK_PRESENTATION[stat.mark].text : "text-foreground"
               )}
             >
               <CountUp value={stat.value} />

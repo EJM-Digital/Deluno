@@ -38,12 +38,23 @@
       DESIGN-001 gives a title a five-rung ladder — Missing, Downloading,
       Upgradable, Quality met, Upcoming — and the first three already exist as
       destructive, info and success, at these exact values. Gold is the rung
-      above green that nobody has to be taught, and the slate is muted because
-      nothing is happening and nothing should be. The idle grey is the half a
-      dot wears when you are not monitoring the title.
+      above green that nobody has to be taught. The idle grey is the half a dot
+      wears when you are not monitoring the title.
+
+      Upcoming was a slate — muted, "because nothing is happening and nothing
+      should be". It was too close to that idle grey to survive: a halved
+      Upcoming dot was grey beside grey, and on a shelf it read as unmonitored
+      rather than as not-out-yet. DESIGN-001 recorded the risk as an open
+      question and the answer, on a real shelf, was that it needed a real hue.
+
+      Violet is the only slot left — red is Missing, blue is Downloading and the
+      app's primary, green is Upgradable, gold is Quality met, and amber is
+      reserved for "a person is needed" and never appears on a title. It also
+      carries no verdict of its own, which suits a rung that means "nothing to
+      do yet", and it is what a calendar uses for something scheduled.
     */
     --mark-quality-met: 42 96% 40%;
-    --mark-upcoming: 205 16% 58%;
+    --mark-upcoming: 265 62% 52%;
     --mark-idle: 220 10% 82%;
     --border: 220 14% 86%;
     --input: 220 14% 86%;
@@ -119,7 +130,7 @@
     --info: 207 96% 62%;
     --info-foreground: 210 30% 98%;
     --mark-quality-met: 44 98% 58%;
-    --mark-upcoming: 205 18% 60%;
+    --mark-upcoming: 265 82% 72%;
     --mark-idle: 217 16% 26%;
     --border: 217 22% 18%;
     --input: 217 22% 18%;

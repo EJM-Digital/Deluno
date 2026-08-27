@@ -14,7 +14,7 @@ A title gets **one dot** and **one bar**.
 
 - **The dot is the title itself** — where it has got to on a four-rung ladder.
 - **The bar is what you asked for beyond the title** — subtitle languages on a
-  film, episodes on a show.
+  movie, episodes on a show.
 - **A half-grey dot means you are not monitoring it.**
 
 Nothing else appears on a title. Failures, machinery health and anything
@@ -56,11 +56,24 @@ Chosen for what each state already means, not for hue spacing.
 | Downloading | `hsl(207 92% 45%)` | `hsl(207 96% 62%)` | Blue is the in-progress colour of every progress bar ever made. |
 | Upgradable | `hsl(145 72% 34%)` | `hsl(145 78% 52%)` | Green is *you have it*. |
 | Quality met | `hsl(42 96% 40%)` | `hsl(44 98% 58%)` | Gold is a rung above green without being taught. |
-| Upcoming | `hsl(205 16% 58%)` | `hsl(205 18% 60%)` | Muted, because nothing is happening and nothing should be. |
+| Upcoming | `hsl(265 62% 52%)` | `hsl(265 82% 72%)` | Violet — the one hue left, and what a calendar uses for something scheduled. **Revised 2026-08-27**, see below. |
 | Idle half | `hsl(220 10% 82%)` | `hsl(217 16% 26%)` | One grey, shared by every half. |
 
 Red, blue and green already exist in `apps/web/src/index.css`. **Gold and the
-Upcoming slate are the only new tokens.**
+Upcoming violet are the only new tokens.**
+
+### Upcoming was a slate, and the slate did not survive contact
+
+It was muted on purpose — "nothing is happening and nothing should be". On a
+real shelf that put it a few percent of lightness away from the idle grey, so a
+**halved** Upcoming dot was grey beside grey and read as *unmonitored* rather
+than as *not out yet*. The two things it most needed to be told apart from were
+the two it looked most like.
+
+Violet is the only slot left. Red is Missing, blue is Downloading and also the
+app's primary, green is Upgradable, gold is Quality met, and amber is reserved
+for "a person is needed" and never appears on a title. Violet also passes no
+verdict of its own, which suits a rung that means "nothing to do yet".
 
 ## The half
 
@@ -89,23 +102,52 @@ it removes the very channel that told them apart).
 `linear-gradient(to right, green 0 <have>%, red <have>% 100%)`, sitting on the
 bottom edge of the poster.
 
-- **Films: subtitle languages.** Proportioned to what you asked for. Four
-  languages and you have English is a quarter green.
-- **Shows: aired episodes.** Thirteen of eighteen is 72% green.
+**It is subtitle languages, on both media.** *(Revised 2026-08-27 with James.)*
+
+- **Movies: one file.** Two languages asked for and you have English is half
+  green.
+- **Shows: the same sum, over the episodes you hold.** Thirteen episodes with
+  the same two languages asked for of each is 26 slots; four episodes short a
+  language makes it 22/26 green.
 - **Asked for nothing:** the bar stays grey and claims nothing.
 
-**The bar counts what has aired, not what will exist** — otherwise every ongoing
-show reads permanently unfinished.
+**Counted only over the files a title actually has.** Counting the episodes you
+are missing would drag the bar down for a reason that has nothing to do with
+subtitles — and the dot at the top of the same poster already says the show is
+Missing.
 
-**Subtitles never change the dot.** A film short of a language is still Quality
+**Subtitles never change the dot.** A movie short of a language is still Quality
 met, because the title is exactly what you asked for. The bar measures the
-extras; the dot is the title.
+extras; the dot is the title. Red on the bar means *that extra is missing*; red
+on the dot means *the title is missing*. Same word, different subject, and the
+subject is what the mark is drawn on.
+
+### Why it stopped being episodes
+
+It used to be subtitle languages on a movie and **aired episodes** on a show, so
+the identical strip of pixels answered a different question depending on which
+shelf you were standing in front of — and a show could never show its subtitle
+state at all, because its bar was already spent.
+
+Rejected on the way: **folding subtitles into the episode count**, so an episode
+only counts as held when it has its languages too. One bar, same meaning as a
+movie's — but a show with all 36 episodes and no subtitles would draw an empty
+bar, which reads as *no episodes*. And **a second bar on shows only**, which
+makes TV posters carry something Movies posters do not, which is the whole
+defect again.
+
+**Episode counts are off the poster.** They are on the show's own page, where
+the season list already lives, and the show's dot still carries its rung.
 
 ## Shows
 
 Same five marks. **The dot takes the lowest rung any aired episode is on** —
 missing, then downloading, then upgradable, then quality met — so it never
-overstates how well a show is doing. The bar says how many are here.
+overstates how well a show is doing.
+
+The episode counts themselves are not on the poster. They decide the dot, and
+`airedWithFileCount` also says how many files the bar is measured over, but the
+numbers are read on the show's own page.
 
 ## The counts and filters
 
@@ -113,9 +155,18 @@ The toolbar changes with it. Today's *"1 downloaded · 10 missing"* becomes:
 
 > **11** movies · **1** quality met · **0** upgradable · **0** downloading · **10** missing · **0** upcoming
 
-**"Downloaded" goes** — a film below target is downloaded too, so the word could
-never tell you which. **"Monitored" keeps a filter and loses its colour**; the
-half already says it on every poster.
+**"Downloaded" goes** — a movie below target is downloaded too, so the word could
+never tell you which.
+
+**Every chip is colour-coded, and the colour is on the number.** *(Revised
+2026-08-27.)* It was a 6px dot to the left of the label, which is too small to
+work as a legend for a wall of posters, and three of the seven chips had no
+colour at all. The count is the part you read, so the count wears the mark.
+
+**Monitored and Unmonitored are coded, but not with a hue.** They get the
+monitoring grammar instead — a whole dot and a half dot, the same half that
+appears on a poster. #290 took hue away from things that are not states, and
+monitoring is a preference, not a rung.
 
 ## What this means for the stored vocabulary (#300)
 
@@ -145,7 +196,7 @@ from download telemetry.
   `recentItems` is **`LIMIT 25`**. So at most 25 titles in a library had a
   wanted status on the grid; every other card fell back to `hasFile`.
 
-That last one is why it looked fine on the lab rig — 11 films, all inside the
+That last one is why it looked fine on the lab rig — 11 movies, all inside the
 25 — and would have degraded silently at the 20,000-item invariant.
 
 ### What landed
@@ -184,7 +235,7 @@ Three things worth carrying forward:
 ## Build order
 
 1. ~~**Data.** Extend the paged catalogue query and contracts as above. Test at
-   scale, not on eleven films.~~ **Done** — `CatalogueSearchStateOnPageTests`,
+   scale, not on eleven movies.~~ **Done** — `CatalogueSearchStateOnPageTests`,
    including a 2,000-title walk and a query-plan guard.
 2. **#300's split.** Rename `waiting` → `covered`, add `upcoming` set from
    release and air dates, teach the episode paths the same words, migrate.
@@ -193,7 +244,7 @@ Three things worth carrying forward:
    Two things the data work turned up for this step:
    - **`episode_wanted_state` already writes `covered` and `missing`** while
      `movie_wanted_state` writes `waiting`, `upgrade` and `missing`. The episode
-     vocabulary is already half-way to the target; the film one is not.
+     vocabulary is already half-way to the target; the movie one is not.
    - **`NormalizeWantedStatus` coerces anything it does not recognise to
      `missing`.** A typo, or a new value written before the reader learns it,
      becomes "go and download this" rather than an error. Worth making loud as
@@ -245,7 +296,7 @@ Three things worth carrying forward:
    name, whether it spells the colour `tone`, `variant` or `bg-*`.
 
    **Three restatements went with them**, all found by looking at the running
-   app rather than by any test. A film's summary strip said **FILE: Missing** in
+   app rather than by any test. A movie's summary strip said **FILE: Missing** in
    amber beside **CUTOFF: Below target** in amber — the mark, twice, in the one
    colour it is never allowed to wear, and "below target" claimed a comparison
    against a file that did not exist. It is three cells now: quality, monitoring,
@@ -318,7 +369,7 @@ looking for missing episodes anyway.
   — three statements, two of them about monitoring. On a small poster the half is
   the only way to see it, so it earns its place there. Worth deciding whether it
   should stay on the sizes that have room for words.
-- **Gold against green on a real shelf**, which the rig can now show: one film is
+- **Gold against green on a real shelf**, which the rig can now show: one movie is
   Quality met among ten Missing.
 
 ## Left for James's eyes
@@ -327,6 +378,6 @@ Two things no argument settles, both visible on the rendered reference:
 
 - **Gold reading as a rung above green** on a real shelf. If it does not feel
   like a step up, it is the wrong gold, not the wrong idea.
-- **Upcoming's half against the idle grey.** It is the only muted hue in the
-  set, so its half is the tightest pair. If it reads as one flat dot at 62px,
-  Upcoming needs a real hue rather than a slate.
+- ~~**Upcoming's half against the idle grey.**~~ **Answered 2026-08-27:** it did
+  read as one flat dot, and as unmonitored rather than not-out-yet. Upcoming is
+  violet now.

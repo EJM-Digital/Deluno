@@ -222,7 +222,7 @@ function PosterCard({
             One dot and one bar, and nothing else — see DESIGN-001.
 
             The dot was a lifecycle *chip* derived from `status`, which only ever
-            said whether a file existed: a film below its target quality looked
+            said whether a file existed: a movie below its target quality looked
             identical to a finished one, and monitoring had to be repeated as
             supporting text underneath because a chip could not carry it. The dot
             says which of the four rungs the title is on, and a half says you are
@@ -238,7 +238,7 @@ function PosterCard({
             </div>
           ) : null}
 
-          {/* What you asked for beyond the title. A film has no bar. */}
+          {/* What you asked for beyond the title. A movie has no bar. */}
           <TitleMarkBar item={item} />
 
           {/* Gradient overlay — condenses on small */}

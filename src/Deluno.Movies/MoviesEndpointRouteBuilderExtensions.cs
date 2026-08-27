@@ -1293,7 +1293,7 @@ public static class MoviesEndpointRouteBuilderExtensions
 
     /// <summary>
     /// Pull the provider's release dates in after a match is applied, so Deluno
-    /// knows when the film is actually obtainable rather than only what year it
+    /// knows when the movie is actually obtainable rather than only what year it
     /// came out. A provider that cannot answer leaves the stored dates alone.
     /// </summary>
     private static async Task SyncReleaseDatesAsync(

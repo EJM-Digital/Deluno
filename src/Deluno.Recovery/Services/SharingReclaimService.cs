@@ -25,8 +25,8 @@ public sealed record SharingReclaimOutcome(
 /// asking the download client to let go of an item (#288).
 ///
 /// The rule it applies is the global one, overridden by the search source the
-/// release came from — a film from a private tracker keeps sharing while the
-/// same film from a public one need not, and that distinction belongs to the
+/// release came from — a movie from a private tracker keeps sharing while the
+/// same movie from a public one need not, and that distinction belongs to the
 /// site rather than to the library it landed in.
 ///
 /// Deluno never deletes a file the client still believes it owns. Doing that is

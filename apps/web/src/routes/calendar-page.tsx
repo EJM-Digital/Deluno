@@ -1,7 +1,7 @@
 /**
  * Schedule — what lands when.
  *
- * TV air dates and film release dates come from the provider catalogue, so this
+ * TV air dates and movie release dates come from the provider catalogue, so this
  * page is a window query rather than a scan: it asks the API for the visible
  * range instead of pulling every episode of every show and slicing. Before the
  * catalogue existed nothing had a date and this page could only ever be empty.
@@ -98,7 +98,7 @@ interface CalendarEntry {
    *
    * This was a hand-written `{ label, tone }`: an aired episode with no file
    * read blue "Missing" here and red Missing on its poster, and a monitored
-   * film with no file read blue "Watching for it" — a phrase that appears
+   * movie with no file read blue "Watching for it" — a phrase that appears
    * nowhere else in Deluno. Two vocabularies for one state (#302).
    */
   mark: TitleMarkInput;
@@ -157,7 +157,7 @@ export function CalendarPage() {
 
   const nothingHere = entries.length
     ? `Nothing is scheduled in ${range.label}. Step to another ${scope} with the arrows, or switch the range above.`
-    : "Nothing has a date yet. Air dates and release dates come from the metadata provider — link a show or film to its provider record and its schedule appears here.";
+    : "Nothing has a date yet. Air dates and release dates come from the metadata provider — link a show or movie to its provider record and its schedule appears here.";
 
   return (
     <div className="grid gap-[var(--page-gap)]">
@@ -209,7 +209,7 @@ export function CalendarPage() {
           { label: "Still to come", value: stillToCome, help: "has not happened yet" },
           { label: "Already here", value: alreadyHere, help: "aired or released" },
           { label: "Episodes", value: episodeCount, help: "TV air dates" },
-          { label: "Films", value: movieCount, help: "cinema, digital and disc" }
+          { label: "Movies", value: movieCount, help: "cinema, digital and disc" }
         ]}
       />
 
@@ -418,7 +418,7 @@ function buildEntries(data: CalendarLoaderData): CalendarEntry[] {
     id: `movie:${movie.movieId}:${movie.kind}:${movie.date}`,
     date: new Date(`${movie.date}T00:00:00`),
     name: movie.title,
-    sub: movie.releaseYear ? String(movie.releaseYear) : "Film",
+    sub: movie.releaseYear ? String(movie.releaseYear) : "Movie",
     kindLabel: movieKindLabel(movie.kind),
     detail: movieKindDetail(movie.kind),
     mark: { monitored: movie.monitored, wantedStatus: movie.wantedStatus },

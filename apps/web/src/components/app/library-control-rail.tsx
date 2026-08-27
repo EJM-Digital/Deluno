@@ -1,5 +1,5 @@
 import { QUICK_FILTER_MARK, type QuickFilter, type SortDirection, type SortField } from "../../lib/library-filters";
-import { TITLE_MARK_PRESENTATION } from "../../lib/status-tones";
+import { TITLE_MARK_PRESENTATION, type TitleMark } from "../../lib/status-tones";
 import {
   ArrowDownAZ, ArrowUpDown, ChevronDown, Filter, LayoutGrid, LayoutTemplate, List, Search, X
 } from "lucide-react";
@@ -46,7 +46,7 @@ export interface SavedFilterPreset {
  * filter, they count, and they are what you scan. Each carries its mark's colour,
  * so the row is also the legend for the shelf below it.
  *
- * "Downloaded" is gone: a film below its target quality is downloaded too, so
+ * "Downloaded" is gone: a movie below its target quality is downloaded too, so
  * the chip selected a set nobody was actually asking for. *Quality met* and
  * *Upgradable* between them say what it was reaching for, and say which of them
  * still needs work. Every label is a mark name, so a chip and the dot on the
@@ -56,17 +56,50 @@ export interface SavedFilterPreset {
  * (DESIGN-001 step 5). A chip that can never match anything is worse than no
  * chip at all.
  */
-export const quickFilterConfig: Array<{ key: QuickFilter; label: string; dot?: string }> = (
+/**
+ * One row: the legend, the counts and the filters at once.
+ *
+ * These used to be repeated by a summary line above them — Missing, Monitored,
+ * Unmonitored and Upgradable appeared twice on the same screen, once as a
+ * number you could not click and once as a chip you could. The chips won: they
+ * filter, they count, and they are what you scan.
+ *
+ * **Every chip is colour-coded, and the colour is on the number.** It used to be
+ * a 6px dot to the left of the label — too small to work as a legend for a
+ * shelf of posters, and three of the seven chips had no colour at all. The
+ * count is the part you actually read, so the count is what wears the mark.
+ *
+ * Monitored and Unmonitored get the *monitoring* grammar rather than a hue:
+ * a whole dot and a half dot, the same half that appears on a poster. #290 took
+ * hue away from things that are not states, and monitoring is a preference, not
+ * a rung.
+ *
+ * "Downloaded" is gone: a movie below its target quality is downloaded too, so
+ * the chip selected a set nobody was actually asking for. Downloading is
+ * deliberately absent until live transfer state is wired in (DESIGN-001 step 5)
+ * — a chip that can never match anything is worse than no chip at all.
+ */
+export interface QuickFilterChip {
+  key: QuickFilter;
+  label: string;
+  /** The mark this chip selects, when it selects one. */
+  mark: TitleMark | null;
+  /** Monitoring chips carry the half-dot grammar instead of a hue. */
+  monitoring?: "on" | "off";
+}
+
+export const quickFilterConfig: QuickFilterChip[] = (
   ["all", "covered", "upgrades", "missing", "upcoming", "monitored", "unmonitored"] as const
 ).map((key) => {
-  // The label and the dot come from the one table, not from here. They were
-  // written out by hand — a sixth place colouring a state, three lines under a
-  // comment calling this row the legend. A legend that keeps its own copy of the
-  // colours is not a legend (#302).
+  // The label and the colour come from the one table, never from here. They
+  // were written out by hand — a sixth place colouring a state, three lines
+  // under a comment calling this row the legend. A legend that keeps its own
+  // copy of the colours is not a legend (#302).
   const mark = QUICK_FILTER_MARK[key];
-  if (!mark) return { key, label: key === "all" ? "All" : key === "monitored" ? "Monitored" : "Unmonitored" };
-  const presentation = TITLE_MARK_PRESENTATION[mark];
-  return { key, label: presentation.label, dot: presentation.dot };
+  if (mark) return { key, label: TITLE_MARK_PRESENTATION[mark].label, mark };
+  if (key === "monitored") return { key, label: "Monitored", mark: null, monitoring: "on" as const };
+  if (key === "unmonitored") return { key, label: "Unmonitored", mark: null, monitoring: "off" as const };
+  return { key, label: "All", mark: null };
 });
 
 export const sortFieldOptions: Array<{ value: SortField; label: string }> = [
@@ -287,14 +320,33 @@ export function ControlRail({ label, facets, actions, controls }: {
                       active ? "font-semibold text-foreground" : "font-medium text-muted-foreground hover:text-foreground"
                     )}
                   >
-                    {/* The mark's own colour, so the chip and the dots it
-                        filters to are the same signal rather than two. */}
-                    {chip.dot ? <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", chip.dot)} /> : null}
+                    {/* The mark's own colour, so the chip and the dots on the
+                        posters it filters to are one signal rather than two. */}
+                    {chip.mark ? (
+                      <span aria-hidden className={cn("h-2 w-2 shrink-0 rounded-full", TITLE_MARK_PRESENTATION[chip.mark].dot)} />
+                    ) : chip.monitoring ? (
+                      <span
+                        aria-hidden
+                        className={cn(
+                          "h-2 w-2 shrink-0 rounded-full",
+                          chip.monitoring === "on"
+                            ? "bg-foreground/45"
+                            : "bg-[linear-gradient(90deg,hsl(var(--foreground)/0.45)_0_50%,hsl(var(--mark-idle))_50%_100%)]"
+                        )}
+                      />
+                    ) : null}
                     <span>{chip.label}</span>
+                    {/* The count wears the colour. A 6px dot beside a label is
+                        not a legend for a wall of posters; the number is the
+                        part you actually read. */}
                     <span
                       className={cn(
                         "tabular rounded-md px-1.5 py-px text-[length:var(--library-badge-size)] font-bold leading-tight",
-                        active ? "bg-primary/15 text-primary dark:bg-primary/20" : "bg-foreground/[0.06] text-muted-foreground dark:bg-white/[0.07]"
+                        chip.mark
+                          ? cn(TITLE_MARK_PRESENTATION[chip.mark].tint, TITLE_MARK_PRESENTATION[chip.mark].text)
+                          : active
+                            ? "bg-primary/15 text-primary dark:bg-primary/20"
+                            : "bg-foreground/[0.06] text-muted-foreground dark:bg-white/[0.07]"
                       )}
                     >
                       {counts[chip.key] ?? 0}

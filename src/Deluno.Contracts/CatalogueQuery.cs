@@ -50,7 +50,7 @@ public static class CatalogueStatusFilters
 
     /// <summary>
     /// Has what the profile asked for. The counterpart to <c>Upgrades</c>: those
-    /// two together are what <c>Downloaded</c> could never separate, since a film
+    /// two together are what <c>Downloaded</c> could never separate, since a movie
     /// below its target is downloaded too.
     /// </summary>
     public const string Covered = "covered";
@@ -126,7 +126,7 @@ public sealed record CatalogueFacets(
     int Unmonitored,
     /// <summary>
     /// Has a file, whatever its quality. Still a useful filter, but no longer a
-    /// number worth printing: a film below its target is downloaded too, so the
+    /// number worth printing: a movie below its target is downloaded too, so the
     /// word could never tell you which titles still had work outstanding. The
     /// four below can.
     /// </summary>

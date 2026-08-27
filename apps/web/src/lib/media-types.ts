@@ -62,15 +62,28 @@ export interface MediaItem {
    */
   wantedStatus?: string | null;
   /**
-   * What a show's episodes add up to, counted over what has aired. A film
-   * leaves these undefined and gets no bar.
+   * What a show's episodes add up to, counted over what has aired.
+   *
+   * These decide a show's **dot** — the lowest rung any aired episode is on —
+   * and `airedWithFileCount` also says how many files the show has, which is
+   * what its subtitle bar is measured over. They are not drawn on a poster
+   * themselves; the show's own page carries the counts. A movie leaves them
+   * undefined.
    */
   episodeCount?: number;
   airedEpisodeCount?: number;
   airedWithFileCount?: number;
   airedUpgradableCount?: number;
   nextAirDateUtc?: string | null;
-  /** The bar under a film's poster. Zero until Subber (#301). */
+  /**
+   * Whether the title itself is on disk.
+   *
+   * Not a state — the mark says the state. It is here because the subtitle bar
+   * is measured over the files a title actually has, and a movie with no file
+   * holds no subtitles to be short of.
+   */
+  hasFile?: boolean;
+  /** Languages asked for **per file**, and how many are held across them all. */
   subtitleLanguagesWanted?: number;
   subtitleLanguagesHeld?: number;
   certification?: string | null;

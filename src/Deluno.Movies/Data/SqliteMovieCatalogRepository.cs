@@ -1181,7 +1181,7 @@ public sealed class SqliteMovieCatalogRepository(
                     AND {statusFilter}
                     AND m.monitored = 1
                     AND (w.next_eligible_search_utc IS NULL OR w.next_eligible_search_utc <= @now)
-                    -- Nothing to find before a film is obtainable, so do not spend
+                    -- Nothing to find before a movie is obtainable, so do not spend
                     -- a search cycle on one. 'announced' opts out of the wait.
                     AND (
                         m.minimum_availability = 'announced'
@@ -2304,8 +2304,8 @@ public sealed class SqliteMovieCatalogRepository(
     }
 
     /// <summary>
-    /// Films whose cinema, digital or physical release falls inside a window.
-    /// Each date is its own row so the calendar can show a film twice when it
+    /// Movies whose cinema, digital or physical release falls inside a window.
+    /// Each date is its own row so the calendar can show a movie twice when it
     /// reaches cinemas in one month and streaming in another.
     /// </summary>
     public async Task<IReadOnlyList<MovieCalendarItem>> ListCalendarMoviesAsync(
@@ -2325,7 +2325,7 @@ public sealed class SqliteMovieCatalogRepository(
         // replace — and it could only ever answer that one question, so the
         // calendar had to invent its own words ("Watching for it") for a state
         // the rest of Deluno already names. It carries the wanted status now, so
-        // a film on the calendar shows the same mark as the film on the shelf.
+        // a movie on the calendar shows the same mark as the movie on the shelf.
         command.CommandText =
             $"""
             SELECT m.id, m.title, m.release_year, m.poster_url, m.monitored, m.kind, m.date,

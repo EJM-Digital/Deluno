@@ -18,10 +18,10 @@ public sealed record MediaTableMap(
     string RecoveryTable,
     /// <summary>
     /// The columns that say whether a title is out yet, joined onto its wanted
-    /// state — three release dates and the availability rule for a film, and for
+    /// state — three release dates and the availability rule for a movie, and for
     /// a show whether any episode has aired.
     ///
-    /// Selected rather than decided in SQL, because the rule for a film is
+    /// Selected rather than decided in SQL, because the rule for a movie is
     /// <see cref="Deluno.Contracts.MovieAvailability"/> and writing it a second
     /// time in a WHERE clause is how two copies of a rule start disagreeing.
     /// </summary>

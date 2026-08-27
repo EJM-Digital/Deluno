@@ -115,7 +115,7 @@ the one word, and a migration for any row holding the other.
   (`SqliteSeriesCatalogRepository.cs:1864` and the catalogue-sync backfill),
   bypassing `NormalizeWantedStatus`, which maps anything it does not recognise to
   `missing`. Harmless only because the episode path never calls that normaliser.
-  Films and shows call the same state `waiting`. One state, two words, split by
+  Movies and shows call the same state `waiting`. One state, two words, split by
   which entity you are looking at.
 - **`'wanted'`** is read by `ListEligibleWantedEpisodesAsync`
   (`SqliteSeriesCatalogRepository.cs:2668`) and written by nothing. Its test

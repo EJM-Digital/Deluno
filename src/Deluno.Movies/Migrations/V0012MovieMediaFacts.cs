@@ -17,7 +17,7 @@ namespace Deluno.Movies.Migrations;
 /// on the entry.</item>
 /// <item>Codec, audio and release group describe the <em>file</em> and are read
 /// from its name, so they sit on the wanted state next to the path and size
-/// that are already there. A different copy of the same film has a different
+/// that are already there. A different copy of the same movie has a different
 /// codec.</item>
 /// </list>
 ///

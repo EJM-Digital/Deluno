@@ -2,7 +2,7 @@
  * Movie detail — hero → toolbar sections → list cards → drawers.
  *
  * Same shape as the TV show page, minus episodes: a detail page keeps its `h1`
- * because the topbar names the section ("Movies") rather than the film, and the
+ * because the topbar names the section ("Movies") rather than the movie, and the
  * hero artwork is content. Everything below it obeys the list → drawer grammar.
  *
  * Contracts: GET /api/movies/{id}, /workflow-status, /removal-preview; PUT
@@ -161,7 +161,7 @@ export function MovieDetailPage() {
     ? {
         eyebrow: "Needs attention",
         title: `Review ${importCases.length} import issue${importCases.length === 1 ? "" : "s"}`,
-        description: "Something Deluno brought in could not be filed. It needs a decision before this film is settled.",
+        description: "Something Deluno brought in could not be filed. It needs a decision before this movie is settled.",
         action: "Open import issues",
         onAction: () => setSection("history")
       }
@@ -177,15 +177,15 @@ export function MovieDetailPage() {
         ? {
             eyebrow: "Monitoring paused",
             title: "Resume automatic care",
-            description: "This film is not being watched for a missing file or a quality improvement.",
+            description: "This movie is not being watched for a missing file or a quality improvement.",
             action: "Resume automation",
             onAction: () => void handleMonitoring(true)
           }
         : !movie.hasFile
           ? {
               eyebrow: "File missing",
-              title: "Find this film",
-              description: "Deluno can search every indexer you have connected using this film's Library Profile.",
+              title: "Find this movie",
+              description: "Deluno can search every indexer you have connected using this movie's Library Profile.",
               action: "Search now",
               onAction: () => void handleSearchNow("automatic")
             }
@@ -210,7 +210,7 @@ export function MovieDetailPage() {
       if (!response.ok) throw new Error("movie-monitoring-failed");
       revalidator.revalidate();
     } catch {
-      toast.error("This film's monitoring could not be changed.");
+      toast.error("This movie's monitoring could not be changed.");
     } finally {
       setBusyAction(null);
     }
@@ -332,7 +332,7 @@ export function MovieDetailPage() {
         setSection("destination");
         if (found) toast.success(`${found} release${found === 1 ? "" : "s"} scored. Choose one below.`);
         else {
-          const explained = describeSearchReason(payload.reason, payload.summary ?? "No releases matched this film's Library Profile.");
+          const explained = describeSearchReason(payload.reason, payload.summary ?? "No releases matched this movie's Library Profile.");
           const action = explained.action;
           toast.info(explained.title, {
             description: explained.description,
@@ -341,7 +341,7 @@ export function MovieDetailPage() {
         }
       } else {
         if (best) {
-          toast.success(`Deluno selected ${best} using this film's Library Profile.`);
+          toast.success(`Deluno selected ${best} using this movie's Library Profile.`);
         } else {
           const explained = describeSearchReason(payload.reason, "Search finished with no accepted release.");
           const action = explained.action;
@@ -417,8 +417,8 @@ export function MovieDetailPage() {
 
   return (
     <div className="grid gap-[var(--page-gap)]">
-      {/* One toolbar: which part of the film you want, where you came from, and
-          the two searches. The topbar names the section, the hero names the film. */}
+      {/* One toolbar: which part of the movie you want, where you came from, and
+          the two searches. The topbar names the section, the hero names the movie. */}
       <PageToolbar
         left={
           <SegmentedControl<DetailSection>
@@ -562,7 +562,7 @@ export function MovieDetailPage() {
         was amber, the one signal reserved for "a person is needed". Nobody is
         needed: Deluno searches for it on its schedule. **Cutoff** said "Met" or
         "Below target", which is the difference between Quality met and
-        Upgradable — the mark again — and on a film with no file at all it read
+        Upgradable — the mark again — and on a movie with no file at all it read
         "Below target", claiming a comparison against a file that does not exist.
 
         What is left is what the mark cannot say: which quality is actually
@@ -672,7 +672,7 @@ export function MovieDetailPage() {
             </ListTable>
           </ListCard>
 
-          <ListCard title="Automation" count={movie.monitored ? "Watching this film" : "Paused"}>
+          <ListCard title="Automation" count={movie.monitored ? "Watching this movie" : "Paused"}>
             <ListTable chevron={false} columns={[{ label: "Control" }, { label: "Action", width: "auto", align: "end", mobile: true }]}>
               <ListRow>
                 <ListNameCell
@@ -711,7 +711,7 @@ export function MovieDetailPage() {
                   sub={
                     isBeingSearchedFor
                       ? "Pause scheduled searches for a day. Manual searches still work."
-                      : "Nothing to defer — Deluno is not searching for this film."
+                      : "Nothing to defer — Deluno is not searching for this movie."
                   }
                 />
                 <div role="cell" className="flex justify-end">
@@ -726,8 +726,8 @@ export function MovieDetailPage() {
                   name="Skip the next search"
                   sub={
                     isBeingSearchedFor
-                      ? "Let one scheduled cycle pass without searching this film."
-                      : "Nothing to skip — Deluno is not searching for this film."
+                      ? "Let one scheduled cycle pass without searching this movie."
+                      : "Nothing to skip — Deluno is not searching for this movie."
                   }
                 />
                 <div role="cell" className="flex justify-end">
@@ -741,11 +741,11 @@ export function MovieDetailPage() {
           </ListCard>
 
           {origins.length ? (
-            <ListCard title="How this film was added" count={`${origins.length} import list${origins.length === 1 ? "" : "s"}`}>
+            <ListCard title="How this movie was added" count={`${origins.length} import list${origins.length === 1 ? "" : "s"}`}>
               <ListTable chevron={false} columns={[{ label: "Source" }, { label: "Provider", mobile: true }, { label: "First seen" }]}>
                 {origins.map((origin) => (
                   <ListRow key={origin.id}>
-                    <ListNameCell name={origin.sourceName} sub="Removing the list never removes this film or its files." />
+                    <ListNameCell name={origin.sourceName} sub="Removing the list never removes this movie or its files." />
                     <ListCell primary={origin.provider} mobile />
                     <ListCell primary={formatDateTime(origin.firstSeenUtc)} />
                   </ListRow>
@@ -783,7 +783,7 @@ export function MovieDetailPage() {
             {movieSearches.length === 0 ? (
               <ListEmpty
                 title="No searches yet"
-                description="Manual and scheduled searches for this film appear here with what they scored."
+                description="Manual and scheduled searches for this movie appear here with what they scored."
               />
             ) : (
               <ListTable
@@ -842,7 +842,7 @@ export function MovieDetailPage() {
 
           <ListCard title="Activity" count={activity.length ? `Latest ${Math.min(activity.length, 10)} of ${activity.length}` : undefined}>
             {activity.length === 0 ? (
-              <ListEmpty title="Nothing has happened yet" description="Every event Deluno records against this film shows up here." />
+              <ListEmpty title="Nothing has happened yet" description="Every event Deluno records against this movie shows up here." />
             ) : (
               <ListTable chevron={false} columns={[{ label: "Event" }, { label: "Category", mobile: true }, { label: "When" }]}>
                 {activity.slice(0, 10).map((item) => (

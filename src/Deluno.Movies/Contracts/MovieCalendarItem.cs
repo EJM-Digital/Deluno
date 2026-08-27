@@ -1,7 +1,7 @@
 namespace Deluno.Movies.Contracts;
 
 /// <summary>
-/// A film placed on a date. One film can appear more than once — a cinema date
+/// A movie placed on a date. One movie can appear more than once — a cinema date
 /// and a digital date are different events and the user cares about both — so
 /// <see cref="Kind"/> says which this row is.
 /// </summary>
@@ -17,7 +17,7 @@ public sealed record MovieCalendarItem(
     bool Monitored,
     /// <summary>
     /// The stored wanted status — <c>missing</c>, <c>upgrade</c>, <c>covered</c>
-    /// or <c>upcoming</c>. Null when Deluno tracks the film in no library.
+    /// or <c>upcoming</c>. Null when Deluno tracks the movie in no library.
     ///
     /// The calendar draws the same mark as the shelf from this. Without it the
     /// page had only <see cref="HasFile"/> and had to invent its own words for

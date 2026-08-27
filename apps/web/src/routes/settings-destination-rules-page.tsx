@@ -354,7 +354,7 @@ export function SettingsDestinationRulesPage() {
             <DrawerSection title="Rule details">
               <FieldRow>
                 <Field label="Name" error={errors.name}>
-                  <Input value={form.name} onChange={(event) => { setErrors((current) => ({ ...current, name: "" })); setForm((current) => ({ ...current, name: event.target.value })); }} placeholder="Example: family films to another folder" autoComplete="off" />
+                  <Input value={form.name} onChange={(event) => { setErrors((current) => ({ ...current, name: "" })); setForm((current) => ({ ...current, name: event.target.value })); }} placeholder="Example: family movies to another folder" autoComplete="off" />
                 </Field>
                 <Field label="Media type">
                   <SegmentedControl<"movies" | "tv"> value={form.mediaType} onValueChange={(mediaType) => setForm((current) => ({ ...current, mediaType, rootPath: current.rootPath === defaultRoot(current.mediaType, settings) ? defaultRoot(mediaType, settings) : current.rootPath }))} options={[{ value: "movies", label: "Movies" }, { value: "tv", label: "TV shows" }]} />

@@ -18,7 +18,7 @@ describe("UI adapters", () => {
    * to come from — `/api/movies/wanted` — returns at most 25 `recentItems`. Any
    * title past the 25th had no entry in that map, so its card silently lost its
    * status, its reason and its target quality and fell back to "is there a
-   * file". Eleven films on a lab rig all fit inside 25; twenty thousand do not.
+   * file". Eleven movies on a lab rig all fit inside 25; twenty thousand do not.
    */
   it("reads every title's search state from the title, however deep the page", () => {
     const items = Array.from({ length: 400 }, (_, index) => ({
@@ -33,7 +33,7 @@ describe("UI adapters", () => {
       targetQuality: "Bluray 2160p",
       wantedStatus: "upgrade",
       wantedReason: "Better copy available",
-      libraryId: "library-films",
+      libraryId: "library-movies",
       rating: null,
       ratings: [],
       genres: "",
@@ -47,7 +47,7 @@ describe("UI adapters", () => {
     expect(adapted).toHaveLength(400);
     expect(adapted.every((item) => item.releaseStatus === "Upgradable")).toBe(true);
     expect(adapted.every((item) => item.wantedReason === "Better copy available")).toBe(true);
-    expect(adapted.every((item) => item.libraryId === "library-films")).toBe(true);
+    expect(adapted.every((item) => item.libraryId === "library-movies")).toBe(true);
     expect(adapted.every((item) => item.targetQuality === "Bluray 2160p")).toBe(true);
   });
 
@@ -55,7 +55,7 @@ describe("UI adapters", () => {
    * A title has no availability chip any more.
    *
    * `MediaItem.status` was `hasFile ? "downloaded" : "missing"` and nothing
-   * else — a film below its target looked identical to a finished one, and its
+   * else — a movie below its target looked identical to a finished one, and its
    * colour table painted the missing case amber, the one signal reserved for
    * "a person is needed" (#302). The mark reads the wanted status instead, so
    * what is left to check here is the Release status *filter*, which is still a
@@ -67,7 +67,7 @@ describe("UI adapters", () => {
 
     it("never offers Downloading, which the catalogue cannot know about", () => {
       // The half #299 left behind: the filter answered "Downloading" for
-      // `waiting`, which the server sets on a film that has a file and meets its
+      // `waiting`, which the server sets on a movie that has a file and meets its
       // target (#300) — so filtering for Downloading returned the finished ones.
       // This adapter is fed the catalogue, which carries no live transfer state.
       for (const hasFile of [true, false]) {
