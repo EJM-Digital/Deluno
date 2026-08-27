@@ -28,19 +28,6 @@ export const MEDIA_STATUS_PRESENTATION: Record<MediaStatus, {
   missing: { dot: "bg-warning", compactLabel: "Missing", label: "Missing", tone: "border-warning/30 bg-warning/15 text-warning", variant: "warning" }
 };
 
-/** Colour rules for the reusable library summaries used by Movies and TV. */
-export const LIBRARY_SUMMARY_PRESENTATION = {
-  availability: {
-    active: "text-success",
-    empty: "text-muted-foreground"
-  }
-} as const;
-
-export function librarySummaryTone(kind: keyof typeof LIBRARY_SUMMARY_PRESENTATION, count: number) {
-  const presentation = LIBRARY_SUMMARY_PRESENTATION[kind];
-  return count > 0 ? presentation.active : presentation.empty;
-}
-
 export function mediaStatusIsActive(status: MediaStatus) {
   return status === "downloading" || status === "processing" || status === "waitingForProcessor" || status === "importQueued";
 }

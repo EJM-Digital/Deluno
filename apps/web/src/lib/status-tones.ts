@@ -244,17 +244,47 @@ export function titleMark(item: {
 }
 
 /**
- * How much of what you asked for beyond the title is here — episodes on a show.
+ * What you asked for beyond the title, and how much of it is here.
  *
- * Counts what has **aired**, never what will exist, or every ongoing show reads
- * permanently unfinished, which is true of all of them and so says nothing.
- * Returns null when nothing was asked for, and the bar then claims nothing.
+ * Episodes on a show, subtitle languages on a film — DESIGN-001 gives both the
+ * same bar, because both are "the extras you asked for" rather than the title
+ * itself. A film short of a language is still Quality met: the bar measures the
+ * extras, the dot is the title.
+ *
+ * Counted over what has **aired**, never what will exist, or every ongoing show
+ * reads permanently unfinished, which is true of all of them and so says
+ * nothing about any.
+ *
+ * `wanted: 0` means nothing was asked for. The bar still appears, in grey,
+ * claiming nothing — so a shelf does not change shape the day Subber (#301)
+ * starts filling subtitle languages in.
  */
-export function titleBarFraction(item: {
+export interface TitleBar {
+  held: number;
+  wanted: number;
+  /** What the bar is counting, for the label a reader gets on hover. */
+  noun: "aired episodes" | "subtitle languages";
+}
+
+export function titleBar(item: {
   airedEpisodeCount?: number;
   airedWithFileCount?: number;
-}): number | null {
-  const aired = item.airedEpisodeCount;
-  if (typeof aired !== "number" || aired <= 0) return null;
-  return Math.min(1, Math.max(0, (item.airedWithFileCount ?? 0) / aired));
+  subtitleLanguagesWanted?: number;
+  subtitleLanguagesHeld?: number;
+}): TitleBar {
+  // A show is measured by its episodes; a film has none, so it falls through to
+  // what Subber will fill in.
+  if (typeof item.airedEpisodeCount === "number" && item.airedEpisodeCount > 0) {
+    return {
+      held: Math.min(item.airedWithFileCount ?? 0, item.airedEpisodeCount),
+      wanted: item.airedEpisodeCount,
+      noun: "aired episodes"
+    };
+  }
+
+  return {
+    held: item.subtitleLanguagesHeld ?? 0,
+    wanted: item.subtitleLanguagesWanted ?? 0,
+    noun: "subtitle languages"
+  };
 }

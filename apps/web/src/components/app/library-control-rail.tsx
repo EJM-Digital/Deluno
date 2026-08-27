@@ -1,3 +1,4 @@
+import type { QuickFilter } from "../../lib/library-filters";
 import {
   ArrowDownAZ, ArrowUpDown, ChevronDown, Filter, LayoutGrid, LayoutTemplate, List, Search, X
 } from "lucide-react";
@@ -10,7 +11,12 @@ import { MenuSelect } from "../ui/menu-select";
 import { SwitchRow } from "../ui/switch";
 import type { CardSize, DisplayOptions } from "./library-grid";
 
-export type QuickFilter = "all" | "monitored" | "unmonitored" | "downloaded" | "missing" | "upgrades";
+/**
+ * Re-exported, not redeclared. This was its own union — a shorter one than
+ * `lib/library-filters.ts`'s — so the two could disagree about what a filter
+ * key was, and adding a value to one silently left the other behind.
+ */
+export type { QuickFilter } from "../../lib/library-filters";
 export type ViewMode = "grid" | "list";
 export type SortField = "title" | "year" | "rating" | "added";
 export type SortDirection = "asc" | "desc";
@@ -27,18 +33,32 @@ export interface SavedFilterPreset {
 }
 
 /**
+ * One row: the legend, the counts and the filters at once.
+ *
+ * These used to be repeated by a summary line above them — Missing, Monitored,
+ * Unmonitored and Upgradable appeared twice on the same screen, once as a
+ * number you could not click and once as a chip you could. The chips won: they
+ * filter, they count, and they are what you scan. Each carries its mark's colour,
+ * so the row is also the legend for the shelf below it.
+ *
  * "Downloaded" is gone: a film below its target quality is downloaded too, so
- * the chip selected a set nobody was actually asking for. *Upgradable* and
- * *Missing* between them say what it was reaching for, and say which of them
- * still needs work. The labels are the mark names, so the chip and the dot on
- * the poster it filters to are the same word.
+ * the chip selected a set nobody was actually asking for. *Quality met* and
+ * *Upgradable* between them say what it was reaching for, and say which of them
+ * still needs work. Every label is a mark name, so a chip and the dot on the
+ * poster it filters to are the same word.
+ *
+ * Downloading is deliberately absent until live transfer state is wired in
+ * (DESIGN-001 step 5). A chip that can never match anything is worse than no
+ * chip at all.
  */
-export const quickFilterConfig: Array<{ key: QuickFilter; label: string }> = [
+export const quickFilterConfig: Array<{ key: QuickFilter; label: string; dot?: string }> = [
   { key: "all", label: "All" },
+  { key: "covered", label: "Quality met", dot: "bg-mark-quality-met" },
+  { key: "upgrades", label: "Upgradable", dot: "bg-success" },
+  { key: "missing", label: "Missing", dot: "bg-destructive" },
+  { key: "upcoming", label: "Upcoming", dot: "bg-mark-upcoming" },
   { key: "monitored", label: "Monitored" },
-  { key: "unmonitored", label: "Unmonitored" },
-  { key: "missing", label: "Missing" },
-  { key: "upgrades", label: "Upgradable" }
+  { key: "unmonitored", label: "Unmonitored" }
 ];
 
 export const sortFieldOptions: Array<{ value: SortField; label: string }> = [
@@ -84,9 +104,11 @@ export interface LibraryControls {
   activeFilterCount: number;
 }
 
-export function ControlRail({ label, facets, controls }: {
+export function ControlRail({ label, facets, actions, controls }: {
   label: string;
   facets: CatalogueFacets | null;
+  /** Add, Hunt and Refresh — the two things you can do about what this row shows. */
+  actions?: React.ReactNode;
   controls: LibraryControls;
 }) {
   const {
@@ -110,13 +132,15 @@ export function ControlRail({ label, facets, controls }: {
     setPill({ left: bRect.left - tRect.left, width: bRect.width, ready: true });
   }, [quickFilter]);
 
-  const counts: Record<QuickFilter, number> = {
+  const counts: Partial<Record<QuickFilter, number>> = {
     all: facets?.all ?? 0,
     monitored: facets?.monitored ?? 0,
     unmonitored: facets?.unmonitored ?? 0,
     downloaded: facets?.downloaded ?? 0,
     missing: facets?.missing ?? 0,
-    upgrades: facets?.upgrades ?? 0
+    upgrades: facets?.upgrades ?? 0,
+    covered: facets?.covered ?? 0,
+    upcoming: facets?.upcoming ?? 0
   };
 
   return (
@@ -204,11 +228,24 @@ export function ControlRail({ label, facets, controls }: {
               meta={`${sortFieldOptions.find((option) => option.value === sortField)?.label ?? "Title"} · ${sortDirection === "asc" ? "A–Z" : "Z–A"}`}
               onClick={() => setOpenPanel((current) => current === "sort" ? null : "sort")}
             />
+            {/*
+              The actions live in this row too, rather than in a band above it.
+              That band also carried a count of Missing, Monitored, Unmonitored
+              and Upgradable — every one of which is a chip six pixels below,
+              with the same number on it. One row now holds the search, the
+              scope, the display choices, the filters and the two things you can
+              do about them.
+            */}
+            <div className="ml-auto flex shrink-0 flex-wrap items-center gap-2">{actions}</div>
+
             <ToolbarMenuButton
-              label="Refine"
+              label="Views"
               icon={Filter}
               active={openPanel === "filter"}
-              meta={activeFilterCount > 0 ? `${activeFilterCount} active` : "Quick filters"}
+              // This panel has only ever contained saved views — the filtering
+              // is the chip row below. Calling it "Refine · Quick filters"
+              // promised something it did not do.
+              meta={savedPresets.length ? `${savedPresets.length} saved` : "Save this view"}
               onClick={() => setOpenPanel((current) => current === "filter" ? null : "filter")}
             />
           </div>
@@ -243,6 +280,9 @@ export function ControlRail({ label, facets, controls }: {
                       active ? "font-semibold text-foreground" : "font-medium text-muted-foreground hover:text-foreground"
                     )}
                   >
+                    {/* The mark's own colour, so the chip and the dots it
+                        filters to are the same signal rather than two. */}
+                    {chip.dot ? <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", chip.dot)} /> : null}
                     <span>{chip.label}</span>
                     <span
                       className={cn(
@@ -250,7 +290,7 @@ export function ControlRail({ label, facets, controls }: {
                         active ? "bg-primary/15 text-primary dark:bg-primary/20" : "bg-foreground/[0.06] text-muted-foreground dark:bg-white/[0.07]"
                       )}
                     >
-                      {counts[chip.key]}
+                      {counts[chip.key] ?? 0}
                     </span>
                   </button>
                 );
@@ -360,9 +400,9 @@ export function ControlRail({ label, facets, controls }: {
             <div className="mt-3 overflow-hidden rounded-2xl border border-hairline bg-surface-1">
               <LibraryControlPanelHeader
                 icon={Filter}
-                eyebrow="Refine"
-                title="Narrow the library without losing your place"
-                description={`You are viewing ${quickFilterConfig.find((filter) => filter.key === quickFilter)?.label.toLowerCase() ?? "all"} titles. Quick filters and search run in the catalogue query.`}
+                eyebrow="Views"
+                title="Come back to this exact view"
+                description={`You are viewing ${quickFilterConfig.find((filter) => filter.key === quickFilter)?.label.toLowerCase() ?? "all"} titles. Save the search, filter, order and display together and return to them in one click.`}
                 onClose={() => setOpenPanel(null)}
               />
             <div className="space-y-[calc(var(--field-group-pad)*0.8)] p-[calc(var(--tile-pad)*0.8)]">

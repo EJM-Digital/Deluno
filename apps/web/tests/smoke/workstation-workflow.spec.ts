@@ -164,9 +164,18 @@ test.describe("dashboard workflow", () => {
     await expect(page.getByRole("button", { name: "Ascending" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Descending" })).toBeVisible();
 
-    await page.getByRole("button", { name: /^Refine/ }).click();
-    await expect(page.getByRole("heading", { name: "Narrow the library without losing your place" })).toBeVisible();
+    // "Refine · Quick filters" was a promise the panel never kept: it holds
+    // saved views and nothing else, and the filtering is the chip row outside
+    // it. The name matches the contents now.
+    await page.getByRole("button", { name: /^Views/ }).click();
+    await expect(page.getByRole("heading", { name: "Come back to this exact view" })).toBeVisible();
     await expect(page.getByText("Saved library views", { exact: true })).toBeVisible();
+
+    // The chips are the filters, and each is also the legend for the mark it
+    // selects — the same word as the dot on the posters below.
+    for (const chip of ["Quality met", "Upgradable", "Missing", "Upcoming"]) {
+      await expect(page.getByRole("button", { name: new RegExp(`^${chip} `) })).toBeVisible();
+    }
   });
 
   test("keeps the empty state hidden while the library catalogue is loading", async ({ page }) => {

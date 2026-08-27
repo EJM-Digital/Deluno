@@ -5,6 +5,7 @@ import {
   TITLE_MARK_PRESENTATION,
   TONE_MEANING,
   lowestMark,
+  titleBar,
   type Tone
 } from "./status-tones";
 
@@ -126,6 +127,32 @@ describe("the mark on a title", () => {
     // about how complete the aired ones are.
     expect(lowestMark(["upcoming"])).toBeNull();
     expect(lowestMark([])).toBeNull();
+  });
+
+  /**
+   * The bar counts what you asked for beyond the title — episodes on a show,
+   * subtitle languages on a film. A title that asked for nothing keeps a grey
+   * bar that claims nothing, rather than none: the shelf must not change shape
+   * the day Subber starts filling subtitle languages in.
+   */
+  it("counts aired episodes for a show and subtitle languages for a film", () => {
+    expect(titleBar({ airedEpisodeCount: 18, airedWithFileCount: 13 }))
+      .toEqual({ held: 13, wanted: 18, noun: "aired episodes" });
+
+    expect(titleBar({ subtitleLanguagesWanted: 4, subtitleLanguagesHeld: 1 }))
+      .toEqual({ held: 1, wanted: 4, noun: "subtitle languages" });
+  });
+
+  it("claims nothing when nothing was asked for", () => {
+    // A film with no subtitle languages configured — every film, until #301.
+    expect(titleBar({}).wanted).toBe(0);
+    expect(titleBar({ airedEpisodeCount: 0 }).wanted).toBe(0);
+  });
+
+  it("never counts more held than asked for", () => {
+    // An episode count that has shrunk under a stale file count would otherwise
+    // draw a bar past its own end.
+    expect(titleBar({ airedEpisodeCount: 3, airedWithFileCount: 9 }).held).toBe(3);
   });
 
   it("climbs in the order the design settled", () => {

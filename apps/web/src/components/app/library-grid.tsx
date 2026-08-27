@@ -7,7 +7,7 @@ import { MEDIA_STATUS_PRESENTATION, mediaStatusIsActive } from "../../lib/media-
 import type { Density } from "../../lib/use-density";
 import { cn } from "../../lib/utils";
 import { Badge } from "../ui/badge";
-import { TitleMarkBar, TitleMarkDot } from "../ui/title-mark";
+import { TitleMarkBar, TitleMarkChip, TitleMarkDot } from "../ui/title-mark";
 
 export type CardSize = "sm" | "md" | "lg";
 export interface DisplayOptions {
@@ -231,7 +231,11 @@ function PosterCard({
           */}
           {displayOptions.showStatusPill ? (
             <div className="absolute right-1.5 top-1.5 z-10">
-              <TitleMarkDot item={item} size={size === "sm" ? 9 : 11} />
+              {size === "sm" ? (
+                <TitleMarkDot item={item} size={13} />
+              ) : (
+                <TitleMarkChip item={item} />
+              )}
             </div>
           ) : null}
 
