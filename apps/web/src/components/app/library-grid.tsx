@@ -122,7 +122,11 @@ export function ProgressiveGrid({
 
   return (
     <>
-      <div ref={setContainer} className="max-h-[calc(100dvh-260px)] overflow-auto" key={keyBust}>
+      {/*
+        Room at the top for the hover lift. `-translate-y-1` moves a card 4px up,
+        and without this the top row lifts out of the scroll box and is cut.
+      */}
+      <div ref={setContainer} className="max-h-[calc(100dvh-260px)] overflow-auto pt-1.5" key={keyBust}>
         <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
           {virtualRows.map((row) => (
             <div key={row.key} ref={virtualizer.measureElement} data-index={row.index} className="absolute left-0 top-0 w-full" style={{ transform: `translateY(${row.start}px)` }}>
@@ -203,8 +207,21 @@ function PosterCard({
           className={cn(
             "relative aspect-[2/3] overflow-hidden rounded-xl bg-muted transition-all duration-300",
             "shadow-card group-hover:-translate-y-1 group-hover:shadow-lg",
+            // `ring-inset`, so selection paints *inside* the poster.
+            //
+            // It was an outward `ring-2` plus a 3px shadow spread, and the grid
+            // scrolls inside an `overflow-auto` container — so anything drawn
+            // outside a card's box is clipped by it. Hovering made it worse:
+            // `-translate-y-1` lifts the card 4px, which on the top row moved it
+            // straight out of the scroll box, and the border vanished while the
+            // artwork looked cropped. Measured on the rig: container top 289px,
+            // selected card top 285px.
+            //
+            // Drawn inward it cannot be clipped, at any scroll position, in any
+            // row. The glow stays soft and outward — a blurred edge fading out
+            // is not something you can see being cut.
             selected
-              ? "ring-2 ring-primary/80 shadow-[0_0_0_3px_hsl(var(--primary)/0.15),0_0_28px_hsl(var(--primary)/0.35)]"
+              ? "ring-2 ring-inset ring-primary/90 shadow-[0_0_24px_hsl(var(--primary)/0.35)]"
               : "ring-0"
           )}
         >
