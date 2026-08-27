@@ -467,7 +467,7 @@ public sealed class DownloadClientTelemetryService(
     {
         var libraryName = library?.Name ?? dispatch.LibraryId;
         await jobScheduler.EnqueueAsync(new EnqueueJobRequest(
-            "library.search",
+            LibrarySearchJobTypes.For(dispatch.MediaType),
             "download-health",
             JsonSerializer.Serialize(new
             {

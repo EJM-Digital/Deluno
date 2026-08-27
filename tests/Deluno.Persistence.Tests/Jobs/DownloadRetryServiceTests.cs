@@ -119,7 +119,9 @@ public sealed class DownloadRetryServiceTests
         Assert.Single(jobScheduler.EnqueuedJobs);
 
         var enqueuedJob = jobScheduler.EnqueuedJobs[0];
-        Assert.Equal("library.search", enqueuedJob.JobType);
+        // The retry knows the dispatch's media type, so it queues into that
+        // catalogue's own lane rather than a shared one (#304).
+        Assert.Equal(LibrarySearchJobTypes.For("movies"), enqueuedJob.JobType);
         Assert.Equal("DownloadRetryService", enqueuedJob.Source);
         Assert.NotNull(enqueuedJob.ScheduledUtc);
 

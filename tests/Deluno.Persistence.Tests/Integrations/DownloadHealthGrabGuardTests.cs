@@ -109,7 +109,7 @@ public sealed class DownloadHealthGrabGuardTests
         Assert.Equal(1, report.ReplacementSearchesQueued);
         Assert.Equal(0, report.ClientEntriesRemoved);
         var replacement = Assert.Single(await jobs.ListAsync(10, CancellationToken.None));
-        Assert.Equal("library.search", replacement.JobType);
+        Assert.Equal(LibrarySearchJobTypes.For("movies"), replacement.JobType);
         Assert.Contains("movie-arrival", replacement.PayloadJson, StringComparison.Ordinal);
         var updated = await dispatches.GetDispatchAsync(dispatchId, CancellationToken.None);
         Assert.Equal("health-remediation-applied", updated!.ImportFailureCode);

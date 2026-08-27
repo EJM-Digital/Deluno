@@ -21,7 +21,8 @@ public static class JobsDatabaseMigrations
         new V0013DownloadThroughputSamples(),
         new V0014ThroughputUploadSamples(),
         new V0015MachineTelemetrySamples(),
-        new V0016DispatchImportStatusVocabulary()
+        new V0016DispatchImportStatusVocabulary(),
+        new V0017LibrarySearchPerMediaTypeJobTypes()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

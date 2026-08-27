@@ -11,7 +11,7 @@ using Deluno.Quality;
 
 namespace Deluno.Worker.Jobs;
 
-public sealed class LibrarySearchJobHandler(
+public abstract class LibrarySearchJobHandler(
     ILibrariesRepository librariesRepository,
     IQualityRepository qualityRepository,
     IJobQueueRepository jobQueueRepository,
@@ -22,7 +22,17 @@ public sealed class LibrarySearchJobHandler(
     IActivityFeedRepository activityFeedRepository,
     TimeProvider timeProvider) : IJobHandler
 {
-    public string JobType => "library.search";
+    /// <summary>
+    /// Both catalogues run the same handler; only the lane differs.
+    ///
+    /// The split is about *isolation*, not behaviour — a TV search must not
+    /// queue behind movie searches, especially when those are stuck against an
+    /// unresponsive indexer. The work itself is identical, so duplicating this
+    /// class would be duplicating four hundred lines to change one string.
+    /// `MoviesLibrarySearchJobHandler` and `TvLibrarySearchJobHandler` are two
+    /// lines each and exist only to give the registry two job types to route.
+    /// </summary>
+    public abstract string JobType { get; }
 
     public async Task<string> HandleAsync(JobQueueItem job, CancellationToken cancellationToken)
     {

@@ -60,7 +60,7 @@ public sealed class JobStoreTests
 
         var queued = await store.EnqueueAsync(
             new EnqueueJobRequest(
-                JobType: "library.search",
+                JobType: LibrarySearchJobTypes.Movies,
                 Source: "test",
                 PayloadJson: """{"libraryId":"movies-main","libraryName":"Movies","mediaType":"movie"}""",
                 ScheduledUtc: null,
@@ -71,7 +71,7 @@ public sealed class JobStoreTests
         var leased = await store.LeaseNextAsync(
             workerId: "worker-a",
             leaseDuration: TimeSpan.FromMinutes(5),
-            jobTypes: ["library.search"],
+            jobTypes: [LibrarySearchJobTypes.Movies],
             CancellationToken.None);
 
         Assert.NotNull(leased);
@@ -83,7 +83,7 @@ public sealed class JobStoreTests
         var noDuplicateLease = await store.LeaseNextAsync(
             workerId: "worker-b",
             leaseDuration: TimeSpan.FromMinutes(5),
-            jobTypes: ["library.search"],
+            jobTypes: [LibrarySearchJobTypes.Movies],
             CancellationToken.None);
         Assert.Null(noDuplicateLease);
 
@@ -93,7 +93,7 @@ public sealed class JobStoreTests
         var retried = await store.LeaseNextAsync(
             workerId: "worker-b",
             leaseDuration: TimeSpan.FromMinutes(5),
-            jobTypes: ["library.search"],
+            jobTypes: [LibrarySearchJobTypes.Movies],
             CancellationToken.None);
 
         Assert.NotNull(retried);
@@ -151,7 +151,7 @@ public sealed class JobStoreTests
 
         var queued = await store.EnqueueAsync(
             new EnqueueJobRequest(
-                JobType: "library.search",
+                JobType: LibrarySearchJobTypes.Movies,
                 Source: "test",
                 PayloadJson: """{"libraryId":"movies-main"}""",
                 RelatedEntityType: "library",
@@ -159,14 +159,14 @@ public sealed class JobStoreTests
                 MaxAttempts: 2),
             CancellationToken.None);
 
-        var firstLease = await store.LeaseNextAsync("worker-a", TimeSpan.FromMinutes(5), ["library.search"], CancellationToken.None);
+        var firstLease = await store.LeaseNextAsync("worker-a", TimeSpan.FromMinutes(5), [LibrarySearchJobTypes.Movies], CancellationToken.None);
         Assert.NotNull(firstLease);
         await store.FailAsync(queued.Id, "worker-a", "Indexer timed out.", CancellationToken.None);
 
-        Assert.Null(await store.LeaseNextAsync("worker-b", TimeSpan.FromMinutes(5), ["library.search"], CancellationToken.None));
+        Assert.Null(await store.LeaseNextAsync("worker-b", TimeSpan.FromMinutes(5), [LibrarySearchJobTypes.Movies], CancellationToken.None));
 
         timeProvider.Advance(TimeSpan.FromSeconds(31));
-        var retryLease = await store.LeaseNextAsync("worker-b", TimeSpan.FromMinutes(5), ["library.search"], CancellationToken.None);
+        var retryLease = await store.LeaseNextAsync("worker-b", TimeSpan.FromMinutes(5), [LibrarySearchJobTypes.Movies], CancellationToken.None);
         Assert.NotNull(retryLease);
         Assert.Equal(2, retryLease.Attempts);
 
@@ -175,7 +175,7 @@ public sealed class JobStoreTests
         var stored = Assert.Single(await store.ListAsync(20, CancellationToken.None));
         Assert.Equal("dead-letter", stored.Status);
         Assert.Contains("retry limit", stored.LastError, StringComparison.OrdinalIgnoreCase);
-        Assert.Null(await store.LeaseNextAsync("worker-c", TimeSpan.FromMinutes(5), ["library.search"], CancellationToken.None));
+        Assert.Null(await store.LeaseNextAsync("worker-c", TimeSpan.FromMinutes(5), [LibrarySearchJobTypes.Movies], CancellationToken.None));
     }
 
     [Fact]
@@ -188,7 +188,7 @@ public sealed class JobStoreTests
 
         var queued = await store.EnqueueAsync(
             new EnqueueJobRequest(
-                JobType: "library.search",
+                JobType: LibrarySearchJobTypes.Movies,
                 Source: "test",
                 PayloadJson: """{"libraryId":"series-main"}""",
                 RelatedEntityType: "library",
@@ -196,11 +196,11 @@ public sealed class JobStoreTests
                 MaxAttempts: 2),
             CancellationToken.None);
 
-        var firstLease = await store.LeaseNextAsync("worker-a", TimeSpan.FromMinutes(1), ["library.search"], CancellationToken.None);
+        var firstLease = await store.LeaseNextAsync("worker-a", TimeSpan.FromMinutes(1), [LibrarySearchJobTypes.Movies], CancellationToken.None);
         Assert.NotNull(firstLease);
 
         timeProvider.Advance(TimeSpan.FromMinutes(2));
-        Assert.Null(await store.LeaseNextAsync("worker-b", TimeSpan.FromMinutes(5), ["library.search"], CancellationToken.None));
+        Assert.Null(await store.LeaseNextAsync("worker-b", TimeSpan.FromMinutes(5), [LibrarySearchJobTypes.Movies], CancellationToken.None));
 
         var recovered = Assert.Single(await store.ListAsync(20, CancellationToken.None));
         Assert.Equal(queued.Id, recovered.Id);
@@ -208,7 +208,7 @@ public sealed class JobStoreTests
         Assert.Contains("lease expired", recovered.LastError, StringComparison.OrdinalIgnoreCase);
 
         timeProvider.Advance(TimeSpan.FromSeconds(31));
-        var retryLease = await store.LeaseNextAsync("worker-b", TimeSpan.FromMinutes(5), ["library.search"], CancellationToken.None);
+        var retryLease = await store.LeaseNextAsync("worker-b", TimeSpan.FromMinutes(5), [LibrarySearchJobTypes.Movies], CancellationToken.None);
         Assert.NotNull(retryLease);
         Assert.Equal(queued.Id, retryLease.Id);
         Assert.Equal(2, retryLease.Attempts);
@@ -223,14 +223,14 @@ public sealed class JobStoreTests
         var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
 
         var own = await store.EnqueueAsync(
-            new EnqueueJobRequest("library.search", "test", "{}", RelatedEntityType: "library", RelatedEntityId: "own-library"),
+            new EnqueueJobRequest(LibrarySearchJobTypes.Movies, "test", "{}", RelatedEntityType: "library", RelatedEntityId: "own-library"),
             CancellationToken.None);
         var other = await store.EnqueueAsync(
-            new EnqueueJobRequest("library.search", "test", "{}", RelatedEntityType: "library", RelatedEntityId: "other-library"),
+            new EnqueueJobRequest(LibrarySearchJobTypes.Movies, "test", "{}", RelatedEntityType: "library", RelatedEntityId: "other-library"),
             CancellationToken.None);
 
-        Assert.Equal(own.Id, (await store.LeaseNextAsync("worker-this-machine-search", TimeSpan.FromMinutes(2), ["library.search"], CancellationToken.None))?.Id);
-        Assert.Equal(other.Id, (await store.LeaseNextAsync("worker-other-machine-search", TimeSpan.FromMinutes(2), ["library.search"], CancellationToken.None))?.Id);
+        Assert.Equal(own.Id, (await store.LeaseNextAsync("worker-this-machine-search", TimeSpan.FromMinutes(2), [LibrarySearchJobTypes.Movies], CancellationToken.None))?.Id);
+        Assert.Equal(other.Id, (await store.LeaseNextAsync("worker-other-machine-search", TimeSpan.FromMinutes(2), [LibrarySearchJobTypes.Movies], CancellationToken.None))?.Id);
 
         var released = await store.ReleaseLeasesAsync(["worker-this-machine-import", "worker-this-machine-search"], CancellationToken.None);
         var releasedJob = Assert.Single(released);
@@ -246,7 +246,7 @@ public sealed class JobStoreTests
         Assert.Equal("worker-other-machine-search", stillLeasedElsewhere.WorkerId);
         Assert.True(stillLeasedElsewhere.LeasedUntilUtc > timeProvider.GetUtcNow());
 
-        var resumed = await store.LeaseNextAsync("worker-this-machine-search", TimeSpan.FromMinutes(2), ["library.search"], CancellationToken.None);
+        var resumed = await store.LeaseNextAsync("worker-this-machine-search", TimeSpan.FromMinutes(2), [LibrarySearchJobTypes.Movies], CancellationToken.None);
         Assert.NotNull(resumed);
         Assert.Equal(own.Id, resumed.Id);
         Assert.Equal(2, resumed.Attempts);
@@ -260,9 +260,9 @@ public sealed class JobStoreTests
         await InitializeJobsAsync(storage, timeProvider);
         var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
 
-        var first = await store.EnqueueAsync(new EnqueueJobRequest("library.search", "test", "{}", RelatedEntityType: "library", RelatedEntityId: "one"), CancellationToken.None);
-        var second = await store.EnqueueAsync(new EnqueueJobRequest("library.search", "test", "{}", RelatedEntityType: "library", RelatedEntityId: "two"), CancellationToken.None);
-        var third = await store.EnqueueAsync(new EnqueueJobRequest("library.search", "test", "{}", RelatedEntityType: "library", RelatedEntityId: "three"), CancellationToken.None);
+        var first = await store.EnqueueAsync(new EnqueueJobRequest(LibrarySearchJobTypes.Movies, "test", "{}", RelatedEntityType: "library", RelatedEntityId: "one"), CancellationToken.None);
+        var second = await store.EnqueueAsync(new EnqueueJobRequest(LibrarySearchJobTypes.Movies, "test", "{}", RelatedEntityType: "library", RelatedEntityId: "two"), CancellationToken.None);
+        var third = await store.EnqueueAsync(new EnqueueJobRequest(LibrarySearchJobTypes.Movies, "test", "{}", RelatedEntityType: "library", RelatedEntityId: "three"), CancellationToken.None);
 
         var pageOne = await store.ListPageAsync(new PageRequest(2), CancellationToken.None);
         Assert.True(pageOne.HasMore);
@@ -270,7 +270,7 @@ public sealed class JobStoreTests
         Assert.Equal(2, pageOne.Items.Count);
 
         timeProvider.Advance(TimeSpan.FromSeconds(1));
-        var insertedAfterPageOne = await store.EnqueueAsync(new EnqueueJobRequest("library.search", "test", "{}", RelatedEntityType: "library", RelatedEntityId: "four"), CancellationToken.None);
+        var insertedAfterPageOne = await store.EnqueueAsync(new EnqueueJobRequest(LibrarySearchJobTypes.Movies, "test", "{}", RelatedEntityType: "library", RelatedEntityId: "four"), CancellationToken.None);
 
         var pageTwo = await store.ListPageAsync(new PageRequest(2, pageOne.NextPageToken), CancellationToken.None);
         Assert.False(pageTwo.HasMore);
