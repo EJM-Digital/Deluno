@@ -2312,7 +2312,9 @@ public static class SeriesEndpointRouteBuilderExtensions
             cancellationToken,
             result.RuntimeMinutes,
             result.Popularity,
-            result.VoteCount);
+            result.VoteCount,
+            result.Status,
+            result.Network);
     }
 
     private sealed record ReleaseGrabRequest(
