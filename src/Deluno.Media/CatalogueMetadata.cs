@@ -50,7 +50,12 @@ public static class CatalogueMetadata
             metadata.Certification,
             metadata.Collection,
             metadata.OriginalLanguage,
-            ToRatings(metadata.Ratings));
+            ToRatings(metadata.Ratings),
+            // Joined the way genres are, so the existing "contains" operator
+            // reads it unchanged. An empty list stores null rather than an
+            // empty string: null means "the provider did not say", which the
+            // COALESCE in the write respects, and "" would mean "it said none".
+            metadata.Keywords is { Count: > 0 } keywords ? string.Join(", ", keywords) : null);
 
     /// <summary>
     /// The scores Deluno keeps a column for, and only those.

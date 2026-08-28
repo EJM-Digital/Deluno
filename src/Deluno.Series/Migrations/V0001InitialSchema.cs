@@ -28,7 +28,8 @@ public static class SeriesDatabaseMigrations
         new V0020SeriesProgressFacts(),
         new V0021SeriesDownloadingState(),
         new V0022SeriesSortTitle(),
-        new V0023SeriesCatalogueFacts()
+        new V0023SeriesCatalogueFacts(),
+        new V0024SeriesKeywords()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

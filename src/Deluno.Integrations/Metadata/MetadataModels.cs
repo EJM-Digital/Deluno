@@ -59,7 +59,17 @@ public sealed record MetadataSearchResult(
     string? Homepage = null,
     string? OriginalLanguage = null,
     /// <summary><c>Released</c> / <c>In Production</c>, or <c>Ended</c> / <c>Returning Series</c>.</summary>
-    string? Status = null);
+    string? Status = null,
+    /// <summary>
+    /// What a title is about, beyond its genre.
+    ///
+    /// <para>"Space travel" and "time loop" are questions Genre cannot ask,
+    /// because a film is Science Fiction either way. The browser has had a
+    /// <c>keywords</c> field since long before anything fetched them, so it has
+    /// always read empty — the same shape as the certification and collection
+    /// fields beside it.</para>
+    /// </summary>
+    IReadOnlyList<string>? Keywords = null);
 
 /// <summary>
 /// When a movie can actually be obtained. A cinema date is not an availability
