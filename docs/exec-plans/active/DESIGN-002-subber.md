@@ -313,11 +313,34 @@ Restated because it is the failure this feature is most likely to cause, and
 because Weir's Subber ships all three. Searches are planned from the
 library's existing cycle, exactly as per-episode search now is
 ([#303](https://github.com/jampat000/Deluno/issues/303)) — which inherits the
-time-of-day window, the interval, missing-versus-upgrade, the manual override
-and `MaxItemsPerRun` for free, and cannot drift from them.
+time-of-day window, the manual override and `MaxItemsPerRun` for free, and
+cannot drift from them.
 
 Saving a language list therefore **enqueues nothing**. It changes what is
 wanted; the cycle decides when to act.
+
+**One correction, paid for on the rig.** "Planned by the existing cycle" was
+first built as "planned *inside the existing release-search branch*", and those
+are not the same sentence. It meant subtitles inherited the two switches that
+branch is gated by — so a library with **Search automatically** off, which that
+screen describes as *keep this library manual* and means manual **releases**,
+asked for English every day and was never given it, silently. A library with
+searching on but neither missing nor upgrade selected did the same. That is
+precisely Bazarr's audience: a complete library that wants subtitles for it.
+
+It was invisible to every test, and the rig found it the only way anything finds
+this shape — the first end-to-end fetch could not be made to happen without
+pressing *search now*.
+
+So subtitles keep the cycle, the window and the manual override, and they get
+their own reason to run and their own cursor: `next_subtitle_search_utc`, beside
+the two the release schedules already use. Whether a shelf wants subtitles is
+already recorded in the only place that can answer it — whether it asked for any
+languages — and `next_search_utc` deliberately does not fold the subtitle clock
+in, because that is what the automation screen prints as the next *search* and a
+subtitle pass never reaches an indexer. A paused library still reads paused.
+
+The rule this is an instance of, again: **one switch, two subjects.**
 
 ### 4. Providers are Connections, not a parallel registry
 
@@ -343,8 +366,10 @@ untouched.
 
 ## Build order
 
-**Where this got to.** Steps 1 to 5 are done — the last of them recorded in
-`b052b66` and the commit after it. Step 6 is the outstanding one.
+**Where this got to. All six are done.** Steps 1 to 5 were recorded in
+`b052b66` and the commit after it; step 6 is Weir
+[#327](https://github.com/jampat000/Weir/pull/327), and the end-to-end fetch
+that gated it ran on the rig first.
 
 1. **Languages, and what you already have.** A per-library list of wanted
    subtitle languages with a cutoff, beside the quality profile, and the two
