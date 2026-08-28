@@ -51,4 +51,24 @@ public sealed record LibraryItem(
     /// or Spanish if English is unavailable". These are the two intentions, in
     /// two words, and they are what the bar counts.
     /// </summary>
-    string SubtitleLanguageMode = "all");
+    string SubtitleLanguageMode = "all",
+    /// <summary>
+    /// What a subtitle with no language in its name is.
+    ///
+    /// <para>Empty means "do not guess", which is the default and what Deluno
+    /// has always done: a bare <c>Movie.srt</c> is recorded as <c>und</c> and
+    /// counts for nothing. Reading it as the first wanted language would be
+    /// right most of the time, and when it was wrong it would stop Deluno
+    /// fetching a language somebody asked for and never say why (DESIGN-002).
+    /// Bazarr does not guess either — it asks once, and so does this.</para>
+    /// </summary>
+    string SubtitleUnknownLanguage = "",
+    /// <summary>
+    /// Whether a subtitle track inside the video counts as held.
+    ///
+    /// <para>True by default, which is what Deluno has always done. Off means a
+    /// sidecar is fetched even when the container already has the language —
+    /// which some people want, because a player handles the two differently and
+    /// an embedded track cannot be swapped or corrected (#321).</para>
+    /// </summary>
+    bool SubtitleEmbeddedCounts = true);

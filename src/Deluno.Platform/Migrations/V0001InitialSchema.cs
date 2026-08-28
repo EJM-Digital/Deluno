@@ -33,7 +33,8 @@ public static class PlatformDatabaseMigrations
         new V0025IndexerSharingPolicy(),
         new V0026LibraryViewMonitoringFilter(),
         new V0027LibrarySubtitleLanguages(),
-        new V0028SubtitleProviders()
+        new V0028SubtitleProviders(),
+        new V0029LibrarySubtitleTreatments()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

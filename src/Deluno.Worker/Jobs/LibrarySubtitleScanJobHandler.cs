@@ -80,6 +80,13 @@ public sealed class LibrarySubtitleScanJobHandler(
             ? MediaKind.Series
             : MediaKind.Movie;
 
+        // Empty means "do not guess", which is the default and today's
+        // behaviour. Normalised because a person types "English" and everything
+        // else in Deluno says "en".
+        var unknownLanguage = string.IsNullOrWhiteSpace(library.SubtitleUnknownLanguage)
+            ? null
+            : SubtitleLanguages.Normalize(library.SubtitleUnknownLanguage);
+
         var candidates = await mediaSubtitleRepository.ListPendingScansAsync(
             kind,
             library.Id,
@@ -124,7 +131,18 @@ public sealed class LibrarySubtitleScanJobHandler(
                     SubtitleCount: inventory.Subtitles.Count,
                     ScannedUtc: timeProvider.GetUtcNow()),
                 [.. inventory.Subtitles.Select(subtitle => new MediaSubtitleRow(
-                    Language: subtitle.Language,
+                    // The one place a bare `Movie.srt` is given a language, and
+                    // only because somebody said what it is.
+                    //
+                    // `SubtitleInventoryService` refuses to guess, and that
+                    // stands: it reports `und`. This applies the library's own
+                    // answer, which is empty by default and therefore changes
+                    // nothing on an install that has not set it. Bazarr does
+                    // exactly this and it is the missing half of a decision
+                    // DESIGN-002 left open (#321).
+                    Language: subtitle.Language == SubtitleLanguages.Unknown && unknownLanguage is not null
+                        ? unknownLanguage
+                        : subtitle.Language,
                     Source: subtitle.Source,
                     Forced: subtitle.Forced,
                     HearingImpaired: subtitle.HearingImpaired,

@@ -614,6 +614,8 @@ public sealed class SqliteLibrariesRepository(
             SET
                 subtitle_languages = @languages,
                 subtitle_language_mode = @mode,
+                subtitle_unknown_language = @unknownLanguage,
+                subtitle_embedded_counts = @embeddedCounts,
                 updated_utc = @updatedUtc
             WHERE id = @id;
             """;
@@ -621,6 +623,16 @@ public sealed class SqliteLibrariesRepository(
         AddParameter(command, "@id", id);
         AddParameter(command, "@languages", languages);
         AddParameter(command, "@mode", NormalizeSubtitleLanguageMode(request.Mode));
+        // Through the same vocabulary as everything else: a person typing
+        // "English" here and ffprobe emitting "eng" have to end up as one
+        // language, or the setting would answer a question nothing else asks.
+        AddParameter(
+            command,
+            "@unknownLanguage",
+            string.IsNullOrWhiteSpace(request.UnknownLanguage)
+                ? string.Empty
+                : SubtitleLanguages.Normalize(request.UnknownLanguage) ?? string.Empty);
+        AddParameter(command, "@embeddedCounts", request.EmbeddedCounts ? 1 : 0);
         AddParameter(command, "@updatedUtc", now.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
 
@@ -645,7 +657,8 @@ public sealed class SqliteLibrariesRepository(
         using var command = connection.CreateCommand();
         command.CommandText =
             """
-            SELECT id, subtitle_languages, subtitle_language_mode
+            SELECT id, subtitle_languages, subtitle_language_mode,
+                   subtitle_unknown_language, subtitle_embedded_counts
             FROM libraries;
             """;
 
@@ -657,7 +670,9 @@ public sealed class SqliteLibrariesRepository(
             preferences[id] = new LibrarySubtitlePreference(
                 LibraryId: id,
                 Languages: ParseSubtitleLanguages(reader.IsDBNull(1) ? null : reader.GetString(1)),
-                Mode: NormalizeSubtitleLanguageMode(reader.IsDBNull(2) ? null : reader.GetString(2)));
+                Mode: NormalizeSubtitleLanguageMode(reader.IsDBNull(2) ? null : reader.GetString(2)),
+                UnknownLanguage: reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
+                EmbeddedCounts: reader.IsDBNull(4) || reader.GetInt32(4) == 1);
         }
 
         return preferences;

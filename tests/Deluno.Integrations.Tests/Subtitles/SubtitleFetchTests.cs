@@ -125,6 +125,29 @@ public sealed class SubtitleFetchTests
     }
 
     [Fact]
+    public async Task A_source_that_cannot_be_reached_is_not_a_source_with_nothing()
+    {
+        // Learnt on the rig. Podnapisi's host stopped resolving, the search
+        // swallowed the DNS failure and returned an empty list, and the screen
+        // reported "answered but found nothing — that is usually wrong or
+        // expired credentials". A confident wrong diagnosis of a site being
+        // down, and worse than saying nothing.
+        var unreachable = new FakeProvider("first", [], Srt) { Unreachable = true };
+        var working = new FakeProvider("second", [Candidate("en") with { ProviderKey = "second" }], Srt);
+        var repository = new FakeRepository([Connection("first"), Connection("second")]);
+        var service = Build([unreachable, working], new FakeWriter(), repository);
+
+        var outcome = await service.FetchAsync(Request(), "en", false, @"D:\Media\Dune\Dune.mkv", false, CancellationToken.None);
+
+        Assert.Equal("failed", repository.Health[0].Status);
+        Assert.False(repository.Health[0].Success);
+        // And the next provider still gets asked, which is the whole reason an
+        // unhelpful answer does not throw.
+        Assert.True(outcome.Found);
+        Assert.Equal("second", outcome.ProviderKey);
+    }
+
+    [Fact]
     public async Task Says_so_plainly_when_nothing_is_configured()
     {
         var service = Build([], new FakeWriter(), new FakeRepository([]));
@@ -179,15 +202,16 @@ public sealed class SubtitleFetchTests
         public SubtitleCredentialFields RequiredCredentials => SubtitleCredentialFields.None;
         public bool CredentialsOptional => false;
         public bool RateLimited { get; set; }
+        public bool Unreachable { get; set; }
         public int Searches { get; private set; }
 
         public Task<IReadOnlyList<SubtitleCandidate>> SearchAsync(
             SubtitleSearchRequest request, SubtitleProviderCredentials credentials, CancellationToken cancellationToken)
         {
             Searches++;
-            return RateLimited
-                ? throw new SubtitleProviderRateLimitedException(key, TimeSpan.FromMinutes(5))
-                : Task.FromResult(results);
+            if (RateLimited) throw new SubtitleProviderRateLimitedException(key, TimeSpan.FromMinutes(5));
+            if (Unreachable) throw new HttpRequestException($"{key} could not be resolved.");
+            return Task.FromResult(results);
         }
 
         public Task<byte[]> DownloadAsync(

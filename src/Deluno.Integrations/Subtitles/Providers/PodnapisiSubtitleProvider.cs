@@ -16,7 +16,15 @@ namespace Deluno.Integrations.Subtitles.Providers;
 /// </summary>
 public sealed class PodnapisiSubtitleProvider(IHttpClientFactory httpClientFactory) : ISubtitleProvider
 {
-    private const string ListUrl = "https://www.podnapisi.net/subtitles/search/advanced";
+    /// <summary>
+    /// The endpoint Weir shipped working, restored.
+    ///
+    /// <para>This port briefly used the site's own advanced-search path instead,
+    /// which was an invention. The rule when carrying something across is to
+    /// carry the part that was proven and change only what has a reason —
+    /// a guessed URL is a provider that finds nothing and blames your account.</para>
+    /// </summary>
+    private const string ListUrl = "https://www.podnapisi.net/api/v2/subtitles/list";
 
     public string Key => "podnapisi";
 
@@ -47,20 +55,18 @@ public sealed class PodnapisiSubtitleProvider(IHttpClientFactory httpClientFacto
 
             if (languages.Length > 0)
             {
-                query.Add($"language={languages}");
+                query.Add($"languages={languages}");
             }
         }
 
         if (request.IsEpisode)
         {
-            if (request.SeasonNumber is not null) query.Add($"seasons={request.SeasonNumber.Value}");
-            if (request.EpisodeNumber is not null) query.Add($"episodes={request.EpisodeNumber.Value}");
-            query.Add("movie_type=tv-series");
+            if (request.SeasonNumber is not null) query.Add($"season={request.SeasonNumber.Value}");
+            if (request.EpisodeNumber is not null) query.Add($"episode={request.EpisodeNumber.Value}");
         }
         else
         {
             if (request.Year is not null) query.Add($"year={request.Year.Value}");
-            query.Add("movie_type=movie");
         }
 
         using var client = SubtitleProviderHttp.Create(httpClientFactory, credentials, basicAuth: true);
@@ -104,7 +110,7 @@ public sealed class PodnapisiSubtitleProvider(IHttpClientFactory httpClientFacto
         using var client = SubtitleProviderHttp.Create(httpClientFactory, credentials, basicAuth: true);
         var id = Uri.EscapeDataString(candidate.DownloadToken.Trim());
         return await SubtitleProviderHttp.GetBytesAsync(
-            client, $"https://www.podnapisi.net/subtitles/{id}/download", Key, cancellationToken);
+            client, $"https://www.podnapisi.net/api/v2/subtitles/{id}/download", Key, cancellationToken);
     }
 
     /// <summary>

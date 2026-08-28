@@ -12,4 +12,11 @@ namespace Deluno.Libraries.Contracts;
 /// </param>
 public sealed record UpdateLibrarySubtitlesRequest(
     IReadOnlyList<string>? Languages,
-    string? Mode);
+    string? Mode,
+    /// <summary>
+    /// What a subtitle with no language in its name is. Null or blank means
+    /// "do not guess", which is the default and what Deluno has always done.
+    /// </summary>
+    string? UnknownLanguage = null,
+    /// <summary>Whether a track inside the container counts as held.</summary>
+    bool EmbeddedCounts = true);

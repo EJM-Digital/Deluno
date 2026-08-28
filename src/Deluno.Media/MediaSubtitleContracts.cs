@@ -88,6 +88,7 @@ public interface IMediaSubtitleRepository
         string libraryId,
         IReadOnlyList<string> languages,
         int limit,
+        bool embeddedCounts,
         CancellationToken cancellationToken);
 
     /// <summary>

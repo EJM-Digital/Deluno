@@ -28,11 +28,21 @@ public sealed class SubtitleProviderRateLimitedException(string providerKey, Tim
 /// The request handling every subtitle provider needs, written once.
 ///
 /// <para>Weir had this as a module the eight clients imported, and that was
-/// the right shape — it is the same here. The one rule worth stating: <b>a
-/// provider that cannot answer returns nothing rather than throwing.</b> Eight
-/// sources are asked in turn and one of them being down, rate limited or serving
-/// an error page must cost the next one nothing. The exception is a 429, which
-/// is a fact about that source the caller has to record.</para>
+/// the right shape — it is the same here.</para>
+///
+/// <para><b>Three outcomes, and they are not the same.</b> A provider that
+/// answered unhelpfully — a 404, a 500, a body that is not the JSON it promised
+/// — returns nothing, because seven sources are asked in turn and one being
+/// unhelpful must cost the next one nothing. A provider that could not be
+/// <i>reached</i> throws, and so does a 429.</para>
+///
+/// <para>That distinction was learnt on the rig rather than reasoned out.
+/// Podnapisi's host stopped resolving; the search swallowed the DNS failure and
+/// returned an empty list; and the screen said <i>"answered but found nothing for
+/// a title it should have — that is usually wrong or expired credentials"</i>,
+/// which is a confident wrong diagnosis of a site being down. A source that
+/// cannot be reached and a source that has nothing are different facts and have
+/// to read differently.</para>
 /// </summary>
 public static class SubtitleProviderHttp
 {
@@ -75,7 +85,10 @@ public static class SubtitleProviderHttp
         return client;
     }
 
-    /// <summary>A GET that answers null for anything that is not a usable body.</summary>
+    /// <summary>
+    /// A GET. Null when the provider answered unhelpfully; throws when it could
+    /// not be reached — see the type summary for why those are different.
+    /// </summary>
     public static Task<T?> GetJsonAsync<T>(
         HttpClient client,
         string url,
@@ -103,9 +116,15 @@ public static class SubtitleProviderHttp
 
             return await response.Content.ReadFromJsonAsync<T>(cancellationToken);
         }
-        catch (Exception exception) when (exception is HttpRequestException or JsonException or TaskCanceledException or NotSupportedException)
+        catch (Exception exception) when (exception is JsonException or NotSupportedException)
         {
+            // It answered with something that is not the JSON it promised.
+            // Unhelpful, not unreachable.
             return null;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new HttpRequestException($"{providerKey} did not answer in time.");
         }
     }
 
@@ -124,9 +143,12 @@ public static class SubtitleProviderHttp
                 ? await response.Content.ReadAsStringAsync(cancellationToken)
                 : string.Empty;
         }
-        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return string.Empty;
+            // A timeout. Recorded as unreachable, which is what it is — the two
+            // scrapers are the slowest of the seven, and a site that has gone
+            // quiet is not a site that has nothing.
+            throw new HttpRequestException($"{providerKey} did not answer in time.");
         }
     }
 
