@@ -80,6 +80,13 @@ public sealed class SqliteMediaSubtitleRepository(
                     WHERE sub.{map.SubtitleMediaIdColumn} = {map.SubtitleFileIdColumn}
                       AND {heldPredicate}
                       AND sub.language IN ({languageParameters})
+                ),
+                (
+                    SELECT GROUP_CONCAT(att.language)
+                    FROM {map.SubtitleAttemptTable} att
+                    WHERE att.{map.SubtitleMediaIdColumn} = {map.SubtitleFileIdColumn}
+                      AND att.language IN ({languageParameters})
+                      AND att.next_eligible_search_utc > @now
                 )
             FROM {map.SubtitleFileSource}
             {map.SubtitleSearchJoin}
@@ -87,18 +94,40 @@ public sealed class SqliteMediaSubtitleRepository(
             WHERE {map.SubtitleFileLibraryFilter}
               AND f.has_file = 1
               AND f.file_path IS NOT NULL
+              -- Held *or* waiting on its backoff. Both have to be counted here
+              -- rather than subtracted afterwards: the LIMIT is applied by
+              -- SQLite, so a slice filtered in C# would come back full of titles
+              -- that are not due and do nothing at all.
               AND (
-                    SELECT COUNT(DISTINCT sub.language)
-                    FROM {map.SubtitleTable} sub
-                    WHERE sub.{map.SubtitleMediaIdColumn} = {map.SubtitleFileIdColumn}
-                      AND {heldPredicate}
-                      AND sub.language IN ({languageParameters})
+                    SELECT COUNT(*) FROM (
+                        SELECT sub.language AS language
+                        FROM {map.SubtitleTable} sub
+                        WHERE sub.{map.SubtitleMediaIdColumn} = {map.SubtitleFileIdColumn}
+                          AND {heldPredicate}
+                          AND sub.language IN ({languageParameters})
+                        UNION
+                        SELECT att.language
+                        FROM {map.SubtitleAttemptTable} att
+                        WHERE att.{map.SubtitleMediaIdColumn} = {map.SubtitleFileIdColumn}
+                          AND att.language IN ({languageParameters})
+                          AND att.next_eligible_search_utc > @now
+                    )
               ) < @languageCount
+            -- Longest-waiting first, and never-tried before either. Without an
+            -- order the slice is whatever SQLite hands back, which is the same
+            -- ten titles every cycle while the rest of the library is never
+            -- asked — and nothing about that looks wrong.
+            ORDER BY COALESCE((
+                SELECT MIN(att.next_eligible_search_utc)
+                FROM {map.SubtitleAttemptTable} att
+                WHERE att.{map.SubtitleMediaIdColumn} = {map.SubtitleFileIdColumn}
+            ), '') ASC
             LIMIT @limit;
             """;
 
         AddParameter(command, "@libraryId", libraryId);
         AddParameter(command, "@languageCount", languages.Count);
+        AddParameter(command, "@now", timeProvider.GetUtcNow().ToString("O"));
         AddParameter(command, "@limit", Math.Max(1, limit));
         for (var index = 0; index < languages.Count; index++)
         {
@@ -109,16 +138,17 @@ public sealed class SqliteMediaSubtitleRepository(
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            // Ordinal 8, not 7: the id and the path are 0 and 1, and the map's
+            // Ordinals 8 and 9: the id and the path are 0 and 1, and the map's
             // search columns are the six after them. Reading one short of that
             // silently returns the release name as the held-language list, which
             // never matches, and every file looks short of everything for ever.
-            var held = reader.IsDBNull(8)
-                ? []
-                : reader.GetString(8).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var held = Split(reader, 8);
+            var waiting = Split(reader, 9);
 
             var missing = languages
-                .Where(language => !held.Contains(language, StringComparer.OrdinalIgnoreCase))
+                .Where(language =>
+                    !held.Contains(language, StringComparer.OrdinalIgnoreCase) &&
+                    !waiting.Contains(language, StringComparer.OrdinalIgnoreCase))
                 .ToArray();
 
             if (missing.Length == 0)
@@ -140,6 +170,107 @@ public sealed class SqliteMediaSubtitleRepository(
 
         return items;
     }
+
+    /// <summary>
+    /// Remembers that Deluno looked and did not find it, and when to look again.
+    ///
+    /// <para>The delay doubles from the library's own <c>RetryDelayHours</c> —
+    /// the same number the release search uses, because DESIGN-002 asked for
+    /// backoff that reads the same way rather than a second vocabulary — and
+    /// stops doubling at a fortnight.</para>
+    ///
+    /// <para><b>It never stops entirely,</b> which is where this parts company
+    /// with Weir's Subber. A permanent skip is work that has silently left
+    /// the system: nobody finds out the day somebody finally uploads the
+    /// subtitle. A hopeless title costs one request a fortnight for ever, which
+    /// is nothing, and still succeeds when it becomes possible.</para>
+    /// </summary>
+    public async Task RecordAttemptAsync(
+        MediaKind kind,
+        string mediaId,
+        string language,
+        string? result,
+        TimeSpan baseDelay,
+        CancellationToken cancellationToken)
+    {
+        var map = MediaTableMap.For(kind);
+        var now = timeProvider.GetUtcNow();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            map.DatabaseName,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            INSERT INTO {map.SubtitleAttemptTable} (
+                {map.SubtitleMediaIdColumn}, language, attempts, last_search_utc, next_eligible_search_utc, last_result
+            )
+            VALUES (@mediaId, @language, 1, @now, @firstRetry, @result)
+            ON CONFLICT ({map.SubtitleMediaIdColumn}, language) DO UPDATE SET
+                attempts = attempts + 1,
+                last_search_utc = @now,
+                -- Doubling is done here rather than in C# so the count and the
+                -- delay cannot drift apart across two round trips.
+                next_eligible_search_utc = MIN(
+                    datetime(@now, '+' || (@baseMinutes * (1 << MIN(attempts, @maxDoublings))) || ' minutes'),
+                    @cap),
+                last_result = @result;
+            """;
+
+        var baseMinutes = Math.Max(1, (int)baseDelay.TotalMinutes);
+        AddParameter(command, "@mediaId", mediaId);
+        AddParameter(command, "@language", language);
+        AddParameter(command, "@now", now.ToString("O"));
+        AddParameter(command, "@firstRetry", now.Add(baseDelay).ToString("O"));
+        AddParameter(command, "@baseMinutes", baseMinutes);
+        AddParameter(command, "@maxDoublings", MaxDoublings);
+        AddParameter(command, "@cap", now.Add(MaxBackoff).ToString("O"));
+        AddParameter(command, "@result", result);
+
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Forgets an outstanding attempt, because the subtitle arrived.
+    ///
+    /// <para>Deleting rather than zeroing keeps this table holding only work
+    /// that is still outstanding, which is what makes the ordering above cheap.</para>
+    /// </summary>
+    public async Task ClearAttemptAsync(
+        MediaKind kind,
+        string mediaId,
+        string language,
+        CancellationToken cancellationToken)
+    {
+        var map = MediaTableMap.For(kind);
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            map.DatabaseName,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            $"DELETE FROM {map.SubtitleAttemptTable} WHERE {map.SubtitleMediaIdColumn} = @mediaId AND language = @language;";
+
+        AddParameter(command, "@mediaId", mediaId);
+        AddParameter(command, "@language", language);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    /// <summary>How many times the delay may double before it stops growing.</summary>
+    private const int MaxDoublings = 6;
+
+    /// <summary>
+    /// The longest Deluno will wait before asking again. A fortnight, chosen so
+    /// that a title nobody has subtitled costs one request every two weeks
+    /// rather than disappearing.
+    /// </summary>
+    private static readonly TimeSpan MaxBackoff = TimeSpan.FromDays(14);
+
+    private static string[] Split(System.Data.Common.DbDataReader reader, int ordinal)
+        => reader.IsDBNull(ordinal)
+            ? []
+            : reader.GetString(ordinal).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
     public async Task RecordFetchedAsync(
         MediaKind kind,

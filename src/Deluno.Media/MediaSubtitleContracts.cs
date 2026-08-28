@@ -105,6 +105,26 @@ public interface IMediaSubtitleRepository
         MediaSubtitleRow subtitle,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Remembers a search that found nothing, so the next slice asks something
+    /// else. Without it the search has no memory and the same titles are asked
+    /// for ever while the rest of the library is never asked at all.
+    /// </summary>
+    Task RecordAttemptAsync(
+        MediaKind kind,
+        string mediaId,
+        string language,
+        string? result,
+        TimeSpan baseDelay,
+        CancellationToken cancellationToken);
+
+    /// <summary>Forgets an outstanding attempt, because the subtitle arrived.</summary>
+    Task ClearAttemptAsync(
+        MediaKind kind,
+        string mediaId,
+        string language,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<MediaSubtitleScanCandidate>> ListPendingScansAsync(
         MediaKind kind,
         string libraryId,

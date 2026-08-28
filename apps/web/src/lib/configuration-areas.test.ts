@@ -19,6 +19,7 @@ const AREA_TABS: Record<string, string[]> = {
   ],
   "quality-and-release": ["/settings/profiles", "/settings/quality", "/settings/custom-formats", "/settings/policy-sets"],
   "find-and-download": ["/indexers/indexers", "/indexers/download-clients", "/indexers/library-routing"],
+  subtitles: ["/subtitles", "/subtitles/languages", "/subtitles/providers"],
   "automation-and-recovery": ["/search-cycles", "/search-cycles/missing", "/search-cycles/upgrades", "/search-cycles/failed-downloads"],
   "discover-media": ["/settings/lists"],
   preferences: ["/settings/general", "/settings/ui", "/settings/notifications", "/settings/migration"],

@@ -70,7 +70,16 @@ public sealed record MediaTableMap(
     /// on the other side is one method.</para>
     /// </summary>
     string SubtitleSearchJoin,
-    string SubtitleSearchColumns)
+    string SubtitleSearchColumns,
+    /// <summary>
+    /// Where a *failed* subtitle search is remembered, so the next slice asks
+    /// something else.
+    ///
+    /// <para>It hangs off the same media id the subtitle store does, which is
+    /// the movie for a film and the episode for a show — so a show missing one
+    /// episode's subtitle is not a show Deluno stops asking about.</para>
+    /// </summary>
+    string SubtitleAttemptTable)
 {
     public static MediaTableMap For(MediaKind kind)
         => kind switch
@@ -97,7 +106,8 @@ public sealed record MediaTableMap(
                 "f.library_id = @libraryId",
                 "JOIN movie_entries t ON t.id = f.movie_id",
                 // title, year, season, episode, episode title, release name
-                "t.title, t.release_year, NULL, NULL, NULL, f.release_group"),
+                "t.title, t.release_year, NULL, NULL, NULL, f.release_group",
+                "movie_subtitle_attempt"),
             MediaKind.Series => new(
                 DelunoDatabaseNames.Series,
                 "series_entries",
@@ -132,7 +142,8 @@ public sealed record MediaTableMap(
                 // number, never by the episode's own name: providers index
                 // "Severance S01E02", and half of them have no idea what
                 // "Good News About Hell" is.
-                "t.title, t.start_year, f.season_number, f.episode_number, f.title, NULL"),
+                "t.title, t.start_year, f.season_number, f.episode_number, f.title, NULL",
+                "episode_subtitle_attempt"),
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
         };
 }
