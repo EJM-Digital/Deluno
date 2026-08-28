@@ -1690,6 +1690,10 @@ public sealed class SqliteMovieCatalogRepository(
                 imported_utc = COALESCE(movie_wanted_state.imported_utc, excluded.imported_utc),
                 last_verified_utc = excluded.last_verified_utc,
                 missing_detected_utc = NULL,
+                -- The file is here, so it is not on its way any more. Cleared
+                -- with the status rather than left behind, because a timestamp
+                -- that outlives the state it describes is a column that lies.
+                downloading_since_utc = NULL,
                 last_search_result = excluded.last_search_result,
                 -- The file replaced the one that was there, so its facts
                 -- replace the old ones outright rather than merging.

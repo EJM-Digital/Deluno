@@ -163,8 +163,25 @@ public sealed class SqliteMediaStateRepository(
         var retry = ignoreRetryWindow
             ? string.Empty
             : "AND (w.next_eligible_search_utc IS NULL OR w.next_eligible_search_utc <= @now)";
+        // Built from WantedStatuses.Searchable rather than spelled out, because
+        // this used to read IN ('missing', 'upgrade') — the same rule as
+        // IsSearchable, written a second time in a language that could not check
+        // itself against the first. Adding a status to one and not the other
+        // would have been silent, and silent in the bad direction: a title
+        // nobody ever searches for again.
+        var searchable = string.Join(", ", WantedStatuses.Searchable.Select(status => $"'{status}'"));
+
+        // And the safety net. A download that never ends would otherwise hold a
+        // title off the work list for ever, because nothing fails and nothing is
+        // logged — the shape of the two worst defects this project has had. Past
+        // StuckDownloadAfter, Deluno stops believing the download is still
+        // happening and looks again.
+        var stuckDownload =
+            $"OR (w.wanted_status = '{WantedStatuses.Downloading}' " +
+            "AND (w.downloading_since_utc IS NULL OR w.downloading_since_utc <= @downloadStale))";
+
         var statusFilter = string.IsNullOrWhiteSpace(wantedStatus)
-            ? "AND w.wanted_status IN ('missing', 'upgrade')"
+            ? $"AND (w.wanted_status IN ({searchable}) {stuckDownload})"
             : "AND w.wanted_status = @wantedStatus";
 
         using var command = connection.CreateCommand();
@@ -192,6 +209,7 @@ public sealed class SqliteMediaStateRepository(
         AddParameter(command, "@now", now.ToString("O"));
         AddParameter(command, "@today", DateOnly.FromDateTime(now.UtcDateTime).ToString("yyyy-MM-dd"));
         AddParameter(command, "@take", Math.Clamp(take, 1, 500));
+        AddParameter(command, "@downloadStale", now.Subtract(WantedStatuses.StuckDownloadAfter).ToString("O"));
         if (!string.IsNullOrWhiteSpace(wantedStatus))
         {
             AddParameter(command, "@wantedStatus", WantedStatuses.Normalize(wantedStatus));
@@ -286,6 +304,52 @@ public sealed class SqliteMediaStateRepository(
         AddParameter(command, "@targetQuality", targetQuality);
         AddParameter(command, "@missingSinceUtc", now.ToString("O"));
         AddParameter(command, "@updatedUtc", now.ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task SetDownloadingAsync(
+        MediaKind kind,
+        string mediaId,
+        bool downloading,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var map = MediaTableMap.For(kind);
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            map.DatabaseName,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+
+        // Clearing is scoped to rows this actually set. A title that was
+        // imported while the download was in flight has already had its status
+        // rewritten by the import, and overwriting that with `missing` would
+        // take a finished film off the shelf.
+        command.CommandText = downloading
+            ? $"""
+                UPDATE {map.WantedTable}
+                SET wanted_status = @status,
+                    downloading_since_utc = @now,
+                    updated_utc = @now
+                WHERE {map.WantedMediaIdColumn} = @mediaId;
+                """
+            : $"""
+                UPDATE {map.WantedTable}
+                SET wanted_status = @status,
+                    downloading_since_utc = NULL,
+                    updated_utc = @now
+                WHERE {map.WantedMediaIdColumn} = @mediaId
+                  AND wanted_status = @downloadingStatus;
+                """;
+
+        AddParameter(command, "@mediaId", mediaId);
+        AddParameter(command, "@status", downloading ? WantedStatuses.Downloading : WantedStatuses.Missing);
+        AddParameter(command, "@now", now.ToString("O"));
+        if (!downloading)
+        {
+            AddParameter(command, "@downloadingStatus", WantedStatuses.Downloading);
+        }
+
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
