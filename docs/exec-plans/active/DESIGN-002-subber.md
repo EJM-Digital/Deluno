@@ -104,9 +104,9 @@ hearing-impaired exclusion.
   good enough*, which is exactly how quality already behaves in Deluno. One idea
   learnt once.
 - **A quality gate on the subtitle itself.** Bazarr expresses this as numeric
-  score weights, which nobody can reason about. Deluno should say what it means:
-  *must match this release* / *prefer this release* / *anything readable*, with
-  the consequence written underneath.
+  score weights, which nobody can reason about. Deluno should say what it means.
+  **What that means was read out of Bazarr's own source rather than guessed —
+  see "What Bazarr's score actually says" below.**
 - **Timing sync.** The single biggest reason anyone touches subtitles by hand.
   Bazarr shells out to `ffsubsync`/`alass`; Deluno already ships ffprobe
   handling, so the same shape applies.
@@ -162,6 +162,106 @@ hearing-impaired exclusion.
   remembering the first. It is one list of every library now, with the settings
   behind a drawer, which is also what lets the nine outstanding settings land as
   more rows rather than another screen.
+
+## What Bazarr's score actually says
+
+James, asked to pick between three definitions of "better": *"this is the thing
+that we need to look into with bazaar and how it does it properly."* Right — so
+this was read from `custom_libs/subliminal_patch/score.py` and
+`bazarr/app/config.py` at Bazarr `master`, not from the wiki and not from memory.
+
+### The table it actually ships
+
+| | episode | movie |
+|---|---:|---:|
+| `hash` | **359** | **179** |
+| `series` / `title` | 160 | 60 |
+| `year` | 90 | 40 |
+| `season` | 30 | — |
+| `episode` | 30 | — |
+| `source` | 25 | 30 |
+| `edition` | — | 30 |
+| `release_group` | 20 | 15 |
+| `audio_codec` | 1 | 1 |
+| `resolution` | 1 | 1 |
+| `video_codec` | 1 | 1 |
+| `hearing_impaired` | 1 | 1 |
+| `streaming_service` | 1 | 1 |
+| **maximum** | **360** | **180** |
+
+Defaults: **90%** for episodes, **70%** for films.
+
+### Two things fall straight out of it
+
+**`hash` is always `max − 1`,** and Bazarr *validates* that — if you edit the
+weights and the sum stops working out, it throws yours away and uses the
+defaults. So the hash rule is not a weight at all; it is structural. When a
+provider matched the file's own bytes, that beats every combination of metadata
+except a literally perfect one.
+
+**The other ten weights are not a quality model. They are gates with a
+tiebreaker tail.** Run the defaults and the thresholds decode to one sentence:
+
+| Episode, threshold 90% | score | | Film, threshold 70% | score |
+|---|---:|---|---|---:|
+| right show + year | 69% ✗ | | right title + year | 56% ✗ |
+|  + right episode | 86% ✗ | | | |
+|  + **same source** | **93% ✓** | |  + **same source** | **72% ✓** |
+|  + exact release group | 99% ✓ | |  + edition | 89% ✓ |
+| | | |  + exact release group | 97% ✓ |
+
+On both media the *only* thing standing between fail and pass at the shipped
+default is **`source`** — WEB vs Blu-ray vs HDTV. Getting the right episode is
+not enough; getting the exact release group is more than enough. And the bottom
+five weights are 1 point each, so `resolution`, `video_codec`, `audio_codec`,
+`streaming_service` and `hearing_impaired` can never change a pass into a fail.
+They break ties and nothing else — which is also Bazarr agreeing with
+DESIGN-001 that hearing-impaired is coverage, not a disqualification.
+
+**So Bazarr's default, in English, is: *a subtitle cut for the same kind of
+release as my file.*** That is the honest translation of "90%", and it is a
+sentence a person can hold. It is also not one of the three this document
+originally proposed, which is the whole reason for reading the source.
+
+### And its upgrade rule is a cutoff
+
+`upgrade_subs` on, `upgrade_frequency` 12 h, `days_to_upgrade_subs` 7 (max 30) —
+and the rule underneath: **a subtitle is only re-examined if it was accepted
+*below* the threshold.** Score at or above it and Bazarr stops looking at that
+file for ever.
+
+Deluno already has that idea and already has words for it. It is
+`UpgradeUntilCutoff` on a quality profile: a ladder, and a rung that means *stop
+here, this is good enough*. DESIGN-002 said to reuse it — *"exactly how quality
+already behaves in Deluno. One idea learnt once"* — and reading Bazarr confirms
+the shape rather than inventing it.
+
+### The proposal
+
+Three rungs, in the order a subtitle climbs, and a cutoff that says where to
+stop. No numbers on screen.
+
+| Rung | Means | Bazarr's equivalent |
+|---|---|---|
+| **Any release** | The right film or episode. Readable; the timing may need a nudge. | ~86% episode / ~56% film |
+| **Same source** | Cut for the same kind of release — WEB, Blu-ray, HDTV. Timing is right almost every time. | the shipped default |
+| **Made for this file** | The provider matched the file itself, or the subtitle names your exact release group. Timing is guaranteed. | `hash`, or `release_group` |
+
+Deluno already has every input this needs: `SubtitleCandidate.ReleaseName` from
+the provider, and `MediaFileNameFacts.Parse` plus quality detection for the file.
+Nothing new has to be computed.
+
+**A subtitle below the cutoff is still fetched** — the shelf gets covered
+tonight — and stays on the upgrade list until something at the cutoff turns up.
+That is what the bar's green means, and it is why gold exists: green is *you can
+watch it and Deluno is still looking*, gold is *at the cutoff, Deluno has
+stopped*. So this decision is also what unblocks the third colour.
+
+**Not adopted from Bazarr:** the 30-day window on upgrades. It exists because
+Bazarr re-scores by walking history; Deluno keeps `next_eligible_search_utc` per
+title and language already, so an old subtitle costs nothing to leave on the
+list — and "we stopped looking after a month" is the kind of silent give-up this
+document already refused for backoff.
 
 ## What *held* actually means
 
