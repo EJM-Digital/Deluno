@@ -40,7 +40,28 @@ public static class WantedStatuses
     /// </summary>
     public const string Upcoming = "upcoming";
 
-    public static readonly IReadOnlyList<string> All = [Missing, Upgrade, Covered, Upcoming];
+    /// <summary>
+    /// Every episode that has aired is here, and more are still to come.
+    ///
+    /// <para><b>The one state a film can never be in</b>, and the reason TV
+    /// needed something Movies does not have. <c>Covered</c> on a show used to
+    /// mean both "finished, and you hold all of it" and "up to date, with three
+    /// more arriving next month", which are different enough that Sonarr spends
+    /// two of its five colours telling them apart.</para>
+    ///
+    /// <para><b>Decided from whether an episode is actually scheduled</b>, not
+    /// from the provider's status string. A show TMDb still calls
+    /// <i>Returning Series</i> with nothing on the calendar is not airing, and a
+    /// show it calls <i>Ended</i> that has a special dated next month is. The
+    /// air date is the fact; the status is somebody's label for it — which is
+    /// why status stays a filter and a sort and does not decide the mark.</para>
+    ///
+    /// <para>Searchable, unlike <c>Covered</c>: the episodes still to come will
+    /// need finding when they air.</para>
+    /// </summary>
+    public const string Airing = "airing";
+
+    public static readonly IReadOnlyList<string> All = [Missing, Upgrade, Covered, Upcoming, Airing];
 
     /// <summary>
     /// Whether Deluno should be looking for this. <c>Covered</c> has what it
@@ -48,7 +69,7 @@ public static class WantedStatuses
     /// work list.
     /// </summary>
     public static bool IsSearchable(string? status)
-        => Normalize(status) is Missing or Upgrade;
+        => Normalize(status) is Missing or Upgrade or Airing;
 
     public static bool IsKnown(string? value)
         => value is not null && All.Contains(value.Trim().ToLowerInvariant());

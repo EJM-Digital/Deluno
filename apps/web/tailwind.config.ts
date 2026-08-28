@@ -102,6 +102,7 @@ const config: Config = {
         mark: {
           "quality-met": "hsl(var(--mark-quality-met))",
           upcoming: "hsl(var(--mark-upcoming))",
+          airing: "hsl(var(--mark-airing))",
           idle: "hsl(var(--mark-idle))"
         },
         card: {

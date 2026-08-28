@@ -122,7 +122,7 @@ export function statusLabel(key: StatusKey): string {
  * Missing → Downloading → Upgradable → Quality met is the order a title climbs.
  * Nobody has to be taught that gold is above green.
  */
-export type TitleMark = "missing" | "downloading" | "upgrade" | "covered" | "upcoming";
+export type TitleMark = "missing" | "downloading" | "upgrade" | "covered" | "airing" | "upcoming";
 
 export interface TitleMarkPresentation {
   /**
@@ -213,6 +213,15 @@ export const TITLE_MARK_PRESENTATION: Record<TitleMark, TitleMarkPresentation> =
     canBeHalf: false,
     sheen: "mark-grail"
   },
+  airing: {
+    dot: "bg-mark-airing",
+    text: "text-mark-airing",
+    tint: "bg-mark-airing/15",
+    cssVar: "--mark-airing",
+    label: "Up to date",
+    hint: "You have every episode that has aired. More are still to come, and Deluno will look for them as they do.",
+    canBeHalf: true
+  },
   upcoming: {
     dot: "bg-mark-upcoming",
     text: "text-mark-upcoming",
@@ -267,6 +276,10 @@ export const TITLE_MARK_LADDER: readonly TitleMark[] = [
   "missing",
   "downloading",
   "upgrade",
+  // Above Upgradable because everything you hold is at the quality asked for,
+  // and below Quality met because the show is not finished — there is more
+  // coming and Deluno has not stopped looking.
+  "airing",
   "covered"
 ] as const;
 
