@@ -152,8 +152,56 @@ public static class CatalogueSortFields
     /// the one rule that now exists in two languages, and the test that holds
     /// the two copies together.
     /// </summary>
+    /// <summary>
+    /// When the next episode airs. A show is the only thing that has a next
+    /// anything, so this is the first sort that means nothing on the other
+    /// shelf — see <see cref="ForKind"/>.
+    /// </summary>
+    public const string NextAiring = "nextairing";
+
+    /// <summary>
+    /// How far through its aired episodes a show is, as the count it holds.
+    ///
+    /// <para>Sonarr's most useful sort, and the reason it is a stored column
+    /// rather than arithmetic: it changes because time passed, so V0020 stores
+    /// the answer beside the moment it stops being true.</para>
+    /// </summary>
+    public const string EpisodeProgress = "episodeprogress";
+
+    /// <summary>Who broadcasts it. A film has a studio, which arrives with #306.</summary>
+    public const string Network = "network";
+
     public static readonly IReadOnlyList<string> All =
-        [Added, Title, Year, Rating, Runtime, Popularity, Size, Quality, Bitrate];
+        [Added, Title, Year, Rating, Runtime, Popularity, Size, Quality, Bitrate,
+         NextAiring, EpisodeProgress, Network];
+
+    /// <summary>
+    /// The sorts one kind of shelf can actually perform.
+    ///
+    /// <para>#324 split the <i>filter</i> vocabulary per media kind and stopped
+    /// there, so both shelves went on being offered one list of nine sorts.
+    /// Sonarr is not Radarr with seasons: ordering a film by when its next
+    /// episode airs is not a sort with no rows, it is a sort with no
+    /// meaning.</para>
+    /// </summary>
+    public static IReadOnlyList<string> ForKind(MediaKind kind)
+        => kind == MediaKind.Series
+            ? All
+            : [.. All.Where(field => field is not (NextAiring or EpisodeProgress or Network))];
+
+    /// <summary>
+    /// The same, but refusing a sort the shelf cannot perform.
+    ///
+    /// <para>A Movies page asking to be ordered by next airing is not a page
+    /// with no rows — it is SQL naming a column that does not exist on
+    /// <c>movie_entries</c>, which is an exception at execute time. Falling back
+    /// to the default is what every other unrecognised sort already does.</para>
+    /// </summary>
+    public static string Normalize(string? value, MediaKind kind)
+    {
+        var normalized = Normalize(value);
+        return ForKind(kind).Contains(normalized) ? normalized : Added;
+    }
 
     public static string Normalize(string? value)
         => value?.Trim().ToLowerInvariant() switch
@@ -166,6 +214,9 @@ public static class CatalogueSortFields
             Size => Size,
             Quality => Quality,
             Bitrate => Bitrate,
+            NextAiring => NextAiring,
+            EpisodeProgress => EpisodeProgress,
+            Network => Network,
             _ => Added
         };
 }

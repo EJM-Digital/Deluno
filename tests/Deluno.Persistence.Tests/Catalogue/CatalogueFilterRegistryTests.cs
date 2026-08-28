@@ -136,7 +136,10 @@ public sealed class CatalogueFilterRegistryTests
         {
             var offered = CatalogueControls.For(kind).SortFields.Select(sort => sort.Id).ToArray();
 
-            Assert.Equal(CatalogueSortFields.All.Order(), offered.Order());
+            // Per kind, not one list for both: a film has no next episode and no
+            // network, and a sort that can only ever do nothing is the failure
+            // #324 was opened about.
+            Assert.Equal(CatalogueSortFields.ForKind(kind).Order(), offered.Order());
             Assert.Equal(offered.Length, offered.Distinct().Count());
         }
     }

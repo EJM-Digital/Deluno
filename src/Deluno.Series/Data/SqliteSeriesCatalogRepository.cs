@@ -736,7 +736,7 @@ public sealed class SqliteSeriesCatalogRepository(
         CancellationToken cancellationToken)
     {
         var pageSize = new PageRequest(query.PageSize, query.PageToken).BoundedPageSize;
-        var sort = CatalogueSortFields.Normalize(query.Sort);
+        var sort = CatalogueSortFields.Normalize(query.Sort, MediaKind.Series);
         var status = CatalogueStatusFilters.Normalize(query.Status);
         var search = string.IsNullOrWhiteSpace(query.Search) ? null : query.Search.Trim();
         var libraryId = string.IsNullOrWhiteSpace(query.LibraryId) ? null : query.LibraryId.Trim();

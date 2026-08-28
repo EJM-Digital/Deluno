@@ -73,6 +73,28 @@ public sealed record CatalogueControls(
     ];
 
     /// <summary>
+    /// Sorts that only mean something for a show.
+    ///
+    /// <para>A film has no next episode and no network, and is never partway
+    /// through anything. Offering these on the Movies shelf would be three
+    /// controls that can only ever do nothing — which is the failure #324 was
+    /// opened about, one layer along.</para>
+    /// </summary>
+    private static IReadOnlyList<CatalogueSortOption> SeriesOnlySorts =>
+    [
+        new(CatalogueSortFields.NextAiring, "Next airing", "When the next episode is due"),
+        new(CatalogueSortFields.EpisodeProgress, "Episode progress", "How many aired episodes you hold"),
+        new(CatalogueSortFields.Network, "Network", "Who broadcasts it")
+    ];
+
+    /// <summary>What only a show's card can show.</summary>
+    private static IReadOnlyList<CataloguePosterOption> SeriesOnlyPosterOptions =>
+    [
+        new("showNextAiring", "Next airing", "When the next episode is due", DefaultOn: false, Line: true),
+        new("showEpisodeProgress", "Episode progress", "How many aired episodes you hold", DefaultOn: false, Line: true)
+    ];
+
+    /// <summary>
     /// What every card can show, whichever shelf it is on.
     ///
     /// <para>The first five are the essentials and are on. The rest share one
@@ -97,8 +119,10 @@ public sealed record CatalogueControls(
         => new(
             kind == MediaKind.Movie ? "movies" : "shows",
             [.. CatalogueFilterFields.For(kind).Select(View)],
-            SharedSorts,
-            SharedPosterOptions);
+            kind == MediaKind.Series ? [.. SharedSorts, .. SeriesOnlySorts] : SharedSorts,
+            kind == MediaKind.Series
+                ? [.. SharedPosterOptions, .. SeriesOnlyPosterOptions]
+                : SharedPosterOptions);
 
     private static CatalogueFilterFieldView View(CatalogueFilterField field)
         => new(
