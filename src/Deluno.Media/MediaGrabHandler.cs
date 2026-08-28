@@ -205,6 +205,19 @@ public static class MediaGrabHandler
             cancellationToken: cancellationToken);
 
         var now = timeProvider.GetUtcNow();
+
+        if (grabResult.Status == "sent")
+        {
+            // It is on its way, so the shelf stops saying "go and get this" and
+            // the cycle stops looking for it — which is what prevents the same
+            // release being grabbed twice.
+            //
+            // Here rather than in either catalogue because this is the one place
+            // a grab happens for both kinds. Two copies of it would be two
+            // chances for one shelf to forget, and the way it fails is silent.
+            await mediaStateRepository.SetDownloadingAsync(kind, item.Id, downloading: true, now, cancellationToken);
+        }
+
         await recordSearchAttemptAsync(
             item.Id,
             library.Id,

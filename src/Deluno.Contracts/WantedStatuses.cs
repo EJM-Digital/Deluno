@@ -61,15 +61,80 @@ public static class WantedStatuses
     /// </summary>
     public const string Airing = "airing";
 
-    public static readonly IReadOnlyList<string> All = [Missing, Upgrade, Covered, Upcoming, Airing];
+    /// <summary>
+    /// Found, and handed to a download client. It is on its way.
+    ///
+    /// <para><b>The browser has drawn this since before anything could produce
+    /// it.</b> <c>TITLE_MARK_PRESENTATION</c> has carried a <c>downloading</c>
+    /// mark — blue dot, <i>"Coming down, processing, or importing"</i> — sitting
+    /// in the ladder between Missing and Upgradable, and no server path ever set
+    /// one. Declared, never populated, and invisible because a state that never
+    /// happens looks exactly like a state that does not exist.</para>
+    ///
+    /// <para>Until now a title Deluno had already grabbed still read
+    /// <c>Missing</c>, identical to one nothing had been found for — so the
+    /// shelf told you to go and get something already on its way.</para>
+    ///
+    /// <para><b>Deliberately not searchable</b>, which is the whole point: it is
+    /// what stops the cycle grabbing the same release twice. See
+    /// <see cref="IsSearchable"/> for the safety net that stops that becoming a
+    /// trap.</para>
+    /// </summary>
+    public const string Downloading = "downloading";
+
+    public static readonly IReadOnlyList<string> All =
+        [Missing, Upgrade, Covered, Upcoming, Airing, Downloading];
+
+    /// <summary>
+    /// The work list, as data, because SQL cannot ask C# what is searchable.
+    ///
+    /// <para>The eligibility query used to spell <c>IN ('missing', 'upgrade')</c>
+    /// into its own SQL, which is the same rule as <see cref="IsSearchable"/>
+    /// written a second time in a language that could not check itself against
+    /// the first. Adding a status to one and not the other would have been
+    /// silent — and the direction it fails in is the bad one: a title nobody
+    /// ever searches for again.</para>
+    /// </summary>
+    public static readonly IReadOnlyList<string> Searchable = [Missing, Upgrade, Airing];
 
     /// <summary>
     /// Whether Deluno should be looking for this. <c>Covered</c> has what it
     /// asked for and <c>Upcoming</c> does not exist yet; the other two are the
     /// work list.
     /// </summary>
+    /// <summary>
+    /// Whether Deluno should be looking for this.
+    ///
+    /// <para><c>Covered</c> has what it asked for, <c>Upcoming</c> does not
+    /// exist yet, and <c>Downloading</c> is already on its way — looking for it
+    /// again is how you grab the same release twice.</para>
+    ///
+    /// <para><b>And that is why a download cannot be trusted to end.</b> If a
+    /// dispatch dies and nothing rewrites the status, this returns false for
+    /// ever and the title is never searched again, in silence. The stored
+    /// <c>downloading_since_utc</c> is what stops that: past
+    /// <see cref="StuckDownloadAfter"/> the state is treated as expired and the
+    /// title goes back on the list. The poll should have cleared it long before;
+    /// this is what happens when the poll never comes.</para>
+    /// </summary>
     public static bool IsSearchable(string? status)
-        => Normalize(status) is Missing or Upgrade or Airing;
+        => Searchable.Contains(Normalize(status));
+
+    /// <summary>
+    /// How long a title may claim to be downloading before Deluno stops
+    /// believing it.
+    ///
+    /// <para>Seven days, and it is a backstop rather than a policy: a large
+    /// torrent on a slow line can genuinely take days, so this must never fire
+    /// during normal operation. It exists for the case where nothing ever tells
+    /// Deluno the download ended — the client was removed, the dispatch row was
+    /// lost, the process died mid-flight — because the alternative is a title
+    /// that silently drops out of the library's work list and stays out.</para>
+    ///
+    /// <para>The cost of it firing early is one duplicate search. The cost of
+    /// not having it is a film nobody ever notices is missing.</para>
+    /// </summary>
+    public static readonly TimeSpan StuckDownloadAfter = TimeSpan.FromDays(7);
 
     public static bool IsKnown(string? value)
         => value is not null && All.Contains(value.Trim().ToLowerInvariant());
@@ -95,12 +160,19 @@ public static class WantedStatuses
         }
 
         var normalized = value.Trim().ToLowerInvariant();
+
+        // Read from All rather than a switch listing every status a second
+        // time. That switch is how  came to throw here the moment it was
+        // added: All knew about it, this did not, and the failure surfaced on
+        // the search path rather than anywhere near the edit. One list now, and
+        // adding a status cannot half-land.
+        if (All.Contains(normalized))
+        {
+            return normalized;
+        }
+
         return normalized switch
         {
-            Missing => Missing,
-            Upgrade => Upgrade,
-            Covered => Covered,
-            Upcoming => Upcoming,
             // The one word this has to keep answering for. Databases written
             // before V0015 hold it, and so does anything mid-flight across the
             // upgrade; the migration renames the rows, this catches the rest.

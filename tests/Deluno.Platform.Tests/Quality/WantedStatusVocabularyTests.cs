@@ -123,7 +123,13 @@ public sealed class WantedStatusVocabularyTests
         // download this". A typo, or a value written by a newer version and read
         // by an older one, silently became a download and nothing reported it.
         Assert.Throws<ArgumentOutOfRangeException>(() => WantedStatuses.Normalize("wanted"));
-        Assert.Throws<ArgumentOutOfRangeException>(() => WantedStatuses.Normalize("downloading"));
+        Assert.Throws<ArgumentOutOfRangeException>(() => WantedStatuses.Normalize("grabbed"));
+
+        // "downloading" used to belong here, and it is worth saying why it does
+        // not any more: the browser had drawn a Downloading mark since long
+        // before the server could produce one, so the word was a real thing on
+        // screen and an unrecognised string underneath. It is a status now.
+        Assert.Equal(WantedStatuses.Downloading, WantedStatuses.Normalize("downloading"));
     }
 
     [Fact]

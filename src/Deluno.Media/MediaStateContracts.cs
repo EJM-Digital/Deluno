@@ -207,6 +207,28 @@ public interface IMediaStateRepository
         bool qualityCutoffMet,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Records that a title has been handed to a download client, or that it is
+    /// no longer with one.
+    ///
+    /// <para>Both directions in one method on purpose. The status and the moment
+    /// it was set have to move together — a status with no timestamp can never
+    /// expire, and a timestamp with no status is read by nothing — and two
+    /// methods is two chances to write one without the other.</para>
+    ///
+    /// <para>Clearing does <b>not</b> decide what the title becomes. It returns
+    /// it to <c>missing</c>, which is the honest answer for a title with no file
+    /// and no download in flight, and lets the ordinary cycle work out the rest.
+    /// Guessing anything better here would be a second copy of the rung
+    /// rules.</para>
+    /// </summary>
+    Task SetDownloadingAsync(
+        MediaKind kind,
+        string mediaId,
+        bool downloading,
+        DateTimeOffset now,
+        CancellationToken cancellationToken);
+
     Task<bool> DeferWantedSearchAsync(
         MediaKind kind,
         string mediaId,
