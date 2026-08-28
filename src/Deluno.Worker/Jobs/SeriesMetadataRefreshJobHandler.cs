@@ -39,23 +39,7 @@ public sealed class SeriesMetadataRefreshJobHandler(
             return $"No metadata match found for {series.Title}.";
         }
 
-        await seriesCatalogRepository.UpdateMetadataAsync(
-            series.Id,
-            match.Provider,
-            match.ProviderId,
-            match.OriginalTitle,
-            match.Overview,
-            match.PosterUrl,
-            match.BackdropUrl,
-            match.Rating,
-            string.Join(", ", match.Genres),
-            match.ExternalUrl,
-            match.ImdbId,
-            JsonSerializer.Serialize(match, JobPayloads.Options),
-            cancellationToken,
-            match.RuntimeMinutes,
-            match.Popularity,
-            match.VoteCount);
+        await seriesCatalogRepository.UpdateMetadataAsync(series.Id, match, cancellationToken);
 
         // Re-syncing the catalogue on the schedule is how an episode announced
         // after the show was added ever becomes known. Without it the inventory

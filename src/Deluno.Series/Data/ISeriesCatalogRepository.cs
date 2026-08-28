@@ -1,3 +1,4 @@
+using MetadataSearchResult = Deluno.Integrations.Metadata.MetadataSearchResult;
 using Deluno.Contracts;
 using Deluno.Series.Contracts;
 using Deluno.Recovery.Contracts;
@@ -95,6 +96,26 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
     Task RecordMetadataAttemptAsync(string id, CancellationToken cancellationToken);
 
     Task<int> UpdateMonitoredAsync(IReadOnlyList<string> seriesIds, bool monitored, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Applies everything a provider answered with, in one call.
+    ///
+    /// <para><b>This exists because the long form has five callers and adding a
+    /// field means finding all five.</b> It did not get found: <c>status</c> and
+    /// <c>network</c> were wired through the endpoint's helper and the worker's
+    /// refresh job kept its own fifteen positional arguments, so a scheduled
+    /// refresh wrote everything except the two fields that had just been added.
+    /// The rig refreshed six shows and the column stayed empty.</para>
+    ///
+    /// <para>One mapping from a provider result to a row, so the next field is a
+    /// single edit rather than a search. The long form stays for the manual
+    /// override path, which deliberately builds its own values and is the one
+    /// caller that is not applying a provider's answer.</para>
+    /// </summary>
+    Task<SeriesListItem?> UpdateMetadataAsync(
+        string id,
+        MetadataSearchResult metadata,
+        CancellationToken cancellationToken);
 
     Task<SeriesListItem?> UpdateMetadataAsync(
         string id,

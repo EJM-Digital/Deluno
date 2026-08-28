@@ -1,3 +1,4 @@
+using MetadataSearchResult = Deluno.Integrations.Metadata.MetadataSearchResult;
 using Deluno.Contracts;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
@@ -1212,6 +1213,30 @@ public sealed class SqliteSeriesCatalogRepository(
 
         return updated;
     }
+
+    public Task<SeriesListItem?> UpdateMetadataAsync(
+        string id,
+        MetadataSearchResult metadata,
+        CancellationToken cancellationToken)
+        => UpdateMetadataAsync(
+            id,
+            metadata.Provider,
+            metadata.ProviderId,
+            metadata.OriginalTitle,
+            metadata.Overview,
+            metadata.PosterUrl,
+            metadata.BackdropUrl,
+            metadata.Rating,
+            string.Join(", ", metadata.Genres),
+            metadata.ExternalUrl,
+            metadata.ImdbId,
+            JsonSerializer.Serialize(metadata),
+            cancellationToken,
+            metadata.RuntimeMinutes,
+            metadata.Popularity,
+            metadata.VoteCount,
+            metadata.Status,
+            metadata.Network);
 
     public async Task<SeriesListItem?> UpdateMetadataAsync(
         string id,
