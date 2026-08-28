@@ -305,7 +305,12 @@ public sealed class CataloguePagingTests
         var general = await series.AddAsync(new CreateSeriesRequest("General Series", 2021, null), CancellationToken.None);
 
         await series.EnsureWantedStateAsync(anime.Id, "library-anime", "missing", "Needs a file.", false, null, "WEB 1080p", false, CancellationToken.None);
-        await series.EnsureWantedStateAsync(general.Id, "library-general", "missing", "Needs a file.", true, "WEB 720p", "WEB 1080p", false, CancellationToken.None);
+        // "Downloaded" on a show means every aired episode is here, which is the
+        // rung — not `has_file`, which is true of a show holding one episode out
+        // of eighty-seven. Sonarr reads it the same way ("All episodes
+        // downloaded"). Seeded as covered so this test stays about the thing it
+        // is named for: whether the library filter narrows rows and facets.
+        await series.EnsureWantedStateAsync(general.Id, "library-general", "covered", "All aired episodes are here.", true, "WEB 720p", "WEB 1080p", true, CancellationToken.None);
 
         var page = await series.ListPageAsync(
             new CatalogueQuery(LibraryId: "library-general", PageSize: 10),

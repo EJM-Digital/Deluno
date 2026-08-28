@@ -307,18 +307,18 @@ export function titleMark(item: {
 }): TitleMark {
   if (item.isTransferring) return "downloading";
 
-  // A show is judged on its episodes, which know more than its title-level row.
-  const aired = item.airedEpisodeCount;
-  if (typeof aired === "number") {
-    if (aired === 0) {
-      return item.nextAirDateUtc ? "upcoming" : "missing";
-    }
-    const held = item.airedWithFileCount ?? 0;
-    if (held < aired) return "missing";
-    if ((item.airedUpgradableCount ?? 0) > 0) return "upgrade";
-    return "covered";
-  }
-
+  // **The browser no longer decides a show's rung.**
+  //
+  // It used to, from these same episode counts, because the server's stored
+  // status was decided from the title-level row — one arbitrary file — and was
+  // wrong for a collection. Two answers, and they disagreed: on the rig,
+  // Severance with three of twenty episodes was "Quality met" to the chips and
+  // "Missing" on its own poster, and clicking the chip returned a title whose
+  // poster contradicted it.
+  //
+  // The rule now lives once on the server (`SeriesRung`), decided from the
+  // episodes and served — so the shelf, the chips and the filter cannot drift.
+  // What the episode counts still do here is fill the ring; see `titleProgress`.
   switch (item.wantedStatus) {
     case "covered":
       return "covered";
@@ -390,14 +390,13 @@ export interface TitleBar {
  * arrives with them."*). A legend listing a colour no bar can be is the same
  * defect as a filter chip that can never match.
  */
-export const TITLE_BAR_SEGMENTS: readonly { mark: TitleMark; label: string; hint: string }[] = [
+export const TITLE_BAR_SEGMENTS: readonly { mark: TitleMark; hint: string }[] = [
   {
     // Gold, and it arrived with the cutoff. DESIGN-002: "Two colours are enough
     // until upgrades exist; gold arrives with them." They exist — a subtitle is
-    // *Done* when it was made for the file it sits beside, so the timing is
-    // right and there is nothing better to find.
+    // at the cutoff when it was made for the file it sits beside, so the timing
+    // is right and there is nothing better to find.
     mark: "covered",
-    label: "Done",
     hint: "Made for this file, so the timing is right. Deluno has stopped looking."
   },
   {
@@ -411,15 +410,47 @@ export const TITLE_BAR_SEGMENTS: readonly { mark: TitleMark; label: string; hint
     // Gold, when upgrades exist, is "Done" — so the set reads
     // Missing / Ready / Done, and each word says what the viewer can do rather
     // than what the store is holding.
-    label: "Ready",
     hint: "Here and watchable, and Deluno is still looking for one cut for your exact release."
   },
   {
     mark: "missing",
-    label: "Missing",
     hint: "A language you asked for is not here yet. Deluno looks for it on the library's own cycle."
   }
 ] as const;
+
+/**
+ * How much of a title is on disk, 0 to 1 — what the dot's ring is filled to.
+ *
+ * **Why a ring rather than a fifth word.** On TV the four rungs stop
+ * discriminating: nearly every show is missing something, so nearly every
+ * poster reads Missing, and three-of-twenty looks identical to none-of-eighty-
+ * seven. A fifth rung would fix that at the cost of a new colour and a new word
+ * on both shelves, when only one of them has the problem.
+ *
+ * The dot can already be drawn partially — that is what a half-grey dot means
+ * for "not monitored" — so the fraction goes there. Same four rungs, same
+ * colours, and the shape now says how far along.
+ *
+ * A movie is one file: it is either here or it is not, so it is always 0 or 1
+ * and the ring is a plain dot.
+ */
+export function titleProgress(item: {
+  hasFile?: boolean;
+  airedEpisodeCount?: number;
+  airedWithFileCount?: number;
+}): number {
+  const aired = item.airedEpisodeCount;
+  if (typeof aired !== "number") {
+    return item.hasFile === false ? 0 : 1;
+  }
+
+  // Nothing aired is a full ring, not an empty one. An Upcoming show is not
+  // missing anything, and an empty ring would read as the worst possible state
+  // when it is simply early.
+  if (aired <= 0) return 1;
+
+  return Math.min(1, Math.max(0, (item.airedWithFileCount ?? 0) / aired));
+}
 
 export function titleBar(item: {
   /**
