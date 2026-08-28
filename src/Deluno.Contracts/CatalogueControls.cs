@@ -165,7 +165,10 @@ public sealed record CatalogueControls(
         new("showMeta", "Year and monitoring", "Release year and monitored state", DefaultOn: true),
         new("showStatusPill", "Status mark", "Missing, Upgradable, Quality met or Upcoming", DefaultOn: true),
         new("showQualityBadge", "Quality", "The tier the file actually is — WEB 2160p, Remux 1080p", DefaultOn: true),
-        new("showRating", "Rating", "The preferred metadata score", DefaultOn: true),
+        // A line of its own, like every other switch. "Year and monitoring" is
+        // one switch and gets one row; the rating is a second switch and shared
+        // that row until James pointed out the rule — nothing shares a row.
+        new("showRating", "Rating", "The preferred metadata score", DefaultOn: true, Line: true),
         new("showSize", "Size", "What the file takes on disk", DefaultOn: false, Line: true),
         new("showRuntime", "Runtime", "How long it runs", DefaultOn: false, Line: true),
         new("showGenres", "Genres", "The first two it is tagged with", DefaultOn: false, Line: true),

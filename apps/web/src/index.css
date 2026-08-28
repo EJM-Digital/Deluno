@@ -649,9 +649,18 @@
   --metric-meta-size: 0.75rem;
   --metric-label-size: 0.6875rem;
   --poster-rail-width: 156px;
-  --library-card-sm: 126px;
-  --library-card-md: 176px;
-  --library-card-lg: 244px;
+  /* Poster sizes step by about a quarter, not by 40%.
+     They were 126 / 176 / 244, which is +40% each time and so a Large card
+     covering nearly four times the area of a Small one. Measured on a 2560px
+     screen that is 15 / 11 / 8 columns: the step from Medium to Large cost
+     three columns and showed exactly the same rows, because Medium and Large
+     carry identical information and only Small drops the metadata block.
+     James: "the poster sizes are way out of proportion". A ~1.25 ratio gives
+     15 / 12 / 10 on the same screen, so each size is still a different job
+     without the lurch between them. */
+  --library-card-sm: 132px;
+  --library-card-md: 166px;
+  --library-card-lg: 205px;
   --library-title-sm: 0.8125rem;
   --library-title-md: 0.9375rem;
   --library-title-lg: 1.0625rem;
@@ -728,9 +737,10 @@
   --metric-meta-size: 0.6875rem;
   --metric-label-size: 0.625rem;
   --poster-rail-width: 136px;
-  --library-card-sm: 112px;
-  --library-card-md: 152px;
-  --library-card-lg: 212px;
+  /* The same ~1.25 ratios, scaled down for the compact breakpoint. */
+  --library-card-sm: 116px;
+  --library-card-md: 146px;
+  --library-card-lg: 182px;
   --library-title-sm: 0.75rem;
   --library-title-md: 0.84375rem;
   --library-title-lg: 0.9375rem;

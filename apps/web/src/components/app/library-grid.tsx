@@ -1,4 +1,8 @@
-import { Play, ShieldCheck, ShieldOff, Star } from "lucide-react";
+import {
+  CalendarDays, Clapperboard, Disc, HardDrive, ListVideo, MonitorPlay, Play,
+  ShieldCheck, ShieldOff, Star, Tag, Timer, Tv, Users
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -28,9 +32,9 @@ export type { DisplayOptions } from "../../lib/library-filters";
  * added on the server appears here as a toggle whose number this can draw.
  */
 const RELEASE_DATES = [
-  { option: "showInCinemas", field: "inCinemas", label: "Cinemas" },
-  { option: "showDigitalRelease", field: "digitalRelease", label: "Digital" },
-  { option: "showPhysicalRelease", field: "physicalRelease", label: "Disc" }
+  { option: "showInCinemas", field: "inCinemas", label: "Cinemas", icon: Clapperboard },
+  { option: "showDigitalRelease", field: "digitalRelease", label: "Digital", icon: MonitorPlay },
+  { option: "showPhysicalRelease", field: "physicalRelease", label: "Disc", icon: Disc }
 ] as const;
 
 const RATING_SOURCES = [
@@ -360,7 +364,15 @@ function PosterCard({
         survivable — the extras were crushed into one truncated sentence
         precisely because there was no room over the image, and here there is.
       */}
-      <div className={cn("mt-2 min-w-0", size === "sm" ? "space-y-0.5" : "space-y-1")}>
+      {/*
+        Tight, the way Radarr's is. Every row sits directly under the last with
+        no gap between them: with a dozen switches available, four pixels of
+        breathing room per row turns a compact block into a column of holes,
+        and an empty reserved row stops reading as spacing and starts reading
+        as a fault. Compared side by side with Radarr this was the whole
+        difference.
+      */}
+      <div className="mt-2 min-w-0">
         {displayOptions.showTitle ? (
           // Exactly two lines of space, whether the title needs one or two.
           //
@@ -378,7 +390,7 @@ function PosterCard({
           // One line, and it never wraps. `flex-wrap` here meant a long enough
           // metadata row silently became two lines on one card and one on the
           // next — the same misalignment, from the other direction.
-          <div className="flex h-[1lh] min-w-0 items-center gap-x-1.5 overflow-hidden whitespace-nowrap text-[length:var(--library-meta-size)] text-muted-foreground">
+          <div className="flex h-[1lh] min-w-0 items-center gap-x-1.5 overflow-hidden whitespace-nowrap leading-tight text-[length:var(--library-meta-size)] text-muted-foreground">
             <span className="tabular shrink-0">{item.year}</span>
             <span className="shrink-0 text-foreground/20">·</span>
             <span
@@ -392,15 +404,6 @@ function PosterCard({
                 : <ShieldOff className="h-3 w-3 shrink-0" />}
               <span className="truncate">{item.monitored ? "Monitored" : "Not monitored"}</span>
             </span>
-            {displayOptions.showRating && item.rating !== null ? (
-              <>
-                <span className="shrink-0 text-foreground/20">·</span>
-                <span className="tabular inline-flex shrink-0 items-center gap-0.5 font-semibold text-foreground">
-                  <Star className="h-2.5 w-2.5 fill-warning text-warning" />
-                  {item.rating.toFixed(1)}
-                </span>
-              </>
-            ) : null}
           </div>
         ) : null}
 
@@ -463,17 +466,30 @@ function PosterExtras({ item, displayOptions }: { item: MediaItem; displayOption
 
   return (
     <>
-      {rows.map((row) => (
-        <p
-          key={row.option}
-          className="h-[1lh] truncate text-[length:var(--library-meta-size)] text-muted-foreground"
-          title={row.read(item) ?? undefined}
-        >
-          {/* A non-breaking space keeps the row's height when there is nothing
-              to say, so the card below it still lines up. */}
-          {row.read(item) ?? " "}
-        </p>
-      ))}
+      {rows.map((row) => {
+        const value = row.read(item);
+        const Icon = row.icon;
+
+        return (
+          <div
+            key={row.option}
+            className="flex h-[1lh] min-w-0 items-center gap-1 leading-tight text-[length:var(--library-meta-size)] text-muted-foreground"
+            title={value ? `${row.label}: ${value}` : undefined}
+          >
+            {/* An icon rather than a word. "Cinemas Nov 10, 2016" spends half a
+                narrow card saying which date it is; Radarr uses a glyph and
+                fits four dates where this fitted two. The word survives in the
+                tooltip, so nothing is lost for anyone who needs it.
+
+                Nothing is drawn at all when there is no value — an icon on its
+                own points at a fact that is not there, which reads worse than
+                the blank line it was meant to explain. The row keeps its height
+                either way, which is what holds the cards level. */}
+            {value ? <Icon className="h-3 w-3 shrink-0 opacity-70" aria-hidden="true" /> : null}
+            <span className="truncate">{value ?? " "}</span>
+          </div>
+        );
+      })}
     </>
   );
 }
@@ -490,9 +506,23 @@ function PosterExtras({ item, displayOptions }: { item: MediaItem; displayOption
  * server declares with `line: true`, so a switch added on one side and not the
  * other fails a test rather than silently drawing nothing.</p>
  */
-const POSTER_ROWS: { option: string; read: (item: MediaItem) => string | null }[] = [
+const POSTER_ROWS: {
+  option: string;
+  /** Named for the tooltip, because a glyph on its own is a guess. */
+  label: string;
+  icon: LucideIcon;
+  read: (item: MediaItem) => string | null;
+}[] = [
+  {
+    option: "showRating",
+    label: "Rating",
+    icon: Star,
+    read: (item) => item.rating !== null && item.rating !== undefined ? item.rating.toFixed(1) : null
+  },
   {
     option: "showSize",
+    label: "Size on disk",
+    icon: HardDrive,
     // A title with no file has no size, the same rule the compact list follows.
     read: (item) => item.hasFile !== false && typeof item.sizeGb === "number"
       ? `${item.sizeGb.toFixed(1)} GB`
@@ -500,20 +530,28 @@ const POSTER_ROWS: { option: string; read: (item: MediaItem) => string | null }[
   },
   {
     option: "showRuntime",
+    label: "Runtime",
+    icon: Timer,
     read: (item) => item.runtimeMinutes ? runtimeLabel(item.runtimeMinutes) : null
   },
   {
     option: "showGenres",
+    label: "Genres",
+    icon: Tag,
     // Two, not all of them: a row is one line and a film with six genres would
     // truncate mid-word every time.
     read: (item) => item.genres.length > 0 ? item.genres.slice(0, 2).join(", ") : null
   },
   {
     option: "showReleaseGroup",
+    label: "Release group",
+    icon: Users,
     read: (item) => item.releaseGroup ?? null
   },
   {
     option: "showCodec",
+    label: "Codec",
+    icon: Clapperboard,
     // Video and audio together, because they are one question — "what is inside
     // this file" — and the switch is one switch.
     read: (item) => {
@@ -523,14 +561,20 @@ const POSTER_ROWS: { option: string; read: (item: MediaItem) => string | null }[
   },
   {
     option: "showAdded",
+    label: "Added to your library",
+    icon: CalendarDays,
     // Labelled now that it has a row of its own: on its own line, a bare date
     // could be any of the four this card can show.
-    read: (item) => item.added ? `Added ${item.added}` : null
+    read: (item) => item.added ?? null
   },
   ...RATING_SOURCES.map((source) => ({
     option: source.option,
+    label: `${source.label} score`,
+    icon: Star,
     read: (item: MediaItem) => {
       const score = item[source.field];
+      // The source's own name stays, because four bare numbers in a column
+      // are four numbers nobody can attribute.
       return typeof score === "number"
         ? `${source.label} ${source.outOf === 100 ? `${Math.round(score)}%` : score.toFixed(1)}`
         : null;
@@ -538,9 +582,11 @@ const POSTER_ROWS: { option: string; read: (item: MediaItem) => string | null }[
   })),
   ...RELEASE_DATES.map((release) => ({
     option: release.option,
+    label: release.label,
+    icon: release.icon,
     read: (item: MediaItem) => {
       const value = item[release.field];
-      return value ? `${release.label} ${releaseDateLabel(value)}` : null;
+      return value ? releaseDateLabel(value) : null;
     }
   })),
   {
@@ -549,12 +595,16 @@ const POSTER_ROWS: { option: string; read: (item: MediaItem) => string | null }[
     // episode count reads permanently unfinished, which is true of every
     // ongoing series and therefore says nothing.
     option: "showEpisodeProgress",
+    label: "Episodes held",
+    icon: ListVideo,
     read: (item) => typeof item.airedEpisodeCount === "number" && item.airedEpisodeCount > 0
       ? `${item.airedWithFileCount ?? 0}/${item.airedEpisodeCount} episodes`
       : null
   },
   {
     option: "showNextAiring",
+    label: "Next airing",
+    icon: Tv,
     read: (item) => item.nextAirDateUtc ? nextAiringLabel(item.nextAirDateUtc) : null
   }
 ];
