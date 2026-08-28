@@ -87,7 +87,16 @@ public sealed class DelunoHeartbeatWorker(
             BatchSize: 4, MaxConcurrency: 4),
 
         // Remote list providers, and rate-limited by them.
-        new("intake", TimeSpan.FromSeconds(30), ["intake.sync"],
+        //
+        // "library.subtitles.search" rides here, and the choice is deliberate.
+        // DESIGN-002 rule 3 says Subber gets no lane of its own, so the question
+        // is which existing one, and the answer is by *resource*: this is
+        // outbound HTTP to a third party that rate limits us, which is exactly
+        // what this lane already is. The search lanes were wrong for it for the
+        // same reason the scan is not on them — a subtitle fetch has nothing to
+        // do with an indexer, and putting it there would let a slow provider
+        // delay a release search.
+        new("intake", TimeSpan.FromSeconds(30), ["intake.sync", "library.subtitles.search"],
             BatchSize: 4, MaxConcurrency: 2),
 
         // Metadata provider HTTP. Separate from catalogue work so a slow

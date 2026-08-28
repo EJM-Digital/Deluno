@@ -3,6 +3,7 @@ using Deluno.Api.Backup;
 using Deluno.Api.Calendar;
 using Deluno.Api.Downloads;
 using Deluno.Connections;
+using Deluno.Integrations.Subtitles;
 using Deluno.Filesystem;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.Metadata;
@@ -47,6 +48,10 @@ public static class DelunoApplicationEndpointMapping
         endpoints.MapDelunoExternalIntegrationEndpoints();
         writeEndpoints.MapDelunoQuality();
         endpoints.MapDelunoConnections();
+        // Where subtitles come from. Beside the other Connections, because that
+        // is what they are (DESIGN-002 rule 4) — the routes live in
+        // Deluno.Integrations only because the provider registry does.
+        endpoints.MapDelunoSubtitleProviders();
         writeEndpoints.MapDelunoLibraries();
         endpoints.MapDelunoSecurityEndpoints();
         writeEndpoints.MapDelunoNotificationEndpoints();

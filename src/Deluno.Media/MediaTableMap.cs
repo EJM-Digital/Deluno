@@ -57,7 +57,20 @@ public sealed record MediaTableMap(
     string SubtitleFileSource,
     string SubtitleFileIdColumn,
     string SubtitleFileLibraryJoin,
-    string SubtitleFileLibraryFilter)
+    string SubtitleFileLibraryFilter,
+    /// <summary>
+    /// How a file reaches the title a provider is asked about, and what to say
+    /// about it.
+    ///
+    /// <para>A subtitle search is not addressed to a file. It is addressed to
+    /// <i>Inception 2010</i> or <i>Severance S01E02</i>, and the file is only how
+    /// Deluno found out which one — so the same join that already reaches a
+    /// library from a file reaches the words too. The columns are in one order
+    /// for both kinds, with nulls where a kind has no answer, because the reader
+    /// on the other side is one method.</para>
+    /// </summary>
+    string SubtitleSearchJoin,
+    string SubtitleSearchColumns)
 {
     public static MediaTableMap For(MediaKind kind)
         => kind switch
@@ -81,7 +94,10 @@ public sealed record MediaTableMap(
                 "movie_wanted_state f",
                 "f.movie_id",
                 "",
-                "f.library_id = @libraryId"),
+                "f.library_id = @libraryId",
+                "JOIN movie_entries t ON t.id = f.movie_id",
+                // title, year, season, episode, episode title, release name
+                "t.title, t.release_year, NULL, NULL, NULL, f.release_group"),
             MediaKind.Series => new(
                 DelunoDatabaseNames.Series,
                 "series_entries",
@@ -110,7 +126,13 @@ public sealed record MediaTableMap(
                 "episode_entries f",
                 "f.id",
                 "JOIN series_wanted_state lib ON lib.series_id = f.series_id AND lib.library_id = @libraryId",
-                "1 = 1"),
+                "1 = 1",
+                "JOIN series_entries t ON t.id = f.series_id",
+                // A show's subtitle is searched for by the show and the episode
+                // number, never by the episode's own name: providers index
+                // "Severance S01E02", and half of them have no idea what
+                // "Good News About Hell" is.
+                "t.title, t.start_year, f.season_number, f.episode_number, f.title, NULL"),
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
         };
 }

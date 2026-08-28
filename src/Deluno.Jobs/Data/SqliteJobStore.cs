@@ -1784,6 +1784,55 @@ public sealed class SqliteJobStore(
                     queuedAny = true;
                     await InsertActivityAsync(connection, transaction, "job.queued", FormatQueuedMessage(subtitleJob.JobType, subtitleJob.Source, subtitleJob.PayloadJson), subtitleJob.PayloadJson, subtitleJob.Id, subtitleJob.RelatedEntityType, subtitleJob.RelatedEntityId, now, cancellationToken);
                 }
+
+                // And then go and get the ones that are still missing.
+                //
+                // Queued together rather than chained, because the queue already
+                // orders them: the scan is on the import lane and the fetch on
+                // intake, so the scan drains first on any install that is not
+                // already idle, and on one that is, the fetch simply finds one
+                // slice less than it could have and picks the rest up next
+                // cycle. Chaining would mean a failed scan silently stopping
+                // every subsequent fetch, which is a worse failure than a slow
+                // first night.
+                //
+                // Same window, same cycle, same override — DESIGN-002 rule 3.
+                // Nothing about subtitles decides when subtitles happen.
+                var subtitleSearchKey = $"library.subtitles.search:{library.LibraryId}";
+                if (!pendingJobKeys.Contains(subtitleSearchKey) &&
+                    await FindDuplicateActiveJobAsync(connection, transaction, subtitleSearchKey, subtitleSearchKey, cancellationToken) is null)
+                {
+                    var subtitleSearchJob = new JobQueueItem(
+                        Id: Guid.CreateVersion7().ToString("N"),
+                        JobType: "library.subtitles.search",
+                        Source: library.MediaType,
+                        Status: "queued",
+                        PayloadJson: JsonSerializer.Serialize(new
+                        {
+                            libraryId = library.LibraryId,
+                            libraryName = library.LibraryName,
+                            mediaType = library.MediaType
+                        }),
+                        Attempts: 0,
+                        CreatedUtc: now,
+                        ScheduledUtc: now,
+                        StartedUtc: null,
+                        CompletedUtc: null,
+                        LeasedUntilUtc: null,
+                        WorkerId: null,
+                        LastError: null,
+                        RelatedEntityType: "library",
+                        RelatedEntityId: library.LibraryId,
+                        IdempotencyKey: subtitleSearchKey,
+                        DedupeKey: subtitleSearchKey,
+                        MaxAttempts: DefaultMaxAttempts,
+                        LastAttemptUtc: null,
+                        NextAttemptUtc: now);
+
+                    await InsertJobAsync(connection, transaction, subtitleSearchJob, cancellationToken);
+                    queuedAny = true;
+                    await InsertActivityAsync(connection, transaction, "job.queued", FormatQueuedMessage(subtitleSearchJob.JobType, subtitleSearchJob.Source, subtitleSearchJob.PayloadJson), subtitleSearchJob.PayloadJson, subtitleSearchJob.Id, subtitleSearchJob.RelatedEntityType, subtitleSearchJob.RelatedEntityId, now, cancellationToken);
+                }
             }
 
             foreach (var (kind, enabled, due) in new[]
@@ -3186,6 +3235,7 @@ public sealed class SqliteJobStore(
         return jobType switch
         {
             "library.subtitles.scan" => "Added a subtitle check to the queue.",
+            "library.subtitles.search" => "Added a subtitle search to the queue.",
             "movies.catalog.refresh" => "Added a movie check to the queue.",
             "series.catalog.refresh" => "Added a TV show check to the queue.",
             "filesystem.import.execute" => "Added a file import to the queue.",
@@ -3213,6 +3263,7 @@ public sealed class SqliteJobStore(
         return jobType switch
         {
             "library.subtitles.scan" => "Started reading your files for subtitles.",
+            "library.subtitles.search" => "Started looking for the subtitles you asked for.",
             "movies.catalog.refresh" => "Started checking your movie library.",
             "series.catalog.refresh" => "Started checking your TV show library.",
             "filesystem.import.execute" => "Started importing a completed download.",
@@ -3239,6 +3290,7 @@ public sealed class SqliteJobStore(
         {
             "filesystem.import.execute" => "File import",
             "library.subtitles.scan" => "Subtitle check",
+            "library.subtitles.search" => "Subtitle search",
             "movies.metadata.refresh" => "Movie metadata refresh",
             "series.metadata.refresh" => "TV metadata refresh",
             "movies.quality.recalculate" => "Movie quality refresh",
