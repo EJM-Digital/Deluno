@@ -46,6 +46,17 @@ public static class CatalogueKeyset
             // page into a sort of the whole catalogue and nothing looks wrong.
             CatalogueSortFields.Bitrate =>
                 $"COALESCE(CAST({alias}.primary_file_size_bytes AS REAL) / NULLIF({alias}.runtime_minutes, 0), -1)",
+            // A show with nothing still to come sorts last rather than first:
+            // "what is on next" is a question about shows that have a next, and
+            // burying the answer under every finished series would make the
+            // sort useless on any real library.
+            CatalogueSortFields.NextAiring =>
+                $"COALESCE({alias}.next_air_date_utc, '9999-12-31T00:00:00.0000000+00:00')",
+
+            CatalogueSortFields.EpisodeProgress => $"{alias}.aired_with_file_count",
+
+            CatalogueSortFields.Network => $"lower(COALESCE({alias}.network, ''))",
+
             _ => $"{alias}.created_utc"
         };
 
