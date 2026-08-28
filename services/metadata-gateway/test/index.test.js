@@ -66,8 +66,8 @@ test("maps a TMDb detail response into Deluno's broker contract with gateway-cac
   assert.equal(result.provider, "tmdb");
   assert.equal(result.imdbId, "tt0133093");
   assert.deepEqual(result.genres, ["Action", "Science Fiction"]);
-  assert.equal(result.posterUrl, "https://metadata.deluno.example/artwork/w500/poster.jpg");
-  assert.equal(result.backdropUrl, "https://metadata.deluno.example/artwork/w1280/backdrop.jpg");
+  assert.equal(result.posterUrl, "https://metadata.deluno.example/artwork/w780/poster.jpg");
+  assert.equal(result.backdropUrl, "https://metadata.deluno.example/artwork/original/backdrop.jpg");
   assert.deepEqual(result.cast, [{ name: "Keanu Reeves", character: "Neo", profileUrl: "https://metadata.deluno.example/artwork/w185/neo.jpg" }]);
 });
 
@@ -220,7 +220,7 @@ test("searches TMDb once and returns card-ready results without a detail fan-out
   const results = await lookupTmdb({ mediaType: "movies", query: "The Matrix", providerId: null, year: 1999 }, "secret", mockFetch);
   assert.equal(results.length, 1);
   assert.equal(results[0].providerId, "603");
-  assert.equal(results[0].posterUrl, "https://image.tmdb.org/t/p/w500/poster.jpg");
+  assert.equal(results[0].posterUrl, "https://image.tmdb.org/t/p/w780/poster.jpg");
   assert.equal(calls.length, 1);
 });
 
