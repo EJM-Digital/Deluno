@@ -1,4 +1,4 @@
-import { Play, ShieldCheck, Star } from "lucide-react";
+import { Play, ShieldCheck, ShieldOff, Star } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -27,6 +27,12 @@ export type { DisplayOptions } from "../../lib/library-filters";
  * `RatingSources.All` — the ids come from the served poster options, so a source
  * added on the server appears here as a toggle whose number this can draw.
  */
+const RELEASE_DATES = [
+  { option: "showInCinemas", field: "inCinemas", label: "Cinemas" },
+  { option: "showDigitalRelease", field: "digitalRelease", label: "Digital" },
+  { option: "showPhysicalRelease", field: "physicalRelease", label: "Disc" }
+] as const;
+
 const RATING_SOURCES = [
   { option: "showRatingtmdb", field: "tmdbRating", label: "TMDb", outOf: 10 },
   { option: "showRatingimdb", field: "imdbRating", label: "IMDb", outOf: 10 },
@@ -306,51 +312,28 @@ function PosterCard({
           {/* What you asked for beyond the title. A movie has no bar. */}
           <TitleMarkBar item={item} />
 
-          {/* Gradient overlay — condenses on small */}
-          <div className={cn(
-            "absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/55 to-transparent",
-            size === "sm" ? "px-2 pb-2 pt-8" : "px-2.5 pb-2.5 pt-14"
-          )}>
-            {displayOptions.showTitle ? (
-              <p className={cn("line-clamp-2 font-semibold leading-tight text-[hsl(var(--media-foreground))] drop-shadow", titleCls)}>
-                {item.title}
-              </p>
-            ) : null}
-            {showMeta ? (
-              <div className="mt-0.5 flex items-center gap-1.5 text-[length:var(--library-meta-size)] text-[hsl(var(--media-muted-foreground))]">
-                <span className="tabular">{item.year}</span>
-                <span className="text-[hsl(var(--media-muted-foreground)/0.45)]">·</span>
-                <span className="inline-flex items-center gap-1" title={item.monitored ? "Deluno will keep looking for this title." : "Deluno will not search for this title automatically."}>
-                  <ShieldCheck className="h-3 w-3 text-[hsl(var(--media-muted-foreground))]" />
-                  {item.monitored ? "Monitored" : "Not monitored"}
-                </span>
-              </div>
-            ) : null}
-            {showMeta && (displayOptions.showRating || displayOptions.showQualityBadge) ? (
-              <div className="mt-1">
-                <div className="flex items-center justify-between gap-2 text-[length:var(--library-meta-size)]">
-                  {displayOptions.showRating && item.rating !== null ? (
-                    <span className="tabular inline-flex items-center gap-0.5 font-bold text-[hsl(var(--media-foreground))]">
-                      <Star className="h-2.5 w-2.5 fill-warning text-warning" />
-                      {item.rating.toFixed(1)}
-                    </span>
-                  ) : <span />}
-                  {displayOptions.showQualityBadge && heldQualityLabel(item) ? (
-                    <Badge className="whitespace-nowrap bg-white/15 px-1.5 py-0 text-[length:var(--library-badge-size)] font-bold text-[hsl(var(--media-foreground))] backdrop-blur-sm">
-                      {heldQualityLabel(item)}
-                    </Badge>
-                  ) : null}
-                </div>
-              </div>
-            ) : null}
-            {/*
-              The extras, joined into one line rather than one row each. Six
-              switches each claiming their own line would bury the artwork the
-              grid exists to show; as a sentence, a card with all six on still
-              reads as a card.
-            */}
-            {showMeta ? <PosterExtras item={item} displayOptions={displayOptions} /> : null}
-          </div>
+          {/*
+            The quality stays on the artwork, and nothing else does.
+
+            James: "I think putting it ALL on the poster is going to be a huge
+            mess but I could be wrong." He was right, and Radarr is the evidence
+            — it prints its metadata under the artwork and keeps the poster for
+            the artwork and one status bar. Everything that used to live in a
+            gradient over the bottom third of the image now sits below it.
+
+            The three that stayed are the three you read *while scanning*: the
+            mark, the subtitle bar and the tier you hold. They are states, they
+            are short, and they are what the eye is hunting for. Title and year
+            are not — you read those once you have stopped, which is what the
+            block under the poster is.
+          */}
+          {displayOptions.showQualityBadge && heldQualityLabel(item) ? (
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent px-2 pb-2 pt-8">
+              <Badge className="whitespace-nowrap bg-white/15 px-1.5 py-0 text-[length:var(--library-badge-size)] font-bold text-[hsl(var(--media-foreground))] backdrop-blur-sm">
+                {heldQualityLabel(item)}
+              </Badge>
+            </div>
+          ) : null}
 
           {/* Hover-reveal action row */}
           <div className="absolute inset-x-0 bottom-0 flex items-center gap-1 bg-gradient-to-t from-black to-transparent px-2 pb-2 pt-6 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
@@ -366,23 +349,54 @@ function PosterCard({
         </div>
       </button>
 
-      {/* Below-poster metadata — adapts per size */}
-      <div className="hidden">
+      {/*
+        Below-poster metadata — where everything you read once you have stopped
+        lives now.
+
+        This block existed as `<div className="hidden">` for months: the markup
+        for it was written and then never switched on, while the same fields
+        were painted into a gradient over the artwork instead. #310 is what
+        turned it on, and it is also what makes fourteen poster switches
+        survivable — the extras were crushed into one truncated sentence
+        precisely because there was no room over the image, and here there is.
+      */}
+      <div className={cn("mt-2 min-w-0", size === "sm" ? "space-y-0.5" : "space-y-1")}>
         {displayOptions.showTitle ? (
-          <p className={cn("line-clamp-1 font-semibold text-foreground", titleCls)}>
+          // Two lines of space whether or not the title needs both. A title
+          // that wraps otherwise pushes its own metadata row down and out of
+          // line with every card beside it, and a grid whose rows do not line
+          // up reads as broken rather than as varied.
+          <p className={cn("line-clamp-2 min-h-[2.5em] font-semibold leading-tight text-foreground", titleCls)}>
             {item.title}
           </p>
         ) : null}
+
         {showMeta ? (
-          <div className="flex items-center gap-1.5 text-[length:var(--library-meta-size)] text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[length:var(--library-meta-size)] text-muted-foreground">
             <span className="tabular">{item.year}</span>
             <span className="text-foreground/20">·</span>
-            <span className="inline-flex items-center gap-1" title={item.monitored ? "Deluno will keep looking for this title." : "Deluno will not search for this title automatically."}>
-              <ShieldCheck className="h-3 w-3" />
+            <span
+              className="inline-flex items-center gap-1"
+              title={item.monitored
+                ? "Deluno will keep looking for this title."
+                : "Deluno will not search for this title automatically."}
+            >
+              {item.monitored ? <ShieldCheck className="h-3 w-3" /> : <ShieldOff className="h-3 w-3" />}
               {item.monitored ? "Monitored" : "Not monitored"}
             </span>
+            {displayOptions.showRating && item.rating !== null ? (
+              <>
+                <span className="text-foreground/20">·</span>
+                <span className="tabular inline-flex items-center gap-0.5 font-semibold text-foreground">
+                  <Star className="h-2.5 w-2.5 fill-warning text-warning" />
+                  {item.rating.toFixed(1)}
+                </span>
+              </>
+            ) : null}
           </div>
         ) : null}
+
+        {showMeta ? <PosterExtras item={item} displayOptions={displayOptions} /> : null}
       </div>
     </div>
   );
@@ -451,6 +465,17 @@ function PosterExtras({ item, displayOptions }: { item: MediaItem; displayOption
     parts.push(item.added);
   }
 
+  // Three dates, labelled, because unlabelled they are three identical-looking
+  // numbers answering three different questions — a film can be in cinemas
+  // months before it is obtainable, which is the whole reason Deluno keeps
+  // them apart.
+  for (const release of RELEASE_DATES) {
+    const value = item[release.field];
+    if (displayOptions[release.option] && value) {
+      parts.push(`${release.label} ${releaseDateLabel(value)}`);
+    }
+  }
+
   // One entry per rating source the reader asked for, labelled, because four
   // bare numbers on one line are unreadable — and "IMDb 8.7" is the whole point
   // of #319: a score means something different depending on who gave it. The
@@ -515,4 +540,22 @@ export function PosterArtwork({
   );
 }
 
+/**
+ * A release date in the shortest form that is still unambiguous.
+ *
+ * The year is dropped for dates in the current year and kept otherwise, which
+ * is how a person writes them: "12 Mar" for something this year, "12 Mar 2019"
+ * for something that is not. An unparseable value is printed as it arrived
+ * rather than as "Invalid Date".
+ */
+function releaseDateLabel(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
 
+  const sameYear = date.getFullYear() === new Date().getFullYear();
+  return date.toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    ...(sameYear ? {} : { year: "numeric" })
+  });
+}

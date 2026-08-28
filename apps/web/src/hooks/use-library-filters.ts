@@ -20,6 +20,7 @@ import type { CardSize, DisplayOptions } from "../components/app/library-grid";
 
 const sizeStorageKey = (variant: MediaVariant) => `deluno-card-size-${variant}`;
 const displayStorageKey = (variant: MediaVariant) => `deluno-display-options-${variant}`;
+const viewStorageKey = (variant: MediaVariant) => `deluno-view-${variant}`;
 
 function initialCardSize(variant: MediaVariant): CardSize {
   try {
@@ -27,6 +28,27 @@ function initialCardSize(variant: MediaVariant): CardSize {
     return stored === "sm" || stored === "lg" ? stored : "md";
   } catch {
     return "md";
+  }
+}
+
+/**
+ * The layout this shelf was last left in.
+ *
+ * The View drawer says "Remembered separately for movies and TV", and until
+ * #310 that was true of the poster size and the poster options and not of the
+ * layout itself — the one control the drawer is named after. Every reload put
+ * you back in the grid, which is easy to miss while there are only two layouts
+ * and one of them is the default.
+ *
+ * An unrecognised stored value falls back rather than being trusted: this reads
+ * a string a browser has been holding since some earlier version.
+ */
+function initialView(variant: MediaVariant): ViewMode {
+  try {
+    const stored = localStorage.getItem(viewStorageKey(variant));
+    return stored === "list" || stored === "overview" ? stored : "grid";
+  } catch {
+    return "grid";
   }
 }
 
@@ -52,7 +74,7 @@ export function useLibraryFilters(variant: MediaVariant, urlFilter: string | nul
   // The other axis. See `MonitoringFilter` — a state and an intent multiply,
   // so neither can be expressed as a value of the other.
   const [monitoring, setMonitoring] = useState<MonitoringFilter>("any");
-  const [view, setView] = useState<ViewMode>("grid");
+  const [view, setViewState] = useState<ViewMode>(() => initialView(variant));
   const [sortField, setSortField] = useState<SortField>("title");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [cardSize, setCardSize] = useState<CardSize>(() => initialCardSize(variant));
@@ -71,6 +93,7 @@ export function useLibraryFilters(variant: MediaVariant, urlFilter: string | nul
     setSortField("title");
     setSortDirection("asc");
     setCardSize(initialCardSize(variant));
+    setViewState(initialView(variant));
     // Movies and TV do not share a quality tier list or a genre list, and a
     // 4K-Remux filter carried across to the TV shelf would silently empty it.
     // They do not share a *field* list either now, so a movie-only condition
@@ -101,6 +124,11 @@ export function useLibraryFilters(variant: MediaVariant, urlFilter: string | nul
       setQuickFilter(urlFilter);
     }
   }, [urlFilter]);
+
+  function setView(next: ViewMode) {
+    setViewState(next);
+    try { localStorage.setItem(viewStorageKey(variant), next); } catch { /* ignore */ }
+  }
 
   function changeSize(size: CardSize) {
     setCardSize(size);

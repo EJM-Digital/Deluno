@@ -9,7 +9,7 @@ type LibrarySelectAllToggleProps = {
   selectedCount: number;
   allVisibleSelected: boolean;
   onToggle: () => void;
-  view: "grid" | "list";
+  view: "grid" | "list" | "overview";
 };
 
 export function LibrarySelectAllToggle({
