@@ -227,6 +227,10 @@ export interface CatalogueFacets {
   covered: number;
   /** Not out yet, so its absence is not a shortfall. */
   upcoming: number;
+  /** Found and handed to a download client. On its way. */
+  downloading: number;
+  /** A show holding every episode that has aired, with more to come. Shows only. */
+  airing: number;
 }
 
 export interface CataloguePage<T> {

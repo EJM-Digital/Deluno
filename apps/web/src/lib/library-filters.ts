@@ -45,6 +45,8 @@ export type QuickFilter =
   | "covered"
   /** Found and handed to a download client. On its way. */
   | "downloading"
+  /** A show holding every episode that has aired, with more to come. Shows only. */
+  | "airing"
   /** Not out yet, so its absence is not a shortfall. */
   | "upcoming";
 
@@ -73,7 +75,8 @@ export const QUICK_FILTER_MARK: Record<QuickFilter, TitleMark | null> = {
   upgrades: "upgrade",
   covered: "covered",
   upcoming: "upcoming",
-  downloading: "downloading"
+  downloading: "downloading",
+  airing: "airing"
 };
 
 /**

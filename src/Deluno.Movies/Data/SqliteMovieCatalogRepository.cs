@@ -929,7 +929,8 @@ public sealed class SqliteMovieCatalogRepository(
             CatalogueUpgradeFor(libraryId),
             CatalogueWantedIs(libraryId, WantedStatuses.Covered),
             CatalogueWantedIs(libraryId, WantedStatuses.Upcoming),
-                CatalogueWantedIs(libraryId, WantedStatuses.Downloading)));
+                CatalogueWantedIs(libraryId, WantedStatuses.Downloading),
+                CatalogueWantedIs(libraryId, WantedStatuses.Airing)));
 
         using var command = connection.CreateCommand();
         command.CommandText =
@@ -943,7 +944,8 @@ public sealed class SqliteMovieCatalogRepository(
                 SUM(CASE WHEN {monitoredArm} AND {CatalogueUpgradeFor(libraryId)} THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, WantedStatuses.Covered)} THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, WantedStatuses.Upcoming)} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, WantedStatuses.Downloading)} THEN 1 ELSE 0 END)
+                SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, WantedStatuses.Downloading)} THEN 1 ELSE 0 END),
+                SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, WantedStatuses.Airing)} THEN 1 ELSE 0 END)
             FROM movie_entries m
             {wantedJoin}
             WHERE {where};
@@ -967,7 +969,8 @@ public sealed class SqliteMovieCatalogRepository(
             Upgrades: reader.IsDBNull(5) ? 0 : reader.GetInt32(5),
             Covered: reader.IsDBNull(6) ? 0 : reader.GetInt32(6),
             Upcoming: reader.IsDBNull(7) ? 0 : reader.GetInt32(7),
-            Downloading: reader.IsDBNull(8) ? 0 : reader.GetInt32(8));
+            Downloading: reader.IsDBNull(8) ? 0 : reader.GetInt32(8),
+            Airing: reader.IsDBNull(9) ? 0 : reader.GetInt32(9));
     }
 
     public async Task<IReadOnlyList<MovieListItem>> ListAsync(CancellationToken cancellationToken)

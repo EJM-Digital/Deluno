@@ -93,6 +93,15 @@ public static class CatalogueStatusFilters
     /// </summary>
     public const string Downloading = "downloading";
 
+    /// <summary>
+    /// Every episode that has aired is here, and more are still to come.
+    ///
+    /// <para>A show only. Offered on the TV shelf and nowhere else, because a
+    /// film is never partway through anything and a chip that can never match is
+    /// the defect #324 was opened about.</para>
+    /// </summary>
+    public const string Airing = "airing";
+
     public static string Normalize(string? value)
         => value?.Trim().ToLowerInvariant() switch
         {
@@ -102,6 +111,7 @@ public static class CatalogueStatusFilters
             Covered => Covered,
             Upcoming => Upcoming,
             Downloading => Downloading,
+            Airing => Airing,
             _ => All
         };
 }
@@ -272,7 +282,9 @@ public sealed record CatalogueFacets(
     /// <summary>Not out yet, so its absence is not a shortfall.</summary>
     int Upcoming = 0,
     /// <summary>Found and handed to a download client. On its way.</summary>
-    int Downloading = 0)
+    int Downloading = 0,
+    /// <summary>Holds every episode that has aired, with more still to come.</summary>
+    int Airing = 0)
 {
     /// <summary>
     /// The number to print above a shelf showing this status — which is simply
@@ -301,6 +313,7 @@ public sealed record CatalogueFacets(
             CatalogueStatusFilters.Covered => Covered,
             CatalogueStatusFilters.Upcoming => Upcoming,
             CatalogueStatusFilters.Downloading => Downloading,
+            CatalogueStatusFilters.Airing => Airing,
             // `all` is the only status left, and it genuinely is the whole
             // shelf. Spelled out rather than left to a catch-all so the next
             // status added is a compile-time hole here rather than a wrong

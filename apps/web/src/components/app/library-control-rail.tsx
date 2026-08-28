@@ -81,18 +81,41 @@ export interface QuickFilterChip {
   mark: TitleMark | null;
 }
 
+/**
+ * The chips a shelf offers, which is also the only legend a reader gets for the
+ * marks on its posters.
+ *
+ * **Per media kind, and it has to be.** A film is never partway through
+ * anything, so *Up to date* on the Movies shelf would be a chip that can never
+ * match — the defect #324 was opened about. But the reverse is worse: a TV
+ * poster can now carry a teal dot, and without a chip naming it there is a
+ * colour on screen that nothing on the page explains.
+ */
+export function quickFiltersFor(kind: "movies" | "shows"): QuickFilterChip[] {
+  const keys: QuickFilter[] = kind === "shows"
+    ? ["all", "covered", "airing", "upgrades", "downloading", "missing", "upcoming"]
+    : ["all", "covered", "upgrades", "downloading", "missing", "upcoming"];
+
+  return keys.map(chip);
+}
+
+/** Every chip either shelf can offer, for the places that need the whole set. */
 export const quickFilterConfig: QuickFilterChip[] = (
-  ["all", "covered", "upgrades", "downloading", "missing", "upcoming"] as const
-).map((key) => {
-  // The label and the colour come from the one table, never from here. They
-  // were written out by hand — a sixth place colouring a state, three lines
-  // under a comment calling this row the legend. A legend that keeps its own
-  // copy of the colours is not a legend (#302).
+  ["all", "covered", "airing", "upgrades", "downloading", "missing", "upcoming"] as const
+).map(chip);
+
+/**
+ * One chip. The label and the colour come from the one table, never from here:
+ * they were written out by hand once — a sixth place colouring a state, three
+ * lines under a comment calling this row the legend. A legend that keeps its own
+ * copy of the colours is not a legend (#302).
+ */
+function chip(key: QuickFilter): QuickFilterChip {
   const mark = QUICK_FILTER_MARK[key];
   return mark
     ? { key, label: TITLE_MARK_PRESENTATION[mark].label, mark }
     : { key, label: "All", mark: null };
-});
+}
 
 export function isQuickFilter(value: string | null): value is QuickFilter {
   return quickFilterConfig.some((filter) => filter.key === value);
@@ -210,7 +233,9 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
     missing: facets?.missing ?? 0,
     upgrades: facets?.upgrades ?? 0,
     covered: facets?.covered ?? 0,
-    upcoming: facets?.upcoming ?? 0
+    upcoming: facets?.upcoming ?? 0,
+    downloading: facets?.downloading ?? 0,
+    airing: facets?.airing ?? 0
   };
 
   const sortLabel = controlSet.sortFields.find((option) => option.id === sortField)?.label ?? sortField;
@@ -306,7 +331,7 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                 />
               ) : null}
 
-              {quickFilterConfig.map((chip) => {
+              {quickFiltersFor(variant).map((chip) => {
                 const active = quickFilter === chip.key;
                 return (
                   <button
