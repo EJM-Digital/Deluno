@@ -85,11 +85,11 @@ public static class CatalogueFilterFields
         // they are not available for properties of the file(s) you may have".
         new("quality", "Quality", "The tier the file actually is. A title with no file matches none of these.",
             CatalogueFilterGroup.File, CatalogueFilterValueKind.QualityTier,
-            CatalogueFilterSource.WantedState, "ws.current_quality"),
+            CatalogueFilterSource.Entry, "{alias}.primary_current_quality"),
 
         new("size", "Size on disk", "Gigabytes. Leave either end blank for no limit.",
             CatalogueFilterGroup.File, CatalogueFilterValueKind.Gigabytes,
-            CatalogueFilterSource.WantedState, "ws.file_size_bytes"),
+            CatalogueFilterSource.Entry, "{alias}.primary_file_size_bytes"),
 
         new("bitrate", "Bitrate", "Size over runtime — the question behind every “why is this 2160p file only four gigabytes”.",
             CatalogueFilterGroup.File, CatalogueFilterValueKind.Decimal,
@@ -100,27 +100,65 @@ public static class CatalogueFilterFields
 
         new("videoCodec", "Video codec", "As the file reports it — x265, AVC, HEVC.",
             CatalogueFilterGroup.File, CatalogueFilterValueKind.Text,
-            CatalogueFilterSource.WantedState, "ws.video_codec"),
+            CatalogueFilterSource.Entry, "{alias}.primary_video_codec"),
 
         new("audioCodec", "Audio codec", "TrueHD, DTS-HD, EAC3.",
             CatalogueFilterGroup.File, CatalogueFilterValueKind.Text,
-            CatalogueFilterSource.WantedState, "ws.audio_codec"),
+            CatalogueFilterSource.Entry, "{alias}.primary_audio_codec"),
 
         new("audioChannels", "Audio channels", "5.1, 7.1, 2.0.",
             CatalogueFilterGroup.File, CatalogueFilterValueKind.Text,
-            CatalogueFilterSource.WantedState, "ws.audio_channels"),
+            CatalogueFilterSource.Entry, "{alias}.primary_audio_channels"),
 
         new("releaseGroup", "Release group", "Who put out the copy you actually hold — not the groups you have configured.",
             CatalogueFilterGroup.File, CatalogueFilterValueKind.Text,
-            CatalogueFilterSource.WantedState, "ws.release_group"),
+            CatalogueFilterSource.Entry, "{alias}.primary_release_group"),
 
         new("path", "File path", "Where it sits on disk.",
             CatalogueFilterGroup.File, CatalogueFilterValueKind.Text,
-            CatalogueFilterSource.WantedState, "ws.file_path"),
+            CatalogueFilterSource.Entry, "{alias}.primary_file_path"),
+
+        // "Everything still in AVI" is a real question about a library and
+        // nothing stores the container, so V0025/V0026 derive it from the path.
+        new("container", "Container", "The file's extension — mkv, mp4, avi.",
+            CatalogueFilterGroup.File, CatalogueFilterValueKind.Text,
+            CatalogueFilterSource.Entry, "{alias}.primary_container"),
+
+        // When the *file* arrived, which is not when the title was added. A
+        // title added two years ago whose file landed yesterday is a recent
+        // import, and "what have I brought in this week" is the question.
+        new("imported", "File imported", "When the copy you hold arrived, as opposed to when you added the title.",
+            CatalogueFilterGroup.File, CatalogueFilterValueKind.Date,
+            CatalogueFilterSource.Entry, "{alias}.primary_imported_utc"),
+
+        // The axis Radarr states it cannot do: "Filters are available only for
+        // the properties of a movie, they are not available for properties of
+        // the file(s) you may have for that movie."
+        //
+        // One field with both operators rather than a "has" field and a
+        // "missing" field. `nothas` already means missing, and two controls
+        // selecting complementary halves of one question is the shape that
+        // starts disagreeing at the edges.
+        new("subtitleLanguage", "Subtitle language",
+            "A language you hold subtitles in. Use “does not contain” for what is missing.",
+            CatalogueFilterGroup.File, CatalogueFilterValueKind.Text,
+            CatalogueFilterSource.Entry, "{alias}.subtitle_languages"),
+
+        // The one a library owner actually wants and no tool offers: a film
+        // whose only English track is forced signage has English subtitles by
+        // any simple test, and cannot be watched in English.
+        new("subtitleLanguageFull", "Subtitle language (not forced)",
+            "A language you hold a full subtitle track in, ignoring forced signage.",
+            CatalogueFilterGroup.File, CatalogueFilterValueKind.Text,
+            CatalogueFilterSource.Entry, "{alias}.subtitle_languages_full"),
+
+        new("subtitleSource", "Subtitle source", "Where the subtitles came from — embedded in the file, or a sidecar.",
+            CatalogueFilterGroup.File, CatalogueFilterValueKind.Text,
+            CatalogueFilterSource.Entry, "{alias}.subtitle_sources"),
 
         new("hasFile", "Has a file", "Whether anything is on disk for it at all.",
             CatalogueFilterGroup.File, CatalogueFilterValueKind.Boolean,
-            CatalogueFilterSource.WantedState, "COALESCE(ws.has_file, 0)"),
+            CatalogueFilterSource.Entry, "COALESCE({alias}.primary_has_file, 0)"),
 
         // ---- Time. Relative first, so a saved view does not go stale.
         new("added", "Added", "When it joined your library.",
