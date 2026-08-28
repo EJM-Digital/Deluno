@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TITLE_BUCKET_UNIVERSE, bucketLabel, buildJumpBuckets } from "./library-buckets";
+import { TITLE_BUCKET_UNIVERSE, bucketLabel, buildJumpBuckets, sortTitle} from "./library-buckets";
 import type { MediaItem } from "./media-types";
 
 function title(overrides: Partial<MediaItem> & { title: string }): MediaItem {
@@ -124,5 +124,32 @@ describe("buildJumpBuckets under the other orders", () => {
       .toBe(new Date("2026-08-12T04:00:00Z").toLocaleDateString([], { month: "short", year: "numeric" }));
     expect(bucketLabel(title({ title: "B", addedUtc: null }), "added")).toBe("—");
     expect(bucketLabel(title({ title: "C", addedUtc: "not a date" }), "added")).toBe("—");
+  });
+});
+
+describe("the letter a title is filed under", () => {
+  /**
+   * The rail must agree with the shelf. The shelf orders by a stored sort title
+   * computed in SQLite; this is the same rule in the browser, and #325 exists
+   * because the two used to disagree — every "The …" piled up under T while
+   * clicking M for The Matrix found nothing.
+   */
+  it("drops a leading article, the way the shelf's order does", () => {
+    expect(sortTitle("The Matrix")).toBe("matrix");
+    expect(sortTitle("A Beautiful Mind")).toBe("beautiful mind");
+    expect(sortTitle("An Education")).toBe("education");
+  });
+
+  it("keeps a title that is only an article, and one that merely starts like one", () => {
+    expect(sortTitle("The")).toBe("the");
+    expect(sortTitle("Theatre of Blood")).toBe("theatre of blood");
+    expect(sortTitle("Andor")).toBe("andor");
+  });
+
+  it("leaves articles of other languages alone", () => {
+    // Strip "Los" and this English title files under A. Deluno stores
+    // original_language now, so doing it per language is a real future
+    // feature — doing it blind trades a visible problem for an invisible one.
+    expect(sortTitle("Los Angeles Plays Itself")).toBe("los angeles plays itself");
   });
 });

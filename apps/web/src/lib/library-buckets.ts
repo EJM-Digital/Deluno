@@ -38,9 +38,36 @@ export const TITLE_BUCKET_UNIVERSE: readonly string[] = [
   ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 ];
 
-/** Anything that is not a plain A–Z start — digits, symbols, accented letters. */
+/**
+ * The letter a title is *filed* under, which is not always the letter it starts
+ * with: leading articles are dropped, so The Matrix sits under M.
+ *
+ * The rail has to agree with the shelf or it is worse than useless — clicking M
+ * to find The Matrix and landing somewhere else is the one thing a jump rail
+ * must never do. The shelf orders by a stored  computed by a SQLite
+ * trigger; this is the same rule, in the browser, for the rows it already has.
+ *
+ * Anything not a plain A–Z start — digits, symbols, accented letters — is #.
+ */
+const LEADING_ARTICLES = ["the ", "an ", "a "];
+
+export function sortTitle(title: string): string {
+  const trimmed = title.trim();
+  const lower = trimmed.toLowerCase();
+
+  for (const article of LEADING_ARTICLES) {
+    // A title that is only an article keeps it: "The" is a real film, and
+    // filing it under nothing puts it in a bucket the rail cannot name.
+    if (lower.length > article.length && lower.startsWith(article)) {
+      return trimmed.slice(article.length).trim().toLowerCase();
+    }
+  }
+
+  return lower;
+}
+
 function titleBucket(title: string): string {
-  const first = title.trim().charAt(0).toUpperCase();
+  const first = sortTitle(title).charAt(0).toUpperCase();
   return first >= "A" && first <= "Z" ? first : "#";
 }
 
