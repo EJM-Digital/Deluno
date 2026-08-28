@@ -301,10 +301,14 @@ export async function enforceRateLimit(cache, clientAddress, now) {
  * or status, and would have kept serving them for twelve hours after the worker
  * that could produce them went live. Bump this whenever mapTmdbResult starts
  * emitting something new.
+ *
+ * v5 is the artwork sizes (#326). A payload's poster URL is part of its shape:
+ * v4 answers carry w500 and w1280 URLs, and serving one is not a stale field
+ * but a title cached at the old resolution for the next thirty days.
  */
 export function buildCacheKey({ query, mediaType, providerId, year }) {
   const normalized = `${mediaType}|${query.toLocaleLowerCase("en-US")}|${year ?? ""}|${providerId ?? ""}`;
-  return `search:v4:${encodeURIComponent(normalized)}`;
+  return `search:v5:${encodeURIComponent(normalized)}`;
 }
 
 export async function lookupTmdb(lookup, apiKey, request = fetch, artworkOrigin = null) {
