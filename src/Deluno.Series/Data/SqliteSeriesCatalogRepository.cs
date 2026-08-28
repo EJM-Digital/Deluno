@@ -568,7 +568,20 @@ public sealed class SqliteSeriesCatalogRepository(
     /// projection below. Named rather than counted at the call site, because
     /// every ordinal from there on moves together.
     /// </summary>
-    private const int WantedStateOrdinal = 29;
+    /// <summary>
+    /// The score columns the page carries, so a shelf can show a particular
+    /// source's number without reading a metadata blob per row. Generated and
+    /// counted, exactly as on the movie catalogue, so a fifth source moves
+    /// <see cref="WantedStateOrdinal"/> with it.
+    /// </summary>
+    private static readonly string[] RatingColumns =
+        [.. RatingSources.All.SelectMany(source => source.VotesColumn is null
+            ? new[] { source.ScoreColumn }
+            : [source.ScoreColumn, source.VotesColumn])];
+
+    private const int RatingOrdinal = 29;
+
+    private static readonly int WantedStateOrdinal = RatingOrdinal + RatingColumns.Length;
 
     /// <summary>
     /// The projection a catalogue page returns. Matches <see cref="ReadSeries"/>
@@ -612,6 +625,7 @@ public sealed class SqliteSeriesCatalogRepository(
             s.runtime_minutes,
             s.popularity,
             s.vote_count,
+            {string.Join(", ", RatingColumns.Select(column => "s." + column))},
         {CatalogueWantedState.PageColumns}
         """;
 
@@ -822,6 +836,10 @@ public sealed class SqliteSeriesCatalogRepository(
 
                 items.Add(ReadSeries(reader) with
                 {
+                    // From the columns, not the blob — the page projects
+                    // NULL AS metadata_json on purpose. See the movie
+                    // catalogue for the failure this fixes.
+                    Ratings = ReadRatingColumns(reader),
                     FileSizeBytes = fileSizeBytes,
                     CurrentQuality = reader.IsDBNull(20) ? null : reader.GetString(20),
                     FilePath = reader.IsDBNull(21) ? null : reader.GetString(21),
@@ -3225,6 +3243,40 @@ public sealed class SqliteSeriesCatalogRepository(
 
         var value = await command.ExecuteScalarAsync(cancellationToken);
         return value is DBNull or null ? null : value.ToString();
+    }
+
+    /// <summary>The scores a page row carries, read straight from their columns.</summary>
+    private static IReadOnlyList<MetadataRatingItem> ReadRatingColumns(System.Data.Common.DbDataReader reader)
+    {
+        var ratings = new List<MetadataRatingItem>();
+        var ordinal = RatingOrdinal;
+
+        foreach (var source in RatingSources.All)
+        {
+            var score = reader.IsDBNull(ordinal) ? (double?)null : reader.GetDouble(ordinal);
+            ordinal++;
+
+            int? votes = null;
+            if (source.VotesColumn is not null)
+            {
+                votes = reader.IsDBNull(ordinal) ? null : reader.GetInt32(ordinal);
+                ordinal++;
+            }
+
+            if (score is not null)
+            {
+                ratings.Add(new MetadataRatingItem(
+                    source.Source,
+                    source.Label,
+                    score,
+                    source.MaxScore,
+                    votes,
+                    Url: null,
+                    Kind: source.MaxScore == 100 ? "critic" : "community"));
+            }
+        }
+
+        return ratings;
     }
 
     private static SeriesListItem ReadSeries(System.Data.Common.DbDataReader reader)

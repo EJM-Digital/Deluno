@@ -308,7 +308,7 @@ export async function enforceRateLimit(cache, clientAddress, now) {
  */
 export function buildCacheKey({ query, mediaType, providerId, year }) {
   const normalized = `${mediaType}|${query.toLocaleLowerCase("en-US")}|${year ?? ""}|${providerId ?? ""}`;
-  return `search:v5:${encodeURIComponent(normalized)}`;
+  return `search:v6:${encodeURIComponent(normalized)}`;
 }
 
 export async function lookupTmdb(lookup, apiKey, request = fetch, artworkOrigin = null) {
@@ -443,7 +443,12 @@ export function mapTmdbResult(item, mediaType, artworkOrigin = null) {
       label: "TMDb",
       score: rating,
       maxScore: 10,
-      votes,
+      // voteCount, not votes. Deluno deserialises this array straight into
+      // MetadataRatingItem, whose property is VoteCount, so a key named
+      // "votes" was silently dropped: every broker-mode library had a TMDb
+      // score with no count behind it, and #319's "IMDb above 7.5 with more
+      // than ten thousand votes" could not be asked at all.
+      voteCount: votes,
       url: externalUrl,
       kind: "community"
     }],

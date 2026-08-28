@@ -69,6 +69,12 @@ test("maps a TMDb detail response into Deluno's broker contract with gateway-cac
   assert.equal(result.posterUrl, "https://metadata.deluno.example/artwork/w780/poster.jpg");
   assert.equal(result.backdropUrl, "https://metadata.deluno.example/artwork/original/backdrop.jpg");
   assert.deepEqual(result.cast, [{ name: "Keanu Reeves", character: "Neo", profileUrl: "https://metadata.deluno.example/artwork/w185/neo.jpg" }]);
+
+  // The key Deluno's MetadataRatingItem actually deserialises. It was "votes"
+  // and was therefore dropped in transit, leaving every broker-mode library
+  // with scores and no counts behind them.
+  assert.equal(result.ratings[0].voteCount, result.voteCount);
+  assert.ok(result.ratings[0].voteCount > 0);
 });
 
 test("carries runtime, popularity and vote count, which Deluno has had columns for since V0012", () => {

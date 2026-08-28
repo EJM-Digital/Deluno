@@ -169,6 +169,44 @@ public sealed class CatalogueFactsAreWrittenTests
     }
 
     /// <summary>
+    /// The shelf itself carries all four, not a rounded average of one.
+    ///
+    /// <para>The page projects <c>NULL AS metadata_json</c> deliberately —
+    /// parsing a blob per row does not survive twenty thousand titles — and the
+    /// rating list was built from that blob, so it fell through to a single
+    /// TMDb score, rounded to one decimal, with no vote count and no link. The
+    /// detail page looked right because it does read the blob, which is exactly
+    /// why this went unnoticed: the two disagreed and only one was ever
+    /// checked.</para>
+    /// </summary>
+    [Fact]
+    public async Task A_page_row_carries_every_score_rather_than_a_rounded_average_of_one()
+    {
+        using var storage = TestStorage.Create();
+        var movies = await CreateMoviesAsync(storage);
+
+        var movie = await movies.AddAsync(
+            new CreateMovieRequest("Interstellar", 2014, "tt0816692"),
+            CancellationToken.None);
+
+        await movies.UpdateMetadataAsync(movie.Id, Answer("movies"), CancellationToken.None);
+
+        var item = Assert.Single(
+            (await movies.ListPageAsync(new CatalogueQuery(), CancellationToken.None)).Items);
+
+        Assert.Equal(4, item.Ratings.Count);
+
+        // Full precision, not the rounded fallback: 8.4 here rather than a
+        // value the shelf reconstructed from the blended column.
+        Assert.Equal(8.7, Assert.Single(item.Ratings, rating => rating.Source == "imdb").Score);
+        Assert.Equal(73, Assert.Single(item.Ratings, rating => rating.Source == "rotten_tomatoes").Score);
+
+        // The count the fallback could never carry, and the one that makes
+        // "above 7.5 with more than ten thousand votes" a real question.
+        Assert.Equal(2_100_000, Assert.Single(item.Ratings, rating => rating.Source == "imdb").VoteCount);
+    }
+
+    /// <summary>
     /// Every filter must select the one row that was written. A filter that
     /// matches nothing is the failure; a filter the registry refuses is a
     /// worse one, because it means the field was never declared.
