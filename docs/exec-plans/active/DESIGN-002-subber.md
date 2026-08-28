@@ -129,26 +129,39 @@ hearing-impaired exclusion.
   Download, languages under Quality & Release — and the rest appears where you
   already look.
 
-  **Amended, once there were settings to put on them.** Subtitles is its own
-  top-level area with two tabs, **Languages** and **Providers**. What this
-  clause was actually objecting to was Bazarr splitting every setting into a
-  movie copy and a series copy — and that still stands, because Deluno has
-  libraries. The settings themselves are real, and #321 lists nine more still to
-  come: sync thresholds, content modification, adaptive searching, translation,
-  language equivalence.
+  **This clause holds, and it is worth saying exactly what it protects.** What
+  it objects to is Bazarr splitting every setting into a movie copy and a series
+  copy, and that still stands because Deluno has libraries.
 
-  James, looking at where they would have to go: *"we should have a separate
-  subtitles top menu ... because we are going to need to add more settings just
-  because bazaar does a lot and then you can select the library you want to
-  apply it to."*
+  The settings themselves are real, though, and #321 lists nine more to come:
+  sync thresholds, content modification, adaptive searching, translation,
+  language equivalence. James, on where they should live: *"in staying with the
+  theme in media management we should have a separate subtitles top menu that you
+  can change all the settings you need ... and then you can select the library
+  you want to apply it to."*
 
-  The second half is the better idea and is why languages left the library edit
-  form. They are per library, and the comparison somebody actually wants to make
-  is *across* libraries — "English on everything, Japanese on anime" was
-  something you could only work out by opening two forms and remembering the
-  first. It is one list of every library now, with the settings behind a drawer,
-  which is also what lets the nine outstanding settings land as more rows rather
-  than another screen.
+  So it is **two tabs on two existing areas**, and the split is by what the thing
+  *is*:
+
+  - **Media Management → Subtitles.** Every sibling tab there is an aspect of a
+    library — its folder, its naming, its import policy, its final destination,
+    its metadata, its tags. Which languages a shelf wants is another one.
+  - **Find & Download → Subtitle Providers.** Every sibling tab there is
+    something you connect to. A subtitle provider is a source; it just needs no
+    download client, because the file arrives in the answer.
+
+  A first attempt made Subtitles a top-level area of its own, which was a
+  misreading of "in staying with the theme in media management" — he meant
+  *consistent with how that area works*, not *beside it*. Two tabs is smaller,
+  and each one is in the place a reader would look for it.
+
+  The half of his note that changed the most is the second: languages left the
+  library edit form entirely. They are per library, and the comparison somebody
+  actually wants to make is *across* libraries — "English on everything, Japanese
+  on anime" was something you could only work out by opening two forms and
+  remembering the first. It is one list of every library now, with the settings
+  behind a drawer, which is also what lets the nine outstanding settings land as
+  more rows rather than another screen.
 
 ## What *held* actually means
 

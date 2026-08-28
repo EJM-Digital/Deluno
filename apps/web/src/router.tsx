@@ -269,20 +269,19 @@ export const router = createBrowserRouter([
         })
       },
       {
-        path: "subtitles",
-        element: <Navigate to="/subtitles/languages" replace />
-      },
-      {
-        // Per library, and all of them on one screen, because that is the
-        // comparison somebody actually wants to make.
-        path: "subtitles/languages",
+        // An aspect of a library, beside the other aspects of a library — and
+        // every library on one screen, because "English on everything, Japanese
+        // on anime" is a comparison you make across them.
+        path: "settings/subtitles",
         lazy: withSkeleton(async () => {
           const module = await import("./routes/subtitle-languages-screen");
           return { loader: module.subtitleLanguagesLoader, Component: module.SubtitleLanguagesPage };
         })
       },
       {
-        path: "subtitles/providers",
+        // A source, beside the other sources. It needs no download client,
+        // because the file arrives in the answer.
+        path: "indexers/subtitle-providers",
         lazy: withSkeleton(async () => {
           const module = await import("./routes/subtitle-providers-screen");
           return { loader: module.subtitleProvidersLoader, Component: module.SubtitleProvidersPage };

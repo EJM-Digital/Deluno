@@ -16,7 +16,7 @@ import { PageToolbar } from "../components/ui/page-toolbar";
 import { Switch } from "../components/ui/switch";
 import type { LibraryItem, SubtitleLanguageOption } from "../lib/api/types/resources";
 
-const TABS = configurationNavAreas.find((area) => area.to === "/subtitles/languages")?.items ?? [];
+const TABS = configurationNavAreas.find((area) => area.to === "/settings/libraries")?.items ?? [];
 
 export async function subtitleLanguagesLoader() {
   const [libraries, languages] = await Promise.all([

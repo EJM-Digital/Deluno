@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
-import { FileInput, FolderTree, HelpCircle, Image, MapPinned, SlidersHorizontal, Tags, Workflow } from "lucide-react";
+import { Captions, FileInput, FolderTree, HelpCircle, Image, MapPinned, SlidersHorizontal, Tags, Workflow } from "lucide-react";
 import { CONFIGURATION_AREAS } from "../../lib/configuration-areas";
 import { cn } from "../../lib/utils";
 import { GlossaryModal } from "../ui/glossary-modal";
@@ -13,6 +13,7 @@ export const librarySetupNavItems = [
   { to: "/settings/processing", label: "Processing Workflow", end: false, icon: <Workflow aria-hidden="true" /> },
   { to: "/settings/destination-rules", label: "Final Destinations", end: false, icon: <MapPinned aria-hidden="true" /> },
   { to: "/settings/metadata", label: "Metadata & Files", end: false, icon: <Image aria-hidden="true" /> },
+  { to: "/settings/subtitles", label: "Subtitles", end: false, icon: <Captions aria-hidden="true" /> },
   { to: "/settings/tags", label: "Tags", end: false, icon: <Tags aria-hidden="true" /> }
 ] as const;
 
@@ -73,35 +74,8 @@ export const configurationNavAreas = [
     items: [
       { to: "/indexers/indexers", label: "Indexers", end: false },
       { to: "/indexers/download-clients", label: "Download Clients", end: false },
-      { to: "/indexers/library-routing", label: "Library Routing", end: false }
-    ]
-  },
-  {
-    /*
-      Subtitles is its own area rather than a tab under Find & Download, and the
-      reason is volume. DESIGN-002 argued for "two settings screens, not a
-      seven-tab Subtitles app", pointing at Bazarr's sprawl — but that was about
-      Bazarr splitting every setting into a movie copy and a series copy. The
-      settings themselves are real and #321 lists nine more still to come: sync
-      thresholds, content modification, adaptive searching, translation,
-      language equivalence. James, looking at where they would have to go:
-      "we should have a separate subtitles top menu ... because we are going to
-      need to add more settings just because bazaar does a lot and then you can
-      select the library you want to apply it to."
-
-      Which is the second half and the better idea: the settings are per library,
-      and putting them here rather than inside each library's edit form means
-      "English on everything, Japanese on anime" is one screen you can read
-      across rather than something you discover by opening two forms.
-    */
-    match: configurationAreaMatch("subtitles"),
-    label: "Subtitles",
-    icon: "subtitles",
-    to: "/subtitles/languages",
-    tabsInToolbar: true,
-    items: [
-      { to: "/subtitles/languages", label: "Languages", end: false },
-      { to: "/subtitles/providers", label: "Providers", end: false }
+      { to: "/indexers/library-routing", label: "Library Routing", end: false },
+      { to: "/indexers/subtitle-providers", label: "Subtitle Providers", end: false }
     ]
   },
   {
@@ -272,6 +246,12 @@ export const settingsPageMeta = [
   },
   {
     match: (path: string) => path.startsWith("/settings/metadata"),
+    title: "Media Management",
+    description: "Manage where your media lives, how it is named, and how it moves through Deluno.",
+    chrome: "none"
+  },
+  {
+    match: (path: string) => path.startsWith("/settings/subtitles"),
     title: "Media Management",
     description: "Manage where your media lives, how it is named, and how it moves through Deluno.",
     chrome: "none"
