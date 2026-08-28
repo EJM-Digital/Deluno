@@ -18,5 +18,36 @@ namespace Deluno.Quality;
 /// </summary>
 public interface IQualityRankSink
 {
-    Task SyncQualityRanksAsync(IReadOnlyDictionary<string, int> ranks, CancellationToken cancellationToken);
+    Task SyncQualityRanksAsync(IReadOnlyList<QualityTierDefinition> tiers, CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// A tier's size rule in bytes, for the kind of media a catalogue holds.
+///
+/// <para>The model states a film's rule in gigabytes and an episode's in
+/// megabytes. A catalogue holds one kind, so it converts its own — and the
+/// conversion lives here rather than in two SQL statements that would have to
+/// agree about 1024 against 1000.</para>
+///
+/// <para>The bounds travel with the rank for the same reason the rank travels
+/// at all: #309 asks whether a file you already keep still matches the rules
+/// you set — <i>"a 2160p file sitting at 4 GB was accepted under a profile that
+/// says 2160p should be 7–60 GB"</i> — and that comparison has to happen in the
+/// catalogue's own database, beside the file size, or it cannot be a
+/// filter.</para>
+/// </summary>
+public static class QualityTierBytes
+{
+    private const long Gigabyte = 1024L * 1024 * 1024;
+    private const long Megabyte = 1024L * 1024;
+
+    public static (long Floor, long Ceiling) ForMovie(QualityTierDefinition tier)
+        => (Convert(tier.MovieMinGb, Gigabyte), Convert(tier.MovieMaxGb, Gigabyte));
+
+    public static (long Floor, long Ceiling) ForEpisode(QualityTierDefinition tier)
+        => (Convert(tier.EpisodeMinMb, Megabyte), Convert(tier.EpisodeMaxMb, Megabyte));
+
+    /// <summary>Zero and anything negative mean "no bound", not "size zero".</summary>
+    private static long Convert(double value, long unit)
+        => value <= 0 ? 0 : (long)Math.Round(value * unit);
 }

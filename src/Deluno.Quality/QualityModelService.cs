@@ -100,13 +100,12 @@ public sealed class QualityModelService(
         // setting.
         foreach (var sink in qualityRankSinks ?? [])
         {
-            await sink.SyncQualityRanksAsync(
-                next.Tiers.ToDictionary(tier => tier.Name, tier => tier.Rank, StringComparer.OrdinalIgnoreCase),
-                cancellationToken);
+            await sink.SyncQualityRanksAsync(next.Tiers, cancellationToken);
         }
 
         return next;
     }
+
 
     /*
       The full release vocabulary users expect to tune, matching the Radarr and

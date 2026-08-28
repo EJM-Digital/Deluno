@@ -140,7 +140,7 @@ public static class CatalogueFileFactsMigrationSql
     /// <c>CatalogueSortableFactsTests</c> already asserts the agreement for
     /// V0016's two columns; the same guard covers these.</para>
     /// </summary>
-    private static string Pick(string wantedTable, string foreignKey, string idExpression)
+    public static string Pick(string wantedTable, string foreignKey, string idExpression)
         => $"""
             FROM {wantedTable} pick
                      WHERE pick.{foreignKey} = {idExpression}
