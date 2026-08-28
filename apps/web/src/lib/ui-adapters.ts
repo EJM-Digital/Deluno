@@ -185,10 +185,15 @@ export function adaptMovieItems(items: MovieListItem[]): MediaItem[] {
       collection: readString(meta, "collection"),
       minimumAvailability: readString(meta, "minimumAvailability"),
       consideredAvailable: null,
-      digitalRelease: readString(meta, "digitalRelease"),
-      physicalRelease: readString(meta, "physicalRelease"),
+      // From the item's own columns, with the blob only as a fallback. These
+      // read the metadata blob alone until now, and the catalogue page projects
+      // NULL for it deliberately — so all four were empty on every shelf, the
+      // same shape as the ratings beside them. The columns have existed since
+      // V0007.
+      digitalRelease: item.digitalReleaseDate ?? readString(meta, "digitalRelease"),
+      physicalRelease: item.physicalReleaseDate ?? readString(meta, "physicalRelease"),
       releaseDate: readString(meta, "releaseDate"),
-      inCinemas: readString(meta, "inCinemas"),
+      inCinemas: item.inCinemasDate ?? readString(meta, "inCinemas"),
       originalLanguage: readString(meta, "originalLanguage"),
       originalTitle: item.originalTitle ?? item.title,
       path: item.filePath ?? readString(meta, "path"),

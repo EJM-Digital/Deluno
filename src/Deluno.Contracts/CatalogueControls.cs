@@ -131,6 +131,21 @@ public sealed record CatalogueControls(
         new(CatalogueSortFields.Network, "Network", "Who broadcasts it")
     ];
 
+    /// <summary>
+    /// What only a film's card can show.
+    ///
+    /// <para>Three dates rather than one, because they answer three different
+    /// questions and a film can be in cinemas months before it is obtainable.
+    /// A show has an air date instead, and offering "physical release" on the
+    /// TV shelf would be a switch that can only ever do nothing.</para>
+    /// </summary>
+    private static IReadOnlyList<CataloguePosterOption> MovieOnlyPosterOptions =>
+    [
+        new("showInCinemas", "In cinemas", "The theatrical date", DefaultOn: false, Line: true),
+        new("showDigitalRelease", "Digital release", "When it became buyable or streamable", DefaultOn: false, Line: true),
+        new("showPhysicalRelease", "Physical release", "Disc", DefaultOn: false, Line: true)
+    ];
+
     /// <summary>What only a show's card can show.</summary>
     private static IReadOnlyList<CataloguePosterOption> SeriesOnlyPosterOptions =>
     [
@@ -167,7 +182,7 @@ public sealed record CatalogueControls(
             kind == MediaKind.Series ? [.. SharedSorts, .. SeriesOnlySorts] : [.. SharedSorts, .. MovieOnlySorts],
             kind == MediaKind.Series
                 ? [.. SharedPosterOptions, .. SeriesOnlyPosterOptions]
-                : SharedPosterOptions);
+                : [.. SharedPosterOptions, .. MovieOnlyPosterOptions]);
 
     private static CatalogueFilterFieldView View(CatalogueFilterField field)
         => new(

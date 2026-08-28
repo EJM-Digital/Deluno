@@ -366,7 +366,7 @@ export interface LibraryViewItem {
   monitoring?: string | null;
   sortField: string;
   sortDirection: "asc" | "desc";
-  viewMode: "grid" | "list";
+  viewMode: "grid" | "list" | "overview";
   cardSize: "sm" | "md" | "lg";
   displayOptionsJson: string;
   rulesJson: string;
@@ -447,7 +447,7 @@ export interface CreateLibraryViewRequest {
   monitoring?: string | null;
   sortField: string;
   sortDirection: "asc" | "desc";
-  viewMode: "grid" | "list";
+  viewMode: "grid" | "list" | "overview";
   cardSize: "sm" | "md" | "lg";
   displayOptionsJson: string;
   rulesJson: string;
@@ -461,7 +461,7 @@ export interface UpdateLibraryViewRequest {
   monitoring?: string | null;
   sortField: string;
   sortDirection: "asc" | "desc";
-  viewMode: "grid" | "list";
+  viewMode: "grid" | "list" | "overview";
   cardSize: "sm" | "md" | "lg";
   displayOptionsJson: string;
   rulesJson: string;

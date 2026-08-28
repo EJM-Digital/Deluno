@@ -3,8 +3,7 @@ import { TITLE_MARK_PRESENTATION, type TitleMark } from "../../lib/status-tones"
 import { TitleMarkBarLegend } from "../ui/title-mark";
 import { MARK_DOT_SIZE } from "../ui/title-mark";
 import {
-  ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, Filter, LayoutGrid, LayoutTemplate, List, Search
-} from "lucide-react";
+  ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, Filter, LayoutGrid, LayoutTemplate, List, Search, Rows3} from "lucide-react";
 import React, { useLayoutEffect, useRef, useState } from "react";
 import type { CatalogueFacets } from "../../lib/api";
 import type { FilterCondition, LibraryControlSet } from "../../lib/library-controls";
@@ -24,7 +23,7 @@ import type { CardSize, DisplayOptions } from "./library-grid";
  * key was, and adding a value to one silently left the other behind.
  */
 export type { QuickFilter } from "../../lib/library-filters";
-export type ViewMode = "grid" | "list";
+export type ViewMode = "grid" | "list" | "overview";
 /**
  * Re-exported for the same reason `QuickFilter` is. These were redeclared here
  * as four values while `lib/library-filters.ts` declared fourteen — one line
@@ -485,7 +484,10 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                 label="View"
                 icon={LayoutTemplate}
                 active={openPanel === "view"}
-                meta={view === "grid" ? `grid · ${POSTER_SIZE_LABEL[cardSize].toLowerCase()}` : "list"}
+                // The poster size only means something in the grid, so only the
+                // grid says it. A ternary said "list" for anything that was not
+                // the grid, which quietly labelled the overview as a list.
+                meta={view === "grid" ? `grid · ${POSTER_SIZE_LABEL[cardSize].toLowerCase()}` : view}
                 onClick={() => toggle("view")}
               />
             </div>
@@ -574,6 +576,7 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
             <SectionLabel>Layout</SectionLabel>
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
               <LayoutChoice icon={LayoutGrid} label="Poster grid" description="Artwork-led browsing for your collection." selected={view === "grid"} onClick={() => setView("grid")} />
+              <LayoutChoice icon={Rows3} label="Overview" description="A row each, with room to read what it is about." selected={view === "overview"} onClick={() => setView("overview")} />
               <LayoutChoice icon={List} label="Compact list" description="More titles and file details in less space." selected={view === "list"} onClick={() => setView("list")} />
             </div>
           </div>

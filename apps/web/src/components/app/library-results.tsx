@@ -5,6 +5,7 @@ import type { CardSize, DisplayOptions } from "./library-grid";
 import type { SortField } from "../../lib/library-filters";
 import { ProgressiveGrid } from "./library-grid";
 import { LibraryTable } from "./library-table";
+import { LibraryOverview } from "./library-overview";
 import { EmptyState } from "../shell/empty-state";
 import { GlassTile } from "../shell/page-hero";
 import { LibraryGridSkeleton } from "../shell/skeleton";
@@ -23,7 +24,7 @@ type LibraryResultsProps = {
   singular: string;
   libraryCount: number;
   hasActiveFilter: boolean;
-  view: "grid" | "list";
+  view: "grid" | "list" | "overview";
   cardSize: CardSize;
   density: Density;
   displayOptions: DisplayOptions;
@@ -76,6 +77,8 @@ export function LibraryResults({
         action={<Button onClick={onOpenCreate} className="gap-1.5"><Plus className="h-4 w-4" strokeWidth={2.5} />Add {singular}</Button>}
         learnMore={`Deluno will track up to 100,000 ${label} without breaking a sweat.`}
       />
+    ) : view === "overview" ? (
+      <LibraryOverview items={items} selectedIds={selectedIds} isComplete={isComplete} onSelect={onSelect} onToggle={onToggle} onEndReached={onEndReached} />
     ) : view === "grid" ? (
       <ProgressiveGrid items={items} cardSize={cardSize} density={density} displayOptions={displayOptions} selectedIds={selectedIds} keyBust={keyBust} sortField={sortField} sortDirection={sortDirection} isComplete={isComplete} onSelect={onSelect} onToggle={onToggle} onEndReached={onEndReached} />
     ) : (

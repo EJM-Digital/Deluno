@@ -70,13 +70,25 @@ public static class DelunoValueNormalizers
         return string.IsNullOrWhiteSpace(normalized) ? null : normalized;
     }
 
+    /// <summary>
+    /// The layouts a shelf can be in.
+    ///
+    /// <para><b>Grid</b> is artwork and a mark — what you want when you know
+    /// the film by its poster. <b>List</b> is a dense table, for file facts.
+    /// <b>Overview</b> is the one in between and the one Radarr has that Deluno
+    /// did not: a wide row per title, big enough to read the synopsis, which is
+    /// how you browse a library you have not seen in a while. A poster grid
+    /// cannot answer "what is this one about" and a table has no room to.</para>
+    ///
+    /// <para>Anything unrecognised falls back to the grid rather than throwing,
+    /// because this reads a stored setting and a saved view from a database that
+    /// may predate the vocabulary.</para>
+    /// </summary>
+    public static readonly IReadOnlyList<string> UiViews = ["grid", "list", "overview"];
+
     public static string NormalizeUiView(string? value)
     {
         var normalized = value?.Trim().ToLowerInvariant();
-        return normalized switch
-        {
-            "list" => "list",
-            _ => "grid"
-        };
+        return normalized is not null && UiViews.Contains(normalized) ? normalized : "grid";
     }
 }
