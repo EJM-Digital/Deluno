@@ -203,7 +203,36 @@ public static class CatalogueFilterFields
     [
         new("network", "Network", "Who broadcasts it.",
             CatalogueFilterGroup.Title, CatalogueFilterValueKind.Text,
-            CatalogueFilterSource.Entry, "{alias}.network")
+            CatalogueFilterSource.Entry, "{alias}.network"),
+
+        // A show that finished five years ago and is short three episodes is a
+        // gap you can close. One still airing them is not a gap at all, and
+        // until this column existed Deluno counted both as Missing.
+        new("seriesStatus", "Series status", "Whether the show is still running, has ended, or was cancelled.",
+            CatalogueFilterGroup.Title, CatalogueFilterValueKind.Enum,
+            CatalogueFilterSource.Entry, "{alias}.status",
+            Options: ["Returning Series", "Ended", "Canceled", "In Production", "Planned", "Pilot"]),
+
+        new("nextAiring", "Next airing", "When the next episode is due.",
+            CatalogueFilterGroup.Time, CatalogueFilterValueKind.Date,
+            CatalogueFilterSource.Entry, "{alias}.next_air_date_utc"),
+
+        // Counted over what has aired, never over what will exist: an ongoing
+        // show measured against its eventual episode count reads permanently
+        // unfinished, which is true of every ongoing show and says nothing.
+        new("episodesHeld", "Episodes held", "How many of the episodes that have aired you actually have.",
+            CatalogueFilterGroup.Decision, CatalogueFilterValueKind.Integer,
+            CatalogueFilterSource.Entry, "{alias}.aired_with_file_count"),
+
+        new("episodesAired", "Episodes aired", "How many episodes have gone to air.",
+            CatalogueFilterGroup.Decision, CatalogueFilterValueKind.Integer,
+            CatalogueFilterSource.Entry, "{alias}.aired_episode_count"),
+
+        // A whole season with nothing in it, which is a different and worse
+        // problem from a few scattered gaps.
+        new("hasMissingSeason", "Has a missing season", "A whole season that has aired and holds nothing at all.",
+            CatalogueFilterGroup.Decision, CatalogueFilterValueKind.Boolean,
+            CatalogueFilterSource.Entry, "{alias}.has_missing_season")
     ];
 
     public static IReadOnlyList<CatalogueFilterField> For(MediaKind kind)

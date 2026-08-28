@@ -1,12 +1,14 @@
 using Deluno.Contracts;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
+using System.Data.Common;
 using System.Globalization;
 using System.Text.Json;
 using Deluno.Infrastructure.Storage;
 using Deluno.Media;
 using Deluno.Quality;
 using Deluno.Series.Contracts;
+using Deluno.Series.Migrations;
 using Microsoft.Data.Sqlite;
 using Deluno.Libraries.Data;
 
@@ -688,6 +690,47 @@ public sealed class SqliteSeriesCatalogRepository(
         return [.. genres];
     }
 
+    /// <summary>
+    /// Brings up to date the handful of shows whose progress figures have gone
+    /// stale since anybody last looked, and does nothing at all for the rest.
+    ///
+    /// <para><b>Why this exists on a read path.</b> Every other cached fact in
+    /// the catalogue changes when something is written, so a trigger keeps it
+    /// true. How far through a show you are changes because <i>time passed</i> —
+    /// nothing is written when Thursday's episode airs — so there is no write to
+    /// hang a trigger on and a stored number would be wrong by the following
+    /// morning.</para>
+    ///
+    /// <para><b>Why it costs nothing.</b> <c>next_air_date_utc</c> is stored
+    /// beside the counts and is exactly the moment they stop being true. A
+    /// finished show has none and is never looked at again; a running show
+    /// between episodes has one in the future and is skipped. What is left is
+    /// the shows that aired something since the last look, found through a
+    /// partial index on that column, which on any real library is nothing or
+    /// close to it.</para>
+    ///
+    /// <para><b>And why only when it is asked for.</b> #322 rule 3: a page
+    /// asking for nothing runs exactly the query it ran before any of this
+    /// existed. The counts a page <i>displays</i> are already worked out exactly,
+    /// per page, from the episodes themselves — these columns exist so a library
+    /// can be filtered and ordered by them, so they only have to be true when
+    /// somebody filters or orders by them.</para>
+    /// </summary>
+    private async Task RefreshExpiredProgressAsync(
+        DbConnection connection,
+        CancellationToken cancellationToken)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = V0020SeriesProgressFacts.RecomputeSql;
+
+        // Formatted as the column is written. A DateTimeOffset renders its
+        // offset as +00:00 and a DateTime renders it as Z, and SQLite compares
+        // these as text.
+        AddParameter(command, "@now", timeProvider.GetUtcNow().ToString("O"));
+
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     public async Task<CataloguePage<SeriesListItem>> ListPageAsync(
         CatalogueQuery query,
         CancellationToken cancellationToken)
@@ -720,6 +763,14 @@ public sealed class SqliteSeriesCatalogRepository(
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Series,
             cancellationToken);
+
+        // Only when the shelf is actually being narrowed or reordered. #322
+        // rule 3: a page asking for nothing runs exactly the query it ran before
+        // any of this existed, and an unfiltered page never reads these columns.
+        if (!(query.Filters?.IsEmpty ?? true))
+        {
+            await RefreshExpiredProgressAsync(connection, cancellationToken);
+        }
 
         var items = new List<SeriesListItem>(pageSize + 1);
         var sortValues = new List<string?>(pageSize + 1);
