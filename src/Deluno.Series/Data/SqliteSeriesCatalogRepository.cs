@@ -25,6 +25,18 @@ public sealed class SqliteSeriesCatalogRepository(
     private readonly IMediaStateRepository? sharedMediaStateRepository = sharedMediaStateRepository;
     private readonly ILibrarySubtitlePreferences? librarySubtitlePreferences = librarySubtitlePreferences;
 
+    /// <summary>
+    /// The shared media state, injected or built.
+    ///
+    /// <para>The parameter is optional so a test can construct this repository
+    /// with two arguments, and for a long time that optionality meant a whole
+    /// second implementation of every write. Building one on demand keeps the
+    /// convenience and removes the fork: there is one statement, and the tests
+    /// exercise the same one production does.</para>
+    /// </summary>
+    private IMediaStateRepository SharedMediaState =>
+        sharedMediaStateRepository ?? new SqliteMediaStateRepository(databaseConnectionFactory, timeProvider);
+
     public async Task<SeriesListItem> AddAsync(CreateSeriesRequest request, CancellationToken cancellationToken)
     {
         if (sharedMediaStateRepository is not null)
@@ -1214,146 +1226,26 @@ public sealed class SqliteSeriesCatalogRepository(
         return updated;
     }
 
+    /// <summary>
+    /// The one way metadata is written to this catalogue.
+    ///
+    /// <para>There used to be two: a shared statement when a
+    /// <c>IMediaStateRepository</c> was injected, and a private copy of the same
+    /// UPDATE for when one was not. Production always injected one, so the copy
+    /// ran only under test — which is how four separate attempts to persist
+    /// <c>status</c> each passed their tests and wrote nothing. A second copy of
+    /// a write is not a fallback, it is a place for the two to disagree.</para>
+    /// </summary>
     public Task<SeriesListItem?> UpdateMetadataAsync(
         string id,
         MetadataSearchResult metadata,
         CancellationToken cancellationToken)
-        => UpdateMetadataAsync(
-            id,
-            metadata.Provider,
-            metadata.ProviderId,
-            metadata.OriginalTitle,
-            metadata.Overview,
-            metadata.PosterUrl,
-            metadata.BackdropUrl,
-            metadata.Rating,
-            string.Join(", ", metadata.Genres),
-            metadata.ExternalUrl,
-            metadata.ImdbId,
-            JsonSerializer.Serialize(metadata),
-            cancellationToken,
-            metadata.RuntimeMinutes,
-            metadata.Popularity,
-            metadata.VoteCount,
-            metadata.Status,
-            metadata.Network);
+        => UpdateMetadataAsync(CatalogueMetadata.ToUpdate(id, metadata, metadata.Network), cancellationToken);
 
-    public async Task<SeriesListItem?> UpdateMetadataAsync(
-        string id,
-        string? metadataProvider,
-        string? metadataProviderId,
-        string? originalTitle,
-        string? overview,
-        string? posterUrl,
-        string? backdropUrl,
-        double? rating,
-        string? genres,
-        string? externalUrl,
-        string? imdbId,
-        string? metadataJson,
-        CancellationToken cancellationToken,
-        int? runtimeMinutes = null,
-        double? popularity = null,
-        int? voteCount = null,
-        string? status = null,
-        string? network = null)
+    public async Task<SeriesListItem?> UpdateMetadataAsync(MediaMetadataUpdate update, CancellationToken cancellationToken)
     {
-        if (sharedMediaStateRepository is not null)
-        {
-            var updated = await sharedMediaStateRepository.UpdateMetadataAsync(
-                MediaKind.Series,
-                new MediaMetadataUpdate(
-                    id,
-                    metadataProvider,
-                    metadataProviderId,
-                    originalTitle,
-                    overview,
-                    posterUrl,
-                    backdropUrl,
-                    rating,
-                    genres,
-                    externalUrl,
-                    imdbId,
-                    metadataJson,
-                    runtimeMinutes,
-                    popularity,
-                    voteCount,
-                    status,
-                    network),
-                cancellationToken);
-            return updated ? await GetByIdAsync(id, cancellationToken) : null;
-        }
-
-        var now = timeProvider.GetUtcNow();
-
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
-            DelunoDatabaseNames.Series,
-            cancellationToken);
-
-        using var command = connection.CreateCommand();
-        command.CommandText =
-            """
-            UPDATE series_entries
-            SET
-                imdb_id = COALESCE(@imdbId, imdb_id),
-                metadata_provider = @metadataProvider,
-                metadata_provider_id = @metadataProviderId,
-                original_title = @originalTitle,
-                overview = @overview,
-                poster_url = @posterUrl,
-                backdrop_url = @backdropUrl,
-                rating = @rating,
-                genres = @genres,
-                external_url = @externalUrl,
-                metadata_json = @metadataJson,
-                -- COALESCE: a provider that does not answer for one of these
-                -- must not blank a value an earlier refresh did answer for.
-                runtime_minutes = COALESCE(@runtimeMinutes, runtime_minutes),
-                popularity = COALESCE(@popularity, popularity),
-                vote_count = COALESCE(@voteCount, vote_count),
-                -- Both of these are columns the shelf can already be filtered
-                -- and ordered by, and neither had a writer. `network` has been
-                -- on series_entries since V0012 and nothing has ever set it, so
-                -- the Network filter has matched nothing since the day it was
-                -- offered. `status` arrived today with the same hole: backfilled
-                -- once by its migration and then never maintained.
-                --
-                -- Declared and never populated, which is invisible in exactly
-                -- the way that matters: a filter over an empty column returns no
-                -- rows, and no rows looks like a fair answer.
-                status = COALESCE(@status, status),
-                network = COALESCE(@network, network),
-                metadata_updated_utc = @metadataUpdatedUtc,
-                updated_utc = @updatedUtc
-            WHERE id = @id;
-            """;
-
-        AddParameter(command, "@id", id);
-        AddParameter(command, "@runtimeMinutes", runtimeMinutes);
-        AddParameter(command, "@popularity", popularity);
-        AddParameter(command, "@voteCount", voteCount);
-        AddParameter(command, "@status", NormalizeText(status));
-        AddParameter(command, "@network", NormalizeText(network));
-        AddParameter(command, "@imdbId", NormalizeExternalId(imdbId));
-        AddParameter(command, "@metadataProvider", NormalizeExternalId(metadataProvider));
-        AddParameter(command, "@metadataProviderId", NormalizeExternalId(metadataProviderId));
-        AddParameter(command, "@originalTitle", NormalizeText(originalTitle));
-        AddParameter(command, "@overview", NormalizeText(overview));
-        AddParameter(command, "@posterUrl", NormalizeText(posterUrl));
-        AddParameter(command, "@backdropUrl", NormalizeText(backdropUrl));
-        AddParameter(command, "@rating", rating);
-        AddParameter(command, "@genres", NormalizeText(genres));
-        AddParameter(command, "@externalUrl", NormalizeText(externalUrl));
-        AddParameter(command, "@metadataJson", NormalizeText(metadataJson));
-        AddParameter(command, "@metadataUpdatedUtc", now.ToString("O"));
-        AddParameter(command, "@updatedUtc", now.ToString("O"));
-
-        if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
-        {
-            return null;
-        }
-
-        return await GetByIdAsync(id, cancellationToken);
+        var updated = await SharedMediaState.UpdateMetadataAsync(MediaKind.Series, update, cancellationToken);
+        return updated ? await GetByIdAsync(update.Id, cancellationToken) : null;
     }
 
     public async Task<int> UpdateEpisodeMonitoredAsync(

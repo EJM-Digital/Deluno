@@ -82,9 +82,13 @@ public sealed record MediaMetadataUpdate(
     string? ExternalUrl,
     string? ImdbId,
     string? MetadataJson,
-    int? RuntimeMinutes,
-    double? Popularity,
-    int? VoteCount,
+    // Null means "leave what is there", enforced by COALESCE in the write:
+    // a provider that does not answer for one of these must not blank what an
+    // earlier one found. That is why they carry a default — a caller with
+    // nothing to say about runtime should be able to say nothing.
+    int? RuntimeMinutes = null,
+    double? Popularity = null,
+    int? VoteCount = null,
     /// <summary>
     /// Whether a show is still running. Meaningless for a film, and simply not
     /// supplied for one.
@@ -94,7 +98,34 @@ public sealed record MediaMetadataUpdate(
     /// Who made it. A show has a network and a film has a studio: the same
     /// question, two columns, because that is how the providers answer it.
     /// </summary>
-    string? MadeBy = null);
+    string? MadeBy = null,
+    /// <summary>
+    /// The rating the certification board gave it — PG-13, TV-MA. Provider
+    /// vocabulary, kept as the provider's own word rather than an enum,
+    /// because the vocabulary differs by country and by media kind.
+    /// </summary>
+    string? Certification = null,
+    /// <summary>What it belongs to, where it belongs to something — "The Nolan Collection".</summary>
+    string? Collection = null,
+    /// <summary>The language it was made in, as an ISO code.</summary>
+    string? OriginalLanguage = null,
+    /// <summary>
+    /// The four scores, each on its own, so a shelf can be ordered by one of
+    /// them. Empty when the provider sent none, which is not the same as four
+    /// zeroes and must not be written as one.
+    /// </summary>
+    IReadOnlyList<MediaRatingFact>? Ratings = null);
+
+/// <summary>
+/// One source's score for one title, on the way to its own column.
+/// </summary>
+/// <param name="Votes">
+/// How many people it is drawn from, where the provider says. Null for the
+/// critic percentages, which arrive as a bare number — and a rating with twelve
+/// votes is not a rating, which is the whole reason #319 wanted this beside the
+/// score rather than behind it.
+/// </param>
+public sealed record MediaRatingFact(string Source, double? Score, int? Votes);
 
 public sealed record MediaEntryCreate(
     string Title,

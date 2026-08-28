@@ -692,26 +692,32 @@ public static class SeriesEndpointRouteBuilderExtensions
             }
 
             var updated = await repository.UpdateMetadataAsync(
-                item.Id,
-                item.MetadataProvider ?? "manual",
-                item.MetadataProviderId ?? item.ImdbId ?? item.Id,
-                // PUT replaces the override set: a field that arrives blank clears the
-                // stored value. Treating blank as "keep" made a manual override
-                // impossible to undo — you could only replace it with other text.
-                NormalizeOverride(request.OriginalTitle),
-                NormalizeOverride(request.Overview),
-                NormalizeOverride(request.PosterUrl),
-                NormalizeOverride(request.BackdropUrl),
-                request.Rating,
-                NormalizeOverride(request.Genres),
-                NormalizeOverride(request.ExternalUrl),
-                NormalizeOverride(request.ImdbId),
-                JsonSerializer.Serialize(new
-                {
-                    kind = "manual-metadata-override",
-                    request,
-                    updatedUtc = DateTimeOffset.UtcNow
-                }),
+                new MediaMetadataUpdate(
+                    item.Id,
+                    item.MetadataProvider ?? "manual",
+                    item.MetadataProviderId ?? item.ImdbId ?? item.Id,
+                    // PUT replaces the override set: a field that arrives blank clears the
+                    // stored value. Treating blank as "keep" made a manual override
+                    // impossible to undo — you could only replace it with other text.
+                    NormalizeOverride(request.OriginalTitle),
+                    NormalizeOverride(request.Overview),
+                    NormalizeOverride(request.PosterUrl),
+                    NormalizeOverride(request.BackdropUrl),
+                    request.Rating,
+                    NormalizeOverride(request.Genres),
+                    NormalizeOverride(request.ExternalUrl),
+                    NormalizeOverride(request.ImdbId),
+                    JsonSerializer.Serialize(new
+                    {
+                        kind = "manual-metadata-override",
+                        request,
+                        updatedUtc = DateTimeOffset.UtcNow
+                    }),
+                    // Provider facts are not part of an override and are left
+                    // alone rather than blanked: the write COALESCEs them.
+                    RuntimeMinutes: null,
+                    Popularity: null,
+                    VoteCount: null),
                 cancellationToken);
 
             await activityFeedRepository.RecordActivityAsync(
@@ -1375,18 +1381,22 @@ public static class SeriesEndpointRouteBuilderExtensions
                 var metadata = ParseMetadataDictionary(seriesItem.MetadataJson);
                 metadata["tags"] = normalizedTags;
                 await repository.UpdateMetadataAsync(
-                    seriesItem.Id,
-                    seriesItem.MetadataProvider,
-                    seriesItem.MetadataProviderId,
-                    seriesItem.OriginalTitle,
-                    seriesItem.Overview,
-                    seriesItem.PosterUrl,
-                    seriesItem.BackdropUrl,
-                    seriesItem.Rating,
-                    seriesItem.Genres,
-                    seriesItem.ExternalUrl,
-                    seriesItem.ImdbId,
-                    JsonSerializer.Serialize(metadata),
+                    new MediaMetadataUpdate(
+                        seriesItem.Id,
+                        seriesItem.MetadataProvider,
+                        seriesItem.MetadataProviderId,
+                        seriesItem.OriginalTitle,
+                        seriesItem.Overview,
+                        seriesItem.PosterUrl,
+                        seriesItem.BackdropUrl,
+                        seriesItem.Rating,
+                        seriesItem.Genres,
+                        seriesItem.ExternalUrl,
+                        seriesItem.ImdbId,
+                        JsonSerializer.Serialize(metadata),
+                        RuntimeMinutes: null,
+                        Popularity: null,
+                        VoteCount: null),
                     cancellationToken);
                 updated++;
                 await realtimeEventPublisher.PublishEntityChangedAsync("Series", seriesItem.Id, cancellationToken);
@@ -2290,14 +2300,21 @@ public static class SeriesEndpointRouteBuilderExtensions
         return formats.Where(item => ids.Contains(item.Id, StringComparer.OrdinalIgnoreCase)).ToArray();
     }
 
+    /// <summary>
+    /// Hand a provider result to the catalogue.
+    ///
+    /// <para>This used to spell the mapping out as sixteen positional
+    /// arguments, and it never passed <c>Status</c> or <c>Network</c> — the two
+    /// fields V0020 added a column for. The write succeeded, the endpoint
+    /// returned 200, and the filter over the column returned nothing. The
+    /// mapping now lives in <c>CatalogueMetadata</c>, once.</para>
+    /// </summary>
     private static Task<SeriesListItem?> ApplyMetadataAsync(
         ISeriesCatalogRepository repository,
         string seriesId,
         MetadataSearchResult result,
         CancellationToken cancellationToken)
-    {
-        return repository.UpdateMetadataAsync(seriesId, result, cancellationToken);
-    }
+        => repository.UpdateMetadataAsync(seriesId, result, cancellationToken);
 
     private sealed record ReleaseGrabRequest(
         string ReleaseName,

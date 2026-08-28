@@ -192,8 +192,18 @@ public static class CatalogueSortFields
     /// <summary>Who broadcasts it. A film has a studio, which arrives with #306.</summary>
     public const string Network = "network";
 
+    /// <summary>
+    /// One order per rating source — "IMDb rating", not "rating".
+    ///
+    /// <para>Generated from <see cref="RatingSources.All"/>, like the columns
+    /// and the filters, so a source cannot become a sort the query has no
+    /// column for.</para>
+    /// </summary>
+    public static string ForRating(string source) => "rating:" + source;
+
     public static readonly IReadOnlyList<string> All =
         [Added, Title, Year, Rating, Runtime, Popularity, Size, Quality, Bitrate,
+         .. RatingSources.All.Select(source => ForRating(source.Source)),
          NextAiring, EpisodeProgress, Network];
 
     /// <summary>
@@ -224,22 +234,20 @@ public static class CatalogueSortFields
         return ForKind(kind).Contains(normalized) ? normalized : Added;
     }
 
+    /// <summary>
+    /// A sort token, or <see cref="Added"/> if it is not one.
+    ///
+    /// <para>Reads <see cref="All"/> rather than repeating it as a switch. The
+    /// switch was a second copy of the list that had to be edited alongside the
+    /// first, and a token added to one and not the other silently became
+    /// "Added" — a shelf that quietly ignores the order you asked for. The same
+    /// shape, and the same fix, as <c>WantedStatuses.Normalize</c>.</para>
+    /// </summary>
     public static string Normalize(string? value)
-        => value?.Trim().ToLowerInvariant() switch
-        {
-            Title => Title,
-            Year => Year,
-            Rating => Rating,
-            Runtime => Runtime,
-            Popularity => Popularity,
-            Size => Size,
-            Quality => Quality,
-            Bitrate => Bitrate,
-            NextAiring => NextAiring,
-            EpisodeProgress => EpisodeProgress,
-            Network => Network,
-            _ => Added
-        };
+    {
+        var normalized = value?.Trim().ToLowerInvariant();
+        return normalized is not null && All.Contains(normalized) ? normalized : Added;
+    }
 }
 
 /// <summary>

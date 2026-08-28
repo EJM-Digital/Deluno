@@ -131,6 +131,31 @@ public static class CatalogueFilterFields
             CatalogueFilterGroup.Time, CatalogueFilterValueKind.Date,
             CatalogueFilterSource.Entry, "{alias}.metadata_updated_utc"),
 
+        // Free text rather than a dropdown, deliberately. A certification
+        // vocabulary is regional: a UK library holds 12A, 15 and 18, an
+        // Australian one M and MA15+, and a closed list built from the American
+        // ratings would be a filter that cannot ask what half its users want.
+        new("certification", "Certification", "The rating the classification board gave it — PG-13, 15, MA15+.",
+            CatalogueFilterGroup.Title, CatalogueFilterValueKind.Text,
+            CatalogueFilterSource.Entry, "{alias}.certification"),
+
+        new("originalLanguage", "Original language", "The language it was made in, as its two-letter code.",
+            CatalogueFilterGroup.Title, CatalogueFilterValueKind.Text,
+            CatalogueFilterSource.Entry, "{alias}.original_language"),
+
+        // ---- The four scores, each on its own.
+        //
+        // The blended `rating` field above stays: it is the right question when
+        // you do not care which source. These are for when the disagreement is
+        // the point — a film at IMDb 8.1 and Rotten Tomatoes 41% is a different
+        // proposition from one at 8.1 and 94%, and the average of the two says
+        // neither (#319).
+        //
+        // Generated from the same list the columns and the write path come
+        // from, so a fifth source cannot arrive as a filter with nothing behind
+        // it — which is precisely the failure #302 was deleted for.
+        .. RatingFields,
+
         // ---- What Deluno decided. Nothing else in this space asks any of it.
         // Deluno's verdict is not here either: the legend chips above the shelf
         // are that question, and they are the colour key for the marks on the
@@ -188,6 +213,28 @@ public static class CatalogueFilterFields
             CatalogueFilterGroup.Time, CatalogueFilterValueKind.Date,
             CatalogueFilterSource.Entry, "{alias}.physical_release_date"),
 
+        // The film's half of "who made this". A show answers it with a network
+        // and V0012 gave the shelf a Network filter; a film answers it with a
+        // studio and, until V0020 added the column, could not be asked at all.
+        new("studio", "Studio", "Who made it.",
+            CatalogueFilterGroup.Title, CatalogueFilterValueKind.Text,
+            CatalogueFilterSource.Entry, "{alias}.studio"),
+
+        // Films belong to collections; shows do not. Declaring this on both
+        // shelves would put a control on the TV shelf that matches nothing.
+        new("collection", "Collection", "The set it belongs to — The Nolan Collection.",
+            CatalogueFilterGroup.Title, CatalogueFilterValueKind.Text,
+            CatalogueFilterSource.Entry, "{alias}.collection"),
+
+        // The same column a show uses for Series status, and a different
+        // vocabulary in it: TMDb answers Released or In Production for a film
+        // and Ended or Returning Series for a show. One column, two option
+        // lists, which is why this is declared per kind rather than shared.
+        new("movieStatus", "Release status", "Whether it is out yet, or still being made.",
+            CatalogueFilterGroup.Title, CatalogueFilterValueKind.Enum,
+            CatalogueFilterSource.Entry, "{alias}.status",
+            Options: ["Released", "In Production", "Post Production", "Planned", "Rumored", "Canceled"]),
+
         new("minimumAvailability", "Minimum availability", "The point Deluno is allowed to start looking.",
             CatalogueFilterGroup.Decision, CatalogueFilterValueKind.Enum,
             CatalogueFilterSource.Entry, "{alias}.minimum_availability",
@@ -234,6 +281,50 @@ public static class CatalogueFilterFields
             CatalogueFilterGroup.Decision, CatalogueFilterValueKind.Boolean,
             CatalogueFilterSource.Entry, "{alias}.has_missing_season")
     ];
+
+    /// <summary>
+    /// A score field per source, and a vote-count field for the two sources
+    /// that report one.
+    /// </summary>
+    /// <remarks>
+    /// Rotten Tomatoes and Metacritic arrive from OMDb as a bare percentage
+    /// with no count behind it, so they get no votes field. Declaring one would
+    /// be a control that can only ever match nothing — the thing #324 exists to
+    /// stop.
+    /// </remarks>
+    private static IEnumerable<CatalogueFilterField> RatingFields
+    {
+        get
+        {
+            foreach (var source in RatingSources.All)
+            {
+                yield return new CatalogueFilterField(
+                    $"rating{source.Source.Replace("_", string.Empty)}",
+                    $"{source.Label} score",
+                    source.MaxScore == 100
+                        ? $"Out of a hundred, as {source.Label} reports it."
+                        : $"Out of ten, as {source.Label} reports it.",
+                    CatalogueFilterGroup.Title,
+                    CatalogueFilterValueKind.Rating,
+                    CatalogueFilterSource.Entry,
+                    "{alias}." + source.ScoreColumn);
+
+                if (source.VotesColumn is null)
+                {
+                    continue;
+                }
+
+                yield return new CatalogueFilterField(
+                    $"votes{source.Source.Replace("_", string.Empty)}",
+                    $"{source.Label} votes",
+                    $"How many people the {source.Label} score is drawn from. A 9.4 from eleven votes is not a 9.4.",
+                    CatalogueFilterGroup.Title,
+                    CatalogueFilterValueKind.Integer,
+                    CatalogueFilterSource.Entry,
+                    "{alias}." + source.VotesColumn);
+            }
+        }
+    }
 
     public static IReadOnlyList<CatalogueFilterField> For(MediaKind kind)
         => kind switch

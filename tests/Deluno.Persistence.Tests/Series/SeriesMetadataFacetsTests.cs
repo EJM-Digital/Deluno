@@ -1,3 +1,4 @@
+using Deluno.Media;
 using Deluno.Contracts;
 using Deluno.Infrastructure.Storage.Migrations;
 using Deluno.Persistence.Tests.Support;
@@ -84,8 +85,25 @@ public sealed class SeriesMetadataFacetsTests
         string? status,
         string? network)
         => series.UpdateMetadataAsync(
-            id, "tmdb", "1', 'x", null, null, null, null, null, null, null, null, "{}",
-            CancellationToken.None, null, null, null, status, network);
+                new MediaMetadataUpdate(
+                    id,
+                    "tmdb",
+                    "1', 'x",
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    "{}",
+                    RuntimeMinutes: null,
+                    Popularity: null,
+                    VoteCount: null,
+                    Status: status,
+                    MadeBy: network),
+                CancellationToken.None);
 
     private static async Task<string> AddAsync(ISeriesCatalogRepository series, string title)
     {

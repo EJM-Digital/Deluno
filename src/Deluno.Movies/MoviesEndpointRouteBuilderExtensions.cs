@@ -950,26 +950,34 @@ public static class MoviesEndpointRouteBuilderExtensions
             }
 
             var updated = await repository.UpdateMetadataAsync(
-                movie.Id,
-                movie.MetadataProvider ?? "manual",
-                movie.MetadataProviderId ?? movie.ImdbId ?? movie.Id,
-                // PUT replaces the override set: a field that arrives blank clears the
-                // stored value. Treating blank as "keep" made a manual override
-                // impossible to undo — you could only replace it with other text.
-                NormalizeOverride(request.OriginalTitle),
-                NormalizeOverride(request.Overview),
-                NormalizeOverride(request.PosterUrl),
-                NormalizeOverride(request.BackdropUrl),
-                request.Rating,
-                NormalizeOverride(request.Genres),
-                NormalizeOverride(request.ExternalUrl),
-                NormalizeOverride(request.ImdbId),
-                JsonSerializer.Serialize(new
-                {
-                    kind = "manual-metadata-override",
-                    request,
-                    updatedUtc = DateTimeOffset.UtcNow
-                }),
+                new MediaMetadataUpdate(
+                    movie.Id,
+                    movie.MetadataProvider ?? "manual",
+                    movie.MetadataProviderId ?? movie.ImdbId ?? movie.Id,
+                    // PUT replaces the override set: a field that arrives blank clears the
+                    // stored value. Treating blank as "keep" made a manual override
+                    // impossible to undo — you could only replace it with other text.
+                    NormalizeOverride(request.OriginalTitle),
+                    NormalizeOverride(request.Overview),
+                    NormalizeOverride(request.PosterUrl),
+                    NormalizeOverride(request.BackdropUrl),
+                    request.Rating,
+                    NormalizeOverride(request.Genres),
+                    NormalizeOverride(request.ExternalUrl),
+                    NormalizeOverride(request.ImdbId),
+                    JsonSerializer.Serialize(new
+                    {
+                        kind = "manual-metadata-override",
+                        request,
+                        updatedUtc = DateTimeOffset.UtcNow
+                    }),
+                    // The provider facts are not part of an override and are
+                    // left alone rather than blanked: the write COALESCEs them,
+                    // so an override of the overview does not throw away the
+                    // certification a refresh found.
+                    RuntimeMinutes: null,
+                    Popularity: null,
+                    VoteCount: null),
                 cancellationToken);
 
             await activityFeedRepository.RecordActivityAsync(
@@ -1274,18 +1282,22 @@ public static class MoviesEndpointRouteBuilderExtensions
                 var metadata = ParseMetadataDictionary(movie.MetadataJson);
                 metadata["tags"] = normalizedTags;
                 await repository.UpdateMetadataAsync(
-                    movie.Id,
-                    movie.MetadataProvider,
-                    movie.MetadataProviderId,
-                    movie.OriginalTitle,
-                    movie.Overview,
-                    movie.PosterUrl,
-                    movie.BackdropUrl,
-                    movie.Rating,
-                    movie.Genres,
-                    movie.ExternalUrl,
-                    movie.ImdbId,
-                    JsonSerializer.Serialize(metadata),
+                    new MediaMetadataUpdate(
+                        movie.Id,
+                        movie.MetadataProvider,
+                        movie.MetadataProviderId,
+                        movie.OriginalTitle,
+                        movie.Overview,
+                        movie.PosterUrl,
+                        movie.BackdropUrl,
+                        movie.Rating,
+                        movie.Genres,
+                        movie.ExternalUrl,
+                        movie.ImdbId,
+                        JsonSerializer.Serialize(metadata),
+                        RuntimeMinutes: null,
+                        Popularity: null,
+                        VoteCount: null),
                     cancellationToken);
                 updated++;
                 await realtimeEventPublisher.PublishEntityChangedAsync("Movie", movie.Id, cancellationToken);
@@ -1589,30 +1601,21 @@ public static class MoviesEndpointRouteBuilderExtensions
         return formats.Where(item => ids.Contains(item.Id, StringComparer.OrdinalIgnoreCase)).ToArray();
     }
 
+    /// <summary>
+    /// Hand a provider result to the catalogue.
+    ///
+    /// <para>This used to spell the mapping out as sixteen positional
+    /// arguments, and it never passed <c>Status</c> or <c>Studio</c> — the two
+    /// fields V0020 added a column for. The write succeeded, the endpoint
+    /// returned 200, and the filter over the column returned nothing. The
+    /// mapping now lives in <c>CatalogueMetadata</c>, once.</para>
+    /// </summary>
     private static Task<MovieListItem?> ApplyMetadataAsync(
         IMovieCatalogRepository repository,
         string movieId,
         MetadataSearchResult result,
         CancellationToken cancellationToken)
-    {
-        return repository.UpdateMetadataAsync(
-            movieId,
-            result.Provider,
-            result.ProviderId,
-            result.OriginalTitle,
-            result.Overview,
-            result.PosterUrl,
-            result.BackdropUrl,
-            result.Rating,
-            string.Join(", ", result.Genres),
-            result.ExternalUrl,
-            result.ImdbId,
-            JsonSerializer.Serialize(result),
-            cancellationToken,
-            result.RuntimeMinutes,
-            result.Popularity,
-            result.VoteCount);
-    }
+        => repository.UpdateMetadataAsync(movieId, result, cancellationToken);
 
     private sealed record ReleaseGrabRequest(
         string ReleaseName,

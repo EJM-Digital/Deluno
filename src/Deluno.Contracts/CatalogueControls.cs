@@ -69,8 +69,35 @@ public sealed record CatalogueControls(
         new(CatalogueSortFields.Bitrate, "Bitrate", "How much file there is per minute"),
         new(CatalogueSortFields.Runtime, "Runtime", "How long it runs"),
         new(CatalogueSortFields.Rating, "Rating", "The metadata score"),
-        new(CatalogueSortFields.Popularity, "Popularity", "How much the world is watching")
+        new(CatalogueSortFields.Popularity, "Popularity", "How much the world is watching"),
+        .. RatingSorts
     ];
+
+    /// <summary>
+    /// One order per rating source, beside the blended one.
+    ///
+    /// <para>Radarr offers four and Deluno offered a single average of them.
+    /// Averaging is the one thing you cannot undo afterwards: a title at IMDb
+    /// 8.1 and Rotten Tomatoes 41% and one at 8.1 and 94% blend to numbers a
+    /// person cannot tell apart, and telling them apart is the whole reason for
+    /// looking (#319).</para>
+    /// </summary>
+    private static IEnumerable<CatalogueSortOption> RatingSorts
+        => RatingSources.All.Select(source => new CatalogueSortOption(
+            CatalogueSortFields.ForRating(source.Source),
+            $"{source.Label} score",
+            source.MaxScore == 100
+                ? $"Out of a hundred, as {source.Label} reports it"
+                : $"Out of ten, as {source.Label} reports it"));
+
+    /// <summary>What a card can show once you want a particular source's number.</summary>
+    private static IEnumerable<CataloguePosterOption> RatingPosterOptions
+        => RatingSources.All.Select(source => new CataloguePosterOption(
+            $"showRating{source.Source.Replace("_", string.Empty)}",
+            source.Label,
+            $"The {source.Label} score, whether or not it is the preferred one",
+            DefaultOn: false,
+            Line: true));
 
     /// <summary>
     /// Sorts that only mean something for a show.
@@ -112,7 +139,8 @@ public sealed record CatalogueControls(
         new("showGenres", "Genres", "The first two it is tagged with", DefaultOn: false, Line: true),
         new("showReleaseGroup", "Release group", "Who put the release out", DefaultOn: false, Line: true),
         new("showCodec", "Codec", "Video and audio, as the file name reports them", DefaultOn: false, Line: true),
-        new("showAdded", "Added", "The day it joined your library", DefaultOn: false, Line: true)
+        new("showAdded", "Added", "The day it joined your library", DefaultOn: false, Line: true),
+        .. RatingPosterOptions
     ];
 
     public static CatalogueControls For(MediaKind kind)
