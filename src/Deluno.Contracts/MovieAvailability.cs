@@ -11,6 +11,17 @@ public static class MovieAvailability
     public const string InCinemas = "inCinemas";
     public const string Released = "released";
 
+    /// <summary>
+    /// The three, in the order they happen.
+    ///
+    /// <para>Named so a caller can tell "this is not one of the three" from
+    /// "this is Released". <see cref="Normalize"/> deliberately falls back to
+    /// Released, which is right when reading a stored value and wrong when
+    /// validating one somebody typed — a typo would silently set a whole
+    /// selection to Released and nothing would say so.</para>
+    /// </summary>
+    public static readonly IReadOnlyList<string> All = [Announced, InCinemas, Released];
+
     public static string Normalize(string? value) => value?.Trim().ToLowerInvariant() switch
     {
         "announced" => Announced,

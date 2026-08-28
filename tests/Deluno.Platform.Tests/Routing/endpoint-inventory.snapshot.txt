@@ -203,10 +203,12 @@ POST /api/migration/apply
 POST /api/migration/preview
 POST /api/movies/
 POST /api/movies/bulk
+POST /api/movies/bulk/minimum-availability
 POST /api/movies/bulk/quality-profile
 POST /api/movies/bulk/reassign-library
 POST /api/movies/bulk/rename-preview
 POST /api/movies/bulk/search
+POST /api/movies/bulk/subtitle-rescan
 POST /api/movies/bulk/tags
 POST /api/movies/import-recovery
 POST /api/movies/import-recovery/{id}/dismiss
@@ -236,6 +238,7 @@ POST /api/series/bulk/quality-profile
 POST /api/series/bulk/reassign-library
 POST /api/series/bulk/rename-preview
 POST /api/series/bulk/search
+POST /api/series/bulk/subtitle-rescan
 POST /api/series/bulk/tags
 POST /api/series/import-recovery
 POST /api/series/import-recovery/{id}/dismiss

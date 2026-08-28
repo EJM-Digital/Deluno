@@ -120,6 +120,12 @@ public sealed record MediaSubtitleWantedItem(
 
 public interface IMediaSubtitleRepository
 {
+
+    /// <summary>
+    /// Forget that these files were probed, so the next subtitle pass reads
+    /// them again. Returns how many rows were cleared.
+    /// </summary>
+    Task<int> ClearScansAsync(MediaKind kind, IReadOnlyList<string> mediaIds, CancellationToken cancellationToken);
     /// <summary>
     /// The next files short of a wanted language.
     ///

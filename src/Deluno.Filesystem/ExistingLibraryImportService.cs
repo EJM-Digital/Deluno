@@ -47,6 +47,7 @@ public sealed class ExistingLibraryImportService(
     IMovieCatalogRepository movieCatalogRepository,
     ISeriesCatalogRepository seriesCatalogRepository,
     IMediaDecisionService mediaDecisionService,
+    IQualityModelService qualityModelService,
     TimeProvider timeProvider,
     ILogger<ExistingLibraryImportService> logger,
     LibraryImportSliceOptions? sliceOptions = null)
@@ -294,16 +295,21 @@ public sealed class ExistingLibraryImportService(
         List<ExistingLibraryImportIssue> issues,
         CancellationToken cancellationToken)
     {
+        // The size rules, read once per batch rather than per title: an import
+        // of twenty thousand files would otherwise ask the settings database
+        // twenty thousand times for an answer that does not change.
+        var model = await qualityModelService.GetAsync(cancellationToken);
+
         try
         {
             return isMovies
                 ? await movieCatalogRepository.ImportExistingBatchAsync(
                     library.Id,
-                    batch.Select(item => ToMovieRequest(library, item)).ToArray(),
+                    batch.Select(item => ToMovieRequest(library, item, model)).ToArray(),
                     cancellationToken)
                 : await seriesCatalogRepository.ImportExistingBatchAsync(
                     library.Id,
-                    batch.Select(item => ToSeriesRequest(library, item)).ToArray(),
+                    batch.Select(item => ToSeriesRequest(library, item, model)).ToArray(),
                     cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -314,8 +320,8 @@ public sealed class ExistingLibraryImportService(
                 try
                 {
                     imported += isMovies
-                        ? await movieCatalogRepository.ImportExistingBatchAsync(library.Id, [ToMovieRequest(library, item)], cancellationToken)
-                        : await seriesCatalogRepository.ImportExistingBatchAsync(library.Id, [ToSeriesRequest(library, item)], cancellationToken);
+                        ? await movieCatalogRepository.ImportExistingBatchAsync(library.Id, [ToMovieRequest(library, item, model)], cancellationToken)
+                        : await seriesCatalogRepository.ImportExistingBatchAsync(library.Id, [ToSeriesRequest(library, item, model)], cancellationToken);
                 }
                 catch (Exception itemException) when (itemException is not OperationCanceledException)
                 {
@@ -536,17 +542,21 @@ public sealed class ExistingLibraryImportService(
         CancellationToken cancellationToken)
     {
         var created = 0;
+        // The size rules, read once per batch rather than per title: an import
+        // of twenty thousand files would otherwise ask the settings database
+        // twenty thousand times for an answer that does not change.
+        var model = await qualityModelService.GetAsync(cancellationToken);
 
         try
         {
             created = isMovies
                 ? await movieCatalogRepository.ImportExistingBatchAsync(
                     library.Id,
-                    pending.Select(item => ToMovieRequest(library, item.Item)).ToArray(),
+                    pending.Select(item => ToMovieRequest(library, item.Item, model)).ToArray(),
                     cancellationToken)
                 : await seriesCatalogRepository.ImportExistingBatchAsync(
                     library.Id,
-                    pending.Select(item => ToSeriesRequest(library, item.Item)).ToArray(),
+                    pending.Select(item => ToSeriesRequest(library, item.Item, model)).ToArray(),
                     cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -575,6 +585,7 @@ public sealed class ExistingLibraryImportService(
         CancellationToken cancellationToken)
     {
         var created = 0;
+        var model = await qualityModelService.GetAsync(cancellationToken);
 
         foreach (var item in pending)
         {
@@ -583,11 +594,11 @@ public sealed class ExistingLibraryImportService(
                 created += isMovies
                     ? await movieCatalogRepository.ImportExistingBatchAsync(
                         library.Id,
-                        [ToMovieRequest(library, item.Item)],
+                        [ToMovieRequest(library, item.Item, model)],
                         cancellationToken)
                     : await seriesCatalogRepository.ImportExistingBatchAsync(
                         library.Id,
-                        [ToSeriesRequest(library, item.Item)],
+                        [ToSeriesRequest(library, item.Item, model)],
                         cancellationToken);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -625,9 +636,9 @@ public sealed class ExistingLibraryImportService(
         => (await librariesRepository.ListLibrariesAsync(cancellationToken))
             .FirstOrDefault(item => string.Equals(item.Id, libraryId, StringComparison.OrdinalIgnoreCase));
 
-    private ExistingMovieImportRequest ToMovieRequest(LibraryItem library, DetectedLibraryItem item)
+    private ExistingMovieImportRequest ToMovieRequest(LibraryItem library, DetectedLibraryItem item, QualityModelSnapshot model)
     {
-        var decision = Decide(library, item);
+        var decision = Decide(library, item, model);
 
         return new ExistingMovieImportRequest(
             Title: item.Title,
@@ -642,9 +653,9 @@ public sealed class ExistingLibraryImportService(
             FileSizeBytes: item.FileSizeBytes);
     }
 
-    private ExistingSeriesImportRequest ToSeriesRequest(LibraryItem library, DetectedLibraryItem item)
+    private ExistingSeriesImportRequest ToSeriesRequest(LibraryItem library, DetectedLibraryItem item, QualityModelSnapshot model)
     {
-        var decision = Decide(library, item);
+        var decision = Decide(library, item, model);
 
         return new ExistingSeriesImportRequest(
             Title: item.Title,
@@ -660,14 +671,53 @@ public sealed class ExistingLibraryImportService(
             Episodes: item.Episodes);
     }
 
-    private LibraryQualityDecision Decide(LibraryItem library, DetectedLibraryItem item)
+    /// <summary>
+    /// What an imported file is worth, judged on the file rather than its name.
+    ///
+    /// <para>An import never went near the release decision engine — that only
+    /// runs on things Deluno downloads — so a file already on disk was accepted
+    /// on the strength of the tier its filename claimed. The floor is passed in
+    /// so a copy too small for its own label comes in Upgradable and the normal
+    /// upgrade process replaces it, rather than sitting there marked Quality
+    /// met forever.</para>
+    /// </summary>
+    private LibraryQualityDecision Decide(LibraryItem library, DetectedLibraryItem item, QualityModelSnapshot model)
         => mediaDecisionService.DecideWantedState(new MediaWantedDecisionInput(
             MediaType: library.MediaType,
             HasFile: true,
             CurrentQuality: item.DetectedQuality,
             CutoffQuality: library.CutoffQuality,
             UpgradeUntilCutoff: library.UpgradeUntilCutoff,
-            UpgradeUnknownItems: library.UpgradeUnknownItems));
+            UpgradeUnknownItems: library.UpgradeUnknownItems,
+            FileSizeBytes: item.FileSizeBytes,
+            SizeFloorBytes: FloorFor(library.MediaType, item.DetectedQuality, model)));
+
+    /// <summary>
+    /// The size floor this tier sets, in bytes, or null where there is no rule.
+    /// </summary>
+    private static long? FloorFor(string mediaType, string? quality, QualityModelSnapshot model)
+    {
+        if (string.IsNullOrWhiteSpace(quality))
+        {
+            return null;
+        }
+
+        var tier = model.Tiers.FirstOrDefault(item =>
+            string.Equals(item.Name, quality, StringComparison.OrdinalIgnoreCase));
+
+        if (tier is null)
+        {
+            return null;
+        }
+
+        // A show's rule is per episode and a film's per film, which is the same
+        // conversion QualityTierBytes makes for the catalogue databases.
+        var (floor, _) = mediaType.Contains("TV", StringComparison.OrdinalIgnoreCase)
+            ? QualityTierBytes.ForEpisode(tier)
+            : QualityTierBytes.ForMovie(tier);
+
+        return floor > 0 ? floor : null;
+    }
 
     /// <summary>
     /// The entries the run walks, in a stable order.
