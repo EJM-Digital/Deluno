@@ -27,6 +27,25 @@ public interface IJobQueueRepository
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// When the next job of these types becomes runnable, or <c>null</c> when
+    /// there is none.
+    ///
+    /// <para><b>This is what lets a lane sleep instead of poll.</b> A lane that
+    /// leases nothing has two honest options: come back on a fixed tick and ask
+    /// again, or find out when there is actually something to come back for. The
+    /// first is what every lane used to do — seven lanes, twice a minute, mostly
+    /// to be told nothing had changed, which is AUDIT-001 finding 4 in
+    /// miniature. The second costs one indexed lookup and then nothing at all
+    /// until the moment it matters.</para>
+    ///
+    /// <para>Served by <c>ix_job_queue_type_status_scheduled</c>, which already
+    /// leads on exactly these columns.</para>
+    /// </summary>
+    Task<DateTimeOffset?> NextDueUtcAsync(
+        IReadOnlyList<string> jobTypes,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Leases up to <paramref name="maxJobs"/> ready jobs in one transaction, so
     /// throughput is bounded by the machine rather than by a caller's tick rate.
     /// </summary>
