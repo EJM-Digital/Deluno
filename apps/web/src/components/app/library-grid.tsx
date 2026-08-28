@@ -372,7 +372,7 @@ function PosterCard({
         as a fault. Compared side by side with Radarr this was the whole
         difference.
       */}
-      <div className="mt-2 min-w-0">
+      <div className="mt-2 min-w-0 text-center">
         {displayOptions.showTitle ? (
           // Exactly two lines of space, whether the title needs one or two.
           //
@@ -390,7 +390,7 @@ function PosterCard({
           // One line, and it never wraps. `flex-wrap` here meant a long enough
           // metadata row silently became two lines on one card and one on the
           // next — the same misalignment, from the other direction.
-          <div className="flex h-[1lh] min-w-0 items-center gap-x-1.5 overflow-hidden whitespace-nowrap leading-tight text-[length:var(--library-meta-size)] text-muted-foreground">
+          <div className="flex h-[1lh] min-w-0 items-center justify-center gap-x-1.5 overflow-hidden whitespace-nowrap leading-tight text-[length:var(--library-meta-size)] text-muted-foreground">
             <span className="tabular shrink-0">{item.year}</span>
             <span className="shrink-0 text-foreground/20">·</span>
             <span
@@ -461,20 +461,32 @@ function nextAiringLabel(nextAirDateUtc: string): string | null {
  * misalignment this was fixed for in the first place.</p>
  */
 function PosterExtras({ item, displayOptions }: { item: MediaItem; displayOptions: DisplayOptions }) {
-  const rows = POSTER_ROWS.filter((row) => displayOptions[row.option]);
+  // Only what this title actually has.
+  //
+  // These were reserved — every enabled switch drew a row whether or not there
+  // was a value — so that every card had identical rows and nothing could drift.
+  // On the rig that meant five empty lines per card, and James: "there is still
+  // gaps". Radarr does not reserve either; a card with less to say is simply
+  // shorter, and because the grid aligns to the top and the title block is a
+  // fixed two lines, everything that *is* drawn still starts at the same place.
+  const rows = POSTER_ROWS
+    .filter((row) => displayOptions[row.option])
+    .map((row) => ({ ...row, value: row.read(item) }))
+    .filter((row) => row.value !== null);
+
   if (rows.length === 0) return null;
 
   return (
     <>
       {rows.map((row) => {
-        const value = row.read(item);
+        const { value } = row;
         const Icon = row.icon;
 
         return (
           <div
             key={row.option}
-            className="flex h-[1lh] min-w-0 items-center gap-1 leading-tight text-[length:var(--library-meta-size)] text-muted-foreground"
-            title={value ? `${row.label}: ${value}` : undefined}
+            className="flex h-[1lh] min-w-0 items-center justify-center gap-1 leading-tight text-[length:var(--library-meta-size)] text-muted-foreground"
+            title={`${row.label}: ${value}`}
           >
             {/* An icon rather than a word. "Cinemas Nov 10, 2016" spends half a
                 narrow card saying which date it is; Radarr uses a glyph and
@@ -485,8 +497,8 @@ function PosterExtras({ item, displayOptions }: { item: MediaItem; displayOption
                 own points at a fact that is not there, which reads worse than
                 the blank line it was meant to explain. The row keeps its height
                 either way, which is what holds the cards level. */}
-            {value ? <Icon className="h-3 w-3 shrink-0 opacity-70" aria-hidden="true" /> : null}
-            <span className="truncate">{value ?? " "}</span>
+            <Icon className="h-3 w-3 shrink-0 opacity-70" aria-hidden="true" />
+            <span className="truncate">{value}</span>
           </div>
         );
       })}
