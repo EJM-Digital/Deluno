@@ -366,6 +366,103 @@ missing*. Same word, different subject.
 **Weir loses Subber in the same run**, once Deluno's side is proven on the
 rig.
 
+## Timing sync, as built
+
+*"The single biggest reason anyone touches subtitles by hand."* Built, and it
+answered three questions this document had left open.
+
+### What decides a subtitle needs it
+
+**The cutoff, and nothing else.** Bazarr syncs subtitles scoring under a
+threshold and gives you the threshold to tune — 96 for series, 86 for films.
+Deluno already drew that line: a subtitle at `MadeForThisFile` was cut against
+this exact encode and is in time by construction, and everything below it was
+not. So the rung that keeps a subtitle on the upgrade list is the same rung that
+sends it to be timed. One test, in one place, and standing check 2 is answered
+without a setting.
+
+### What it listens to
+
+FFmpeg, and Deluno now **ships FFmpeg** — an LGPL shared build, pinned, fetched
+by `scripts/fetch-ffmpeg.ps1` and copied into the publish. 128 MB.
+
+That was not a free decision and it is worth recording why it was made anyway.
+This document said *"Deluno already ships ffprobe handling, so the same shape
+applies"*. It ships the handling; it never shipped the binary. **The rig had
+neither ffprobe nor ffmpeg on it, for the whole of the last session** — so every
+import validated nothing, and the embedded-subtitle half of the scan returned
+`unavailable` for every file in the library, which means #321's new *treat
+embedded as held* toggle had no input reaching it. None of that was visible. A
+fourth feature that quietly does nothing was not worth adding.
+
+The detection is FFmpeg's own `silencedetect`, behind a 200–3,000 Hz band-pass,
+rather than a voice-activity detector written here. `ffsubsync` decodes the whole
+track to PCM and runs WebRTC's VAD over it; doing that would have meant either
+shipping a few hundred lines of signal processing tested against nothing, or
+pulling hundreds of megabytes through a pipe. FFmpeg already knows where the
+quiet is, and reports it as two numbers per stretch on stderr — a few kilobytes
+for a feature film, and the audio never leaves its process. The band-pass is the
+one place this is meaningfully better than `ffsubsync`'s default, which runs its
+detector over the full mix and lets an explosion vote.
+
+### How the offset is found
+
+Both the audio and the subtitle become one bit per hundredth of a second: on
+where there is speech. The question "how far out is this" is then "how far do I
+slide one row along the other". Packed into 64-bit words, one offset costs an
+AND and a popcount per word, so the whole ±60 s search over a ten-minute file
+runs in about 50 ms — no FFT, no floating point, no library.
+
+### Deciding whether to move it — measured twice, wrong twice
+
+Most subtitles are already in time, so the expensive mistake is not failing to
+fix one, it is **moving one that was fine**. A correlation always has a best
+shift; the work is telling a real one from a lucky one, and two guards were built
+and discarded before one survived.
+
+| Guard | What it asked | Why it failed |
+|---|---|---|
+| Coverage | How much of the subtitle lands on speech | Two films with talking in them are both talking most of the time. An unrelated pair overlapped **41%**, past the third it was about to require. |
+| Ratio to the mean | How high the peak is above the average shift | Works, with no room: **1.64** for a genuine match against **1.13** for an unrelated one, either side of a threshold of 1.5. |
+| Peak in standard deviations | How far the peak stands above the noise | **4.7–4.8 σ** against **1.3–2.0 σ**, on the same real audio. Threshold 3.0. |
+
+The third is the only scale-free one: a ratio to the average says nothing about
+how much the overlap moves from shift to shift, which is exactly what makes a
+peak a peak.
+
+**Measured on the lab episode, real audio through the real FFmpeg.** A matching
+subtitle displaced by anything from 300 ms to 30 s, in both directions, came back
+**exact** — to the millisecond — and never dropped below 4.7 σ. The lab file's
+own subtitle is Severance text over Big Buck Bunny audio, which makes it a
+genuine unrelated pair: it reached 1.3 σ and was **left untouched**.
+
+### Its own lane
+
+`subtitle.sync`, sized like `subtitles.scan` beside it. It is emphatically not on
+`subtitles.search`: that lane exists to spend a provider's daily allowance, and
+parking several seconds of local FFmpeg on it is the same shape that let a
+backlog of `intake.sync` starve subtitles outright.
+
+It was drafted at half that width, on the reasoning that decoding audio is
+heavier than probing a container. `Lane_width_scales_with_the_machine` failed it,
+and the test was right — that reasoning is how every lane came to be a small
+constant, which the owner had already rejected.
+
+### Not built, and known
+
+- **Framerate mismatch.** A PAL-to-NTSC subtitle drifts rather than offsets, and
+  a single shift cannot fix it. The correlation would need running against a few
+  candidate rate ratios; the structure is there for it.
+- **Subtitles already on disk.** Only what Deluno fetches below the cutoff is
+  queued for timing. A library full of someone's old Bazarr subtitles gets
+  nothing until each is re-fetched — which needs the scan to record a rung, or a
+  manual action, and the manual action belongs with manual search.
+- **The original audio language.** The sync prefers the track matching the
+  title's own language when told it, and it is never told: the wanted row does
+  not carry it and neither catalogue stores it. It falls back to the first audio
+  track, which is where every muxer puts the original. What that cannot get right
+  is a foreign-language film muxed dub-first.
+
 ## Architecture — the rules this feature is held to
 
 The owner: *"make sure architecturally it's solid, we don't want any overlaps or
@@ -470,7 +567,7 @@ Bazarr fetches on import.
 | Shared, and should be | Not shared, and must not be |
 |---|---|
 | The **planner** — one place decides what runs | The **interval**. `SearchIntervalHours` is how often to go back to an indexer, a number chosen for a service that bans you for asking twice. A subtitle pass costs one query when there is nothing to do. |
-| The **job lanes and workers** — subtitles ride `import` and `intake`, which already exist | The **window**. A search window keeps you off an indexer at peak; subtitle providers are different servers, with their own rate-limit backoff on the Connection. |
+| The **planner's bound** and the worker itself. *Not* the lane: this row used to read "subtitles ride `import` and `intake`, which already exist", and that was wrong in the way this whole rule is about. A backlog of `intake.sync` starved `library.subtitles.search` outright, because the lease is `ORDER BY scheduled_utc` across a lane. Since `b1109aa` there is one lane per kind of work — three of them subtitles' own. | The **window**. A search window keeps you off an indexer at peak; subtitle providers are different servers, with their own rate-limit backoff on the Connection. |
 | The **`MaxItemsPerRun` bound** — it means "this many outbound requests per pass", which is the same sentence for both | The **retry delay**. `RetryDelayHours` is an indexer manner. A subtitle absent from every provider is a different fact from a release absent from every indexer. |
 
 Weir's Subber shipped its own lane *and* its own scheduler *and* its own

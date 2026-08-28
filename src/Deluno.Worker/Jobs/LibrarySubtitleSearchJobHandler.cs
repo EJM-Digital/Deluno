@@ -202,6 +202,45 @@ public sealed class LibrarySubtitleSearchJobHandler(
                         SubtitleMatchRanking.Describe(outcome.Match),
                         FirstRetryDelay,
                         cancellationToken);
+
+                    // And this is where the timing gets fixed. "Not provably in
+                    // time" is precisely the set worth listening to the audio
+                    // for, so the rung that keeps a subtitle on the upgrade list
+                    // is the same rung that sends it to be timed — one test, not
+                    // two, and nothing to configure.
+                    //
+                    // Queued rather than done here: this lane is holding a
+                    // subtitle provider's attention and timing is several
+                    // seconds of local FFmpeg. See SubtitleSyncJobHandler.
+                    await jobScheduler.EnqueueAsync(
+                        new EnqueueJobRequest(
+                            JobType: "subtitle.sync",
+                            Source: library.MediaType,
+                            PayloadJson: JsonSerializer.Serialize(
+                                new SubtitleSyncJobHandler.SubtitleSyncPayload(
+                                    item.FilePath,
+                                    outcome.WrittenPath,
+                                    // Null, and knowingly. The title's own
+                                    // language would let the sync prefer the
+                                    // original audio over a dub, but the wanted
+                                    // row does not carry it and neither
+                                    // catalogue stores it — adding it is a
+                                    // migration on two tables for a case the
+                                    // fallback already handles: with no
+                                    // preference the sync takes the first audio
+                                    // track, which is where every muxer puts
+                                    // the original. What it cannot get right is
+                                    // a foreign-language film muxed dub-first.
+                                    null),
+                                JobPayloads.Options),
+                            RelatedEntityType: "library",
+                            RelatedEntityId: library.Id,
+                            // One timing job per subtitle file. A language
+                            // re-fetched before the first one runs replaces it
+                            // rather than queueing a second pass over the same
+                            // audio.
+                            DedupeKey: $"subtitle.sync:{outcome.WrittenPath}"),
+                        cancellationToken);
                 }
 
                 found++;

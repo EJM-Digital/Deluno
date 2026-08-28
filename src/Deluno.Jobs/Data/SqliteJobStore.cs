@@ -3464,19 +3464,9 @@ public sealed class SqliteJobStore(
             return "Queued a library check.";
         }
 
-        return jobType switch
-        {
-            "library.subtitles.scan" => "Added a subtitle check to the queue.",
-            "library.subtitles.search" => "Added a subtitle search to the queue.",
-            "movies.catalog.refresh" => "Added a movie check to the queue.",
-            "series.catalog.refresh" => "Added a TV show check to the queue.",
-            "filesystem.import.execute" => "Added a file import to the queue.",
-            "movies.metadata.refresh" => "Added a movie metadata refresh to the queue.",
-            "series.metadata.refresh" => "Added a TV metadata refresh to the queue.",
-            "movies.quality.recalculate" => "Added a movie quality refresh to the queue.",
-            "series.quality.recalculate" => "Added a TV quality refresh to the queue.",
-            _ => $"Added a background task from {FormatSourceName(source)}."
-        };
+        return JobTypeWords.TryGetValue(jobType, out var words)
+            ? $"Added {words.Queued} to the queue."
+            : $"Added a background task from {FormatSourceName(source)}.";
     }
 
     private static string FormatStartedMessage(string jobType, string? payloadJson)
@@ -3492,19 +3482,9 @@ public sealed class SqliteJobStore(
             return "Started checking a library.";
         }
 
-        return jobType switch
-        {
-            "library.subtitles.scan" => "Started reading your files for subtitles.",
-            "library.subtitles.search" => "Started looking for the subtitles you asked for.",
-            "movies.catalog.refresh" => "Started checking your movie library.",
-            "series.catalog.refresh" => "Started checking your TV show library.",
-            "filesystem.import.execute" => "Started importing a completed download.",
-            "movies.metadata.refresh" => "Started refreshing movie metadata.",
-            "series.metadata.refresh" => "Started refreshing TV metadata.",
-            "movies.quality.recalculate" => "Started refreshing movie quality decisions.",
-            "series.quality.recalculate" => "Started refreshing TV quality decisions.",
-            _ => "Started a background task."
-        };
+        return JobTypeWords.TryGetValue(jobType, out var words)
+            ? words.Started
+            : "Started a background task.";
     }
 
     private static string FormatQueuedTitle(string jobType, string? payloadJson)
@@ -3518,18 +3498,67 @@ public sealed class SqliteJobStore(
             }
         }
 
-        return jobType switch
-        {
-            "filesystem.import.execute" => "File import",
-            "library.subtitles.scan" => "Subtitle check",
-            "library.subtitles.search" => "Subtitle search",
-            "movies.metadata.refresh" => "Movie metadata refresh",
-            "series.metadata.refresh" => "TV metadata refresh",
-            "movies.quality.recalculate" => "Movie quality refresh",
-            "series.quality.recalculate" => "TV quality refresh",
-            _ => jobType
-        };
+        return JobTypeWords.TryGetValue(jobType, out var words) ? words.Title : jobType;
     }
+
+    /// <summary>
+    /// What each kind of job is called, in the three places Activity needs to
+    /// say it.
+    ///
+    /// <para><b>One table, and it used to be three switches.</b> They were
+    /// separate lists in three methods that could not check each other, which is
+    /// the shape behind every defect worth finding in this codebase — and it had
+    /// already gone wrong here, quietly. <c>episode.search</c>,
+    /// <c>intake.sync</c> and <c>library.import.existing</c> were in none of
+    /// them, so a person watching Activity was shown the raw string
+    /// <c>library.import.existing</c> where it meant to say "Library scan". A
+    /// fourth omission was about to be made the same way when
+    /// <c>subtitle.sync</c> was added.</para>
+    ///
+    /// <para>Adding a job type is now one row. Forgetting to name one is still
+    /// possible, but it is one omission rather than three, and
+    /// <c>Every_job_type_is_named</c> fails on it.</para>
+    /// </summary>
+    /// <param name="Queued">
+    /// Reads after "Added " and before " to the queue", so it is a noun phrase:
+    /// <i>a subtitle search</i>.
+    /// </param>
+    /// <param name="Started">A whole sentence, because it stands alone.</param>
+    /// <param name="Title">Two or three words for a queue row.</param>
+    public sealed record JobWords(string Queued, string Started, string Title);
+
+    public static readonly IReadOnlyDictionary<string, JobWords> JobTypeWords =
+        new Dictionary<string, JobWords>(StringComparer.Ordinal)
+        {
+            ["library.subtitles.scan"] = new(
+                "a subtitle check", "Started reading your files for subtitles.", "Subtitle check"),
+            ["library.subtitles.search"] = new(
+                "a subtitle search", "Started looking for the subtitles you asked for.", "Subtitle search"),
+            ["subtitle.sync"] = new(
+                "a subtitle timing check",
+                "Started timing a subtitle against the video's audio.",
+                "Subtitle timing"),
+            ["movies.catalog.refresh"] = new(
+                "a movie check", "Started checking your movie library.", "Movie check"),
+            ["series.catalog.refresh"] = new(
+                "a TV show check", "Started checking your TV show library.", "TV show check"),
+            ["filesystem.import.execute"] = new(
+                "a file import", "Started importing a completed download.", "File import"),
+            ["library.import.existing"] = new(
+                "a library scan", "Started reading a folder you already had.", "Library scan"),
+            ["intake.sync"] = new(
+                "a list sync", "Started reading one of your lists.", "List sync"),
+            ["episode.search"] = new(
+                "an episode search", "Started looking for an episode.", "Episode search"),
+            ["movies.metadata.refresh"] = new(
+                "a movie metadata refresh", "Started refreshing movie metadata.", "Movie metadata refresh"),
+            ["series.metadata.refresh"] = new(
+                "a TV metadata refresh", "Started refreshing TV metadata.", "TV metadata refresh"),
+            ["movies.quality.recalculate"] = new(
+                "a movie quality refresh", "Started refreshing movie quality decisions.", "Movie quality refresh"),
+            ["series.quality.recalculate"] = new(
+                "a TV quality refresh", "Started refreshing TV quality decisions.", "TV quality refresh")
+        };
 
     private static string? NormalizeJobKey(string? value)
     {
