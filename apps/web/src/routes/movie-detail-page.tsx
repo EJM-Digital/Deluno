@@ -13,7 +13,8 @@
 import type { Tone } from "../lib/status-tones";
 import { useState } from "react";
 import { Link, useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
-import { ArrowLeft, LoaderCircle, RefreshCw, Search, Trash2 } from "lucide-react";
+import { ArrowLeft, LoaderCircle, RefreshCw, Search, Trash2, Eye, EyeOff
+} from "lucide-react";
 import {
   fetchJson, fetchPageItems,
   type ActivityEventItem,
@@ -439,6 +440,33 @@ export function MovieDetailPage() {
                 <ArrowLeft className="h-4 w-4" />
                 All movies
               </Link>
+            </Button>
+            {/*
+              The only place a single title's monitoring can be changed.
+
+              James: "There isnt an unmonitor button or a way to unmonitor
+              titles without selecting it for bulk." Right — the page could
+              *resume* monitoring, from a prompt that appears only once it is
+              already paused, and offered no way to pause it. So turning one
+              film off meant going back to the shelf, selecting it, and using a
+              bulk action on a selection of one.
+
+              It sits beside the search actions because it belongs to the same
+              question they answer: whether Deluno is working on this title.
+            */}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void handleMonitoring(!movie.monitored)}
+              disabled={busyAction !== null}
+              title={movie.monitored
+                ? "Stop searching for this film, and stop counting it as missing."
+                : "Resume searching for this film on the library's schedule."}
+            >
+              {busyAction === "monitor"
+                ? <LoaderCircle className="h-4 w-4 animate-spin" />
+                : movie.monitored ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              {movie.monitored ? "Stop monitoring" : "Monitor"}
             </Button>
             <Button
               type="button"

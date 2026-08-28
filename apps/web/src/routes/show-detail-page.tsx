@@ -13,7 +13,8 @@
 import type { Tone } from "../lib/status-tones";
 import { Fragment, useMemo, useState } from "react";
 import { Link, useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
-import { ArrowLeft, LoaderCircle, RefreshCw, Search, Trash2 } from "lucide-react";
+import { ArrowLeft, LoaderCircle, RefreshCw, Search, Trash2, Eye, EyeOff
+} from "lucide-react";
 import {
   fetchJson, fetchPageItems,
   type ActivityEventItem,
@@ -549,6 +550,33 @@ export function ShowDetailPage() {
                 <ArrowLeft className="h-4 w-4" />
                 All TV
               </Link>
+            </Button>
+            {/*
+              The only place a show's monitoring can be changed on its own page.
+
+              James: "There isnt an unmonitor button or a way to unmonitor
+              titles without selecting it for bulk." The page could resume it,
+              from a prompt that only appears once it is already paused, and
+              offered no way to pause it — so turning one show off meant going
+              back to the shelf and using a bulk action on a selection of one.
+
+              Episode-level monitoring is a separate control further down, and
+              stays that way: a show you stop watching is not the same as an
+              episode you never want.
+            */}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void handleSeriesMonitoring(!series.monitored)}
+              disabled={busyAction !== null}
+              title={series.monitored
+                ? "Stop searching for this show, and stop counting its gaps as missing."
+                : "Resume searching for this show on the library schedule."}
+            >
+              {busyAction === "series-monitor"
+                ? <LoaderCircle className="h-4 w-4 animate-spin" />
+                : series.monitored ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              {series.monitored ? "Stop monitoring" : "Monitor"}
             </Button>
             <Button
               type="button"
