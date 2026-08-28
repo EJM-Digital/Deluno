@@ -18,7 +18,18 @@ public sealed record MediaSubtitleRow(
     string? FilePath,
     int? StreamIndex,
     string? Codec,
-    string? Provider);
+    string? Provider,
+    /// <summary>
+    /// Which rung of the match ladder this subtitle sits on — 0 any release,
+    /// 1 same source, 2 made for this file. See <c>SubtitleMatch</c>.
+    ///
+    /// <para>Zero is the honest default for everything Deluno did not fetch
+    /// itself. A file found beside the video or a track read out of the
+    /// container is a subtitle nobody checked the release of, and saying
+    /// otherwise would invent the fact this column exists to stop inventing.
+    /// </para>
+    /// </summary>
+    int MatchRung = 0);
 
 /// <summary>
 /// When a file was last read for subtitles, and what it looked like at the
@@ -51,14 +62,22 @@ public sealed record MediaSubtitleScanCandidate(
 public sealed record MediaSubtitleHeld(int Languages, int Files);
 
 /// <summary>
-/// One file that is short of a language somebody asked for, with the words a
-/// provider is searched with.
+/// One file with subtitle work outstanding, with the words a provider is
+/// searched with.
 ///
-/// <para><see cref="MissingLanguages"/> is the gap, not the wish: the languages
-/// the library asked for that this file does not already hold. Working it out
-/// here rather than in the search means a provider is never asked for something
-/// already on disk, which is the difference between a nightly cycle that costs
-/// one request per real gap and one that costs a request per title forever.</para>
+/// <para><see cref="LanguagesToFetch"/> is the gap, not the wish: the languages
+/// the library asked for that this file does not yet have <i>well enough</i>.
+/// Working it out here rather than in the search means a provider is never asked
+/// for something already settled, which is the difference between a cycle that
+/// costs one request per real gap and one that costs a request per title for
+/// ever.</para>
+///
+/// <para><b>It was called <c>MissingLanguages</c>, and that stopped being
+/// true.</b> Since the cutoff arrived a language can be present and still
+/// outstanding — a subtitle on disk that is not known to match your release is
+/// watchable tonight and worth replacing tomorrow. Leaving the old name would
+/// have been a small version of the thing the cutoff exists to prevent: the code
+/// saying "missing" about a file that has one.</para>
 /// </summary>
 public sealed record MediaSubtitleWantedItem(
     string MediaId,
@@ -69,7 +88,7 @@ public sealed record MediaSubtitleWantedItem(
     int? EpisodeNumber,
     string? EpisodeTitle,
     string? ReleaseName,
-    IReadOnlyList<string> MissingLanguages);
+    IReadOnlyList<string> LanguagesToFetch);
 
 public interface IMediaSubtitleRepository
 {

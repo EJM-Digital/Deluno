@@ -99,7 +99,7 @@ public sealed class MigrationRunnerTests
         }
 
         await using var moviesConnection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Movies);
-        Assert.Equal(17, await ReadScalarAsync<int>(moviesConnection, "SELECT COUNT(*) FROM schema_migrations;"));
+        Assert.Equal(18, await ReadScalarAsync<int>(moviesConnection, "SELECT COUNT(*) FROM schema_migrations;"));
         Assert.Equal("initial_schema", await ReadScalarAsync<string>(moviesConnection, "SELECT name FROM schema_migrations WHERE version = 1;"));
         Assert.Equal("movie_idempotency_indexes", await ReadScalarAsync<string>(moviesConnection, "SELECT name FROM schema_migrations WHERE version = 2;"));
         Assert.Equal("movie_tracked_files", await ReadScalarAsync<string>(moviesConnection, "SELECT name FROM schema_migrations WHERE version = 3;"));
@@ -117,9 +117,10 @@ public sealed class MigrationRunnerTests
         Assert.Equal("movie_subtitle_state", await ReadScalarAsync<string>(moviesConnection, "SELECT name FROM schema_migrations WHERE version = 15;"));
         Assert.Equal("movie_sortable_file_facts", await ReadScalarAsync<string>(moviesConnection, "SELECT name FROM schema_migrations WHERE version = 16;"));
         Assert.Equal("movie_subtitle_attempts", await ReadScalarAsync<string>(moviesConnection, "SELECT name FROM schema_migrations WHERE version = 17;"));
+        Assert.Equal("movie_subtitle_match", await ReadScalarAsync<string>(moviesConnection, "SELECT name FROM schema_migrations WHERE version = 18;"));
 
         await using var seriesConnection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Series);
-        Assert.Equal(18, await ReadScalarAsync<int>(seriesConnection, "SELECT COUNT(*) FROM schema_migrations;"));
+        Assert.Equal(19, await ReadScalarAsync<int>(seriesConnection, "SELECT COUNT(*) FROM schema_migrations;"));
         Assert.Equal("initial_schema", await ReadScalarAsync<string>(seriesConnection, "SELECT name FROM schema_migrations WHERE version = 1;"));
         Assert.Equal("series_idempotency_indexes", await ReadScalarAsync<string>(seriesConnection, "SELECT name FROM schema_migrations WHERE version = 2;"));
         Assert.Equal("series_tracked_files", await ReadScalarAsync<string>(seriesConnection, "SELECT name FROM schema_migrations WHERE version = 3;"));
@@ -138,6 +139,7 @@ public sealed class MigrationRunnerTests
         Assert.Equal("series_subtitle_state", await ReadScalarAsync<string>(seriesConnection, "SELECT name FROM schema_migrations WHERE version = 16;"));
         Assert.Equal("series_sortable_file_facts", await ReadScalarAsync<string>(seriesConnection, "SELECT name FROM schema_migrations WHERE version = 17;"));
         Assert.Equal("series_subtitle_attempts", await ReadScalarAsync<string>(seriesConnection, "SELECT name FROM schema_migrations WHERE version = 18;"));
+        Assert.Equal("series_subtitle_match", await ReadScalarAsync<string>(seriesConnection, "SELECT name FROM schema_migrations WHERE version = 19;"));
 
         await using var platformConnection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Platform);
         Assert.Equal(29, await ReadScalarAsync<int>(platformConnection, "SELECT COUNT(*) FROM schema_migrations;"));

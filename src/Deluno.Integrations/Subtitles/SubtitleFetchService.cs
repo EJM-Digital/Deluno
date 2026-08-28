@@ -12,7 +12,13 @@ public sealed record SubtitleFetchOutcome(
     string? ProviderKey,
     string? WrittenPath,
     bool HearingImpaired,
-    string Reason);
+    string Reason,
+    /// <summary>
+    /// How well the subtitle that was written fits the file, so the caller can
+    /// record it and the shelf can stop pretending. Meaningless when
+    /// <c>Found</c> is false.
+    /// </summary>
+    SubtitleMatch Match = SubtitleMatch.AnyRelease);
 
 /// <summary>
 /// Finds one language for one file, and writes it beside the video.
@@ -92,7 +98,7 @@ public sealed class SubtitleFetchService(
                     Credentials(connection),
                     cancellationToken);
 
-                var pick = Choose(candidates, language, excludeHearingImpaired);
+                var pick = Choose(candidates, language, excludeHearingImpaired, videoPath);
                 if (pick is null)
                 {
                     continue;
@@ -116,13 +122,19 @@ public sealed class SubtitleFetchService(
                 await RecordAsync(connection, "healthy",
                     $"Fetched a {language} subtitle for {request.Title}.", true, null, cancellationToken);
 
+                var match = SubtitleMatchRanking.Rank(pick.ReleaseName, videoPath);
+
                 return new SubtitleFetchOutcome(
                     Language: language,
                     Found: true,
                     ProviderKey: provider.Key,
                     WrittenPath: written,
                     HearingImpaired: pick.HearingImpaired,
-                    Reason: $"Found by {provider.DisplayName}.");
+                    // The rung is said out loud, because "found it" and "found one
+                    // that is in time" are different sentences and only one of
+                    // them is worth trusting.
+                    Reason: $"Found by {provider.DisplayName}. {SubtitleMatchRanking.Describe(match)}",
+                    Match: match);
             }
             catch (SubtitleProviderRateLimitedException rateLimited)
             {
@@ -148,10 +160,21 @@ public sealed class SubtitleFetchService(
     /// <summary>
     /// The best of what came back.
     ///
-    /// <para>Right language first, then the copy most people took. Download count
-    /// is a crude proxy for "this one is in time", and it is the only signal all
-    /// seven providers agree on — release matching is the better rule and it
-    /// arrives with the quality gate DESIGN-002 describes.</para>
+    /// <para><b>How well it matches the file comes first now.</b> This used to
+    /// sort by download count, with a note admitting it was "a crude proxy for
+    /// this one is in time" and that release matching was the better rule. It is,
+    /// and reading Bazarr's scoring settled what release matching means — see
+    /// <see cref="SubtitleMatchRanking"/>. Download count survives underneath as
+    /// the tiebreaker it always should have been, which is also where Bazarr puts
+    /// its own one-point weights.</para>
+    ///
+    /// <para>A plain track before a hearing-impaired one where both are on the
+    /// same rung. Hearing impaired <i>is</i> coverage — it is watchable, Deluno
+    /// counts it, and Bazarr scores it at a single point — but it is not what
+    /// most people would pick if asked, and it is the one choice here somebody
+    /// would notice being made for them. It never outranks a better fit, though:
+    /// a hearing-impaired subtitle cut for your exact release beats a plain one
+    /// that is forty seconds out.</para>
     ///
     /// <para>Forced is never chosen: a forced track is four lines of Elvish, and
     /// the rest of Deluno already refuses to count it as coverage.</para>
@@ -159,16 +182,14 @@ public sealed class SubtitleFetchService(
     private static SubtitleCandidate? Choose(
         IReadOnlyList<SubtitleCandidate> candidates,
         string language,
-        bool excludeHearingImpaired)
+        bool excludeHearingImpaired,
+        string? videoPath)
         => candidates
             .Where(candidate => !candidate.Forced)
             .Where(candidate => !excludeHearingImpaired || !candidate.HearingImpaired)
             .Where(candidate => candidate.Language.StartsWith(language[..Math.Min(2, language.Length)], StringComparison.OrdinalIgnoreCase))
-            // A plain track before a hearing-impaired one where both exist.
-            // Hearing impaired *is* coverage — it is watchable, and Deluno counts
-            // it — but it is not what most people would pick if asked, and it is
-            // the one choice here somebody would notice being made for them.
-            .OrderBy(candidate => candidate.HearingImpaired ? 1 : 0)
+            .OrderByDescending(candidate => SubtitleMatchRanking.Rank(candidate.ReleaseName, videoPath))
+            .ThenBy(candidate => candidate.HearingImpaired ? 1 : 0)
             .ThenByDescending(candidate => candidate.DownloadCount ?? 0)
             .FirstOrDefault();
 
