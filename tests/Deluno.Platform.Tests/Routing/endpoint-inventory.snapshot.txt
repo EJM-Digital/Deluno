@@ -24,6 +24,7 @@ DELETE /api/policy-sets/{id}
 DELETE /api/quality-profiles/{id}
 DELETE /api/series/import-recovery/{id}
 DELETE /api/setup/draft
+DELETE /api/subtitle-providers/{key}
 DELETE /api/tags/{id}
 DELETE /api/v1/download-dispatches/{dispatchId}
 GET /api/
@@ -131,6 +132,7 @@ GET /api/settings/
 GET /api/setup/draft
 GET /api/setup/progress
 GET /api/subtitle-languages
+GET /api/subtitle-providers/
 GET /api/tags/
 GET /api/updates/preferences
 GET /api/updates/status
@@ -249,6 +251,7 @@ POST /api/series/{id}/metadata/refresh
 POST /api/series/{id}/search
 POST /api/series/{id}/seasons/{seasonNumber:int}/search
 POST /api/setup/completed
+POST /api/subtitle-providers/{key}/test
 POST /api/tags/
 POST /api/updates/apply-on-restart
 POST /api/updates/check
@@ -290,5 +293,6 @@ PUT /api/settings/
 PUT /api/settings/automation
 PUT /api/setup/draft
 PUT /api/setup/progress
+PUT /api/subtitle-providers/{key}
 PUT /api/tags/{id}
 PUT /api/updates/preferences

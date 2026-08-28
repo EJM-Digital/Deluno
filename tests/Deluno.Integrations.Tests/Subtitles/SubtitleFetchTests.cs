@@ -1,0 +1,236 @@
+using System.IO.Compression;
+using System.Text;
+using Deluno.Connections.Contracts;
+using Deluno.Connections.Data;
+using Deluno.Contracts;
+using Deluno.Integrations.Subtitles;
+using Microsoft.Extensions.Logging.Abstractions;
+
+namespace Deluno.Integrations.Tests.Subtitles;
+
+/// <summary>
+/// What Deluno does with what a provider hands back.
+///
+/// <para>The three that matter are all failures a green suite would otherwise
+/// miss: a provider serving an error page with a 200, a provider offering a
+/// forced track as if it were coverage, and a source that is rate limiting being
+/// treated as a source that is broken.</para>
+/// </summary>
+public sealed class SubtitleFetchTests
+{
+    private static readonly byte[] Srt = Encoding.UTF8.GetBytes(
+        "1\r\n00:00:01,000 --> 00:00:03,000\r\nThe subtitle.\r\n");
+
+    [Fact]
+    public async Task Writes_the_first_usable_subtitle_and_stops_asking()
+    {
+        var first = new FakeProvider("first", [Candidate("en")], Srt);
+        var second = new FakeProvider("second", [Candidate("en")], Srt);
+        var writer = new FakeWriter();
+        var service = Build([first, second], writer);
+
+        var outcome = await service.FetchAsync(Request(), "en", false, @"D:\Media\Dune\Dune.mkv", false, CancellationToken.None);
+
+        Assert.True(outcome.Found);
+        Assert.Equal("first", outcome.ProviderKey);
+        // Seven providers asked for one subtitle would be a better subtitle and
+        // seven times the requests, and the sources that matter most are the
+        // ones with a daily allowance.
+        Assert.Equal(1, first.Searches);
+        Assert.Equal(0, second.Searches);
+    }
+
+    [Fact]
+    public async Task Refuses_an_error_page_a_provider_served_with_a_200()
+    {
+        // This is the failure that would otherwise be invisible: the bar goes
+        // green over a file called Dune.en.srt containing a sign-in page, and
+        // the player shows nothing.
+        var html = Encoding.UTF8.GetBytes("<!DOCTYPE html><html><body>Please sign in to download</body></html>");
+        var provider = new FakeProvider("first", [Candidate("en")], html);
+        var writer = new FakeWriter();
+        var service = Build([provider], writer);
+
+        var outcome = await service.FetchAsync(Request(), "en", false, @"D:\Media\Dune\Dune.mkv", false, CancellationToken.None);
+
+        Assert.False(outcome.Found);
+        Assert.Empty(writer.Written);
+    }
+
+    [Fact]
+    public async Task Unwraps_a_zip_because_half_of_them_send_one()
+    {
+        var provider = new FakeProvider("first", [Candidate("en")], Zip("Dune.srt", Srt));
+        var writer = new FakeWriter();
+        var service = Build([provider], writer);
+
+        var outcome = await service.FetchAsync(Request(), "en", false, @"D:\Media\Dune\Dune.mkv", false, CancellationToken.None);
+
+        Assert.True(outcome.Found);
+        Assert.Equal(Srt, Assert.Single(writer.Written).Payload);
+    }
+
+    [Fact]
+    public async Task Never_takes_a_forced_track_and_prefers_a_plain_one_over_hearing_impaired()
+    {
+        var provider = new FakeProvider("first",
+        [
+            // A file whose only English is forced has English for four lines of
+            // Elvish, and the rest of Deluno already refuses to count it.
+            Candidate("en") with { Forced = true, DownloadCount = 9999 },
+            Candidate("en") with { HearingImpaired = true, DownloadCount = 500 },
+            Candidate("en") with { DownloadCount = 10 }
+        ], Srt);
+
+        var writer = new FakeWriter();
+        var service = Build([provider], writer);
+
+        var outcome = await service.FetchAsync(Request(), "en", false, @"D:\Media\Dune\Dune.mkv", false, CancellationToken.None);
+
+        Assert.True(outcome.Found);
+        Assert.False(outcome.HearingImpaired);
+        Assert.Equal("Dune.en.srt", Path.GetFileName(Assert.Single(writer.Written).Path));
+    }
+
+    [Fact]
+    public async Task A_rate_limited_provider_is_working_and_is_left_alone()
+    {
+        var provider = new FakeProvider("first", [], Srt) { RateLimited = true };
+        var repository = new FakeRepository([Connection("first")]);
+        var service = Build([provider], new FakeWriter(), repository);
+
+        await service.FetchAsync(Request(), "en", false, @"D:\Media\Dune\Dune.mkv", false, CancellationToken.None);
+
+        var health = Assert.Single(repository.Health);
+        Assert.Equal("rate-limited", health.Status);
+        // Working, and asked to be left alone. Counting it as a failure would
+        // eventually disable a source that never broke.
+        Assert.True(health.Success);
+        Assert.NotNull(health.RateLimitedUntil);
+    }
+
+    [Fact]
+    public async Task A_tv_only_provider_is_not_asked_about_a_film()
+    {
+        // Gestdown returns nothing for a film and Yify nothing for an episode.
+        // Asking anyway and counting the empty answer as a failure would mark
+        // two working sources unhealthy on every cycle.
+        var tvOnly = new FakeProvider("first", [Candidate("en")], Srt) { Scope = SubtitleProviderScope.TvOnly };
+        var service = Build([tvOnly], new FakeWriter());
+
+        var outcome = await service.FetchAsync(Request(), "en", isEpisodeMedia: false, @"D:\Media\Dune\Dune.mkv", false, CancellationToken.None);
+
+        Assert.False(outcome.Found);
+        Assert.Equal(0, tvOnly.Searches);
+    }
+
+    [Fact]
+    public async Task Says_so_plainly_when_nothing_is_configured()
+    {
+        var service = Build([], new FakeWriter(), new FakeRepository([]));
+
+        var outcome = await service.FetchAsync(Request(), "en", false, @"D:\Media\Dune\Dune.mkv", false, CancellationToken.None);
+
+        Assert.False(outcome.Found);
+        Assert.Contains("No subtitle providers", outcome.Reason, StringComparison.Ordinal);
+    }
+
+    /* ------------------------------------------------------------ helpers */
+
+    private static SubtitleSearchRequest Request()
+        => new("Dune", 2021, null, null, null, null, null, ["en"], IsEpisode: false);
+
+    private static SubtitleCandidate Candidate(string language)
+        => new("first", "token", language, HearingImpaired: false, Forced: false);
+
+    private static byte[] Zip(string name, byte[] content)
+    {
+        using var buffer = new MemoryStream();
+        using (var archive = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            using var entry = archive.CreateEntry(name).Open();
+            entry.Write(content);
+        }
+
+        return buffer.ToArray();
+    }
+
+    private static SubtitleProviderConnection Connection(string key)
+        => new(key, key, key, null, null, null, 100, true, "untested", null, null, null, 0, null, null,
+            DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
+
+    private static SubtitleFetchService Build(
+        IReadOnlyList<FakeProvider> providers,
+        FakeWriter writer,
+        FakeRepository? repository = null)
+        => new(
+            new SubtitleProviderRegistry(providers),
+            repository ?? new FakeRepository([.. providers.Select(provider => Connection(provider.Key))]),
+            writer,
+            TimeProvider.System,
+            NullLogger<SubtitleFetchService>.Instance);
+
+    private sealed class FakeProvider(string key, IReadOnlyList<SubtitleCandidate> results, byte[] payload) : ISubtitleProvider
+    {
+        public string Key => key;
+        public string DisplayName => key;
+        public string Description => key;
+        public SubtitleProviderScope Scope { get; set; } = SubtitleProviderScope.Both;
+        public SubtitleCredentialFields RequiredCredentials => SubtitleCredentialFields.None;
+        public bool CredentialsOptional => false;
+        public bool RateLimited { get; set; }
+        public int Searches { get; private set; }
+
+        public Task<IReadOnlyList<SubtitleCandidate>> SearchAsync(
+            SubtitleSearchRequest request, SubtitleProviderCredentials credentials, CancellationToken cancellationToken)
+        {
+            Searches++;
+            return RateLimited
+                ? throw new SubtitleProviderRateLimitedException(key, TimeSpan.FromMinutes(5))
+                : Task.FromResult(results);
+        }
+
+        public Task<byte[]> DownloadAsync(
+            SubtitleCandidate candidate, SubtitleProviderCredentials credentials, CancellationToken cancellationToken)
+            => Task.FromResult(payload);
+    }
+
+    private sealed class FakeWriter : ISubtitleFileWriter
+    {
+        public List<(string Path, byte[] Payload)> Written { get; } = [];
+
+        public Task<string> WriteAsync(
+            string videoPath, string language, bool hearingImpaired, byte[] subtitle, CancellationToken cancellationToken)
+        {
+            var path = Path.Combine(
+                Path.GetDirectoryName(videoPath)!,
+                $"{Path.GetFileNameWithoutExtension(videoPath)}.{language}{(hearingImpaired ? ".sdh" : string.Empty)}.srt");
+
+            Written.Add((path, subtitle));
+            return Task.FromResult(path);
+        }
+    }
+
+    private sealed class FakeRepository(IReadOnlyList<SubtitleProviderConnection> rows) : ISubtitleProviderRepository
+    {
+        public List<(string Status, bool Success, DateTimeOffset? RateLimitedUntil)> Health { get; } = [];
+
+        public Task<IReadOnlyList<SubtitleProviderConnection>> ListAsync(CancellationToken cancellationToken)
+            => Task.FromResult(rows);
+
+        public Task<SubtitleProviderConnection> SaveAsync(
+            string providerKey, string displayName, SaveSubtitleProviderRequest request, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task RecordHealthAsync(
+            string providerKey, string status, string? message, int? latencyMs, bool success,
+            DateTimeOffset? rateLimitedUntilUtc, CancellationToken cancellationToken)
+        {
+            Health.Add((status, success, rateLimitedUntilUtc));
+            return Task.CompletedTask;
+        }
+
+        public Task<bool> DeleteAsync(string providerKey, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+    }
+}

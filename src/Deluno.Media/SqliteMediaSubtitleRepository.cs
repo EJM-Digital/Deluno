@@ -18,9 +18,166 @@ namespace Deluno.Media;
 /// nothing interpolates caller input.
 /// </summary>
 public sealed class SqliteMediaSubtitleRepository(
-    IDelunoDatabaseConnectionFactory databaseConnectionFactory)
+    IDelunoDatabaseConnectionFactory databaseConnectionFactory,
+    TimeProvider timeProvider)
     : IMediaSubtitleRepository
 {
+    /// <summary>
+    /// The next files short of a language the library asked for.
+    ///
+    /// <para><b>Held means here exactly what it means on the bar.</b> The
+    /// predicate is <c>forced = 0</c> and the language matching, which is what
+    /// <see cref="CatalogueSubtitleRollup.Sql"/> counts — a file the shelf paints
+    /// green while the fetcher keeps searching for it would be two answers to one
+    /// question, and that shape is what DESIGN-001 spent a run undoing.</para>
+    ///
+    /// <para>A forced track is stored and does not count, because a file whose
+    /// only English is forced has English for four lines of Elvish. Hearing
+    /// impaired does count, because it is watchable.</para>
+    ///
+    /// <para>Bounded, like the scan, and for the same reason: this runs inside a
+    /// job slice and a library of twenty thousand episodes must not arrive in one
+    /// lease.</para>
+    /// </summary>
+    public async Task<IReadOnlyList<MediaSubtitleWantedItem>> ListWantedAsync(
+        MediaKind kind,
+        string libraryId,
+        IReadOnlyList<string> languages,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        if (languages.Count == 0)
+        {
+            // Nobody asked this shelf for subtitles, so there is no gap and no
+            // query. The same rule the rollup follows, and the reason a library
+            // that has not asked pays nothing.
+            return [];
+        }
+
+        var map = MediaTableMap.For(kind);
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            map.DatabaseName,
+            cancellationToken);
+
+        var languageParameters = string.Join(", ", Enumerable.Range(0, languages.Count).Select(index => $"@lang{index}"));
+
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT
+                {map.SubtitleFileIdColumn},
+                f.file_path,
+                {map.SubtitleSearchColumns},
+                (
+                    SELECT GROUP_CONCAT(sub.language)
+                    FROM {map.SubtitleTable} sub
+                    WHERE sub.{map.SubtitleMediaIdColumn} = {map.SubtitleFileIdColumn}
+                      AND sub.forced = 0
+                      AND sub.language IN ({languageParameters})
+                )
+            FROM {map.SubtitleFileSource}
+            {map.SubtitleSearchJoin}
+            {map.SubtitleFileLibraryJoin}
+            WHERE {map.SubtitleFileLibraryFilter}
+              AND f.has_file = 1
+              AND f.file_path IS NOT NULL
+              AND (
+                    SELECT COUNT(DISTINCT sub.language)
+                    FROM {map.SubtitleTable} sub
+                    WHERE sub.{map.SubtitleMediaIdColumn} = {map.SubtitleFileIdColumn}
+                      AND sub.forced = 0
+                      AND sub.language IN ({languageParameters})
+              ) < @languageCount
+            LIMIT @limit;
+            """;
+
+        AddParameter(command, "@libraryId", libraryId);
+        AddParameter(command, "@languageCount", languages.Count);
+        AddParameter(command, "@limit", Math.Max(1, limit));
+        for (var index = 0; index < languages.Count; index++)
+        {
+            AddParameter(command, $"@lang{index}", languages[index]);
+        }
+
+        var items = new List<MediaSubtitleWantedItem>();
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            // Ordinal 8, not 7: the id and the path are 0 and 1, and the map's
+            // search columns are the six after them. Reading one short of that
+            // silently returns the release name as the held-language list, which
+            // never matches, and every file looks short of everything for ever.
+            var held = reader.IsDBNull(8)
+                ? []
+                : reader.GetString(8).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            var missing = languages
+                .Where(language => !held.Contains(language, StringComparer.OrdinalIgnoreCase))
+                .ToArray();
+
+            if (missing.Length == 0)
+            {
+                continue;
+            }
+
+            items.Add(new MediaSubtitleWantedItem(
+                MediaId: reader.GetString(0),
+                FilePath: reader.GetString(1),
+                Title: reader.IsDBNull(2) ? string.Empty : reader.GetString(2),
+                Year: reader.IsDBNull(3) ? null : reader.GetInt32(3),
+                SeasonNumber: reader.IsDBNull(4) ? null : reader.GetInt32(4),
+                EpisodeNumber: reader.IsDBNull(5) ? null : reader.GetInt32(5),
+                EpisodeTitle: reader.IsDBNull(6) ? null : reader.GetString(6),
+                ReleaseName: reader.IsDBNull(7) ? null : reader.GetString(7),
+                MissingLanguages: missing));
+        }
+
+        return items;
+    }
+
+    public async Task RecordFetchedAsync(
+        MediaKind kind,
+        string mediaId,
+        MediaSubtitleRow subtitle,
+        CancellationToken cancellationToken)
+    {
+        var map = MediaTableMap.For(kind);
+        var now = timeProvider.GetUtcNow();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            map.DatabaseName,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            INSERT INTO {map.SubtitleTable} (
+                {map.SubtitleMediaIdColumn}, language, forced, hearing_impaired,
+                source, file_path, stream_index, codec, provider, created_utc, updated_utc
+            )
+            VALUES (
+                @mediaId, @language, @forced, @hearingImpaired,
+                @source, @filePath, NULL, @codec, @provider, @now, @now
+            )
+            ON CONFLICT ({map.SubtitleMediaIdColumn}, language, forced, hearing_impaired) DO UPDATE SET
+                source = excluded.source,
+                file_path = excluded.file_path,
+                codec = excluded.codec,
+                provider = excluded.provider,
+                updated_utc = excluded.updated_utc;
+            """;
+
+        AddParameter(command, "@mediaId", mediaId);
+        AddParameter(command, "@language", subtitle.Language);
+        AddParameter(command, "@forced", subtitle.Forced ? 1 : 0);
+        AddParameter(command, "@hearingImpaired", subtitle.HearingImpaired ? 1 : 0);
+        AddParameter(command, "@source", subtitle.Source);
+        AddParameter(command, "@filePath", subtitle.FilePath);
+        AddParameter(command, "@codec", subtitle.Codec);
+        AddParameter(command, "@provider", subtitle.Provider);
+        AddParameter(command, "@now", now.ToString("O"));
+
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     /// <summary>
     /// Files whose subtitles have never been read, were read when the file was
     /// a different file, or were only half read.

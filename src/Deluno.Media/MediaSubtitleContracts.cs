@@ -50,8 +50,60 @@ public sealed record MediaSubtitleScanCandidate(
 /// </summary>
 public sealed record MediaSubtitleHeld(int Languages, int Files);
 
+/// <summary>
+/// One file that is short of a language somebody asked for, with the words a
+/// provider is searched with.
+///
+/// <para><see cref="MissingLanguages"/> is the gap, not the wish: the languages
+/// the library asked for that this file does not already hold. Working it out
+/// here rather than in the search means a provider is never asked for something
+/// already on disk, which is the difference between a nightly cycle that costs
+/// one request per real gap and one that costs a request per title forever.</para>
+/// </summary>
+public sealed record MediaSubtitleWantedItem(
+    string MediaId,
+    string FilePath,
+    string Title,
+    int? Year,
+    int? SeasonNumber,
+    int? EpisodeNumber,
+    string? EpisodeTitle,
+    string? ReleaseName,
+    IReadOnlyList<string> MissingLanguages);
+
 public interface IMediaSubtitleRepository
 {
+    /// <summary>
+    /// The next files short of a wanted language.
+    ///
+    /// <para><b>Held means the same thing here as it does on the bar.</b> The
+    /// predicate is <c>forced = 0</c> and the language matching, which is
+    /// character for character what <c>CatalogueSubtitleRollup.Sql</c> counts —
+    /// because a file the shelf paints green and the fetcher keeps searching for
+    /// would be two answers to one question, and this codebase has paid for that
+    /// shape more than once.</para>
+    /// </summary>
+    Task<IReadOnlyList<MediaSubtitleWantedItem>> ListWantedAsync(
+        MediaKind kind,
+        string libraryId,
+        IReadOnlyList<string> languages,
+        int limit,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Records a subtitle Deluno just wrote.
+    ///
+    /// <para>Separate from <c>RecordScanAsync</c> because a scan replaces
+    /// everything it learnt about a file and a fetch adds one row to it. Handing
+    /// a fetch to the scan path would delete every other language the file has
+    /// every time one was downloaded.</para>
+    /// </summary>
+    Task RecordFetchedAsync(
+        MediaKind kind,
+        string mediaId,
+        MediaSubtitleRow subtitle,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<MediaSubtitleScanCandidate>> ListPendingScansAsync(
         MediaKind kind,
         string libraryId,

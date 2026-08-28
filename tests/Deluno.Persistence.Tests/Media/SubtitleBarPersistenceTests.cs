@@ -48,7 +48,7 @@ public sealed class SubtitleBarPersistenceTests
         using var storage = TestStorage.Create();
         var preferences = new StubPreferences(("library-movies", ["en", "ja"], SubtitleLanguageModes.All));
         var movies = await CreateMoviesAsync(storage, preferences);
-        var subtitles = new SqliteMediaSubtitleRepository(storage.Factory);
+        var subtitles = new SqliteMediaSubtitleRepository(storage.Factory, TimeProvider.System);
 
         await ImportMovieAsync(movies, "Arrival", 2016, @"D:\Media\Arrival (2016)\Arrival (2016).mkv");
         var id = (await movies.ListPageAsync(new CatalogueQuery(), CancellationToken.None)).Items[0].Id;
@@ -71,7 +71,7 @@ public sealed class SubtitleBarPersistenceTests
         using var storage = TestStorage.Create();
         var preferences = new StubPreferences(("library-movies", ["en"], SubtitleLanguageModes.All));
         var movies = await CreateMoviesAsync(storage, preferences);
-        var subtitles = new SqliteMediaSubtitleRepository(storage.Factory);
+        var subtitles = new SqliteMediaSubtitleRepository(storage.Factory, TimeProvider.System);
 
         await ImportMovieAsync(movies, "Dune", 2021, @"D:\Media\Dune (2021)\Dune (2021).mkv");
         var id = (await movies.ListPageAsync(new CatalogueQuery(), CancellationToken.None)).Items[0].Id;
@@ -91,7 +91,7 @@ public sealed class SubtitleBarPersistenceTests
         using var storage = TestStorage.Create();
         var preferences = new StubPreferences(("library-movies", ["en"], SubtitleLanguageModes.All));
         var movies = await CreateMoviesAsync(storage, preferences);
-        var subtitles = new SqliteMediaSubtitleRepository(storage.Factory);
+        var subtitles = new SqliteMediaSubtitleRepository(storage.Factory, TimeProvider.System);
 
         await ImportMovieAsync(movies, "Dune", 2021, @"D:\Media\Dune (2021)\Dune (2021).mkv");
         var id = (await movies.ListPageAsync(new CatalogueQuery(), CancellationToken.None)).Items[0].Id;
@@ -112,7 +112,7 @@ public sealed class SubtitleBarPersistenceTests
         using var storage = TestStorage.Create();
         var preferences = new StubPreferences(("library-movies", ["en", "es", "fr"], SubtitleLanguageModes.First));
         var movies = await CreateMoviesAsync(storage, preferences);
-        var subtitles = new SqliteMediaSubtitleRepository(storage.Factory);
+        var subtitles = new SqliteMediaSubtitleRepository(storage.Factory, TimeProvider.System);
 
         await ImportMovieAsync(movies, "Roma", 2018, @"D:\Media\Roma (2018)\Roma (2018).mkv");
         var id = (await movies.ListPageAsync(new CatalogueQuery(), CancellationToken.None)).Items[0].Id;
@@ -133,7 +133,7 @@ public sealed class SubtitleBarPersistenceTests
         var preferences = new StubPreferences(("library-tv", ["en", "ja"], SubtitleLanguageModes.All));
         var timeProvider = new FixedTimeProvider(Now);
         var series = await CreateSeriesAsync(storage, timeProvider, preferences);
-        var subtitles = new SqliteMediaSubtitleRepository(storage.Factory);
+        var subtitles = new SqliteMediaSubtitleRepository(storage.Factory, TimeProvider.System);
 
         var show = await series.AddAsync(new CreateSeriesRequest("Shogun", 2024, "tt2788316"), CancellationToken.None);
         await AttachLibraryAsync(storage, show.Id, "library-tv");
@@ -168,7 +168,7 @@ public sealed class SubtitleBarPersistenceTests
     {
         using var storage = TestStorage.Create();
         var movies = await CreateMoviesAsync(storage, new StubPreferences());
-        var subtitles = new SqliteMediaSubtitleRepository(storage.Factory);
+        var subtitles = new SqliteMediaSubtitleRepository(storage.Factory, TimeProvider.System);
 
         await ImportMovieAsync(movies, "Arrival", 2016, @"D:\Media\Arrival (2016)\Arrival (2016).mkv");
         var id = (await movies.ListPageAsync(new CatalogueQuery(), CancellationToken.None)).Items[0].Id;
@@ -205,7 +205,7 @@ public sealed class SubtitleBarPersistenceTests
     {
         using var storage = TestStorage.Create();
         var movies = await CreateMoviesAsync(storage, new StubPreferences());
-        var subtitles = new SqliteMediaSubtitleRepository(storage.Factory);
+        var subtitles = new SqliteMediaSubtitleRepository(storage.Factory, TimeProvider.System);
 
         await ImportMovieAsync(movies, "Arrival", 2016, @"D:\Media\Arrival (2016)\Arrival (2016).mkv", sizeBytes: 100);
         var id = (await movies.ListPageAsync(new CatalogueQuery(), CancellationToken.None)).Items[0].Id;
@@ -235,7 +235,7 @@ public sealed class SubtitleBarPersistenceTests
     {
         using var storage = TestStorage.Create();
         var movies = await CreateMoviesAsync(storage, new StubPreferences());
-        var subtitles = new SqliteMediaSubtitleRepository(storage.Factory);
+        var subtitles = new SqliteMediaSubtitleRepository(storage.Factory, TimeProvider.System);
 
         await ImportMovieAsync(movies, "Arrival", 2016, @"D:\Media\Arrival (2016)\Arrival (2016).mkv");
         var id = (await movies.ListPageAsync(new CatalogueQuery(), CancellationToken.None)).Items[0].Id;
@@ -267,7 +267,7 @@ public sealed class SubtitleBarPersistenceTests
     {
         using var storage = TestStorage.Create();
         var movies = await CreateMoviesAsync(storage, new StubPreferences());
-        var subtitles = new SqliteMediaSubtitleRepository(storage.Factory);
+        var subtitles = new SqliteMediaSubtitleRepository(storage.Factory, TimeProvider.System);
 
         await ImportMovieAsync(movies, "Arrival", 2016, @"D:\Media\Arrival (2016)\Arrival (2016).mkv");
         var id = (await movies.ListPageAsync(new CatalogueQuery(), CancellationToken.None)).Items[0].Id;
