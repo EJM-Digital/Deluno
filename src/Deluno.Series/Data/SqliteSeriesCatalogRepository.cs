@@ -861,7 +861,7 @@ public sealed class SqliteSeriesCatalogRepository(
             withSubtitles,
             nextPageToken,
             hasMore,
-            SelectFacetTotal(facets, status),
+            facets.TotalFor(status),
             facets);
     }
 
@@ -1095,10 +1095,11 @@ public sealed class SqliteSeriesCatalogRepository(
                 SUM(CASE WHEN {statusArm} AND s.monitored = 1 THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {statusArm} AND s.monitored = 0 THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {monitoredArm} AND {CatalogueHasFileFor(libraryId)} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {monitoredArm} AND NOT ({CatalogueHasFileFor(libraryId)} OR {CatalogueWantedIs(libraryId, "upcoming")}) THEN 1 ELSE 0 END),
+                SUM(CASE WHEN {monitoredArm} AND NOT ({CatalogueHasFileFor(libraryId)} OR {CatalogueWantedIs(libraryId, WantedStatuses.Upcoming)}) THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {monitoredArm} AND {CatalogueUpgradeFor(libraryId)} THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, WantedStatuses.Covered)} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, "upcoming")} THEN 1 ELSE 0 END)
+                SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, WantedStatuses.Upcoming)} THEN 1 ELSE 0 END),
+                SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, WantedStatuses.Downloading)} THEN 1 ELSE 0 END)
             FROM series_entries s
             {wantedJoin}
             WHERE {where};
@@ -1121,20 +1122,9 @@ public sealed class SqliteSeriesCatalogRepository(
             Missing: reader.IsDBNull(4) ? 0 : reader.GetInt32(4),
             Upgrades: reader.IsDBNull(5) ? 0 : reader.GetInt32(5),
             Covered: reader.IsDBNull(6) ? 0 : reader.GetInt32(6),
-            Upcoming: reader.IsDBNull(7) ? 0 : reader.GetInt32(7));
+            Upcoming: reader.IsDBNull(7) ? 0 : reader.GetInt32(7),
+            Downloading: reader.IsDBNull(8) ? 0 : reader.GetInt32(8));
     }
-
-    private static int SelectFacetTotal(CatalogueFacets facets, string status)
-        // Monitoring is not in here: the state facets are already counted within
-        // the monitoring scope, so the number for the chosen status *is* the
-        // number matching both axes.
-        => status switch
-        {
-            CatalogueStatusFilters.Downloaded => facets.Downloaded,
-            CatalogueStatusFilters.Missing => facets.Missing,
-            CatalogueStatusFilters.Upgrades => facets.Upgrades,
-            _ => facets.All
-        };
 
     public async Task<IReadOnlyList<SeriesListItem>> ListAsync(CancellationToken cancellationToken)
     {
