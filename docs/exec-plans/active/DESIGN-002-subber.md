@@ -319,28 +319,62 @@ cannot drift from them.
 Saving a language list therefore **enqueues nothing**. It changes what is
 wanted; the cycle decides when to act.
 
-**One correction, paid for on the rig.** "Planned by the existing cycle" was
-first built as "planned *inside the existing release-search branch*", and those
-are not the same sentence. It meant subtitles inherited the two switches that
-branch is gated by — so a library with **Search automatically** off, which that
-screen describes as *keep this library manual* and means manual **releases**,
-asked for English every day and was never given it, silently. A library with
-searching on but neither missing nor upgrade selected did the same. That is
-precisely Bazarr's audience: a complete library that wants subtitles for it.
+### What "no second scheduler" actually protects, and what it does not
 
-It was invisible to every test, and the rig found it the only way anything finds
-this shape — the first end-to-end fetch could not be made to happen without
-pressing *search now*.
+This rule was written twice and got it wrong twice, in opposite directions. Both
+corrections came from the owner and both are worth keeping, because the line between
+them is the whole of the rule.
 
-So subtitles keep the cycle, the window and the manual override, and they get
-their own reason to run and their own cursor: `next_subtitle_search_utc`, beside
-the two the release schedules already use. Whether a shelf wants subtitles is
-already recorded in the only place that can answer it — whether it asked for any
-languages — and `next_search_utc` deliberately does not fold the subtitle clock
-in, because that is what the automation screen prints as the next *search* and a
-subtitle pass never reaches an indexer. A paused library still reads paused.
+**First wrong reading: share everything.** "Planned by the existing cycle" was
+built as "planned *inside the existing release-search branch*", which are not the
+same sentence. Subtitles inherited the two switches that branch is gated by — so
+a library with **Search automatically** off, which that screen describes as *keep
+this library manual* and means manual **releases**, asked for English every day
+and was never given it, silently. A library with searching on but neither missing
+nor upgrade selected did the same. That is precisely Bazarr's audience: a
+complete library that wants subtitles for it. Invisible to every test; the rig
+found it the only way anything finds this shape — the first end-to-end fetch
+could not be made to happen without pressing *search now*.
 
-The rule this is an instance of, again: **one switch, two subjects.**
+**Second wrong reading: share the timing.** The fix for the first freed the
+switches and left the *clock* borrowed — the interval and the time-of-day window,
+both release-search settings. The owner: *"I dont agree that it shares a cycle or
+schedule and this was told to you back when I said nothing should be shared or
+have to wait for another process or anything."* Right, and the cost was
+measurable: on the rig a newly imported episode waited up to a full
+`SearchIntervalHours` — twelve hours — before anything even looked at it, while
+Bazarr fetches on import.
+
+**So the line is between deciding and waiting.**
+
+| Shared, and should be | Not shared, and must not be |
+|---|---|
+| The **planner** — one place decides what runs | The **interval**. `SearchIntervalHours` is how often to go back to an indexer, a number chosen for a service that bans you for asking twice. A subtitle pass costs one query when there is nothing to do. |
+| The **job lanes and workers** — subtitles ride `import` and `intake`, which already exist | The **window**. A search window keeps you off an indexer at peak; subtitle providers are different servers, with their own rate-limit backoff on the Connection. |
+| The **`MaxItemsPerRun` bound** — it means "this many outbound requests per pass", which is the same sentence for both | The **retry delay**. `RetryDelayHours` is an indexer manner. A subtitle absent from every provider is a different fact from a release absent from every indexer. |
+
+Weir's Subber shipped its own lane *and* its own scheduler *and* its own
+worker; the left column is what refusing that buys. The right column is what
+refusing it must not cost.
+
+**Concretely:**
+
+- `next_subtitle_search_utc`, its own cursor beside the two the release schedules
+  use. `next_search_utc` deliberately does not fold it in, because that is what
+  the automation screen prints as the next *search*, and a subtitle pass never
+  reaches an indexer. A paused library still reads paused.
+- A cadence of **five minutes**, which is Deluno's number rather than a setting:
+  the standing check asks whether Deluno can decide and explain once, and here it
+  can, because unlike an indexer interval there is nothing to tune. The interval
+  is not what protects a provider — per-title backoff is.
+- **An import makes subtitles due immediately**, so nothing waits on a cadence
+  either. One writer, on job completion, which is the single place that already
+  knows an import finished. Measured on the rig: import at 04:15:54, `.srt` on
+  disk at 04:16:03.
+- Whether a shelf wants subtitles is read from the only place that can answer it:
+  whether it asked for any languages.
+
+The rule both mistakes are instances of: **one switch, two subjects.**
 
 ### 4. Providers are Connections, not a parallel registry
 
