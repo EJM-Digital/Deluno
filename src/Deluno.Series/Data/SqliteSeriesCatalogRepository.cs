@@ -1226,7 +1226,9 @@ public sealed class SqliteSeriesCatalogRepository(
         CancellationToken cancellationToken,
         int? runtimeMinutes = null,
         double? popularity = null,
-        int? voteCount = null)
+        int? voteCount = null,
+        string? status = null,
+        string? network = null)
     {
         if (sharedMediaStateRepository is not null)
         {
@@ -1279,6 +1281,18 @@ public sealed class SqliteSeriesCatalogRepository(
                 runtime_minutes = COALESCE(@runtimeMinutes, runtime_minutes),
                 popularity = COALESCE(@popularity, popularity),
                 vote_count = COALESCE(@voteCount, vote_count),
+                -- Both of these are columns the shelf can already be filtered
+                -- and ordered by, and neither had a writer. `network` has been
+                -- on series_entries since V0012 and nothing has ever set it, so
+                -- the Network filter has matched nothing since the day it was
+                -- offered. `status` arrived today with the same hole: backfilled
+                -- once by its migration and then never maintained.
+                --
+                -- Declared and never populated, which is invisible in exactly
+                -- the way that matters: a filter over an empty column returns no
+                -- rows, and no rows looks like a fair answer.
+                status = COALESCE(@status, status),
+                network = COALESCE(@network, network),
                 metadata_updated_utc = @metadataUpdatedUtc,
                 updated_utc = @updatedUtc
             WHERE id = @id;
@@ -1288,6 +1302,8 @@ public sealed class SqliteSeriesCatalogRepository(
         AddParameter(command, "@runtimeMinutes", runtimeMinutes);
         AddParameter(command, "@popularity", popularity);
         AddParameter(command, "@voteCount", voteCount);
+        AddParameter(command, "@status", NormalizeText(status));
+        AddParameter(command, "@network", NormalizeText(network));
         AddParameter(command, "@imdbId", NormalizeExternalId(imdbId));
         AddParameter(command, "@metadataProvider", NormalizeExternalId(metadataProvider));
         AddParameter(command, "@metadataProviderId", NormalizeExternalId(metadataProviderId));

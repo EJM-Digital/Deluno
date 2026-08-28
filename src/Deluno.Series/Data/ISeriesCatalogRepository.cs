@@ -112,7 +112,9 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
         CancellationToken cancellationToken,
         int? runtimeMinutes = null,
         double? popularity = null,
-        int? voteCount = null);
+        int? voteCount = null,
+        string? status = null,
+        string? network = null);
 
     Task<int> UpdateEpisodeMonitoredAsync(IReadOnlyList<string> episodeIds, bool monitored, CancellationToken cancellationToken);
 
