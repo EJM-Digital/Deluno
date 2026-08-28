@@ -2296,25 +2296,7 @@ public static class SeriesEndpointRouteBuilderExtensions
         MetadataSearchResult result,
         CancellationToken cancellationToken)
     {
-        return repository.UpdateMetadataAsync(
-            seriesId,
-            result.Provider,
-            result.ProviderId,
-            result.OriginalTitle,
-            result.Overview,
-            result.PosterUrl,
-            result.BackdropUrl,
-            result.Rating,
-            string.Join(", ", result.Genres),
-            result.ExternalUrl,
-            result.ImdbId,
-            JsonSerializer.Serialize(result),
-            cancellationToken,
-            result.RuntimeMinutes,
-            result.Popularity,
-            result.VoteCount,
-            result.Status,
-            result.Network);
+        return repository.UpdateMetadataAsync(seriesId, result, cancellationToken);
     }
 
     private sealed record ReleaseGrabRequest(
