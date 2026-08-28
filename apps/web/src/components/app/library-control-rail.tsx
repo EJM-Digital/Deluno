@@ -1,5 +1,6 @@
 import { QUICK_FILTER_MARK, type MonitoringFilter, type QuickFilter, type SortDirection, type SortField } from "../../lib/library-filters";
 import { TITLE_MARK_PRESENTATION, type TitleMark } from "../../lib/status-tones";
+import { TitleMarkBarLegend } from "../ui/title-mark";
 import { MARK_DOT_SIZE } from "../ui/title-mark";
 import {
   ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, Filter, LayoutGrid, LayoutTemplate, List, Search
@@ -348,6 +349,24 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                   </button>
                 );
               })}
+
+              {/*
+                The bar's legend (#327), on the row that is already the legend.
+
+                It was first built into the View drawer, on the issue's own
+                reasoning that a second row of chip-shaped things which filtered
+                nothing would read as broken. James: *"why cant the subtitle bar
+                be up the top next to upcoming? with a divider? it should not be
+                in view cause nothing else is in there"* — and he is right on
+                both halves. That drawer is switches; a legend was the only thing
+                in it that was not one. And this row is where a reader already
+                learns what a colour means, so the answer was a divider, not a
+                different room.
+
+                The divider is what says the rest of the row does not filter.
+                These carry no count and no click for the same reason.
+              */}
+              <TitleMarkBarLegend className="ml-1.5 border-l border-hairline pl-3" />
             </div>
 
             {/*

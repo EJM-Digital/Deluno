@@ -365,6 +365,44 @@ export interface TitleBar {
   noun: "subtitle languages";
 }
 
+/**
+ * What each colour in the bar means, in the order a bar is read left to right.
+ *
+ * **One source, because there are now two readers.** The bar painted itself
+ * from `--success` and `--destructive` written straight into a gradient, and
+ * #327 asks for a legend that reads `TITLE_MARK_PRESENTATION`. Two places
+ * naming the same two colours is the shape every defect in this codebase has
+ * had, so the bar and its legend read this and nothing else.
+ *
+ * The marks are not arbitrary. DESIGN-002 settled that a subtitle bar is a
+ * miniature of the dot's ladder using the dot's own colours — nothing new to
+ * learn — so a segment *is* a `TitleMark`, and its colour comes from that
+ * mark's own row.
+ *
+ * **Gold is absent on purpose.** `covered` would mean *at the cutoff, Deluno
+ * has stopped looking*, and nothing can reach it until subtitle upgrades exist
+ * (DESIGN-002 step 5: *"Two colours are enough until upgrades exist; gold
+ * arrives with them."*). A legend listing a colour no bar can be is the same
+ * defect as a filter chip that can never match.
+ */
+export const TITLE_BAR_SEGMENTS: readonly { mark: TitleMark; label: string; hint: string }[] = [
+  {
+    mark: "upgrade",
+    // "Have", not "Held". James: *"missing is good, held sucks as far as choice
+    // of words."* Right — *held* is the word the store uses for itself, and it
+    // leaked out onto the screen. Have/Missing is the pair a reader already owns,
+    // and it is the app's own voice: DESIGN-001 writes the same rung as "You have
+    // this and can watch it tonight."
+    label: "Have",
+    hint: "A language you asked for is here — beside the file, inside it, or fetched for you."
+  },
+  {
+    mark: "missing",
+    label: "Missing",
+    hint: "A language you asked for is not here yet. Deluno looks for it on the library's own cycle."
+  }
+] as const;
+
 export function titleBar(item: {
   /**
    * Deliberately ignored. A show's aired count used to *be* the bar; it is on

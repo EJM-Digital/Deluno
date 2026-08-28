@@ -1,5 +1,6 @@
 import { cn } from "../../lib/utils";
 import {
+  TITLE_BAR_SEGMENTS,
   TITLE_MARK_PRESENTATION,
   titleBar,
   titleMark,
@@ -143,10 +144,70 @@ export function TitleMarkBar({ item, className }: { item: TitleMarkInput; classN
       aria-label={label}
       title={label}
       className={cn("absolute inset-x-0 bottom-0 z-10 block h-1", className)}
-      style={{
-        background: `linear-gradient(to right, hsl(var(--success)) 0 ${percent}%, hsl(var(--destructive)) ${percent}% 100%)`
-      }}
+      style={{ background: titleBarGradient(percent) }}
     />
+  );
+}
+
+/**
+ * The gradient both the bar and its legend paint with.
+ *
+ * The colours come from `TITLE_BAR_SEGMENTS`, not from `--success` and
+ * `--destructive` written in here: the legend has to name the same two, and two
+ * places naming one pair is how they drift.
+ */
+function titleBarGradient(percent: number): string {
+  const [held, missing] = TITLE_BAR_SEGMENTS;
+  const heldColour = `hsl(var(${TITLE_MARK_PRESENTATION[held.mark].cssVar}))`;
+  const missingColour = `hsl(var(${TITLE_MARK_PRESENTATION[missing.mark].cssVar}))`;
+  return `linear-gradient(to right, ${heldColour} 0 ${percent}%, ${missingColour} ${percent}% 100%)`;
+}
+
+/**
+ * The legend for the bar — [#327](https://github.com/jampat000/Deluno/issues/327).
+ *
+ * <b>On the chip row, after Upcoming, behind a divider.</b> A first attempt put
+ * it in the View drawer, on #327's own argument that a second row of
+ * chip-shaped things which filtered nothing would read as broken. James:
+ * <i>"why cant the subtitle bar be up the top next to upcoming? with a divider?
+ * it should not be in view cause nothing else is in there"</i> — right on both
+ * halves. That drawer is switches, so a legend was the only thing in it that was
+ * not one; and this row is already where a reader learns what a colour means.
+ * The answer to "it must not look like a filter" was a divider, not a different
+ * room.
+ *
+ * So these entries deliberately have <b>no count and no click</b>. That, plus
+ * the rule between them and the chips, is what says they explain rather than
+ * narrow.
+ *
+ * The swatch is a short strip at the bar's own height rather than a dot,
+ * because a dot is what the chips beside it already use for the other mark. The
+ * two must not be mistaken for each other.
+ */
+export function TitleMarkBarLegend({ className }: { className?: string }) {
+  return (
+    <div
+      className={cn("flex items-center gap-2.5", className)}
+      title={"The bar on a poster's bottom edge: the subtitle languages this shelf asked for. "
+        + "Counted over the files a title has, so a show you have downloaded nothing of shows no bar."}
+    >
+      <span className="text-[length:var(--library-toolbar-size)] font-medium text-muted-foreground">
+        Subtitles
+      </span>
+      {TITLE_BAR_SEGMENTS.map((segment) => (
+        <span
+          key={segment.mark}
+          className="flex items-center gap-1.5 text-[length:var(--library-toolbar-size)] font-medium text-muted-foreground"
+        >
+          {/* Colour is never the only carrier (#318): the word is always beside it. */}
+          <span
+            aria-hidden
+            className={cn("h-1 w-4 shrink-0 rounded-full", TITLE_MARK_PRESENTATION[segment.mark].dot)}
+          />
+          <span>{segment.label}</span>
+        </span>
+      ))}
+    </div>
   );
 }
 
