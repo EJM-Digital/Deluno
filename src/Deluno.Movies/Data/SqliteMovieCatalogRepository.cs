@@ -730,8 +730,9 @@ public sealed class SqliteMovieCatalogRepository(
                 "m",
                 CatalogueHasFileFor(libraryId),
                 CatalogueUpgradeFor(libraryId),
-                CatalogueWantedIs(libraryId, "covered"),
-                CatalogueWantedIs(libraryId, "upcoming")),
+                CatalogueWantedIs(libraryId, WantedStatuses.Covered),
+                CatalogueWantedIs(libraryId, WantedStatuses.Upcoming),
+                CatalogueWantedIs(libraryId, WantedStatuses.Downloading)),
             // Quality and size read `ws` — the one wanted-state row this page
             // speaks for — rather than an EXISTS over all of them. A title held
             // in two libraries has two files, and matching on either while
@@ -926,8 +927,9 @@ public sealed class SqliteMovieCatalogRepository(
             "m",
             CatalogueHasFileFor(libraryId),
             CatalogueUpgradeFor(libraryId),
-            CatalogueWantedIs(libraryId, "covered"),
-            CatalogueWantedIs(libraryId, "upcoming")));
+            CatalogueWantedIs(libraryId, WantedStatuses.Covered),
+            CatalogueWantedIs(libraryId, WantedStatuses.Upcoming),
+                CatalogueWantedIs(libraryId, WantedStatuses.Downloading)));
 
         using var command = connection.CreateCommand();
         command.CommandText =
@@ -939,7 +941,7 @@ public sealed class SqliteMovieCatalogRepository(
                 SUM(CASE WHEN {monitoredArm} AND {CatalogueHasFileFor(libraryId)} THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {monitoredArm} AND NOT ({CatalogueHasFileFor(libraryId)} OR {CatalogueWantedIs(libraryId, "upcoming")}) THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {monitoredArm} AND {CatalogueUpgradeFor(libraryId)} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, "covered")} THEN 1 ELSE 0 END),
+                SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, WantedStatuses.Covered)} THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, "upcoming")} THEN 1 ELSE 0 END)
             FROM movie_entries m
             {wantedJoin}

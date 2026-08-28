@@ -188,6 +188,21 @@ describe("the mark on a title", () => {
       .toBe(3);
   });
 
+  it("draws what the server says, including the two states it could not before", () => {
+    // Both of these fell through to "missing" until the server could produce
+    // them, which is worse than not drawing them at all: the shelf would say
+    // "go and get this" about a title already downloading, and about a show
+    // holding every episode that has aired.
+    expect(titleMark({ wantedStatus: "downloading" })).toBe("downloading");
+    expect(titleMark({ wantedStatus: "airing" })).toBe("airing");
+
+    // Live telemetry still wins: bytes moving now beats a stored fact.
+    expect(titleMark({ wantedStatus: "covered", isTransferring: true })).toBe("downloading");
+
+    // And anything unrecognised is still Missing rather than guessed at.
+    expect(titleMark({ wantedStatus: "nonsense" })).toBe("missing");
+  });
+
   it("climbs in the order the design settled", () => {
     // "airing" sits above Upgradable and below Quality met: everything you
     // hold is at the quality asked for, and the show is not finished, so

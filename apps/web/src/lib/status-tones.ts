@@ -339,6 +339,14 @@ export function titleMark(item: {
       return "upgrade";
     case "upcoming":
       return "upcoming";
+    case "airing":
+      return "airing";
+    case "downloading":
+      // Not the same as isTransferring above. That one is live telemetry — bytes
+      // are moving right now. This is the stored fact that Deluno grabbed a
+      // release and handed it to a client, which survives a restart and is true
+      // in the hours before a torrent finds a peer.
+      return "downloading";
     default:
       return "missing";
   }

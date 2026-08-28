@@ -83,6 +83,16 @@ public static class CatalogueStatusFilters
     /// <summary>Not out yet, so its absence is not a shortfall.</summary>
     public const string Upcoming = "upcoming";
 
+    /// <summary>
+    /// Found and handed to a download client. On its way.
+    ///
+    /// <para>Worth a chip of its own for the reason the state exists: without
+    /// it, the only way to see what Deluno is currently fetching is to open the
+    /// queue, which is a different screen answering a different question. This
+    /// is the library's own answer to "what is in hand".</para>
+    /// </summary>
+    public const string Downloading = "downloading";
+
     public static string Normalize(string? value)
         => value?.Trim().ToLowerInvariant() switch
         {
@@ -91,6 +101,7 @@ public static class CatalogueStatusFilters
             Upgrades => Upgrades,
             Covered => Covered,
             Upcoming => Upcoming,
+            Downloading => Downloading,
             _ => All
         };
 }

@@ -43,6 +43,8 @@ export type QuickFilter =
   | "upgrades"
   /** Has what the profile asked for — the rung above `upgrades`. */
   | "covered"
+  /** Found and handed to a download client. On its way. */
+  | "downloading"
   /** Not out yet, so its absence is not a shortfall. */
   | "upcoming";
 
@@ -70,7 +72,8 @@ export const QUICK_FILTER_MARK: Record<QuickFilter, TitleMark | null> = {
   missing: "missing",
   upgrades: "upgrade",
   covered: "covered",
-  upcoming: "upcoming"
+  upcoming: "upcoming",
+  downloading: "downloading"
 };
 
 /**
