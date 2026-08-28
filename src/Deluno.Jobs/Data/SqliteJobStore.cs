@@ -703,6 +703,40 @@ public sealed class SqliteJobStore(
         return leasedJobs;
     }
 
+    public async Task<DateTimeOffset?> NextDueUtcAsync(
+        IReadOnlyList<string> jobTypes,
+        CancellationToken cancellationToken)
+    {
+        if (jobTypes.Count == 0)
+        {
+            return null;
+        }
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        var jobTypeFilter = BuildJobTypeFilter(command, jobTypes);
+        // The same predicate the lease uses, minus the "<= now" — the lease asks
+        // "what can I run", this asks "when could I next run something". Written
+        // beside it on purpose: two queries that disagree about what runnable
+        // means would have a lane sleeping through work it was holding.
+        command.CommandText =
+            $"""
+            SELECT MIN(scheduled_utc)
+            FROM job_queue
+            WHERE status IN ('queued', 'failed')
+              AND attempts < max_attempts
+              {jobTypeFilter};
+            """;
+
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return value is string text && !string.IsNullOrWhiteSpace(text)
+            ? ParseTimestamp(text)
+            : null;
+    }
+
     private static string BuildJobTypeFilter(System.Data.Common.DbCommand command, IReadOnlyList<string>? jobTypes)
     {
         if (jobTypes is null || jobTypes.Count == 0)

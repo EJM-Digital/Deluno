@@ -26,93 +26,24 @@ public sealed class DelunoHeartbeatWorker(
     : BackgroundService
 {
     private readonly string _workerId = $"worker-{Environment.MachineName.ToLowerInvariant()}";
-    private static readonly TimeSpan SettingsCacheWindow = TimeSpan.FromSeconds(1);
+    /// <summary>
+    /// How long a lane may reuse the last settings snapshot.
+    ///
+    /// <para>One second was chosen when there were seven lanes on one tick and
+    /// they mostly missed it anyway. Every lane reads this on every wake purely
+    /// to find out whether background work is switched on — a question whose
+    /// answer changes about once a month — so a wider window costs nothing and
+    /// removes most of the reads outright. Fifteen seconds is still faster than
+    /// anybody can notice a pause not taking effect.</para>
+    /// </summary>
+    private static readonly TimeSpan SettingsCacheWindow = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(15);
     private readonly object _settingsSync = new();
     private readonly object _heartbeatSync = new();
     private PlatformSettingsSnapshot? _cachedSettings;
     private DateTimeOffset _cachedSettingsUtc = DateTimeOffset.MinValue;
     private DateTimeOffset _lastHeartbeatUtc = DateTimeOffset.MinValue;
-    private readonly JobLane[] _lanes =
-    [
-        // Planning only. Deciding what should run is cheap and must not sit
-        // behind a long-running job, so it gets its own lane and executes
-        // nothing itself. It has no job types of its own to be woken by, so it
-        // is signalled through the "planning.wake" sentinel instead — notably
-        // by RequestLibrarySearchAsync, the path the Search button takes.
-        new("planning", TimeSpan.FromSeconds(30), [],
-            PlanAutomation: true, PlanImports: true, PlanMaintenance: true,
-            SignalTypesOverride: ["planning.wake"]),
-
-        // Disk-bound. The widest lane: imports are the backlog users actually
-        // feel, and the work is mostly waiting on file I/O.
-        //
-        // "library.import.existing" belongs here too: it is the same resource.
-        // Each of its jobs is one bounded slice of a library scan, so it queues
-        // and drains like any other import rather than holding a lease for
-        // hours.
-        // "library.subtitles.scan" is here for the same reason: it is a
-        // directory listing and an ffprobe per file, which is the import lane's
-        // resource exactly. It is deliberately not on a search lane — reading
-        // what a file already contains has nothing to do with an indexer, and
-        // putting it there would make a subtitle scan able to delay a search.
-        new("import", TimeSpan.FromSeconds(30), ["filesystem.import.execute", "library.import.existing", "library.subtitles.scan"],
-            BatchSize: 16, MaxConcurrency: 8),
-
-        // Searching, one lane per catalogue so neither can starve the other.
-        //
-        // These were one lane at MaxConcurrency 2, to stop searches "multiplying
-        // outbound requests against the same remote hosts". That concern is
-        // real and it is **already handled one layer down**:
-        // `FeedMediaSearchPlanner` paces every request through
-        // `outboundRequestThrottle`, keyed on the *host* rather than the indexer
-        // id, precisely because two indexer entries can point at one tracker.
-        //
-        // So the shared narrow lane protected no tracker — the throttle does
-        // that. All it did was make a TV search wait behind movie searches, and
-        // it was at its worst in exactly the case that matters: movie searches
-        // stuck against an unresponsive indexer, holding the lane while TV work
-        // sat queued behind them.
-        //
-        // Measured before splitting (`JobQueueContentionBenchmark`): 25
-        // concurrent workers sustain ~4,300 lease+complete round trips a second
-        // against the shared jobs database, every lane draining evenly — so the
-        // queue does not care how many lanes there are.
-        //
-        // `episode.search` rides with TV because it is the same catalogue and
-        // the same work at a finer grain.
-        new("search.movies", TimeSpan.FromSeconds(30), [LibrarySearchJobTypes.Movies],
-            BatchSize: 4, MaxConcurrency: 4),
-        new("search.tv", TimeSpan.FromSeconds(30), [LibrarySearchJobTypes.Tv, "episode.search"],
-            BatchSize: 4, MaxConcurrency: 4),
-
-        // Remote list providers, and rate-limited by them.
-        //
-        // "library.subtitles.search" rides here, and the choice is deliberate.
-        // DESIGN-002 rule 3 says Subber gets no lane of its own, so the question
-        // is which existing one, and the answer is by *resource*: this is
-        // outbound HTTP to a third party that rate limits us, which is exactly
-        // what this lane already is. The search lanes were wrong for it for the
-        // same reason the scan is not on them — a subtitle fetch has nothing to
-        // do with an indexer, and putting it there would let a slow provider
-        // delay a release search.
-        new("intake", TimeSpan.FromSeconds(30), ["intake.sync", "library.subtitles.search"],
-            BatchSize: 4, MaxConcurrency: 2),
-
-        // Metadata provider HTTP. Separate from catalogue work so a slow
-        // provider cannot stall local recalculation.
-        new("metadata", TimeSpan.FromSeconds(30), ["movies.metadata.refresh", "series.metadata.refresh"],
-            BatchSize: 8, MaxConcurrency: 4),
-
-        // Local only: SQLite and CPU, no network. Safe to run wide.
-        new("catalog", TimeSpan.FromSeconds(30),
-        [
-            "movies.quality.recalculate",
-            "series.quality.recalculate",
-            "movies.catalog.refresh",
-            "series.catalog.refresh"
-        ], BatchSize: 16, MaxConcurrency: 8)
-    ];
+    private readonly JobLane[] _lanes = [.. JobLanes.All];
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -255,6 +186,12 @@ public sealed class DelunoHeartbeatWorker(
         // pacing a backlog by the interval.
         var drainImmediately = false;
 
+        // How long to wait before looking again, when nothing wakes this lane
+        // first. Set from the lane's own next scheduled job at the end of each
+        // idle tick, so a lane sleeps exactly as long as it should rather than
+        // asking every thirty seconds whether anything has changed.
+        var sleepFor = lane.Interval;
+
         // What this lane is running right now. Kept across ticks, so a tick can
         // top the lane up rather than waiting for the previous batch to drain.
         var inFlight = new List<Task>();
@@ -263,14 +200,16 @@ public sealed class DelunoHeartbeatWorker(
         {
             if (!drainImmediately)
             {
-                // Signal first, interval as a backstop. The backstop still has
-                // to exist: it covers jobs made ready by scheduled_utc passing,
-                // lease recovery after a crash, and anything enqueued by
-                // another process that does not go through this signal.
-                await gate.WaitAsync(lane.Interval, stoppingToken);
+                // Signal first, then this lane's own next due time, and the
+                // backstop only if there is no such time. Nothing here is shared
+                // with another kind of work — which is the point: a lane wakes
+                // when its own work is ready and not when somebody else's tick
+                // came round.
+                await gate.WaitAsync(sleepFor, stoppingToken);
             }
 
             drainImmediately = false;
+            sleepFor = lane.Interval;
 
             using var scope = scopeFactory.CreateScope();
             var services = scope.ServiceProvider;
@@ -412,7 +351,29 @@ public sealed class DelunoHeartbeatWorker(
 
             if (jobs.Count == 0)
             {
-                logger.LogDebug("Worker {WorkerId} lane {LaneName} tick with no pending jobs.", _workerId, lane.Name);
+                // Nothing to run. Rather than come back on a tick and ask again,
+                // find out when there could be something and sleep until then —
+                // a signal still wakes it sooner. On an idle install this is one
+                // indexed lookup and then silence, where the fixed tick was a
+                // lease query per lane per thirty seconds for ever.
+                var nextDue = await jobQueueRepository.NextDueUtcAsync(lane.JobTypes, stoppingToken);
+                if (nextDue is not null)
+                {
+                    var until = nextDue.Value - timeProvider.GetUtcNow();
+                    // Never longer than the backstop, and never a negative or
+                    // zero wait — a due time in the past means something is
+                    // holding it back, and spinning on that would be worse than
+                    // the polling this replaced.
+                    sleepFor = until <= TimeSpan.Zero
+                        ? TimeSpan.FromSeconds(1)
+                        : until < lane.Interval ? until : lane.Interval;
+                }
+
+                logger.LogDebug(
+                    "Worker {WorkerId} lane {LaneName} has nothing to run; sleeping {SleepSeconds}s.",
+                    _workerId,
+                    lane.Name,
+                    (int)sleepFor.TotalSeconds);
                 continue;
             }
 
@@ -476,52 +437,4 @@ public sealed class DelunoHeartbeatWorker(
         }
     }
 
-    /// <summary>
-    /// One lane. Lanes are separated by the resource they contend on, not by a
-    /// generic "maintenance" grouping — metadata refreshes wait on a remote
-    /// metadata provider, imports wait on disk, searches wait on indexers, and
-    /// a catalogue recalculation waits on nothing but SQLite. Putting those in
-    /// one lane made each of them wait behind the others for no reason.
-    /// </summary>
-    /// <param name="Interval">
-    /// A backstop, not the primary trigger — the lane is normally woken by
-    /// <see cref="IJobLaneSignal"/> as soon as matching work is enqueued. This
-    /// still covers jobs made ready by their scheduled time passing, lease
-    /// recovery after a crash, and work enqueued through a path that does not
-    /// signal.
-    /// </param>
-    /// <param name="JobTypes">
-    /// Empty means the lane only plans work and never executes it.
-    /// </param>
-    /// <param name="BatchSize">Jobs claimed per tick.</param>
-    /// <param name="MaxConcurrency">Jobs from that batch run at once.</param>
-    /// <param name="Enabled">Whether this lane starts at all.</param>
-    /// <param name="Jitter">
-    /// A random delay up to this length applied once before the lane's first
-    /// tick, so lanes on the same or nearby intervals do not all wake and hit
-    /// SQLite in the same instant. Defaults to 25% of <see cref="Interval"/>.
-    /// </param>
-    /// <param name="SignalTypesOverride">
-    /// The job types this lane registers with <see cref="IJobLaneSignal"/> to be
-    /// woken by. Defaults to <see cref="JobTypes"/>; a planning-only lane (empty
-    /// <see cref="JobTypes"/>) needs an explicit override, since it executes no
-    /// job type but still wants to be signalled.
-    /// </param>
-    private sealed record JobLane(
-        string Name,
-        TimeSpan Interval,
-        IReadOnlyList<string> JobTypes,
-        bool PlanAutomation = false,
-        bool PlanImports = false,
-        bool PlanMaintenance = false,
-        int BatchSize = 8,
-        int MaxConcurrency = 4,
-        bool Enabled = true,
-        TimeSpan? JitterOverride = null,
-        IReadOnlyList<string>? SignalTypesOverride = null)
-    {
-        public TimeSpan Jitter { get; init; } = JitterOverride ?? TimeSpan.FromMilliseconds(Interval.TotalMilliseconds * 0.25);
-
-        public IReadOnlyList<string> SignalTypes { get; init; } = SignalTypesOverride ?? JobTypes;
-    }
 }
