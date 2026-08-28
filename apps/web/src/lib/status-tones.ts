@@ -159,6 +159,20 @@ export interface TitleMarkPresentation {
    * question comes back with it.
    */
   canBeHalf: boolean;
+  /**
+   * An extra class for a rung that is drawn as something more than a colour.
+   *
+   * Only Quality met has one. The other four rungs all mean "Deluno is still
+   * working on this"; Quality met is the only one that means it is done, and it
+   * had been drawn as just another colour on the ladder. See `.mark-grail` in
+   * `index.css` for what it does and why the sheen is off-frame most of the
+   * time.
+   *
+   * Spelled out, like every other class in this table, because one built at the
+   * point of use is invisible to Tailwind and gets purged — which is exactly
+   * what happened to `text-mark-quality-met` and `text-mark-upcoming`.
+   */
+  sheen?: string;
 }
 
 export const TITLE_MARK_PRESENTATION: Record<TitleMark, TitleMarkPresentation> = {
@@ -196,7 +210,8 @@ export const TITLE_MARK_PRESENTATION: Record<TitleMark, TitleMarkPresentation> =
     cssVar: "--mark-quality-met",
     label: "Quality met",
     hint: "This is the quality your Library Profile asked for, so Deluno has stopped looking.",
-    canBeHalf: false
+    canBeHalf: false,
+    sheen: "mark-grail"
   },
   upcoming: {
     dot: "bg-mark-upcoming",

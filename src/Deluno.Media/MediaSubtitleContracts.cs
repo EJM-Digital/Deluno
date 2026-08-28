@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 namespace Deluno.Media;
 
 /// <summary>

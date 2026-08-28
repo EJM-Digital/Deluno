@@ -36,10 +36,10 @@ public sealed class CatalogueCustomFilterTests
 
         // The whole point of James's ask: these two are both "4K" and they are
         // not the same file.
-        var remux = await ListAsync(movies, new CatalogueFilters(Qualities: ["Remux 2160p"]));
+        var remux = await ListAsync(movies, Filter("quality", CatalogueFilterOperator.Includes, "Remux 2160p"));
         Assert.Equal(["Dune"], remux);
 
-        var anyFourK = await ListAsync(movies, new CatalogueFilters(Qualities: ["Remux 2160p", "WEB 2160p"]));
+        var anyFourK = await ListAsync(movies, Filter("quality", CatalogueFilterOperator.Includes, "Remux 2160p", "WEB 2160p"));
         Assert.Equal(["Arrival", "Dune"], anyFourK.Order());
     }
 
@@ -55,10 +55,10 @@ public sealed class CatalogueCustomFilterTests
         // Asking for "under 100 GB" and being handed titles that have no file at
         // all is the same class of answer as a badge showing a target quality as
         // if it were owned.
-        var underAHundred = await ListAsync(movies, new CatalogueFilters(MaxSizeGb: 100));
+        var underAHundred = await ListAsync(movies, Filter("size", CatalogueFilterOperator.AtMost, "100"));
         Assert.Equal(["Dune"], underAHundred);
 
-        var anyQuality = await ListAsync(movies, new CatalogueFilters(Qualities: ["Remux 2160p", "WEB 1080p"]));
+        var anyQuality = await ListAsync(movies, Filter("quality", CatalogueFilterOperator.Includes, "Remux 2160p", "WEB 1080p"));
         Assert.Equal(["Dune"], anyQuality);
     }
 
@@ -72,8 +72,8 @@ public sealed class CatalogueCustomFilterTests
         await ImportAsync(movies, "Middling", 2016, "WEB 2160p", 8);
         await ImportAsync(movies, "Small", 2010, "WEB 1080p", 2);
 
-        Assert.Equal(["Middling"], await ListAsync(movies, new CatalogueFilters(MinSizeGb: 5, MaxSizeGb: 20)));
-        Assert.Equal(["Big"], await ListAsync(movies, new CatalogueFilters(MinSizeGb: 40)));
+        Assert.Equal(["Middling"], await ListAsync(movies, Filter("size", CatalogueFilterOperator.AtLeast, "5").And("size", CatalogueFilterOperator.AtMost, "20")));
+        Assert.Equal(["Big"], await ListAsync(movies, Filter("size", CatalogueFilterOperator.AtLeast, "40")));
     }
 
     [Fact]
@@ -91,8 +91,8 @@ public sealed class CatalogueCustomFilterTests
         var neither = await movies.AddAsync(new CreateMovieRequest("Douze", 1999, null), CancellationToken.None);
         await SetGenresAsync(movies, neither.Id, "Melodrama");
 
-        Assert.Equal(["Arrival", "Sicario"], (await ListAsync(movies, new CatalogueFilters(Genres: ["Drama"]))).Order());
-        Assert.Equal(["Arrival"], await ListAsync(movies, new CatalogueFilters(Genres: ["Drama", "Science Fiction"])));
+        Assert.Equal(["Arrival", "Sicario"], (await ListAsync(movies, Filter("genre", CatalogueFilterOperator.IncludesAll, "Drama"))).Order());
+        Assert.Equal(["Arrival"], await ListAsync(movies, Filter("genre", CatalogueFilterOperator.IncludesAll, "Drama", "Science Fiction")));
     }
 
     [Fact]
@@ -106,9 +106,9 @@ public sealed class CatalogueCustomFilterTests
         var recent = await movies.AddAsync(new CreateMovieRequest("Recent", 2021, null), CancellationToken.None);
         await SetFactsAsync(movies, recent.Id, runtimeMinutes: 155, rating: 8.4);
 
-        Assert.Equal(["Recent"], await ListAsync(movies, new CatalogueFilters(MinYear: 2000)));
-        Assert.Equal(["Old"], await ListAsync(movies, new CatalogueFilters(MaxRuntimeMinutes: 120)));
-        Assert.Equal(["Recent"], await ListAsync(movies, new CatalogueFilters(MinRatingValue: 8.0)));
+        Assert.Equal(["Recent"], await ListAsync(movies, Filter("year", CatalogueFilterOperator.AtLeast, "2000")));
+        Assert.Equal(["Old"], await ListAsync(movies, Filter("runtime", CatalogueFilterOperator.AtMost, "120")));
+        Assert.Equal(["Recent"], await ListAsync(movies, Filter("rating", CatalogueFilterOperator.AtLeast, "8.0")));
     }
 
     /// <summary>
@@ -129,7 +129,7 @@ public sealed class CatalogueCustomFilterTests
         await movies.AddAsync(new CreateMovieRequest("Sicario", 2015, null), CancellationToken.None);
 
         var page = await movies.ListPageAsync(
-            new CatalogueQuery(Filters: new CatalogueFilters(Qualities: ["WEB 2160p", "WEB 1080p"])),
+            new CatalogueQuery(Filters: Filter("quality", CatalogueFilterOperator.Includes, "WEB 2160p", "WEB 1080p")),
             CancellationToken.None);
 
         Assert.Equal(2, page.Items.Count);
@@ -158,6 +158,15 @@ public sealed class CatalogueCustomFilterTests
     }
 
     /* ------------------------------------------------------------ helpers */
+
+    /// <summary>
+    /// One condition, spelled the way the panel above the shelf reads. The
+    /// filters were nine fixed properties on a record until #324; they are a
+    /// list of conditions over a server-declared field registry now, so a test
+    /// names a field the same way a URL does.
+    /// </summary>
+    private static CatalogueFilters Filter(string fieldId, CatalogueFilterOperator op, params string[] values)
+        => CatalogueFilters.Of(CatalogueFilters.Where(fieldId, op, values));
 
     private static async Task<string[]> ListAsync(IMovieCatalogRepository movies, CatalogueFilters filters)
     {

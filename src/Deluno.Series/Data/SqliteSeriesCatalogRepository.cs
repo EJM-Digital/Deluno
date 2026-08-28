@@ -698,7 +698,7 @@ public sealed class SqliteSeriesCatalogRepository(
             // Quality and size read `ws` — the one wanted-state row this page
             // speaks for — rather than an EXISTS over all of them, so what the
             // filter selects and what the row displays cannot disagree.
-            CatalogueKeyset.CustomFilters(query.Filters, "s", "start_year"),
+            CatalogueKeyset.CustomFilters(query.Filters, MediaKind.Series, "s", "start_year"),
             token is null ? string.Empty : CatalogueKeyset.SeekPredicate(sortExpression, "s", query.Descending));
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -724,7 +724,7 @@ public sealed class SqliteSeriesCatalogRepository(
 
             AddParameter(command, "@fetchCount", pageSize + 1);
             CatalogueKeyset.BindSearch(command, search);
-            CatalogueKeyset.BindCustomFilters(command, query.Filters);
+            CatalogueKeyset.BindCustomFilters(command, query.Filters, MediaKind.Series);
             AddParameter(command, "@libraryId", libraryId);
             if (token is not null)
             {
@@ -953,15 +953,17 @@ public sealed class SqliteSeriesCatalogRepository(
         // the custom filters apply here too — and the join they need is added
         // only when one of them is actually asking for it, so an unfiltered
         // page runs exactly the query it ran before this existed.
-        var hasCustomFilters = filters is not null && !filters.IsEmpty;
-        var wantedJoin = hasCustomFilters
+        // Asked precisely, not "are there any filters at all": narrowing by
+        // year or genre reads the entries table and needs no join, so it still
+        // costs the counts nothing.
+        var wantedJoin = filters?.NeedsWantedState(MediaKind.Series) == true
             ? CatalogueWantedState.Join("s", "series_wanted_state", "series_id", libraryId is not null)
             : string.Empty;
 
         var where = CatalogueKeyset.CombineFilters(
             search is null ? string.Empty : CatalogueKeyset.SearchFilter("s"),
             CatalogueLibraryFilter(libraryId),
-            CatalogueKeyset.CustomFilters(filters, "s", "start_year"));
+            CatalogueKeyset.CustomFilters(filters, MediaKind.Series, "s", "start_year"));
 
         // The two axes cross here.
         //
@@ -997,7 +999,7 @@ public sealed class SqliteSeriesCatalogRepository(
             WHERE {where};
             """;
         CatalogueKeyset.BindSearch(command, search);
-        CatalogueKeyset.BindCustomFilters(command, filters);
+        CatalogueKeyset.BindCustomFilters(command, filters, MediaKind.Series);
         AddParameter(command, "@libraryId", libraryId);
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);

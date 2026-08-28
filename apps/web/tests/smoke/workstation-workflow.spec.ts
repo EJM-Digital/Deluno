@@ -152,33 +152,49 @@ test.describe("dashboard workflow", () => {
     const libraryPicker = page.getByRole("combobox", { name: "Library", exact: true });
     await expect(libraryPicker).toBeVisible();
     await expect(libraryPicker).toHaveText(/All libraries/);
-    // One panel, not three. Display and Order were the same question asked
-    // twice and were merged behind `View`; saved views moved in with them.
-    //
-    // This spec asked for the old three until now, and had been failing on
-    // `main` since that merge landed — which is worth more attention than the
-    // fix: a suite reported as 272 green was 268 green and four red, and
-    // nothing said so. The bar is that a passing suite means the shipped screen
-    // is the screen under test.
-    await page.getByRole("button", { name: /^View/ }).click();
-    await expect(page.getByRole("heading", { name: "Choose how your library feels" })).toBeVisible();
-    await expect(page.getByRole("button", { name: /^Selected Poster grid/ })).toBeVisible();
-    await expect(page.getByRole("button", { name: /^Compact list/ })).toBeVisible();
-    await expect(page.getByText("What each poster shows", { exact: true })).toBeVisible();
+    // Which layout you are in is the one arrangement choice you can answer by
+    // looking, so it is a toggle rather than a panel (#324).
+    await expect(page.getByRole("radio", { name: "Poster grid" })).toBeVisible();
+    await expect(page.getByRole("radio", { name: "Compact list" })).toBeVisible();
 
-    await expect(page.getByText("Every order here is performed by the paged catalogue query, on an indexed column, so page four hundred costs what page one costs.", { exact: true })).toBeVisible();
+    // Three small controls, each asking one question. Display and Order had been
+    // merged into one View panel on the grounds that they were "one question
+    // asked twice"; James read the result as overcomplicated and he was right —
+    // ordering is not how you want to look at a shelf, it is which title you
+    // find first, and it is the control you reach for most.
+    await page.getByRole("button", { name: /^Sort/ }).click();
+    await expect(page.getByRole("heading", { name: "Which title you find first" })).toBeVisible();
     await expect(page.getByRole("button", { name: /^Ascending/ })).toBeVisible();
     await expect(page.getByRole("button", { name: /^Descending/ })).toBeVisible();
+    // The orders come from `/api/movies/controls`, so this list can no longer
+    // offer one the paged query cannot perform.
+    await expect(page.getByRole("button", { name: /^Bitrate/ })).toBeVisible();
 
-    // Saved views sit with the filters they save, not with the layout.
-    await page.getByRole("button", { name: /^Filters/ }).click();
-    await expect(page.getByText("Saved library views", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: /^Options/ }).click();
+    await expect(page.getByRole("heading", { name: "What a poster carries" })).toBeVisible();
+    await expect(page.getByText("What each poster shows", { exact: true })).toBeVisible();
+
+    // Saved filters sit with the filters they save, and the panel is a list of
+    // yours plus a field to add — not a form of every field there is.
+    await page.getByRole("button", { name: /^Filter/ }).click();
+    await expect(page.getByText("Saved filters", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Add a field" })).toBeVisible();
+    await expect(page.getByText("Nothing is being narrowed. The shelf is showing everything the row above selects.")).toBeVisible();
 
     // The chips are the filters, and each is also the legend for the mark it
     // selects — the same word as the dot on the posters below.
     for (const chip of ["Quality met", "Upgradable", "Missing", "Upcoming"]) {
       await expect(page.getByRole("button", { name: new RegExp(`^${chip} `) })).toBeVisible();
     }
+
+    // Quality met is the one rung that means Deluno has finished, and it is
+    // drawn as gold leaf rather than as another colour on the ladder. Asserted
+    // on the *computed* style, because the way this fails is silent: a class
+    // name no stylesheet carries renders as nothing, which is precisely how
+    // `text-mark-quality-met` was purged and half the legend lost its colour.
+    const grail = page.getByRole("button", { name: /^Quality met / }).locator(".mark-grail");
+    await expect(grail).toBeVisible();
+    await expect(grail).toHaveCSS("background-image", /linear-gradient/);
   });
 
   test("keeps the empty state hidden while the library catalogue is loading", async ({ page }) => {
@@ -274,7 +290,7 @@ test.describe("dashboard workflow", () => {
           // health. Amber would be claiming a person has to act.
           const markName = monitored ? "Missing" : "Missing · not monitored";
 
-          await page.getByRole("button", { name: /^View/ }).click();
+          await page.getByRole("button", { name: /^Options/ }).click();
           await page.getByRole("button", { name: /Medium Balanced/ }).click();
           const mediumMark = page.getByRole("img", { name: markName, exact: true }).first();
           await expect(mediumMark).toBeVisible();
@@ -305,13 +321,11 @@ test.describe("dashboard workflow", () => {
           // was amber — the one signal reserved for "a person has to act"
           // (#302). A shelf and a list of the same library must not disagree.
           //
-          // The Display panel is still open from the poster-size checks above,
-          // so it is not re-opened here: the toolbar button toggles, and
-          // pressing it again would close the panel this line needs.
-          // Anchored on the choice's own description: once a view is picked the
-          // Display button's meta line repeats its name, so a bare
-          // /Compact list/ matches the toolbar button as well as the choice.
-          await page.getByRole("button", { name: /Compact list More titles/ }).click();
+          // The layout is a toggle in the toolbar now rather than a choice
+          // inside a panel (#324) — which is why this line no longer has to
+          // reason about whether the panel above it is still open, or anchor
+          // itself on a description to avoid matching the button that opens it.
+          await page.getByRole("radio", { name: "Compact list" }).click();
 
           const row = page.getByRole("row").filter({ hasText: title }).first();
           await expect(row).toBeVisible();
@@ -351,8 +365,8 @@ test.describe("dashboard workflow", () => {
           await expect(page.getByRole("img", { name: markName, exact: true }).first()).toBeVisible();
           await page.goBack();
           // Back on the library the panel is closed again, so this one does open it.
-          await page.getByRole("button", { name: /^View/ }).click();
-          await page.getByRole("button", { name: /Poster grid Artwork/ }).click();
+          await page.getByRole("button", { name: /^Options/ }).click();
+          await page.getByRole("button", { name: /Large Artwork first/ }).click();
         } finally {
           if (created) {
             await api.post(scenario.removePath, {

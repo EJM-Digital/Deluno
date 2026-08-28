@@ -1,17 +1,21 @@
 /**
- * What a library's toolbar can ask for: which titles, in what order, drawn how.
+ * The two axes a shelf is narrowed on that are *not* served field declarations:
+ * the mark a title carries, and whether Deluno acts on it.
  *
- * It used to hold a client-side filter engine as well — `filterAndSortLibraryItems`,
+ * Everything else moved. The filter fields, the orders and the poster options are
+ * declared per media kind by the server and fetched by `library-controls.ts`
+ * (#324) — this file used to hold the browser's own copy of the sorts and its own
+ * `DisplayOptions`, which is the shape every defect in this codebase has had.
+ *
+ * It also used to hold a client-side filter engine — `filterAndSortLibraryItems`,
  * `matchesCustomRule`, `resolveRuleValue` and a 45-value `FilterField` union.
- * Nothing imported any of it: the catalogue is paged and filtered by the server
- * (`library-view.tsx` sends `status`, `sort` and `direction`), so the engine was
- * a second, unreachable definition of the same states — and it disagreed with
- * the live one. Its `downloading` and `needsAttention` branches tested
- * `MediaItem.status` values nothing ever set, so both could only ever match
- * nothing; its `missing` branch meant "no file", which is not what Missing
- * means; and `isUpgradeCandidate` re-derived Upgradable from a quality-string
- * comparison rather than the stored wanted status. See #302.
+ * Nothing imported any of it: the catalogue is paged and filtered by the server,
+ * so the engine was a second, unreachable definition of the same states — and it
+ * disagreed with the live one. Its `downloading` and `needsAttention` branches
+ * tested `MediaItem.status` values nothing ever set, so both could only ever
+ * match nothing. See #302.
  */
+import type { PosterOptionSpec } from "./library-controls";
 import type { TitleMark } from "./status-tones";
 
 /**
@@ -70,144 +74,51 @@ export const QUICK_FILTER_MARK: Record<QuickFilter, TitleMark | null> = {
 };
 
 /**
- * Every sort the server can actually perform, and no more.
+ * The id of an order, checked against the list the server serves rather than
+ * against a union declared here.
  *
- * It was once fourteen values here and four in `library-control-rail.tsx` — the
- * same redeclaration the QuickFilter comment in that file describes itself as
- * having fixed, left in place one line below it. The ten extra were
- * unreachable: nothing can set a sort the menu does not list.
- *
- * `runtime` and `popularity` were never new in the database — both have had an
- * index since V0011/V0012 and neither was ever offered. `size` and `quality`
- * describe the file, and V0016/V0017 keep the picked file's size and quality
- * rank on the title's own row so ordering by them is an index walk.
+ * It was a nine-value union in this file and a nine-entry array in
+ * `library-control-rail.tsx`, beside a nine-constant class on the server — three
+ * copies of one list, which had already been the subject of two comments in those
+ * very files. There is one list now and it arrives with the controls.
  */
-export type SortField = "title" | "year" | "rating" | "added" | "runtime" | "popularity" | "size" | "quality" | "bitrate";
+export type SortField = string;
 export type SortDirection = "asc" | "desc";
 
 /**
- * The narrowing beyond a status and a library.
+ * What a poster carries, as a set of switches keyed by the option ids the
+ * control set declares.
  *
- * The shape mirrors `CatalogueFilters` on the server one for one, because it is
- * sent straight to it. Deliberately not a generic field/operator/value engine:
- * the last one of those lived in this very file, could express filters nothing
- * could answer, and two of its branches matched zero rows forever without
- * anybody noticing (#302).
+ * A record rather than an interface with eleven named booleans, because the list
+ * of options is now per media kind and served — TV gets ones a film has no answer
+ * for. `defaultDisplayOptions` fills it from the declaration, so a switch cannot
+ * exist without a label and a description beside it.
  */
-export interface CustomFilters {
-  /** Quality tiers as the ladder names them — `WEB 2160p`, `Remux 1080p`. */
-  qualities: string[];
-  /** Every genre listed must be present. */
-  genres: string[];
-  minSizeGb: number | null;
-  maxSizeGb: number | null;
-  minYear: number | null;
-  maxYear: number | null;
-  minRuntime: number | null;
-  maxRuntime: number | null;
-  minRating: number | null;
-}
+export type DisplayOptions = Record<string, boolean>;
 
-export function emptyCustomFilters(): CustomFilters {
-  return {
-    qualities: [], genres: [],
-    minSizeGb: null, maxSizeGb: null,
-    minYear: null, maxYear: null,
-    minRuntime: null, maxRuntime: null,
-    minRating: null
-  };
+export function defaultDisplayOptions(options: PosterOptionSpec[]): DisplayOptions {
+  return Object.fromEntries(options.map((option) => [option.id, option.defaultOn]));
 }
 
 /**
- * How many questions this is asking. Drives the number on the Filters button,
- * so a narrowed shelf can never look like an unnarrowed one — which is the way
- * people lose half their library and conclude Deluno has.
- */
-export function customFilterCount(filters: CustomFilters): number {
-  return (
-    (filters.qualities.length > 0 ? 1 : 0) +
-    (filters.genres.length > 0 ? 1 : 0) +
-    (filters.minSizeGb !== null || filters.maxSizeGb !== null ? 1 : 0) +
-    (filters.minYear !== null || filters.maxYear !== null ? 1 : 0) +
-    (filters.minRuntime !== null || filters.maxRuntime !== null ? 1 : 0) +
-    (filters.minRating !== null ? 1 : 0)
-  );
-}
-
-/** Writes the filters onto a catalogue request. Only what is set is sent. */
-export function applyCustomFilters(params: URLSearchParams, filters: CustomFilters) {
-  if (filters.qualities.length) params.set("quality", filters.qualities.join(","));
-  if (filters.genres.length) params.set("genre", filters.genres.join(","));
-  if (filters.minSizeGb !== null) params.set("minSizeGb", String(filters.minSizeGb));
-  if (filters.maxSizeGb !== null) params.set("maxSizeGb", String(filters.maxSizeGb));
-  if (filters.minYear !== null) params.set("minYear", String(filters.minYear));
-  if (filters.maxYear !== null) params.set("maxYear", String(filters.maxYear));
-  if (filters.minRuntime !== null) params.set("minRuntime", String(filters.minRuntime));
-  if (filters.maxRuntime !== null) params.set("maxRuntime", String(filters.maxRuntime));
-  if (filters.minRating !== null) params.set("minRating", String(filters.minRating));
-}
-
-/**
- * Reads the custom filters back off a saved view.
+ * A stored choice, plus anything the declaration has gained since it was saved.
  *
- * Anything unreadable is "no filters", never a partial set: a saved view that
- * silently narrowed by half of what you saved would be worse than one that
- * narrowed by none of it, because you would not be able to tell.
+ * The defaults come first so somebody who saved their layout last month does not
+ * get `undefined` for a switch added since — the same reason the old
+ * `parseDisplayOptions` spread its defaults, and the reason it still matters now
+ * that the option list can grow per media kind.
  */
-export function parseCustomFilters(raw: string | null | undefined): CustomFilters {
-  if (!raw) return emptyCustomFilters();
+export function parseDisplayOptions(raw: string | null | undefined, options: PosterOptionSpec[]): DisplayOptions {
+  const defaults = defaultDisplayOptions(options);
+  if (!raw) return defaults;
   try {
-    const parsed = JSON.parse(raw) as Partial<CustomFilters>;
-    // An array is the legacy `rulesJson` value the browser-side rule engine
-    // left behind (#302). It is not a filter set, and reading it as one would
-    // spread an array's indices over these fields.
-    if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") return emptyCustomFilters();
-    return { ...emptyCustomFilters(), ...parsed };
+    const stored = JSON.parse(raw) as Record<string, unknown>;
+    if (!stored || typeof stored !== "object" || Array.isArray(stored)) return defaults;
+    for (const key of Object.keys(defaults)) {
+      if (typeof stored[key] === "boolean") defaults[key] = stored[key];
+    }
+    return defaults;
   } catch {
-    return emptyCustomFilters();
-  }
-}
-
-/**
- * What a poster may carry, beyond the artwork.
- *
- * This interface was declared twice — here and in `library-grid.tsx` — with the
- * same five fields, in a file whose own header describes that exact defect. The
- * grid re-exports this one now, so adding an option cannot leave half the app
- * behind.
- *
- * The extras all land on one line under the title rather than one row each. Six
- * new switches each claiming their own line would bury the artwork the grid
- * exists to show; joined into a sentence, a card stays calm however many are on.
- */
-export interface DisplayOptions {
-  showTitle: boolean;
-  showMeta: boolean;
-  showStatusPill: boolean;
-  showQualityBadge: boolean;
-  showRating: boolean;
-  showSize: boolean;
-  showGenres: boolean;
-  showRuntime: boolean;
-  showReleaseGroup: boolean;
-  showCodec: boolean;
-  showAdded: boolean;
-}
-
-export function defaultDisplayOptions(): DisplayOptions {
-  return {
-    showTitle: true, showMeta: true, showStatusPill: true, showQualityBadge: true, showRating: true,
-    // Off by default. They are the answer to "show me more", and a card that
-    // arrives already carrying everything has nothing left to ask for.
-    showSize: false, showGenres: false, showRuntime: false, showReleaseGroup: false, showCodec: false, showAdded: false
-  };
-}
-
-export function parseDisplayOptions(raw: string | null | undefined): DisplayOptions {
-  if (!raw) return defaultDisplayOptions();
-  try {
-    return { ...defaultDisplayOptions(), ...(JSON.parse(raw) as Partial<DisplayOptions>) };
-  } catch {
-    return defaultDisplayOptions();
+    return defaults;
   }
 }

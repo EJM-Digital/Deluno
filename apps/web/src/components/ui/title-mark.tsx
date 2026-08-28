@@ -98,6 +98,11 @@ export function TitleMarkDot({
         // colour at all, and nothing failed.
         half ? "bg-[linear-gradient(90deg,currentColor_0_50%,hsl(var(--mark-idle))_50%_100%)]" : presentation.dot,
         half && presentation.text,
+        // Quality met is gold leaf rather than a flat fill, and it glints. It is
+        // the only rung that means Deluno has finished; the other four all mean
+        // it is still working. `canBeHalf` is false for it, so this can never
+        // fight the half-grey gradient above.
+        !half && presentation.sheen,
         className
       )}
       style={{ width: size, height: size }}

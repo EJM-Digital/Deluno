@@ -54,6 +54,15 @@
       do yet", and it is what a calendar uses for something scheduled.
     */
     --mark-quality-met: 42 96% 40%;
+    /*
+      Gold is a *material*, and a flat fill of it reads as yellow. These two
+      stops are the highlight and the shadow the dot's gradient runs between —
+      the base stop above is untouched, because it is also the text colour for
+      the Quality met count and lightening it would cost contrast to buy an
+      effect that belongs on a 13px dot.
+    */
+    --mark-quality-met-high: 47 100% 62%;
+    --mark-quality-met-deep: 33 92% 28%;
     --mark-upcoming: 265 62% 52%;
     --mark-idle: 220 10% 82%;
     --border: 220 14% 86%;
@@ -130,6 +139,8 @@
     --info: 207 96% 62%;
     --info-foreground: 210 30% 98%;
     --mark-quality-met: 44 98% 58%;
+    --mark-quality-met-high: 48 100% 78%;
+    --mark-quality-met-deep: 34 90% 40%;
     --mark-upcoming: 265 82% 72%;
     --mark-idle: 217 16% 26%;
     --border: 217 22% 18%;
@@ -1659,4 +1670,61 @@ html .text-\[64px\] {
 
 .deluno-range-input::-moz-range-track {
   background: transparent;
+}
+
+/*
+  Quality met — the one rung on the ladder that is an achievement rather than a
+  state.
+
+  Missing, Downloading and Upgradable are all "Deluno is still working on this".
+  Quality met is the only one that means it is done: you have the copy your
+  Library Profile asked for and Deluno has stopped looking. James asked for it to
+  look like the holy grail, and he is right that it had been drawn as just
+  another colour on the ladder.
+
+  Two things make it gold rather than yellow. **A gradient**, because gold is a
+  material: a highlight above and a deeper edge below is the whole difference
+  between metal and a flat fill, and it is why the base token above is untouched
+  — it is also the text colour for the count, and lightening it would cost
+  contrast to buy an effect that belongs on a 13px dot. And **a sheen** that
+  crosses it, which is what tells a reader the surface is polished.
+
+  The sweep is off-frame for four fifths of its cycle. A shelf holds a hundred of
+  these at once, and a hundred dots glinting continuously is noise rather than a
+  reward; one pass every six seconds reads as a shine. Motion is already
+  cancelled wholesale under `prefers-reduced-motion: reduce` further up this
+  file, so the gradient carries it alone for anybody who has asked for that.
+*/
+.mark-grail {
+  position: relative;
+  overflow: hidden;
+  background-image: linear-gradient(
+    152deg,
+    hsl(var(--mark-quality-met-high)) 0%,
+    hsl(var(--mark-quality-met)) 48%,
+    hsl(var(--mark-quality-met-deep)) 100%
+  );
+  box-shadow:
+    inset 0 0 0 0.5px hsl(var(--mark-quality-met-deep) / 0.5),
+    0 0 5px -1px hsl(var(--mark-quality-met) / 0.6);
+}
+
+.mark-grail::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(
+    100deg,
+    transparent 36%,
+    hsl(0 0% 100% / 0.9) 50%,
+    transparent 64%
+  );
+  background-size: 300% 100%;
+  background-repeat: no-repeat;
+  animation: mark-grail-sheen 6s ease-in-out infinite;
+}
+
+@keyframes mark-grail-sheen {
+  0%, 74%   { background-position: -160% 0; }
+  92%, 100% { background-position: 260% 0; }
 }

@@ -17,14 +17,14 @@ import {
   type SeriesListItem
 } from "../../lib/api";
 import { adaptMovieItems, adaptSeriesItems } from "../../lib/ui-adapters";
-import { applyCustomFilters, isMonitoringFilter, monitoringParam, parseCustomFilters, parseDisplayOptions, type MonitoringFilter } from "../../lib/library-filters";
+import { isMonitoringFilter, monitoringParam, type MonitoringFilter } from "../../lib/library-filters";
+import { applyConditions, parseConditions } from "../../lib/library-controls";
 import { LibraryCreateDialog } from "./library-create-dialog";
 import { LibraryResults } from "./library-results";
 import { LibrarySelectionCommandBar } from "./library-selection-command-bar";
 import {
   ControlRail,
   isQuickFilter,
-  isSortField,
   type SavedFilterPreset,
 } from "./library-control-rail";
 import { useDensity } from "../../lib/use-density";
@@ -115,7 +115,7 @@ export function LibraryView({
     sortDirection, setSortDirection, cardSize, displayOptions,
     savedPresets, setSavedPresets, newPresetName, setNewPresetName, isSavingPreset,
     setIsSavingPreset, changeSize, updateDisplayOptions, activeFilterCount,
-    monitoring, setMonitoring, customFilters, setCustomFilters, clearCustomFilters
+    monitoring, setMonitoring, controlSet, conditions, setConditions, clearConditions
   } = useLibraryFilters(variant, searchParams.get("filter"));
 
   const buildCatalogueParams = useCallback((pageToken?: string, pageSize = FIRST_PAGE_SIZE) => {
@@ -128,12 +128,13 @@ export function LibraryView({
     const monitored = monitoringParam(monitoring);
     if (monitored !== undefined) params.set("monitored", String(monitored));
     if (libraryId) params.set("libraryId", libraryId);
-    // Quality, size, genre, year, runtime, rating. Applied in SQL like
-    // everything else here; nothing is filtered in the browser, because the
-    // browser only ever has one page of a library that may hold twenty thousand.
-    applyCustomFilters(params, customFilters);
+    // One `f` per condition, read against the field registry this media kind
+    // declares. Applied in SQL like everything else here; nothing is filtered in
+    // the browser, because the browser only ever has one page of a library that
+    // may hold twenty thousand.
+    applyConditions(params, conditions);
     return params;
-  }, [customFilters, libraryId, monitoring, query, quickFilter, sortDirection, sortField]);
+  }, [conditions, libraryId, monitoring, query, quickFilter, sortDirection, sortField]);
 
   // The identity of what is on screen. A snapshot may only be replayed for the
   // exact query that produced it.
@@ -395,12 +396,12 @@ export function LibraryView({
             libraryId: item.libraryId ?? null,
             quickFilter: isQuickFilter(item.quickFilter) ? item.quickFilter : "all",
             monitoring: isMonitoringFilter(item.monitoring ?? null) ? item.monitoring as MonitoringFilter : "any",
-            sortField: isSortField(item.sortField) ? item.sortField : "title",
+            sortField: item.sortField || "title",
             sortDirection: item.sortDirection === "desc" ? "desc" : "asc",
             viewMode: item.viewMode === "list" ? "list" : "grid",
             cardSize: item.cardSize === "sm" || item.cardSize === "lg" ? item.cardSize : "md",
-            displayOptions: parseDisplayOptions(item.displayOptionsJson),
-            customFilters: parseCustomFilters(item.rulesJson)
+            displayOptions: JSON.parse(item.displayOptionsJson || "{}") as Record<string, boolean>,
+            conditions: parseConditions(item.rulesJson)
           }))
         );
       } catch {
@@ -480,11 +481,13 @@ export function LibraryView({
         cardSize,
         displayOptionsJson: JSON.stringify(displayOptions),
         // This field waited for "a server-side rule contract". It has one now:
-        // `CatalogueFilters` is applied in SQL, so what is stored here is a
-        // filter the server can actually perform rather than the browser-side
-        // rule list #302 deleted. Old rows hold `[]` and read back as no
-        // filters, which is what they meant.
-        rulesJson: JSON.stringify(customFilters)
+        // the conditions are read against a server-declared field registry and
+        // applied in SQL, so what is stored here is a filter the server can
+        // actually perform rather than the browser-side rule list #302 deleted.
+        // Rows written before #324 hold the nine-property record and are
+        // migrated on read; older ones hold `[]` and read back as no filters,
+        // which is what they meant.
+        rulesJson: JSON.stringify(conditions)
       };
 
       const created = await fetchJson<LibraryViewItem>("/api/library-views", {
@@ -501,12 +504,12 @@ export function LibraryView({
           libraryId: created.libraryId ?? null,
           quickFilter: isQuickFilter(created.quickFilter) ? created.quickFilter : "all",
           monitoring: isMonitoringFilter(created.monitoring ?? null) ? created.monitoring as MonitoringFilter : "any",
-          sortField: isSortField(created.sortField) ? created.sortField : "title",
+          sortField: created.sortField || "title",
           sortDirection: created.sortDirection === "desc" ? "desc" : "asc",
           viewMode: created.viewMode === "list" ? "list" : "grid",
           cardSize: created.cardSize === "sm" || created.cardSize === "lg" ? created.cardSize : "md",
-          displayOptions: parseDisplayOptions(created.displayOptionsJson),
-          customFilters: parseCustomFilters(created.rulesJson)
+          displayOptions: JSON.parse(created.displayOptionsJson || "{}") as Record<string, boolean>,
+          conditions: parseConditions(created.rulesJson)
         }
       ]);
       setNewPresetName("");
@@ -527,7 +530,7 @@ export function LibraryView({
     setView(preset.viewMode);
     changeSize(preset.cardSize);
     updateDisplayOptions(preset.displayOptions);
-    setCustomFilters(preset.customFilters);
+    setConditions(preset.conditions);
     toast.success(`Applied ${preset.name}`);
   }
 
@@ -917,9 +920,10 @@ export function LibraryView({
           controls={{
             query, setQuery, quickFilter, setQuickFilter, monitoring, setMonitoring, sortField, setSortField,
             sortDirection, setSortDirection, view, setView, cardSize, changeSize,
-            displayOptions, setDisplayOptions: updateDisplayOptions, savedPresets,
+            displayOptions, setDisplayOptions: updateDisplayOptions,
+            controlSet, conditions, setConditions, clearConditions, savedPresets,
             libraryId, setLibraryId, libraries: compatibleLibraries,
-            customFilters, setCustomFilters, clearCustomFilters,
+
             newPresetName, setNewPresetName, isSavingPreset, saveCurrentPreset,
             applyPreset, deletePreset, activeFilterCount
           }}
@@ -982,7 +986,7 @@ export function LibraryView({
             setQuickFilter("all");
             setLibraryId(null);
             setMonitoring("any");
-            clearCustomFilters();
+            clearConditions();
             setQuery("");
           }}
           onSelect={openWorkspace}

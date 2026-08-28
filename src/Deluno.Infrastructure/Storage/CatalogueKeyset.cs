@@ -170,27 +170,33 @@ public static class CatalogueKeyset
         };
 
     /// <summary>
-    /// The custom narrowing — quality, size, genre, year, runtime, rating —
-    /// as one predicate, written once for both catalogues.
+    /// The custom narrowing, as one predicate, written once for both catalogues
+    /// and driven by <see cref="CatalogueFilterFields"/> rather than by a
+    /// hand-written clause per field.
     ///
-    /// <para>These sit in the WHERE clause beside the search and status
-    /// filters, so they narrow the rows an index walk produces rather than
-    /// changing what drives it: the page is still a seek on the sort column and
-    /// still stops as soon as it has enough rows. A filter nothing matches
-    /// costs a walk, which is the honest price of asking a question with no
-    /// answer.</para>
+    /// <para>It used to be nine <c>if</c> blocks here and nine matching binds
+    /// below, and the two lists had to agree by hand. Thirty fields would have
+    /// been sixty places to keep in step; the registry makes it one row per
+    /// question, read by both halves.</para>
     ///
-    /// <para>Quality and size read the joined wanted state, so a title with no
-    /// file matches neither — which is what a reader means. Asking for "under
-    /// 5 GB" and being shown ten titles that have no file at all would be the
-    /// same class of answer as the badge that used to show a target quality as
-    /// if it were owned.</para>
+    /// <para>These sit in the WHERE clause beside the search and status filters,
+    /// so they narrow the rows an index walk produces rather than changing what
+    /// drives it: the page is still a seek on the sort column and still stops as
+    /// soon as it has enough rows. A filter nothing matches costs a walk, which
+    /// is the honest price of asking a question with no answer.</para>
     ///
-    /// <para>Nothing here interpolates a caller's value. Every one is a bound
-    /// parameter; the only interpolation is the parameter *names*, generated
-    /// from a count.</para>
+    /// <para>Fields declared on the wanted state read <c>ws</c> — the one row
+    /// the page speaks for — so a title with no file matches no quality and no
+    /// size, which is what a reader means. A title held in two libraries has two
+    /// files, and matching on one while displaying the other is the drift the
+    /// wanted-state pick was introduced to end.</para>
+    ///
+    /// <para>Nothing here interpolates a caller's value. Every value is a bound
+    /// parameter; the only interpolation is the column expression, which comes
+    /// from the registry, and the parameter names, which are generated from a
+    /// count.</para>
     /// </summary>
-    public static string CustomFilters(CatalogueFilters? filters, string alias, string yearColumn)
+    public static string CustomFilters(CatalogueFilters? filters, MediaKind kind, string alias, string yearColumn)
     {
         if (filters is null || filters.IsEmpty)
         {
@@ -199,106 +205,229 @@ public static class CatalogueKeyset
 
         var predicates = new List<string>();
 
-        if (filters.Qualities is { Count: > 0 } qualities)
+        for (var index = 0; index < filters.Conditions!.Count; index++)
         {
-            var names = string.Join(", ", qualities.Select((_, index) => $"@quality{index}"));
-            predicates.Add($"lower(COALESCE(ws.current_quality, '')) IN ({names})");
-        }
-
-        if (filters.Genres is { Count: > 0 } genres)
-        {
-            // Whole genres, not substrings: bracketing the list and each term in
-            // commas is what stops "Drama" matching a title tagged "Melodrama".
-            // Every genre asked for must be present, because that is what a
-            // reader means by picking two.
-            for (var index = 0; index < genres.Count; index++)
+            var condition = filters.Conditions[index];
+            var field = CatalogueFilterFields.Find(kind, condition.FieldId);
+            if (field is null)
             {
-                predicates.Add(
-                    $"(',' || replace(lower(COALESCE({alias}.genres, '')), ', ', ',') || ',') LIKE @genre{index}");
+                // Unreachable through the endpoints, which refuse an unknown id
+                // with a 400 rather than letting it reach SQL. Skipping here as
+                // well means a caller that bypasses them cannot quietly widen a
+                // shelf either.
+                continue;
             }
-        }
 
-        if (filters.MinSizeGb is not null)
-        {
-            predicates.Add("ws.file_size_bytes >= @minSizeBytes");
-        }
-
-        if (filters.MaxSizeGb is not null)
-        {
-            predicates.Add("ws.file_size_bytes <= @maxSizeBytes");
-        }
-
-        if (filters.MinYear is not null)
-        {
-            predicates.Add($"{alias}.{yearColumn} >= @minYear");
-        }
-
-        if (filters.MaxYear is not null)
-        {
-            predicates.Add($"{alias}.{yearColumn} <= @maxYear");
-        }
-
-        if (filters.MinRuntimeMinutes is not null)
-        {
-            predicates.Add($"{alias}.runtime_minutes >= @minRuntime");
-        }
-
-        if (filters.MaxRuntimeMinutes is not null)
-        {
-            predicates.Add($"{alias}.runtime_minutes <= @maxRuntime");
-        }
-
-        if (filters.MinRatingValue is not null)
-        {
-            predicates.Add($"{alias}.rating >= @minRating");
+            var column = Expression(field, alias, yearColumn);
+            var predicate = Predicate(field, condition, column, index);
+            if (!string.IsNullOrEmpty(predicate))
+            {
+                predicates.Add(predicate);
+            }
         }
 
         return predicates.Count == 0 ? string.Empty : string.Join(" AND ", predicates);
     }
 
     /// <summary>
+    /// The registry's column with the catalogue's own names filled in. Two
+    /// substitutions, and they are the only difference between the two
+    /// catalogues' filter SQL.
+    /// </summary>
+    private static string Expression(CatalogueFilterField field, string alias, string yearColumn)
+        => field.Column.Replace("{alias}", alias).Replace("{year}", yearColumn);
+
+    /// <summary>
+    /// Whether a value kind is compared as text, which decides both the
+    /// <c>lower()</c> wrapping here and the way <c>IsSet</c> reads an empty
+    /// string as absent.
+    /// </summary>
+    private static bool IsTextual(CatalogueFilterValueKind kind)
+        => kind is CatalogueFilterValueKind.Text
+            or CatalogueFilterValueKind.Genre
+            or CatalogueFilterValueKind.QualityTier
+            or CatalogueFilterValueKind.Enum;
+
+    private static string Predicate(
+        CatalogueFilterField field,
+        CatalogueFilterCondition condition,
+        string column,
+        int index)
+    {
+        var textual = IsTextual(field.ValueKind);
+        var comparable = textual ? $"lower(COALESCE({column}, ''))" : column;
+        var names = condition.Values.Select((_, position) => $"@f{index}v{position}").ToArray();
+
+        switch (condition.Operator)
+        {
+            case CatalogueFilterOperator.IsSet:
+                return textual ? $"COALESCE({column}, '') <> ''" : $"{column} IS NOT NULL";
+
+            case CatalogueFilterOperator.IsNotSet:
+                return textual ? $"COALESCE({column}, '') = ''" : $"{column} IS NULL";
+
+            case CatalogueFilterOperator.Includes when field.ValueKind == CatalogueFilterValueKind.Genre:
+                return $"({string.Join(" OR ", names.Select(name => GenreMatch(column, name)))})";
+
+            case CatalogueFilterOperator.IncludesAll when field.ValueKind == CatalogueFilterValueKind.Genre:
+                // Every genre asked for must be present, because that is what a
+                // reader means by picking two.
+                return string.Join(" AND ", names.Select(name => GenreMatch(column, name)));
+
+            case CatalogueFilterOperator.Excludes when field.ValueKind == CatalogueFilterValueKind.Genre:
+                return $"NOT ({string.Join(" OR ", names.Select(name => GenreMatch(column, name)))})";
+
+            case CatalogueFilterOperator.Includes:
+                return $"{comparable} IN ({string.Join(", ", names)})";
+
+            case CatalogueFilterOperator.Excludes:
+                return $"{comparable} NOT IN ({string.Join(", ", names)})";
+
+            case CatalogueFilterOperator.Is when field.ValueKind == CatalogueFilterValueKind.Boolean:
+            case CatalogueFilterOperator.Is:
+                return $"{comparable} = {names[0]}";
+
+            case CatalogueFilterOperator.IsNot:
+                return $"{comparable} <> {names[0]}";
+
+            case CatalogueFilterOperator.AtLeast:
+                return $"{column} >= {names[0]}";
+
+            case CatalogueFilterOperator.AtMost:
+                return $"{column} <= {names[0]}";
+
+            case CatalogueFilterOperator.Contains:
+                return $"{comparable} LIKE {names[0]}";
+
+            case CatalogueFilterOperator.DoesNotContain:
+                return $"{comparable} NOT LIKE {names[0]}";
+
+            case CatalogueFilterOperator.StartsWith:
+            case CatalogueFilterOperator.EndsWith:
+                return $"{comparable} LIKE {names[0]}";
+
+            case CatalogueFilterOperator.Before:
+                return $"{column} < {names[0]}";
+
+            case CatalogueFilterOperator.After:
+                return $"{column} > {names[0]}";
+
+            case CatalogueFilterOperator.WithinLastDays:
+                return $"{column} >= {names[0]}";
+
+            case CatalogueFilterOperator.MoreThanDaysAgo:
+                // "or not at all" is the point of this one: "not searched in
+                // ninety days" has to include the titles never searched, or the
+                // answer omits the worst cases.
+                return $"({column} IS NULL OR {column} < {names[0]})";
+
+            default:
+                return string.Empty;
+        }
+    }
+
+    /// <summary>
+    /// Whole genres, not substrings: bracketing the list and each term in commas
+    /// is what stops "Drama" matching a title tagged "Melodrama".
+    /// </summary>
+    private static string GenreMatch(string column, string parameterName)
+        => $"(',' || replace(lower(COALESCE({column}, '')), ', ', ',') || ',') LIKE {parameterName}";
+
+    /// <summary>
     /// Binds what <see cref="CustomFilters"/> wrote. Kept immediately beside it
     /// for the same reason <c>PageColumns</c> and <c>Read</c> are: two lists
     /// that must agree, in one place, so they can only disagree visibly.
+    ///
+    /// <para><paramref name="now"/> is the reference point for the relative date
+    /// operators. Passed in rather than read here so a test can ask "added in
+    /// the last thirty days" of a fixed clock.</para>
     /// </summary>
-    public static void BindCustomFilters(DbCommand command, CatalogueFilters? filters)
+    public static void BindCustomFilters(
+        DbCommand command,
+        CatalogueFilters? filters,
+        MediaKind kind,
+        DateTimeOffset? now = null)
     {
         if (filters is null || filters.IsEmpty)
         {
             return;
         }
 
-        if (filters.Qualities is { Count: > 0 } qualities)
+        var reference = now ?? DateTimeOffset.UtcNow;
+
+        for (var index = 0; index < filters.Conditions!.Count; index++)
         {
-            for (var index = 0; index < qualities.Count; index++)
+            var condition = filters.Conditions[index];
+            var field = CatalogueFilterFields.Find(kind, condition.FieldId);
+            if (field is null || !CatalogueFilterOperators.TakesValues(condition.Operator))
             {
-                Bind(command, $"@quality{index}", qualities[index].Trim().ToLowerInvariant());
+                continue;
+            }
+
+            for (var position = 0; position < condition.Values.Count; position++)
+            {
+                Bind(command, $"@f{index}v{position}", BoundValue(field, condition, condition.Values[position], reference));
             }
         }
+    }
 
-        if (filters.Genres is { Count: > 0 } genres)
+    /// <summary>
+    /// One raw string from the query, turned into the thing SQLite has to
+    /// compare against.
+    ///
+    /// <para>SQLite compares by storage class, so a year bound as text silently
+    /// matches nothing — the same trap <see cref="BindSeek"/> documents. This is
+    /// the one place a value changes shape, which is why the gigabyte-to-byte
+    /// conversion and the days-ago arithmetic both live here rather than in the
+    /// caller.</para>
+    /// </summary>
+    private static object BoundValue(
+        CatalogueFilterField field,
+        CatalogueFilterCondition condition,
+        string raw,
+        DateTimeOffset now)
+    {
+        var value = raw.Trim();
+
+        switch (condition.Operator)
         {
-            for (var index = 0; index < genres.Count; index++)
-            {
-                Bind(command, $"@genre{index}", $"%,{genres[index].Trim().ToLowerInvariant()},%");
-            }
+            case CatalogueFilterOperator.WithinLastDays:
+            case CatalogueFilterOperator.MoreThanDaysAgo:
+                var days = double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsedDays)
+                    ? parsedDays
+                    : 0d;
+                return now.AddDays(-days).UtcDateTime.ToString("O", CultureInfo.InvariantCulture);
+
+            case CatalogueFilterOperator.Contains:
+            case CatalogueFilterOperator.DoesNotContain:
+                return $"%{value.ToLowerInvariant()}%";
+
+            case CatalogueFilterOperator.StartsWith:
+                return $"{value.ToLowerInvariant()}%";
+
+            case CatalogueFilterOperator.EndsWith:
+                return $"%{value.ToLowerInvariant()}";
         }
 
-        if (filters.MinSizeGb is { } minSize)
+        if (field.ValueKind == CatalogueFilterValueKind.Genre)
         {
-            Bind(command, "@minSizeBytes", (long)(minSize * 1024 * 1024 * 1024));
+            return $"%,{value.ToLowerInvariant()},%";
         }
 
-        if (filters.MaxSizeGb is { } maxSize)
+        return field.ValueKind switch
         {
-            Bind(command, "@maxSizeBytes", (long)(maxSize * 1024 * 1024 * 1024));
-        }
-
-        if (filters.MinYear is { } minYear) Bind(command, "@minYear", minYear);
-        if (filters.MaxYear is { } maxYear) Bind(command, "@maxYear", maxYear);
-        if (filters.MinRuntimeMinutes is { } minRuntime) Bind(command, "@minRuntime", minRuntime);
-        if (filters.MaxRuntimeMinutes is { } maxRuntime) Bind(command, "@maxRuntime", maxRuntime);
-        if (filters.MinRatingValue is { } minRating) Bind(command, "@minRating", minRating);
+            CatalogueFilterValueKind.Gigabytes =>
+                (long)((double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var gb) ? gb : 0d)
+                       * 1024 * 1024 * 1024),
+            CatalogueFilterValueKind.Year or CatalogueFilterValueKind.Minutes or CatalogueFilterValueKind.Integer =>
+                long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var whole) ? whole : 0L,
+            CatalogueFilterValueKind.Decimal or CatalogueFilterValueKind.Rating =>
+                double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var number) ? number : 0d,
+            CatalogueFilterValueKind.Boolean =>
+                value.Equals("true", StringComparison.OrdinalIgnoreCase) || value == "1" ? 1L : 0L,
+            CatalogueFilterValueKind.Date => value,
+            _ => value.ToLowerInvariant()
+        };
     }
 
     private static void Bind(DbCommand command, string name, object value)
