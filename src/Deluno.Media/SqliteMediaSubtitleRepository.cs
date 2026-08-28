@@ -62,11 +62,27 @@ public sealed class SqliteMediaSubtitleRepository(
 
         var languageParameters = string.Join(", ", Enumerable.Range(0, languages.Count).Select(index => $"@lang{index}"));
 
-        // What counts as held, written once and used by both halves of this
-        // query — and it is the same predicate `CatalogueSubtitleRollup.Held`
-        // gives the bar. If they parted company, a shelf would paint a title
-        // green while the fetcher kept searching for it.
+        // What counts as held — the same predicate `CatalogueSubtitleRollup`
+        // gives the bar.
         var heldPredicate = CatalogueSubtitleRollup.HeldPredicate(embeddedCounts);
+
+        // ...and what counts as *settled*, which is a stricter question and the
+        // one this query asks.
+        //
+        // <b>These two deliberately part company now, and it is worth saying why,
+        // because the comment here used to insist they must not.</b> It said a
+        // shelf would otherwise "paint a title green while the fetcher kept
+        // searching for it" — and that is now exactly the intended behaviour.
+        // DESIGN-001 gave the bar three colours: red for a language you do not
+        // have, green for one you have that could still get better, gold for one
+        // at the cutoff. Green *is* "held, and still being looked at".
+        //
+        // So held answers "can I watch it tonight" and paints the bar; settled
+        // answers "is Deluno finished" and drives this query. A subtitle nobody
+        // can prove was cut for your release is the first and not the second —
+        // which is the whole of James's *"no point spreading lies about subs that
+        // may be out of sync."*
+        var settledPredicate = $"{heldPredicate} AND sub.match_rung >= @cutoff";
 
         using var command = connection.CreateCommand();
         command.CommandText = $"""
@@ -78,7 +94,7 @@ public sealed class SqliteMediaSubtitleRepository(
                     SELECT GROUP_CONCAT(sub.language)
                     FROM {map.SubtitleTable} sub
                     WHERE sub.{map.SubtitleMediaIdColumn} = {map.SubtitleFileIdColumn}
-                      AND {heldPredicate}
+                      AND {settledPredicate}
                       AND sub.language IN ({languageParameters})
                 ),
                 (
@@ -103,7 +119,7 @@ public sealed class SqliteMediaSubtitleRepository(
                         SELECT sub.language AS language
                         FROM {map.SubtitleTable} sub
                         WHERE sub.{map.SubtitleMediaIdColumn} = {map.SubtitleFileIdColumn}
-                          AND {heldPredicate}
+                          AND {settledPredicate}
                           AND sub.language IN ({languageParameters})
                         UNION
                         SELECT att.language
@@ -127,6 +143,7 @@ public sealed class SqliteMediaSubtitleRepository(
 
         AddParameter(command, "@libraryId", libraryId);
         AddParameter(command, "@languageCount", languages.Count);
+        AddParameter(command, "@cutoff", (int)SubtitleCutoff.Rung);
         AddParameter(command, "@now", timeProvider.GetUtcNow().ToString("O"));
         AddParameter(command, "@limit", Math.Max(1, limit));
         for (var index = 0; index < languages.Count; index++)
@@ -165,7 +182,7 @@ public sealed class SqliteMediaSubtitleRepository(
                 EpisodeNumber: reader.IsDBNull(5) ? null : reader.GetInt32(5),
                 EpisodeTitle: reader.IsDBNull(6) ? null : reader.GetString(6),
                 ReleaseName: reader.IsDBNull(7) ? null : reader.GetString(7),
-                MissingLanguages: missing));
+                LanguagesToFetch: missing));
         }
 
         return items;
@@ -289,17 +306,18 @@ public sealed class SqliteMediaSubtitleRepository(
         command.CommandText = $"""
             INSERT INTO {map.SubtitleTable} (
                 {map.SubtitleMediaIdColumn}, language, forced, hearing_impaired,
-                source, file_path, stream_index, codec, provider, created_utc, updated_utc
+                source, file_path, stream_index, codec, provider, match_rung, created_utc, updated_utc
             )
             VALUES (
                 @mediaId, @language, @forced, @hearingImpaired,
-                @source, @filePath, NULL, @codec, @provider, @now, @now
+                @source, @filePath, NULL, @codec, @provider, @matchRung, @now, @now
             )
             ON CONFLICT ({map.SubtitleMediaIdColumn}, language, forced, hearing_impaired) DO UPDATE SET
                 source = excluded.source,
                 file_path = excluded.file_path,
                 codec = excluded.codec,
                 provider = excluded.provider,
+                match_rung = excluded.match_rung,
                 updated_utc = excluded.updated_utc;
             """;
 
@@ -311,6 +329,7 @@ public sealed class SqliteMediaSubtitleRepository(
         AddParameter(command, "@filePath", subtitle.FilePath);
         AddParameter(command, "@codec", subtitle.Codec);
         AddParameter(command, "@provider", subtitle.Provider);
+        AddParameter(command, "@matchRung", subtitle.MatchRung);
         AddParameter(command, "@now", now.ToString("O"));
 
         await command.ExecuteNonQueryAsync(cancellationToken);

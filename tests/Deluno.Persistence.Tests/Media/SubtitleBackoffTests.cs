@@ -116,7 +116,11 @@ public sealed class SubtitleBackoffTests
         await subtitles.RecordFetchedAsync(
             MediaKind.Movie,
             id,
-            new MediaSubtitleRow("en", SubtitleSources.Fetched, false, false, "Dune.en.srt", null, "srt", "gestdown"),
+            // At the cutoff, because this test is about the attempt row being
+            // cleared — a subtitle below it is deliberately kept on the list, and
+            // that is the upgrade path's test, not this one.
+            new MediaSubtitleRow("en", SubtitleSources.Fetched, false, false, "Dune.en.srt", null, "srt", "gestdown",
+                MatchRung: (int)SubtitleCutoff.Rung),
             CancellationToken.None);
         await subtitles.ClearAttemptAsync(MediaKind.Movie, id, "en", CancellationToken.None);
 
@@ -146,7 +150,7 @@ public sealed class SubtitleBackoffTests
         // English is waiting; Japanese has never been tried and is still asked
         // for. Backing off a whole title because one language failed would stop
         // Deluno fetching a language it has not even looked for.
-        Assert.Equal(["ja"], item.MissingLanguages);
+        Assert.Equal(["ja"], item.LanguagesToFetch);
     }
 
     /* ------------------------------------------------------------ helpers */

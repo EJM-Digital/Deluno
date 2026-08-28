@@ -64,6 +64,7 @@ public sealed class LibrarySubtitleSearchJobHandler(
     /// </summary>
     private static readonly TimeSpan FirstRetryDelay = TimeSpan.FromHours(6);
 
+
     public async Task<string> HandleAsync(JobQueueItem job, CancellationToken cancellationToken)
     {
         var payload = ParsePayload(job.PayloadJson);
@@ -114,10 +115,10 @@ public sealed class LibrarySubtitleSearchJobHandler(
                 EpisodeTitle: item.EpisodeTitle,
                 ReleaseName: item.ReleaseName,
                 ImdbId: null,
-                Languages: item.MissingLanguages,
+                Languages: item.LanguagesToFetch,
                 IsEpisode: kind == MediaKind.Series);
 
-            foreach (var language in item.MissingLanguages)
+            foreach (var language in item.LanguagesToFetch)
             {
                 attempted++;
 
@@ -172,11 +173,36 @@ public sealed class LibrarySubtitleSearchJobHandler(
                         FilePath: outcome.WrittenPath,
                         StreamIndex: null,
                         Codec: "srt",
-                        Provider: outcome.ProviderKey),
+                        Provider: outcome.ProviderKey,
+                        MatchRung: (int)outcome.Match),
                     cancellationToken);
 
-                // It arrived, so there is no outstanding attempt to remember.
-                await mediaSubtitleRepository.ClearAttemptAsync(kind, item.MediaId, language, cancellationToken);
+                if (outcome.Match >= SubtitleCutoff.Rung)
+                {
+                    // At the cutoff: made for this file, so the timing is right
+                    // and there is nothing better to find. Done, and the attempt
+                    // row goes.
+                    await mediaSubtitleRepository.ClearAttemptAsync(kind, item.MediaId, language, cancellationToken);
+                }
+                else
+                {
+                    // Watchable, and not provably in time. James: *"we need the
+                    // best method, no point spreading lies about subs that may be
+                    // out of sync."* So the language is covered — the file is on
+                    // disk and you can watch tonight — and it stays on the list,
+                    // because a better one may be uploaded tomorrow.
+                    //
+                    // The attempt row is what keeps it there, and it is the same
+                    // row a failure writes: one mechanism, so an upgrade cannot
+                    // acquire a second idea of when to look again.
+                    await mediaSubtitleRepository.RecordAttemptAsync(
+                        kind,
+                        item.MediaId,
+                        language,
+                        SubtitleMatchRanking.Describe(outcome.Match),
+                        FirstRetryDelay,
+                        cancellationToken);
+                }
 
                 found++;
             }

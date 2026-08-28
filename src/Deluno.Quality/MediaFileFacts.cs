@@ -36,6 +36,26 @@ public static class MediaFileNameFacts
         (Build(@"(vp9)"), "VP9")
     ];
 
+    /// <summary>
+    /// The master a release was cut from. Ordered, because a Remux is also a
+    /// Blu-ray and says so in its name — the more specific token has to win.
+    ///
+    /// <para>What this is for: two subtitles for the same episode, one cut for
+    /// the WEB release and one for the Blu-ray, differ by the seconds of network
+    /// ident at the front. That is the forty-seconds-out problem, and it is why
+    /// this is the gate rather than a tiebreaker.</para>
+    /// </summary>
+    private static readonly (Regex Pattern, string Value)[] Sources =
+    [
+        (Build(@"(remux)"), "Remux"),
+        (Build(@"(blu-?ray|bdrip|brrip|bdremux)"), "Bluray"),
+        (Build(@"(web-?dl|webrip|web)"), "WEB"),
+        (Build(@"(hdtv|pdtv|sdtv)"), "HDTV"),
+        (Build(@"(dvdrip|dvd)"), "DVD"),
+        (Build(@"(hdrip)"), "HDRip"),
+        (Build(@"(cam|ts|telesync)"), "CAM")
+    ];
+
     private static readonly (Regex Pattern, string Value)[] AudioCodecs =
     [
         (BuildAudio(@"(truehd)"), "TrueHD"),
@@ -135,7 +155,8 @@ public static class MediaFileNameFacts
             VideoCodec: MatchFirst(VideoCodecs, name),
             AudioCodec: MatchFirst(AudioCodecs, name),
             AudioChannels: ParseChannels(name),
-            ReleaseGroup: ParseReleaseGroup(name));
+            ReleaseGroup: ParseReleaseGroup(name),
+            Source: MatchFirst(Sources, name));
     }
 
     private static string StripPathAndExtension(string value)
@@ -211,7 +232,19 @@ public sealed record MediaFileFacts(
     string? VideoCodec,
     string? AudioCodec,
     string? AudioChannels,
-    string? ReleaseGroup)
+    string? ReleaseGroup,
+    /// <summary>
+    /// Where the release came from — WEB, Blu-ray, HDTV — with no resolution
+    /// attached.
+    ///
+    /// <para>Deliberately separate from the quality tier, which is
+    /// "WEB 1080p": one string answering two questions is no use to a caller
+    /// that only has one of them. Subtitle matching is exactly that caller —
+    /// whether a subtitle is in time depends on which master it was cut from and
+    /// not at all on how many pixels the picture has, which is why Bazarr scores
+    /// source at 25 and resolution at 1.</para>
+    /// </summary>
+    string? Source = null)
 {
     public static MediaFileFacts Empty { get; } = new(null, null, null, null);
 

@@ -10,15 +10,19 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace Deluno.Persistence.Tests.Media;
 
 /// <summary>
-/// What Deluno decides is still missing, and why it has to be the same answer
-/// the bar gives.
+/// What Deluno decides is still outstanding, and where that parts company with
+/// what the bar paints.
 ///
 /// <para>Two queries read the subtitle store: the rollup that paints the bar, and
-/// this one that decides what to fetch. They are separate SQL and they encode
-/// the same rule — <c>forced = 0</c> and a language the library asked for. A
-/// shelf painting a title green while the fetcher keeps searching for it would
-/// be the exact shape DESIGN-001 spent a run undoing four times over, so the
-/// agreement is asserted rather than assumed.</para>
+/// this one that decides what to fetch. They agree on <c>forced = 0</c> and on
+/// which languages were asked for, and these tests hold them to it.</para>
+///
+/// <para><b>They deliberately disagree about one thing.</b> The bar answers "can
+/// I watch this tonight"; this query answers "is Deluno finished". Since the
+/// cutoff arrived those are different questions — a subtitle on disk that nobody
+/// can prove was cut for your release is watchable and not finished, which is
+/// what DESIGN-001's green already meant. So a held language can still be
+/// outstanding, and the tests below say so both ways round.</para>
 /// </summary>
 public sealed class SubtitleWantedQueryTests
 {
@@ -39,8 +43,71 @@ public sealed class SubtitleWantedQueryTests
         var item = Assert.Single(wanted);
         // English is held, so it is not asked for again. Asking anyway is what
         // spends a daily allowance on a file that already has it.
-        Assert.Equal(["ja"], item.MissingLanguages);
+        Assert.Equal(["ja"], item.LanguagesToFetch);
         Assert.Equal("Dune", item.Title);
+    }
+
+    /// <summary>
+    /// A subtitle that is watchable but not provably in time stays on the list.
+    ///
+    /// <para>James: <i>"we need the best method, no point spreading lies about
+    /// subs that may be out of sync etc etc."</i> So a file with English on disk
+    /// at the bottom rung is still asked about — it is covered tonight, and it is
+    /// not finished with.</para>
+    /// </summary>
+    [Fact]
+    public async Task A_subtitle_below_the_cutoff_is_still_outstanding()
+    {
+        using var storage = TestStorage.Create();
+        var (movies, subtitles) = await CreateAsync(storage);
+        var id = await ImportAsync(movies, "Dune");
+
+        await subtitles.RecordFetchedAsync(
+            MediaKind.Movie, id, Row("en", SubtitleMatch.AnyRelease), CancellationToken.None);
+
+        var item = Assert.Single(await subtitles.ListWantedAsync(
+            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, CancellationToken.None));
+
+        Assert.Equal(["en"], item.LanguagesToFetch);
+    }
+
+    /// <summary>
+    /// Bazarr's shipped default is not Deluno's. Same source passes there and is
+    /// still short of the cutoff here, which is the whole of the decision.
+    /// </summary>
+    [Fact]
+    public async Task Same_source_is_not_good_enough_to_stop_looking()
+    {
+        using var storage = TestStorage.Create();
+        var (movies, subtitles) = await CreateAsync(storage);
+        var id = await ImportAsync(movies, "Dune");
+
+        await subtitles.RecordFetchedAsync(
+            MediaKind.Movie, id, Row("en", SubtitleMatch.SameSource), CancellationToken.None);
+
+        var item = Assert.Single(await subtitles.ListWantedAsync(
+            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, CancellationToken.None));
+
+        Assert.Equal(["en"], item.LanguagesToFetch);
+    }
+
+    /// <summary>
+    /// And the bar must <i>not</i> follow the cutoff, because you can still watch
+    /// it. Held and settled are different questions, and only one of them moved.
+    ///
+    /// <para>Asserted on the SQL rather than through a page, because the failure
+    /// this guards against is somebody adding <c>match_rung</c> to the rollup for
+    /// symmetry — at which point every title below the cutoff loses its green and
+    /// the shelf reads as though the subtitles were never fetched.</para>
+    /// </summary>
+    [Fact]
+    public void The_bar_does_not_know_about_the_cutoff()
+    {
+        var rollup = CatalogueSubtitleRollup.Sql(MediaTableMap.For(MediaKind.Movie), idCount: 1, languageCount: 1);
+
+        Assert.DoesNotContain("match_rung", rollup, StringComparison.Ordinal);
+        // ...while the two queries still agree about the things they must.
+        Assert.Contains("forced = 0", rollup, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -72,7 +139,7 @@ public sealed class SubtitleWantedQueryTests
         var item = Assert.Single(await subtitles.ListWantedAsync(
             MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, CancellationToken.None));
 
-        Assert.Equal(["en"], item.MissingLanguages);
+        Assert.Equal(["en"], item.LanguagesToFetch);
     }
 
     [Fact]
@@ -153,7 +220,7 @@ public sealed class SubtitleWantedQueryTests
         // track cannot be swapped or corrected (#321). Now the sidecar is wanted.
         var item = Assert.Single(await subtitles.ListWantedAsync(
             MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: false, CancellationToken.None));
-        Assert.Equal(["en"], item.MissingLanguages);
+        Assert.Equal(["en"], item.LanguagesToFetch);
     }
 
     [Fact]
@@ -174,8 +241,18 @@ public sealed class SubtitleWantedQueryTests
 
     /* ------------------------------------------------------------ helpers */
 
-    private static MediaSubtitleRow Row(string language)
-        => new(language, "fetched", Forced: false, HearingImpaired: false, FilePath: "x.srt", StreamIndex: null, Codec: "srt", Provider: "gestdown");
+    /// <summary>
+    /// A subtitle Deluno is finished with, unless a test says otherwise.
+    ///
+    /// <para>The rung matters now: at the cutoff means settled, below it means
+    /// held-and-still-looking. Defaulting to the cutoff keeps every test that
+    /// predates the ladder testing what it was written to test — whether a
+    /// language counts as covered at all — rather than accidentally testing the
+    /// upgrade path.</para>
+    /// </summary>
+    private static MediaSubtitleRow Row(string language, SubtitleMatch match = SubtitleCutoff.Rung)
+        => new(language, "fetched", Forced: false, HearingImpaired: false, FilePath: "x.srt", StreamIndex: null,
+            Codec: "srt", Provider: "gestdown", MatchRung: (int)match);
 
     private static async Task<string> ImportAsync(IMovieCatalogRepository movies, string title)
     {
