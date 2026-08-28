@@ -942,7 +942,16 @@ public sealed class TmdbMetadataProvider(
                 .ToArray() ?? [],
             RuntimeMinutes: detail.Runtime ?? detail.EpisodeRunTime?.FirstOrDefault(minutes => minutes > 0),
             Popularity: detail.Popularity,
-            VoteCount: detail.VoteCount);
+            VoteCount: detail.VoteCount,
+            // A show has a network and a film has a studio; both are "who made
+            // it", and TMDb answers them in different fields.
+            Studio: detail.ProductionCompanies?.Select(company => company?.Name).FirstOrDefault(name => !string.IsNullOrWhiteSpace(name)),
+            Network: detail.Networks?.Select(network => network?.Name).FirstOrDefault(name => !string.IsNullOrWhiteSpace(name)),
+            Collection: string.IsNullOrWhiteSpace(detail.BelongsToCollection?.Name) ? null : detail.BelongsToCollection.Name,
+            Tagline: string.IsNullOrWhiteSpace(detail.Tagline) ? null : detail.Tagline,
+            Homepage: string.IsNullOrWhiteSpace(detail.Homepage) ? null : detail.Homepage,
+            OriginalLanguage: string.IsNullOrWhiteSpace(detail.OriginalLanguage) ? null : detail.OriginalLanguage,
+            Status: string.IsNullOrWhiteSpace(detail.Status) ? null : detail.Status);
     }
 
     /// <summary>
@@ -1661,7 +1670,24 @@ public sealed class TmdbMetadataProvider(
         [property: JsonPropertyName("episode_run_time")] IReadOnlyList<int>? EpisodeRunTime,
         [property: JsonPropertyName("genres")] IReadOnlyList<TmdbGenre>? Genres,
         [property: JsonPropertyName("external_ids")] TmdbExternalIds? ExternalIds,
-        [property: JsonPropertyName("credits")] TmdbCredits? Credits);
+        [property: JsonPropertyName("credits")] TmdbCredits? Credits,
+        // Everything below arrives on an ordinary detail call and was thrown
+        // away. The metadata gateway has read all of it for a while; the direct
+        // provider never did, so a library configured to talk to TMDb itself had
+        // no status, no network and no studio at all — and the filters over
+        // those columns returned nothing, which looks exactly like a fair
+        // answer.
+        [property: JsonPropertyName("status")] string? Status,
+        [property: JsonPropertyName("original_language")] string? OriginalLanguage,
+        [property: JsonPropertyName("tagline")] string? Tagline,
+        [property: JsonPropertyName("homepage")] string? Homepage,
+        [property: JsonPropertyName("networks")] IReadOnlyList<TmdbNamed>? Networks,
+        [property: JsonPropertyName("production_companies")] IReadOnlyList<TmdbNamed>? ProductionCompanies,
+        [property: JsonPropertyName("belongs_to_collection")] TmdbNamed? BelongsToCollection);
+
+    /// <summary>Anything TMDb returns as an object with a name.</summary>
+    private sealed record TmdbNamed(
+        [property: JsonPropertyName("name")] string? Name);
 
     private sealed record TmdbCredits(
         [property: JsonPropertyName("cast")] IReadOnlyList<TmdbCastMember>? Cast);
