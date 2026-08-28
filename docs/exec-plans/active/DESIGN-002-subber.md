@@ -436,6 +436,17 @@ subtitle displaced by anything from 300 ms to 30 s, in both directions, came bac
 own subtitle is Severance text over Big Buck Bunny audio, which makes it a
 genuine unrelated pair: it reached 1.3 σ and was **left untouched**.
 
+*How to reproduce it,* because the numbers above are the whole argument for the
+threshold and they should not have to be taken on trust. Copy one episode off the
+rig, then in a throwaway console project referencing `Deluno.Filesystem`: run
+`FfmpegSpeechDetector` over the video to get its speech mask, build an `.srt`
+whose cues are the mask's own speech runs — that is a perfectly timed subtitle
+for this file — shift it by a known offset, and hand it to
+`SubtitleTimingSyncService`. What is under test is whether the offset comes back,
+and it does not become circular: the reference is real audio through the same
+detector the product uses. The unrelated half needs no construction at all,
+because the rig's own subtitle already is one.
+
 ### Its own lane
 
 `subtitle.sync`, sized like `subtitles.scan` beside it. It is emphatically not on
