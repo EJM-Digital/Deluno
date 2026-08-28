@@ -388,12 +388,16 @@ export interface TitleBar {
 export const TITLE_BAR_SEGMENTS: readonly { mark: TitleMark; label: string; hint: string }[] = [
   {
     mark: "upgrade",
-    // "Have", not "Held". James: *"missing is good, held sucks as far as choice
-    // of words."* Right — *held* is the word the store uses for itself, and it
-    // leaked out onto the screen. Have/Missing is the pair a reader already owns,
-    // and it is the app's own voice: DESIGN-001 writes the same rung as "You have
-    // this and can watch it tonight."
-    label: "Have",
+    // **Ready**, and it took two goes to get here. "Held" first — the word the
+    // store uses for itself, leaked onto the screen. Then "Have", which is the
+    // app's own voice but reads oddly as a label: a verb sitting next to an
+    // adjective. "Ready" is parallel to "Missing", and it says the thing a
+    // reader actually wants to know, which is that they can watch it tonight.
+    //
+    // Gold, when upgrades exist, is "Done" — so the set reads
+    // Missing / Ready / Done, and each word says what the viewer can do rather
+    // than what the store is holding.
+    label: "Ready",
     hint: "A language you asked for is here — beside the file, inside it, or fetched for you."
   },
   {

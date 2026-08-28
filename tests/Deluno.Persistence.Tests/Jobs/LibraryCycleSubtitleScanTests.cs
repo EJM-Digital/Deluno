@@ -174,19 +174,24 @@ public sealed class LibraryCycleSubtitleScanTests
         await store.PlanLibrarySearchesAsync([library], CancellationToken.None);
         Assert.Single(await ScanJobsAsync(store));
 
-        // Past the library's own interval, it comes back round.
-        timeProvider.Advance(TimeSpan.FromHours(7));
+        // Past subtitles' own cadence, it comes back round.
+        timeProvider.Advance(TimeSpan.FromMinutes(6));
         await store.PlanLibrarySearchesAsync([library], CancellationToken.None);
         Assert.Equal(2, (await ScanJobsAsync(store)).Count);
     }
 
     /// <summary>
-    /// Out of hours, subtitles wait for the window exactly as a search does —
-    /// which is the half of the old arrangement that was right, and had to
-    /// survive being separated from the rest of it.
+    /// The search window does not hold subtitles back.
+    ///
+    /// <para>It used to, and that was the first fix stopping half way. A window
+    /// exists to keep you off an indexer at peak; subtitle providers are
+    /// different servers with their own rate-limit backoff on the Connection.
+    /// James: <i>"I dont agree that it shares a cycle or schedule and this was
+    /// told to you back when I said nothing should be shared or have to wait for
+    /// another process."</i></para>
     /// </summary>
     [Fact]
-    public async Task Subtitles_wait_for_the_search_window_like_everything_else()
+    public async Task Subtitles_do_not_wait_for_the_release_search_window()
     {
         using var storage = TestStorage.Create();
         var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-27T12:00:00Z"));
@@ -199,12 +204,110 @@ public sealed class LibraryCycleSubtitleScanTests
         };
 
         await store.PlanLibrarySearchesAsync([library], CancellationToken.None);
-        Assert.Empty(await ScanJobsAsync(store));
 
-        // 01:00 the next morning, the window is open.
-        timeProvider.Advance(TimeSpan.FromHours(13));
+        Assert.Single(await ScanJobsAsync(store));
+        Assert.Single(await SearchJobsAsync(store));
+    }
+
+    /// <summary>
+    /// The cadence is subtitles' own, not the library's indexer interval.
+    ///
+    /// <para>The rig ran a twelve-hour interval, so a newly imported episode had
+    /// half a day to wait before anything looked at it. That number is how often
+    /// to go back to an indexer; a subtitle pass costs one query when there is
+    /// nothing to do.</para>
+    /// </summary>
+    [Fact]
+    public async Task Subtitles_keep_their_own_cadence_rather_than_the_search_interval()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-27T01:00:00Z"));
+        var store = await CreateStoreAsync(storage, timeProvider);
+        // Twelve hours between indexer visits, as the rig had it.
+        var library = Library(wantsSubtitles: true) with { AutoSearchEnabled = false, SearchIntervalHours = 12 };
+
         await store.PlanLibrarySearchesAsync([library], CancellationToken.None);
         Assert.Single(await ScanJobsAsync(store));
+        await FinishEverythingAsync(store);
+
+        // Well inside subtitles' own cadence: still nothing new.
+        timeProvider.Advance(TimeSpan.FromMinutes(2));
+        await store.PlanLibrarySearchesAsync([library], CancellationToken.None);
+        Assert.Single(await ScanJobsAsync(store));
+
+        // Past it, and many hours short of the indexer interval.
+        timeProvider.Advance(TimeSpan.FromMinutes(4));
+        await store.PlanLibrarySearchesAsync([library], CancellationToken.None);
+        Assert.Equal(2, (await ScanJobsAsync(store)).Count);
+    }
+
+    /// <summary>
+    /// A file landing makes subtitles due at once. Bazarr fetches on import, and
+    /// the moment a reader is actually watching is not the moment to be slower.
+    /// </summary>
+    [Theory]
+    [InlineData("filesystem.import.execute")]
+    [InlineData("library.import.existing")]
+    public async Task An_import_stops_subtitles_waiting(string importJobType)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-27T01:00:00Z"));
+        var store = await CreateStoreAsync(storage, timeProvider);
+        var library = Library(wantsSubtitles: true) with { AutoSearchEnabled = false };
+
+        await store.PlanLibrarySearchesAsync([library], CancellationToken.None);
+        Assert.Single(await ScanJobsAsync(store));
+        await FinishEverythingAsync(store);
+
+        // A minute on, the cadence has not come round, so nothing would happen.
+        timeProvider.Advance(TimeSpan.FromMinutes(1));
+        await store.PlanLibrarySearchesAsync([library], CancellationToken.None);
+        Assert.Single(await ScanJobsAsync(store));
+
+        // Then a file arrives.
+        var import = await store.EnqueueAsync(
+            new EnqueueJobRequest(
+                JobType: importJobType,
+                Source: "test",
+                PayloadJson: "{}",
+                RelatedEntityType: "library",
+                RelatedEntityId: "movies-main"),
+            CancellationToken.None);
+        await store.CompleteAsync(import.Id, "test-worker", "imported", CancellationToken.None);
+
+        await store.PlanLibrarySearchesAsync([library], CancellationToken.None);
+        Assert.Equal(2, (await ScanJobsAsync(store)).Count);
+    }
+
+    /// <summary>
+    /// A shelf that asked for no languages is not woken by an import either.
+    ///
+    /// <para>The import trigger is deliberately blunt about <i>which</i> library,
+    /// because only one of the two import job types carries a library id and
+    /// teaching the other to would have meant a second writer. This is the
+    /// assertion that keeps bluntness from costing anything.</para>
+    /// </summary>
+    [Fact]
+    public async Task An_import_does_not_wake_a_shelf_that_wants_no_subtitles()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-27T01:00:00Z"));
+        var store = await CreateStoreAsync(storage, timeProvider);
+        var library = Library(wantsSubtitles: false) with { AutoSearchEnabled = false };
+
+        await store.PlanLibrarySearchesAsync([library], CancellationToken.None);
+        var import = await store.EnqueueAsync(
+            new EnqueueJobRequest(
+                JobType: "filesystem.import.execute",
+                Source: "test",
+                PayloadJson: "{}",
+                RelatedEntityType: "library",
+                RelatedEntityId: "movies-main"),
+            CancellationToken.None);
+        await store.CompleteAsync(import.Id, "test-worker", "imported", CancellationToken.None);
+
+        await store.PlanLibrarySearchesAsync([library], CancellationToken.None);
+        Assert.Empty(await ScanJobsAsync(store));
     }
 
     private static LibraryAutomationPlanItem Library(bool wantsSubtitles)

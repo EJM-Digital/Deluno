@@ -764,6 +764,7 @@ public sealed class SqliteJobStore(
         }
 
         await MarkAutomationStateCompletedAsync(connection, transaction, job, now, cancellationToken);
+        await MarkSubtitlesDueAfterImportAsync(connection, transaction, job, cancellationToken);
 
         await InsertActivityAsync(
             connection,
@@ -1688,22 +1689,34 @@ public sealed class SqliteJobStore(
             // not be made to happen any other way.
             //
             // One switch, two subjects: the shape every defect in this codebase
-            // has had. So what subtitles share with searching is the cycle, the
-            // window and the manual override — DESIGN-002 rule 3, still no second
-            // scheduler — and what they no longer share is the on/off switch and
-            // the clock. Whether a library wants subtitles is already recorded in
-            // the only place that can answer it: whether it asked for languages.
+            // has had.
+            //
+            // <b>The first fix was half of one.</b> It freed subtitles from the two
+            // search switches and left them borrowing the search's *timing* — the
+            // interval and the time-of-day window. James: <i>"I dont agree that it
+            // shares a cycle or schedule and this was told to you back when I said
+            // nothing should be shared or have to wait for another process."</i>
+            // Right, and the cost was visible: a newly imported episode waited up
+            // to a full <c>SearchIntervalHours</c>, twelve hours on the rig, before
+            // anything even looked at it.
+            //
+            // So the split is now the whole way down. Subtitles share the
+            // <b>planner</b> and the <b>job lanes</b> — one place decides, one set
+            // of workers runs it, which is what DESIGN-002 rule 3 was protecting
+            // and what Weir's Subber got wrong with a lane and a scheduler and
+            // a worker of its own. They share <b>no timing at all</b>:
+            //
+            // - Not the interval. <c>SearchIntervalHours</c> is how often to go
+            //   back to an indexer, chosen for a service that bans you for asking
+            //   twice. A subtitle pass costs one query when there is nothing to do,
+            //   and is paced when there is by per-title backoff that already exists.
+            // - Not the window. A search window exists to be polite to indexers at
+            //   3am; subtitle providers are different servers with their own
+            //   rate-limit backoff on the Connection.
+            // - Not the manual override, which it no longer needs.
             var subtitleNextSearchUtc = state.NextSubtitleSearchUtc;
             var subtitleDue = library.WantsSubtitles &&
-                (manualRequest || subtitleNextSearchUtc is null || subtitleNextSearchUtc <= now);
-
-            if (subtitleDue && !manualRequest && !inSearchWindow)
-            {
-                // Out of hours. Fetching is somebody else's server either way, so
-                // it waits for the window exactly as a search does.
-                subtitleNextSearchUtc = nextWindowOpenUtc;
-                subtitleDue = false;
-            }
+                (subtitleNextSearchUtc is null || subtitleNextSearchUtc <= now);
 
             if (subtitleDue)
             {
@@ -1799,7 +1812,7 @@ public sealed class SqliteJobStore(
                 queuedAny = true;
                 await InsertActivityAsync(connection, transaction, "job.queued", FormatQueuedMessage(subtitleSearchJob.JobType, subtitleSearchJob.Source, subtitleSearchJob.PayloadJson), subtitleSearchJob.PayloadJson, subtitleSearchJob.Id, subtitleSearchJob.RelatedEntityType, subtitleSearchJob.RelatedEntityId, now, cancellationToken);
             }
-                subtitleNextSearchUtc = NextSearchAfterQueue(now, library);
+                subtitleNextSearchUtc = now.Add(SubtitleCycleInterval);
             }
 
             // Written whatever happens below, and on its own column, so that a
@@ -2890,6 +2903,28 @@ public sealed class SqliteJobStore(
         => now.AddHours(Math.Max(1, library.SearchIntervalHours));
 
     /// <summary>
+    /// How often a library's subtitles are looked at, when nothing has just
+    /// arrived to make them due sooner.
+    ///
+    /// <para><b>Deluno's number, not a setting.</b> The standing check asks
+    /// whether Deluno can decide and explain the consequence once rather than add
+    /// a control, and here it can: unlike an indexer interval there is nothing to
+    /// tune. A pass over a covered shelf is a single query returning nothing, and
+    /// a pass over a shelf with gaps is bounded by <c>MaxItemsPerRun</c> and then
+    /// by each title's own backoff, which starts at hours and doubles to a
+    /// fortnight. The interval is not what protects the providers; the backoff
+    /// is.</para>
+    ///
+    /// <para>Five minutes, then, because the only thing it is really trading is
+    /// idle database reads against how stale a shelf is allowed to get — and
+    /// AUDIT-001 finding 4 is the reminder that idle reads are not free. At five
+    /// minutes a shelf that wants subtitles costs well under one query a minute.
+    /// An import does not wait even that long; see <c>MarkSubtitlesDueAsync</c>.
+    /// </para>
+    /// </summary>
+    private static readonly TimeSpan SubtitleCycleInterval = TimeSpan.FromMinutes(5);
+
+    /// <summary>
     /// Whether this library's time-of-day window is open, and when it next
     /// opens if it is not.
     ///
@@ -2926,6 +2961,55 @@ public sealed class SqliteJobStore(
             ? windowStart - currentHour
             : 24 - currentHour + windowStart;
         return (false, now.AddHours(hoursUntilWindow));
+    }
+
+    /// <summary>
+    /// A file just landed, so subtitles stop waiting.
+    ///
+    /// <para>Bazarr fetches on import and Deluno should not be slower at the one
+    /// moment a reader is watching. Without this a new episode sits until the
+    /// next subtitle pass — and before that, until the next <i>release search</i>,
+    /// which on the rig was twelve hours.</para>
+    ///
+    /// <para><b>One writer, on purpose.</b> Two import paths reach a library:
+    /// <c>filesystem.import.execute</c> for a completed download and
+    /// <c>library.import.existing</c> for bringing in what is already on disk.
+    /// Hooking both would be the same rule written twice in two places that
+    /// cannot check each other, which is what every defect here has been. Job
+    /// completion is the one place that already knows an import finished, so it
+    /// is the one place that says so.</para>
+    ///
+    /// <para><b>Every library, not the one that received the file.</b> Only
+    /// <c>library.import.existing</c> carries a library id;
+    /// <c>filesystem.import.execute</c> is related to a movie or a series and has
+    /// none. Rather than teach the import pipeline to carry one just for this,
+    /// every shelf that asked for languages becomes due — and a shelf that did
+    /// not is untouched, because its cursor is never read. The cost of being
+    /// blunt is one query per subtitle-wanting library, which returns nothing on
+    /// a covered shelf; the cost of being precise would be a second writer.</para>
+    /// </summary>
+    private static async Task MarkSubtitlesDueAfterImportAsync(
+        System.Data.Common.DbConnection connection,
+        System.Data.Common.DbTransaction transaction,
+        JobQueueItem job,
+        CancellationToken cancellationToken)
+    {
+        if (job.JobType is not ("filesystem.import.execute" or "library.import.existing"))
+        {
+            return;
+        }
+
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        // NULL is "due now" to the planner, which is the same state a library
+        // starts in — so this adds no third meaning to the column.
+        command.CommandText =
+            """
+            UPDATE library_automation_state
+            SET next_subtitle_search_utc = NULL
+            WHERE next_subtitle_search_utc IS NOT NULL;
+            """;
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     /// <summary>

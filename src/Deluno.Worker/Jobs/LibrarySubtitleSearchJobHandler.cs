@@ -19,12 +19,22 @@ namespace Deluno.Worker.Jobs;
 /// had English sitting beside them.</para>
 ///
 /// <para><b>It is not a scheduler.</b> DESIGN-002 rule 3, restated because this
-/// is the handler most likely to break it: nothing here decides when to run.
-/// The library automation cycle plans this exactly as it plans a release search,
-/// so it inherits the time-of-day window, the interval and the manual override,
-/// and cannot drift from them. Weir's Subber shipped its own scheduler, its
-/// own lane and its own worker, and that is the whole of what this port refuses
-/// to carry over.</para>
+/// is the handler most likely to break it: nothing here decides when to run. The
+/// one planner decides, and this rides a lane that already exists. Weir's
+/// Subber shipped its own scheduler, its own lane <i>and</i> its own worker, and
+/// that is the whole of what this port refuses to carry over.</para>
+///
+/// <para>What it does <b>not</b> inherit is the release search's timing. Sharing
+/// the planner is one place making a decision; sharing an interval is one kind of
+/// work waiting on another kind's manners. See the cadence on the planner.</para>
+///
+/// <para><b>No release-search number is borrowed any more.</b> The first version
+/// took its retry delay from the library's <c>RetryDelayHours</c>, which is how
+/// long to wait before asking an <i>indexer</i> again. James: <i>"nothing should
+/// be shared or have to wait for another process."</i> A subtitle absent from
+/// every provider is a different fact from a release absent from every indexer,
+/// and pacing one by the other means changing your indexer manners silently
+/// changes how often your subtitles are chased.</para>
 ///
 /// <para><b>The slice is <c>MaxItemsPerRun</c>,</b> and that is the difference
 /// from the scan. A scan reads local disk with a local process and is bounded at
@@ -40,6 +50,19 @@ public sealed class LibrarySubtitleSearchJobHandler(
     : IJobHandler
 {
     public string JobType => "library.subtitles.search";
+
+    /// <summary>
+    /// How long a language waits before it is asked for again, after nobody had
+    /// it. Doubles from here and stops at a fortnight — never a permanent skip,
+    /// because work that silently leaves the system is work nobody hears about
+    /// the day somebody finally uploads the subtitle.
+    ///
+    /// <para>Six hours, chosen for what it is: a subtitle absent from every
+    /// provider this morning will very rarely appear by lunchtime, and a new
+    /// upload is usually days away rather than hours. Deliberately <i>not</i> the
+    /// library's <c>RetryDelayHours</c>, which is an indexer manner.</para>
+    /// </summary>
+    private static readonly TimeSpan FirstRetryDelay = TimeSpan.FromHours(6);
 
     public async Task<string> HandleAsync(JobQueueItem job, CancellationToken cancellationToken)
     {
@@ -120,15 +143,16 @@ public sealed class LibrarySubtitleSearchJobHandler(
 
                 if (!outcome.Found || outcome.WrittenPath is null)
                 {
-                    // Remembered, so the next slice asks something else. The
-                    // delay starts at the library's own retry delay — the same
-                    // number the release search uses — and doubles from there.
+                    // Remembered, so the next slice asks something else, and the
+                    // library keeps moving instead of asking the same ten titles
+                    // for ever. The delay is subtitles' own — see
+                    // <c>FirstRetryDelay</c> — and doubles from there.
                     await mediaSubtitleRepository.RecordAttemptAsync(
                         kind,
                         item.MediaId,
                         language,
                         outcome.Reason,
-                        TimeSpan.FromHours(Math.Max(1, library.RetryDelayHours)),
+                        FirstRetryDelay,
                         cancellationToken);
                     continue;
                 }
