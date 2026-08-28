@@ -193,6 +193,28 @@ public static class CatalogueSortFields
     public const string Network = "network";
 
     /// <summary>
+    /// Whether Deluno is watching for it. Radarr's first sort, and the one that
+    /// answers "what have I told it to leave alone".
+    /// </summary>
+    public const string Monitored = "monitored";
+
+    /// <summary>Who made it. A film's answer; a show's is <see cref="Network"/>.</summary>
+    public const string Studio = "studio";
+
+    /// <summary>PG-13, 15, MA15+.</summary>
+    public const string Certification = "certification";
+
+    /// <summary>The name in its own language.</summary>
+    public const string OriginalTitle = "originaltitle";
+
+    /// <summary>The language it was made in.</summary>
+    public const string OriginalLanguage = "originallanguage";
+
+    public const string InCinemas = "incinemas";
+    public const string DigitalRelease = "digitalrelease";
+    public const string PhysicalRelease = "physicalrelease";
+
+    /// <summary>
     /// One order per rating source — "IMDb rating", not "rating".
     ///
     /// <para>Generated from <see cref="RatingSources.All"/>, like the columns
@@ -204,6 +226,8 @@ public static class CatalogueSortFields
     public static readonly IReadOnlyList<string> All =
         [Added, Title, Year, Rating, Runtime, Popularity, Size, Quality, Bitrate,
          .. RatingSources.All.Select(source => ForRating(source.Source)),
+         Monitored, Certification, OriginalTitle, OriginalLanguage,
+         Studio, InCinemas, DigitalRelease, PhysicalRelease,
          NextAiring, EpisodeProgress, Network];
 
     /// <summary>
@@ -217,7 +241,10 @@ public static class CatalogueSortFields
     /// </summary>
     public static IReadOnlyList<string> ForKind(MediaKind kind)
         => kind == MediaKind.Series
-            ? All
+            ? [.. All.Where(field => field is not (Studio or InCinemas or DigitalRelease or PhysicalRelease))]
+            // A film has no next episode and is never partway through one; a
+            // show has no cinema date and no disc. Offering either on the wrong
+            // shelf is not a sort with no rows, it is a sort with no meaning.
             : [.. All.Where(field => field is not (NextAiring or EpisodeProgress or Network))];
 
     /// <summary>

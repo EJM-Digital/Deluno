@@ -46,6 +46,40 @@ public sealed class RatingSortQueryPlanTests
     }
 
     /// <summary>
+    /// And so is every other order the shelf offers.
+    ///
+    /// <para>Written as "every order in the served list" rather than a list of
+    /// the ones added today, because the failure this catches is an order
+    /// declared without the index behind it — which is exactly the mistake
+    /// somebody makes when adding the fourteenth one.</para>
+    /// </summary>
+    [Fact]
+    public async Task No_order_the_shelf_offers_sorts_the_whole_library()
+    {
+        using var storage = TestStorage.Create();
+        await InitialiseAsync(storage);
+
+        foreach (var sort in CatalogueSortFields.ForKind(MediaKind.Movie))
+        {
+            // Quality and size live on the wanted state and are cached onto the
+            // entry by V0016's trigger; bitrate is an expression over two of
+            // those. All three are covered by CatalogueSearchStateOnPageTests
+            // against the real page query, which is the only place their join
+            // exists.
+            if (sort is CatalogueSortFields.Size or CatalogueSortFields.Quality or CatalogueSortFields.Bitrate)
+            {
+                continue;
+            }
+
+            var plan = await ExplainAsync(storage, sort);
+
+            Assert.False(
+                plan.Any(line => line.Contains("USE TEMP B-TREE FOR ORDER BY", StringComparison.Ordinal)),
+                $"Ordering by '{sort}' sorts the whole library: {string.Join(" | ", plan)}");
+        }
+    }
+
+    /// <summary>
     /// And the default order is untouched by the new indexes.
     ///
     /// <para>This is the half that bit last time: the regression was not in the

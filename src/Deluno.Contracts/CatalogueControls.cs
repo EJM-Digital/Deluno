@@ -70,7 +70,24 @@ public sealed record CatalogueControls(
         new(CatalogueSortFields.Runtime, "Runtime", "How long it runs"),
         new(CatalogueSortFields.Rating, "Rating", "The metadata score"),
         new(CatalogueSortFields.Popularity, "Popularity", "How much the world is watching"),
-        .. RatingSorts
+        .. RatingSorts,
+
+        // #310: "a new axis does not excuse a smaller number on an old one".
+        // Being the only tool that can sort by bitrate is no comfort to
+        // somebody who cannot sort by studio.
+        new(CatalogueSortFields.Monitored, "Monitored", "What you have told Deluno to leave alone, and what you have not"),
+        new(CatalogueSortFields.Certification, "Certification", "By classification — PG-13, 15, MA15+"),
+        new(CatalogueSortFields.OriginalTitle, "Original title", "The name in its own language"),
+        new(CatalogueSortFields.OriginalLanguage, "Original language", "Group what was made in the same language")
+    ];
+
+    /// <summary>Orders only a film can be put in.</summary>
+    private static IReadOnlyList<CatalogueSortOption> MovieOnlySorts =>
+    [
+        new(CatalogueSortFields.Studio, "Studio", "Who made it"),
+        new(CatalogueSortFields.InCinemas, "In cinemas", "The theatrical date"),
+        new(CatalogueSortFields.DigitalRelease, "Digital release", "When it became buyable"),
+        new(CatalogueSortFields.PhysicalRelease, "Physical release", "Disc")
     ];
 
     /// <summary>
@@ -147,7 +164,7 @@ public sealed record CatalogueControls(
         => new(
             kind == MediaKind.Movie ? "movies" : "shows",
             [.. CatalogueFilterFields.For(kind).Select(View)],
-            kind == MediaKind.Series ? [.. SharedSorts, .. SeriesOnlySorts] : SharedSorts,
+            kind == MediaKind.Series ? [.. SharedSorts, .. SeriesOnlySorts] : [.. SharedSorts, .. MovieOnlySorts],
             kind == MediaKind.Series
                 ? [.. SharedPosterOptions, .. SeriesOnlyPosterOptions]
                 : SharedPosterOptions);

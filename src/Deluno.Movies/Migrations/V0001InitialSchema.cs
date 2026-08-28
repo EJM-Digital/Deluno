@@ -28,7 +28,8 @@ public static class MoviesDatabaseMigrations
         new V0020MovieMetadataFacts(),
         new V0021MovieSortTitle(),
         new V0022MovieCatalogueFacts(),
-        new V0023MovieKeywords()
+        new V0023MovieKeywords(),
+        new V0024MovieSortIndexes()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration
