@@ -189,7 +189,11 @@ describe("the mark on a title", () => {
   });
 
   it("climbs in the order the design settled", () => {
-    expect([...TITLE_MARK_LADDER]).toEqual(["missing", "downloading", "upgrade", "covered"]);
+    // "airing" sits above Upgradable and below Quality met: everything you
+    // hold is at the quality asked for, and the show is not finished, so
+    // Deluno has emphatically not stopped looking. It is the one rung a film
+    // can never reach.
+    expect([...TITLE_MARK_LADDER]).toEqual(["missing", "downloading", "upgrade", "airing", "covered"]);
   });
 });
 

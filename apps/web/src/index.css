@@ -64,6 +64,22 @@
     --mark-quality-met-high: 47 100% 62%;
     --mark-quality-met-deep: 33 92% 28%;
     --mark-upcoming: 265 62% 52%;
+    /*
+      Continuing, and up to date.
+
+      Sonarr paints this blue. Deluno's blue is Downloading and the app's
+      primary, so taking it would make one colour mean two things depending on
+      which shelf you were looking at — the failure the whole mark table exists
+      to prevent. Teal is the nearest free hue to the one Sonarr chose: it sits
+      between Upgradable's green and Downloading's blue, reads as steady rather
+      than as a verdict, and is the only slot left now that violet has gone to
+      Upcoming.
+
+      It is deliberately not gold. Gold is Quality met — Deluno has stopped
+      looking — and a show still airing is the one state where Deluno is up to
+      date and has emphatically not stopped.
+    */
+    --mark-airing: 184 72% 34%;
     --mark-idle: 220 10% 82%;
     --border: 220 14% 86%;
     --input: 220 14% 86%;
@@ -142,6 +158,7 @@
     --mark-quality-met-high: 48 100% 78%;
     --mark-quality-met-deep: 34 90% 40%;
     --mark-upcoming: 265 82% 72%;
+    --mark-airing: 184 78% 52%;
     --mark-idle: 217 16% 26%;
     --border: 217 22% 18%;
     --input: 217 22% 18%;

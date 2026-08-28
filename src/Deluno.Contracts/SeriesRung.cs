@@ -49,7 +49,21 @@ public static class SeriesRung
 
         // Every aired episode is here. Whether Deluno keeps looking depends on
         // the same thing it depends on for a film: is any of it below cutoff.
-        return airedUpgradable > 0 ? WantedStatuses.Upgrade : WantedStatuses.Covered;
+        if (airedUpgradable > 0)
+        {
+            return WantedStatuses.Upgrade;
+        }
+
+        // And then the split a film never needs. Holding everything that has
+        // aired is not the same as being finished: one show is done for ever,
+        // the other has three more episodes arriving next month. Sonarr spends
+        // two of its five colours on exactly this distinction, and before now
+        // Deluno could not draw it at all.
+        //
+        // Read from whether an episode is actually scheduled rather than from
+        // the provider's status string, because the air date is the fact and
+        // the status is somebody's label for it.
+        return hasFutureAirDate ? WantedStatuses.Airing : WantedStatuses.Covered;
     }
 
     /// <summary>
