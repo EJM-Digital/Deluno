@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using System.Text.Json;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.Search;

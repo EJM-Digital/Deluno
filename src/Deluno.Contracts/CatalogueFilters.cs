@@ -1,48 +1,59 @@
 namespace Deluno.Contracts;
 
 /// <summary>
-/// The narrowing a catalogue page can be asked for beyond its status and its
-/// library — quality, size, genre, year, runtime, rating.
-///
-/// <para><b>Named fields, not a rule engine.</b> There was a generic one here
-/// before: <c>filterAndSortLibraryItems</c> with a 45-value <c>FilterField</c>
-/// union, <c>matchesCustomRule</c> and <c>resolveRuleValue</c>, in the browser.
-/// It was deleted in #302 and the note on its grave is worth repeating — it
-/// could express filters nothing could answer. Its <c>downloading</c> and
-/// <c>needsAttention</c> branches tested values nothing ever set, so both
-/// matched zero rows forever and nothing said so.</para>
-///
-/// <para>Each field here is one real stored column with one meaning, applied in
-/// SQL. There is no way to ask this for something it cannot answer, and adding a
-/// filter means adding a column to read — which is the check that was missing.</para>
-///
-/// <para><b>Everything narrows.</b> Filters combine with AND, and each list
-/// inside a filter is an OR: "Remux 2160p or WEB 2160p, and tagged Drama".
-/// That is the only combination anybody actually asks a library for, and it is
-/// the one a reader can predict from looking at the controls.</para>
+/// One question, asked of one field.
 /// </summary>
-/// <param name="Qualities">
-/// Quality tiers as the ladder names them — <c>WEB 2160p</c>, <c>Remux 1080p</c>.
-/// Matched against the file a title actually has, so a missing title matches no
-/// quality at all rather than matching on its target.
+/// <param name="FieldId">An id from <see cref="CatalogueFilterFields"/> for this media kind.</param>
+/// <param name="Values">
+/// What the field is compared against. A list, because
+/// <see cref="CatalogueFilterOperator.Includes"/> and its siblings are an OR
+/// over it. Empty for the operators that take no value.
 /// </param>
-/// <param name="Genres">
-/// Every genre listed must be present, because that is what a reader means by
-/// picking two. Matched on whole genres — a title tagged "Melodrama" is not a
-/// "Drama" match.
-/// </param>
-/// <param name="MinSizeGb">Size of the file on disk. A title with no file matches no size filter.</param>
-/// <param name="MinRatingValue">The metadata score, where one is stored.</param>
-public sealed record CatalogueFilters(
-    IReadOnlyList<string>? Qualities = null,
-    IReadOnlyList<string>? Genres = null,
-    double? MinSizeGb = null,
-    double? MaxSizeGb = null,
-    int? MinYear = null,
-    int? MaxYear = null,
-    int? MinRuntimeMinutes = null,
-    int? MaxRuntimeMinutes = null,
-    double? MinRatingValue = null)
+public sealed record CatalogueFilterCondition(
+    string FieldId,
+    CatalogueFilterOperator Operator,
+    IReadOnlyList<string> Values)
+{
+    /// <summary>
+    /// The form this travels in on a query string: <c>field:operator:a|b|c</c>.
+    ///
+    /// <para>Flat and readable rather than a JSON blob, because these travel in a
+    /// URL people bookmark, share and read. Split on the first two colons only,
+    /// so a Windows path in a value survives.</para>
+    /// </summary>
+    public string Encode()
+        => Values.Count == 0
+            ? $"{FieldId}:{CatalogueFilterOperators.Token(Operator)}"
+            : $"{FieldId}:{CatalogueFilterOperators.Token(Operator)}:{string.Join('|', Values)}";
+}
+
+/// <summary>
+/// The narrowing a catalogue page can be asked for beyond its status and its
+/// library.
+///
+/// <para><b>Named fields, and now a free combination of them.</b> This was nine
+/// fixed properties — quality, genres, and four ranges — which was the right
+/// shape for six filters and the wrong one for the sixty this has to reach.
+/// Radarr offers 33 filter fields; the standing check in the north star is that
+/// where a tool offers N of something, Deluno offers all N and then more, and
+/// thirty-three hand-written properties on a record is the shape that becomes
+/// unreadable and then wrong.</para>
+///
+/// <para><b>This is still not the rule engine #302 deleted.</b> That one had a
+/// 45-value <c>FilterField</c> union in the browser, and two of its values named
+/// states nothing ever set, so those branches matched zero rows forever and
+/// nothing said so. The difference is where the vocabulary lives and what
+/// happens to a word outside it: every field here is one real stored column,
+/// declared server-side in <see cref="CatalogueFilterFields"/>, served to the
+/// browser rather than copied there, and an id this media kind does not have is
+/// a 400 — never a silently dropped condition. A closed vocabulary with a free
+/// combination cannot ask an unanswerable question; an open vocabulary can, and
+/// did.</para>
+///
+/// <para><b>Everything narrows.</b> Conditions combine with AND, and the values
+/// inside one are an OR.</para>
+/// </summary>
+public sealed record CatalogueFilters(IReadOnlyList<CatalogueFilterCondition>? Conditions = null)
 {
     public static readonly CatalogueFilters None = new();
 
@@ -52,17 +63,181 @@ public sealed record CatalogueFilters(
     /// subtitle rollup follows, and the reason a feature nobody uses costs
     /// nothing.
     /// </summary>
-    public bool IsEmpty =>
-        (Qualities is null || Qualities.Count == 0) &&
-        (Genres is null || Genres.Count == 0) &&
-        MinSizeGb is null && MaxSizeGb is null &&
-        MinYear is null && MaxYear is null &&
-        MinRuntimeMinutes is null && MaxRuntimeMinutes is null &&
-        MinRatingValue is null;
+    public bool IsEmpty => Conditions is null || Conditions.Count == 0;
 
     /// <summary>
-    /// Reads the comma-separated form the query string carries, dropping blanks
-    /// so a trailing comma is not a filter for the empty string.
+    /// Whether answering this needs the wanted-state row joined on.
+    ///
+    /// <para>Asked precisely rather than "are there any filters at all", so
+    /// narrowing by year still costs a page nothing extra. The list page already
+    /// joins it for the columns it displays; the facets query does not, and that
+    /// is where the difference is paid.</para>
+    /// </summary>
+    public bool NeedsWantedState(MediaKind kind)
+        => Conditions is not null
+           && Conditions.Any(condition =>
+               CatalogueFilterFields.Find(kind, condition.FieldId) is { Source: CatalogueFilterSource.WantedState });
+
+    /// <summary>
+    /// Reads the repeated <c>f=</c> parameters a catalogue request carries.
+    ///
+    /// <para>Anything the registry does not know for this kind lands in
+    /// <paramref name="errors"/> so the endpoint can refuse the request. Dropping
+    /// it instead would hand back a shelf that looks narrowed and is not.</para>
+    /// </summary>
+    public static CatalogueFilters Parse(MediaKind kind, IEnumerable<string?>? raw, out IReadOnlyList<string> errors)
+    {
+        var problems = new List<string>();
+        var conditions = new List<CatalogueFilterCondition>();
+
+        foreach (var entry in raw ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(entry))
+            {
+                continue;
+            }
+
+            var parts = entry.Split(':', 3);
+            if (parts.Length < 2)
+            {
+                problems.Add($"“{entry}” is not a filter. Write it as field:operator:value.");
+                continue;
+            }
+
+            var field = CatalogueFilterFields.Find(kind, parts[0]);
+            if (field is null)
+            {
+                problems.Add($"There is no “{parts[0]}” to filter {(kind == MediaKind.Movie ? "movies" : "TV")} by.");
+                continue;
+            }
+
+            if (!CatalogueFilterOperators.TryParse(parts[1], out var op) || !field.Operators.Contains(op))
+            {
+                problems.Add($"“{field.Label}” cannot be compared with “{parts[1]}”.");
+                continue;
+            }
+
+            var values = parts.Length == 3
+                ? parts[2].Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                : [];
+
+            if (CatalogueFilterOperators.TakesValues(op) && values.Length == 0)
+            {
+                problems.Add($"“{field.Label}” needs a value.");
+                continue;
+            }
+
+            conditions.Add(new CatalogueFilterCondition(field.Id, op, values));
+        }
+
+        errors = problems;
+        return conditions.Count == 0 ? None : new CatalogueFilters(conditions);
+    }
+
+    /// <summary>
+    /// Everything a catalogue request can say about narrowing, in one place: the
+    /// repeated <c>f=</c> conditions and the flat parameters this shipped with.
+    ///
+    /// <para>Written here rather than in each endpoint because the two
+    /// catalogues would otherwise translate the same query string twice, and the
+    /// pair would drift the first time a field was added to one of them.</para>
+    ///
+    /// <para>Returns false when a condition names something this media kind
+    /// cannot be asked — which the endpoint turns into a 400. A shelf that
+    /// looks narrowed and is not is how somebody loses half their library and
+    /// concludes Deluno has.</para>
+    /// </summary>
+    public static bool TryBuild(
+        MediaKind kind,
+        IEnumerable<string?>? conditions,
+        string? quality,
+        string? genre,
+        double? minSizeGb,
+        double? maxSizeGb,
+        int? minYear,
+        int? maxYear,
+        int? minRuntime,
+        int? maxRuntime,
+        double? minRating,
+        out CatalogueFilters filters,
+        out IReadOnlyList<string> errors)
+    {
+        var parsed = Parse(kind, conditions, out errors);
+        if (errors.Count > 0)
+        {
+            filters = None;
+            return false;
+        }
+
+        var legacy = FromLegacyParameters(
+            quality, genre, minSizeGb, maxSizeGb, minYear, maxYear, minRuntime, maxRuntime, minRating);
+
+        if (legacy.Count == 0)
+        {
+            filters = parsed;
+            return true;
+        }
+
+        filters = new CatalogueFilters([.. parsed.Conditions ?? [], .. legacy]);
+        return true;
+    }
+
+    /// <summary>
+    /// The flat query parameters this shipped with — <c>quality</c>,
+    /// <c>genre</c>, <c>minSizeGb</c> and the rest — translated into conditions.
+    ///
+    /// <para>Kept because URLs outlive deploys and saved views hold them, and
+    /// written here rather than in each endpoint so the translation exists once.
+    /// New callers send <c>f=</c>.</para>
+    /// </summary>
+    public static IReadOnlyList<CatalogueFilterCondition> FromLegacyParameters(
+        string? quality,
+        string? genre,
+        double? minSizeGb,
+        double? maxSizeGb,
+        int? minYear,
+        int? maxYear,
+        int? minRuntime,
+        int? maxRuntime,
+        double? minRating)
+    {
+        var conditions = new List<CatalogueFilterCondition>();
+
+        if (ParseList(quality) is { Count: > 0 } qualities)
+        {
+            conditions.Add(new CatalogueFilterCondition("quality", CatalogueFilterOperator.Includes, qualities));
+        }
+
+        if (ParseList(genre) is { Count: > 0 } genres)
+        {
+            conditions.Add(new CatalogueFilterCondition("genre", CatalogueFilterOperator.IncludesAll, genres));
+        }
+
+        Add("size", CatalogueFilterOperator.AtLeast, minSizeGb);
+        Add("size", CatalogueFilterOperator.AtMost, maxSizeGb);
+        Add("year", CatalogueFilterOperator.AtLeast, minYear);
+        Add("year", CatalogueFilterOperator.AtMost, maxYear);
+        Add("runtime", CatalogueFilterOperator.AtLeast, minRuntime);
+        Add("runtime", CatalogueFilterOperator.AtMost, maxRuntime);
+        Add("rating", CatalogueFilterOperator.AtLeast, minRating);
+
+        return conditions;
+
+        void Add(string fieldId, CatalogueFilterOperator op, IFormattable? value)
+        {
+            if (value is not null)
+            {
+                conditions.Add(new CatalogueFilterCondition(
+                    fieldId,
+                    op,
+                    [value.ToString(null, System.Globalization.CultureInfo.InvariantCulture)]));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Reads the comma-separated form the legacy query string carries, dropping
+    /// blanks so a trailing comma is not a filter for the empty string.
     /// </summary>
     public static IReadOnlyList<string>? ParseList(string? value)
     {
@@ -78,4 +253,22 @@ public sealed record CatalogueFilters(
 
         return parts.Length == 0 ? null : parts;
     }
+
+    /// <summary>
+    /// Builds a filter set straight from conditions, for tests and for the two
+    /// endpoints' legacy path. Empty in, <see cref="None"/> out.
+    /// </summary>
+    public static CatalogueFilters Of(params CatalogueFilterCondition[] conditions)
+        => conditions.Length == 0 ? None : new CatalogueFilters(conditions);
+
+    /// <summary>
+    /// The same set with one more question on it. Conditions combine with AND,
+    /// so this is what "narrow further" means.
+    /// </summary>
+    public CatalogueFilters And(string fieldId, CatalogueFilterOperator op, params string[] values)
+        => new([.. Conditions ?? [], new CatalogueFilterCondition(fieldId, op, values)]);
+
+    /// <summary>One condition, spelled the way a test reads best.</summary>
+    public static CatalogueFilterCondition Where(string fieldId, CatalogueFilterOperator op, params string[] values)
+        => new(fieldId, op, values);
 }

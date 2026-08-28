@@ -414,4 +414,23 @@ describe("classes are spelled out, never derived", () => {
       expect(presentation.cssVar, `${mark} cssVar`).toBe(`--${token}`);
     }
   });
+
+  /**
+   * Exactly one rung is drawn as more than a colour.
+   *
+   * Missing, Downloading and Upgradable all mean "Deluno is still working on
+   * this"; Quality met is the only one that means it is finished. If a second
+   * rung ever got a sheen the distinction would stop being one.
+   *
+   * That the class it names is *in the stylesheet* is checked in the smoke suite
+   * against the shipped bundle, not here: a class name that appears nowhere
+   * renders as nothing and fails silently — which is exactly what happened to
+   * `text-mark-quality-met` — and the honest place to catch that is the browser
+   * reading the built CSS, not a source file reading another source file.
+   */
+  it("draws exactly one rung as an achievement", () => {
+    const withSheen = Object.entries(MARKS).filter(([, presentation]) => presentation.sheen);
+    expect(withSheen.map(([mark]) => mark)).toEqual(["covered"]);
+    expect(MARKS.covered.sheen).toBe("mark-grail");
+  });
 });

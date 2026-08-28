@@ -1,5 +1,12 @@
 import { useEffect, useState } from "react";
-import { customFilterCount, defaultDisplayOptions, emptyCustomFilters, type CustomFilters } from "../lib/library-filters";
+import {
+  conditionCount,
+  fetchLibraryControls,
+  type FilterCondition,
+  type LibraryControlSet,
+  type MediaVariant
+} from "../lib/library-controls";
+import { defaultDisplayOptions, parseDisplayOptions } from "../lib/library-filters";
 import {
   isQuickFilter,
   type MonitoringFilter,
@@ -11,12 +18,10 @@ import {
 } from "../components/app/library-control-rail";
 import type { CardSize, DisplayOptions } from "../components/app/library-grid";
 
-type LibraryVariant = "movies" | "shows";
+const sizeStorageKey = (variant: MediaVariant) => `deluno-card-size-${variant}`;
+const displayStorageKey = (variant: MediaVariant) => `deluno-display-options-${variant}`;
 
-const sizeStorageKey = (variant: LibraryVariant) => `deluno-card-size-${variant}`;
-const displayStorageKey = (variant: LibraryVariant) => `deluno-display-options-${variant}`;
-
-function initialCardSize(variant: LibraryVariant): CardSize {
+function initialCardSize(variant: MediaVariant): CardSize {
   try {
     const stored = localStorage.getItem(sizeStorageKey(variant));
     return stored === "sm" || stored === "lg" ? stored : "md";
@@ -25,16 +30,22 @@ function initialCardSize(variant: LibraryVariant): CardSize {
   }
 }
 
-function initialDisplayOptions(variant: LibraryVariant): DisplayOptions {
-  try {
-    const raw = localStorage.getItem(displayStorageKey(variant));
-    return raw ? { ...defaultDisplayOptions(), ...JSON.parse(raw) } : defaultDisplayOptions();
-  } catch {
-    return defaultDisplayOptions();
-  }
-}
+/**
+ * What this shelf may be asked, ordered by and draw — declared per media kind by
+ * the server (#324) and fetched here rather than declared beside it.
+ *
+ * Empty until it arrives, and deliberately not a hard-coded fallback: a fallback
+ * is the second copy this whole change exists to delete, and it is the copy
+ * nobody updates.
+ */
+const emptyControlSet = (variant: MediaVariant): LibraryControlSet => ({
+  kind: variant,
+  filterFields: [],
+  sortFields: [],
+  posterOptions: []
+});
 
-export function useLibraryFilters(variant: LibraryVariant, urlFilter: string | null) {
+export function useLibraryFilters(variant: MediaVariant, urlFilter: string | null) {
   const [query, setQuery] = useState("");
   const [libraryId, setLibraryId] = useState<string | null>(null);
   const [quickFilter, setQuickFilter] = useState<QuickFilter>("all");
@@ -45,8 +56,9 @@ export function useLibraryFilters(variant: LibraryVariant, urlFilter: string | n
   const [sortField, setSortField] = useState<SortField>("title");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [cardSize, setCardSize] = useState<CardSize>(() => initialCardSize(variant));
-  const [displayOptions, setDisplayOptions] = useState<DisplayOptions>(() => initialDisplayOptions(variant));
-  const [customFilters, setCustomFilters] = useState<CustomFilters>(() => emptyCustomFilters());
+  const [controlSet, setControlSet] = useState<LibraryControlSet>(() => emptyControlSet(variant));
+  const [displayOptions, setDisplayOptions] = useState<DisplayOptions>({});
+  const [conditions, setConditions] = useState<FilterCondition[]>([]);
   const [savedPresets, setSavedPresets] = useState<SavedFilterPreset[]>([]);
   const [newPresetName, setNewPresetName] = useState("");
   const [isSavingPreset, setIsSavingPreset] = useState(false);
@@ -59,10 +71,29 @@ export function useLibraryFilters(variant: LibraryVariant, urlFilter: string | n
     setSortField("title");
     setSortDirection("asc");
     setCardSize(initialCardSize(variant));
-    setDisplayOptions(initialDisplayOptions(variant));
     // Movies and TV do not share a quality tier list or a genre list, and a
     // 4K-Remux filter carried across to the TV shelf would silently empty it.
-    setCustomFilters(emptyCustomFilters());
+    // They do not share a *field* list either now, so a movie-only condition
+    // would be refused by the server rather than ignored — either way it goes.
+    setConditions([]);
+
+    let cancelled = false;
+    void fetchLibraryControls(variant).then((next) => {
+      if (cancelled) return;
+      setControlSet(next);
+      // The stored layout is read against the declaration it belongs to, so a
+      // switch added since somebody saved theirs arrives at its default rather
+      // than as `undefined`.
+      let raw: string | null = null;
+      try { raw = localStorage.getItem(displayStorageKey(variant)); } catch { /* ignore */ }
+      setDisplayOptions(parseDisplayOptions(raw, next.posterOptions));
+      // A stored sort the server no longer performs falls back rather than
+      // being sent and quietly normalised into something else.
+      setSortField((current) =>
+        next.sortFields.some((sort) => sort.id === current) ? current : next.sortFields[0]?.id ?? "title");
+    });
+
+    return () => { cancelled = true; };
   }, [variant]);
 
   useEffect(() => {
@@ -84,19 +115,28 @@ export function useLibraryFilters(variant: LibraryVariant, urlFilter: string | n
   return {
     query, setQuery, libraryId, setLibraryId, quickFilter, setQuickFilter, view, setView, sortField, setSortField,
     monitoring, setMonitoring,
-    customFilters, setCustomFilters,
-    clearCustomFilters: () => setCustomFilters(emptyCustomFilters()),
-    sortDirection, setSortDirection, cardSize, displayOptions, setDisplayOptions,
+    controlSet,
+    conditions, setConditions,
+    clearConditions: () => setConditions([]),
+    sortDirection, setSortDirection, cardSize,
+    displayOptions: Object.keys(displayOptions).length > 0
+      ? displayOptions
+      : defaultDisplayOptions(controlSet.posterOptions),
+    setDisplayOptions: updateDisplayOptions,
     savedPresets, setSavedPresets, newPresetName, setNewPresetName, isSavingPreset,
     setIsSavingPreset, changeSize, updateDisplayOptions,
     // Every question being asked of the shelf, counted onto one badge. The
-    // library and the quick filter are visible on screen; the custom ones live
+    // library and the quick filter are visible on screen; the conditions live
     // behind a button, and a narrowed shelf that looks unnarrowed is how people
     // lose half their library and conclude Deluno has.
     activeFilterCount:
       Number(libraryId !== null) +
       Number(quickFilter !== "all") +
       Number(monitoring !== "any") +
-      customFilterCount(customFilters)
+      // The finished conditions only. A row still waiting for a value is not
+      // sent and narrows nothing; counting it would make the badge claim a
+      // narrowing that is not happening, which is the same lie as leaving one
+      // out — just in the other direction.
+      conditionCount(conditions)
   };
 }

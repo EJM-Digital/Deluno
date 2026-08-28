@@ -737,7 +737,7 @@ public sealed class SqliteMovieCatalogRepository(
             // in two libraries has two files, and matching on either while
             // displaying the other is precisely the drift the pick was
             // introduced to end.
-            CatalogueKeyset.CustomFilters(query.Filters, "m", "release_year"),
+            CatalogueKeyset.CustomFilters(query.Filters, MediaKind.Movie, "m", "release_year"),
             token is null ? string.Empty : CatalogueKeyset.SeekPredicate(sortExpression, "m", query.Descending));
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -763,7 +763,7 @@ public sealed class SqliteMovieCatalogRepository(
 
             AddParameter(command, "@fetchCount", pageSize + 1);
             CatalogueKeyset.BindSearch(command, search);
-            CatalogueKeyset.BindCustomFilters(command, query.Filters);
+            CatalogueKeyset.BindCustomFilters(command, query.Filters, MediaKind.Movie);
             AddParameter(command, "@libraryId", libraryId);
             if (token is not null)
             {
@@ -899,15 +899,17 @@ public sealed class SqliteMovieCatalogRepository(
         // The join is added **only when a custom filter is asking for it**. An
         // unfiltered page runs exactly the query it ran before this existed,
         // which is the rule that keeps a feature nobody is using free.
-        var hasCustomFilters = filters is not null && !filters.IsEmpty;
-        var wantedJoin = hasCustomFilters
+        // Asked precisely, not "are there any filters at all": narrowing by
+        // year or genre reads the entries table and needs no join, so it still
+        // costs the counts nothing.
+        var wantedJoin = filters?.NeedsWantedState(MediaKind.Movie) == true
             ? CatalogueWantedState.Join("m", "movie_wanted_state", "movie_id", libraryId is not null)
             : string.Empty;
 
         var where = CatalogueKeyset.CombineFilters(
             search is null ? string.Empty : CatalogueKeyset.SearchFilter("m"),
             CatalogueLibraryFilter(libraryId),
-            CatalogueKeyset.CustomFilters(filters, "m", "release_year"));
+            CatalogueKeyset.CustomFilters(filters, MediaKind.Movie, "m", "release_year"));
 
         // The two axes cross here.
         //
@@ -943,7 +945,7 @@ public sealed class SqliteMovieCatalogRepository(
             WHERE {where};
             """;
         CatalogueKeyset.BindSearch(command, search);
-        CatalogueKeyset.BindCustomFilters(command, filters);
+        CatalogueKeyset.BindCustomFilters(command, filters, MediaKind.Movie);
         AddParameter(command, "@libraryId", libraryId);
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);

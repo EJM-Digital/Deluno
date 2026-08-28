@@ -70,6 +70,9 @@ export function LibraryActions({
         type="button"
         variant="outline"
         size="icon"
+        // The toolbar row sets the height for everything on it; this says
+        // "keep me square at whatever that height is".
+        data-slot="icon-action"
         onClick={onUpdateMetadata}
         disabled={isUpdatingMetadata}
         // The accessible name stays the action itself; the sentence explaining

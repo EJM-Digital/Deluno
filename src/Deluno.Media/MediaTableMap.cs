@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Deluno.Infrastructure.Storage;
 
 namespace Deluno.Media;

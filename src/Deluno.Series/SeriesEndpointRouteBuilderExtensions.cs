@@ -42,6 +42,16 @@ public static class SeriesEndpointRouteBuilderExtensions
         // What the genre filter can offer. Its own endpoint rather than a facet
         // on the page, because it is asked for once when somebody opens the
         // filter panel and never again while they page through results.
+        // What this shelf can be asked, ordered by, and draw — declared once,
+        // per media kind, and served rather than copied into the browser.
+        //
+        // The browser used to keep its own sort list beside the server's and its
+        // own poster-option list beside nothing at all, and `variant` decided
+        // exactly two things in the filter panel: a hint under Year and which
+        // genres endpoint to call. So a TV shelf was offered a film's controls.
+        // One list, on the side that has to perform it (#324).
+        series.MapGet("/controls", () => Results.Ok(CatalogueControls.For(MediaKind.Series)));
+
         series.MapGet("/genres", async (
             [FromServices] ISeriesCatalogRepository repository,
             CancellationToken cancellationToken) => Results.Ok(await repository.ListGenresAsync(cancellationToken)));
@@ -59,6 +69,12 @@ public static class SeriesEndpointRouteBuilderExtensions
             string? pageToken,
             // The custom narrowing, flat on the query string rather than a JSON
             // blob: these travel in a URL people bookmark, share and read.
+            //
+            // One `f` per condition — `f=quality:in:WEB 2160p|Remux 2160p` — read
+            // against the field registry for this media kind. The nine named
+            // parameters below it are what this shipped with, kept because URLs
+            // outlive deploys, and translated into the same conditions.
+            [FromQuery(Name = "f")] string[]? f,
             string? quality,
             string? genre,
             double? minSizeGb,
@@ -71,6 +87,21 @@ public static class SeriesEndpointRouteBuilderExtensions
             [FromServices] ISeriesCatalogRepository repository,
             CancellationToken cancellationToken) =>
         {
+            if (!CatalogueFilters.TryBuild(
+                    MediaKind.Series, f, quality, genre, minSizeGb, maxSizeGb,
+                    minYear, maxYear, minRuntime, maxRuntime, minRating,
+                    out var filters,
+                    out var problems))
+            {
+                // A condition this kind cannot answer is refused, never dropped.
+                // The rule engine deleted in #302 dropped them, and two of its
+                // branches matched zero rows forever without anybody noticing.
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["f"] = [.. problems]
+                });
+            }
+
             var page = await repository.ListPageAsync(
                 new CatalogueQuery(
                     Search: search,
@@ -81,16 +112,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                     Descending: !string.Equals(direction, "asc", StringComparison.OrdinalIgnoreCase),
                     PageSize: pageSize ?? 50,
                     PageToken: pageToken,
-                    Filters: new CatalogueFilters(
-                        Qualities: CatalogueFilters.ParseList(quality),
-                        Genres: CatalogueFilters.ParseList(genre),
-                        MinSizeGb: minSizeGb,
-                        MaxSizeGb: maxSizeGb,
-                        MinYear: minYear,
-                        MaxYear: maxYear,
-                        MinRuntimeMinutes: minRuntime,
-                        MaxRuntimeMinutes: maxRuntime,
-                        MinRatingValue: minRating)),
+                    Filters: filters),
                 cancellationToken);
 
             return Results.Ok(page);

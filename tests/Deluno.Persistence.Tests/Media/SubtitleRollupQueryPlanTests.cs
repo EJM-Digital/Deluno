@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Deluno.Infrastructure.Storage;
 using Deluno.Infrastructure.Storage.Migrations;
 using Deluno.Media;
