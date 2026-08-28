@@ -82,7 +82,7 @@ export interface QuickFilterChip {
 }
 
 export const quickFilterConfig: QuickFilterChip[] = (
-  ["all", "covered", "upgrades", "missing", "upcoming"] as const
+  ["all", "covered", "upgrades", "downloading", "missing", "upcoming"] as const
 ).map((key) => {
   // The label and the colour come from the one table, never from here. They
   // were written out by hand — a sixth place colouring a state, three lines

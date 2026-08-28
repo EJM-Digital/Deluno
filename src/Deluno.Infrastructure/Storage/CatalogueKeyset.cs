@@ -151,7 +151,8 @@ public static class CatalogueKeyset
         string hasFileExpression,
         string? upgradeExpression = null,
         string? coveredExpression = null,
-        string? upcomingExpression = null)
+        string? upcomingExpression = null,
+        string? downloadingExpression = null)
         => CatalogueStatusFilters.Normalize(status) switch
         {
             CatalogueStatusFilters.Downloaded => hasFileExpression,
@@ -164,6 +165,7 @@ public static class CatalogueKeyset
             CatalogueStatusFilters.Upgrades when !string.IsNullOrWhiteSpace(upgradeExpression) => upgradeExpression,
             CatalogueStatusFilters.Covered when !string.IsNullOrWhiteSpace(coveredExpression) => coveredExpression,
             CatalogueStatusFilters.Upcoming when !string.IsNullOrWhiteSpace(upcomingExpression) => upcomingExpression,
+            CatalogueStatusFilters.Downloading when !string.IsNullOrWhiteSpace(downloadingExpression) => downloadingExpression,
             _ => string.Empty
         };
 

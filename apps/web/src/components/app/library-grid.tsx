@@ -377,6 +377,29 @@ function PosterCard({
 }
 
 /**
+ * When the next episode is due, in the shortest form that is still unambiguous.
+ *
+ * Sonarr prints a weekday for anything inside the coming week and a date beyond
+ * it, which is the right instinct: "Thursday" is what you actually want to know
+ * about a show airing this week, and useless about one returning in October.
+ *
+ * A date already past is not printed at all. It means the episode aired and
+ * nothing has recomputed the show yet — a window of at most a few minutes — and
+ * printing "last Tuesday" under a poster would be worse than printing nothing.
+ */
+function nextAiringLabel(nextAirDateUtc: string): string | null {
+  const next = new Date(nextAirDateUtc);
+  if (Number.isNaN(next.getTime())) return null;
+
+  const days = (next.getTime() - Date.now()) / 86_400_000;
+  if (days < 0) return null;
+
+  return days < 7
+    ? next.toLocaleDateString(undefined, { weekday: "long" })
+    : next.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}
+
+/**
  * Whatever else this reader asked a poster to carry, in one truncated line.
  *
  * Everything here is a fact about the file or the title that Deluno already
@@ -414,6 +437,19 @@ function PosterExtras({ item, displayOptions }: { item: MediaItem; displayOption
 
   if (displayOptions.showAdded && item.added) {
     parts.push(item.added);
+  }
+
+  // How far through a show you are, over what has aired rather than over what
+  // will eventually exist: an ongoing series measured against its final episode
+  // count reads permanently unfinished, which is true of every ongoing series
+  // and therefore says nothing.
+  if (displayOptions.showEpisodeProgress && typeof item.airedEpisodeCount === "number" && item.airedEpisodeCount > 0) {
+    parts.push(`${item.airedWithFileCount ?? 0}/${item.airedEpisodeCount}`);
+  }
+
+  if (displayOptions.showNextAiring && item.nextAirDateUtc) {
+    const next = nextAiringLabel(item.nextAirDateUtc);
+    if (next) parts.push(next);
   }
 
   if (parts.length === 0) return null;

@@ -752,8 +752,9 @@ public sealed class SqliteSeriesCatalogRepository(
                 "s",
                 CatalogueHasFileFor(libraryId),
                 CatalogueUpgradeFor(libraryId),
-                CatalogueWantedIs(libraryId, "covered"),
-                CatalogueWantedIs(libraryId, "upcoming")),
+                CatalogueWantedIs(libraryId, WantedStatuses.Covered),
+                CatalogueWantedIs(libraryId, WantedStatuses.Upcoming),
+                CatalogueWantedIs(libraryId, WantedStatuses.Downloading)),
             // Quality and size read `ws` — the one wanted-state row this page
             // speaks for — rather than an EXISTS over all of them, so what the
             // filter selects and what the row displays cannot disagree.
@@ -1082,8 +1083,9 @@ public sealed class SqliteSeriesCatalogRepository(
             "s",
             CatalogueHasFileFor(libraryId),
             CatalogueUpgradeFor(libraryId),
-            CatalogueWantedIs(libraryId, "covered"),
-            CatalogueWantedIs(libraryId, "upcoming")));
+            CatalogueWantedIs(libraryId, WantedStatuses.Covered),
+            CatalogueWantedIs(libraryId, WantedStatuses.Upcoming),
+                CatalogueWantedIs(libraryId, WantedStatuses.Downloading)));
 
         using var command = connection.CreateCommand();
         command.CommandText =
@@ -1095,7 +1097,7 @@ public sealed class SqliteSeriesCatalogRepository(
                 SUM(CASE WHEN {monitoredArm} AND {CatalogueHasFileFor(libraryId)} THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {monitoredArm} AND NOT ({CatalogueHasFileFor(libraryId)} OR {CatalogueWantedIs(libraryId, "upcoming")}) THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {monitoredArm} AND {CatalogueUpgradeFor(libraryId)} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, "covered")} THEN 1 ELSE 0 END),
+                SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, WantedStatuses.Covered)} THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, "upcoming")} THEN 1 ELSE 0 END)
             FROM series_entries s
             {wantedJoin}
