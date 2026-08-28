@@ -763,7 +763,7 @@ public sealed class SqliteMovieCatalogRepository(
 
             AddParameter(command, "@fetchCount", pageSize + 1);
             CatalogueKeyset.BindSearch(command, search);
-            CatalogueKeyset.BindCustomFilters(command, query.Filters, MediaKind.Movie);
+            CatalogueKeyset.BindCustomFilters(command, query.Filters, MediaKind.Movie, timeProvider.GetUtcNow());
             AddParameter(command, "@libraryId", libraryId);
             if (token is not null)
             {
@@ -946,7 +946,7 @@ public sealed class SqliteMovieCatalogRepository(
             WHERE {where};
             """;
         CatalogueKeyset.BindSearch(command, search);
-        CatalogueKeyset.BindCustomFilters(command, filters, MediaKind.Movie);
+        CatalogueKeyset.BindCustomFilters(command, filters, MediaKind.Movie, timeProvider.GetUtcNow());
         AddParameter(command, "@libraryId", libraryId);
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);

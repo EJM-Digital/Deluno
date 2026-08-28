@@ -791,7 +791,7 @@ public sealed class SqliteSeriesCatalogRepository(
 
             AddParameter(command, "@fetchCount", pageSize + 1);
             CatalogueKeyset.BindSearch(command, search);
-            CatalogueKeyset.BindCustomFilters(command, query.Filters, MediaKind.Series);
+            CatalogueKeyset.BindCustomFilters(command, query.Filters, MediaKind.Series, timeProvider.GetUtcNow());
             AddParameter(command, "@libraryId", libraryId);
             if (token is not null)
             {
@@ -1102,7 +1102,7 @@ public sealed class SqliteSeriesCatalogRepository(
             WHERE {where};
             """;
         CatalogueKeyset.BindSearch(command, search);
-        CatalogueKeyset.BindCustomFilters(command, filters, MediaKind.Series);
+        CatalogueKeyset.BindCustomFilters(command, filters, MediaKind.Series, timeProvider.GetUtcNow());
         AddParameter(command, "@libraryId", libraryId);
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
