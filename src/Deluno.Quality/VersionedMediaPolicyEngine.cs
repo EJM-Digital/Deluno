@@ -74,6 +74,28 @@ public sealed class VersionedMediaPolicyEngine : IVersionedMediaPolicyEngine
                 normalizedTarget);
         }
 
+        // A file too small for its own label is a bad copy, not a finished
+        // title — and the fix is the one Deluno already has. Checked before the
+        // cutoff, because otherwise the tier's name alone would call it done
+        // and nothing downstream would ever look again.
+        //
+        // Only the floor. A file *over* the ceiling is wasted disk rather than
+        // a bad copy, and marking it Upgrade would send Deluno hunting for
+        // something better, which is the opposite of the problem. That one is a
+        // question you ask the shelf, not a job for the upgrade process.
+        if (IsBelowItsOwnFloor(input))
+        {
+            var floorGb = (input.SizeFloorBytes ?? 0) / 1024d / 1024d / 1024d;
+            var actualGb = (input.FileSizeBytes ?? 0) / 1024d / 1024d / 1024d;
+
+            return Decision(
+                WantedStatuses.Upgrade,
+                $"This {mediaLabel} is {actualGb:0.##} GB, below the {floorGb:0.#} GB minimum your rules set for {normalizedCurrent}. Deluno will look for a better copy.",
+                false,
+                normalizedCurrent,
+                normalizedTarget);
+        }
+
         if (IsAtOrAboveCutoff(normalizedCurrent, normalizedTarget))
         {
             return Decision(
@@ -101,6 +123,21 @@ public sealed class VersionedMediaPolicyEngine : IVersionedMediaPolicyEngine
             normalizedCurrent,
             normalizedTarget);
     }
+
+
+    /// <summary>
+    /// Whether the file is smaller than its own tier's rule allows.
+    ///
+    /// <para>Every part has to be known: a caller that did not supply a size,
+    /// or a tier with no floor set, gets the decision it would have got before
+    /// this existed. Unknown is never treated as a breach — that would mark a
+    /// whole library Upgradable the first time somebody imported without sizes.</para>
+    /// </summary>
+    private static bool IsBelowItsOwnFloor(MediaWantedDecisionInput input)
+        => input.HasFile
+        && input.FileSizeBytes is > 0
+        && input.SizeFloorBytes is > 0
+        && input.FileSizeBytes < input.SizeFloorBytes;
 
     public string? DetectQuality(string? raw)
         => current.DetectQuality(raw);

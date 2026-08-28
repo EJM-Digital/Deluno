@@ -371,6 +371,54 @@ public sealed class SqliteMediaSubtitleRepository(
     /// behind catches up in order rather than by whatever the index
     /// offers.</para>
     /// </summary>
+    /// <summary>
+    /// Forget that these files were ever probed, so the next subtitle pass
+    /// reads them again.
+    ///
+    /// <para><b>No new job and no new lane.</b> A title becomes a scan
+    /// candidate when it has no scan row — see <see cref="ListPendingScansAsync"/>,
+    /// where <c>scan.… IS NULL</c> is the first thing that makes one pending.
+    /// So "re-read the subtitles for these forty titles" is a delete, and the
+    /// library's existing subtitle pass does the work on its own schedule. A
+    /// per-title subtitle job type would have been a second way to do the same
+    /// thing, racing the first (DESIGN-002 rule 3).</para>
+    ///
+    /// <para>The state rows are left alone deliberately: the subtitles you hold
+    /// are still held, and the shelf goes on saying so until the re-probe
+    /// replaces them. Clearing both would blank the subtitle bar for every
+    /// selected title until the pass got to it, which looks like Deluno losing
+    /// them.</para>
+    /// </summary>
+    /// <returns>How many had been probed and now have not.</returns>
+    public async Task<int> ClearScansAsync(
+        MediaKind kind,
+        IReadOnlyList<string> mediaIds,
+        CancellationToken cancellationToken)
+    {
+        if (mediaIds.Count == 0)
+        {
+            return 0;
+        }
+
+        var map = MediaTableMap.For(kind);
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            map.DatabaseName,
+            cancellationToken);
+
+        var parameters = string.Join(", ", mediaIds.Select((_, index) => $"@id{index}"));
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            $"DELETE FROM {map.SubtitleScanTable} WHERE {map.SubtitleMediaIdColumn} IN ({parameters});";
+
+        for (var index = 0; index < mediaIds.Count; index++)
+        {
+            AddParameter(command, $"@id{index}", mediaIds[index]);
+        }
+
+        return await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<MediaSubtitleScanCandidate>> ListPendingScansAsync(
         MediaKind kind,
         string libraryId,

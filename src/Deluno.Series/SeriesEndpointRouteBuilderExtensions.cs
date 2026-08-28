@@ -1232,6 +1232,43 @@ public static class SeriesEndpointRouteBuilderExtensions
             return Results.Ok(new BulkSeriesResponse(request.SeriesIds.Count, successCount, failureCount, operation, results));
         });
 
+        /*
+          Re-read the subtitles Deluno already has on disk, for a selection.
+
+          Not a new job type: a title becomes a scan candidate when it has no
+          scan row, so forgetting the probe is the whole instruction and the
+          library's existing subtitle pass does the work. A per-title subtitle
+          job would have been a second way to do the same thing, racing the
+          first (DESIGN-002 rule 3).
+        */
+        series.MapPost("/bulk/subtitle-rescan", async (
+            HttpContext httpContext,
+            [FromBody] BulkSubtitleRescanRequest request,
+            IMediaSubtitleRepository subtitles,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (request.SeriesIds is not { Count: > 0 })
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["seriesIds"] = ["Choose at least one title before re-reading subtitles."]
+                });
+            }
+
+            var cleared = await subtitles.ClearScansAsync(MediaKind.Series, request.SeriesIds, cancellationToken);
+
+            // "queued" rather than "done": the pass that re-reads them runs on
+            // the library's own schedule, and saying otherwise would promise
+            // something this request has not made happen.
+            return Results.Ok(new { queued = request.SeriesIds.Count, cleared });
+        });
+
         series.MapPost("/bulk/quality-profile", async (
             HttpContext httpContext,
             [FromBody] BulkQualityProfileRequest request,
@@ -2375,6 +2412,8 @@ public static class SeriesEndpointRouteBuilderExtensions
 
     private sealed record UpdateSeriesReplacementProtectionRequest(
         bool PreventLowerQualityReplacements);
+
+    private sealed record BulkSubtitleRescanRequest(IReadOnlyList<string>? SeriesIds);
 
     private sealed record BulkQualityProfileRequest(
         IReadOnlyList<string>? SeriesIds,

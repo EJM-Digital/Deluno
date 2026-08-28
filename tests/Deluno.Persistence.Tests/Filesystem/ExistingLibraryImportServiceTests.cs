@@ -451,6 +451,11 @@ public sealed class ExistingLibraryImportServiceTests
             movies,
             series ?? new SqliteSeriesCatalogRepository(storage.Factory, timeProvider),
             new MediaDecisionService(new VersionedMediaPolicyEngine()),
+            // The real one, reading the shipped ladder: an import now judges a
+            // file against its tier's size rule, and a stub that answered "no
+            // rules" would make every one of these tests pass for the wrong
+            // reason.
+            new QualityModelService(storage.Factory, timeProvider),
             timeProvider,
             NullLogger<ExistingLibraryImportService>.Instance,
             sliceOptions);

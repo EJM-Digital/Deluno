@@ -1133,6 +1133,100 @@ public static class MoviesEndpointRouteBuilderExtensions
             return Results.Ok(duplicates);
         });
 
+        /*
+          The point a film becomes worth searching for, set across a selection.
+
+          It has always been settable one film at a time and never in bulk,
+          which is the wrong way round: minimum availability is the setting you
+          change after realising a whole shelf is wrong — every film you added
+          from a "coming soon" list sitting at Announced and burning searches on
+          releases that do not exist yet.
+        */
+        movies.MapPost("/bulk/minimum-availability", async (
+            HttpContext httpContext,
+            [FromBody] BulkMinimumAvailabilityRequest request,
+            IMovieCatalogRepository repository,
+            IRealtimeEventPublisher realtimeEventPublisher,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (request.MovieIds is not { Count: > 0 })
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["movieIds"] = ["Choose at least one movie before changing availability."]
+                });
+            }
+
+            // Refused rather than normalised. MovieAvailability.Normalize falls
+            // back to "released" for anything it does not know, which is the
+            // right behaviour when reading a stored value and the wrong one
+            // here: a typo would silently set the whole selection to Released.
+            var availability = request.MinimumAvailability?.Trim() ?? string.Empty;
+            if (!MovieAvailability.All.Contains(availability, StringComparer.OrdinalIgnoreCase))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["minimumAvailability"] = [$"Choose one of: {string.Join(", ", MovieAvailability.All)}."]
+                });
+            }
+
+            var normalized = MovieAvailability.Normalize(availability);
+            var updated = 0;
+            foreach (var id in request.MovieIds)
+            {
+                if (await repository.UpdateMinimumAvailabilityAsync(id, normalized, cancellationToken))
+                {
+                    updated++;
+                    await realtimeEventPublisher.PublishEntityChangedAsync("Movie", id, cancellationToken);
+                }
+            }
+
+            return Results.Ok(new { updated, minimumAvailability = normalized });
+        });
+
+        /*
+          Re-read the subtitles Deluno already has on disk, for a selection.
+
+          Not a new job type: a title becomes a scan candidate when it has no
+          scan row, so forgetting the probe is the whole instruction and the
+          library's existing subtitle pass does the work. A per-title subtitle
+          job would have been a second way to do the same thing, racing the
+          first (DESIGN-002 rule 3).
+        */
+        movies.MapPost("/bulk/subtitle-rescan", async (
+            HttpContext httpContext,
+            [FromBody] BulkSubtitleRescanRequest request,
+            IMediaSubtitleRepository subtitles,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (request.MovieIds is not { Count: > 0 })
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["movieIds"] = ["Choose at least one title before re-reading subtitles."]
+                });
+            }
+
+            var cleared = await subtitles.ClearScansAsync(MediaKind.Movie, request.MovieIds, cancellationToken);
+
+            // "queued" rather than "done": the pass that re-reads them runs on
+            // the library's own schedule, and saying otherwise would promise
+            // something this request has not made happen.
+            return Results.Ok(new { queued = request.MovieIds.Count, cleared });
+        });
+
         movies.MapPost("/bulk/quality-profile", async (
             HttpContext httpContext,
             [FromBody] BulkQualityProfileRequest request,
@@ -1684,6 +1778,12 @@ public static class MoviesEndpointRouteBuilderExtensions
         IReadOnlyList<string>? MovieIds,
         string? FromLibraryId,
         string? ToLibraryId);
+
+    private sealed record BulkMinimumAvailabilityRequest(
+        IReadOnlyList<string>? MovieIds,
+        string? MinimumAvailability);
+
+    private sealed record BulkSubtitleRescanRequest(IReadOnlyList<string>? MovieIds);
 
     private sealed record BulkQualityProfileRequest(
         IReadOnlyList<string>? MovieIds,
