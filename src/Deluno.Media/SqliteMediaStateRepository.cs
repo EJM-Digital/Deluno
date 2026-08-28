@@ -307,6 +307,37 @@ public sealed class SqliteMediaStateRepository(
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<string>> ListDownloadingAsync(
+        MediaKind kind,
+        DateTimeOffset settledBefore,
+        CancellationToken cancellationToken)
+    {
+        var map = MediaTableMap.For(kind);
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            map.DatabaseName,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT DISTINCT {map.WantedMediaIdColumn}
+            FROM {map.WantedTable}
+            WHERE wanted_status = @status
+              AND (downloading_since_utc IS NULL OR downloading_since_utc <= @settledBefore);
+            """;
+
+        AddParameter(command, "@status", WantedStatuses.Downloading);
+        AddParameter(command, "@settledBefore", settledBefore.ToString("O"));
+
+        var ids = new List<string>();
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            ids.Add(reader.GetString(0));
+        }
+
+        return ids;
+    }
+
     public async Task SetDownloadingAsync(
         MediaKind kind,
         string mediaId,

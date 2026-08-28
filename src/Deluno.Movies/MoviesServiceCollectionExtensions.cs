@@ -17,6 +17,12 @@ public static class MoviesServiceCollectionExtensions
     public static IServiceCollection AddDelunoMoviesModule(this IServiceCollection services)
     {
         services.TryAddSingleton<IMediaStateRepository, SqliteMediaStateRepository>();
+
+        // Registered beside the state it repairs. It is the other half of
+        // WantedStatuses.Downloading: without it a failed dispatch leaves a
+        // title claiming to download for ever, and never searched again.
+        services.TryAddSingleton<ILiveDownloadLookup, DispatchLiveDownloadLookup>();
+        services.TryAddSingleton<IDownloadStateReconciler, DownloadStateReconciler>();
         services.TryAddSingleton<IMediaSubtitleRepository, SqliteMediaSubtitleRepository>();
         services.AddSingleton<IMovieCatalogRepository, SqliteMovieCatalogRepository>();
         // The quality ladder has to reach this catalogue's own database for a

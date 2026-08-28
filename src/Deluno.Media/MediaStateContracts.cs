@@ -222,6 +222,21 @@ public interface IMediaStateRepository
     /// Guessing anything better here would be a second copy of the rung
     /// rules.</para>
     /// </summary>
+    /// <summary>
+    /// Titles that say they are downloading, and have said so for long enough
+    /// that a dispatch should exist by now.
+    ///
+    /// <para><paramref name="settledBefore"/> is a grace period, not a timeout.
+    /// A grab writes the status and the dispatch row in that order, so a title
+    /// read in the instant between the two would look abandoned when it is
+    /// perfectly healthy. Anything more recent than this is simply left
+    /// alone.</para>
+    /// </summary>
+    Task<IReadOnlyList<string>> ListDownloadingAsync(
+        MediaKind kind,
+        DateTimeOffset settledBefore,
+        CancellationToken cancellationToken);
+
     Task SetDownloadingAsync(
         MediaKind kind,
         string mediaId,

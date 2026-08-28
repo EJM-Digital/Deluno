@@ -4,6 +4,7 @@ using Deluno.Filesystem;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
+using Deluno.Media;
 using Deluno.Libraries.Contracts;
 using Deluno.Libraries.Data;
 using Deluno.Movies.Contracts;
@@ -70,6 +71,39 @@ public sealed class WorkPlanner(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogWarning(ex, "Dispatch cleanup pass failed.");
+        }
+    }
+
+    /// <summary>
+    /// Puts titles back on the work list when the download they were waiting on
+    /// is no longer happening.
+    ///
+    /// <para>Five minutes, which is how long a failed grab may sit on the shelf
+    /// saying "Downloading" before it corrects itself. The seven-day expiry in
+    /// <c>WantedStatuses.StuckDownloadAfter</c> sits behind this and catches the
+    /// case where even this never runs.</para>
+    ///
+    /// <para>A named pass on the maintenance planner rather than a job type of
+    /// its own: it enqueues nothing, it holds no lease worth speaking of, and
+    /// DESIGN-002 rule 3 is emphatic that recurring work rides what already
+    /// exists.</para>
+    /// </summary>
+    public async Task RunDownloadStateReconcileAsync(
+        IDownloadStateReconciler reconciler,
+        CancellationToken cancellationToken)
+    {
+        if (!await jobQueueRepository.TryClaimScheduledPassAsync("download.state", TimeSpan.FromMinutes(5), cancellationToken))
+        {
+            return;
+        }
+
+        try
+        {
+            await reconciler.ReconcileAsync(cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Download state reconciliation failed.");
         }
     }
 
