@@ -6,6 +6,15 @@ import { cn } from "../../lib/utils";
 export interface MenuSelectOption {
   value: string;
   label: string;
+  /**
+   * A line under the label saying what it means.
+   *
+   * Optional, because most pick-one lists are self-explanatory and a second line
+   * on every row would only add height. It exists for the ones that are not:
+   * "Popularity" and "Bitrate" are orders nobody can guess at, and a label you
+   * have to guess at is a control you avoid.
+   */
+  hint?: string;
 }
 
 /**
@@ -228,7 +237,14 @@ export function MenuSelect({
                     : "text-muted-foreground hover:bg-muted/45 hover:text-foreground"
                 )}
               >
-                <span className="truncate">{option.label}</span>
+                <span className="min-w-0">
+                  <span className="block truncate">{option.label}</span>
+                  {option.hint ? (
+                    <span className="block truncate text-[length:var(--type-micro)] font-normal text-muted-foreground">
+                      {option.hint}
+                    </span>
+                  ) : null}
+                </span>
                 {isSelected ? (
                   <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary shadow-[0_0_10px_hsl(var(--primary)/0.75)]" />
                 ) : null}

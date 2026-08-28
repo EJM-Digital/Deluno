@@ -152,34 +152,44 @@ test.describe("dashboard workflow", () => {
     const libraryPicker = page.getByRole("combobox", { name: "Library", exact: true });
     await expect(libraryPicker).toBeVisible();
     await expect(libraryPicker).toHaveText(/All libraries/);
-    // Which layout you are in is the one arrangement choice you can answer by
-    // looking, so it is a toggle rather than a panel (#324).
-    await expect(page.getByRole("radio", { name: "Poster grid" })).toBeVisible();
-    await expect(page.getByRole("radio", { name: "Compact list" })).toBeVisible();
+    // One rule decides the shape of each control: **picking one thing is a
+    // menu, building something is a drawer** (#324). Display and Order had been
+    // merged into a single inline View panel on the grounds that they were "one
+    // question asked twice"; James read the result as overcomplicated, and the
+    // panels pushed the shelf down the page every time one opened.
 
-    // Three small controls, each asking one question. Display and Order had been
-    // merged into one View panel on the grounds that they were "one question
-    // asked twice"; James read the result as overcomplicated and he was right —
-    // ordering is not how you want to look at a shelf, it is which title you
-    // find first, and it is the control you reach for most.
-    await page.getByRole("button", { name: /^Sort/ }).click();
-    await expect(page.getByRole("heading", { name: "Which title you find first" })).toBeVisible();
-    await expect(page.getByRole("button", { name: /^Ascending/ })).toBeVisible();
-    await expect(page.getByRole("button", { name: /^Descending/ })).toBeVisible();
+    // Sort is the menu. Portalled out of the toolbar, because the card clips its
+    // children to keep its rounded corners and a menu inside it is present in
+    // the DOM and invisible on screen — which is exactly what happened once.
+    await page.getByRole("combobox", { name: "Sort", exact: true }).click();
+    const orders = page.getByRole("listbox", { name: "Sort" });
+    await expect(orders).toBeVisible();
     // The orders come from `/api/movies/controls`, so this list can no longer
     // offer one the paged query cannot perform.
-    await expect(page.getByRole("button", { name: /^Bitrate/ })).toBeVisible();
+    await expect(orders.getByRole("option", { name: /Bitrate/ })).toBeVisible();
+    await page.keyboard.press("Escape");
 
-    await page.getByRole("button", { name: /^Options/ }).click();
-    await expect(page.getByRole("heading", { name: "What a poster carries" })).toBeVisible();
-    await expect(page.getByText("What each poster shows", { exact: true })).toBeVisible();
+    // Direction is a switch beside it rather than two more rows in the list.
+    await expect(page.getByRole("button", { name: /^Ascending/ })).toBeVisible();
 
-    // Saved filters sit with the filters they save, and the panel is a list of
-    // yours plus a field to add — not a form of every field there is.
+    // View is a drawer, and it holds the layout *and* the poster options — two
+    // controls that were asking one question.
+    await page.getByRole("button", { name: /^View/ }).click();
+    const viewDrawer = page.getByRole("dialog");
+    await expect(viewDrawer.getByText("The layout, its size, and what each poster carries.", { exact: false })).toBeVisible();
+    await expect(viewDrawer.getByRole("button", { name: /Poster grid/ })).toBeVisible();
+    await expect(viewDrawer.getByRole("button", { name: /Compact list/ })).toBeVisible();
+    await expect(viewDrawer.getByText("What each poster shows", { exact: true })).toBeVisible();
+    await viewDrawer.getByRole("button", { name: "Close" }).click();
+
+    // Filter is the other drawer: a list of your saved filters plus a field to
+    // add, not a form of every field there is.
     await page.getByRole("button", { name: /^Filter/ }).click();
-    await expect(page.getByText("Saved filters", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Add a field" })).toBeVisible();
-    await expect(page.getByText("Nothing is being narrowed. The shelf is showing everything the row above selects.")).toBeVisible();
+    const filterDrawer = page.getByRole("dialog");
+    await expect(filterDrawer.getByText("Saved filters", { exact: true })).toBeVisible();
+    await expect(filterDrawer.getByRole("button", { name: "Add a field" })).toBeVisible();
+    await expect(filterDrawer.getByText("Nothing is being narrowed. The shelf is showing everything the row above selects.")).toBeVisible();
+    await filterDrawer.getByRole("button", { name: "Close" }).click();
 
     // The chips are the filters, and each is also the legend for the mark it
     // selects — the same word as the dot on the posters below.
@@ -290,8 +300,12 @@ test.describe("dashboard workflow", () => {
           // health. Amber would be claiming a person has to act.
           const markName = monitored ? "Missing" : "Missing · not monitored";
 
-          await page.getByRole("button", { name: /^Options/ }).click();
+          // Open, choose, close. The drawer is modal, so the shelf behind it is
+          // inert until it is shut — which is the price of it not moving the
+          // page, and cheaper than the inline panel that did.
+          await page.getByRole("button", { name: /^View/ }).click();
           await page.getByRole("button", { name: /Medium Balanced/ }).click();
+          await page.getByRole("dialog").getByRole("button", { name: "Close" }).click();
           const mediumMark = page.getByRole("img", { name: markName, exact: true }).first();
           await expect(mediumMark).toBeVisible();
           await expect(mediumMark).not.toHaveClass(/bg-warning/);
@@ -300,7 +314,9 @@ test.describe("dashboard workflow", () => {
 
           // The same mark at every size — it was a chip at medium and a bare dot
           // at small, so the two sizes could disagree about a title.
+          await page.getByRole("button", { name: /^View/ }).click();
           await page.getByRole("button", { name: /Small More titles/ }).click();
+          await page.getByRole("dialog").getByRole("button", { name: "Close" }).click();
           const smallMark = page.getByRole("img", { name: markName, exact: true }).first();
           await expect(smallMark).toBeVisible();
           await expect(smallMark).not.toHaveClass(/bg-success/);
@@ -321,11 +337,9 @@ test.describe("dashboard workflow", () => {
           // was amber — the one signal reserved for "a person has to act"
           // (#302). A shelf and a list of the same library must not disagree.
           //
-          // The layout is a toggle in the toolbar now rather than a choice
-          // inside a panel (#324) — which is why this line no longer has to
-          // reason about whether the panel above it is still open, or anchor
-          // itself on a description to avoid matching the button that opens it.
-          await page.getByRole("radio", { name: "Compact list" }).click();
+          await page.getByRole("button", { name: /^View/ }).click();
+          await page.getByRole("button", { name: /Compact list/ }).click();
+          await page.getByRole("dialog").getByRole("button", { name: "Close" }).click();
 
           const row = page.getByRole("row").filter({ hasText: title }).first();
           await expect(row).toBeVisible();
@@ -364,9 +378,11 @@ test.describe("dashboard workflow", () => {
           // badge that chose its own colour — amber for Missing and Upgradable.
           await expect(page.getByRole("img", { name: markName, exact: true }).first()).toBeVisible();
           await page.goBack();
-          // Back on the library the panel is closed again, so this one does open it.
-          await page.getByRole("button", { name: /^Options/ }).click();
+          // Back on the library the drawer is closed again, so this one opens it.
+          await page.getByRole("button", { name: /^View/ }).click();
+          await page.getByRole("button", { name: /Poster grid/ }).click();
           await page.getByRole("button", { name: /Large Artwork first/ }).click();
+          await page.getByRole("dialog").getByRole("button", { name: "Close" }).click();
         } finally {
           if (created) {
             await api.post(scenario.removePath, {

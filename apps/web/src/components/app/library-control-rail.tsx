@@ -2,7 +2,7 @@ import { QUICK_FILTER_MARK, type MonitoringFilter, type QuickFilter, type SortDi
 import { TITLE_MARK_PRESENTATION, type TitleMark } from "../../lib/status-tones";
 import { MARK_DOT_SIZE } from "../ui/title-mark";
 import {
-  ArrowDownAZ, ArrowUpDown, ChevronDown, Filter, LayoutGrid, List, Search, SlidersHorizontal, X
+  ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, Filter, LayoutGrid, LayoutTemplate, List, Search
 } from "lucide-react";
 import React, { useLayoutEffect, useRef, useState } from "react";
 import type { CatalogueFacets } from "../../lib/api";
@@ -11,6 +11,7 @@ import { describeCondition } from "../../lib/library-controls";
 import { LibraryFilterPanel } from "./library-filter-panel";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
+import { Drawer } from "../ui/drawer";
 import { Input } from "../ui/input";
 import { MenuSelect } from "../ui/menu-select";
 import { SwitchRow } from "../ui/switch";
@@ -147,13 +148,27 @@ export interface LibraryControls {
  * behind another. Ordering is not "how do I want to look at this" — it is which
  * title you find first, and it is the control you reach for most.
  *
- * So the arrangement half is three small controls rather than one large panel,
- * which is the split Radarr and Sonarr both use and the one #324 settled on:
+ * So the arrangement half is three controls rather than one large panel, and
+ * there is one rule for which shape each takes:
  *
- * - **the view toggle** — two icons, always visible, no panel at all
- * - **Sort** — the order and its direction, and nothing else
- * - **Options** — poster size and what each poster carries
- * - **Filter** — your saved filters, the questions this one asks, and a field to add
+ * - **pick one thing → a menu.** Library, and Sort. One click to open, one to
+ *   choose, and it costs the page nothing.
+ * - **build something → a drawer.** Filter and View, on the right, the same
+ *   surface every editor in Deluno already uses.
+ *
+ * James asked for the drawers: *"what if instead of having it drop down we have
+ * all these open as drawers similar to the setup stuff"*, and *"we compress
+ * options and this other button into a view button"*. Both are right. The
+ * inline panels pushed the shelf down the page every time one opened, which is
+ * the same family of problem as a control deciding the layout that decides the
+ * control; a drawer is over the top of the shelf and moves nothing. And the
+ * layout toggle and the poster options were two controls asking one question —
+ * how is this drawn — so they are one **View** now.
+ *
+ * Sort stayed a menu, which is the one place this deviates. It is a single
+ * choice from a short list and it is the control you reach for most; a
+ * full-height drawer to change "Title" to "Added" is a lot of travel for one
+ * click.
  *
  * Every list behind them is served by `/api/{movies|series}/controls`, so a TV
  * shelf offers TV controls and a film shelf film ones without this file knowing
@@ -175,7 +190,7 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
     deletePreset, activeFilterCount
   } = controls;
 
-  const [openPanel, setOpenPanel] = useState<"sort" | "filter" | "options" | null>(null);
+  const [openPanel, setOpenPanel] = useState<"sort" | "filter" | "view" | null>(null);
   const pillTrackRef = useRef<HTMLDivElement>(null);
   const btnRefs = useRef<Map<QuickFilter, HTMLButtonElement | null>>(new Map());
   const [pill, setPill] = useState({ left: 0, width: 0, ready: false });
@@ -199,7 +214,7 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
 
   const sortLabel = controlSet.sortFields.find((option) => option.id === sortField)?.label ?? sortField;
   const fieldsById = new Map(controlSet.filterFields.map((field) => [field.id, field]));
-  const toggle = (panel: "sort" | "filter" | "options") =>
+  const toggle = (panel: "sort" | "filter" | "view") =>
     setOpenPanel((current) => (current === panel ? null : panel));
 
   return (
@@ -372,205 +387,192 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
               <span aria-hidden className="mx-1 hidden h-5 w-px bg-hairline/70 sm:block dark:bg-white/10" />
 
               {/*
-                A toggle, not a panel. Which layout you are in is the one
-                arrangement choice you can answer by looking, so it costs a
-                click to change and no clicks to read — the way Radarr and
-                Sonarr both do it.
+                Sort is a menu rather than a drawer, and it is the one place this
+                row deviates from "build something opens a drawer". It is a
+                single choice from a short list and it is the control reached for
+                most; a full-height surface to change Title to Added is a lot of
+                travel for one click.
+
+                It is `MenuSelect` rather than a popover written here, and that
+                is not a style preference. A menu positioned inside this toolbar
+                is clipped away by the `overflow-hidden` that keeps the card's
+                rounded corners — present in the DOM, invisible on screen — and
+                `MenuSelect` already solved that by portalling out of the subtree
+                and measuring from its own trigger. Its comment names this very
+                toolbar. Writing a second popover here re-created a defect that
+                had already been fixed one file away.
+
+                The direction is a button beside it rather than two more rows in
+                the list: it is a switch with two states, it is read at a glance,
+                and one click is the whole interaction.
               */}
-              <div role="radiogroup" aria-label="Layout" className="flex h-[var(--library-toolbar-height)] items-center gap-0.5 rounded-xl bg-foreground/[0.04] p-0.5 ring-1 ring-inset ring-hairline/60 dark:bg-white/[0.05] dark:ring-white/[0.06]">
-                <ViewToggle icon={LayoutGrid} label="Poster grid" selected={view === "grid"} onClick={() => setView("grid")} />
-                <ViewToggle icon={List} label="Compact list" selected={view === "list"} onClick={() => setView("list")} />
+              <div className="flex h-[var(--library-toolbar-height)] items-stretch gap-px overflow-hidden rounded-xl bg-foreground/[0.04] ring-1 ring-inset ring-hairline/60 dark:bg-white/[0.05] dark:ring-white/[0.06]">
+                <MenuSelect
+                  label="Sort"
+                  value={sortField}
+                  onChange={setSortField}
+                  options={controlSet.sortFields.map((option) => ({
+                    value: option.id,
+                    label: option.label,
+                    hint: option.hint
+                  }))}
+                  align="end"
+                  menuWidth="16rem"
+                  leading={<ArrowUpDown className="h-3.5 w-3.5 shrink-0" />}
+                  className="min-w-[8.5rem]"
+                  triggerClassName="h-full rounded-none bg-transparent px-2.5 text-[length:var(--library-toolbar-size)] font-semibold hover:bg-foreground/[0.05] dark:hover:bg-white/[0.05]"
+                />
+                <button
+                  type="button"
+                  onClick={() => setSortDirection(sortDirection === "asc" ? "desc" : "asc")}
+                  aria-label={sortDirection === "asc" ? "Ascending — switch to descending" : "Descending — switch to ascending"}
+                  title={sortDirection === "asc" ? "A–Z, oldest first, lowest value" : "Z–A, newest first, highest value"}
+                  className="flex w-9 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:bg-foreground/[0.05] hover:text-foreground dark:hover:bg-white/[0.05]"
+                >
+                  {sortDirection === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />}
+                </button>
               </div>
 
+              {/*
+                Layout and the poster options were two controls asking one
+                question. One **View** now, and its drawer holds the answer.
+              */}
               <ToolbarMenuButton
-                label="Sort"
-                icon={ArrowUpDown}
-                active={openPanel === "sort"}
-                meta={`${sortLabel} ${sortDirection === "asc" ? "↑" : "↓"}`}
-                onClick={() => toggle("sort")}
-              />
-
-              <ToolbarMenuButton
-                label="Options"
-                icon={SlidersHorizontal}
-                active={openPanel === "options"}
-                meta={view === "grid" ? POSTER_SIZE_LABEL[cardSize].toLowerCase() : "columns"}
-                onClick={() => toggle("options")}
+                label="View"
+                icon={LayoutTemplate}
+                active={openPanel === "view"}
+                meta={view === "grid" ? `grid · ${POSTER_SIZE_LABEL[cardSize].toLowerCase()}` : "list"}
+                onClick={() => toggle("view")}
               />
             </div>
           </div>
 
-          {openPanel === "sort" ? (
-            <Panel
-              icon={ArrowUpDown}
-              eyebrow="Sort"
-              title="Which title you find first"
-              description="Every order here is performed by the paged catalogue query, on an indexed column, so page four hundred costs what page one costs."
-              onClose={() => setOpenPanel(null)}
-            >
-              <div className="grid gap-2 p-[calc(var(--tile-pad)*0.8)] sm:grid-cols-2 xl:grid-cols-3">
-                {controlSet.sortFields.map((option) => (
-                  <SortChoice
-                    key={option.id}
-                    label={option.label}
-                    hint={option.hint}
-                    selected={sortField === option.id}
-                    onClick={() => setSortField(option.id)}
-                  />
-                ))}
-              </div>
-              <div className="grid gap-2 px-[calc(var(--tile-pad)*0.8)] pb-[calc(var(--tile-pad)*0.8)] sm:grid-cols-2">
-                <SortDirectionChoice icon={ArrowDownAZ} label="Ascending" description="A–Z, oldest first, lowest value." selected={sortDirection === "asc"} onClick={() => setSortDirection("asc")} />
-                <SortDirectionChoice icon={ArrowUpDown} label="Descending" description="Z–A, newest first, highest value." selected={sortDirection === "desc"} onClick={() => setSortDirection("desc")} />
-              </div>
-            </Panel>
-          ) : null}
-
-          {openPanel === "options" ? (
-            <Panel
-              icon={SlidersHorizontal}
-              eyebrow="Options"
-              title="What a poster carries"
-              description="Keep the essentials visible and turn on extra metadata only when it helps. Your choice is remembered separately for movies and TV."
-              onClose={() => setOpenPanel(null)}
-            >
-              <div className="space-y-[var(--grid-gap)] p-[calc(var(--tile-pad)*0.8)]">
-                {view === "grid" ? (
-                  <div>
-                    <SectionLabel>Poster size</SectionLabel>
-                    <div className="mt-2 grid grid-cols-3 gap-2 sm:max-w-md">
-                      {(["sm", "md", "lg"] as CardSize[]).map((size) => (
-                        <PosterSizeChoice key={size} size={size} selected={cardSize === size} onClick={() => changeSize(size)} />
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-
-                {/*
-                  The switches come from the served declaration, so an option
-                  cannot exist without a label and a description beside it, and
-                  a media kind that has one the other does not — a show's next
-                  airing — needs nothing changed here.
-                */}
-                <div>
-                  <SectionLabel>What each poster shows</SectionLabel>
-                  <div className="mt-2 divide-y divide-hairline xl:columns-2 xl:gap-[var(--grid-gap)]">
-                    {controlSet.posterOptions.map((option) => (
-                      <div key={option.id} className="break-inside-avoid">
-                        <SwitchRow
-                          label={option.label}
-                          description={option.description}
-                          checked={displayOptions[option.id] ?? option.defaultOn}
-                          onCheckedChange={(checked) => setDisplayOptions({ ...displayOptions, [option.id]: checked })}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </Panel>
-          ) : null}
-
-          {openPanel === "filter" ? (
-            <Panel
-              icon={Filter}
-              eyebrow="Filter"
-              title="Your filters, and the one you are using"
-              description={`Pick a saved filter, or build one from ${controlSet.filterFields.length} fields — including the file you actually hold, which Radarr states in its own dialog that it cannot ask about.`.trim()}
-              onClose={() => setOpenPanel(null)}
-            >
-              {/*
-                A list of named filters first, then the questions the current one
-                asks. That order is the point: Radarr's control is a list you
-                pick from, and a form of every possible field is what a shared
-                panel becomes once there are more than about six of them.
-              */}
-              <div className="space-y-2 border-b border-hairline p-[calc(var(--tile-pad)*0.8)]">
-                <SectionLabel>Saved filters</SectionLabel>
-                {savedPresets.length > 0 ? (
-                  <div className="grid gap-1.5 sm:grid-cols-2">
-                    {savedPresets.map((preset) => (
-                      <div key={preset.id} className="flex items-center justify-between gap-2 rounded-xl border border-hairline bg-background/40 px-3 py-2">
-                        <button type="button" className="min-w-0 flex-1 text-left" onClick={() => applyPreset(preset)}>
-                          <p className="truncate text-[length:var(--type-caption)] font-semibold text-foreground">{preset.name}</p>
-                          <p className="truncate text-[length:var(--type-micro)] text-muted-foreground">
-                            {preset.libraryId ? `${libraries.find((library) => library.id === preset.libraryId)?.name ?? "Library"} · ` : "All libraries · "}
-                            {preset.conditions.length > 0
-                              ? preset.conditions
-                                  .map((condition) => describeCondition(condition, fieldsById.get(condition.field)))
-                                  .join(" · ")
-                              : "no narrowing"}
-                          </p>
-                        </button>
-                        <Button type="button" size="sm" variant="ghost" onClick={() => deletePreset(preset.id)}>Remove</Button>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-[length:var(--type-caption)] text-muted-foreground">
-                    Nothing saved yet. Build a filter below, name it, and it comes back in one click — with its order and
-                    its layout, because a view that restores half of what you saved is worse than one that restores none.
-                  </p>
-                )}
-                <div className="flex gap-2 sm:max-w-md">
-                  <Input value={newPresetName} onChange={(event) => setNewPresetName(event.target.value)} placeholder="Name this filter" className="h-[var(--control-height-sm)]" />
-                  <Button type="button" size="sm" onClick={saveCurrentPreset} disabled={isSavingPreset}>
-                    {isSavingPreset ? "Saving…" : "Save"}
-                  </Button>
-                </div>
-              </div>
-
-              <LibraryFilterPanel
-                variant={variant}
-                fields={controlSet.filterFields}
-                conditions={conditions}
-                onChange={setConditions}
-                onClear={clearConditions}
-                monitoring={monitoring}
-                onMonitoringChange={setMonitoring}
-                monitoredCount={facets?.monitored ?? 0}
-                unmonitoredCount={facets?.unmonitored ?? 0}
-              />
-            </Panel>
-          ) : null}
         </div>
       </div>
+
+      {/*
+        Over the shelf, not above it. These were inline panels that pushed the
+        grid down the page every time one opened; a drawer moves nothing, and it
+        is the surface every other editor in Deluno already uses.
+      */}
+      <Drawer
+        open={openPanel === "filter"}
+        onOpenChange={(next) => setOpenPanel(next ? "filter" : null)}
+        title="Filter"
+        description={`Pick a saved filter, or build one from ${controlSet.filterFields.length} fields — including the file you actually hold, which Radarr states in its own dialog that it cannot ask about.`}
+      >
+        <div className="space-y-[var(--grid-gap)] py-[var(--grid-gap)]">
+          {/*
+            A list of named filters first, then the questions the current one
+            asks. That order is the point: Radarr's control is a list you pick
+            from, and a form of every possible field is what a shared panel
+            becomes once there are more than about six of them.
+          */}
+          <div className="space-y-2">
+            <SectionLabel>Saved filters</SectionLabel>
+            {savedPresets.length > 0 ? (
+              <div className="space-y-1.5">
+                {savedPresets.map((preset) => (
+                  <div key={preset.id} className="flex items-center justify-between gap-2 rounded-xl border border-hairline bg-background/40 px-3 py-2">
+                    <button type="button" className="min-w-0 flex-1 text-left" onClick={() => applyPreset(preset)}>
+                      <p className="truncate text-[length:var(--type-caption)] font-semibold text-foreground">{preset.name}</p>
+                      <p className="truncate text-[length:var(--type-micro)] text-muted-foreground">
+                        {preset.libraryId ? `${libraries.find((library) => library.id === preset.libraryId)?.name ?? "Library"} · ` : "All libraries · "}
+                        {preset.conditions.length > 0
+                          ? preset.conditions
+                              .map((condition) => describeCondition(condition, fieldsById.get(condition.field)))
+                              .join(" · ")
+                          : "no narrowing"}
+                      </p>
+                    </button>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => deletePreset(preset.id)}>Remove</Button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[length:var(--type-caption)] text-muted-foreground">
+                Nothing saved yet. Build a filter below, name it, and it comes back in one click — with its order and
+                its layout, because a view that restores half of what you saved is worse than one that restores none.
+              </p>
+            )}
+            <div className="flex gap-2">
+              <Input value={newPresetName} onChange={(event) => setNewPresetName(event.target.value)} placeholder="Name this filter" className="h-[var(--control-height-sm)]" />
+              <Button type="button" size="sm" onClick={saveCurrentPreset} disabled={isSavingPreset}>
+                {isSavingPreset ? "Saving…" : "Save"}
+              </Button>
+            </div>
+          </div>
+
+          <div className="h-px bg-hairline" />
+
+          <LibraryFilterPanel
+            variant={variant}
+            fields={controlSet.filterFields}
+            conditions={conditions}
+            onChange={setConditions}
+            onClear={clearConditions}
+            monitoring={monitoring}
+            onMonitoringChange={setMonitoring}
+            monitoredCount={facets?.monitored ?? 0}
+            unmonitoredCount={facets?.unmonitored ?? 0}
+          />
+        </div>
+      </Drawer>
+
+      <Drawer
+        open={openPanel === "view"}
+        onOpenChange={(next) => setOpenPanel(next ? "view" : null)}
+        title="View"
+        description="The layout, its size, and what each poster carries. Remembered separately for movies and TV."
+      >
+        <div className="space-y-[var(--grid-gap)] py-[var(--grid-gap)]">
+          <div>
+            <SectionLabel>Layout</SectionLabel>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              <LayoutChoice icon={LayoutGrid} label="Poster grid" description="Artwork-led browsing for your collection." selected={view === "grid"} onClick={() => setView("grid")} />
+              <LayoutChoice icon={List} label="Compact list" description="More titles and file details in less space." selected={view === "list"} onClick={() => setView("list")} />
+            </div>
+          </div>
+
+          {view === "grid" ? (
+            <div>
+              <SectionLabel>Poster size</SectionLabel>
+              <div className="mt-2 grid grid-cols-3 gap-2">
+                {(["sm", "md", "lg"] as CardSize[]).map((size) => (
+                  <PosterSizeChoice key={size} size={size} selected={cardSize === size} onClick={() => changeSize(size)} />
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {/*
+            The switches come from the served declaration, so an option cannot
+            exist without a label and a description beside it, and a media kind
+            that has one the other does not — a show's next airing — needs
+            nothing changed here.
+          */}
+          <div>
+            <SectionLabel>What each poster shows</SectionLabel>
+            <div className="mt-2 divide-y divide-hairline">
+              {controlSet.posterOptions.map((option) => (
+                <SwitchRow
+                  key={option.id}
+                  label={option.label}
+                  description={option.description}
+                  checked={displayOptions[option.id] ?? option.defaultOn}
+                  onCheckedChange={(checked) => setDisplayOptions({ ...displayOptions, [option.id]: checked })}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      </Drawer>
     </div>
   );
 }
 
 const POSTER_SIZE_LABEL: Record<CardSize, string> = { sm: "Small", md: "Medium", lg: "Large" };
 
-function ViewToggle({
-  icon: Icon, label, selected, onClick
-}: { icon: typeof LayoutGrid; label: string; selected: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={selected}
-      aria-label={label}
-      title={label}
-      onClick={onClick}
-      className={cn(
-        "flex h-full w-9 items-center justify-center rounded-lg transition",
-        selected ? "bg-primary/12 text-primary" : "text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
-      )}
-    >
-      <Icon className="h-3.5 w-3.5" />
-    </button>
-  );
-}
-
-/**
- * One line, one height, one shape — the same as the Library picker beside it.
- *
- * It was a two-line block: the name above, its current value below, both beside
- * a tinted icon chip. Three of those next to a one-line select and a pair of
- * icon toggles made a row of four different shapes, and James read it straight
- * off the screen. Radarr's controls are a single row of identical pills with the
- * value on the same line as the name, and that is the right answer.
- */
 function ToolbarMenuButton({
   label, icon: Icon, active, meta, onClick
 }: { label: string; icon: typeof Filter; active: boolean; meta: string; onClick: () => void }) {
@@ -603,38 +605,6 @@ function ToolbarMenuButton({
   );
 }
 
-function Panel({
-  icon: Icon, eyebrow, title, description, onClose, children
-}: {
-  icon: typeof Filter;
-  eyebrow: string;
-  title: string;
-  description: string;
-  onClose: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="mt-3 overflow-hidden rounded-2xl border border-hairline bg-surface-1">
-      <div className="flex items-start justify-between gap-3 border-b border-hairline bg-background/35 px-[calc(var(--tile-pad)*0.8)] py-3">
-        <div className="flex min-w-0 items-start gap-3">
-          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
-            <Icon className="h-4 w-4" />
-          </span>
-          <div className="min-w-0">
-            <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.16em] text-primary">{eyebrow}</p>
-            <h3 className="mt-0.5 font-display text-[length:var(--type-card-title)] font-semibold tracking-tight text-foreground">{title}</h3>
-            <p className="mt-1 max-w-4xl text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">{description}</p>
-          </div>
-        </div>
-        <button type="button" onClick={onClose} aria-label={`Close ${eyebrow.toLowerCase()} controls`} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground">
-          <X className="h-3.5 w-3.5" />
-        </button>
-      </div>
-      {children}
-    </div>
-  );
-}
-
 function PosterSizeChoice({ size, selected, onClick }: { size: CardSize; selected: boolean; onClick: () => void }) {
   const labels: Record<CardSize, { detail: string; height: string }> = {
     sm: { detail: "More titles", height: "h-6" },
@@ -651,27 +621,17 @@ function PosterSizeChoice({ size, selected, onClick }: { size: CardSize; selecte
   );
 }
 
-function SortChoice({ label, hint, selected, onClick }: { label: string; hint: string; selected: boolean; onClick: () => void }) {
-  return (
-    <button type="button" onClick={onClick} className={cn("flex min-h-[var(--control-height)] items-center justify-between gap-2 rounded-xl border px-3 text-left text-[length:var(--type-caption)] font-semibold transition", selected ? "border-primary/35 bg-primary/[0.09] text-primary" : "border-hairline bg-background/45 text-foreground hover:border-primary/25 hover:bg-background/70")}>
-      <span className="min-w-0">
-        {label}
-        {/* A label you have to guess at is a control you avoid — "Popularity"
-            needs a line saying what it measures. */}
-        <span className="block truncate font-medium text-muted-foreground">{hint}</span>
-      </span>
-      {selected ? <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary shadow-[0_0_8px_hsl(var(--primary)/0.75)]" /> : null}
-    </button>
-  );
-}
-
-function SortDirectionChoice({
+function LayoutChoice({
   icon: Icon, label, description, selected, onClick
-}: { icon: typeof ArrowDownAZ; label: string; description: string; selected: boolean; onClick: () => void }) {
+}: { icon: typeof LayoutGrid; label: string; description: string; selected: boolean; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} className={cn("flex items-center gap-3 rounded-xl border p-3 text-left transition", selected ? "border-primary/35 bg-primary/[0.09]" : "border-hairline bg-background/45 hover:border-primary/25 hover:bg-background/70")}>
-      <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", selected ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground")}><Icon className="h-4 w-4" /></span>
-      <span className="min-w-0 flex-1"><span className={cn("block text-[length:var(--type-caption)] font-semibold", selected ? "text-primary" : "text-foreground")}>{label}</span><span className="mt-0.5 block text-[length:var(--type-micro)] leading-snug text-muted-foreground">{description}</span></span>
+    <button type="button" onClick={onClick} className={cn("rounded-xl border p-3 text-left transition", selected ? "border-primary/35 bg-primary/[0.09]" : "border-hairline bg-background/45 hover:border-primary/25 hover:bg-background/70")}>
+      <div className="flex items-center justify-between gap-3">
+        <span className={cn("flex h-8 w-8 items-center justify-center rounded-lg", selected ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground")}><Icon className="h-4 w-4" /></span>
+        {selected ? <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[length:var(--type-micro)] font-bold text-primary">Selected</span> : null}
+      </div>
+      <p className="mt-3 text-sm font-semibold text-foreground">{label}</p>
+      <p className="mt-1 text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">{description}</p>
     </button>
   );
 }
