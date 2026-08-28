@@ -27,7 +27,6 @@ import { Switch } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
 import { librarySetupNavItems } from "../components/app/settings-shell";
 import { emptyPlatformSettingsSnapshot, fetchJson, type LibraryItem, type PlatformSettingsSnapshot, type QualityProfileItem, type SubtitleLanguageOption } from "../lib/api";
-import { SubtitleLanguagePicker } from "../components/app/subtitle-language-picker";
 import { authedFetch } from "../lib/use-auth";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { ExistingMediaImportDialog } from "../components/app/existing-media-import-dialog";
@@ -36,33 +35,29 @@ interface LoaderData {
   libraries: LibraryItem[];
   settings: PlatformSettingsSnapshot;
   qualityProfiles: QualityProfileItem[];
-  subtitleLanguages: SubtitleLanguageOption[];
 }
 
 interface LibraryForm {
   name: string;
   mediaType: "movies" | "tv";
   rootPath: string;
-  subtitleLanguages: string[];
-  subtitleLanguageMode: "all" | "first";
-  subtitleUnknownLanguage: string;
-  subtitleEmbeddedCounts: boolean;
 }
 
 type DrawerMode = { kind: "closed" } | { kind: "create" } | { kind: "edit"; id: string };
 
 export async function settingsLibrariesLoader(): Promise<LoaderData> {
-  const [libraries, settings, qualityProfiles, subtitleLanguages] = await Promise.all([
+  const [libraries, settings, qualityProfiles] = await Promise.all([
     fetchJson<LibraryItem[]>("/api/libraries"),
     fetchJson<PlatformSettingsSnapshot>("/api/settings").catch(() => emptyPlatformSettingsSnapshot),
-    fetchJson<QualityProfileItem[]>("/api/quality-profiles"),
-    fetchJson<SubtitleLanguageOption[]>("/api/subtitle-languages").catch(() => [])
+    fetchJson<QualityProfileItem[]>("/api/quality-profiles")
   ]);
-  return { libraries, settings, qualityProfiles, subtitleLanguages };
+  // The subtitle language list is not fetched here any more: this screen no
+  // longer asks about subtitles, and a request nobody reads is a request.
+  return { libraries, settings, qualityProfiles };
 }
 
 export function SettingsLibrariesPage() {
-  const { libraries, settings, qualityProfiles, subtitleLanguages } = useLoaderData() as LoaderData;
+  const { libraries, settings, qualityProfiles } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
   const location = useLocation();
   const navigate = useNavigate();
@@ -196,21 +191,10 @@ export function SettingsLibrariesPage() {
         if (form.name !== before.name || form.rootPath !== before.rootPath) {
           await putJson(`/api/libraries/${id}`, { name: form.name.trim(), rootPath: form.rootPath.trim() }, "Library details could not be saved.");
         }
-        // Its own endpoint, and only when it changed: saving a name must not
-        // rewrite what the shelf wants in the way of subtitles, and changing
-        // the languages must not rewrite the folder.
-        if (!sameSubtitles(form, before)) {
-          await putJson(
-            `/api/libraries/${id}/subtitles`,
-            {
-              languages: form.subtitleLanguages,
-              mode: form.subtitleLanguageMode,
-              unknownLanguage: form.subtitleUnknownLanguage,
-              embeddedCounts: form.subtitleEmbeddedCounts
-            },
-            "Subtitle languages could not be saved."
-          );
-        }
+        // Subtitles are not written from here any more. They are one screen for
+        // every library — Subtitles → Languages — and a second write path for
+        // the same setting is the shape this codebase keeps paying for, whether
+        // or not anything on this form can currently reach it.
         library = editing!;
       }
 
@@ -421,74 +405,17 @@ export function SettingsLibrariesPage() {
             </div>
           </section>
 
-          {mode.kind === "edit" ? (
-            <section className="grid gap-[var(--grid-gap)] border-b border-hairline py-6 sm:grid-cols-[minmax(180px,0.7fr)_minmax(0,1.3fr)]">
-              <div className="grid content-start gap-1">
-                <h3 className="text-[length:var(--type-body-sm)] font-semibold text-foreground">Which subtitles?</h3>
-                <p className="text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">
-                  Per shelf, so &ldquo;English on everything, Japanese on anime&rdquo; is one setting each and not a compromise. Deluno reads what your
-                  files already have before it fetches anything.
-                </p>
-              </div>
-              <div className="grid gap-[var(--grid-gap)]">
-                <SubtitleLanguagePicker
-                  languages={form.subtitleLanguages}
-                  mode={form.subtitleLanguageMode}
-                  options={subtitleLanguages}
-                  disabled={busy}
-                  onChange={(next) =>
-                    setForm((current) => ({ ...current, subtitleLanguages: next.languages, subtitleLanguageMode: next.mode }))
-                  }
-                />
+          {/*
+            "Which subtitles?" used to be here.
 
-                {/*
-                  The two questions Deluno refuses to guess at, asked once.
-
-                  Both only appear once a language is wanted, because neither
-                  means anything on a shelf that has not asked for subtitles —
-                  and a settings screen that shows every switch whatever the
-                  state is how a panel becomes a wall.
-                */}
-                {form.subtitleLanguages.length > 0 ? (
-                  <>
-                    <Field
-                      label="A subtitle with no language in its name"
-                      help="Deluno does not guess. A bare Movie.srt counts for nothing unless you say what it is — reading it as your first language would be right most of the time, and wrong silently the rest."
-                    >
-                      <MenuSelect
-                        label="Unknown subtitle language"
-                        value={form.subtitleUnknownLanguage}
-                        onChange={(value: string) => setForm((current) => ({ ...current, subtitleUnknownLanguage: value }))}
-                        options={[
-                          { value: "", label: "Leave it unknown", hint: "It counts for nothing. This is the default." },
-                          ...subtitleLanguages.map((language) => ({
-                            value: language.code,
-                            label: language.name,
-                            hint: `Treat an unnamed subtitle as ${language.name}`
-                          }))
-                        ]}
-                        className="max-w-sm"
-                      />
-                    </Field>
-
-                    <Field
-                      label="Count subtitles inside the video"
-                      help="On by default. Turn it off to fetch a file beside the video even when the container already has the language — an embedded track cannot be swapped or corrected, and some players ignore them."
-                    >
-                      <Switch
-                        checked={form.subtitleEmbeddedCounts}
-                        disabled={busy}
-                        onCheckedChange={(subtitleEmbeddedCounts) =>
-                          setForm((current) => ({ ...current, subtitleEmbeddedCounts }))
-                        }
-                      />
-                    </Field>
-                  </>
-                ) : null}
-              </div>
-            </section>
-          ) : null}
-
+            It is one screen for every library now — Subtitles → Languages —
+            because the settings are per library and the comparison somebody
+            actually wants to make is *across* libraries: "English on everything,
+            Japanese on anime" was something you could only work out by opening
+            two forms and remembering the first. Leaving a copy here as well
+            would be the same setting in two places, which is the defect this
+            codebase keeps paying for.
+          */}
           {mode.kind === "edit" && editing ? (
             <section className="grid gap-3 border-b border-hairline py-6">
               <div>
@@ -568,11 +495,6 @@ function emptyForm(mediaType: "movies" | "tv", settings: PlatformSettingsSnapsho
     name: "",
     mediaType,
     rootPath: defaultRoot(mediaType, settings),
-    subtitleLanguages: [],
-    subtitleLanguageMode: "all",
-    // Empty is "do not guess", which is what Deluno has always done.
-    subtitleUnknownLanguage: "",
-    subtitleEmbeddedCounts: true
   };
 }
 
@@ -581,10 +503,6 @@ function formFromLibrary(library: LibraryItem): LibraryForm {
     name: library.name,
     mediaType: library.mediaType === "tv" ? "tv" : "movies",
     rootPath: library.rootPath,
-    subtitleLanguages: library.subtitleLanguages ?? [],
-    subtitleLanguageMode: library.subtitleLanguageMode === "first" ? "first" : "all",
-    subtitleUnknownLanguage: library.subtitleUnknownLanguage ?? "",
-    subtitleEmbeddedCounts: library.subtitleEmbeddedCounts ?? true
   };
 }
 
@@ -593,7 +511,7 @@ function sameForm(a: LibraryForm, b: LibraryForm) {
     a.name === b.name &&
     a.mediaType === b.mediaType &&
     a.rootPath === b.rootPath &&
-    sameSubtitles(a, b)
+    true
   );
 }
 
@@ -603,11 +521,6 @@ function sameForm(a: LibraryForm, b: LibraryForm) {
  * one, the two modes do the same thing, and treating a stale mode as a change
  * would mark the drawer dirty for a setting nobody can see.
  */
-function sameSubtitles(a: LibraryForm, b: LibraryForm) {
-  if (a.subtitleLanguages.length !== b.subtitleLanguages.length) return false;
-  if (a.subtitleLanguages.some((code, index) => code !== b.subtitleLanguages[index])) return false;
-  return a.subtitleLanguages.length < 2 || a.subtitleLanguageMode === b.subtitleLanguageMode;
-}
 
 function automationPayload(library: LibraryItem, settings: Pick<LibraryItem, "autoSearchEnabled" | "missingSearchEnabled" | "upgradeSearchEnabled">) {
   return {

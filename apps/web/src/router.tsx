@@ -269,9 +269,20 @@ export const router = createBrowserRouter([
         })
       },
       {
-        // Where subtitles come from, beside the other places media comes from.
-        // DESIGN-002: two settings screens, not a seven-tab Subtitles app.
-        path: "indexers/subtitles",
+        path: "subtitles",
+        element: <Navigate to="/subtitles/languages" replace />
+      },
+      {
+        // Per library, and all of them on one screen, because that is the
+        // comparison somebody actually wants to make.
+        path: "subtitles/languages",
+        lazy: withSkeleton(async () => {
+          const module = await import("./routes/subtitle-languages-screen");
+          return { loader: module.subtitleLanguagesLoader, Component: module.SubtitleLanguagesPage };
+        })
+      },
+      {
+        path: "subtitles/providers",
         lazy: withSkeleton(async () => {
           const module = await import("./routes/subtitle-providers-screen");
           return { loader: module.subtitleProvidersLoader, Component: module.SubtitleProvidersPage };

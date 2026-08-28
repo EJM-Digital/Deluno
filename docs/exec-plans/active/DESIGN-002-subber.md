@@ -129,6 +129,27 @@ hearing-impaired exclusion.
   Download, languages under Quality & Release — and the rest appears where you
   already look.
 
+  **Amended, once there were settings to put on them.** Subtitles is its own
+  top-level area with two tabs, **Languages** and **Providers**. What this
+  clause was actually objecting to was Bazarr splitting every setting into a
+  movie copy and a series copy — and that still stands, because Deluno has
+  libraries. The settings themselves are real, and #321 lists nine more still to
+  come: sync thresholds, content modification, adaptive searching, translation,
+  language equivalence.
+
+  James, looking at where they would have to go: *"we should have a separate
+  subtitles top menu ... because we are going to need to add more settings just
+  because bazaar does a lot and then you can select the library you want to
+  apply it to."*
+
+  The second half is the better idea and is why languages left the library edit
+  form. They are per library, and the comparison somebody actually wants to make
+  is *across* libraries — "English on everything, Japanese on anime" was
+  something you could only work out by opening two forms and remembering the
+  first. It is one list of every library now, with the settings behind a drawer,
+  which is also what lets the nine outstanding settings land as more rows rather
+  than another screen.
+
 ## What *held* actually means
 
 James, on the first draft of this: *"shouldn't the whole premise of porting
@@ -309,6 +330,9 @@ untouched.
 
 ## Build order
 
+**Where this got to.** Steps 1 to 5 are done — the last of them recorded in
+`b052b66` and the commit after it. Step 6 is the outstanding one.
+
 1. **Languages, and what you already have.** A per-library list of wanted
    subtitle languages with a cutoff, beside the quality profile, and the two
    catalogue contract fields filled from it. Nothing fetches anything yet — but
@@ -322,6 +346,28 @@ untouched.
    library cycle the way per-episode search now is.
 4. **The remaining seven providers.**
 5. **Upgrades and backoff**, reading the same words as release search.
+
+   **Backoff is done** — `movie_subtitle_attempt` / `episode_subtitle_attempt`
+   carry `last_search_utc` and `next_eligible_search_utc`, the same two columns
+   the wanted state already uses for releases, and the delay starts at the
+   library's own `RetryDelayHours`. It was not optional: without it the slice
+   took the first `MaxItemsPerRun` rows in whatever order SQLite returned them,
+   so a library where five thousand films had no Japanese subtitle asked the same
+   ten films every cycle for ever and never reached the rest — while the job
+   succeeded, the providers answered, and the bar never moved.
+
+   **No permanent skip**, which is where this parts company with Weir. A
+   title that can never be asked again is work that has silently left the system,
+   and nobody finds out the day somebody uploads the subtitle. The delay doubles
+   and stops at a fortnight.
+
+   **Upgrades are still open, and deliberately.** "Better" is not defined yet:
+   this document's own answer is the quality gate — *must match this release* /
+   *prefer this release* / *anything readable* — and that is a decision to make
+   rather than a scoring model to invent. Until it exists the fetcher takes the
+   first usable subtitle from the highest-priority provider, preferring a plain
+   track over a hearing-impaired one and never taking a forced one.
+
 6. **Remove from Weir.**
 
 Each step ends with something visible on the rig, which is the only bar that has

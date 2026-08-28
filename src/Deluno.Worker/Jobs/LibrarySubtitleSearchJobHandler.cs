@@ -120,6 +120,16 @@ public sealed class LibrarySubtitleSearchJobHandler(
 
                 if (!outcome.Found || outcome.WrittenPath is null)
                 {
+                    // Remembered, so the next slice asks something else. The
+                    // delay starts at the library's own retry delay — the same
+                    // number the release search uses — and doubles from there.
+                    await mediaSubtitleRepository.RecordAttemptAsync(
+                        kind,
+                        item.MediaId,
+                        language,
+                        outcome.Reason,
+                        TimeSpan.FromHours(Math.Max(1, library.RetryDelayHours)),
+                        cancellationToken);
                     continue;
                 }
 
@@ -141,6 +151,9 @@ public sealed class LibrarySubtitleSearchJobHandler(
                         Provider: outcome.ProviderKey),
                     cancellationToken);
 
+                // It arrived, so there is no outstanding attempt to remember.
+                await mediaSubtitleRepository.ClearAttemptAsync(kind, item.MediaId, language, cancellationToken);
+
                 found++;
             }
 
@@ -153,7 +166,13 @@ public sealed class LibrarySubtitleSearchJobHandler(
         // More to do, so queue the next slice. The cycle would come back to it
         // anyway; this means a library that is a long way behind catches up in
         // one window rather than one slice a night.
-        if (found > 0 && wanted.Count == slice)
+        //
+        // Not conditional on having found anything, which it was: a slice that
+        // found nothing has still moved every one of its titles onto a backoff,
+        // so the next slice asks *different* titles. Stopping on a miss would
+        // have meant a library whose first ten titles have no subtitles never
+        // reaching the eleventh.
+        if (!noProviders && wanted.Count == slice)
         {
             await jobScheduler.EnqueueAsync(
                 new EnqueueJobRequest(

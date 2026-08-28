@@ -14,7 +14,7 @@ import { LIST_TRACK, ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListT
 import { PageToolbar } from "../components/ui/page-toolbar";
 import { Switch } from "../components/ui/switch";
 
-const TABS = configurationNavAreas.find((area) => area.to === "/indexers/indexers")?.items ?? [];
+const TABS = configurationNavAreas.find((area) => area.to === "/subtitles/languages")?.items ?? [];
 
 /**
  * One subtitle source, as the server describes it.

@@ -19,6 +19,7 @@ export type DelunoNavGlyphKind =
   | "discover"
   | "search"
   | "recovery"
+  | "subtitles"
   | "system";
 
 /**
@@ -44,6 +45,18 @@ export function DelunoNavGlyph({
 
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={iconClassName}>
+      {/*
+        A frame with two lines of text along its bottom edge — which is what a
+        subtitle looks like, and stays legible at 20px where a speech bubble or a
+        letter "CC" does not.
+      */}
+      {kind === "subtitles" ? <>
+        <rect x="3" y="5" width="18" height="14" rx="2" {...shared} />
+        <path d="M7 15h5" {...shared} />
+        <path d="M15 15h2" {...shared} />
+        <path d="M7 11h2" {...shared} />
+        <path d="M12 11h5" {...shared} />
+      </> : null}
       {kind === "dashboard" ? <>
         <path d="M4 13h6V4H4z" {...shared} />
         <path d="M14 20h6V4h-6z" {...shared} />
