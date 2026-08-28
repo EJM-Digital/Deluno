@@ -236,10 +236,13 @@ here, this is good enough*. DESIGN-002 said to reuse it — *"exactly how qualit
 already behaves in Deluno. One idea learnt once"* — and reading Bazarr confirms
 the shape rather than inventing it.
 
-### The proposal
+### Settled, and shipped
 
-Three rungs, in the order a subtitle climbs, and a cutoff that says where to
-stop. No numbers on screen.
+James, on which rung the cutoff sits: *"we need the best method, no point
+spreading lies about subs that may be out of sync etc etc."* **The top one** —
+past Bazarr's default.
+
+Three rungs, in the order a subtitle climbs. No numbers on screen.
 
 | Rung | Means | Bazarr's equivalent |
 |---|---|---|
@@ -252,10 +255,27 @@ the provider, and `MediaFileNameFacts.Parse` plus quality detection for the file
 Nothing new has to be computed.
 
 **A subtitle below the cutoff is still fetched** — the shelf gets covered
-tonight — and stays on the upgrade list until something at the cutoff turns up.
-That is what the bar's green means, and it is why gold exists: green is *you can
-watch it and Deluno is still looking*, gold is *at the cutoff, Deluno has
-stopped*. So this decision is also what unblocks the third colour.
+tonight — and keeps its attempt row, so it stays on the list until something at
+the cutoff turns up. That is what the bar's green means, and it is why gold
+exists: green is *you can watch it and Deluno is still looking*, gold is *at the
+cutoff, Deluno has stopped*.
+
+**Gold shipped with it**, so the bar reads Missing / Ready / Done. Held and
+settled are two numbers now and only the second answers to the cutoff — a title
+Deluno is still improving keeps its green rather than losing it.
+
+**What the rig caught, again.** Gestdown puts a bare `TEPES` in its `version`
+field and answers some queries with a comma-separated list of releases.
+`MediaFileNameFacts` looks for the trailing `-GROUP` convention, which is right
+for a file name and wrong for both of those — so every Gestdown subtitle would
+have scored at the bottom rung and been re-fetched for ever. Ranking understands
+all three shapes now.
+
+**And deploying it caught one more.** The API sent `subtitleLanguagesSettled`
+and the bar drew nothing: `adaptMovieItems` and `adaptSeriesItems` copy the
+catalogue row field by field, twice, and neither knew about it. Every field is
+optional so nothing failed. The bar's inputs are asserted *through* the adapters
+now.
 
 **Not adopted from Bazarr:** the 30-day window on upgrades. It exists because
 Bazarr re-scores by walking history; Deluno keeps `next_eligible_search_utc` per
