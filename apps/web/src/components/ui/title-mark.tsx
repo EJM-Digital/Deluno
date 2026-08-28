@@ -3,6 +3,7 @@ import {
   TITLE_BAR_SEGMENTS,
   TITLE_MARK_PRESENTATION,
   titleBar,
+  titleProgress,
   titleMark,
   type TitleMark
 } from "../../lib/status-tones";
@@ -21,11 +22,14 @@ import {
  */
 
 /**
- * The dot's diameter on a small poster, and therefore in the legend.
+ * The dot's diameter, everywhere one is drawn: the legend chips above the
+ * shelf, the dot on a small poster, and the dot inside a status chip on a large
+ * one.
  *
- * One constant because the legend row exists to teach the shelf: a legend whose
+ * One constant because the legend row exists to teach the shelf. A legend whose
  * dots are a different size from the dots they explain is doing the job at half
- * strength, and two hard-coded numbers would drift the first time either moved.
+ * strength — and the chip's was hard-coded at 9 against the legend's 13 for
+ * exactly as long as nobody put them side by side.
  */
 export const MARK_DOT_SIZE = 13;
 
@@ -76,6 +80,18 @@ export function TitleMarkDot({
   const mark: TitleMark = titleMark(item);
   const presentation = TITLE_MARK_PRESENTATION[mark];
   const half = !item.monitored && presentation.canBeHalf;
+
+  // The dot carries the rung and nothing else.
+  //
+  // <b>How far through a show you are was briefly drawn into it</b> — an arc
+  // filled to the episodes you hold. Sonarr's idea, moved off the poster's edge
+  // because that edge belongs to the subtitle bar (James: <i>"adding a bar isnt
+  // a good idea — the bar is strictly for subtitles"</i>). It was correct and
+  // illegible: a 15% arc on a nine-pixel dot is about one pixel wide, and at 0%
+  // the whole dot washed out to a smudge. Sonarr uses a bar because a bar is
+  // what a fraction needs.
+  //
+  // So the fraction is text now, on the chip — see TitleMarkChip.
   const label = half ? `${presentation.label} · not monitored` : presentation.label;
 
   return (
@@ -199,14 +215,34 @@ function titleBarGradient(settledPercent: number, heldPercent: number): string {
  * because a dot is what the chips beside it already use for the other mark. The
  * two must not be mistaken for each other.
  */
-export function TitleMarkBarLegend({ className }: { className?: string }) {
+export function TitleMarkBarLegend({
+  className,
+  /**
+   * Whether this shelf draws an episode bar at all. A movie is not a collection,
+   * so naming a mark films never carry would be a legend for something that
+   * cannot appear — the same defect as a filter chip that can never match.
+   */
+  showEpisodes = false
+}: { className?: string; showEpisodes?: boolean }) {
   return (
-    <div
-      className={cn("flex items-center gap-2.5", className)}
-      title={"The bar on a poster's bottom edge: the subtitle languages this shelf asked for. "
-        + "Counted over the files a title has, so a show you have downloaded nothing of shows no bar."}
-    >
-      <span className="text-[length:var(--library-toolbar-size)] font-medium text-muted-foreground">
+    <div className={cn("flex items-center gap-2.5", className)}>
+      {showEpisodes ? (
+        <span
+          className="flex items-center gap-1.5 text-[length:var(--library-toolbar-size)] font-medium text-muted-foreground"
+          title={"The upper strip on a poster's bottom edge: how many of a show's aired episodes are on disk, "
+            + "in the colour of the mark above it."}
+        >
+          <span aria-hidden className="flex h-1 w-6 shrink-0 overflow-hidden rounded-full bg-mark-idle/70">
+            <span className="h-full w-2/3 bg-destructive" />
+          </span>
+          <span>Episodes</span>
+        </span>
+      ) : null}
+      <span
+        className="text-[length:var(--library-toolbar-size)] font-medium text-muted-foreground"
+        title={"The lower strip on a poster's bottom edge: the subtitle languages this shelf asked for. "
+          + "Counted over the files a title has, so a show you have downloaded nothing of shows no bar."}
+      >
         Subtitles
       </span>
       {TITLE_BAR_SEGMENTS.map((segment) => (
@@ -219,7 +255,17 @@ export function TitleMarkBarLegend({ className }: { className?: string }) {
             aria-hidden
             className={cn("h-1 w-4 shrink-0 rounded-full", TITLE_MARK_PRESENTATION[segment.mark].dot)}
           />
-          <span>{segment.label}</span>
+          {/*
+            The ladder's own word, not a synonym.
+            James: *"users need to also be able to distinguish between done and
+            ready for subtitles its a little ambiguous compared to the status of
+            the files."* Right — the bar had invented "Done" and "Ready" for
+            rungs the dot already calls "Quality met" and "Upgradable", so a
+            reader had two vocabularies for one ladder and no way to line them
+            up. DESIGN-002 says the bar *is* a miniature of that ladder; it now
+            borrows its words as well as its colours.
+          */}
+          <span>{TITLE_MARK_PRESENTATION[segment.mark].label}</span>
         </span>
       ))}
     </div>
@@ -267,10 +313,20 @@ export function TitleMarkChip({ item, className }: { item: TitleMarkInput; class
   const presentation = TITLE_MARK_PRESENTATION[mark];
   const half = !item.monitored && presentation.canBeHalf;
 
+  // Shows only, and only once Deluno knows what has aired. Zero of an unknown
+  // total is not a fraction, and printing one would claim knowledge it has not
+  // got.
+  const aired = item.airedEpisodeCount;
+  const episodes = typeof aired === "number" && aired > 0
+    ? `${Math.min(Math.max(0, item.airedWithFileCount ?? 0), aired)}/${aired}`
+    : null;
+
+  const label = half ? `${presentation.label} · not monitored` : presentation.label;
+
   return (
     <span
       role="img"
-      aria-label={half ? `${presentation.label} · not monitored` : presentation.label}
+      aria-label={episodes ? `${label} · ${episodes} aired episodes` : label}
       title={half ? `${presentation.hint} Deluno is not watching this one.` : presentation.hint}
       className={cn(
         "inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-black/55 px-2 py-0.5",
@@ -278,8 +334,33 @@ export function TitleMarkChip({ item, className }: { item: TitleMarkInput; class
         className
       )}
     >
-      <TitleMarkDot item={item} size={9} decorative />
+      {/*
+        The same diameter as the chips above the shelf, and the dot on a small
+        poster — one constant, three places. It was 9 here against their 13, so
+        the mark a reader learns in the legend was not quite the mark they then
+        looked for on the artwork.
+      */}
+      <TitleMarkDot item={item} size={MARK_DOT_SIZE} decorative />
       {presentation.label}
+      {episodes ? (
+        <>
+          {/*
+            How far through a show you are, in the one place on a poster with
+            room for it.
+
+            Why text and not a mark: the bar belongs to subtitles, and an arc on
+            a nine-pixel dot is a pixel wide and unreadable. A fraction is a
+            number, and numbers read as numbers. It also does the thing the
+            ladder cannot — three of twenty and none of eighty-seven are both
+            Missing and both red, and only one of them is nearly done.
+
+            A film has no fraction: it is here or it is not, and the word beside
+            this has already said which.
+          */}
+          <span aria-hidden className="text-white/40">&middot;</span>
+          <span className="font-semibold tabular-nums text-white/80">{episodes}</span>
+        </>
+      ) : null}
     </span>
   );
 }

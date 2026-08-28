@@ -236,7 +236,19 @@ public sealed record JobLane(
     TimeSpan? JitterOverride = null,
     IReadOnlyList<string>? SignalTypesOverride = null)
 {
-    public TimeSpan Jitter { get; init; } = JitterOverride ?? TimeSpan.FromMilliseconds(Interval.TotalMilliseconds * 0.25);
+    /// <summary>
+    /// A random delay before this lane's first tick, so lanes do not all wake
+    /// and hit SQLite in the same instant.
+    ///
+    /// <para><b>Capped at two seconds.</b> A quarter of the interval was fine
+    /// when every interval was thirty seconds; against a five-minute backstop it
+    /// became seventy-five seconds of a lane not existing yet — and a signal
+    /// arriving in that window is dropped, because the lane has not registered
+    /// for it. Spreading eighteen lanes over two seconds is all the herd needs
+    /// spreading.</para>
+    /// </summary>
+    public TimeSpan Jitter { get; init; } = JitterOverride ?? TimeSpan.FromMilliseconds(
+        Math.Min(Interval.TotalMilliseconds * 0.25, 2_000));
 
     public IReadOnlyList<string> SignalTypes { get; init; } = SignalTypesOverride ?? JobTypes;
 

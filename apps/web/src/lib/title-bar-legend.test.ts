@@ -63,12 +63,20 @@ describe("the subtitle bar's colours", () => {
     expect(bar.settled).toBe(0);
   });
 
-  it("gives every segment a label and a sentence, so colour is never the only carrier", () => {
+  it("gives every segment a sentence, so colour is never the only carrier", () => {
     // #318: colour must never be the only thing saying what something means.
     for (const segment of TITLE_BAR_SEGMENTS) {
-      expect(segment.label.trim().length).toBeGreaterThan(0);
       expect(segment.hint.trim().length).toBeGreaterThan(0);
     }
+  });
+
+  it("names its rungs with the ladder's words rather than synonyms", () => {
+    // The bar used to say "Done" and "Ready" for rungs the dot calls "Quality
+    // met" and "Upgradable" — two vocabularies for one ladder, and no way for a
+    // reader to line them up. DESIGN-002 says the bar is a miniature of the
+    // dot's ladder, so it borrows the words too.
+    expect(TITLE_BAR_SEGMENTS.map((segment) => TITLE_MARK_PRESENTATION[segment.mark].label))
+      .toEqual(["Quality met", "Upgradable", "Missing"]);
   });
 });
 

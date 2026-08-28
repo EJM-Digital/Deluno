@@ -518,8 +518,18 @@ public sealed class SqliteSeriesCatalogRepository(
             ? string.Empty
             : "EXISTS(SELECT 1 FROM series_wanted_state w WHERE w.series_id = s.id AND w.library_id = @libraryId)";
 
+    /// <summary>
+    /// "Deluno has this show", for the counts above the shelf.
+    ///
+    /// <para><b>Read from the rung, not from <c>has_file</c>.</b> That column
+    /// says one arbitrary episode file exists, which for a collection is not the
+    /// same question at all — a show with three of twenty episodes has a file and
+    /// is not "had". Rebuilding the ladder here out of <c>has_file</c> and
+    /// <c>quality_cutoff_met</c> was the ladder written a third time, and it is
+    /// why the chips summed to seven for six shows.</para>
+    /// </summary>
     private static string CatalogueHasFileFor(string? libraryId)
-        => $"EXISTS(SELECT 1 FROM series_wanted_state w WHERE w.series_id = s.id{CatalogueStateScope(libraryId)} AND w.has_file = 1)";
+        => $"EXISTS(SELECT 1 FROM series_wanted_state w WHERE w.series_id = s.id{CatalogueStateScope(libraryId)} AND w.wanted_status IN ('{WantedStatuses.Covered}', '{WantedStatuses.Upgrade}'))";
 
     /// <summary>
     /// "This entry is in one particular wanted state." The counts the toolbar
@@ -529,8 +539,14 @@ public sealed class SqliteSeriesCatalogRepository(
     private static string CatalogueWantedIs(string? libraryId, string wantedStatus)
         => $"EXISTS(SELECT 1 FROM series_wanted_state w WHERE w.series_id = s.id{CatalogueStateScope(libraryId)} AND w.wanted_status = '{wantedStatus}')";
 
+    /// <summary>
+    /// "Deluno has all of this show and some of it could be better." Also from
+    /// the rung, for the same reason: <c>has_file = 1 AND quality_cutoff_met = 0</c>
+    /// was true of a show holding one below-cutoff episode out of eighty-seven,
+    /// so a barely-started show counted as Upgradable <i>and</i> as Missing.
+    /// </summary>
     private static string CatalogueUpgradeFor(string? libraryId)
-        => $"EXISTS(SELECT 1 FROM series_wanted_state w WHERE w.series_id = s.id{CatalogueStateScope(libraryId)} AND w.has_file = 1 AND w.quality_cutoff_met = 0)";
+        => CatalogueWantedIs(libraryId, WantedStatuses.Upgrade);
 
     /// <summary>
     /// Where <see cref="CatalogueWantedState.PageColumns"/> begins in the page
@@ -809,6 +825,27 @@ public sealed class SqliteSeriesCatalogRepository(
     /// not something the library is missing, and counting it as such would leave
     /// every ongoing show permanently short of itself.
     /// </summary>
+    /// <summary>
+    /// Names the rule that decided a show's rung, so a stored row says which
+    /// version of the thinking produced it.
+    /// </summary>
+    private const string SeriesRungPolicyVersion = "series-rung/episodes-v1";
+
+    /// <summary>
+    /// Why a show is on the rung it is on, in the words Activity and the detail
+    /// page print. Counts, because "missing" on a show is only useful with the
+    /// number beside it.
+    /// </summary>
+    private static string SeriesRungReason(string status, int aired, int airedWithFile) => status switch
+    {
+        WantedStatuses.Upcoming => "Nothing has aired yet.",
+        WantedStatuses.Covered => $"All {aired} aired episode{(aired == 1 ? "" : "s")} are here at the quality you asked for.",
+        WantedStatuses.Upgrade => $"All {aired} aired episode{(aired == 1 ? "" : "s")} are here, and some could be better.",
+        _ => aired == 0
+            ? "Deluno has not catalogued this show's episodes yet."
+            : $"{airedWithFile} of {aired} aired episodes are here."
+    };
+
     private async Task<IReadOnlyList<SeriesListItem>> AttachEpisodeProgressAsync(
         System.Data.Common.DbConnection connection,
         List<SeriesListItem> items,
@@ -875,7 +912,21 @@ public sealed class SqliteSeriesCatalogRepository(
                 AiredEpisodeCount = counts.Aired,
                 AiredWithFileCount = counts.AiredWithFile,
                 AiredUpgradableCount = counts.AiredUpgradable,
-                NextAirDateUtc = counts.NextAir is null ? null : ParseTimestamp(counts.NextAir)
+                NextAirDateUtc = counts.NextAir is null ? null : ParseTimestamp(counts.NextAir),
+                // The rung, decided from the episodes rather than from the
+                // title-level row — which described one arbitrary file and made
+                // a show with three of twenty episodes read "Quality met".
+                //
+                // Computed here because the numbers are already in hand, so it
+                // costs nothing, and served rather than recomputed in the
+                // browser: the browser used to derive its own answer from these
+                // same fields, which is how the shelf and the chips came to
+                // disagree about the same show.
+                WantedStatus = SeriesRung.From(
+                    counts.Aired,
+                    counts.AiredWithFile,
+                    counts.AiredUpgradable,
+                    counts.NextAir is not null)
             });
         }
 
@@ -2209,9 +2260,87 @@ public sealed class SqliteSeriesCatalogRepository(
                     await upsertEpisodeWanted.ExecuteNonQueryAsync(cancellationToken);
                 }
             }
+
+            // The episodes just changed, so the show's rung did too. Written
+            // here, inside the same transaction, because this is the moment the
+            // facts move — leaving it to a later recalculation is what let the
+            // chips above the shelf disagree with the posters underneath them.
+            await RefreshSeriesRungAsync(connection, transaction, seriesId!, libraryId, now, cancellationToken);
         }
 
         return created;
+    }
+
+    /// <summary>
+    /// Re-decides one show's rung from its episodes and stores it.
+    ///
+    /// <para><b>The stored column is what the chips and the status filter read</b>
+    /// — they are SQL over <c>series_wanted_state</c> and cannot call a C#
+    /// rule. The catalogue page computes the same answer from the rollup it
+    /// already has, so both sides come from <see cref="SeriesRung"/> and the only
+    /// way they can disagree is if this stops being called when episodes
+    /// change.</para>
+    /// </summary>
+    private async Task RefreshSeriesRungAsync(
+        System.Data.Common.DbConnection connection,
+        System.Data.Common.DbTransaction transaction,
+        string seriesId,
+        string libraryId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var aired = 0;
+        var airedWithFile = 0;
+        var airedUpgradable = 0;
+        var hasFutureAirDate = false;
+
+        using (var rollup = connection.CreateCommand())
+        {
+            rollup.Transaction = transaction;
+            rollup.CommandText =
+                """
+                SELECT
+                    COALESCE(SUM(CASE WHEN air_date_utc IS NOT NULL AND air_date_utc <= @now THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN air_date_utc IS NOT NULL AND air_date_utc <= @now AND has_file = 1 THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN air_date_utc IS NOT NULL AND air_date_utc <= @now AND has_file = 1 AND quality_cutoff_met = 0 THEN 1 ELSE 0 END), 0),
+                    COALESCE(MAX(CASE WHEN air_date_utc > @now THEN 1 ELSE 0 END), 0)
+                FROM episode_entries
+                WHERE series_id = @seriesId;
+                """;
+            AddParameter(rollup, "@seriesId", seriesId);
+            AddParameter(rollup, "@now", now.ToString("O"));
+
+            using var reader = await rollup.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                aired = reader.GetInt32(0);
+                airedWithFile = reader.GetInt32(1);
+                airedUpgradable = reader.GetInt32(2);
+                hasFutureAirDate = reader.GetInt32(3) == 1;
+            }
+        }
+
+        var status = SeriesRung.From(aired, airedWithFile, airedUpgradable, hasFutureAirDate);
+
+        using var update = connection.CreateCommand();
+        update.Transaction = transaction;
+        update.CommandText =
+            """
+            UPDATE series_wanted_state
+            SET wanted_status = @wantedStatus,
+                wanted_reason = @wantedReason,
+                quality_cutoff_met = @qualityCutoffMet,
+                updated_utc = @updatedUtc
+            WHERE series_id = @seriesId
+              AND library_id = @libraryId;
+            """;
+        AddParameter(update, "@seriesId", seriesId);
+        AddParameter(update, "@libraryId", libraryId);
+        AddParameter(update, "@wantedStatus", status);
+        AddParameter(update, "@wantedReason", SeriesRungReason(status, aired, airedWithFile));
+        AddParameter(update, "@qualityCutoffMet", status == WantedStatuses.Covered ? 1 : 0);
+        AddParameter(update, "@updatedUtc", now.ToString("O"));
+        await update.ExecuteNonQueryAsync(cancellationToken);
     }
 
     public async IAsyncEnumerable<SeriesTrackedFileItem> StreamTrackedFilesAsync(
@@ -2612,42 +2741,67 @@ public sealed class SqliteSeriesCatalogRepository(
                 cancellationToken);
         }
 
-        var items = new List<(string SeriesId, bool HasFile, string? CurrentQuality)>();
+        // The show, and what its *episodes* say about it.
+        //
+        // This used to read has_file and current_quality off the series row and
+        // ask MediaDecisionRules the film question — "is this file the quality
+        // you asked for". A show has no such file: the row describes whichever
+        // one the import happened to see first. That is why a three-of-twenty
+        // show was stored as "Quality met", and why the chips disagreed with
+        // every poster on the shelf.
+        var items = new List<(string SeriesId, int Aired, int AiredWithFile, int AiredUpgradable, bool HasFutureAirDate)>();
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Series,
             cancellationToken);
 
+        var nowText = timeProvider.GetUtcNow().ToString("O");
+
         using (var command = connection.CreateCommand())
         {
             command.CommandText =
                 """
-                SELECT series_id, has_file, current_quality
-                FROM series_wanted_state
-                WHERE library_id = @libraryId;
+                SELECT
+                    w.series_id,
+                    COALESCE(SUM(CASE WHEN e.air_date_utc IS NOT NULL AND e.air_date_utc <= @now THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN e.air_date_utc IS NOT NULL AND e.air_date_utc <= @now AND e.has_file = 1 THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN e.air_date_utc IS NOT NULL AND e.air_date_utc <= @now AND e.has_file = 1 AND e.quality_cutoff_met = 0 THEN 1 ELSE 0 END), 0),
+                    COALESCE(MAX(CASE WHEN e.air_date_utc > @now THEN 1 ELSE 0 END), 0)
+                FROM series_wanted_state w
+                LEFT JOIN episode_entries e ON e.series_id = w.series_id
+                WHERE w.library_id = @libraryId
+                GROUP BY w.series_id;
                 """;
             AddParameter(command, "@libraryId", libraryId);
+            AddParameter(command, "@now", nowText);
 
             using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
                 items.Add((
                     reader.GetString(0),
-                    reader.GetInt64(1) == 1,
-                    reader.IsDBNull(2) ? null : reader.GetString(2)));
+                    reader.GetInt32(1),
+                    reader.GetInt32(2),
+                    reader.GetInt32(3),
+                    reader.GetInt32(4) == 1));
             }
         }
 
         var updated = 0;
         foreach (var item in items)
         {
-            var decision = MediaDecisionRules.DecideWantedState(new MediaWantedDecisionInput(
-                MediaType: "tv",
-                HasFile: item.HasFile,
-                CurrentQuality: item.CurrentQuality,
-                CutoffQuality: cutoffQuality,
-                UpgradeUntilCutoff: upgradeUntilCutoff,
-                UpgradeUnknownItems: upgradeUnknownItems));
+            var status = SeriesRung.From(item.Aired, item.AiredWithFile, item.AiredUpgradable, item.HasFutureAirDate);
+            var decision = new LibraryQualityDecision(
+                WantedStatus: status,
+                WantedReason: SeriesRungReason(status, item.Aired, item.AiredWithFile),
+                QualityCutoffMet: status == WantedStatuses.Covered,
+                // A show has no single file, so it has no single current
+                // quality. Leaving this null is the honest answer and stops the
+                // detail page printing one arbitrary episode's tier as if it
+                // described the whole show.
+                CurrentQuality: null,
+                TargetQuality: cutoffQuality,
+                PolicyVersion: SeriesRungPolicyVersion);
 
             using var update = connection.CreateCommand();
             update.CommandText =

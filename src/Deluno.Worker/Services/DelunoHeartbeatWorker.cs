@@ -184,7 +184,15 @@ public sealed class DelunoHeartbeatWorker(
         // Drained a full batch last time round — more work is likely still
         // queued, so skip the wait and go straight back to leasing instead of
         // pacing a backlog by the interval.
-        var drainImmediately = false;
+        //
+        // <b>True to begin with, and that is not a detail.</b> Nothing signals a
+        // job that was already queued when the process started, so a lane that
+        // waited first would sit through its whole backstop before looking — and
+        // once the backstop became five minutes, a restart stranded the queue
+        // for that long. Caught on the rig: an import enqueued before a deploy
+        // was still queued five minutes after the host came back. A lane's first
+        // act is to look.
+        var drainImmediately = true;
 
         // How long to wait before looking again, when nothing wakes this lane
         // first. Set from the lane's own next scheduled job at the end of each
