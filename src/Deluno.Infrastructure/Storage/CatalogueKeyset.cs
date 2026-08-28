@@ -26,7 +26,11 @@ public static class CatalogueKeyset
     public static string SortExpression(string sortField, string alias, string yearColumn)
         => CatalogueSortFields.Normalize(sortField) switch
         {
-            CatalogueSortFields.Title => $"lower({alias}.title)",
+            // The stored sort title, not lower(title): "The Matrix" files under
+            // M, the way Radarr and Sonarr both do. A column rather than an
+            // expression because an expression index only serves an ORDER BY
+            // that matches it character for character -- see V0021/V0022.
+            CatalogueSortFields.Title => $"COALESCE({alias}.sort_title, lower({alias}.title))",
             CatalogueSortFields.Year => $"COALESCE({alias}.{yearColumn}, -1)",
             CatalogueSortFields.Rating => $"COALESCE({alias}.rating, -1)",
             // Both of these have had an index since V0011/V0012 and neither has
