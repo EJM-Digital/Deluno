@@ -105,14 +105,31 @@ export function PageToolbar({ tabs, left, actions, className }: PageToolbarProps
                     end={tab.end}
                     aria-label={tabLabel ? `${tabLabel}${isComplete ? " — complete" : ""}` : undefined}
                     data-status={isComplete ? "complete" : "pending"}
+                    /*
+                      Marked the way the sidebar marks its area: a 3px accent
+                      bar on the leading edge and the label in the accent
+                      colour. It was an underline, which was a third way of
+                      saying "you are here" in an app that already had one.
+
+                      The padding is on every tab, not only the active one, so
+                      the row does not shift by three pixels each time you move
+                      between them.
+                    */
                     className={cn(
-                      "group relative flex h-full shrink-0 items-center pt-px text-[length:var(--type-body-sm)] font-medium leading-none transition-colors duration-200",
+                      "group relative flex h-full shrink-0 items-center pl-2.5 text-[length:var(--type-body-sm)] font-medium leading-none transition-colors duration-200",
                       "focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       isActive
-                        ? "font-semibold text-[var(--toolbar-accent)] after:absolute after:inset-x-0 after:bottom-2.5 after:h-0.5 after:bg-[var(--toolbar-accent)]"
+                        ? "font-semibold text-[var(--toolbar-accent)]"
                         : "text-muted-foreground hover:text-foreground"
                     )}
                   >
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "absolute left-0 h-[calc(var(--toolbar-height)*0.42)] w-[3px] rounded-r-full transition-colors",
+                        isActive ? "bg-[var(--toolbar-accent)]" : "bg-transparent"
+                      )}
+                    />
                     <span className="whitespace-nowrap">{tabLabel ?? tab.label}</span>
                   </NavLink>
                 );
