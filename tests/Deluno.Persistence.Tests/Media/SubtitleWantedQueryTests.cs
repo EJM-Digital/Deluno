@@ -1,4 +1,5 @@
 using Deluno.Contracts;
+using Deluno.Infrastructure.Storage;
 using Deluno.Infrastructure.Storage.Migrations;
 using Deluno.Integrations.Subtitles;
 using Deluno.Media;
@@ -92,22 +93,36 @@ public sealed class SubtitleWantedQueryTests
     }
 
     /// <summary>
-    /// And the bar must <i>not</i> follow the cutoff, because you can still watch
-    /// it. Held and settled are different questions, and only one of them moved.
+    /// The bar keeps its green for a subtitle below the cutoff, and only its gold
+    /// is withheld.
     ///
-    /// <para>Asserted on the SQL rather than through a page, because the failure
-    /// this guards against is somebody adding <c>match_rung</c> to the rollup for
-    /// symmetry — at which point every title below the cutoff loses its green and
-    /// the shelf reads as though the subtitles were never fetched.</para>
+    /// <para>The failure this guards against is somebody making <i>held</i>
+    /// follow the cutoff for symmetry. Every title Deluno was still improving
+    /// would lose its green, and the shelf would read as though nothing had been
+    /// fetched at all. Held answers "can I watch tonight"; settled answers "has
+    /// Deluno finished"; only the second one moved.</para>
     /// </summary>
-    [Fact]
-    public void The_bar_does_not_know_about_the_cutoff()
+    [Theory]
+    [InlineData(SubtitleMatch.AnyRelease, 1, 0)]
+    [InlineData(SubtitleMatch.SameSource, 1, 0)]
+    [InlineData(SubtitleMatch.MadeForThisFile, 1, 1)]
+    public async Task Held_survives_the_cutoff_and_only_settled_answers_to_it(
+        SubtitleMatch rung,
+        int expectedHeld,
+        int expectedSettled)
     {
-        var rollup = CatalogueSubtitleRollup.Sql(MediaTableMap.For(MediaKind.Movie), idCount: 1, languageCount: 1);
+        using var storage = TestStorage.Create();
+        var (movies, subtitles) = await CreateAsync(storage);
+        var id = await ImportAsync(movies, "Dune");
 
-        Assert.DoesNotContain("match_rung", rollup, StringComparison.Ordinal);
-        // ...while the two queries still agree about the things they must.
-        Assert.Contains("forced = 0", rollup, StringComparison.Ordinal);
+        await subtitles.RecordFetchedAsync(MediaKind.Movie, id, Row("en", rung), CancellationToken.None);
+
+        await using var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Movies);
+        var held = await CatalogueSubtitleRollup.ReadAsync(
+            connection, MediaKind.Movie, [id], ["en"], Now, CancellationToken.None);
+
+        Assert.Equal(expectedHeld, held[id].Languages);
+        Assert.Equal(expectedSettled, held[id].Settled);
     }
 
     [Fact]

@@ -106,4 +106,13 @@ public sealed record SeriesListItem(
     /// exists.
     /// </summary>
     int SubtitleLanguagesWanted = 0,
-    int SubtitleLanguagesHeld = 0);
+    int SubtitleLanguagesHeld = 0,
+    /// <summary>
+    /// Of the languages held, how many are at the cutoff — made for this file, so
+    /// Deluno has stopped looking.
+    ///
+    /// <para>The bar draws the gap between this and
+    /// <see cref="SubtitleLanguagesHeld"/> in green: you have it, you can watch
+    /// it, and something better may still turn up.</para>
+    /// </summary>
+    int SubtitleLanguagesSettled = 0);

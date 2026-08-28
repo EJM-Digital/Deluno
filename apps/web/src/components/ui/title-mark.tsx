@@ -47,6 +47,7 @@ export interface TitleMarkInput {
   /** Zero until Subber (#301). See `titleBar`. */
   subtitleLanguagesWanted?: number;
   subtitleLanguagesHeld?: number;
+  subtitleLanguagesSettled?: number;
 }
 
 /**
@@ -135,8 +136,15 @@ export function TitleMarkBar({ item, className }: { item: TitleMarkInput; classN
     return null;
   }
 
-  const percent = Math.round(Math.min(1, Math.max(0, bar.held / bar.wanted)) * 100);
-  const label = `${bar.held} of ${bar.wanted} ${bar.noun}`;
+  const heldPercent = Math.round(Math.min(1, Math.max(0, bar.held / bar.wanted)) * 100);
+  const settledPercent = Math.round(Math.min(1, Math.max(0, bar.settled / bar.wanted)) * 100);
+
+  // Three numbers, and the label says all three rather than only the sum. "2 of
+  // 2" over a subtitle that might be forty seconds out is exactly the claim this
+  // ladder exists to stop making — and this label is all a screen reader gets.
+  const label = bar.settled === bar.held
+    ? `${bar.held} of ${bar.wanted} ${bar.noun}`
+    : `${bar.held} of ${bar.wanted} ${bar.noun}, ${bar.settled} matched to this release`;
 
   return (
     <span
@@ -144,23 +152,30 @@ export function TitleMarkBar({ item, className }: { item: TitleMarkInput; classN
       aria-label={label}
       title={label}
       className={cn("absolute inset-x-0 bottom-0 z-10 block h-1", className)}
-      style={{ background: titleBarGradient(percent) }}
+      style={{ background: titleBarGradient(settledPercent, heldPercent) }}
     />
   );
 }
 
 /**
- * The gradient both the bar and its legend paint with.
+ * The gradient the bar paints with.
  *
- * The colours come from `TITLE_BAR_SEGMENTS`, not from `--success` and
- * `--destructive` written in here: the legend has to name the same two, and two
- * places naming one pair is how they drift.
+ * Three stops, left to right, in the order a title climbs: gold for the
+ * languages Deluno has finished with, green for the ones you have and it is
+ * still improving, red for the ones you do not have.
+ *
+ * The colours come from `TITLE_BAR_SEGMENTS`, never from `--success` and
+ * `--destructive` written in here: the legend names the same three, and two
+ * places naming one set is how they drift.
  */
-function titleBarGradient(percent: number): string {
-  const [held, missing] = TITLE_BAR_SEGMENTS;
-  const heldColour = `hsl(var(${TITLE_MARK_PRESENTATION[held.mark].cssVar}))`;
-  const missingColour = `hsl(var(${TITLE_MARK_PRESENTATION[missing.mark].cssVar}))`;
-  return `linear-gradient(to right, ${heldColour} 0 ${percent}%, ${missingColour} ${percent}% 100%)`;
+function titleBarGradient(settledPercent: number, heldPercent: number): string {
+  const [done, ready, missing] = TITLE_BAR_SEGMENTS;
+  const colour = (mark: TitleMark) => `hsl(var(${TITLE_MARK_PRESENTATION[mark].cssVar}))`;
+
+  return "linear-gradient(to right, "
+    + `${colour(done.mark)} 0 ${settledPercent}%, `
+    + `${colour(ready.mark)} ${settledPercent}% ${heldPercent}%, `
+    + `${colour(missing.mark)} ${heldPercent}% 100%)`;
 }
 
 /**

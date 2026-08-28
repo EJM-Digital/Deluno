@@ -619,7 +619,12 @@ public static class CatalogueSubtitleRollup
                 var titleHeld = held.TryGetValue(id, out var value) ? value : new MediaSubtitleHeld(0, 0);
                 counts[id] = new CatalogueSubtitleCounts(
                     wantedPerFile,
-                    readFiles ? titleHeld.Files : titleHeld.Languages);
+                    readFiles ? titleHeld.Files : titleHeld.Languages,
+                    // In "first language wins" mode the bar counts files rather
+                    // than languages, and a file is settled when the one language
+                    // it found is. Capped at the held count so the gold segment
+                    // can never be longer than the green one it sits inside.
+                    Math.Min(readFiles ? titleHeld.Files : titleHeld.Languages, titleHeld.Settled));
             }
         }
 
@@ -659,7 +664,19 @@ public static class CatalogueSubtitleRollup
             SELECT
                 {map.SubtitleRollupIdColumn},
                 COUNT(DISTINCT sub.{map.SubtitleMediaIdColumn} || '/' || sub.language),
-                COUNT(DISTINCT sub.{map.SubtitleMediaIdColumn})
+                COUNT(DISTINCT sub.{map.SubtitleMediaIdColumn}),
+                -- The third number, and the one that makes gold possible.
+                --
+                -- <b>Deliberately narrower than the first, and never instead of
+                -- it.</b> Held is "can I watch this tonight" and must stay blind
+                -- to the cutoff; settled is "has Deluno finished". Folding the
+                -- rung into the held count would strip the green off every title
+                -- Deluno is still improving and make the shelf read as though
+                -- nothing had been fetched at all.
+                COUNT(DISTINCT CASE
+                    WHEN sub.match_rung >= {(int)SubtitleCutoff.Rung}
+                    THEN sub.{map.SubtitleMediaIdColumn} || '/' || sub.language
+                END)
             FROM {map.SubtitleTable} sub
             {map.SubtitleRollupJoin}
             WHERE {map.SubtitleRollupIdColumn} IN ({idParameters})
@@ -707,7 +724,7 @@ public static class CatalogueSubtitleRollup
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            held[reader.GetString(0)] = new MediaSubtitleHeld(reader.GetInt32(1), reader.GetInt32(2));
+            held[reader.GetString(0)] = new MediaSubtitleHeld(reader.GetInt32(1), reader.GetInt32(2), reader.GetInt32(3));
         }
 
         return held;
@@ -715,4 +732,4 @@ public static class CatalogueSubtitleRollup
 }
 
 /// <summary>What one title on a page asked for, per file, and what it holds.</summary>
-public sealed record CatalogueSubtitleCounts(int WantedPerFile, int Held);
+public sealed record CatalogueSubtitleCounts(int WantedPerFile, int Held, int Settled = 0);

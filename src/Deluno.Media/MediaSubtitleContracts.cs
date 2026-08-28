@@ -59,7 +59,17 @@ public sealed record MediaSubtitleScanCandidate(
 /// let an episode holding both languages fill the bar for an episode holding
 /// none.
 /// </summary>
-public sealed record MediaSubtitleHeld(int Languages, int Files);
+public sealed record MediaSubtitleHeld(
+    int Languages,
+    int Files,
+    /// <summary>
+    /// How many of <see cref="Languages"/> are at the cutoff — made for the file
+    /// they sit beside, so Deluno has stopped looking.
+    ///
+    /// <para>The difference between this and <see cref="Languages"/> is the
+    /// green on the bar: held, watchable, and still being improved.</para>
+    /// </summary>
+    int Settled = 0);
 
 /// <summary>
 /// One file with subtitle work outstanding, with the words a provider is

@@ -929,7 +929,8 @@ public sealed class SqliteSeriesCatalogRepository(
                 ? item with
                 {
                     SubtitleLanguagesWanted = count.WantedPerFile,
-                    SubtitleLanguagesHeld = count.Held
+                    SubtitleLanguagesHeld = count.Held,
+                    SubtitleLanguagesSettled = count.Settled
                 }
                 : item)
             .ToArray();

@@ -360,6 +360,11 @@ export function titleMark(item: {
  */
 export interface TitleBar {
   held: number;
+  /**
+   * Of `held`, how many are at the cutoff. Gold on the bar; the rest of `held`
+   * is green.
+   */
+  settled: number;
   wanted: number;
   /** What the bar is counting, for the label a reader gets on hover. */
   noun: "subtitle languages";
@@ -387,6 +392,15 @@ export interface TitleBar {
  */
 export const TITLE_BAR_SEGMENTS: readonly { mark: TitleMark; label: string; hint: string }[] = [
   {
+    // Gold, and it arrived with the cutoff. DESIGN-002: "Two colours are enough
+    // until upgrades exist; gold arrives with them." They exist — a subtitle is
+    // *Done* when it was made for the file it sits beside, so the timing is
+    // right and there is nothing better to find.
+    mark: "covered",
+    label: "Done",
+    hint: "Made for this file, so the timing is right. Deluno has stopped looking."
+  },
+  {
     mark: "upgrade",
     // **Ready**, and it took two goes to get here. "Held" first — the word the
     // store uses for itself, leaked onto the screen. Then "Have", which is the
@@ -398,7 +412,7 @@ export const TITLE_BAR_SEGMENTS: readonly { mark: TitleMark; label: string; hint
     // Missing / Ready / Done, and each word says what the viewer can do rather
     // than what the store is holding.
     label: "Ready",
-    hint: "A language you asked for is here — beside the file, inside it, or fetched for you."
+    hint: "Here and watchable, and Deluno is still looking for one cut for your exact release."
   },
   {
     mark: "missing",
@@ -422,6 +436,8 @@ export function titleBar(item: {
   subtitleLanguagesWanted?: number;
   /** Languages actually held, summed across the files the title has. */
   subtitleLanguagesHeld?: number;
+  /** Of those, how many are at the cutoff. */
+  subtitleLanguagesSettled?: number;
 }): TitleBar {
   const perFile = Math.max(0, item.subtitleLanguagesWanted ?? 0);
   const held = Math.max(0, item.subtitleLanguagesHeld ?? 0);
@@ -434,8 +450,14 @@ export function titleBar(item: {
 
   const wanted = perFile * files;
 
+  const heldCapped = Math.min(held, wanted);
+
   return {
-    held: Math.min(held, wanted),
+    held: heldCapped,
+    // Never longer than the green it sits inside, and never longer than the bar.
+    // Clamping here rather than trusting the caller is what stops one bad number
+    // from drawing a gold segment over a language nobody has.
+    settled: Math.min(Math.max(0, item.subtitleLanguagesSettled ?? 0), heldCapped),
     wanted,
     noun: "subtitle languages"
   };

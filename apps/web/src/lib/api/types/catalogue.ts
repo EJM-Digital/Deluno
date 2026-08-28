@@ -63,6 +63,7 @@ export interface MovieListItem {
    */
   subtitleLanguagesWanted?: number;
   subtitleLanguagesHeld?: number;
+  subtitleLanguagesSettled?: number;
 }
 
 export interface MovieImportRecoveryCase {
@@ -207,6 +208,7 @@ export interface SeriesListItem {
    */
   subtitleLanguagesWanted?: number;
   subtitleLanguagesHeld?: number;
+  subtitleLanguagesSettled?: number;
 }
 
 export interface CatalogueFacets {

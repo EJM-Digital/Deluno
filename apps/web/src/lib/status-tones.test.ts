@@ -143,12 +143,12 @@ describe("the mark on a title", () => {
   it("asks the same question of a movie and of a show", () => {
     // A movie: one file, two languages asked for, one held.
     expect(titleBar({ hasFile: true, subtitleLanguagesWanted: 2, subtitleLanguagesHeld: 1 }))
-      .toEqual({ held: 1, wanted: 2, noun: "subtitle languages" });
+      .toEqual({ held: 1, settled: 0, wanted: 2, noun: "subtitle languages" });
 
     // A show: thirteen episodes held, the same two languages asked for of each,
     // twenty-two of the twenty-six slots filled.
     expect(titleBar({ airedWithFileCount: 13, subtitleLanguagesWanted: 2, subtitleLanguagesHeld: 22 }))
-      .toEqual({ held: 22, wanted: 26, noun: "subtitle languages" });
+      .toEqual({ held: 22, settled: 0, wanted: 26, noun: "subtitle languages" });
   });
 
   /**
