@@ -362,32 +362,40 @@ function PosterCard({
       */}
       <div className={cn("mt-2 min-w-0", size === "sm" ? "space-y-0.5" : "space-y-1")}>
         {displayOptions.showTitle ? (
-          // Two lines of space whether or not the title needs both. A title
-          // that wraps otherwise pushes its own metadata row down and out of
-          // line with every card beside it, and a grid whose rows do not line
-          // up reads as broken rather than as varied.
-          <p className={cn("line-clamp-2 min-h-[2.5em] font-semibold leading-tight text-foreground", titleCls)}>
+          // Exactly two lines of space, whether the title needs one or two.
+          //
+          // `lh` is the element's own line height, so this is two lines at
+          // whatever size the card is drawing at. An em-based guess was close
+          // and not exact, and "close" is what James circled: a title that
+          // wraps pushed its own metadata row below every other card's, and a
+          // grid whose rows do not line up reads as broken rather than varied.
+          <p className={cn("line-clamp-2 h-[2lh] font-semibold leading-tight text-foreground", titleCls)}>
             {item.title}
           </p>
         ) : null}
 
         {showMeta ? (
-          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[length:var(--library-meta-size)] text-muted-foreground">
-            <span className="tabular">{item.year}</span>
-            <span className="text-foreground/20">·</span>
+          // One line, and it never wraps. `flex-wrap` here meant a long enough
+          // metadata row silently became two lines on one card and one on the
+          // next — the same misalignment, from the other direction.
+          <div className="flex h-[1lh] min-w-0 items-center gap-x-1.5 overflow-hidden whitespace-nowrap text-[length:var(--library-meta-size)] text-muted-foreground">
+            <span className="tabular shrink-0">{item.year}</span>
+            <span className="shrink-0 text-foreground/20">·</span>
             <span
-              className="inline-flex items-center gap-1"
+              className="inline-flex min-w-0 items-center gap-1 truncate"
               title={item.monitored
                 ? "Deluno will keep looking for this title."
                 : "Deluno will not search for this title automatically."}
             >
-              {item.monitored ? <ShieldCheck className="h-3 w-3" /> : <ShieldOff className="h-3 w-3" />}
-              {item.monitored ? "Monitored" : "Not monitored"}
+              {item.monitored
+                ? <ShieldCheck className="h-3 w-3 shrink-0" />
+                : <ShieldOff className="h-3 w-3 shrink-0" />}
+              <span className="truncate">{item.monitored ? "Monitored" : "Not monitored"}</span>
             </span>
             {displayOptions.showRating && item.rating !== null ? (
               <>
-                <span className="text-foreground/20">·</span>
-                <span className="tabular inline-flex items-center gap-0.5 font-semibold text-foreground">
+                <span className="shrink-0 text-foreground/20">·</span>
+                <span className="tabular inline-flex shrink-0 items-center gap-0.5 font-semibold text-foreground">
                   <Star className="h-2.5 w-2.5 fill-warning text-warning" />
                   {item.rating.toFixed(1)}
                 </span>
@@ -434,80 +442,127 @@ function nextAiringLabel(nextAirDateUtc: string): string | null {
  * is guessed: a value that is not there is simply absent from the line, rather
  * than printing "Unknown" and claiming it could not be read.
  */
+/**
+ * One row per switch, and nothing shares a row.
+ *
+ * <p>James: "all the what posters should show should be 1 under the other and
+ * not next to each other, nothing shares a row." These used to be joined into a
+ * single truncated sentence, which was the right shape when they were painted
+ * over the artwork and there was room for exactly one line. Under the poster
+ * there is room, and a sentence made of six unrelated facts is harder to read
+ * than six lines of one fact each.</p>
+ *
+ * <p>Every enabled row is drawn <b>whether or not this title has a value for
+ * it</b>. A film with no file has no size and its neighbour does; dropping the
+ * empty one would make the two cards different heights, which is the
+ * misalignment this was fixed for in the first place.</p>
+ */
 function PosterExtras({ item, displayOptions }: { item: MediaItem; displayOptions: DisplayOptions }) {
-  const parts: string[] = [];
-
-  if (displayOptions.showRuntime && item.runtimeMinutes) {
-    const hours = Math.floor(item.runtimeMinutes / 60);
-    const minutes = item.runtimeMinutes % 60;
-    parts.push(hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`);
-  }
-
-  // A title with no file has no size, the same rule the compact list follows.
-  if (displayOptions.showSize && item.hasFile !== false && typeof item.sizeGb === "number") {
-    parts.push(`${item.sizeGb.toFixed(1)} GB`);
-  }
-
-  if (displayOptions.showGenres && item.genres.length > 0) {
-    parts.push(item.genres.slice(0, 2).join(", "));
-  }
-
-  if (displayOptions.showReleaseGroup && item.releaseGroup) {
-    parts.push(item.releaseGroup);
-  }
-
-  if (displayOptions.showCodec) {
-    const codecs = [item.codec, item.audioCodec].filter(Boolean);
-    if (codecs.length > 0) parts.push(codecs.join(" · "));
-  }
-
-  if (displayOptions.showAdded && item.added) {
-    parts.push(item.added);
-  }
-
-  // Three dates, labelled, because unlabelled they are three identical-looking
-  // numbers answering three different questions — a film can be in cinemas
-  // months before it is obtainable, which is the whole reason Deluno keeps
-  // them apart.
-  for (const release of RELEASE_DATES) {
-    const value = item[release.field];
-    if (displayOptions[release.option] && value) {
-      parts.push(`${release.label} ${releaseDateLabel(value)}`);
-    }
-  }
-
-  // One entry per rating source the reader asked for, labelled, because four
-  // bare numbers on one line are unreadable — and "IMDb 8.7" is the whole point
-  // of #319: a score means something different depending on who gave it. The
-  // percentages are rounded and the ten-point scores keep their decimal, which
-  // is how each source itself prints them.
-  for (const source of RATING_SOURCES) {
-    const score = item[source.field];
-    if (displayOptions[source.option] && typeof score === "number") {
-      parts.push(`${source.label} ${source.outOf === 100 ? `${Math.round(score)}%` : score.toFixed(1)}`);
-    }
-  }
-
-  // How far through a show you are, over what has aired rather than over what
-  // will eventually exist: an ongoing series measured against its final episode
-  // count reads permanently unfinished, which is true of every ongoing series
-  // and therefore says nothing.
-  if (displayOptions.showEpisodeProgress && typeof item.airedEpisodeCount === "number" && item.airedEpisodeCount > 0) {
-    parts.push(`${item.airedWithFileCount ?? 0}/${item.airedEpisodeCount}`);
-  }
-
-  if (displayOptions.showNextAiring && item.nextAirDateUtc) {
-    const next = nextAiringLabel(item.nextAirDateUtc);
-    if (next) parts.push(next);
-  }
-
-  if (parts.length === 0) return null;
+  const rows = POSTER_ROWS.filter((row) => displayOptions[row.option]);
+  if (rows.length === 0) return null;
 
   return (
-    <p className="mt-0.5 truncate text-[length:var(--library-meta-size)] text-[hsl(var(--media-muted-foreground))]">
-      {parts.join(" · ")}
-    </p>
+    <>
+      {rows.map((row) => (
+        <p
+          key={row.option}
+          className="h-[1lh] truncate text-[length:var(--library-meta-size)] text-muted-foreground"
+          title={row.read(item) ?? undefined}
+        >
+          {/* A non-breaking space keeps the row's height when there is nothing
+              to say, so the card below it still lines up. */}
+          {row.read(item) ?? " "}
+        </p>
+      ))}
+    </>
   );
+}
+
+/**
+ * Every switch that draws a row beneath the poster, in the order the server
+ * declares them.
+ *
+ * <p>Labelled wherever a bare value would be ambiguous. "2h 44m" and "0.1 GB"
+ * speak for themselves; four dates and four scores do not, and an unlabelled
+ * column of numbers is worse than no column at all.</p>
+ *
+ * <p>`RatingPosterOptionsTests` checks this list against the poster options the
+ * server declares with `line: true`, so a switch added on one side and not the
+ * other fails a test rather than silently drawing nothing.</p>
+ */
+const POSTER_ROWS: { option: string; read: (item: MediaItem) => string | null }[] = [
+  {
+    option: "showSize",
+    // A title with no file has no size, the same rule the compact list follows.
+    read: (item) => item.hasFile !== false && typeof item.sizeGb === "number"
+      ? `${item.sizeGb.toFixed(1)} GB`
+      : null
+  },
+  {
+    option: "showRuntime",
+    read: (item) => item.runtimeMinutes ? runtimeLabel(item.runtimeMinutes) : null
+  },
+  {
+    option: "showGenres",
+    // Two, not all of them: a row is one line and a film with six genres would
+    // truncate mid-word every time.
+    read: (item) => item.genres.length > 0 ? item.genres.slice(0, 2).join(", ") : null
+  },
+  {
+    option: "showReleaseGroup",
+    read: (item) => item.releaseGroup ?? null
+  },
+  {
+    option: "showCodec",
+    // Video and audio together, because they are one question — "what is inside
+    // this file" — and the switch is one switch.
+    read: (item) => {
+      const codecs = [item.codec, item.audioCodec].filter(Boolean);
+      return codecs.length > 0 ? codecs.join(" · ") : null;
+    }
+  },
+  {
+    option: "showAdded",
+    // Labelled now that it has a row of its own: on its own line, a bare date
+    // could be any of the four this card can show.
+    read: (item) => item.added ? `Added ${item.added}` : null
+  },
+  ...RATING_SOURCES.map((source) => ({
+    option: source.option,
+    read: (item: MediaItem) => {
+      const score = item[source.field];
+      return typeof score === "number"
+        ? `${source.label} ${source.outOf === 100 ? `${Math.round(score)}%` : score.toFixed(1)}`
+        : null;
+    }
+  })),
+  ...RELEASE_DATES.map((release) => ({
+    option: release.option,
+    read: (item: MediaItem) => {
+      const value = item[release.field];
+      return value ? `${release.label} ${releaseDateLabel(value)}` : null;
+    }
+  })),
+  {
+    // How far through a show you are, over what has aired rather than over what
+    // will eventually exist: an ongoing series measured against its final
+    // episode count reads permanently unfinished, which is true of every
+    // ongoing series and therefore says nothing.
+    option: "showEpisodeProgress",
+    read: (item) => typeof item.airedEpisodeCount === "number" && item.airedEpisodeCount > 0
+      ? `${item.airedWithFileCount ?? 0}/${item.airedEpisodeCount} episodes`
+      : null
+  },
+  {
+    option: "showNextAiring",
+    read: (item) => item.nextAirDateUtc ? nextAiringLabel(item.nextAirDateUtc) : null
+  }
+];
+
+/** Hours and minutes, the way a person says them. */
+function runtimeLabel(minutes: number) {
+  const hours = Math.floor(minutes / 60);
+  return hours > 0 ? `${hours}h ${minutes % 60}m` : `${minutes}m`;
 }
 
 export function PosterArtwork({

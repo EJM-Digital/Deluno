@@ -61,6 +61,46 @@ public sealed class RatingPosterOptionsTests
         Assert.Contains(CatalogueSortFields.Rating, sorts);
     }
 
+    /// <summary>
+    /// Every switch that draws under the poster has a row in the grid.
+    ///
+    /// <para>James asked for one row per switch, nothing sharing a line. The
+    /// grid keeps that list in <c>POSTER_ROWS</c> and the server declares the
+    /// same set with <c>line: true</c>. A switch added on one side and not the
+    /// other draws nothing at all — the reader turns it on and the card does not
+    /// change, which is the kind of thing that has to be pointed out from a
+    /// screenshot rather than found by anyone.</para>
+    /// </summary>
+    [Fact]
+    public void Every_switch_that_draws_under_the_poster_has_a_row()
+    {
+        var source = File.ReadAllText(Path.Combine(
+            RepositoryRoot(), "apps", "web", "src", "components", "app", "library-grid.tsx"));
+
+        var block = source[source.IndexOf("const POSTER_ROWS", StringComparison.Ordinal)..];
+        var drawn = Regex.Matches(block, @"option: ""(?<id>[^""]+)""")
+            .Select(entry => entry.Groups["id"].Value)
+            .ToHashSet(StringComparer.Ordinal);
+
+        // The generated families are spread in rather than listed, so they are
+        // matched from the constants they come from.
+        foreach (var generated in Regex.Matches(source, @"option: ""(?<id>show(?:Rating|InCinemas|DigitalRelease|PhysicalRelease)[a-z]*)""")
+                     .Select(entry => entry.Groups["id"].Value))
+        {
+            drawn.Add(generated);
+        }
+
+        foreach (var kind in new[] { MediaKind.Movie, MediaKind.Series })
+        {
+            foreach (var option in CatalogueControls.For(kind).PosterOptions.Where(option => option.Line))
+            {
+                Assert.True(
+                    drawn.Contains(option.Id),
+                    $"The server offers '{option.Id}' as a line under the poster and library-grid.tsx draws no row for it.");
+            }
+        }
+    }
+
     private static string RepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
