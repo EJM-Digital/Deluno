@@ -269,6 +269,15 @@ export const router = createBrowserRouter([
         })
       },
       {
+        // Where subtitles come from, beside the other places media comes from.
+        // DESIGN-002: two settings screens, not a seven-tab Subtitles app.
+        path: "indexers/subtitles",
+        lazy: withSkeleton(async () => {
+          const module = await import("./routes/subtitle-providers-screen");
+          return { loader: module.subtitleProvidersLoader, Component: module.SubtitleProvidersPage };
+        })
+      },
+      {
         path: "search-cycles",
         lazy: withSkeleton(async () => {
           const module = await import("./routes/search-cycles-page");

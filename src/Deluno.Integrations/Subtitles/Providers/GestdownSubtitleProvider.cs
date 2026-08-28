@@ -78,7 +78,7 @@ public sealed class GestdownSubtitleProvider(IHttpClientFactory httpClientFactor
                 Key,
                 cancellationToken);
 
-            foreach (var subtitle in page?.Subtitles ?? [])
+            foreach (var subtitle in page?.MatchingSubtitles ?? page?.Subtitles ?? [])
             {
                 var link = subtitle.DownloadUri ?? subtitle.Download ?? subtitle.Url;
                 if (string.IsNullOrWhiteSpace(link))
@@ -127,6 +127,7 @@ public sealed class GestdownSubtitleProvider(IHttpClientFactory httpClientFactor
         return trimmed.Length >= 2 ? trimmed[..2] : string.Empty;
     }
 
+    /// <summary>Confirmed against the live API: <c>shows[].id</c> is a GUID.</summary>
     private sealed record GestdownShowSearch(
         [property: JsonPropertyName("shows")] IReadOnlyList<GestdownShow>? Shows);
 
@@ -134,7 +135,15 @@ public sealed class GestdownSubtitleProvider(IHttpClientFactory httpClientFactor
         [property: JsonPropertyName("id")] string? Id,
         [property: JsonPropertyName("name")] string? Name);
 
+    /// <summary>
+    /// <c>matchingSubtitles</c> is what the API actually answers with, found by
+    /// running it against the real endpoint rather than by reading Weir's
+    /// client — which read <c>subtitles</c> or <c>data</c>, and therefore found
+    /// nothing on this route either. <c>subtitles</c> is kept as a fallback
+    /// because it costs a line and the API has clearly used both.
+    /// </summary>
     private sealed record GestdownSubtitleList(
+        [property: JsonPropertyName("matchingSubtitles")] IReadOnlyList<GestdownSubtitle>? MatchingSubtitles,
         [property: JsonPropertyName("subtitles")] IReadOnlyList<GestdownSubtitle>? Subtitles);
 
     private sealed record GestdownSubtitle(

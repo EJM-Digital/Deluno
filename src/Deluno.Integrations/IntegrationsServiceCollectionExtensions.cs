@@ -41,15 +41,21 @@ public static class IntegrationsServiceCollectionExtensions
         services.AddScoped<IDownloadClientWebhookService, DownloadClientWebhookService>();
         services.AddScoped<IProcessorConnectionService, ProcessorConnectionService>();
 
-        // Seven subtitle sources, registered as themselves so the registry can
+        // Six subtitle sources, registered as themselves so the registry can
         // list what Deluno ships without a second table saying so.
+        //
+        // YifySubtitles is deliberately not here. Weir shipped it against an
+        // undocumented `/api?q=` endpoint that now answers with HTML on every
+        // host it ever used — checked, not assumed. A provider that can only
+        // ever find nothing is worse than one that is absent (DESIGN-002),
+        // because its health looks fine and it quietly makes every film search
+        // one request slower.
         services.AddSingleton<Subtitles.ISubtitleProvider, Subtitles.Providers.GestdownSubtitleProvider>();
         services.AddSingleton<Subtitles.ISubtitleProvider, Subtitles.Providers.PodnapisiSubtitleProvider>();
         services.AddSingleton<Subtitles.ISubtitleProvider, Subtitles.Providers.OpenSubtitlesSubtitleProvider>();
         services.AddSingleton<Subtitles.ISubtitleProvider, Subtitles.Providers.SubDlSubtitleProvider>();
         services.AddSingleton<Subtitles.ISubtitleProvider, Subtitles.Providers.SubSourceSubtitleProvider>();
         services.AddSingleton<Subtitles.ISubtitleProvider, Subtitles.Providers.Subf2mSubtitleProvider>();
-        services.AddSingleton<Subtitles.ISubtitleProvider, Subtitles.Providers.YifySubtitleProvider>();
         services.AddSingleton<Subtitles.ISubtitleProviderRegistry, Subtitles.SubtitleProviderRegistry>();
         services.AddSingleton<Subtitles.ISubtitleFetchService, Subtitles.SubtitleFetchService>();
 

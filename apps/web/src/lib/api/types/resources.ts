@@ -39,6 +39,16 @@ export interface LibraryItem {
   subtitleLanguages?: string[] | null;
   /** `all` — every language listed. `first` — the first one that can be found. */
   subtitleLanguageMode?: "all" | "first" | string;
+  /**
+   * What a subtitle with no language in its name is taken to be.
+   *
+   * Empty means "do not guess", which is the default and what Deluno has always
+   * done — reading a bare `Movie.srt` as the first wanted language would be
+   * right most of the time and silently wrong the rest (DESIGN-002, #321).
+   */
+  subtitleUnknownLanguage?: string;
+  /** Whether a subtitle track inside the video counts as held. On by default. */
+  subtitleEmbeddedCounts?: boolean;
 }
 
 /** One language Deluno can name, from GET /api/subtitle-languages. */

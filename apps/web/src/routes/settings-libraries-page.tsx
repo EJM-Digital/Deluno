@@ -17,6 +17,7 @@ import { Chip } from "../components/ui/chip";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { Drawer, DrawerDanger, DrawerFooter, type DrawerSaveState } from "../components/ui/drawer";
 import { Field, FieldRow } from "../components/ui/field";
+import { MenuSelect } from "../components/ui/menu-select";
 import { Input } from "../components/ui/input";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
@@ -44,6 +45,8 @@ interface LibraryForm {
   rootPath: string;
   subtitleLanguages: string[];
   subtitleLanguageMode: "all" | "first";
+  subtitleUnknownLanguage: string;
+  subtitleEmbeddedCounts: boolean;
 }
 
 type DrawerMode = { kind: "closed" } | { kind: "create" } | { kind: "edit"; id: string };
@@ -199,7 +202,12 @@ export function SettingsLibrariesPage() {
         if (!sameSubtitles(form, before)) {
           await putJson(
             `/api/libraries/${id}/subtitles`,
-            { languages: form.subtitleLanguages, mode: form.subtitleLanguageMode },
+            {
+              languages: form.subtitleLanguages,
+              mode: form.subtitleLanguageMode,
+              unknownLanguage: form.subtitleUnknownLanguage,
+              embeddedCounts: form.subtitleEmbeddedCounts
+            },
             "Subtitle languages could not be saved."
           );
         }
@@ -422,15 +430,62 @@ export function SettingsLibrariesPage() {
                   files already have before it fetches anything.
                 </p>
               </div>
-              <SubtitleLanguagePicker
-                languages={form.subtitleLanguages}
-                mode={form.subtitleLanguageMode}
-                options={subtitleLanguages}
-                disabled={busy}
-                onChange={(next) =>
-                  setForm((current) => ({ ...current, subtitleLanguages: next.languages, subtitleLanguageMode: next.mode }))
-                }
-              />
+              <div className="grid gap-[var(--grid-gap)]">
+                <SubtitleLanguagePicker
+                  languages={form.subtitleLanguages}
+                  mode={form.subtitleLanguageMode}
+                  options={subtitleLanguages}
+                  disabled={busy}
+                  onChange={(next) =>
+                    setForm((current) => ({ ...current, subtitleLanguages: next.languages, subtitleLanguageMode: next.mode }))
+                  }
+                />
+
+                {/*
+                  The two questions Deluno refuses to guess at, asked once.
+
+                  Both only appear once a language is wanted, because neither
+                  means anything on a shelf that has not asked for subtitles —
+                  and a settings screen that shows every switch whatever the
+                  state is how a panel becomes a wall.
+                */}
+                {form.subtitleLanguages.length > 0 ? (
+                  <>
+                    <Field
+                      label="A subtitle with no language in its name"
+                      help="Deluno does not guess. A bare Movie.srt counts for nothing unless you say what it is — reading it as your first language would be right most of the time, and wrong silently the rest."
+                    >
+                      <MenuSelect
+                        label="Unknown subtitle language"
+                        value={form.subtitleUnknownLanguage}
+                        onChange={(value: string) => setForm((current) => ({ ...current, subtitleUnknownLanguage: value }))}
+                        options={[
+                          { value: "", label: "Leave it unknown", hint: "It counts for nothing. This is the default." },
+                          ...subtitleLanguages.map((language) => ({
+                            value: language.code,
+                            label: language.name,
+                            hint: `Treat an unnamed subtitle as ${language.name}`
+                          }))
+                        ]}
+                        className="max-w-sm"
+                      />
+                    </Field>
+
+                    <Field
+                      label="Count subtitles inside the video"
+                      help="On by default. Turn it off to fetch a file beside the video even when the container already has the language — an embedded track cannot be swapped or corrected, and some players ignore them."
+                    >
+                      <Switch
+                        checked={form.subtitleEmbeddedCounts}
+                        disabled={busy}
+                        onCheckedChange={(subtitleEmbeddedCounts) =>
+                          setForm((current) => ({ ...current, subtitleEmbeddedCounts }))
+                        }
+                      />
+                    </Field>
+                  </>
+                ) : null}
+              </div>
             </section>
           ) : null}
 
@@ -514,7 +569,10 @@ function emptyForm(mediaType: "movies" | "tv", settings: PlatformSettingsSnapsho
     mediaType,
     rootPath: defaultRoot(mediaType, settings),
     subtitleLanguages: [],
-    subtitleLanguageMode: "all"
+    subtitleLanguageMode: "all",
+    // Empty is "do not guess", which is what Deluno has always done.
+    subtitleUnknownLanguage: "",
+    subtitleEmbeddedCounts: true
   };
 }
 
@@ -524,7 +582,9 @@ function formFromLibrary(library: LibraryItem): LibraryForm {
     mediaType: library.mediaType === "tv" ? "tv" : "movies",
     rootPath: library.rootPath,
     subtitleLanguages: library.subtitleLanguages ?? [],
-    subtitleLanguageMode: library.subtitleLanguageMode === "first" ? "first" : "all"
+    subtitleLanguageMode: library.subtitleLanguageMode === "first" ? "first" : "all",
+    subtitleUnknownLanguage: library.subtitleUnknownLanguage ?? "",
+    subtitleEmbeddedCounts: library.subtitleEmbeddedCounts ?? true
   };
 }
 

@@ -44,6 +44,7 @@ public sealed class SqliteMediaSubtitleRepository(
         string libraryId,
         IReadOnlyList<string> languages,
         int limit,
+        bool embeddedCounts,
         CancellationToken cancellationToken)
     {
         if (languages.Count == 0)
@@ -61,6 +62,12 @@ public sealed class SqliteMediaSubtitleRepository(
 
         var languageParameters = string.Join(", ", Enumerable.Range(0, languages.Count).Select(index => $"@lang{index}"));
 
+        // What counts as held, written once and used by both halves of this
+        // query — and it is the same predicate `CatalogueSubtitleRollup.Held`
+        // gives the bar. If they parted company, a shelf would paint a title
+        // green while the fetcher kept searching for it.
+        var heldPredicate = CatalogueSubtitleRollup.HeldPredicate(embeddedCounts);
+
         using var command = connection.CreateCommand();
         command.CommandText = $"""
             SELECT
@@ -71,7 +78,7 @@ public sealed class SqliteMediaSubtitleRepository(
                     SELECT GROUP_CONCAT(sub.language)
                     FROM {map.SubtitleTable} sub
                     WHERE sub.{map.SubtitleMediaIdColumn} = {map.SubtitleFileIdColumn}
-                      AND sub.forced = 0
+                      AND {heldPredicate}
                       AND sub.language IN ({languageParameters})
                 )
             FROM {map.SubtitleFileSource}
@@ -84,7 +91,7 @@ public sealed class SqliteMediaSubtitleRepository(
                     SELECT COUNT(DISTINCT sub.language)
                     FROM {map.SubtitleTable} sub
                     WHERE sub.{map.SubtitleMediaIdColumn} = {map.SubtitleFileIdColumn}
-                      AND sub.forced = 0
+                      AND {heldPredicate}
                       AND sub.language IN ({languageParameters})
               ) < @languageCount
             LIMIT @limit;
@@ -473,7 +480,27 @@ public static class CatalogueSubtitleRollup
     /// The rollup query itself, exposed so the query-plan guard can explain the
     /// real thing rather than a copy of it that could drift from the real thing.
     /// </summary>
-    public static string Sql(MediaTableMap map, int idCount, int languageCount)
+    /// <summary>
+    /// What counts as <b>held</b>, as one SQL fragment.
+    ///
+    /// <para>Read by the bar's rollup and by the fetcher's "what is still
+    /// missing" query, so the two cannot answer differently about the same
+    /// title — which is DESIGN-001's defect one subsystem out.</para>
+    ///
+    /// <para><b>Forced never counts.</b> A file whose only English is forced has
+    /// English for four lines of Elvish.</para>
+    ///
+    /// <para><b>Embedded counts unless the library says otherwise.</b> Deluno has
+    /// always counted a track inside the container; some people want a sidecar
+    /// regardless, because a player handles the two differently and an embedded
+    /// track cannot be swapped or corrected (#321).</para>
+    /// </summary>
+    public static string HeldPredicate(bool embeddedCounts)
+        => embeddedCounts
+            ? "sub.forced = 0"
+            : $"sub.forced = 0 AND sub.source <> '{SubtitleSources.Embedded}'";
+
+    public static string Sql(MediaTableMap map, int idCount, int languageCount, bool embeddedCounts = true)
     {
         var idParameters = string.Join(", ", Enumerable.Range(0, idCount).Select(index => $"@id{index}"));
         var languageParameters = string.Join(", ", Enumerable.Range(0, languageCount).Select(index => $"@lang{index}"));
@@ -486,7 +513,7 @@ public static class CatalogueSubtitleRollup
             FROM {map.SubtitleTable} sub
             {map.SubtitleRollupJoin}
             WHERE {map.SubtitleRollupIdColumn} IN ({idParameters})
-              AND sub.forced = 0
+              AND {HeldPredicate(embeddedCounts)}
               AND sub.language IN ({languageParameters})
             GROUP BY {map.SubtitleRollupIdColumn};
             """;

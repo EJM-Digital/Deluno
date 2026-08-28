@@ -24,7 +24,14 @@ public interface ILibrarySubtitlePreferences
 public sealed record LibrarySubtitlePreference(
     string LibraryId,
     IReadOnlyList<string> Languages,
-    string Mode)
+    string Mode,
+    /// <summary>
+    /// What a subtitle with no language in its name is taken to be. Empty means
+    /// "do not guess", which is the default — see <c>LibraryItem</c>.
+    /// </summary>
+    string UnknownLanguage = "",
+    /// <summary>Whether a track inside the container counts as held.</summary>
+    bool EmbeddedCounts = true)
 {
     /// <summary>
     /// The <c>wanted</c> half of the bar under a poster, per file. One rule,

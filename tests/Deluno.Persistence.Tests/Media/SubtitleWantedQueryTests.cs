@@ -34,7 +34,7 @@ public sealed class SubtitleWantedQueryTests
         await subtitles.RecordFetchedAsync(MediaKind.Movie, id, Row("en"), CancellationToken.None);
 
         var wanted = await subtitles.ListWantedAsync(
-            MediaKind.Movie, "library-movies", ["en", "ja"], 50, CancellationToken.None);
+            MediaKind.Movie, "library-movies", ["en", "ja"], 50, embeddedCounts: true, CancellationToken.None);
 
         var item = Assert.Single(wanted);
         // English is held, so it is not asked for again. Asking anyway is what
@@ -53,7 +53,7 @@ public sealed class SubtitleWantedQueryTests
         await subtitles.RecordFetchedAsync(MediaKind.Movie, id, Row("en"), CancellationToken.None);
 
         Assert.Empty(await subtitles.ListWantedAsync(
-            MediaKind.Movie, "library-movies", ["en"], 50, CancellationToken.None));
+            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, CancellationToken.None));
     }
 
     [Fact]
@@ -70,7 +70,7 @@ public sealed class SubtitleWantedQueryTests
             MediaKind.Movie, id, Row("en") with { Forced = true }, CancellationToken.None);
 
         var item = Assert.Single(await subtitles.ListWantedAsync(
-            MediaKind.Movie, "library-movies", ["en"], 50, CancellationToken.None));
+            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, CancellationToken.None));
 
         Assert.Equal(["en"], item.MissingLanguages);
     }
@@ -86,7 +86,7 @@ public sealed class SubtitleWantedQueryTests
             MediaKind.Movie, id, Row("en") with { HearingImpaired = true }, CancellationToken.None);
 
         Assert.Empty(await subtitles.ListWantedAsync(
-            MediaKind.Movie, "library-movies", ["en"], 50, CancellationToken.None));
+            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, CancellationToken.None));
     }
 
     [Fact]
@@ -99,7 +99,7 @@ public sealed class SubtitleWantedQueryTests
         // The same rule the rollup follows and the reason a library nobody has
         // asked for subtitles pays nothing for the feature.
         Assert.Empty(await subtitles.ListWantedAsync(
-            MediaKind.Movie, "library-movies", [], 50, CancellationToken.None));
+            MediaKind.Movie, "library-movies", [], 50, embeddedCounts: true, CancellationToken.None));
     }
 
     [Fact]
@@ -112,7 +112,7 @@ public sealed class SubtitleWantedQueryTests
         // A title with no file holds no subtitles to be short of, which is
         // DESIGN-002's position and the reason its bar is absent rather than red.
         Assert.Empty(await subtitles.ListWantedAsync(
-            MediaKind.Movie, "library-movies", ["en"], 50, CancellationToken.None));
+            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, CancellationToken.None));
     }
 
     [Fact]
@@ -126,9 +126,50 @@ public sealed class SubtitleWantedQueryTests
         }
 
         var wanted = await subtitles.ListWantedAsync(
-            MediaKind.Movie, "library-movies", ["en"], 5, CancellationToken.None);
+            MediaKind.Movie, "library-movies", ["en"], 5, embeddedCounts: true, CancellationToken.None);
 
         Assert.Equal(5, wanted.Count);
+    }
+
+    [Fact]
+    public async Task An_embedded_track_stops_counting_when_the_library_says_so()
+    {
+        using var storage = TestStorage.Create();
+        var (movies, subtitles) = await CreateAsync(storage);
+        var id = await ImportAsync(movies, "Dune");
+
+        await subtitles.RecordFetchedAsync(
+            MediaKind.Movie,
+            id,
+            Row("en") with { Source = SubtitleSources.Embedded },
+            CancellationToken.None);
+
+        // The default, and what Deluno has always done: a track inside the
+        // container is coverage.
+        Assert.Empty(await subtitles.ListWantedAsync(
+            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, CancellationToken.None));
+
+        // Off, because a player handles the two differently and an embedded
+        // track cannot be swapped or corrected (#321). Now the sidecar is wanted.
+        var item = Assert.Single(await subtitles.ListWantedAsync(
+            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: false, CancellationToken.None));
+        Assert.Equal(["en"], item.MissingLanguages);
+    }
+
+    [Fact]
+    public void The_bar_and_the_fetcher_read_the_same_held_predicate()
+    {
+        // Not an assertion about SQL text for its own sake. These are the two
+        // queries that decide whether a title looks covered and whether Deluno
+        // keeps looking, and DESIGN-001 spent a run undoing four copies of one
+        // rule. They share the fragment, so this only has to prove the switch
+        // reaches it.
+        Assert.DoesNotContain("sub.source", CatalogueSubtitleRollup.HeldPredicate(embeddedCounts: true), StringComparison.Ordinal);
+        Assert.Contains(SubtitleSources.Embedded, CatalogueSubtitleRollup.HeldPredicate(embeddedCounts: false), StringComparison.Ordinal);
+
+        // Forced is never coverage either way round.
+        Assert.Contains("sub.forced = 0", CatalogueSubtitleRollup.HeldPredicate(embeddedCounts: true), StringComparison.Ordinal);
+        Assert.Contains("sub.forced = 0", CatalogueSubtitleRollup.HeldPredicate(embeddedCounts: false), StringComparison.Ordinal);
     }
 
     /* ------------------------------------------------------------ helpers */
@@ -180,7 +221,7 @@ public sealed class SubtitleWantedQueryTests
 public sealed class SubtitleProviderRegistryTests
 {
     [Fact]
-    public void Seven_providers_and_only_one_OpenSubtitles()
+    public void Six_providers_and_only_one_OpenSubtitles()
     {
         var registry = new SubtitleProviderRegistry(
         [
@@ -189,11 +230,10 @@ public sealed class SubtitleProviderRegistryTests
             new Deluno.Integrations.Subtitles.Providers.OpenSubtitlesSubtitleProvider(null!),
             new Deluno.Integrations.Subtitles.Providers.SubDlSubtitleProvider(null!),
             new Deluno.Integrations.Subtitles.Providers.SubSourceSubtitleProvider(null!),
-            new Deluno.Integrations.Subtitles.Providers.Subf2mSubtitleProvider(null!),
-            new Deluno.Integrations.Subtitles.Providers.YifySubtitleProvider(null!)
+            new Deluno.Integrations.Subtitles.Providers.Subf2mSubtitleProvider(null!)
         ]);
 
-        Assert.Equal(7, registry.All.Count);
+        Assert.Equal(6, registry.All.Count);
 
         // Weir listed opensubtitles_org and opensubtitles_com as two
         // providers with two sets of credentials, and both keys mapped to one
@@ -212,13 +252,16 @@ public sealed class SubtitleProviderRegistryTests
         var registry = new SubtitleProviderRegistry(
         [
             new Deluno.Integrations.Subtitles.Providers.GestdownSubtitleProvider(null!),
-            new Deluno.Integrations.Subtitles.Providers.YifySubtitleProvider(null!)
+            new Deluno.Integrations.Subtitles.Providers.PodnapisiSubtitleProvider(null!)
         ]);
 
-        // A TV-only and a movies-only source, declared rather than discovered by
-        // asking them and counting the empty answer as a failure.
+        // A TV-only source, declared rather than discovered by asking it about a
+        // film and counting the empty answer as a failure.
         Assert.Equal(SubtitleProviderScope.TvOnly, registry.Find("gestdown")!.Scope);
-        Assert.Equal(SubtitleProviderScope.MoviesOnly, registry.Find("yify")!.Scope);
+        Assert.Equal(SubtitleProviderScope.Both, registry.Find("podnapisi")!.Scope);
+        // Optional credentials are a third state, and the screen says which:
+        // "needs an account" and "an account gets you more" are different.
+        Assert.True(registry.Find("podnapisi")!.CredentialsOptional);
 
         foreach (var provider in registry.All)
         {

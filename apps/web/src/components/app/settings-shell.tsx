@@ -73,7 +73,8 @@ export const configurationNavAreas = [
     items: [
       { to: "/indexers/indexers", label: "Indexers", end: false },
       { to: "/indexers/download-clients", label: "Download Clients", end: false },
-      { to: "/indexers/library-routing", label: "Library Routing", end: false }
+      { to: "/indexers/library-routing", label: "Library Routing", end: false },
+      { to: "/indexers/subtitles", label: "Subtitles", end: false }
     ]
   },
   {
