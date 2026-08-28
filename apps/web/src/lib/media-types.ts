@@ -89,6 +89,7 @@ export interface MediaItem {
   /** Languages asked for **per file**, and how many are held across them all. */
   subtitleLanguagesWanted?: number;
   subtitleLanguagesHeld?: number;
+  subtitleLanguagesSettled?: number;
   certification?: string | null;
   collection?: string | null;
   minimumAvailability?: string | null;

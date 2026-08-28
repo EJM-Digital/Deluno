@@ -22,18 +22,45 @@ describe("the subtitle bar's colours", () => {
     }
   });
 
-  it("reads held before missing, the way a bar is read", () => {
-    expect(TITLE_BAR_SEGMENTS.map((segment) => segment.mark)).toEqual(["upgrade", "missing"]);
+  it("reads the way a bar is read, best first", () => {
+    // Gold, then green, then red — the same order a title climbs the dot's
+    // ladder, so the strip under a poster is a miniature of the dot above it.
+    expect(TITLE_BAR_SEGMENTS.map((segment) => segment.mark)).toEqual([
+      "covered",
+      "upgrade",
+      "missing"
+    ]);
   });
 
-  it("leaves gold out until a bar can be gold", () => {
+  it("includes gold now that a bar can be gold", () => {
     // DESIGN-002: "Two colours are enough until upgrades exist; gold arrives
-    // with them." A legend listing a colour nothing can be is the same defect
-    // as a filter chip that can never match.
-    expect(TITLE_BAR_SEGMENTS.some((segment) => segment.mark === "covered")).toBe(false);
-    // And it is still a rung on the ladder, so this is a deliberate omission
-    // rather than a colour that does not exist.
+    // with them." Upgrades exist — a subtitle made for the file it sits beside
+    // is at the cutoff, and Deluno has stopped looking. The legend was correct
+    // to omit gold before and would be lying to omit it now.
+    expect(TITLE_BAR_SEGMENTS.some((segment) => segment.mark === "covered")).toBe(true);
     expect(TITLE_MARK_LADDER).toContain("covered");
+  });
+
+  it("never claims more is done than is held", () => {
+    // The gold segment is drawn inside the green one. A settled count larger
+    // than the held count would paint gold over a language nobody has, which is
+    // the exact claim the cutoff exists to stop making.
+    const bar = titleBar({
+      hasFile: true,
+      subtitleLanguagesWanted: 2,
+      subtitleLanguagesHeld: 1,
+      subtitleLanguagesSettled: 9
+    });
+
+    expect(bar.settled).toBe(1);
+    expect(bar.settled).toBeLessThanOrEqual(bar.held);
+  });
+
+  it("treats a subtitle of unknown provenance as not done", () => {
+    const bar = titleBar({ hasFile: true, subtitleLanguagesWanted: 1, subtitleLanguagesHeld: 1 });
+
+    expect(bar.held).toBe(1);
+    expect(bar.settled).toBe(0);
   });
 
   it("gives every segment a label and a sentence, so colour is never the only carrier", () => {
@@ -73,7 +100,8 @@ describe("what the legend claims about the bar", () => {
       airedEpisodeCount: 10,
       airedWithFileCount: 3,
       subtitleLanguagesWanted: 2,
-      subtitleLanguagesHeld: 5
-    })).toEqual({ held: 5, wanted: 6, noun: "subtitle languages" });
+      subtitleLanguagesHeld: 5,
+      subtitleLanguagesSettled: 4
+    })).toEqual({ held: 5, settled: 4, wanted: 6, noun: "subtitle languages" });
   });
 });
