@@ -143,6 +143,13 @@ public static class CatalogueFilterFields
             CatalogueFilterGroup.Title, CatalogueFilterValueKind.Text,
             CatalogueFilterSource.Entry, "{alias}.original_language"),
 
+        // What Genre cannot ask. A film is Science Fiction whether it is about
+        // space travel or a time loop, and those are the two different things
+        // somebody is actually looking for.
+        new("keywords", "Keyword", "What it is about — space travel, heist, time loop.",
+            CatalogueFilterGroup.Title, CatalogueFilterValueKind.Text,
+            CatalogueFilterSource.Entry, "{alias}.keywords"),
+
         // ---- The four scores, each on its own.
         //
         // The blended `rating` field above stays: it is the right question when

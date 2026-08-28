@@ -114,7 +114,12 @@ public sealed record MediaMetadataUpdate(
     /// them. Empty when the provider sent none, which is not the same as four
     /// zeroes and must not be written as one.
     /// </summary>
-    IReadOnlyList<MediaRatingFact>? Ratings = null);
+    IReadOnlyList<MediaRatingFact>? Ratings = null,
+    /// <summary>
+    /// What it is about, beyond its genre. Stored as one comma-separated
+    /// column the way genres are, because nothing joins on a keyword.
+    /// </summary>
+    string? Keywords = null);
 
 /// <summary>
 /// One source's score for one title, on the way to its own column.

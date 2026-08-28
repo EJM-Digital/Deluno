@@ -349,9 +349,14 @@ async function getTmdbDetail(mediaType, providerId, apiKey, request, artworkOrig
   // field Deluno's catalogue has declared and never filled — and `videos` is the
   // trailer. Appending them costs nothing extra; asking for them separately
   // would be four requests per title.
+  //
+  // `keywords` is what a library is actually organised by beyond genre: "space
+  // travel" and "time loop" are questions Genre cannot ask, because a film is
+  // Science Fiction either way. It is the last field #306 listed that Deluno
+  // had no way to fetch.
   endpoint.searchParams.set(
     "append_to_response",
-    "external_ids,credits,release_dates,content_ratings,videos");
+    "external_ids,credits,release_dates,content_ratings,videos,keywords");
   const item = await getJson(endpoint, request);
   return mapTmdbResult(item, mediaType, artworkOrigin);
 }
@@ -455,6 +460,10 @@ export function mapTmdbResult(item, mediaType, artworkOrigin = null) {
     genres: Array.isArray(item.genres)
       ? item.genres.map((genre) => genre?.name).filter(Boolean)
       : [],
+    // TMDb answers `keywords.keywords` for a film and `keywords.results` for a
+    // show — the same data under two names, which is the sort of thing that
+    // silently returns an empty list for half a library if only one is read.
+    keywords: readKeywords(item),
     cast: Array.isArray(item.credits?.cast)
       ? item.credits.cast
         .filter((person) => typeof person?.name === "string" && person.name.trim())
@@ -525,6 +534,21 @@ export function pickTrailerUrl(videos) {
     videos.find((video) => video?.site === "YouTube" && video?.type === "Trailer" && video?.official) ??
     videos.find((video) => video?.site === "YouTube" && video?.type === "Trailer");
   return trailer?.key ? `https://www.youtube.com/watch?v=${trailer.key}` : null;
+}
+
+/**
+ * The keywords TMDb attaches to a title, under either of the two names it uses.
+ *
+ * Capped, because a popular film can carry sixty of them and the whole point of
+ * the gateway is that one cached answer is small enough to be worth caching.
+ */
+function readKeywords(item) {
+  const list = item.keywords?.keywords ?? item.keywords?.results;
+  if (!Array.isArray(list)) return [];
+  return list
+    .map((keyword) => (typeof keyword?.name === "string" ? keyword.name.trim() : null))
+    .filter(Boolean)
+    .slice(0, 25);
 }
 
 function imageUrl(path, size, artworkOrigin) {

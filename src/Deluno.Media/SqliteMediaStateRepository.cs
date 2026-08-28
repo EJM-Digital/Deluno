@@ -722,6 +722,7 @@ public sealed class SqliteMediaStateRepository(
                 certification = COALESCE(@certification, certification),
                 collection = COALESCE(@collection, collection),
                 original_language = COALESCE(@originalLanguage, original_language),
+                keywords = COALESCE(@keywords, keywords),
                 {RatingAssignments()}
                 metadata_updated_utc = @metadataUpdatedUtc,
                 updated_utc = @updatedUtc
@@ -748,6 +749,7 @@ public sealed class SqliteMediaStateRepository(
         AddParameter(command, "@certification", NormalizeText(update.Certification));
         AddParameter(command, "@collection", NormalizeText(update.Collection));
         AddParameter(command, "@originalLanguage", NormalizeText(update.OriginalLanguage));
+        AddParameter(command, "@keywords", NormalizeText(update.Keywords));
 
         // Every source gets a parameter whether or not this provider answered
         // for it, because the statement names them all. A source the provider

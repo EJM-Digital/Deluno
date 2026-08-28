@@ -889,7 +889,7 @@ public sealed class TmdbMetadataProvider(
         CancellationToken cancellationToken)
     {
         var path = mediaType == "tv" ? "tv" : "movie";
-        var url = $"https://api.themoviedb.org/3/{path}/{id}?api_key={Uri.EscapeDataString(apiKey)}&append_to_response=external_ids,credits";
+        var url = $"https://api.themoviedb.org/3/{path}/{id}?api_key={Uri.EscapeDataString(apiKey)}&append_to_response=external_ids,credits,keywords";
         var detail = await GetJsonWithResilienceAsync<TmdbDetailItem>(
             url,
             $"metadata:tmdb:detail:{mediaType}",
@@ -951,7 +951,8 @@ public sealed class TmdbMetadataProvider(
             Tagline: string.IsNullOrWhiteSpace(detail.Tagline) ? null : detail.Tagline,
             Homepage: string.IsNullOrWhiteSpace(detail.Homepage) ? null : detail.Homepage,
             OriginalLanguage: string.IsNullOrWhiteSpace(detail.OriginalLanguage) ? null : detail.OriginalLanguage,
-            Status: string.IsNullOrWhiteSpace(detail.Status) ? null : detail.Status);
+            Status: string.IsNullOrWhiteSpace(detail.Status) ? null : detail.Status,
+            Keywords: detail.Keywords?.Names ?? []);
     }
 
     /// <summary>
@@ -1683,7 +1684,25 @@ public sealed class TmdbMetadataProvider(
         [property: JsonPropertyName("homepage")] string? Homepage,
         [property: JsonPropertyName("networks")] IReadOnlyList<TmdbNamed>? Networks,
         [property: JsonPropertyName("production_companies")] IReadOnlyList<TmdbNamed>? ProductionCompanies,
-        [property: JsonPropertyName("belongs_to_collection")] TmdbNamed? BelongsToCollection);
+        [property: JsonPropertyName("belongs_to_collection")] TmdbNamed? BelongsToCollection,
+        [property: JsonPropertyName("keywords")] TmdbKeywords? Keywords);
+
+    /// <summary>
+    /// TMDb answers <c>keywords.keywords</c> for a film and
+    /// <c>keywords.results</c> for a show — the same data under two names.
+    /// Reading only one silently returns an empty list for half a library.
+    /// </summary>
+    private sealed record TmdbKeywords(
+        [property: JsonPropertyName("keywords")] IReadOnlyList<TmdbNamed>? Movie,
+        [property: JsonPropertyName("results")] IReadOnlyList<TmdbNamed>? Series)
+    {
+        public IReadOnlyList<string> Names =>
+            [.. (Movie ?? Series ?? [])
+                .Select(keyword => keyword.Name?.Trim())
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Take(25)
+                .Select(name => name!)];
+    }
 
     /// <summary>Anything TMDb returns as an object with a name.</summary>
     private sealed record TmdbNamed(

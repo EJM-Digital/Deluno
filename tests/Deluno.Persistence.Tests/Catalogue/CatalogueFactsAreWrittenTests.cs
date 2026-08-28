@@ -62,6 +62,7 @@ public sealed class CatalogueFactsAreWrittenTests
         Collection: "The Nolan Collection",
         OriginalLanguage: "en",
         Status: mediaType == "movies" ? "Released" : "Ended",
+        Keywords: ["space travel", "wormhole", "father daughter relationship"],
         RuntimeMinutes: 169,
         Popularity: 91.2,
         VoteCount: 36_000);
@@ -90,7 +91,11 @@ public sealed class CatalogueFactsAreWrittenTests
                 "originalLanguage:is:en",
                 "studio:is:Legendary Pictures",
                 "collection:is:The Nolan Collection",
-                "movieStatus:in:Released"
+                "movieStatus:in:Released",
+                // "contains", because the column is the joined list and the
+                // question is "is this one of them" rather than "is this all
+                // of them".
+                "keywords:has:wormhole"
             ]);
     }
 
@@ -116,7 +121,8 @@ public sealed class CatalogueFactsAreWrittenTests
                 "originalLanguage:is:en",
                 // A show's "who made it" is the network, not the studio.
                 "network:is:HBO",
-                "seriesStatus:in:Ended"
+                "seriesStatus:in:Ended",
+                "keywords:has:wormhole"
             ]);
     }
 
