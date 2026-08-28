@@ -5,6 +5,7 @@ import {
   FILTER_GROUPS,
   OPERATOR_LABELS,
   describeCondition,
+  isRelativeOperator,
   initialValues,
   isCompleteCondition,
   isMultiValue,
@@ -369,10 +370,11 @@ function ValueControl({
     );
   }
 
-  // "in the last N days" and "not in the last N days" take a count, not a date —
-  // which is the whole point of them. Radarr's date filters are absolute, so
-  // "added recently" there is a filter you rewrite every month.
-  const relative = condition.operator === "within" || condition.operator === "beyond";
+  // "in the last N days", "in the next N days" and "not in the last N days"
+  // take a count, not a date — which is the whole point of them. Radarr's date
+  // filters are absolute, so "added recently" there is a filter you rewrite
+  // every month.
+  const relative = isRelativeOperator(condition.operator);
   const type = relative ? "number"
     : field.valueKind === "date" ? "date"
     : field.valueKind === "text" ? "text"
