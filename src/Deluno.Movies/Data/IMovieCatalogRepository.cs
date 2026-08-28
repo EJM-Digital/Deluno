@@ -1,3 +1,4 @@
+using MetadataSearchResult = Deluno.Integrations.Metadata.MetadataSearchResult;
 using Deluno.Contracts;
 using Deluno.Movies.Contracts;
 using Deluno.Recovery.Contracts;
@@ -98,6 +99,11 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
 
     Task<MovieListItem?> UpdateMetadataAsync(
         string id,
+        MetadataSearchResult metadata,
+        CancellationToken cancellationToken);
+
+    Task<MovieListItem?> UpdateMetadataAsync(
+        string id,
         string? metadataProvider,
         string? metadataProviderId,
         string? originalTitle,
@@ -112,7 +118,9 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
         CancellationToken cancellationToken,
         int? runtimeMinutes = null,
         double? popularity = null,
-        int? voteCount = null);
+        int? voteCount = null,
+        string? status = null,
+        string? studio = null);
 
     Task<MovieWantedSummary> GetWantedSummaryAsync(CancellationToken cancellationToken);
 

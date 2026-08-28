@@ -688,6 +688,11 @@ public sealed class SqliteMediaStateRepository(
                 runtime_minutes = COALESCE(@runtimeMinutes, runtime_minutes),
                 popularity = COALESCE(@popularity, popularity),
                 vote_count = COALESCE(@voteCount, vote_count),
+                -- COALESCE, like the three above: a provider that does not
+                -- answer for one of these must not blank what an earlier one
+                -- did.
+                status = COALESCE(@status, status),
+                {map.MadeByColumn} = COALESCE(@madeBy, {map.MadeByColumn}),
                 metadata_updated_utc = @metadataUpdatedUtc,
                 updated_utc = @updatedUtc
             WHERE id = @id;
@@ -697,6 +702,8 @@ public sealed class SqliteMediaStateRepository(
         AddParameter(command, "@runtimeMinutes", update.RuntimeMinutes);
         AddParameter(command, "@popularity", update.Popularity);
         AddParameter(command, "@voteCount", update.VoteCount);
+        AddParameter(command, "@status", NormalizeText(update.Status));
+        AddParameter(command, "@madeBy", NormalizeText(update.MadeBy));
         AddParameter(command, "@imdbId", NormalizeExternalId(update.ImdbId));
         AddParameter(command, "@metadataProvider", NormalizeExternalId(update.MetadataProvider));
         AddParameter(command, "@metadataProviderId", NormalizeExternalId(update.MetadataProviderId));

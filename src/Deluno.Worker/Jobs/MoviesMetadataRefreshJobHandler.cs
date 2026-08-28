@@ -41,23 +41,7 @@ public sealed class MoviesMetadataRefreshJobHandler(
             return $"No metadata match found for {movie.Title}.";
         }
 
-        await movieCatalogRepository.UpdateMetadataAsync(
-            movie.Id,
-            match.Provider,
-            match.ProviderId,
-            match.OriginalTitle,
-            match.Overview,
-            match.PosterUrl,
-            match.BackdropUrl,
-            match.Rating,
-            string.Join(", ", match.Genres),
-            match.ExternalUrl,
-            match.ImdbId,
-            JsonSerializer.Serialize(match, JobPayloads.Options),
-            cancellationToken,
-            match.RuntimeMinutes,
-            match.Popularity,
-            match.VoteCount);
+        await movieCatalogRepository.UpdateMetadataAsync(movie.Id, match, cancellationToken);
 
         await activityFeedRepository.RecordActivityAsync(
             "metadata.movie.refreshed",

@@ -10,6 +10,12 @@ namespace Deluno.Media;
 /// </summary>
 public sealed record MediaTableMap(
     string DatabaseName,
+    /// <summary>
+    /// The column holding who made it — <c>network</c> for a show, <c>studio</c>
+    /// for a film. One question, two names, so the shared metadata write can
+    /// answer it for both without either catalogue owning a copy of the SQL.
+    /// </summary>
+    string MadeByColumn,
     string EntryTable,
     string EntryAlias,
     string YearColumn,
@@ -86,6 +92,7 @@ public sealed record MediaTableMap(
         {
             MediaKind.Movie => new(
                 DelunoDatabaseNames.Movies,
+                "studio",
                 "movie_entries",
                 "m",
                 "release_year",
@@ -110,6 +117,7 @@ public sealed record MediaTableMap(
                 "movie_subtitle_attempt"),
             MediaKind.Series => new(
                 DelunoDatabaseNames.Series,
+                "network",
                 "series_entries",
                 "s",
                 "start_year",

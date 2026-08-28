@@ -84,7 +84,17 @@ public sealed record MediaMetadataUpdate(
     string? MetadataJson,
     int? RuntimeMinutes,
     double? Popularity,
-    int? VoteCount);
+    int? VoteCount,
+    /// <summary>
+    /// Whether a show is still running. Meaningless for a film, and simply not
+    /// supplied for one.
+    /// </summary>
+    string? Status = null,
+    /// <summary>
+    /// Who made it. A show has a network and a film has a studio: the same
+    /// question, two columns, because that is how the providers answer it.
+    /// </summary>
+    string? MadeBy = null);
 
 public sealed record MediaEntryCreate(
     string Title,

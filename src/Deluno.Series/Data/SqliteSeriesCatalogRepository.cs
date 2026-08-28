@@ -1277,7 +1277,9 @@ public sealed class SqliteSeriesCatalogRepository(
                     metadataJson,
                     runtimeMinutes,
                     popularity,
-                    voteCount),
+                    voteCount,
+                    status,
+                    network),
                 cancellationToken);
             return updated ? await GetByIdAsync(id, cancellationToken) : null;
         }
