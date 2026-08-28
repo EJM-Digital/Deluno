@@ -15,7 +15,11 @@ const REFRESH_JOBS = [
     key: "missing",
     name: "Fill in missing details",
     sub: "Movies and TV",
-    description: "Only checks titles that are missing artwork, a description or a rating.",
+    // Deliberately does *not* re-fetch artwork a title already has, even when
+    // Deluno now caches a larger size. "Missing" means missing. A title whose
+    // poster is merely older is handled by the two "Refresh all" passes below,
+    // which is said out loud there rather than left to be discovered.
+    description: "Only checks titles that are missing artwork, a description or a rating. Artwork a title already has is left alone.",
     mediaType: "all" as const,
     forceAll: false
   },
@@ -23,7 +27,7 @@ const REFRESH_JOBS = [
     key: "movies",
     name: "Refresh all Movies",
     sub: "Movies",
-    description: "Fetches the latest details for the whole movie library. Use after changing language or region.",
+    description: "Fetches the latest details for the whole movie library, and re-downloads artwork at the size Deluno caches now. Use after changing language or region, or to bring older titles up to the current artwork quality.",
     mediaType: "movies" as const,
     forceAll: true
   },
@@ -31,7 +35,7 @@ const REFRESH_JOBS = [
     key: "tv",
     name: "Refresh all TV shows",
     sub: "TV shows",
-    description: "Fetches the latest details for the whole TV library. Use after changing language or region.",
+    description: "Fetches the latest details for the whole TV library, and re-downloads artwork at the size Deluno caches now. Use after changing language or region, or to bring older titles up to the current artwork quality.",
     mediaType: "tv" as const,
     forceAll: true
   }

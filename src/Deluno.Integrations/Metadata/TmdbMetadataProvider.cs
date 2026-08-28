@@ -847,10 +847,10 @@ public sealed class TmdbMetadataProvider(
         var year = TryParseYear(releaseDate);
         var poster = string.IsNullOrWhiteSpace(item.PosterPath)
             ? null
-            : $"https://image.tmdb.org/t/p/w500{item.PosterPath}";
+            : $"https://image.tmdb.org/t/p/{ArtworkSizes.Poster}{item.PosterPath}";
         var backdrop = string.IsNullOrWhiteSpace(item.BackdropPath)
             ? null
-            : $"https://image.tmdb.org/t/p/w1280{item.BackdropPath}";
+            : $"https://image.tmdb.org/t/p/{ArtworkSizes.Backdrop}{item.BackdropPath}";
 
         var externalIds = await GetExternalIdsAsync(item.Id, mediaType, apiKey, cancellationToken);
 
@@ -904,10 +904,10 @@ public sealed class TmdbMetadataProvider(
         var releaseDate = mediaType == "tv" ? detail.FirstAirDate : detail.ReleaseDate;
         var poster = string.IsNullOrWhiteSpace(detail.PosterPath)
             ? null
-            : $"https://image.tmdb.org/t/p/w500{detail.PosterPath}";
+            : $"https://image.tmdb.org/t/p/{ArtworkSizes.Poster}{detail.PosterPath}";
         var backdrop = string.IsNullOrWhiteSpace(detail.BackdropPath)
             ? null
-            : $"https://image.tmdb.org/t/p/w1280{detail.BackdropPath}";
+            : $"https://image.tmdb.org/t/p/{ArtworkSizes.Backdrop}{detail.BackdropPath}";
 
         var ratings = await BuildRatingsAsync(
             mediaType,
@@ -938,7 +938,7 @@ public sealed class TmdbMetadataProvider(
                 .Select(member => new MetadataCastMember(
                     member.Name!,
                     member.Character,
-                    string.IsNullOrWhiteSpace(member.ProfilePath) ? null : $"https://image.tmdb.org/t/p/w185{member.ProfilePath}"))
+                    string.IsNullOrWhiteSpace(member.ProfilePath) ? null : $"https://image.tmdb.org/t/p/{ArtworkSizes.Portrait}{member.ProfilePath}"))
                 .ToArray() ?? [],
             RuntimeMinutes: detail.Runtime ?? detail.EpisodeRunTime?.FirstOrDefault(minutes => minutes > 0),
             Popularity: detail.Popularity,

@@ -13,6 +13,16 @@ const MAX_SEASONS = 50;
 const ARTWORK_CACHE_TTL_SECONDS = 60 * 60 * 24 * 30;
 const ARTWORK_SIZES = new Set(["w92", "w185", "w342", "w500", "w780", "w1280", "original"]);
 
+// The sizes Deluno actually caches. These must stay in step with
+// src/Deluno.Integrations/Metadata/ArtworkSizes.cs — the two build the same URLs
+// for the same titles, and a size changed in one and not the other leaves half a
+// library at each resolution with nothing on screen to explain it. That file
+// carries the reasoning: measured against --library-card-lg at DPR 2, one cached
+// size rather than a srcset because artwork is downloaded once and re-served.
+const POSTER_SIZE = "w780";
+const BACKDROP_SIZE = "original";
+const PORTRAIT_SIZE = "w185";
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -421,8 +431,8 @@ export function mapTmdbResult(item, mediaType, artworkOrigin = null) {
     originalTitle: item.original_title ?? item.original_name ?? title,
     year,
     overview: item.overview ?? null,
-    posterUrl: imageUrl(item.poster_path, "w500", artworkOrigin),
-    backdropUrl: imageUrl(item.backdrop_path, "w1280", artworkOrigin),
+    posterUrl: imageUrl(item.poster_path, POSTER_SIZE, artworkOrigin),
+    backdropUrl: imageUrl(item.backdrop_path, BACKDROP_SIZE, artworkOrigin),
     rating,
     ratings: rating === null ? [] : [{
       source: "tmdb",
@@ -443,7 +453,7 @@ export function mapTmdbResult(item, mediaType, artworkOrigin = null) {
         .map((person) => ({
           name: person.name.trim(),
           character: typeof person.character === "string" ? person.character.trim() || null : null,
-          profileUrl: imageUrl(person.profile_path, "w185", artworkOrigin)
+          profileUrl: imageUrl(person.profile_path, PORTRAIT_SIZE, artworkOrigin)
         }))
       : [],
     imdbId: item.external_ids?.imdb_id ?? null,
