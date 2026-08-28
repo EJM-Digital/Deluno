@@ -1,3 +1,4 @@
+using MetadataSearchResult = Deluno.Integrations.Metadata.MetadataSearchResult;
 using Deluno.Contracts;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
@@ -1065,6 +1066,30 @@ public sealed class SqliteMovieCatalogRepository(
         return updated;
     }
 
+    public Task<MovieListItem?> UpdateMetadataAsync(
+        string id,
+        MetadataSearchResult metadata,
+        CancellationToken cancellationToken)
+        => UpdateMetadataAsync(
+            id,
+            metadata.Provider,
+            metadata.ProviderId,
+            metadata.OriginalTitle,
+            metadata.Overview,
+            metadata.PosterUrl,
+            metadata.BackdropUrl,
+            metadata.Rating,
+            string.Join(", ", metadata.Genres),
+            metadata.ExternalUrl,
+            metadata.ImdbId,
+            JsonSerializer.Serialize(metadata),
+            cancellationToken,
+            metadata.RuntimeMinutes,
+            metadata.Popularity,
+            metadata.VoteCount,
+            metadata.Status,
+            metadata.Studio);
+
     public async Task<MovieListItem?> UpdateMetadataAsync(
         string id,
         string? metadataProvider,
@@ -1081,7 +1106,9 @@ public sealed class SqliteMovieCatalogRepository(
         CancellationToken cancellationToken,
         int? runtimeMinutes = null,
         double? popularity = null,
-        int? voteCount = null)
+        int? voteCount = null,
+        string? status = null,
+        string? studio = null)
     {
         if (sharedMediaStateRepository is not null)
         {
@@ -1102,7 +1129,9 @@ public sealed class SqliteMovieCatalogRepository(
                     metadataJson,
                     runtimeMinutes,
                     popularity,
-                    voteCount),
+                    voteCount,
+                    status,
+                    studio),
                 cancellationToken);
             return updated ? await GetByIdAsync(id, cancellationToken) : null;
         }

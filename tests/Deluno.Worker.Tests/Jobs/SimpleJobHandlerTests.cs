@@ -34,8 +34,7 @@ public sealed class SimpleJobHandlerTests
         var movieCatalogRepository = new Mock<IMovieCatalogRepository>();
         movieCatalogRepository.Setup(repository => repository.GetByIdAsync("movie-1", It.IsAny<CancellationToken>())).ReturnsAsync(movie);
         movieCatalogRepository
-            .Setup(repository => repository.UpdateMetadataAsync(
-                "movie-1", "tmdb", "329865", null, "overview", null, null, 7.6, "Drama", null, "tt2543164", It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(repository => repository.UpdateMetadataAsync("movie-1", It.IsAny<MetadataSearchResult>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(movie);
 
         var handler = new MoviesCatalogRefreshJobHandler(
@@ -48,8 +47,7 @@ public sealed class SimpleJobHandlerTests
 
         Assert.Equal("Refreshed metadata for Arrival.", message);
         movieCatalogRepository.Verify(
-            repository => repository.UpdateMetadataAsync(
-                "movie-1", "tmdb", "329865", null, "overview", null, null, 7.6, "Drama", null, "tt2543164", It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            repository => repository.UpdateMetadataAsync("movie-1", It.IsAny<MetadataSearchResult>(), It.IsAny<CancellationToken>()),
             Times.Once);
     }
 
