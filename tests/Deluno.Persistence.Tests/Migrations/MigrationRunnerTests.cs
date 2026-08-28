@@ -99,7 +99,7 @@ public sealed class MigrationRunnerTests
         }
 
         await using var moviesConnection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Movies);
-        Assert.Equal(23, await ReadScalarAsync<int>(moviesConnection, "SELECT COUNT(*) FROM schema_migrations;"));
+        await AssertVersionsAreContiguousAsync(moviesConnection);
         Assert.Equal("initial_schema", await ReadScalarAsync<string>(moviesConnection, "SELECT name FROM schema_migrations WHERE version = 1;"));
         Assert.Equal("movie_idempotency_indexes", await ReadScalarAsync<string>(moviesConnection, "SELECT name FROM schema_migrations WHERE version = 2;"));
         Assert.Equal("movie_tracked_files", await ReadScalarAsync<string>(moviesConnection, "SELECT name FROM schema_migrations WHERE version = 3;"));
@@ -120,7 +120,7 @@ public sealed class MigrationRunnerTests
         Assert.Equal("movie_subtitle_match", await ReadScalarAsync<string>(moviesConnection, "SELECT name FROM schema_migrations WHERE version = 18;"));
 
         await using var seriesConnection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Series);
-        Assert.Equal(24, await ReadScalarAsync<int>(seriesConnection, "SELECT COUNT(*) FROM schema_migrations;"));
+        await AssertVersionsAreContiguousAsync(seriesConnection);
         Assert.Equal("initial_schema", await ReadScalarAsync<string>(seriesConnection, "SELECT name FROM schema_migrations WHERE version = 1;"));
         Assert.Equal("series_idempotency_indexes", await ReadScalarAsync<string>(seriesConnection, "SELECT name FROM schema_migrations WHERE version = 2;"));
         Assert.Equal("series_tracked_files", await ReadScalarAsync<string>(seriesConnection, "SELECT name FROM schema_migrations WHERE version = 3;"));
@@ -143,7 +143,7 @@ public sealed class MigrationRunnerTests
         Assert.Equal("series_progress_facts", await ReadScalarAsync<string>(seriesConnection, "SELECT name FROM schema_migrations WHERE version = 20;"));
 
         await using var platformConnection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Platform);
-        Assert.Equal(29, await ReadScalarAsync<int>(platformConnection, "SELECT COUNT(*) FROM schema_migrations;"));
+        await AssertVersionsAreContiguousAsync(platformConnection);
         Assert.Equal("initial_schema", await ReadScalarAsync<string>(platformConnection, "SELECT name FROM schema_migrations WHERE version = 1;"));
         Assert.Equal("user_security_stamp", await ReadScalarAsync<string>(platformConnection, "SELECT name FROM schema_migrations WHERE version = 2;"));
         Assert.Equal("integration_health", await ReadScalarAsync<string>(platformConnection, "SELECT name FROM schema_migrations WHERE version = 3;"));
@@ -263,6 +263,28 @@ public sealed class MigrationRunnerTests
         Assert.True(await cleanReader.ReadAsync());
         Assert.Equal("WEB 1080p, Bluray 1080p", cleanReader.GetString(0));
         Assert.Equal("WEB 1080p", cleanReader.GetString(1));
+    }
+
+    /// <summary>
+    /// Every version from 1 to the highest, exactly once.
+    ///
+    /// <para>This replaced three hand-maintained counts — <c>Assert.Equal(23,
+    /// …)</c> — which had to be edited by whoever added a migration and said
+    /// nothing about whether the numbering was sound. It is also strictly
+    /// stronger: a duplicated version number, or a gap left by a migration
+    /// registered out of order, keeps the count right and breaks the schema.
+    /// The per-version name assertions below stay, because those pin something
+    /// a count cannot — that version 12 never quietly becomes a different
+    /// migration on a database that has already run it.</para>
+    /// </summary>
+    private static async Task AssertVersionsAreContiguousAsync(System.Data.Common.DbConnection connection)
+    {
+        var count = await ReadScalarAsync<int>(connection, "SELECT COUNT(*) FROM schema_migrations;");
+        var highest = await ReadScalarAsync<int>(connection, "SELECT MAX(version) FROM schema_migrations;");
+        var distinct = await ReadScalarAsync<int>(connection, "SELECT COUNT(DISTINCT version) FROM schema_migrations;");
+
+        Assert.Equal(count, distinct);
+        Assert.Equal(count, highest);
     }
 
     private static async Task<T> ReadScalarAsync<T>(DbConnection connection, string sql)

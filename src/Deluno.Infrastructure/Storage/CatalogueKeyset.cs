@@ -76,6 +76,23 @@ public static class CatalogueKeyset
 
             CatalogueSortFields.Network => $"lower(COALESCE({alias}.network, ''))",
 
+            // Spelled exactly as V0024/V0025 index them. A stray difference
+            // here does not break the order, it silently stops using the index
+            // and sorts the whole catalogue instead.
+            CatalogueSortFields.Monitored => $"{alias}.monitored",
+            CatalogueSortFields.Studio => $"lower(COALESCE({alias}.studio, ''))",
+            CatalogueSortFields.Certification => $"lower(COALESCE({alias}.certification, ''))",
+            CatalogueSortFields.OriginalTitle => $"lower(COALESCE({alias}.original_title, ''))",
+            CatalogueSortFields.OriginalLanguage => $"lower(COALESCE({alias}.original_language, ''))",
+
+            // A film with no date sorts last rather than first, in both
+            // directions: "what is coming out" is a question about films that
+            // have a date, and burying the answer under everything already
+            // released would make the order useless on a real library.
+            CatalogueSortFields.InCinemas => $"COALESCE({alias}.in_cinemas_date, '9999-12-31')",
+            CatalogueSortFields.DigitalRelease => $"COALESCE({alias}.digital_release_date, '9999-12-31')",
+            CatalogueSortFields.PhysicalRelease => $"COALESCE({alias}.physical_release_date, '9999-12-31')",
+
             _ => $"{alias}.created_utc"
         };
     }
@@ -89,7 +106,8 @@ public static class CatalogueKeyset
         => RatingSources.All.Any(source =>
                CatalogueSortFields.Normalize(sortField) == CatalogueSortFields.ForRating(source.Source))
         || CatalogueSortFields.Normalize(sortField)
-            is CatalogueSortFields.Year
+            is CatalogueSortFields.Monitored
+            or CatalogueSortFields.Year
             or CatalogueSortFields.Rating
             or CatalogueSortFields.Runtime
             or CatalogueSortFields.Popularity

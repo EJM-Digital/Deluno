@@ -673,7 +673,7 @@ public sealed class TmdbMetadataProvider(
     ///
     /// Bump this whenever <see cref="MetadataSearchResult"/> gains a field.
     /// </summary>
-    private const string SearchCacheShape = "v4";
+    private const string SearchCacheShape = "v5";
 
     private static string BuildSearchCacheKey(string source, string mediaType, string query, int? year, string? providerId)
         => $"{source}:search:{SearchCacheShape}:{mediaType}:{query.Trim().ToLowerInvariant()}:{year?.ToString(CultureInfo.InvariantCulture) ?? "any"}:{providerId?.Trim() ?? "none"}";

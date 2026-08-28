@@ -308,7 +308,7 @@ export async function enforceRateLimit(cache, clientAddress, now) {
  */
 export function buildCacheKey({ query, mediaType, providerId, year }) {
   const normalized = `${mediaType}|${query.toLocaleLowerCase("en-US")}|${year ?? ""}|${providerId ?? ""}`;
-  return `search:v6:${encodeURIComponent(normalized)}`;
+  return `search:v7:${encodeURIComponent(normalized)}`;
 }
 
 export async function lookupTmdb(lookup, apiKey, request = fetch, artworkOrigin = null) {
