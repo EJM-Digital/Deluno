@@ -231,6 +231,17 @@ public static class CatalogueFilterFields
         // Two copies under two profiles is a decision somebody made; two rows
         // *with a file* for one title is a duplicate import nobody made. They
         // look identical from the outside, which is why they are two fields.
+        // "Searched forty times and never found" is a different problem from
+        // "never searched": one wants a different term or an indexer that
+        // carries it, the other wants patience. Both read as still missing.
+        new("searchAttempts", "Times searched", "How many searches Deluno has run for this title.",
+            CatalogueFilterGroup.Decision, CatalogueFilterValueKind.Integer,
+            CatalogueFilterSource.Entry, "COALESCE({alias}.search_attempt_count, 0)"),
+
+        new("searchGrabs", "Times something was grabbed", "How many of those searches actually took a release.",
+            CatalogueFilterGroup.Decision, CatalogueFilterValueKind.Integer,
+            CatalogueFilterSource.Entry, "COALESCE({alias}.search_grab_count, 0)"),
+
         new("libraryCount", "Held in libraries", "How many of your libraries hold this title.",
             CatalogueFilterGroup.Decision, CatalogueFilterValueKind.Integer,
             CatalogueFilterSource.Entry, "COALESCE({alias}.library_count, 0)"),
