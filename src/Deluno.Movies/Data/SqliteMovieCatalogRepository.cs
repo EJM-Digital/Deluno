@@ -583,7 +583,23 @@ public sealed class SqliteMovieCatalogRepository(
     /// projection below. Named rather than counted at the call site, because
     /// every ordinal from there on moves together.
     /// </summary>
-    private const int WantedStateOrdinal = 33;
+    /// <summary>
+    /// The score columns the page carries, so a shelf can show a particular
+    /// source's number without the page reading a metadata blob per row.
+    ///
+    /// <para>Generated from the same list the columns come from, and counted
+    /// rather than written down, so adding a fifth source moves
+    /// <see cref="WantedStateOrdinal"/> with it instead of silently reading the
+    /// wanted state one column early.</para>
+    /// </summary>
+    private static readonly string[] RatingColumns =
+        [.. RatingSources.All.SelectMany(source => source.VotesColumn is null
+            ? new[] { source.ScoreColumn }
+            : [source.ScoreColumn, source.VotesColumn])];
+
+    private const int RatingOrdinal = 33;
+
+    private static readonly int WantedStateOrdinal = RatingOrdinal + RatingColumns.Length;
 
     /// <summary>
     /// The projection a catalogue page returns. Matches <see cref="ReadMovie"/>
@@ -631,6 +647,7 @@ public sealed class SqliteMovieCatalogRepository(
             m.runtime_minutes,
             m.popularity,
             m.vote_count,
+            {string.Join(", ", RatingColumns.Select(column => "m." + column))},
         {CatalogueWantedState.PageColumns}
         """;
 
@@ -794,6 +811,13 @@ public sealed class SqliteMovieCatalogRepository(
 
                 items.Add(ReadMovie(reader) with
                 {
+                    // From the columns, not the blob: the page projects
+                    // NULL AS metadata_json on purpose, so the fallback in
+                    // ReadMovie can only ever produce a single rounded TMDb
+                    // score with no vote count and no link. That is what the
+                    // shelf was showing, and it is why a per-source poster
+                    // toggle drew nothing even for a title that had the number.
+                    Ratings = ReadRatingColumns(reader),
                     FileSizeBytes = fileSizeBytes,
                     CurrentQuality = reader.IsDBNull(24) ? null : reader.GetString(24),
                     FilePath = reader.IsDBNull(25) ? null : reader.GetString(25),
@@ -2567,6 +2591,47 @@ public sealed class SqliteMovieCatalogRepository(
         AddParameter(command, "@from", from);
         var value = await command.ExecuteScalarAsync(cancellationToken);
         return value is null or DBNull ? 0 : Convert.ToInt32(value, System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// The scores a page row carries, read straight from their columns.
+    /// </summary>
+    /// <remarks>
+    /// A source with no score is absent rather than present-and-null: the strip
+    /// draws what it is given, and four cards reading "Unknown" say less than
+    /// one card reading 8.5.
+    /// </remarks>
+    private static IReadOnlyList<MetadataRatingItem> ReadRatingColumns(System.Data.Common.DbDataReader reader)
+    {
+        var ratings = new List<MetadataRatingItem>();
+        var ordinal = RatingOrdinal;
+
+        foreach (var source in RatingSources.All)
+        {
+            var score = reader.IsDBNull(ordinal) ? (double?)null : reader.GetDouble(ordinal);
+            ordinal++;
+
+            int? votes = null;
+            if (source.VotesColumn is not null)
+            {
+                votes = reader.IsDBNull(ordinal) ? null : reader.GetInt32(ordinal);
+                ordinal++;
+            }
+
+            if (score is not null)
+            {
+                ratings.Add(new MetadataRatingItem(
+                    source.Source,
+                    source.Label,
+                    score,
+                    source.MaxScore,
+                    votes,
+                    Url: null,
+                    Kind: source.MaxScore == 100 ? "critic" : "community"));
+            }
+        }
+
+        return ratings;
     }
 
     private static MovieListItem ReadMovie(System.Data.Common.DbDataReader reader)
