@@ -388,12 +388,15 @@ by `scripts/fetch-ffmpeg.ps1` and copied into the publish. 128 MB.
 
 That was not a free decision and it is worth recording why it was made anyway.
 This document said *"Deluno already ships ffprobe handling, so the same shape
-applies"*. It ships the handling; it never shipped the binary. **The rig had
-neither ffprobe nor ffmpeg on it, for the whole of the last session** — so every
-import validated nothing, and the embedded-subtitle half of the scan returned
-`unavailable` for every file in the library, which means #321's new *treat
-embedded as held* toggle had no input reaching it. None of that was visible. A
-fourth feature that quietly does nothing was not worth adding.
+applies"*. It ships the handling; it never shipped the binary.
+
+On the lab rig both binaries were there and only one of them could be used.
+`ffprobe.exe` had been dropped beside the executable, where Deluno looks, so
+stream validation and the embedded-subtitle half of the scan were working.
+`ffmpeg.exe` had been dropped in `C:\Deluno\Tools`, where Deluno does not look,
+so the one thing timing sync cannot work without was invisible to it while
+sitting on the same disk. An install that has the binary and cannot use it is a
+better argument for shipping it than an install that lacks it.
 
 The detection is FFmpeg's own `silencedetect`, behind a 200–3,000 Hz band-pass,
 rather than a voice-activity detector written here. `ffsubsync` decodes the whole

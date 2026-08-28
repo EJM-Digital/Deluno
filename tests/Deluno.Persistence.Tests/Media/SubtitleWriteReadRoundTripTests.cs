@@ -46,7 +46,7 @@ public sealed class SubtitleWriteReadRoundTripTests
             "1\r\n00:00:01,000 --> 00:00:03,000\r\nThe subtitle.\r\n"u8.ToArray(),
             CancellationToken.None);
 
-        var inventory = await new SubtitleInventoryService(new NoProbe()).InspectAsync(video, CancellationToken.None);
+        var inventory = await new SubtitleInventoryService(new NoProbe()).InspectAsync(video, probeContainer: true, CancellationToken.None);
 
         var found = Assert.Single(inventory.Subtitles);
         Assert.Equal(SubtitleLanguages.Normalize(language), found.Language);

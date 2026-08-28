@@ -26,6 +26,13 @@ public sealed class SubtitleBarPersistenceTests
 {
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-08-27T00:00:00Z");
 
+    /// <summary>
+    /// A staleness cut-off far enough back that no reading in these tests has
+    /// aged past it, so each one asks only the question it is about: whether
+    /// the <i>video</i> changed. The cadence has its own tests below.
+    /// </summary>
+    private static readonly DateTimeOffset NothingIsStale = Now.AddYears(-1);
+
     [Fact]
     public async Task A_shelf_that_wants_nothing_gets_no_bar_and_costs_no_query()
     {
@@ -198,6 +205,14 @@ public sealed class SubtitleBarPersistenceTests
         // Where it came from is what a blacklist and an upgrade will need, and
         // a rescan must not turn Deluno's own work into an anonymous file.
         Assert.Equal("opensubtitles", english.Provider);
+
+        // And it is still recorded as Deluno's own work, not as an anonymous
+        // file. `SubtitleSources.Fetched` says so in its own summary, and only
+        // the provider was actually being kept — the source flipped to
+        // `external` the first time a rescan found the file sitting there.
+        // Rare while a rescan needed the video to change, and routine the
+        // moment one runs on a cadence.
+        Assert.Equal(SubtitleSources.Fetched, english.Source);
     }
 
     [Fact]
@@ -210,7 +225,7 @@ public sealed class SubtitleBarPersistenceTests
         await ImportMovieAsync(movies, "Arrival", 2016, @"D:\Media\Arrival (2016)\Arrival (2016).mkv", sizeBytes: 100);
         var id = (await movies.ListPageAsync(new CatalogueQuery(), CancellationToken.None)).Items[0].Id;
 
-        Assert.Single(await subtitles.ListPendingScansAsync(MediaKind.Movie, "library-movies", 50, CancellationToken.None));
+        Assert.Single(await subtitles.ListPendingScansAsync(MediaKind.Movie, "library-movies", 50, NothingIsStale, CancellationToken.None));
 
         await subtitles.RecordScanAsync(
             MediaKind.Movie,
@@ -222,12 +237,12 @@ public sealed class SubtitleBarPersistenceTests
         // Read once, and not read again — this is the difference between a
         // background pass nobody notices and one that re-probes the library
         // every cycle.
-        Assert.Empty(await subtitles.ListPendingScansAsync(MediaKind.Movie, "library-movies", 50, CancellationToken.None));
+        Assert.Empty(await subtitles.ListPendingScansAsync(MediaKind.Movie, "library-movies", 50, NothingIsStale, CancellationToken.None));
 
         // An upgrade keeps the name and changes everything else about the file,
         // subtitle tracks included.
         await ImportMovieAsync(movies, "Arrival", 2016, @"D:\Media\Arrival (2016)\Arrival (2016).mkv", sizeBytes: 900);
-        Assert.Single(await subtitles.ListPendingScansAsync(MediaKind.Movie, "library-movies", 50, CancellationToken.None));
+        Assert.Single(await subtitles.ListPendingScansAsync(MediaKind.Movie, "library-movies", 50, NothingIsStale, CancellationToken.None));
     }
 
     [Fact]
@@ -250,7 +265,7 @@ public sealed class SubtitleBarPersistenceTests
             [],
             CancellationToken.None);
 
-        Assert.Single(await subtitles.ListPendingScansAsync(MediaKind.Movie, "library-movies", 50, CancellationToken.None));
+        Assert.Single(await subtitles.ListPendingScansAsync(MediaKind.Movie, "library-movies", 50, NothingIsStale, CancellationToken.None));
 
         await subtitles.RecordScanAsync(
             MediaKind.Movie,
@@ -259,7 +274,7 @@ public sealed class SubtitleBarPersistenceTests
             [Embedded("en")],
             CancellationToken.None);
 
-        Assert.Empty(await subtitles.ListPendingScansAsync(MediaKind.Movie, "library-movies", 50, CancellationToken.None));
+        Assert.Empty(await subtitles.ListPendingScansAsync(MediaKind.Movie, "library-movies", 50, NothingIsStale, CancellationToken.None));
     }
 
     [Fact]
@@ -282,7 +297,116 @@ public sealed class SubtitleBarPersistenceTests
         // A missing binary is an environment state that changes. A file ffprobe
         // cannot parse is a fact about the file, and retrying it every cycle
         // would read a corrupt file forever.
-        Assert.Empty(await subtitles.ListPendingScansAsync(MediaKind.Movie, "library-movies", 50, CancellationToken.None));
+        Assert.Empty(await subtitles.ListPendingScansAsync(MediaKind.Movie, "library-movies", 50, NothingIsStale, CancellationToken.None));
+    }
+
+    /// <summary>
+    /// The defect this cadence exists for.
+    ///
+    /// <para>Deleting a <c>.srt</c> changes the video's path not at all, its
+    /// size not at all, and its probe status not at all — it is a different
+    /// file. So the reading stood, the row saying English was held stood with
+    /// it, and the shelf went on reporting that every file had what you asked
+    /// for. For ever: nothing else in Deluno ever looks at that folder
+    /// again.</para>
+    /// </summary>
+    [Fact]
+    public async Task A_file_read_long_enough_ago_is_offered_again_even_though_the_video_is_untouched()
+    {
+        using var storage = TestStorage.Create();
+        var movies = await CreateMoviesAsync(storage, new StubPreferences());
+        var subtitles = new SqliteMediaSubtitleRepository(storage.Factory, TimeProvider.System);
+
+        await ImportMovieAsync(movies, "Arrival", 2016, @"D:\Media\Arrival (2016)\Arrival (2016).mkv", sizeBytes: 100);
+        var id = (await movies.ListPageAsync(new CatalogueQuery(), CancellationToken.None)).Items[0].Id;
+
+        await subtitles.RecordScanAsync(
+            MediaKind.Movie,
+            id,
+            new MediaSubtitleScan(@"D:\Media\Arrival (2016)\Arrival (2016).mkv", 100, "succeeded", 1, Now),
+            [Embedded("en")],
+            CancellationToken.None);
+
+        // Nothing about the video has changed, and within the window that is
+        // the end of it.
+        Assert.Empty(await subtitles.ListPendingScansAsync(
+            MediaKind.Movie, "library-movies", 50, Now.AddHours(-12), CancellationToken.None));
+
+        // Half a day later it is looked at again, because what is beside it may
+        // no longer be what it was.
+        var stale = await subtitles.ListPendingScansAsync(
+            MediaKind.Movie, "library-movies", 50, Now.AddHours(1), CancellationToken.None);
+
+        Assert.Single(stale);
+    }
+
+    /// <summary>
+    /// And a re-read is the cheap half. This is what lets Deluno do without
+    /// Bazarr's "use cached embedded subtitles parser results" switch: the
+    /// caller is told which kind of read it needs rather than being asked.
+    /// </summary>
+    [Fact]
+    public async Task A_re_read_does_not_ask_for_the_container_to_be_probed_again()
+    {
+        using var storage = TestStorage.Create();
+        var movies = await CreateMoviesAsync(storage, new StubPreferences());
+        var subtitles = new SqliteMediaSubtitleRepository(storage.Factory, TimeProvider.System);
+
+        await ImportMovieAsync(movies, "Arrival", 2016, @"D:\Media\Arrival (2016)\Arrival (2016).mkv", sizeBytes: 100);
+        var id = (await movies.ListPageAsync(new CatalogueQuery(), CancellationToken.None)).Items[0].Id;
+
+        // Never read: everything about it is unknown, so it needs the lot.
+        var first = await subtitles.ListPendingScansAsync(
+            MediaKind.Movie, "library-movies", 50, NothingIsStale, CancellationToken.None);
+        Assert.True(Assert.Single(first).VideoChanged);
+
+        await subtitles.RecordScanAsync(
+            MediaKind.Movie,
+            id,
+            new MediaSubtitleScan(@"D:\Media\Arrival (2016)\Arrival (2016).mkv", 100, "succeeded", 0, Now),
+            [],
+            CancellationToken.None);
+
+        // Read, then aged out: the folder is worth another look and the
+        // container is not.
+        var stale = await subtitles.ListPendingScansAsync(
+            MediaKind.Movie, "library-movies", 50, Now.AddHours(1), CancellationToken.None);
+        Assert.False(Assert.Single(stale).VideoChanged);
+
+        // Replaced by an upgrade, which keeps the name and changes everything
+        // else about the file — tracks included.
+        await ImportMovieAsync(movies, "Arrival", 2016, @"D:\Media\Arrival (2016)\Arrival (2016).mkv", sizeBytes: 900);
+        var upgraded = await subtitles.ListPendingScansAsync(
+            MediaKind.Movie, "library-movies", 50, NothingIsStale, CancellationToken.None);
+        Assert.True(Assert.Single(upgraded).VideoChanged);
+    }
+
+    /// <summary>
+    /// A file half read because ffprobe was absent still needs its container
+    /// read, however recently it was looked at. The cadence must not quietly
+    /// downgrade that to a folder listing and record it as done.
+    /// </summary>
+    [Fact]
+    public async Task A_file_read_without_ffprobe_still_asks_for_the_container()
+    {
+        using var storage = TestStorage.Create();
+        var movies = await CreateMoviesAsync(storage, new StubPreferences());
+        var subtitles = new SqliteMediaSubtitleRepository(storage.Factory, TimeProvider.System);
+
+        await ImportMovieAsync(movies, "Arrival", 2016, @"D:\Media\Arrival (2016)\Arrival (2016).mkv", sizeBytes: 100);
+        var id = (await movies.ListPageAsync(new CatalogueQuery(), CancellationToken.None)).Items[0].Id;
+
+        await subtitles.RecordScanAsync(
+            MediaKind.Movie,
+            id,
+            new MediaSubtitleScan(@"D:\Media\Arrival (2016)\Arrival (2016).mkv", 100, "unavailable", 0, Now),
+            [],
+            CancellationToken.None);
+
+        var pending = await subtitles.ListPendingScansAsync(
+            MediaKind.Movie, "library-movies", 50, NothingIsStale, CancellationToken.None);
+
+        Assert.True(Assert.Single(pending).VideoChanged);
     }
 
     /* ------------------------------------------------------------ helpers */
