@@ -1,5 +1,5 @@
 /**
- * The eight configuration areas, and the explainer each one opens with.
+ * The seven configuration areas, and the explainer each one opens with.
  *
  * Both halves live here because they answer the same question. The matcher
  * decides which tabs the sidebar and toolbar show for a path; the explainer
@@ -7,7 +7,7 @@
  * ended up with no explainer of its own and a routing one on a sub-tab, and
  * five of the seven only appeared on whichever tab you happened to land on.
  *
- * Rules the copy keeps, so eight of these do not read as eight different apps:
+ * Rules the copy keeps, so seven of these do not read as seven different apps:
  *
  * - **Never restate the page title.** The toolbar already said where you are.
  * - **Order, not inventory.** Steps are a sequence — first this, then that —
@@ -38,6 +38,7 @@ const MEDIA_MANAGEMENT_PATHS = [
   "/settings/processing",
   "/settings/destination-rules",
   "/settings/metadata",
+  "/settings/subtitles",
   "/settings/tags"
 ];
 
@@ -48,7 +49,7 @@ export const CONFIGURATION_AREAS: readonly ConfigurationArea[] = [
     id: "media-management",
     match: (path) => path === "/settings" || MEDIA_MANAGEMENT_PATHS.some((item) => path.startsWith(item)),
     explainer: {
-      lead: "A library is the thing everything else here hangs off. It says what kind of media it holds, which folder the finished files live in, and what happens to a download on its way there. The tabs above follow that journey in the order a file travels it, bar one: the artwork and extra files Deluno keeps beside each title, which it collects once the title is home.",
+      lead: "A library is the thing everything else here hangs off. It says what kind of media it holds, which folder the finished files live in, and what happens to a download on its way there. The tabs above follow that journey in the order a file travels it, bar two that arrive once a title is home: the artwork and extra files Deluno keeps beside it, and the subtitle languages that shelf wants.",
       steps: [
         { title: "Make a library and give it a folder", body: "Movies, TV shows, or one of your own. Imported files end up in the folder you name here, so pick one Deluno can write to." },
         { title: "Say what happens when a download finishes", body: "Import it straight away, or hold it until an external processor has produced a cleaned copy — and choose whether the original is kept afterwards." },
@@ -77,23 +78,12 @@ export const CONFIGURATION_AREAS: readonly ConfigurationArea[] = [
     id: "find-and-download",
     match: (path) => path.startsWith("/indexers"),
     explainer: {
-      lead: "Deluno needs two things before it can fetch anything: somewhere to search, and something to do the downloading. Neither belongs to a library on its own — the library is what says which of them to use.",
+      lead: "Deluno needs two things before it can fetch a release: somewhere to search, and something to do the downloading. Neither belongs to a library on its own — the library is what says which of them to use. Subtitles come from their own sources, which need no download client because the file arrives in the answer.",
       steps: [
         { title: "Add somewhere to search", body: "An indexer is a search source. Deluno asks every one a library is linked to, then compares what comes back before it picks a release." },
         { title: "Add something to download with", body: "qBittorrent, SABnzbd or another client. Deluno hands the release over and watches it until the file is finished." },
-        { title: "Tell each library which to use", body: "A library can search everywhere and download anywhere, or be pinned to its own source and client. Nothing runs for a library until it has both." }
-      ]
-    }
-  },
-  {
-    id: "subtitles",
-    match: (path) => path.startsWith("/subtitles"),
-    explainer: {
-      lead: "Subtitles are the one thing a library asks for that Deluno cannot produce itself, so this is in two halves: which languages each shelf wants, and where they come from. Deluno reads what your files already have before it fetches anything, so a library that has been through Bazarr starts mostly green.",
-      steps: [
-        { title: "Say which languages each library wants", body: "Per shelf, so English on everything and Japanese on anime is one setting each rather than a compromise. A cutoff says how many of them a file needs before Deluno stops looking." },
-        { title: "Add somewhere to fetch them from", body: "Two of the sources need no account at all. Each one says what it covers and what signing up buys you, and a test tells you whether it is answering before you rely on it." },
-        { title: "Leave the rest to the library cycle", body: "Nothing is queued when you save. The same schedule that searches for releases reads your files, then fetches what is missing, in the same window and at the same pace." }
+        { title: "Tell each library which to use", body: "A library can search everywhere and download anywhere, or be pinned to its own source and client. Nothing runs for a library until it has both." },
+        { title: "Add somewhere to fetch subtitles", body: "Two of the six need no account at all. Each says what it covers and what signing up buys you, and a test tells you whether it is answering before you rely on it." }
       ]
     }
   },

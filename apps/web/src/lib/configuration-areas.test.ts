@@ -15,11 +15,11 @@ const AREA_TABS: Record<string, string[]> = {
     "/settings/processing",
     "/settings/destination-rules",
     "/settings/metadata",
+    "/settings/subtitles",
     "/settings/tags"
   ],
   "quality-and-release": ["/settings/profiles", "/settings/quality", "/settings/custom-formats", "/settings/policy-sets"],
-  "find-and-download": ["/indexers/indexers", "/indexers/download-clients", "/indexers/library-routing"],
-  subtitles: ["/subtitles", "/subtitles/languages", "/subtitles/providers"],
+  "find-and-download": ["/indexers/indexers", "/indexers/download-clients", "/indexers/library-routing", "/indexers/subtitle-providers"],
   "automation-and-recovery": ["/search-cycles", "/search-cycles/missing", "/search-cycles/upgrades", "/search-cycles/failed-downloads"],
   "discover-media": ["/settings/lists"],
   preferences: ["/settings/general", "/settings/ui", "/settings/notifications", "/settings/migration"],
