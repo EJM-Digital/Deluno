@@ -667,8 +667,24 @@ public sealed class SqliteMovieCatalogRepository(
     /// can be ordered by it, and the cached ranks recomputed so the new order is
     /// true at once rather than the next time each file changes.
     /// </summary>
+    /// <summary>
+    /// Push the ladder into this catalogue's own database.
+    ///
+    /// <para>SQL cannot ask C# what a tier is worth or how big a file at that
+    /// tier should be, and both questions have to be answered beside the file —
+    /// an ORDER BY needs a number on an indexed column, and #309's conformance
+    /// verdict needs the bounds next to the size. So the model is pushed here
+    /// whenever it is saved.</para>
+    ///
+    /// <para><b>And what is cached is recomputed.</b> Re-ranking a tier or
+    /// widening its size rule changes the answer for titles nobody has touched,
+    /// which no trigger will ever see — a trigger fires on a write, and editing
+    /// a rule is not a write to any of these rows. Without the recompute the
+    /// shelf would be right about the ladder it had when each file last
+    /// changed.</para>
+    /// </summary>
     public async Task SyncQualityRanksAsync(
-        IReadOnlyDictionary<string, int> ranks,
+        IReadOnlyList<QualityTierDefinition> tiers,
         CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -683,13 +699,18 @@ public sealed class SqliteMovieCatalogRepository(
             await clear.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        foreach (var (name, rank) in ranks)
+        foreach (var tier in tiers)
         {
+            var (floor, ceiling) = QualityTierBytes.ForMovie(tier);
+
             using var insert = connection.CreateCommand();
             insert.Transaction = transaction;
-            insert.CommandText = "INSERT OR REPLACE INTO quality_ranks (name, rank) VALUES (@name, @rank);";
-            AddParameter(insert, "@name", name);
-            AddParameter(insert, "@rank", rank);
+            insert.CommandText =
+                "INSERT OR REPLACE INTO quality_ranks (name, rank, floor_bytes, ceiling_bytes) VALUES (@name, @rank, @floor, @ceiling);";
+            AddParameter(insert, "@name", tier.Name);
+            AddParameter(insert, "@rank", tier.Rank);
+            AddParameter(insert, "@floor", floor);
+            AddParameter(insert, "@ceiling", ceiling);
             await insert.ExecuteNonQueryAsync(cancellationToken);
         }
 
@@ -697,7 +718,7 @@ public sealed class SqliteMovieCatalogRepository(
         {
             recompute.Transaction = transaction;
             // The same pick the trigger and CatalogueWantedState.Join use.
-            recompute.CommandText = """
+            recompute.CommandText = $"""
                 UPDATE movie_entries SET primary_quality_rank = (
                     SELECT (SELECT r.rank FROM quality_ranks r WHERE r.name = pick.current_quality)
                     FROM movie_wanted_state pick
@@ -705,6 +726,8 @@ public sealed class SqliteMovieCatalogRepository(
                     ORDER BY pick.has_file DESC, pick.quality_cutoff_met ASC, pick.library_id ASC
                     LIMIT 1
                 );
+
+                UPDATE movie_entries SET size_conformance = {CatalogueConformanceMigrationSql.Verdict("movie_entries", "movie_wanted_state", "movie_id", "movie_entries.id")};
                 """;
             await recompute.ExecuteNonQueryAsync(cancellationToken);
         }

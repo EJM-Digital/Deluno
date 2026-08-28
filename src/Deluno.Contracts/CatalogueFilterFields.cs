@@ -217,6 +217,20 @@ public static class CatalogueFilterFields
             CatalogueFilterGroup.Decision, CatalogueFilterValueKind.QualityTier,
             CatalogueFilterSource.WantedState, "ws.target_quality"),
 
+        // The audit nothing else offers. Cleanuparr watches stalled and orphaned
+        // *downloads*; nothing in the arr suite asks whether the files you
+        // already keep still match the rules you set, and today that answer is
+        // a spreadsheet (#309).
+        //
+        // Three values, not a boolean: under the floor is a bad copy, over the
+        // ceiling is wasted disk, and they are different problems with
+        // different fixes. A title with no file has no verdict at all.
+        new("sizeConformance", "Size against its tier",
+            "Whether the file is inside the size rule its own quality tier sets.",
+            CatalogueFilterGroup.Decision, CatalogueFilterValueKind.Enum,
+            CatalogueFilterSource.Entry, "{alias}.size_conformance",
+            Options: ["under", "ok", "over"]),
+
         new("cutoffMet", "Quality cutoff met", "Whether Deluno has stopped looking for something better.",
             CatalogueFilterGroup.Decision, CatalogueFilterValueKind.Boolean,
             CatalogueFilterSource.WantedState, "COALESCE(ws.quality_cutoff_met, 0)"),
