@@ -1,5 +1,6 @@
 using Deluno.Contracts;
 using Deluno.Jobs.Data;
+using Deluno.Media;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Jobs.Contracts;
 using Deluno.Libraries.Data;
@@ -314,6 +315,9 @@ public sealed class DelunoHeartbeatWorker(
                 var downloadRetryService = scope.ServiceProvider.GetRequiredService<IDownloadRetryService>();
                 await workPlanner.RunDispatchCleanupAsync(cleanupService, stoppingToken);
                 await workPlanner.RunDispatchRetryPassAsync(downloadRetryService, stoppingToken);
+                await workPlanner.RunDownloadStateReconcileAsync(
+                    scope.ServiceProvider.GetRequiredService<IDownloadStateReconciler>(),
+                    stoppingToken);
                 await workPlanner.PlanMetadataRefreshAutomationAsync(
                     jobScheduler,
                     movieCatalogRepository,
