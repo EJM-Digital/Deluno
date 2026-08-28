@@ -32,7 +32,8 @@ public static class MoviesDatabaseMigrations
         new V0024MovieSortIndexes(),
         new V0025MovieFileFacts(),
         new V0026MovieSubtitleFacts(),
-        new V0027MovieConformance()
+        new V0027MovieConformance(),
+        new V0028MovieDecisionFacts()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration
