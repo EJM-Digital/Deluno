@@ -248,6 +248,16 @@ public static class CatalogueKeyset
             or CatalogueFilterValueKind.QualityTier
             or CatalogueFilterValueKind.Enum;
 
+    /// <summary>
+    /// The one parameter that is not a value somebody typed: the moment the
+    /// query is running.
+    ///
+    /// <para>Named once, because the predicate that reads it and the binder that
+    /// fills it live in different methods and a mismatch between them is an
+    /// exception at execute time rather than a compile error.</para>
+    /// </summary>
+    public const string NowParameter = "@filterNow";
+
     private static string Predicate(
         CatalogueFilterField field,
         CatalogueFilterCondition condition,
@@ -315,6 +325,14 @@ public static class CatalogueKeyset
             case CatalogueFilterOperator.WithinLastDays:
                 return $"{column} >= {names[0]}";
 
+            case CatalogueFilterOperator.WithinNextDays:
+                // Bounded at both ends, and the lower bound is the one shared
+                // parameter rather than a second value on the condition: a
+                // reader supplies one number and both bounds come off the same
+                // clock. Without the lower bound "out on digital in the next
+                // fortnight" would also return everything released since 1927.
+                return $"({column} >= {NowParameter} AND {column} <= {names[0]})";
+
             case CatalogueFilterOperator.MoreThanDaysAgo:
                 // "or not at all" is the point of this one: "not searched in
                 // ninety days" has to include the titles never searched, or the
@@ -355,6 +373,12 @@ public static class CatalogueKeyset
 
         var reference = now ?? DateTimeOffset.UtcNow;
 
+        // Bound whether or not a forward-looking filter is present. An unused
+        // parameter costs nothing and SQLite ignores it; a missing one is an
+        // exception at execute time, and deciding here whether any condition
+        // needs it would be the operator list written in a second place.
+        Bind(command, NowParameter, reference.UtcDateTime.ToString("O", CultureInfo.InvariantCulture));
+
         for (var index = 0; index < filters.Conditions!.Count; index++)
         {
             var condition = filters.Conditions[index];
@@ -393,10 +417,12 @@ public static class CatalogueKeyset
         {
             case CatalogueFilterOperator.WithinLastDays:
             case CatalogueFilterOperator.MoreThanDaysAgo:
+            case CatalogueFilterOperator.WithinNextDays:
                 var days = double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsedDays)
                     ? parsedDays
                     : 0d;
-                return now.AddDays(-days).UtcDateTime.ToString("O", CultureInfo.InvariantCulture);
+                var offset = condition.Operator == CatalogueFilterOperator.WithinNextDays ? days : -days;
+                return now.AddDays(offset).UtcDateTime.ToString("O", CultureInfo.InvariantCulture);
 
             case CatalogueFilterOperator.Contains:
             case CatalogueFilterOperator.DoesNotContain:

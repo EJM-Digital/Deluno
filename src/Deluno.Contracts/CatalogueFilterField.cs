@@ -131,6 +131,17 @@ public enum CatalogueFilterOperator
     /// </summary>
     WithinLastDays,
 
+    /// <summary>
+    /// Within the next N days — the only forward-looking operator, and the one
+    /// #308 exists for as much as the backward ones.
+    ///
+    /// <para><i>"What is out on digital next fortnight that I do not have?"</i>
+    /// is the whole point of monitoring a film, and until this existed the
+    /// filter list could ask when something was released and never when it is
+    /// about to be. Every other date operator looks backwards.</para>
+    /// </summary>
+    WithinNextDays,
+
     /// <summary>Longer ago than N days, or not at all.</summary>
     MoreThanDaysAgo,
 
@@ -236,6 +247,7 @@ public sealed record CatalogueFilterField(
             CatalogueFilterValueKind.Date =>
             [
                 CatalogueFilterOperator.WithinLastDays,
+                CatalogueFilterOperator.WithinNextDays,
                 CatalogueFilterOperator.MoreThanDaysAgo,
                 CatalogueFilterOperator.After,
                 CatalogueFilterOperator.Before,
@@ -280,6 +292,7 @@ public static class CatalogueFilterOperators
             [CatalogueFilterOperator.Before] = "before",
             [CatalogueFilterOperator.After] = "after",
             [CatalogueFilterOperator.WithinLastDays] = "within",
+            [CatalogueFilterOperator.WithinNextDays] = "next",
             [CatalogueFilterOperator.MoreThanDaysAgo] = "beyond",
             [CatalogueFilterOperator.IsSet] = "set",
             [CatalogueFilterOperator.IsNotSet] = "unset"

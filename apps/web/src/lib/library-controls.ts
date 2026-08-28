@@ -35,7 +35,7 @@ export type FilterValueKind =
 export type FilterOperator =
   | "in" | "notin" | "all" | "is" | "isnot" | "min" | "max"
   | "has" | "nothas" | "starts" | "ends"
-  | "before" | "after" | "within" | "beyond" | "set" | "unset";
+  | "before" | "after" | "within" | "next" | "beyond" | "set" | "unset";
 
 export interface FilterFieldSpec {
   id: string;
@@ -88,6 +88,23 @@ export const FILTER_GROUPS: Array<{ key: FilterFieldGroup; label: string; blurb:
 ];
 
 /** How an operator reads in a sentence. Never abbreviated — this is the control's whole label. */
+/**
+ * Whether an operator counts days rather than naming one.
+ *
+ * A relative operator takes a number and resolves it against the clock when the
+ * query runs, which is what stops a saved view going stale. It matters here
+ * because the value box has to be a number rather than a date picker, and the
+ * unit has to read "days".
+ *
+ * Declared once. It was two inline `=== "within" || === "beyond"` checks in two
+ * files, which is fine until a third operator arrives and one of them is missed
+ * — and the miss is silent: the box renders a date picker for a filter that
+ * wants a count.
+ */
+export function isRelativeOperator(operator: FilterOperator): boolean {
+  return operator === "within" || operator === "next" || operator === "beyond";
+}
+
 export const OPERATOR_LABELS: Record<FilterOperator, string> = {
   in: "is any of",
   notin: "is none of",
@@ -103,6 +120,7 @@ export const OPERATOR_LABELS: Record<FilterOperator, string> = {
   before: "before",
   after: "after",
   within: "in the last",
+  next: "in the next",
   beyond: "not in the last",
   set: "has a value",
   unset: "has no value"
@@ -205,7 +223,7 @@ export function describeCondition(condition: FilterCondition, field: FilterField
   const operator = OPERATOR_LABELS[condition.operator] ?? condition.operator;
   if (!operatorTakesValues(condition.operator)) return `${label} ${operator}`;
   const values = condition.values.join(", ");
-  const unit = condition.operator === "within" || condition.operator === "beyond"
+  const unit = isRelativeOperator(condition.operator)
     ? ` day${condition.values[0] === "1" ? "" : "s"}`
     : field?.valueKind === "gigabytes" ? " GB"
     : field?.valueKind === "minutes" ? " min"
