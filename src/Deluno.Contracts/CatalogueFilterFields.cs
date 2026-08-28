@@ -211,11 +211,11 @@ public static class CatalogueFilterFields
 
         new("wantedReason", "Why", "The sentence Deluno wrote about why the title is on the list.",
             CatalogueFilterGroup.Decision, CatalogueFilterValueKind.Text,
-            CatalogueFilterSource.WantedState, "ws.wanted_reason"),
+            CatalogueFilterSource.Entry, "{alias}.primary_wanted_reason"),
 
         new("targetQuality", "Target quality", "What the profile asked for, as opposed to what you have.",
             CatalogueFilterGroup.Decision, CatalogueFilterValueKind.QualityTier,
-            CatalogueFilterSource.WantedState, "ws.target_quality"),
+            CatalogueFilterSource.Entry, "{alias}.primary_target_quality"),
 
         // The audit nothing else offers. Cleanuparr watches stalled and orphaned
         // *downloads*; nothing in the arr suite asks whether the files you
@@ -225,6 +225,20 @@ public static class CatalogueFilterFields
         // Three values, not a boolean: under the floor is a bad copy, over the
         // ceiling is wasted disk, and they are different problems with
         // different fixes. A title with no file has no verdict at all.
+        // Library truth: three things the shelf could not say, because the page
+        // shows the one wanted-state row it picked and is silent about the rest.
+        //
+        // Two copies under two profiles is a decision somebody made; two rows
+        // *with a file* for one title is a duplicate import nobody made. They
+        // look identical from the outside, which is why they are two fields.
+        new("libraryCount", "Held in libraries", "How many of your libraries hold this title.",
+            CatalogueFilterGroup.Decision, CatalogueFilterValueKind.Integer,
+            CatalogueFilterSource.Entry, "COALESCE({alias}.library_count, 0)"),
+
+        new("fileCount", "Files held", "How many files Deluno tracks for this title. More than one is a duplicate import.",
+            CatalogueFilterGroup.Decision, CatalogueFilterValueKind.Integer,
+            CatalogueFilterSource.Entry, "COALESCE({alias}.file_count, 0)"),
+
         new("sizeConformance", "Size against its tier",
             "Whether the file is inside the size rule its own quality tier sets.",
             CatalogueFilterGroup.Decision, CatalogueFilterValueKind.Enum,
@@ -233,23 +247,23 @@ public static class CatalogueFilterFields
 
         new("cutoffMet", "Quality cutoff met", "Whether Deluno has stopped looking for something better.",
             CatalogueFilterGroup.Decision, CatalogueFilterValueKind.Boolean,
-            CatalogueFilterSource.WantedState, "COALESCE(ws.quality_cutoff_met, 0)"),
+            CatalogueFilterSource.Entry, "COALESCE({alias}.primary_quality_cutoff_met, 0)"),
 
         new("lastSearch", "Last searched", "Never searched, or not searched in ninety days, is a real question and nothing else can ask it.",
             CatalogueFilterGroup.Decision, CatalogueFilterValueKind.Date,
-            CatalogueFilterSource.WantedState, "ws.last_search_utc"),
+            CatalogueFilterSource.Entry, "{alias}.primary_last_search_utc"),
 
         new("nextEligibleSearch", "Next eligible search", "When the retry delay lets Deluno try again.",
             CatalogueFilterGroup.Decision, CatalogueFilterValueKind.Date,
-            CatalogueFilterSource.WantedState, "ws.next_eligible_search_utc"),
+            CatalogueFilterSource.Entry, "{alias}.primary_next_eligible_search_utc"),
 
         new("lastSearchResult", "Last search result", "What came back the last time Deluno looked.",
             CatalogueFilterGroup.Decision, CatalogueFilterValueKind.Text,
-            CatalogueFilterSource.WantedState, "ws.last_search_result"),
+            CatalogueFilterSource.Entry, "{alias}.primary_last_search_result"),
 
         new("missingSince", "Missing since", "How long a gap has been a gap.",
             CatalogueFilterGroup.Decision, CatalogueFilterValueKind.Date,
-            CatalogueFilterSource.WantedState, "ws.missing_since_utc")
+            CatalogueFilterSource.Entry, "{alias}.primary_missing_detected_utc")
     ];
 
     /// <summary>

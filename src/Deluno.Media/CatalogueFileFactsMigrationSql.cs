@@ -34,13 +34,23 @@ public static class CatalogueFileFactsMigrationSql
     /// <summary>
     /// The cached column, and the expression on the picked row that fills it.
     /// </summary>
-    private sealed record Fact(string Column, string Expression, string IndexKind);
+    /// <param name="Expression">
+    /// Read from the picked row — <c>pick.something</c> — unless
+    /// <paramref name="Aggregate"/> is set, in which case it is a complete
+    /// subquery over the wanted state with <c>{owner}</c> standing in for the
+    /// entry id.
+    /// </param>
+    /// <param name="IndexKind">
+    /// <c>text</c> folds case, because that is how it is filtered; <c>plain</c>
+    /// is for values compared as they are stored.
+    /// </param>
+    public sealed record Fact(string Column, string Expression, string IndexKind, string Type = "TEXT", bool Aggregate = false);
 
     /// <summary>
     /// <c>text</c> indexes fold case because that is how they are filtered;
     /// <c>plain</c> is for the ones compared as they are stored.
     /// </summary>
-    private static readonly Fact[] Facts =
+    public static readonly Fact[] FileFacts =
     [
         new("primary_video_codec", "pick.video_codec", "text"),
         new("primary_audio_codec", "pick.audio_codec", "text"),
@@ -48,7 +58,7 @@ public static class CatalogueFileFactsMigrationSql
         new("primary_release_group", "pick.release_group", "text"),
         new("primary_file_path", "pick.file_path", "text"),
         new("primary_current_quality", "pick.current_quality", "text"),
-        new("primary_has_file", "pick.has_file", "plain"),
+        new("primary_has_file", "pick.has_file", "plain", "INTEGER"),
         new("primary_imported_utc", "pick.imported_utc", "plain"),
 
         // The container, from the path, because nothing stores it separately and
@@ -73,18 +83,33 @@ public static class CatalogueFileFactsMigrationSql
     ];
 
     public static string For(string table, string wantedTable, string foreignKey, string indexPrefix)
+        => For(table, wantedTable, foreignKey, indexPrefix, FileFacts, "file_facts");
+
+    /// <summary>
+    /// The same machinery for any set of facts derived from the wanted state.
+    /// </summary>
+    /// <param name="triggerName">
+    /// Distinct per migration: three triggers already exist on this table and a
+    /// name collision would silently keep the first one.
+    /// </param>
+    public static string For(
+        string table,
+        string wantedTable,
+        string foreignKey,
+        string indexPrefix,
+        IReadOnlyList<Fact> facts,
+        string triggerName)
     {
         var sql = new StringBuilder();
 
-        foreach (var fact in Facts)
+        foreach (var fact in facts)
         {
-            var type = fact.Column == "primary_has_file" ? "INTEGER" : "TEXT";
-            sql.AppendLine(CultureInfo.InvariantCulture, $"ALTER TABLE {table} ADD COLUMN {fact.Column} {type} NULL;");
+            sql.AppendLine(CultureInfo.InvariantCulture, $"ALTER TABLE {table} ADD COLUMN {fact.Column} {fact.Type} NULL;");
         }
 
         sql.AppendLine();
 
-        foreach (var fact in Facts)
+        foreach (var fact in facts)
         {
             var indexed = fact.IndexKind == "text"
                 ? $"lower(COALESCE({fact.Column}, ''))"
@@ -99,7 +124,7 @@ public static class CatalogueFileFactsMigrationSql
         // Everything already in the library, so the columns are true the moment
         // the migration finishes rather than the next time a file changes.
         sql.AppendLine(CultureInfo.InvariantCulture, $"UPDATE {table} SET");
-        sql.AppendLine(Assignments(wantedTable, foreignKey, $"{table}.id"));
+        sql.AppendLine(Assignments(facts, wantedTable, foreignKey, $"{table}.id"));
         sql.AppendLine(";");
 
         foreach (var (suffix, timing, row) in new[]
@@ -110,11 +135,11 @@ public static class CatalogueFileFactsMigrationSql
                  })
         {
             sql.AppendLine();
-            sql.AppendLine(CultureInfo.InvariantCulture, $"CREATE TRIGGER IF NOT EXISTS trg_{indexPrefix}_file_facts_{suffix}");
+            sql.AppendLine(CultureInfo.InvariantCulture, $"CREATE TRIGGER IF NOT EXISTS trg_{indexPrefix}_{triggerName}_{suffix}");
             sql.AppendLine(CultureInfo.InvariantCulture, $"{timing} ON {wantedTable}");
             sql.AppendLine("BEGIN");
             sql.AppendLine(CultureInfo.InvariantCulture, $"    UPDATE {table} SET");
-            sql.AppendLine(Assignments(wantedTable, foreignKey, $"{row}.{foreignKey}"));
+            sql.AppendLine(Assignments(facts, wantedTable, foreignKey, $"{row}.{foreignKey}"));
             sql.AppendLine(CultureInfo.InvariantCulture, $"    WHERE id = {row}.{foreignKey};");
             sql.AppendLine("END;");
         }
@@ -125,11 +150,16 @@ public static class CatalogueFileFactsMigrationSql
     /// <summary>
     /// One <c>SET</c> line per cached column, each reading the same picked row.
     /// </summary>
-    private static string Assignments(string wantedTable, string foreignKey, string idExpression)
+    private static string Assignments(
+        IReadOnlyList<Fact> facts,
+        string wantedTable,
+        string foreignKey,
+        string idExpression)
         => string.Join(
             "," + Environment.NewLine,
-            Facts.Select(fact =>
-                $"    {fact.Column} = (SELECT {fact.Expression.ReplaceLineEndings(" ")} {Pick(wantedTable, foreignKey, idExpression)})"));
+            facts.Select(fact => fact.Aggregate
+                ? $"    {fact.Column} = ({fact.Expression.ReplaceLineEndings(" ").Replace("{owner}", idExpression)})"
+                : $"    {fact.Column} = (SELECT {fact.Expression.ReplaceLineEndings(" ")} {Pick(wantedTable, foreignKey, idExpression)})"));
 
     /// <summary>
     /// <b>The same pick the page displays, spelled once.</b>
