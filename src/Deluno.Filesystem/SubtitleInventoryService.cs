@@ -29,7 +29,16 @@ namespace Deluno.Filesystem;
 /// </summary>
 public interface ISubtitleInventoryService
 {
-    Task<SubtitleInventory> InspectAsync(string videoPath, CancellationToken cancellationToken);
+    /// <param name="probeContainer">
+    /// Whether to read the tracks inside the video as well as the files beside
+    /// it. False when the caller already knows them — the tracks in a container
+    /// cannot change while the container does not, and a process per file is
+    /// the whole cost of this service.
+    /// </param>
+    Task<SubtitleInventory> InspectAsync(
+        string videoPath,
+        bool probeContainer,
+        CancellationToken cancellationToken);
 }
 
 public sealed record SubtitleInventory(
@@ -87,7 +96,10 @@ public sealed class SubtitleInventoryService(IMediaProbeService mediaProbeServic
 
     private static readonly char[] TokenSeparators = [' ', '_', '-'];
 
-    public async Task<SubtitleInventory> InspectAsync(string videoPath, CancellationToken cancellationToken)
+    public async Task<SubtitleInventory> InspectAsync(
+        string videoPath,
+        bool probeContainer,
+        CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(videoPath) || !File.Exists(videoPath))
         {
@@ -96,6 +108,15 @@ public sealed class SubtitleInventoryService(IMediaProbeService mediaProbeServic
 
         var found = new List<DetectedSubtitle>();
         found.AddRange(FindSidecars(videoPath));
+
+        if (!probeContainer)
+        {
+            // `cached` rather than `skipped`: the difference matters to the scan
+            // candidate query, which reads `unavailable` as "come back when
+            // ffprobe arrives" and must not read this the same way. Nobody is
+            // waiting on this probe because its answer is already recorded.
+            return new SubtitleInventory(videoPath, true, "cached", null, Deduplicate(found));
+        }
 
         var probe = await mediaProbeService.ProbeAsync(videoPath, cancellationToken);
         if (probe.Status == "succeeded")

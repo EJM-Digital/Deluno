@@ -354,11 +354,28 @@ public sealed class SqliteMediaSubtitleRepository(
     /// a missing binary is an environment state that changes, and a file
     /// ffprobe could not parse is a fact about the file. Retrying the second
     /// one every cycle would read a corrupt file forever.</para>
+    ///
+    /// <para><b>And a file is read again on a cadence even when nothing about
+    /// the video changed</b>, because the thing that changed may be beside it.
+    /// Deleting a <c>.srt</c> alters the video's path, size and probe status not
+    /// at all — it is a different file — so before this the row saying English
+    /// was held stood for ever, the shelf went on reporting that every file had
+    /// what you asked for, and nothing ever fetched it again. The same blind
+    /// spot swallowed a subtitle dropped in by hand, which is the commoner half
+    /// of it.</para>
+    ///
+    /// <para>The cadence costs a directory listing per file and not an ffprobe:
+    /// <see cref="MediaSubtitleScanCandidate.VideoChanged"/> carries which half
+    /// is needed, and the tracks inside a container cannot move while the
+    /// container does not. Oldest read first, so a library that has fallen
+    /// behind catches up in order rather than by whatever the index
+    /// offers.</para>
     /// </summary>
     public async Task<IReadOnlyList<MediaSubtitleScanCandidate>> ListPendingScansAsync(
         MediaKind kind,
         string libraryId,
         int limit,
+        DateTimeOffset staleBefore,
         CancellationToken cancellationToken)
     {
         var map = MediaTableMap.For(kind);
@@ -366,9 +383,23 @@ public sealed class SqliteMediaSubtitleRepository(
             map.DatabaseName,
             cancellationToken);
 
+        // Named once because the SELECT reports it and the WHERE selects on it,
+        // and a WHERE that admitted a row the SELECT then called unchanged
+        // would skip the probe on a file that had never had one.
+        var videoChanged = $"""
+            scan.{map.SubtitleMediaIdColumn} IS NULL
+                 OR scan.file_path <> f.file_path
+                 OR COALESCE(scan.file_size_bytes, -1) <> COALESCE(f.file_size_bytes, -1)
+                 OR scan.probe_status = 'unavailable'
+            """;
+
         using var command = connection.CreateCommand();
         command.CommandText = $"""
-            SELECT {map.SubtitleFileIdColumn}, f.file_path, f.file_size_bytes
+            SELECT
+                {map.SubtitleFileIdColumn},
+                f.file_path,
+                f.file_size_bytes,
+                CASE WHEN {videoChanged} THEN 1 ELSE 0 END
             FROM {map.SubtitleFileSource}
             {map.SubtitleFileLibraryJoin}
             LEFT JOIN {map.SubtitleScanTable} scan
@@ -377,14 +408,18 @@ public sealed class SqliteMediaSubtitleRepository(
               AND f.has_file = 1
               AND f.file_path IS NOT NULL
               AND (
-                    scan.{map.SubtitleMediaIdColumn} IS NULL
-                 OR scan.file_path <> f.file_path
-                 OR COALESCE(scan.file_size_bytes, -1) <> COALESCE(f.file_size_bytes, -1)
-                 OR scan.probe_status = 'unavailable'
+                    {videoChanged}
+                 OR scan.scanned_utc IS NULL
+                 OR scan.scanned_utc < @staleBefore
               )
+            ORDER BY scan.scanned_utc IS NOT NULL, scan.scanned_utc
             LIMIT @limit;
             """;
         AddParameter(command, "@libraryId", libraryId);
+        // Formatted exactly as the column is written, a few lines down in
+        // RecordScanAsync: a DateTimeOffset renders the offset as +00:00 and a
+        // DateTime renders it as Z, and these are compared as text.
+        AddParameter(command, "@staleBefore", staleBefore.ToUniversalTime().ToString("O"));
         AddParameter(command, "@limit", Math.Max(1, limit));
 
         var candidates = new List<MediaSubtitleScanCandidate>();
@@ -394,7 +429,8 @@ public sealed class SqliteMediaSubtitleRepository(
             candidates.Add(new MediaSubtitleScanCandidate(
                 MediaId: reader.GetString(0),
                 FilePath: reader.GetString(1),
-                FileSizeBytes: reader.IsDBNull(2) ? null : reader.GetInt64(2)));
+                FileSizeBytes: reader.IsDBNull(2) ? null : reader.GetInt64(2),
+                VideoChanged: reader.GetInt64(3) == 1));
         }
 
         return candidates;
@@ -445,7 +481,20 @@ public sealed class SqliteMediaSubtitleRepository(
                     @source, @filePath, @streamIndex, @codec, @provider, @now, @now
                 )
                 ON CONFLICT({map.SubtitleMediaIdColumn}, language, forced, hearing_impaired) DO UPDATE SET
-                    source = excluded.source,
+                    -- A subtitle Deluno fetched is still Deluno's own work when
+                    -- a later pass finds it sitting there as an ordinary file.
+                    -- The summary on `SubtitleSources.Fetched` already promised
+                    -- this and only `provider` was actually kept; `source`
+                    -- flipped to `external` the first time a rescan touched it.
+                    -- Rare enough to go unnoticed while a rescan needed the
+                    -- video to change, and routine the moment one runs on a
+                    -- cadence.
+                    source = CASE
+                        WHEN {map.SubtitleTable}.source = '{SubtitleSources.Fetched}'
+                         AND excluded.source = '{SubtitleSources.External}'
+                        THEN {map.SubtitleTable}.source
+                        ELSE excluded.source
+                    END,
                     file_path = excluded.file_path,
                     stream_index = excluded.stream_index,
                     codec = excluded.codec,

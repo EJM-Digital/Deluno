@@ -164,7 +164,7 @@ public sealed class SubtitleInventoryTests
     }
 
     private static Task<SubtitleInventory> Inspect(string videoPath, MediaProbeInfo probe)
-        => new SubtitleInventoryService(new StubMediaProbeService(probe)).InspectAsync(videoPath, CancellationToken.None);
+        => new SubtitleInventoryService(new StubMediaProbeService(probe)).InspectAsync(videoPath, probeContainer: true, CancellationToken.None);
 
     private sealed class StubMediaProbeService(MediaProbeInfo probe) : IMediaProbeService
     {

@@ -46,7 +46,25 @@ public sealed record MediaSubtitleScan(
 public sealed record MediaSubtitleScanCandidate(
     string MediaId,
     string FilePath,
-    long? FileSizeBytes);
+    long? FileSizeBytes,
+    /// <summary>
+    /// Whether the video itself is different from the one last read — new,
+    /// renamed, resized, or never successfully probed.
+    ///
+    /// <para><b>False means only the folder needs looking at again.</b> The
+    /// tracks inside a container cannot change while the container does not, so
+    /// re-running ffprobe over an unchanged file is a process per file for an
+    /// answer already recorded. What <i>can</i> change under a still video is
+    /// the subtitles beside it — somebody deletes one, or drops one in — and
+    /// finding that out is one directory listing.</para>
+    ///
+    /// <para>This is the whole reason Deluno needs no equivalent of Bazarr's
+    /// <i>"use cached embedded subtitles parser results"</i>. That setting
+    /// exists because Bazarr re-parses everything on every pass and had to give
+    /// people a way to stop it; Deluno already records what the video was, so
+    /// it can tell the two halves apart without being told.</para>
+    /// </summary>
+    bool VideoChanged);
 
 /// <summary>
 /// How much of what a library asked for one title actually holds.
@@ -154,10 +172,15 @@ public interface IMediaSubtitleRepository
         string language,
         CancellationToken cancellationToken);
 
+    /// <param name="staleBefore">
+    /// A file last read before this is read again even when nothing about the
+    /// video changed, because what is beside it may have.
+    /// </param>
     Task<IReadOnlyList<MediaSubtitleScanCandidate>> ListPendingScansAsync(
         MediaKind kind,
         string libraryId,
         int limit,
+        DateTimeOffset staleBefore,
         CancellationToken cancellationToken);
 
     Task RecordScanAsync(

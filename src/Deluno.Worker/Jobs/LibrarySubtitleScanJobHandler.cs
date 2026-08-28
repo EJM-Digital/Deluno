@@ -53,6 +53,35 @@ public sealed class LibrarySubtitleScanJobHandler(
     /// </summary>
     public const int SliceSize = 100;
 
+    /// <summary>
+    /// How long a file's reading stays good for.
+    ///
+    /// <para><b>Why there is a cadence at all.</b> A scan used to run again only
+    /// when the video changed — a new path, a new size, or a probe that never
+    /// happened. Deleting the <c>.srt</c> beside it changes none of those, so
+    /// the row saying English was held stood for ever and the shelf went on
+    /// reporting that every file had what you asked for. The commoner half is
+    /// the same blind spot in reverse: a subtitle dropped in by hand was never
+    /// noticed either.</para>
+    ///
+    /// <para><b>Why twelve hours, and why it is not a setting.</b> The standing
+    /// check asks whether Deluno can decide and explain the consequence once,
+    /// and here it can: a re-read costs a directory listing, not an ffprobe, so
+    /// there is no trade-off to hand anybody. Bazarr exposes <i>"use cached
+    /// embedded subtitles parser results"</i> precisely because it re-parses
+    /// containers on every pass and had to give people a way to stop it. Deluno
+    /// already records what the video was, so it can tell the expensive half
+    /// from the cheap one without being told — see
+    /// <see cref="MediaSubtitleScanCandidate.VideoChanged"/>.</para>
+    ///
+    /// <para>Half a day is the longest a person should wait to see a subtitle
+    /// they dropped in by hand, and short enough that a deletion corrects itself
+    /// the same day. A shelf nobody touches costs one listing per file per
+    /// twelve hours, and a shelf asking for no languages costs nothing at
+    /// all.</para>
+    /// </summary>
+    public static readonly TimeSpan RereadAfter = TimeSpan.FromHours(12);
+
     public string JobType => "library.subtitles.scan";
 
     public async Task<string> HandleAsync(JobQueueItem job, CancellationToken cancellationToken)
@@ -87,10 +116,12 @@ public sealed class LibrarySubtitleScanJobHandler(
             ? null
             : SubtitleLanguages.Normalize(library.SubtitleUnknownLanguage);
 
+        var now = timeProvider.GetUtcNow();
         var candidates = await mediaSubtitleRepository.ListPendingScansAsync(
             kind,
             library.Id,
             SliceSize,
+            now - RereadAfter,
             cancellationToken);
 
         if (candidates.Count == 0)
@@ -107,7 +138,11 @@ public sealed class LibrarySubtitleScanJobHandler(
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var inventory = await subtitleInventoryService.InspectAsync(candidate.FilePath, cancellationToken);
+            var inventory = await subtitleInventoryService.InspectAsync(
+                candidate.FilePath,
+                probeContainer: candidate.VideoChanged,
+                cancellationToken);
+
             if (!inventory.VideoExists)
             {
                 // The file has gone. Reconciliation owns that; recording a scan
@@ -121,16 +156,11 @@ public sealed class LibrarySubtitleScanJobHandler(
                 probeUnavailable++;
             }
 
-            await mediaSubtitleRepository.RecordScanAsync(
-                kind,
-                candidate.MediaId,
-                new MediaSubtitleScan(
-                    FilePath: candidate.FilePath,
-                    FileSizeBytes: candidate.FileSizeBytes,
-                    ProbeStatus: inventory.ProbeStatus,
-                    SubtitleCount: inventory.Subtitles.Count,
-                    ScannedUtc: timeProvider.GetUtcNow()),
-                [.. inventory.Subtitles.Select(subtitle => new MediaSubtitleRow(
+            var recorded = candidate.VideoChanged
+                ? []
+                : await mediaSubtitleRepository.ListSubtitlesAsync(kind, candidate.MediaId, cancellationToken);
+
+            var found = inventory.Subtitles.Select(subtitle => new MediaSubtitleRow(
                     // The one place a bare `Movie.srt` is given a language, and
                     // only because somebody said what it is.
                     //
@@ -149,11 +179,24 @@ public sealed class LibrarySubtitleScanJobHandler(
                     FilePath: subtitle.Path,
                     StreamIndex: subtitle.StreamIndex,
                     Codec: subtitle.Codec,
-                    Provider: null))],
+                    Provider: null)).ToArray();
+
+            var rows = WholeTruth(candidate.VideoChanged, recorded, found);
+
+            await mediaSubtitleRepository.RecordScanAsync(
+                kind,
+                candidate.MediaId,
+                new MediaSubtitleScan(
+                    FilePath: candidate.FilePath,
+                    FileSizeBytes: candidate.FileSizeBytes,
+                    ProbeStatus: inventory.ProbeStatus,
+                    SubtitleCount: rows.Count,
+                    ScannedUtc: now),
+                rows,
                 cancellationToken);
 
             scanned++;
-            if (inventory.Subtitles.Count > 0)
+            if (rows.Count > 0)
             {
                 withSubtitles++;
             }
@@ -174,6 +217,35 @@ public sealed class LibrarySubtitleScanJobHandler(
 
         return BuildSummary(library.Name, scanned, withSubtitles, missingFiles, probeUnavailable);
     }
+
+    /// <summary>
+    /// Everything a file has, which is what a scan hands over — because
+    /// <c>RecordScanAsync</c> replaces the lot and deletes anything not in it.
+    ///
+    /// <para><b>This is the destructive edge of the re-read cadence, so it is
+    /// named rather than inlined.</b> A cheap re-read looks only at the folder,
+    /// so it finds no embedded tracks — not because there are none, but because
+    /// nobody looked. Handing that list over as the whole truth would delete
+    /// every embedded subtitle in the library twelve hours after it was found,
+    /// silently, and the bar would go red on files nothing was wrong with. The
+    /// rig cannot catch it either: its videos were remuxed with <c>-sn</c> and
+    /// have no embedded tracks at all.</para>
+    ///
+    /// <para>What was recorded goes first, so a sidecar in the same language
+    /// wins the upsert behind it: a file you can swap or correct beats a track
+    /// welded into the container.</para>
+    /// </summary>
+    /// <param name="videoWasProbed">
+    /// Whether this pass actually read inside the container. When it did, what
+    /// it found is the whole truth on its own.
+    /// </param>
+    public static IReadOnlyList<MediaSubtitleRow> WholeTruth(
+        bool videoWasProbed,
+        IReadOnlyList<MediaSubtitleRow> recorded,
+        IReadOnlyList<MediaSubtitleRow> found)
+        => videoWasProbed
+            ? found
+            : [.. recorded.Where(row => row.Source == SubtitleSources.Embedded), .. found];
 
     /// <summary>
     /// Written for the person reading Activity, who wants to know what Deluno
