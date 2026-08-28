@@ -1030,7 +1030,7 @@ public sealed class SqliteJobStore(
             SELECT
                 library_id, library_name, media_type, status, search_requested, last_planned_utc,
                 last_started_utc, last_completed_utc, next_search_utc, last_job_id, last_error, updated_utc,
-                next_missing_search_utc, next_upgrade_search_utc
+                next_missing_search_utc, next_upgrade_search_utc, next_subtitle_search_utc
             FROM library_automation_state;
             """;
 
@@ -1062,7 +1062,7 @@ public sealed class SqliteJobStore(
             SELECT
                 library_id, library_name, media_type, status, search_requested, last_planned_utc,
                 last_started_utc, last_completed_utc, next_search_utc, last_job_id, last_error, updated_utc,
-                next_missing_search_utc, next_upgrade_search_utc
+                next_missing_search_utc, next_upgrade_search_utc, next_subtitle_search_utc
             FROM library_automation_state
             WHERE (@mediaType IS NULL
                 OR media_type > @mediaType
@@ -1666,6 +1666,155 @@ public sealed class SqliteJobStore(
                 ? state.NextUpgradeSearchUtc ?? state.NextSearchUtc
                 : null;
 
+            var manualRequest = state.SearchRequested;
+
+            // The time-of-day window, read once. Both subtitles and searches ask
+            // it the same question, and a manual request bypasses it for both.
+            var (inSearchWindow, nextWindowOpenUtc) = SearchWindow(library, now);
+
+            // Subtitles, and why they are planned here rather than below.
+            //
+            // <b>They used to sit inside the release-search branch,</b> so they
+            // inherited its two switches along with its cycle. A library with
+            // "Search automatically" turned off — which that screen describes as
+            // *keep this library manual*, meaning manual **releases** — asked for
+            // English every day and was never given it, and said nothing. So did
+            // a library with searching on but both missing and upgrade off.
+            //
+            // That is precisely the person Bazarr exists for: a library that is
+            // already complete and wants subtitles for it. Deluno was refusing
+            // exactly them, silently, and only a manual "search now" got through.
+            // Found on the rig — the fetch that proved this feature works could
+            // not be made to happen any other way.
+            //
+            // One switch, two subjects: the shape every defect in this codebase
+            // has had. So what subtitles share with searching is the cycle, the
+            // window and the manual override — DESIGN-002 rule 3, still no second
+            // scheduler — and what they no longer share is the on/off switch and
+            // the clock. Whether a library wants subtitles is already recorded in
+            // the only place that can answer it: whether it asked for languages.
+            var subtitleNextSearchUtc = state.NextSubtitleSearchUtc;
+            var subtitleDue = library.WantsSubtitles &&
+                (manualRequest || subtitleNextSearchUtc is null || subtitleNextSearchUtc <= now);
+
+            if (subtitleDue && !manualRequest && !inSearchWindow)
+            {
+                // Out of hours. Fetching is somebody else's server either way, so
+                // it waits for the window exactly as a search does.
+                subtitleNextSearchUtc = nextWindowOpenUtc;
+                subtitleDue = false;
+            }
+
+            if (subtitleDue)
+            {
+                // It runs before the searches for the obvious reason: knowing
+                // which subtitles you already hold is what decides which ones are
+                // worth fetching.
+                //
+                // It does not touch the automation status or the next-search
+                // clock. Those belong to searching, and a subtitle pass is not a
+                // search; borrowing them would make a library read "queued" for
+                // work that never reaches an indexer.
+            var subtitleDedupeKey = $"library.subtitles.scan:{library.LibraryId}";
+            if (!pendingJobKeys.Contains(subtitleDedupeKey) &&
+                await FindDuplicateActiveJobAsync(connection, transaction, subtitleDedupeKey, subtitleDedupeKey, cancellationToken) is null)
+            {
+                var subtitleJob = new JobQueueItem(
+                    Id: Guid.CreateVersion7().ToString("N"),
+                    JobType: "library.subtitles.scan",
+                    Source: library.MediaType,
+                    Status: "queued",
+                    PayloadJson: JsonSerializer.Serialize(new
+                    {
+                        libraryId = library.LibraryId,
+                        libraryName = library.LibraryName,
+                        mediaType = library.MediaType
+                    }),
+                    Attempts: 0,
+                    CreatedUtc: now,
+                    ScheduledUtc: now,
+                    StartedUtc: null,
+                    CompletedUtc: null,
+                    LeasedUntilUtc: null,
+                    WorkerId: null,
+                    LastError: null,
+                    RelatedEntityType: "library",
+                    RelatedEntityId: library.LibraryId,
+                    IdempotencyKey: subtitleDedupeKey,
+                    DedupeKey: subtitleDedupeKey,
+                    MaxAttempts: DefaultMaxAttempts,
+                    LastAttemptUtc: null,
+                    NextAttemptUtc: now);
+
+                await InsertJobAsync(connection, transaction, subtitleJob, cancellationToken);
+                queuedAny = true;
+                await InsertActivityAsync(connection, transaction, "job.queued", FormatQueuedMessage(subtitleJob.JobType, subtitleJob.Source, subtitleJob.PayloadJson), subtitleJob.PayloadJson, subtitleJob.Id, subtitleJob.RelatedEntityType, subtitleJob.RelatedEntityId, now, cancellationToken);
+            }
+
+            // And then go and get the ones that are still missing.
+            //
+            // Queued together rather than chained, because the queue already
+            // orders them: the scan is on the import lane and the fetch on
+            // intake, so the scan drains first on any install that is not
+            // already idle, and on one that is, the fetch simply finds one
+            // slice less than it could have and picks the rest up next
+            // cycle. Chaining would mean a failed scan silently stopping
+            // every subsequent fetch, which is a worse failure than a slow
+            // first night.
+            //
+            // Same window, same cycle, same override — DESIGN-002 rule 3.
+            // Nothing about subtitles decides when subtitles happen.
+            var subtitleSearchKey = $"library.subtitles.search:{library.LibraryId}";
+            if (!pendingJobKeys.Contains(subtitleSearchKey) &&
+                await FindDuplicateActiveJobAsync(connection, transaction, subtitleSearchKey, subtitleSearchKey, cancellationToken) is null)
+            {
+                var subtitleSearchJob = new JobQueueItem(
+                    Id: Guid.CreateVersion7().ToString("N"),
+                    JobType: "library.subtitles.search",
+                    Source: library.MediaType,
+                    Status: "queued",
+                    PayloadJson: JsonSerializer.Serialize(new
+                    {
+                        libraryId = library.LibraryId,
+                        libraryName = library.LibraryName,
+                        mediaType = library.MediaType
+                    }),
+                    Attempts: 0,
+                    CreatedUtc: now,
+                    ScheduledUtc: now,
+                    StartedUtc: null,
+                    CompletedUtc: null,
+                    LeasedUntilUtc: null,
+                    WorkerId: null,
+                    LastError: null,
+                    RelatedEntityType: "library",
+                    RelatedEntityId: library.LibraryId,
+                    IdempotencyKey: subtitleSearchKey,
+                    DedupeKey: subtitleSearchKey,
+                    MaxAttempts: DefaultMaxAttempts,
+                    LastAttemptUtc: null,
+                    NextAttemptUtc: now);
+
+                await InsertJobAsync(connection, transaction, subtitleSearchJob, cancellationToken);
+                queuedAny = true;
+                await InsertActivityAsync(connection, transaction, "job.queued", FormatQueuedMessage(subtitleSearchJob.JobType, subtitleSearchJob.Source, subtitleSearchJob.PayloadJson), subtitleSearchJob.PayloadJson, subtitleSearchJob.Id, subtitleSearchJob.RelatedEntityType, subtitleSearchJob.RelatedEntityId, now, cancellationToken);
+            }
+                subtitleNextSearchUtc = NextSearchAfterQueue(now, library);
+            }
+
+            // Written whatever happens below, and on its own column, so that a
+            // library which only wants subtitles still records when it last had
+            // them looked at. Left to UpdateAutomationIdleAsync it would have
+            // been lost on every path that returns early — which, for a paused
+            // library, is all of them — and the clock never advancing means the
+            // work is re-queued on every thirty-second tick.
+            if (library.WantsSubtitles &&
+                await WriteSubtitleScheduleAsync(
+                    connection, transaction, library.LibraryId, subtitleNextSearchUtc, now, cancellationToken))
+            {
+                changedLibraryIds.Add(library.LibraryId);
+            }
+
             if (!library.AutoSearchEnabled && !state.SearchRequested)
             {
                 if (await UpdateAutomationIdleAsync(
@@ -1687,45 +1836,31 @@ public sealed class SqliteJobStore(
                 continue;
             }
 
-            var manualRequest = state.SearchRequested;
             var missingDue = library.AutoSearchEnabled && library.MissingSearchEnabled &&
                 (missingNextSearchUtc is null || missingNextSearchUtc <= now);
             var upgradeDue = library.AutoSearchEnabled && library.UpgradeSearchEnabled &&
                 (upgradeNextSearchUtc is null || upgradeNextSearchUtc <= now);
 
             // Respect time-of-day search window independently for both schedules
-            // (manual requests bypass the window).
-            if ((missingDue || upgradeDue) && !manualRequest &&
-                library.SearchWindowStartHour.HasValue && library.SearchWindowEndHour.HasValue)
+            // (manual requests bypass the window). The window itself is read
+            // once, above, because subtitles ask it the same question and two
+            // copies of a midnight-wrapping hour comparison is how they drift.
+            if ((missingDue || upgradeDue) && !manualRequest && !inSearchWindow)
             {
-                var currentHour = now.Hour;
-                var windowStart = library.SearchWindowStartHour.Value;
-                var windowEnd = library.SearchWindowEndHour.Value;
-                var inWindow = windowStart <= windowEnd
-                    ? currentHour >= windowStart && currentHour < windowEnd
-                    : currentHour >= windowStart || currentHour < windowEnd; // wraps midnight
+                // Advance each due schedule to the next window opening.
+                if (missingDue) missingNextSearchUtc = nextWindowOpenUtc;
+                if (upgradeDue) upgradeNextSearchUtc = nextWindowOpenUtc;
 
-                if (!inWindow)
+                if (await UpdateAutomationIdleAsync(
+                    connection, transaction,
+                    library.LibraryId, library.LibraryName, library.MediaType,
+                    "idle", missingNextSearchUtc, upgradeNextSearchUtc, searchRequested: false,
+                    updatedUtc: now, cancellationToken: cancellationToken))
                 {
-                    // Advance each due schedule to the next window opening.
-                    var hoursUntilWindow = windowStart > currentHour
-                        ? windowStart - currentHour
-                        : 24 - currentHour + windowStart;
-                    var nextWindowOpen = now.AddHours(hoursUntilWindow);
-                    if (missingDue) missingNextSearchUtc = nextWindowOpen;
-                    if (upgradeDue) upgradeNextSearchUtc = nextWindowOpen;
-
-                    if (await UpdateAutomationIdleAsync(
-                        connection, transaction,
-                        library.LibraryId, library.LibraryName, library.MediaType,
-                        "idle", missingNextSearchUtc, upgradeNextSearchUtc, searchRequested: false,
-                        updatedUtc: now, cancellationToken: cancellationToken))
-                    {
-                        changedLibraryIds.Add(library.LibraryId);
-                    }
-
-                    continue;
+                    changedLibraryIds.Add(library.LibraryId);
                 }
+
+                continue;
             }
 
             if (!manualRequest && !missingDue && !upgradeDue)
@@ -1736,104 +1871,6 @@ public sealed class SqliteJobStore(
             var queuedForLibrary = false;
             var hasPendingForLibrary = false;
             var attemptedKinds = 0;
-
-            // Reading what the files already have, planned by the same cycle
-            // that plans the searching and gated by the same window — DESIGN-002
-            // rule 3, no second scheduler. It runs before the searches for the
-            // obvious reason: knowing which subtitles you already hold is what
-            // decides which ones are worth fetching.
-            //
-            // It does not touch the automation state or the next-search clock.
-            // Those belong to searching, and a subtitle scan is not a search;
-            // borrowing them would make a library read "queued" for work that
-            // never reaches an indexer.
-            if (library.WantsSubtitles)
-            {
-                var subtitleDedupeKey = $"library.subtitles.scan:{library.LibraryId}";
-                if (!pendingJobKeys.Contains(subtitleDedupeKey) &&
-                    await FindDuplicateActiveJobAsync(connection, transaction, subtitleDedupeKey, subtitleDedupeKey, cancellationToken) is null)
-                {
-                    var subtitleJob = new JobQueueItem(
-                        Id: Guid.CreateVersion7().ToString("N"),
-                        JobType: "library.subtitles.scan",
-                        Source: library.MediaType,
-                        Status: "queued",
-                        PayloadJson: JsonSerializer.Serialize(new
-                        {
-                            libraryId = library.LibraryId,
-                            libraryName = library.LibraryName,
-                            mediaType = library.MediaType
-                        }),
-                        Attempts: 0,
-                        CreatedUtc: now,
-                        ScheduledUtc: now,
-                        StartedUtc: null,
-                        CompletedUtc: null,
-                        LeasedUntilUtc: null,
-                        WorkerId: null,
-                        LastError: null,
-                        RelatedEntityType: "library",
-                        RelatedEntityId: library.LibraryId,
-                        IdempotencyKey: subtitleDedupeKey,
-                        DedupeKey: subtitleDedupeKey,
-                        MaxAttempts: DefaultMaxAttempts,
-                        LastAttemptUtc: null,
-                        NextAttemptUtc: now);
-
-                    await InsertJobAsync(connection, transaction, subtitleJob, cancellationToken);
-                    queuedAny = true;
-                    await InsertActivityAsync(connection, transaction, "job.queued", FormatQueuedMessage(subtitleJob.JobType, subtitleJob.Source, subtitleJob.PayloadJson), subtitleJob.PayloadJson, subtitleJob.Id, subtitleJob.RelatedEntityType, subtitleJob.RelatedEntityId, now, cancellationToken);
-                }
-
-                // And then go and get the ones that are still missing.
-                //
-                // Queued together rather than chained, because the queue already
-                // orders them: the scan is on the import lane and the fetch on
-                // intake, so the scan drains first on any install that is not
-                // already idle, and on one that is, the fetch simply finds one
-                // slice less than it could have and picks the rest up next
-                // cycle. Chaining would mean a failed scan silently stopping
-                // every subsequent fetch, which is a worse failure than a slow
-                // first night.
-                //
-                // Same window, same cycle, same override — DESIGN-002 rule 3.
-                // Nothing about subtitles decides when subtitles happen.
-                var subtitleSearchKey = $"library.subtitles.search:{library.LibraryId}";
-                if (!pendingJobKeys.Contains(subtitleSearchKey) &&
-                    await FindDuplicateActiveJobAsync(connection, transaction, subtitleSearchKey, subtitleSearchKey, cancellationToken) is null)
-                {
-                    var subtitleSearchJob = new JobQueueItem(
-                        Id: Guid.CreateVersion7().ToString("N"),
-                        JobType: "library.subtitles.search",
-                        Source: library.MediaType,
-                        Status: "queued",
-                        PayloadJson: JsonSerializer.Serialize(new
-                        {
-                            libraryId = library.LibraryId,
-                            libraryName = library.LibraryName,
-                            mediaType = library.MediaType
-                        }),
-                        Attempts: 0,
-                        CreatedUtc: now,
-                        ScheduledUtc: now,
-                        StartedUtc: null,
-                        CompletedUtc: null,
-                        LeasedUntilUtc: null,
-                        WorkerId: null,
-                        LastError: null,
-                        RelatedEntityType: "library",
-                        RelatedEntityId: library.LibraryId,
-                        IdempotencyKey: subtitleSearchKey,
-                        DedupeKey: subtitleSearchKey,
-                        MaxAttempts: DefaultMaxAttempts,
-                        LastAttemptUtc: null,
-                        NextAttemptUtc: now);
-
-                    await InsertJobAsync(connection, transaction, subtitleSearchJob, cancellationToken);
-                    queuedAny = true;
-                    await InsertActivityAsync(connection, transaction, "job.queued", FormatQueuedMessage(subtitleSearchJob.JobType, subtitleSearchJob.Source, subtitleSearchJob.PayloadJson), subtitleSearchJob.PayloadJson, subtitleSearchJob.Id, subtitleSearchJob.RelatedEntityType, subtitleSearchJob.RelatedEntityId, now, cancellationToken);
-                }
-            }
 
             foreach (var (kind, enabled, due) in new[]
             {
@@ -2695,7 +2732,7 @@ public sealed class SqliteJobStore(
             SELECT
                 library_id, library_name, media_type, status, search_requested, last_planned_utc,
                 last_started_utc, last_completed_utc, next_search_utc, last_job_id, last_error, updated_utc,
-                next_missing_search_utc, next_upgrade_search_utc
+                next_missing_search_utc, next_upgrade_search_utc, next_subtitle_search_utc
             FROM library_automation_state;
             """;
 
@@ -2851,6 +2888,82 @@ public sealed class SqliteJobStore(
         DateTimeOffset now,
         LibraryAutomationPlanItem library)
         => now.AddHours(Math.Max(1, library.SearchIntervalHours));
+
+    /// <summary>
+    /// Whether this library's time-of-day window is open, and when it next
+    /// opens if it is not.
+    ///
+    /// <para>One reader, because two things now ask: release searches and
+    /// subtitle work. It was written inline for searches alone, and a second
+    /// copy of a comparison that has to handle a window wrapping midnight is
+    /// the shape this codebase keeps producing defects in.</para>
+    ///
+    /// <para>No window configured means always open, and the caller's own
+    /// clocks decide the rest.</para>
+    /// </summary>
+    private static (bool InWindow, DateTimeOffset NextOpenUtc) SearchWindow(
+        LibraryAutomationPlanItem library,
+        DateTimeOffset now)
+    {
+        if (!library.SearchWindowStartHour.HasValue || !library.SearchWindowEndHour.HasValue)
+        {
+            return (true, now);
+        }
+
+        var currentHour = now.Hour;
+        var windowStart = library.SearchWindowStartHour.Value;
+        var windowEnd = library.SearchWindowEndHour.Value;
+        var inWindow = windowStart <= windowEnd
+            ? currentHour >= windowStart && currentHour < windowEnd
+            : currentHour >= windowStart || currentHour < windowEnd; // wraps midnight
+
+        if (inWindow)
+        {
+            return (true, now);
+        }
+
+        var hoursUntilWindow = windowStart > currentHour
+            ? windowStart - currentHour
+            : 24 - currentHour + windowStart;
+        return (false, now.AddHours(hoursUntilWindow));
+    }
+
+    /// <summary>
+    /// Records when this library's subtitles are next due.
+    ///
+    /// <para>Its own writer, touching its own column, rather than a parameter on
+    /// <c>UpdateAutomationIdleAsync</c>: that one also writes status,
+    /// <c>next_search_utc</c> and <c>search_requested</c>, and every path that
+    /// needs to move the subtitle clock is a path that must leave all three
+    /// exactly as it found them.</para>
+    ///
+    /// <para>Guarded like its neighbour, so an idle library with a settled clock
+    /// writes nothing on any of its ticks.</para>
+    /// </summary>
+    private static async Task<bool> WriteSubtitleScheduleAsync(
+        System.Data.Common.DbConnection connection,
+        System.Data.Common.DbTransaction transaction,
+        string libraryId,
+        DateTimeOffset? nextSubtitleSearchUtc,
+        DateTimeOffset updatedUtc,
+        CancellationToken cancellationToken)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            """
+            UPDATE library_automation_state
+            SET next_subtitle_search_utc = @nextSubtitleSearchUtc,
+                updated_utc = @updatedUtc
+            WHERE library_id = @libraryId
+              AND next_subtitle_search_utc IS NOT @nextSubtitleSearchUtc;
+            """;
+
+        AddParameter(command, "@libraryId", libraryId);
+        AddParameter(command, "@nextSubtitleSearchUtc", nextSubtitleSearchUtc?.ToString("O"));
+        AddParameter(command, "@updatedUtc", updatedUtc.ToString("O"));
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
 
     private static DateTimeOffset? Earliest(DateTimeOffset? first, DateTimeOffset? second)
         => first is null
@@ -3085,7 +3198,8 @@ public sealed class SqliteJobStore(
             LastError: reader.IsDBNull(10) ? null : reader.GetString(10),
             UpdatedUtc: ParseTimestamp(reader.GetString(11)),
             NextMissingSearchUtc: reader.IsDBNull(12) ? null : ParseTimestamp(reader.GetString(12)),
-            NextUpgradeSearchUtc: reader.IsDBNull(13) ? null : ParseTimestamp(reader.GetString(13)));
+            NextUpgradeSearchUtc: reader.IsDBNull(13) ? null : ParseTimestamp(reader.GetString(13)),
+            NextSubtitleSearchUtc: reader.IsDBNull(14) ? null : ParseTimestamp(reader.GetString(14)));
     }
 
     private static SearchCycleRunItem ReadSearchCycleRun(System.Data.Common.DbDataReader reader)
