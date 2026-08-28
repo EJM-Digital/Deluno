@@ -1,3 +1,4 @@
+using Deluno.Media;
 using MetadataSearchResult = Deluno.Integrations.Metadata.MetadataSearchResult;
 using Deluno.Contracts;
 using Deluno.Movies.Contracts;
@@ -97,30 +98,34 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
 
     Task<int> UpdateMonitoredAsync(IReadOnlyList<string> movieIds, bool monitored, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// The only way metadata reaches this catalogue.
+    ///
+    /// <para>There was a second, positional overload with eighteen parameters,
+    /// five of them optional and trailing. Every field added to the provider
+    /// result meant another optional parameter and another edit at every call
+    /// site, and a call site that was not updated kept compiling and kept
+    /// writing null. That is how <c>status</c> survived four attempts at being
+    /// persisted and how <c>network</c> had no writer at all for four schema
+    /// versions. Taking the provider's own record removes the failure: there is
+    /// nothing to forget to pass.</para>
+    /// </summary>
     Task<MovieListItem?> UpdateMetadataAsync(
         string id,
         MetadataSearchResult metadata,
         CancellationToken cancellationToken);
 
-    Task<MovieListItem?> UpdateMetadataAsync(
-        string id,
-        string? metadataProvider,
-        string? metadataProviderId,
-        string? originalTitle,
-        string? overview,
-        string? posterUrl,
-        string? backdropUrl,
-        double? rating,
-        string? genres,
-        string? externalUrl,
-        string? imdbId,
-        string? metadataJson,
-        CancellationToken cancellationToken,
-        int? runtimeMinutes = null,
-        double? popularity = null,
-        int? voteCount = null,
-        string? status = null,
-        string? studio = null);
+    /// <summary>
+    /// Write metadata that did not come from a provider — a manual override.
+    ///
+    /// <para>Named fields on a record, because the alternative was eighteen
+    /// positional arguments where the twelfth and the thirteenth were both
+    /// nullable strings. A caller that passed them in the wrong order got a
+    /// library with its overview in the genres column and no error anywhere.</para>
+    /// </summary>
+    Task<MovieListItem?> UpdateMetadataAsync(MediaMetadataUpdate update, CancellationToken cancellationToken);
+
+
 
     Task<MovieWantedSummary> GetWantedSummaryAsync(CancellationToken cancellationToken);
 

@@ -5,6 +5,23 @@ interface RatingStripProps {
   fallbackRating?: number | null;
 }
 
+/**
+ * A colour per source, because the point of showing four scores is telling them
+ * apart at a glance (#319). Two of them had a tone and the other two shared the
+ * default, so Rotten Tomatoes and Metacritic — the two most likely to disagree
+ * with the rest — were the two that looked identical.
+ *
+ * The associations are the ones each site uses itself, so the card reads the way
+ * the source does: TMDb blue, IMDb amber, Rotten Tomatoes red, Metacritic
+ * yellow-green.
+ */
+const SOURCE_TONES: Record<string, string> = {
+  tmdb: "border-sky-400/30 bg-gradient-to-br from-sky-500/15 via-surface-1 to-surface-1",
+  imdb: "border-amber-400/30 bg-gradient-to-br from-amber-500/15 via-surface-1 to-surface-1",
+  rotten_tomatoes: "border-red-400/30 bg-gradient-to-br from-red-500/15 via-surface-1 to-surface-1",
+  metacritic: "border-lime-400/30 bg-gradient-to-br from-lime-500/15 via-surface-1 to-surface-1"
+};
+
 export function RatingStrip({ ratings, fallbackRating }: RatingStripProps) {
   const visibleRatings = normalizeRatings(ratings, fallbackRating);
 
@@ -20,13 +37,9 @@ export function RatingStrip({ ratings, fallbackRating }: RatingStripProps) {
     <div className="grid gap-2 sm:grid-cols-2">
       {visibleRatings.map((rating) => {
         const value = formatRating(rating);
-        const sourceTone = rating.source === "tmdb"
-          ? "border-sky-400/30 bg-gradient-to-br from-sky-500/15 via-surface-1 to-surface-1"
-          : rating.source === "imdb"
-            ? "border-amber-400/30 bg-gradient-to-br from-amber-500/15 via-surface-1 to-surface-1"
-            : "border-hairline bg-surface-1";
+        const tone = SOURCE_TONES[rating.source] ?? "border-hairline bg-surface-1";
         const content = (
-          <div className={`rounded-xl border p-3 transition hover:border-primary/35 hover:bg-surface-2 ${sourceTone}`}>
+          <div className={`rounded-xl border p-3 transition hover:border-primary/35 hover:bg-surface-2 ${tone}`}>
             <div className="flex items-center justify-between gap-3">
               <span className="text-[length:var(--type-caption)] font-bold uppercase tracking-[0.14em] text-muted-foreground">
                 {rating.label}

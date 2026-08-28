@@ -1,3 +1,4 @@
+using Deluno.Media;
 using Deluno.Contracts;
 using Deluno.Infrastructure.Storage.Migrations;
 using Deluno.Movies.Contracts;
@@ -194,12 +195,38 @@ public sealed class CatalogueCustomFilterTests
 
     private static Task SetGenresAsync(IMovieCatalogRepository movies, string id, string genres)
         => movies.UpdateMetadataAsync(
-            id, "tmdb", id, null, null, null, null, null, genres, null, null, "{}", CancellationToken.None);
+                new MediaMetadataUpdate(
+                    id,
+                    "tmdb",
+                    id,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    genres,
+                    null,
+                    null,
+                    "{}"),
+                CancellationToken.None);
 
     private static Task SetFactsAsync(IMovieCatalogRepository movies, string id, int runtimeMinutes, double rating)
         => movies.UpdateMetadataAsync(
-            id, "tmdb", id, null, null, null, null, rating, null, null, null, "{}", CancellationToken.None,
-            runtimeMinutes: runtimeMinutes);
+                new MediaMetadataUpdate(
+                    id,
+                    "tmdb",
+                    id,
+                    null,
+                    null,
+                    null,
+                    null,
+                    rating,
+                    null,
+                    null,
+                    null,
+                    "{}",
+                    RuntimeMinutes: runtimeMinutes),
+                CancellationToken.None);
 
     private static async Task<SqliteMovieCatalogRepository> CreateAsync(TestStorage storage)
     {

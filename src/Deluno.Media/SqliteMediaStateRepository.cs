@@ -659,6 +659,32 @@ public sealed class SqliteMediaStateRepository(
             RecentCases: cases);
     }
 
+    /// <summary>
+    /// One <c>SET</c> line per rating column, generated from
+    /// <see cref="RatingSources.All"/>.
+    ///
+    /// <para>Written out by hand this is eight near-identical lines that have
+    /// to agree with eight near-identical parameters and two migrations. That
+    /// is the shape that let <c>network</c> sit unwritten for four versions
+    /// while the filter over it politely returned nothing. Generating both ends
+    /// from the same list means a fifth source cannot be half-added.</para>
+    /// </summary>
+    private static string RatingAssignments()
+    {
+        var lines = new List<string>();
+
+        foreach (var source in RatingSources.All)
+        {
+            lines.Add($"{source.ScoreColumn} = COALESCE(@{source.ScoreColumn}, {source.ScoreColumn})");
+            if (source.VotesColumn is not null)
+            {
+                lines.Add($"{source.VotesColumn} = COALESCE(@{source.VotesColumn}, {source.VotesColumn})");
+            }
+        }
+
+        return string.Join("," + Environment.NewLine + "                ", lines) + ",";
+    }
+
     public async Task<bool> UpdateMetadataAsync(
         MediaKind kind,
         MediaMetadataUpdate update,
@@ -693,6 +719,10 @@ public sealed class SqliteMediaStateRepository(
                 -- did.
                 status = COALESCE(@status, status),
                 {map.MadeByColumn} = COALESCE(@madeBy, {map.MadeByColumn}),
+                certification = COALESCE(@certification, certification),
+                collection = COALESCE(@collection, collection),
+                original_language = COALESCE(@originalLanguage, original_language),
+                {RatingAssignments()}
                 metadata_updated_utc = @metadataUpdatedUtc,
                 updated_utc = @updatedUtc
             WHERE id = @id;
@@ -715,6 +745,27 @@ public sealed class SqliteMediaStateRepository(
         AddParameter(command, "@genres", NormalizeText(update.Genres));
         AddParameter(command, "@externalUrl", NormalizeText(update.ExternalUrl));
         AddParameter(command, "@metadataJson", NormalizeText(update.MetadataJson));
+        AddParameter(command, "@certification", NormalizeText(update.Certification));
+        AddParameter(command, "@collection", NormalizeText(update.Collection));
+        AddParameter(command, "@originalLanguage", NormalizeText(update.OriginalLanguage));
+
+        // Every source gets a parameter whether or not this provider answered
+        // for it, because the statement names them all. A source the provider
+        // is silent about arrives as null and the COALESCE leaves what an
+        // earlier lookup found — the alternative is a Metacritic score that
+        // disappears the moment TMDb answers without one.
+        foreach (var source in RatingSources.All)
+        {
+            var fact = update.Ratings?.FirstOrDefault(rating =>
+                string.Equals(rating.Source, source.Source, StringComparison.OrdinalIgnoreCase));
+
+            AddParameter(command, $"@{source.ScoreColumn}", fact?.Score);
+            if (source.VotesColumn is not null)
+            {
+                AddParameter(command, $"@{source.VotesColumn}", fact?.Votes);
+            }
+        }
+
         AddParameter(command, "@metadataUpdatedUtc", now);
         AddParameter(command, "@updatedUtc", now);
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;

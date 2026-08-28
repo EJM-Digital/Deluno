@@ -1,0 +1,110 @@
+using Deluno.Contracts;
+using Deluno.Infrastructure.Storage;
+using Deluno.Infrastructure.Storage.Migrations;
+using Deluno.Movies.Data;
+using Deluno.Persistence.Tests.Support;
+using Microsoft.Extensions.Logging.Abstractions;
+
+namespace Deluno.Persistence.Tests.Catalogue;
+
+/// <summary>
+/// Ordering by a rating source walks its index instead of sorting the library.
+///
+/// <para>#306 sets the bar: "every filter is a WHERE clause on an indexed
+/// column", and a sort is the same bargain. A shelf of twenty thousand titles
+/// ordered by IMDb score must be a seek down an index, not a scan of the whole
+/// catalogue with a temporary B-tree on the end. Nothing about that failure is
+/// visible in a test that only checks the rows come back in the right order —
+/// they do, eventually.</para>
+///
+/// <para>It has already happened here once. An index added for the subtitle
+/// rollup looked harmless, SQLite preferred it for the catalogue's correlated
+/// pick, and one page went from milliseconds to <b>13.4 seconds</b>. Eight new
+/// indexes went on each catalogue with this change, so the plan is worth
+/// asserting rather than assuming.</para>
+/// </summary>
+public sealed class RatingSortQueryPlanTests
+{
+    [Fact]
+    public async Task Each_rating_order_is_an_index_walk_rather_than_a_sort_of_the_library()
+    {
+        using var storage = TestStorage.Create();
+        await InitialiseAsync(storage);
+
+        foreach (var source in RatingSources.All)
+        {
+            var plan = await ExplainAsync(storage, CatalogueSortFields.ForRating(source.Source));
+
+            // A temporary B-tree for the ordering is the thing that does not
+            // scale: it means SQLite read every row before it could return the
+            // first one.
+            Assert.All(plan, line =>
+                Assert.DoesNotContain("USE TEMP B-TREE FOR ORDER BY", line, StringComparison.Ordinal));
+
+            Assert.Contains(plan, line => line.Contains("movie_entries", StringComparison.Ordinal));
+        }
+    }
+
+    /// <summary>
+    /// And the default order is untouched by the new indexes.
+    ///
+    /// <para>This is the half that bit last time: the regression was not in the
+    /// new query but in an old one SQLite decided to plan differently once a new
+    /// index existed. #306's own rule — "a page asking for nothing runs exactly
+    /// the query it ran before this existed" — is what this checks.</para>
+    /// </summary>
+    [Fact]
+    public async Task The_page_that_asks_for_nothing_still_walks_the_added_order()
+    {
+        using var storage = TestStorage.Create();
+        await InitialiseAsync(storage);
+
+        var plan = await ExplainAsync(storage, CatalogueSortFields.Added);
+
+        Assert.All(plan, line =>
+            Assert.DoesNotContain("USE TEMP B-TREE FOR ORDER BY", line, StringComparison.Ordinal));
+    }
+
+    private static async Task InitialiseAsync(TestStorage storage)
+    {
+        var clock = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-29T00:00:00Z"));
+
+        await new MoviesSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, clock),
+            NullLogger<MoviesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+    }
+
+    /// <summary>
+    /// The ordering clause the repository would build, planned on its own.
+    ///
+    /// <para>Built from <see cref="CatalogueKeyset"/> rather than written out,
+    /// so a change to the expression is a change to what this asserts — the
+    /// expression has to match its index character for character to be used at
+    /// all, and spelling it twice is how that quietly stops being true.</para>
+    /// </summary>
+    private static async Task<IReadOnlyList<string>> ExplainAsync(TestStorage storage, string sortField)
+    {
+        var expression = CatalogueKeyset.SortExpression(sortField, "m", "release_year");
+
+        await using var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Movies);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            $"""
+            EXPLAIN QUERY PLAN
+            SELECT m.id, {expression} AS sort_value
+            FROM movie_entries m
+            ORDER BY sort_value DESC, m.id DESC
+            LIMIT 51;
+            """;
+
+        var lines = new List<string>();
+        using var reader = await command.ExecuteReaderAsync(CancellationToken.None);
+        while (await reader.ReadAsync(CancellationToken.None))
+        {
+            lines.Add(reader.GetString(3));
+        }
+
+        return lines;
+    }
+}

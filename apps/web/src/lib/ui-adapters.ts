@@ -199,10 +199,9 @@ export function adaptMovieItems(items: MovieListItem[]): MediaItem[] {
       tmdbVotes: item.voteCount ?? readNumber(meta, "tmdbVotes"),
       imdbRating: readRating(item, "imdb", readNumber(meta, "imdbRating")),
       imdbVotes: readNumber(meta, "imdbVotes"),
-      traktRating: readNumber(meta, "traktRating"),
-      traktVotes: readNumber(meta, "traktVotes"),
       tomatoRating: readRating(item, "rotten_tomatoes", readNumber(meta, "tomatoRating")),
       tomatoVotes: readNumber(meta, "tomatoVotes"),
+      metacriticRating: readRating(item, "metacritic", readNumber(meta, "metacriticRating")),
       popularity: item.popularity ?? readNumber(meta, "popularity"),
       keywords: readStringArray(meta, "keywords")
     };
@@ -281,10 +280,9 @@ export function adaptSeriesItems(items: SeriesListItem[]): MediaItem[] {
       tmdbVotes: item.voteCount ?? readNumber(meta, "tmdbVotes"),
       imdbRating: readRating(item, "imdb", readNumber(meta, "imdbRating")),
       imdbVotes: readNumber(meta, "imdbVotes"),
-      traktRating: readNumber(meta, "traktRating"),
-      traktVotes: readNumber(meta, "traktVotes"),
       tomatoRating: readRating(item, "rotten_tomatoes", readNumber(meta, "tomatoRating")),
       tomatoVotes: readNumber(meta, "tomatoVotes"),
+      metacriticRating: readRating(item, "metacritic", readNumber(meta, "metacriticRating")),
       popularity: item.popularity ?? readNumber(meta, "popularity"),
       keywords: readStringArray(meta, "keywords")
     };

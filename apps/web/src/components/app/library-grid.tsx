@@ -22,6 +22,18 @@ export type CardSize = "sm" | "md" | "lg";
 import type { DisplayOptions } from "../../lib/library-filters";
 export type { DisplayOptions } from "../../lib/library-filters";
 
+/**
+ * The rating sources a poster can carry, matching the server's
+ * `RatingSources.All` — the ids come from the served poster options, so a source
+ * added on the server appears here as a toggle whose number this can draw.
+ */
+const RATING_SOURCES = [
+  { option: "showRatingtmdb", field: "tmdbRating", label: "TMDb", outOf: 10 },
+  { option: "showRatingimdb", field: "imdbRating", label: "IMDb", outOf: 10 },
+  { option: "showRatingrottentomatoes", field: "tomatoRating", label: "RT", outOf: 100 },
+  { option: "showRatingmetacritic", field: "metacriticRating", label: "Metacritic", outOf: 100 }
+] as const;
+
 const GRID_MIN_BY_DENSITY: Record<Density, Record<CardSize, string>> = {
   compact: { sm: "var(--library-card-sm)", md: "var(--library-card-md)", lg: "var(--library-card-lg)" },
   comfortable: { sm: "var(--library-card-sm)", md: "var(--library-card-md)", lg: "var(--library-card-lg)" },
@@ -437,6 +449,18 @@ function PosterExtras({ item, displayOptions }: { item: MediaItem; displayOption
 
   if (displayOptions.showAdded && item.added) {
     parts.push(item.added);
+  }
+
+  // One entry per rating source the reader asked for, labelled, because four
+  // bare numbers on one line are unreadable — and "IMDb 8.7" is the whole point
+  // of #319: a score means something different depending on who gave it. The
+  // percentages are rounded and the ten-point scores keep their decimal, which
+  // is how each source itself prints them.
+  for (const source of RATING_SOURCES) {
+    const score = item[source.field];
+    if (displayOptions[source.option] && typeof score === "number") {
+      parts.push(`${source.label} ${source.outOf === 100 ? `${Math.round(score)}%` : score.toFixed(1)}`);
+    }
   }
 
   // How far through a show you are, over what has aired rather than over what

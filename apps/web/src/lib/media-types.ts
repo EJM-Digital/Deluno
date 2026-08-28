@@ -104,14 +104,18 @@ export interface MediaItem {
   qualityProfile?: string | null;
   runtimeMinutes?: number | null;
   studio?: string | null;
+  // The four sources Deluno actually stores, each with its own column since
+  // #306. Trakt used to sit here too and was read from a metadata key nothing
+  // ever wrote — Deluno has no Trakt integration, so it was a field that could
+  // only ever be null, which is the same shape as a filter that matches
+  // nothing. Removed rather than left as a promise.
   tmdbRating?: number | null;
   tmdbVotes?: number | null;
   imdbRating?: number | null;
   imdbVotes?: number | null;
-  traktRating?: number | null;
-  traktVotes?: number | null;
   tomatoRating?: number | null;
   tomatoVotes?: number | null;
+  metacriticRating?: number | null;
   popularity?: number | null;
   keywords?: string[];
 }

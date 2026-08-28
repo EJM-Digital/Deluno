@@ -93,8 +93,17 @@ public sealed class CatalogueFilterRegistryTests
         Assert.True(parsed.IsEmpty);
         Assert.Single(errors);
 
-        CatalogueFilters.Parse(MediaKind.Movie, ["studio:is:A24"], out var unknown);
+        // "studio" used to stand here as the example of a field Movies did not
+        // have. #306 gave it one, which is the point — so this now uses a field
+        // no catalogue will ever carry, rather than one that was merely waiting
+        // its turn.
+        CatalogueFilters.Parse(MediaKind.Movie, ["nextAiring:before:2020-01-01"], out var unknown);
         Assert.Single(unknown);
+
+        // And the field it replaced is genuinely answerable now, so the refusal
+        // above is testing refusal rather than a gap.
+        Assert.False(CatalogueFilters.Parse(MediaKind.Movie, ["studio:is:A24"], out var studio).IsEmpty);
+        Assert.Empty(studio);
 
         // An operator the field's value kind does not carry is the same class of
         // mistake: "quality starts with" is not a question the ladder can answer.

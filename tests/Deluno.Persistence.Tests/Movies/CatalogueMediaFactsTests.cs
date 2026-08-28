@@ -1,3 +1,4 @@
+using Deluno.Media;
 using Deluno.Contracts;
 using Deluno.Infrastructure.Storage.Migrations;
 using Deluno.Movies.Contracts;
@@ -83,9 +84,23 @@ public sealed class CatalogueMediaFactsTests
         var added = await movies.AddAsync(new CreateMovieRequest("Arrival", 2016, null), CancellationToken.None);
 
         await movies.UpdateMetadataAsync(
-            added.Id, "tmdb", "329865", "Arrival", "A linguist is recruited.", null, null, 7.6,
-            "Science Fiction", null, "tt2543164", "{}", CancellationToken.None,
-            runtimeMinutes: 116, popularity: 42.5, voteCount: 18_000);
+                new MediaMetadataUpdate(
+                    added.Id,
+                    "tmdb",
+                    "329865",
+                    "Arrival",
+                    "A linguist is recruited.",
+                    null,
+                    null,
+                    7.6,
+                    "Science Fiction",
+                    null,
+                    "tt2543164",
+                    "{}",
+                    RuntimeMinutes: 116,
+                    Popularity: 42.5,
+                    VoteCount: 18_000),
+                CancellationToken.None);
 
         var item = Assert.Single(
             (await movies.ListPageAsync(new CatalogueQuery(), CancellationToken.None)).Items);
@@ -96,8 +111,20 @@ public sealed class CatalogueMediaFactsTests
         // A later refresh from a provider that does not report runtime must not
         // blank the runtime an earlier one did report.
         await movies.UpdateMetadataAsync(
-            added.Id, "tmdb", "329865", "Arrival", "A linguist is recruited.", null, null, 7.7,
-            "Science Fiction", null, "tt2543164", "{}", CancellationToken.None);
+                new MediaMetadataUpdate(
+                    added.Id,
+                    "tmdb",
+                    "329865",
+                    "Arrival",
+                    "A linguist is recruited.",
+                    null,
+                    null,
+                    7.7,
+                    "Science Fiction",
+                    null,
+                    "tt2543164",
+                    "{}"),
+                CancellationToken.None);
 
         var refreshed = Assert.Single(
             (await movies.ListPageAsync(new CatalogueQuery(), CancellationToken.None)).Items);
@@ -119,8 +146,21 @@ public sealed class CatalogueMediaFactsTests
         Assert.Null(withoutRuntime.ApproximateBitrateMbps);
 
         await movies.UpdateMetadataAsync(
-            withoutRuntime.Id, "tmdb", "329865", null, null, null, null, null, null, null, null, "{}",
-            CancellationToken.None, runtimeMinutes: 116);
+                new MediaMetadataUpdate(
+                    withoutRuntime.Id,
+                    "tmdb",
+                    "329865",
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    "{}",
+                    RuntimeMinutes: 116),
+                CancellationToken.None);
 
         var withRuntime = Assert.Single(
             (await movies.ListPageAsync(new CatalogueQuery(), CancellationToken.None)).Items);

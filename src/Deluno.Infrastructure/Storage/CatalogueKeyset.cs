@@ -24,7 +24,22 @@ public static class CatalogueKeyset
     /// existing title index is built on.
     /// </summary>
     public static string SortExpression(string sortField, string alias, string yearColumn)
-        => CatalogueSortFields.Normalize(sortField) switch
+    {
+        var normalized = CatalogueSortFields.Normalize(sortField);
+
+        // One order per rating source, from the same list the columns come
+        // from. Null sorts last in both directions -- see the -1 below: a
+        // library where most titles have no Metacritic score would otherwise
+        // open on a page of blanks.
+        foreach (var source in RatingSources.All)
+        {
+            if (normalized == CatalogueSortFields.ForRating(source.Source))
+            {
+                return $"COALESCE({alias}.{source.ScoreColumn}, -1)";
+            }
+        }
+
+        return normalized switch
         {
             // The stored sort title, not lower(title): "The Matrix" files under
             // M, the way Radarr and Sonarr both do. A column rather than an
@@ -63,6 +78,7 @@ public static class CatalogueKeyset
 
             _ => $"{alias}.created_utc"
         };
+    }
 
     /// <summary>
     /// Whether the sort value is a number rather than text, which decides how
@@ -70,7 +86,9 @@ public static class CatalogueKeyset
     /// year as text would silently match nothing.
     /// </summary>
     public static bool IsNumeric(string sortField)
-        => CatalogueSortFields.Normalize(sortField)
+        => RatingSources.All.Any(source =>
+               CatalogueSortFields.Normalize(sortField) == CatalogueSortFields.ForRating(source.Source))
+        || CatalogueSortFields.Normalize(sortField)
             is CatalogueSortFields.Year
             or CatalogueSortFields.Rating
             or CatalogueSortFields.Runtime

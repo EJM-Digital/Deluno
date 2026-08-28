@@ -191,19 +191,20 @@ public sealed class MediaStateRepositoryTests
                 CancellationToken.None);
 
             var updated = await repository.UpdateMetadataAsync(
-                movie.Id,
-                "tmdb",
-                "123",
-                "After",
-                "Updated overview",
-                "poster.jpg",
-                "backdrop.jpg",
-                8.5,
-                "Drama",
-                "https://example.test/movie",
-                "tt0000004",
-                "{\"ratings\":[]}",
-                CancellationToken.None);
+                    new MediaMetadataUpdate(
+                        movie.Id,
+                        "tmdb",
+                        "123",
+                        "After",
+                        "Updated overview",
+                        "poster.jpg",
+                        "backdrop.jpg",
+                        8.5,
+                        "Drama",
+                        "https://example.test/movie",
+                        "tt0000004",
+                        "{\"ratings\":[]}"),
+                    CancellationToken.None);
 
             Assert.NotNull(updated);
             Assert.Equal("Before", updated.Title);
@@ -219,19 +220,20 @@ public sealed class MediaStateRepositoryTests
                 CancellationToken.None);
 
             var updated = await repository.UpdateMetadataAsync(
-                series.Id,
-                "tmdb",
-                "456",
-                "After",
-                "Updated overview",
-                "poster.jpg",
-                "backdrop.jpg",
-                8.5,
-                "Drama",
-                "https://example.test/series",
-                "tt0000006",
-                "{\"ratings\":[]}",
-                CancellationToken.None);
+                    new MediaMetadataUpdate(
+                        series.Id,
+                        "tmdb",
+                        "456",
+                        "After",
+                        "Updated overview",
+                        "poster.jpg",
+                        "backdrop.jpg",
+                        8.5,
+                        "Drama",
+                        "https://example.test/series",
+                        "tt0000006",
+                        "{\"ratings\":[]}"),
+                    CancellationToken.None);
 
             Assert.NotNull(updated);
             Assert.Equal("Before", updated.Title);
