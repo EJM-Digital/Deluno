@@ -270,7 +270,44 @@ public sealed record CatalogueFacets(
     /// <summary>Has what the profile asked for. Deluno has stopped looking.</summary>
     int Covered = 0,
     /// <summary>Not out yet, so its absence is not a shortfall.</summary>
-    int Upcoming = 0);
+    int Upcoming = 0,
+    /// <summary>Found and handed to a download client. On its way.</summary>
+    int Downloading = 0)
+{
+    /// <summary>
+    /// The number to print above a shelf showing this status — which is simply
+    /// this status's own facet.
+    ///
+    /// <para><b>Written here because it was written twice, and wrong in both
+    /// copies.</b> Each catalogue had a private <c>SelectFacetTotal</c> that
+    /// named three statuses and sent everything else to <c>All</c>. So a shelf
+    /// filtered to <i>Quality met</i> printed the size of the whole library
+    /// above one row, and <i>Upcoming</i> printed it above none — the exact
+    /// thing #322 rule 2 exists to forbid: <i>the counts above the shelf count
+    /// the rows on it</i>.</para>
+    ///
+    /// <para>It went unnoticed because the shape hides it. A catch-all arm
+    /// returning a plausible number is invisible until somebody reads the two
+    /// numbers side by side, and it silently absorbs every status added
+    /// afterwards — <c>Covered</c> and <c>Upcoming</c> had already fallen in
+    /// before <c>Downloading</c> did.</para>
+    /// </summary>
+    public int TotalFor(string status)
+        => CatalogueStatusFilters.Normalize(status) switch
+        {
+            CatalogueStatusFilters.Downloaded => Downloaded,
+            CatalogueStatusFilters.Missing => Missing,
+            CatalogueStatusFilters.Upgrades => Upgrades,
+            CatalogueStatusFilters.Covered => Covered,
+            CatalogueStatusFilters.Upcoming => Upcoming,
+            CatalogueStatusFilters.Downloading => Downloading,
+            // `all` is the only status left, and it genuinely is the whole
+            // shelf. Spelled out rather than left to a catch-all so the next
+            // status added is a compile-time hole here rather than a wrong
+            // number on screen.
+            _ => All
+        };
+}
 
 /// <summary>
 /// The continuation token: the sort value of the last row on the page, and its
