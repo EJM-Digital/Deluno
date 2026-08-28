@@ -27,6 +27,7 @@ public static class WorkerServiceCollectionExtensions
         services.AddScoped<IJobHandler, LibraryImportExistingJobHandler>();
         services.AddScoped<IJobHandler, LibrarySubtitleScanJobHandler>();
         services.AddScoped<IJobHandler, LibrarySubtitleSearchJobHandler>();
+        services.AddScoped<IJobHandler, SubtitleSyncJobHandler>();
         services.AddScoped<IJobHandler, MoviesQualityRecalculateJobHandler>();
         services.AddScoped<IJobHandler, SeriesQualityRecalculateJobHandler>();
         services.AddScoped<IJobHandler, MoviesMetadataRefreshJobHandler>();

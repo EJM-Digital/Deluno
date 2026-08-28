@@ -21,3 +21,7 @@ apps/web/test-results/
 # Belt and braces: the same folder if anything ever writes it at the root.
 /test-results/
 apps/web/playwright-report/
+
+# FFmpeg, fetched by scripts/fetch-ffmpeg.ps1 and copied into the publish.
+# ~128 MB of binaries that do not belong in git.
+tools/ffmpeg/

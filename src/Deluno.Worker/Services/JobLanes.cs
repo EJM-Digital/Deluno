@@ -145,6 +145,24 @@ public static class JobLanes
         // imports, and now unable to delay one.
         new("subtitles.scan", ["library.subtitles.scan"], BatchSize: LocalWidth, MaxConcurrency: LocalWidth / 2),
 
+        // Timing sync: an FFmpeg pass over a whole audio track, then a
+        // correlation. Sized exactly like the scan beside it, because it is the
+        // same kind of work — a local process per file, bounded by the machine.
+        //
+        // It was drafted at half this width, on the reasoning that decoding
+        // audio is heavier than probing a container. `Lane_width_scales_with_the
+        // _machine` failed it, and the test was right: that reasoning is how
+        // every lane in here came to be a small constant, and James had already
+        // rejected it — *"4 slot lane doesnt sound enough though we need to
+        // maximise this what if someone was a power user."* Audio decode runs at
+        // many times real time; three of them on a six-core rig is not a
+        // saturated machine, and on a thirty-two-core one it is sixteen.
+        //
+        // It is emphatically not on `subtitles.search`. That lane exists to
+        // spend a provider's daily allowance; parking local CPU work on it is
+        // the shape that starved subtitles behind intake in the first place.
+        new("subtitles.sync", ["subtitle.sync"], BatchSize: LocalWidth, MaxConcurrency: LocalWidth / 2),
+
         // Indexers, one lane per catalogue so neither can starve the other.
         //
         // Outbound request pacing is handled a layer down: `FeedMediaSearchPlanner`

@@ -198,7 +198,10 @@ public sealed class LibrarySubtitleScanJobHandler(
 
         if (probeUnavailable > 0)
         {
-            summary += " ffprobe is not installed, so subtitles inside the video files could not be read — only files beside them.";
+            // Not "ffprobe is not installed" any more: Deluno ships it, so this
+            // is a broken install rather than a missing prerequisite, and the
+            // old wording sent people off to install what they already had.
+            summary += " ffprobe is missing from this install, so subtitles inside the video files could not be read — only files beside them.";
         }
 
         return summary;

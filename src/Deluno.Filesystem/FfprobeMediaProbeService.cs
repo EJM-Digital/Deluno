@@ -16,10 +16,10 @@ public sealed class FfprobeMediaProbeService : IMediaProbeService
             return Unavailable("Source file does not exist.");
         }
 
-        var executable = ResolveExecutable();
+        var executable = FfmpegTools.Ffprobe();
         if (executable is null)
         {
-            return Unavailable("ffprobe was not found on PATH. Install FFmpeg or configure the runtime image with ffprobe to enable stream validation.");
+            return Unavailable(MissingFfprobe);
         }
 
         var startInfo = new ProcessStartInfo
@@ -47,8 +47,8 @@ public sealed class FfprobeMediaProbeService : IMediaProbeService
         {
             // A missing binary is an environment state, not a bad file. The
             // contract is "validate with ffprobe when available" — an install
-            // without FFmpeg must import unvalidated, not fail every import.
-            return Unavailable("ffprobe was not found. Install FFmpeg or set DELUNO_FFPROBE_PATH to enable stream validation.");
+            // without it must import unvalidated, not fail every import.
+            return Unavailable(MissingFfprobe);
         }
 
         try
@@ -134,28 +134,24 @@ public sealed class FfprobeMediaProbeService : IMediaProbeService
         }
     }
 
+    /// <summary>
+    /// Said once, because it is said from two places and they used to say
+    /// different things — one blamed the PATH and the other told you to set an
+    /// environment variable.
+    ///
+    /// <para>It no longer says "install FFmpeg". Deluno ships FFmpeg, so an
+    /// absent ffprobe is a broken install rather than a missing prerequisite,
+    /// and telling somebody to go and install what they already paid 128 MB for
+    /// would send them off to fix the wrong thing.</para>
+    /// </summary>
+    private const string MissingFfprobe =
+        "ffprobe is missing from this install, so streams could not be read. It ships in tools\\ffmpeg beside Deluno — reinstall, or point DELUNO_FFMPEG_DIR at a copy.";
+
     private static MediaProbeInfo Unavailable(string message)
         => new("unavailable", "ffprobe", message, null, null, null, [], [], []);
 
     private static MediaProbeInfo Failed(string message)
         => new("failed", "ffprobe", message, null, null, null, [], [], []);
-
-    private static string? ResolveExecutable()
-    {
-        // 1. Explicit override via environment variable
-        var configured = Environment.GetEnvironmentVariable("DELUNO_FFPROBE_PATH");
-        if (!string.IsNullOrWhiteSpace(configured) && File.Exists(configured))
-            return configured;
-
-        // 2. Bundled next to the application executable (Windows installer puts it here)
-        var exeName = OperatingSystem.IsWindows() ? "ffprobe.exe" : "ffprobe";
-        var bundled = Path.Combine(AppContext.BaseDirectory, exeName);
-        if (File.Exists(bundled))
-            return bundled;
-
-        // 3. System PATH
-        return "ffprobe";
-    }
 
     private static bool IsDisposed(FfprobeStream stream, string flag)
         => stream.Disposition is not null && stream.Disposition.TryGetValue(flag, out var value) && value == 1;
