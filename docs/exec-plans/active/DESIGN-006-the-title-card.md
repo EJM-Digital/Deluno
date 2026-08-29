@@ -5,9 +5,13 @@ Settled 2026-08-30 with the owner. Supersedes the card half of
 decision in `4bdfe45`. The subtitle vocabulary from
 [DESIGN-002](DESIGN-002-subber.md) is unchanged and inherited.
 
-Rendered reference, drawn at real shelf sizes in both themes:
-`/renders/bars-that-speak.html` on the rig
-(source: `ui-explorations/bars-that-speak.html`).
+Rendered references on the rig:
+
+- **`/renders/card-decider.html`** — every open decision as a switch, drawn on the
+  real library. This is the one to decide from.
+  (source: `ui-explorations/card-decider.html`)
+- `/renders/bars-that-speak.html` — the treatments side by side, with the reasoning
+  written between them. (source: `ui-explorations/bars-that-speak.html`)
 
 The owner: *"there is a 'show text on progress bar' for both sonarr and radarr —
 sonarr looks to display episode count 0/0 whereas radarr shows quality — this is
@@ -30,13 +34,13 @@ answer is not a better colour. It is that **the label is drawn twice**:
 
 | Layer | Extent | Colour |
 |---|---|---|
-| Back text | the whole bar | muted, chosen for the empty track |
+| Back text | the whole bar | chosen for the **remainder** — white, since the remainder is Missing red |
 | Fill | 0–N% of the bar | the mark's surface colour |
 | Front text | clipped to exactly N% | chosen for the fill |
 
 Both text layers are the **same string in the same position**. Only the paint of
 the front one is clipped. A bar that is 15% full therefore has 15% of its label
-in white and 85% in grey, and every glyph is coloured for the ground directly
+in the fill's label colour and 85% in the remainder's, and every glyph is coloured for the ground directly
 beneath it. Verified against the live Sonarr at `192.168.1.35:8989` — three DOM
 layers, `ProgressBar-backTextContainer` / `progressBar` / `frontTextContainer`.
 
@@ -70,7 +74,7 @@ and Radarr arrived at is the correct one:
 |---|---|---|
 | **Top bar says** | the quality on disk — `Bluray-1080p` | aired episodes held — `3 / 20` |
 | **Top bar fills to** | download progress, or solid when held | the fraction of aired episodes held |
-| **When nothing is held** | the state's word — `Missing`, `Upcoming` | `0 / 29`, empty track |
+| **When nothing is held** | the state's word — `Missing`, `Upcoming` | `0 / 29`, no fill |
 | **Bottom bar says** | `SUBS 1 / 3` | `SUBS 2 / 6` |
 | **Bottom bar counts over** | its one file | the episodes you actually hold |
 
@@ -80,10 +84,30 @@ For a **show** the fill is coverage: how much of what has aired is on disk. For 
 **film** there is nothing to be partway through — you have it or you do not — so
 the fill is free to mean **download progress**, which is the one time a film is
 genuinely part-way. A held film is a solid bar; a downloading film fills as the
-bytes arrive; a missing film is an empty track.
+bytes arrive; a missing film is a bar with no fill at all.
 
 This is not an inconsistency to apologise for. Each medium's bar fills with the
 only fraction that medium has.
+
+### What the unfilled part of a bar is
+
+**Missing.** Not a neutral grey.
+
+`4bdfe45` made the remainder a solid neutral, reasoning that "the remainder is
+not a weaker version of the state; it is the part you do not have yet". The first
+half is right and the second half names it: *the part you do not have* is Missing,
+which is a rung on this ladder with a colour of its own.
+
+The shipped subtitle bar already knew this. `titleBarGradient` runs gold → green →
+**red**, with no neutral anywhere in it. Only the media bar ended in grey, and
+drawing the two on one card is what made the disagreement visible: a title holding
+nothing was an entirely grey card, carrying its state nowhere — the corner pill
+having been the only thing colouring it.
+
+So both bars end in Missing red, and a show at 3 of 20 shows three-twentieths of
+its state colour against seventeen-twentieths of red. Neutral grey survives only
+as `--mark-idle` under the *half* a title wears when it is not monitored, which is
+a different question and keeps its own colour.
 
 ### The subtitle bar counts only files you hold
 
@@ -91,18 +115,35 @@ Unchanged from DESIGN-002 and restated because it is easy to lose: a show short
 of episodes is already saying so on its top bar, in red, on the same card.
 Dragging the subtitle bar down for the same reason would be the same fact twice.
 
+### "None asked for" is not a state
+
+A title whose `subtitleLanguagesWanted` is zero was drawn as a grey bar reading
+*none asked for*, which invented a fourth thing a subtitle bar can be. The owner:
+*"this is an interim state right... in the event the subtitle is not available it
+would go to missing so my gut feeling is it should just be missing regardless
+cause it is missing"*.
+
+He is right, and it is the same error as the neutral remainder. Zero-wanted is
+where Subber has not resolved the title yet — the true state today of every title
+in the library, since #301 has not landed — and a title whose subtitles are not
+here is Missing. There is no denominator to print, so the bar prints the **word**,
+exactly as a film's media bar does when it has no quality to name.
+
+Deluno must never show a subtitle bar that means "nothing to say". A bar that can
+be a fourth, verdict-free thing is a bar a reader has to learn a fourth rule for.
+
 ---
 
 ## 3. Anatomy
 
 ```
 ┌───────────────────────────┐
-│ ▓▓▓░░░░░ 3 / 20 ░░░░░░░░░ │  ← media bar, 14px, top edge
+│ ▓▓▓█████ 3 / 20 █████████ │  ← media bar, 14px  ▓ held  █ missing
 │                           │
 │         artwork           │
 │                           │
 │  Severance                │
-│ ▓▓▓▓▓ SUBS 2 / 6 ░░░░░░░░ │  ← subtitle bar, 14px, bottom edge
+│ ▓▓▓▓▓ SUBS 2 / 6 ████████ │  ← subtitle bar, 14px  ▓ held  █ missing
 └───────────────────────────┘
 ```
 
@@ -157,7 +198,8 @@ never a reason for it to invert — the same argument that already makes
 | Continuing | `hsl(178 96% 24%)` | white | 5.33 |
 | Quality met | the existing `--mark-leaf-*` gradient | **near-black** `hsl(40 90% 12%)` | 10.46 |
 | Upcoming | `hsl(270 76% 47%)` | white | 7.22 |
-| Empty track | `--mark-idle`, per theme | muted, per theme | — |
+| Remainder | **Missing's surface** — see §2 | white | 6.27 |
+| Unmonitored half | `--mark-idle`, per theme | — | — |
 
 **Gold's label is the one asymmetry, and it is forced.** Gold is floored at 52%
 lightness — below that yellow reads as bronze, which is the whole of
@@ -339,6 +381,13 @@ chosen here with reasons and are his to overturn:
    something generic, which is what the arrs did and what he objected to.
 4. **The corner pill is deleted.** §7. It is the only removal here, and it is
    removed because the bar now says what it said.
+5. **The remainder is Missing red, not neutral grey**, and *none asked for* is
+   gone. §2. Both were found by drawing the card rather than by reasoning about
+   it, and both are switchable on the decider page so the alternative can be
+   looked at rather than argued.
+
+All six are switches on `/renders/card-decider.html`, drawn on the real library.
+Flip them, then send the settings line the page prints — it names every one.
 
 ## 13. Rejected, and why
 
