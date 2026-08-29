@@ -34,7 +34,16 @@ const css = readFileSync(resolve(process.cwd(), "src/index.css"), "utf8");
  */
 
 /** Where gold lives. Amber is below it and lime is above it. */
-const GOLD_HUE = { min: 38, max: 56 } as const;
+const GOLD_HUE = { min: 40, max: 56 } as const;
+
+/**
+ * Below this lightness a saturated yellow stops reading as gold and starts
+ * reading as bronze — which is the "red" in James's three reports.
+ */
+const BRONZE_FLOOR = 50;
+
+/** The stops `.mark-grail` runs its gradient between. */
+const LEAF = ["mark-leaf-high", "mark-leaf", "mark-leaf-deep"] as const;
 
 interface Hsl {
   hue: number;
@@ -56,14 +65,24 @@ function tokens(name: string): Hsl[] {
   }));
 }
 
-/** The colours written directly into `.mark-grail`, rather than through a token. */
+/**
+ * The colours written directly into `.mark-grail`, rather than through a token.
+ *
+ * <p>The rule bodies, not "everything between the first mention of the class
+ * and the keyframes" — the class is named in a comment much earlier in the
+ * file, so that slice was most of the stylesheet and this was asserting the
+ * gold rule over every blue in the app.</p>
+ */
 function grailLiterals(): Hsl[] {
-  const block = css.slice(css.indexOf(".mark-grail"), css.indexOf("@keyframes mark-grail-sheen"));
-  return [...block.matchAll(/hsl\(\s*([\d.]+)\s+([\d.]+)%\s+([\d.]+)%/g)].map((match) => ({
-    hue: Number(match[1]),
-    saturation: Number(match[2]),
-    lightness: Number(match[3])
-  }));
+  const rules = [...css.matchAll(/\.mark-grail(?:::after)?\s*\{([^}]*)\}/g)].map((match) => match[1]);
+  expect(rules.length, "the .mark-grail rules were not found").toBeGreaterThanOrEqual(2);
+
+  return rules.flatMap((rule) =>
+    [...rule.matchAll(/hsl\(\s*([\d.]+)\s+([\d.]+)%\s+([\d.]+)%/g)].map((match) => ({
+      hue: Number(match[1]),
+      saturation: Number(match[2]),
+      lightness: Number(match[3])
+    })));
 }
 
 describe("the gold mark", () => {
@@ -74,24 +93,31 @@ describe("the gold mark", () => {
     expect(css).toContain("--mark-quality-met:");
   });
 
-  it("defines its whole ladder inside the gold hues", () => {
-    const ladder = ["mark-quality-met", "mark-quality-met-high", "mark-quality-met-deep"];
+  it("draws its surface from one set of stops, the same in both themes", () => {
+    // The leaf used to borrow `--mark-quality-met` for its middle stop, and
+    // that token is the Quality met *text* colour — dark in the light theme, so
+    // the middle of a gold bar went to 40% lightness and the stop below it to
+    // 30%. A gold bar sits on artwork, not on the page, so it does not invert.
+    for (const name of LEAF) {
+      expect(tokens(name), `--${name} is not defined exactly once`).toHaveLength(1);
+    }
+  });
 
-    for (const name of ladder) {
-      const values = tokens(name);
-      // Two themes. One would mean a token was renamed or a theme lost it.
-      expect(values, `--${name} is not defined twice`).toHaveLength(2);
+  it("keeps every stop of the surface in gold, and above the bronze floor", () => {
+    for (const name of LEAF) {
+      const [value] = tokens(name);
 
-      for (const value of values) {
-        expect(value.hue, `--${name} at hue ${value.hue} is not gold`)
-          .toBeGreaterThanOrEqual(GOLD_HUE.min);
-        expect(value.hue, `--${name} at hue ${value.hue} is not gold`)
-          .toBeLessThanOrEqual(GOLD_HUE.max);
-        // A washed-out gold is a beige. The mark that means "finished" is the
-        // one that has to carry across a wall of artwork.
-        expect(value.saturation, `--${name} is too grey at ${value.saturation}%`)
-          .toBeGreaterThanOrEqual(85);
-      }
+      expect(value.hue, `--${name} at hue ${value.hue} is not gold`)
+        .toBeGreaterThanOrEqual(GOLD_HUE.min);
+      expect(value.hue, `--${name} at hue ${value.hue} is not gold`)
+        .toBeLessThanOrEqual(GOLD_HUE.max);
+      // A washed-out gold is a beige.
+      expect(value.saturation, `--${name} is too grey at ${value.saturation}%`)
+        .toBeGreaterThanOrEqual(90);
+      // And a dark yellow is not a dark gold, it is brown. This is the floor
+      // the whole complaint was about: the old shadow stop sat at 30% and 40%.
+      expect(value.lightness, `--${name} at ${value.lightness}% reads as bronze`)
+        .toBeGreaterThanOrEqual(BRONZE_FLOOR);
     }
   });
 
@@ -101,25 +127,37 @@ describe("the gold mark", () => {
 
     for (const colour of literals) {
       // A pure white shine is `0 0% 100%`, and its saturation of zero is what
-      // desaturates the gold underneath it into peach. Any colour written into
-      // this treatment has to be gold itself.
+      // desaturates the gold underneath it into peach.
       expect(colour.saturation, `the shine is achromatic at ${colour.saturation}%`)
-        .toBeGreaterThanOrEqual(85);
+        .toBeGreaterThanOrEqual(90);
       expect(colour.hue).toBeGreaterThanOrEqual(GOLD_HUE.min);
       expect(colour.hue).toBeLessThanOrEqual(GOLD_HUE.max);
     }
   });
 
-  it("keeps its ladder in order, so the leaf reads as one surface", () => {
-    // High is lighter than the base, and deep is darker. Getting these the
-    // wrong way round would still be gold and would look like a mistake.
-    for (const theme of [0, 1]) {
-      const base = tokens("mark-quality-met")[theme];
-      const high = tokens("mark-quality-met-high")[theme];
-      const deep = tokens("mark-quality-met-deep")[theme];
+  it("keeps its stops in order, so the leaf reads as one surface", () => {
+    // Highlight, body, shadow. Getting these the wrong way round would still be
+    // gold and would still look like a mistake.
+    const [high] = tokens("mark-leaf-high");
+    const [body] = tokens("mark-leaf");
+    const [deep] = tokens("mark-leaf-deep");
 
-      expect(high.lightness).toBeGreaterThan(base.lightness);
-      expect(deep.lightness).toBeLessThan(base.lightness);
+    expect(high.lightness).toBeGreaterThan(body.lightness);
+    expect(deep.lightness).toBeLessThan(body.lightness);
+  });
+
+  it("still names the mark itself in gold, in both themes", () => {
+    // The semantic colour — the dot, the count, the tint — is a separate
+    // question from the surface, and it is allowed to be dark for contrast.
+    // It is not allowed to stop being gold.
+    const values = tokens("mark-quality-met");
+    expect(values, "--mark-quality-met is not defined for both themes").toHaveLength(2);
+
+    for (const value of values) {
+      expect(value.hue, `--mark-quality-met at hue ${value.hue} is not gold`)
+        .toBeGreaterThanOrEqual(GOLD_HUE.min);
+      expect(value.hue).toBeLessThanOrEqual(GOLD_HUE.max);
+      expect(value.saturation).toBeGreaterThanOrEqual(85);
     }
   });
 });

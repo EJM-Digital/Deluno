@@ -55,14 +55,27 @@
     */
     --mark-quality-met: 42 96% 40%;
     /*
-      Gold is a *material*, and a flat fill of it reads as yellow. These two
-      stops are the highlight and the shadow the dot's gradient runs between —
-      the base stop above is untouched, because it is also the text colour for
-      the Quality met count and lightening it would cost contrast to buy an
-      effect that belongs on a 13px dot.
+      Gold is a *material*, and a flat fill of it reads as yellow. This is the
+      surface: a highlight, a body and a shadow for `.mark-grail` to run a
+      gradient between.
+
+      **It is its own set, and it does not follow the theme.** The gradient used
+      to run between two stops either side of `--mark-quality-met` — the mark's
+      semantic colour, which is also the text colour for the Quality met count
+      and is therefore *dark* in the light theme. That is fine for text and
+      wrong for a surface: it dragged the middle of the leaf to 40% lightness
+      and the shadow stop below it to 30%, and a dark yellow is not a dark gold,
+      it is brown. James, three times, at the poster's state bar: *"it still has
+      a red pink to it"*, *"no red no pink nothing just gold"*.
+
+      So the surface is defined once, here, for both themes. A gold bar sits on
+      artwork, not on the page's background, so there was never a reason for it
+      to invert — and nothing in it is now allowed below 52% lightness, which is
+      the floor where yellow stops reading as bronze.
     */
-    --mark-quality-met-high: 49 100% 66%;
-    --mark-quality-met-deep: 40 96% 30%;
+    --mark-leaf-high: 52 100% 88%;
+    --mark-leaf: 49 100% 62%;
+    --mark-leaf-deep: 47 100% 52%;
     --mark-upcoming: 265 62% 52%;
     /*
       Continuing, and up to date.
@@ -155,8 +168,6 @@
     --info: 207 96% 62%;
     --info-foreground: 210 30% 98%;
     --mark-quality-met: 44 98% 58%;
-    --mark-quality-met-high: 50 100% 82%;
-    --mark-quality-met-deep: 41 96% 40%;
     --mark-upcoming: 265 82% 72%;
     --mark-airing: 184 78% 52%;
     --mark-idle: 217 16% 26%;
@@ -1727,13 +1738,13 @@ html .text-\[64px\] {
   overflow: hidden;
   background-image: linear-gradient(
     152deg,
-    hsl(var(--mark-quality-met-high)) 0%,
-    hsl(var(--mark-quality-met)) 48%,
-    hsl(var(--mark-quality-met-deep)) 100%
+    hsl(var(--mark-leaf-high)) 0%,
+    hsl(var(--mark-leaf)) 48%,
+    hsl(var(--mark-leaf-deep)) 100%
   );
   box-shadow:
-    inset 0 0 0 0.5px hsl(var(--mark-quality-met-deep) / 0.5),
-    0 0 5px -1px hsl(var(--mark-quality-met) / 0.6);
+    inset 0 0 0 0.5px hsl(var(--mark-leaf-deep) / 0.5),
+    0 0 5px -1px hsl(var(--mark-leaf) / 0.6);
 }
 
 /*
@@ -1776,7 +1787,7 @@ html .text-\[64px\] {
   background-image: linear-gradient(
     100deg,
     transparent 0,
-    hsl(50 100% 88% / 0.9) 18px,
+    hsl(52 100% 92% / 0.9) 18px,
     transparent 36px
   );
   background-size: 300% 100%;
