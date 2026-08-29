@@ -71,6 +71,10 @@
               font: 700 11.5px/1 "JetBrains Mono", monospace; }
   .bar .txt > span { display: flex; align-items: center; gap: 4px;
                      overflow: hidden; text-overflow: ellipsis; }
+  /* `<b>` inside a 700 parent resolves to 900, and white 900 mono on a saturated
+     bar blooms — James: "almost like its overexposed". The tag is there for
+     structure, not for weight. */
+  .bar .txt b { font-weight: 700; }
   .bar .lead { font-size: 9px; opacity: .72; letter-spacing: .08em; }
 
   /* the corner pill, for comparing against its removal */
@@ -221,6 +225,7 @@ const S = {
   labels: "subs",      // none | subs | both
   rem: "missing",      // neutral | missing — what the UNFILLED part of a bar means
   cont: "magenta",     // which hue Continuing takes — see CONT_CANDIDATES
+  fill: "mixed",       // state | mixed | held — what the FILLED part is coloured by
   size: "md"           // sm | md | lg
 };
 
@@ -237,6 +242,7 @@ const CONTROLS = [
   { key: "labels", label: "Labels", opts: [["none","None"],["subs","SUBS only"],["both","Both"]] },
   { key: "rem",    label: "Remainder", opts: [["neutral","Neutral grey"],["missing","Missing red"]] },
   { key: "cont",   label: "Continuing", opts: CONT_OPTS },
+  { key: "fill",   label: "Fill", opts: [["state","State colour"],["mixed","State, held green"],["held","Held, like SUBS"]] },
   { key: "size",   label: "Card",   opts: [["sm","Small"],["md","Medium"],["lg","Large"]] }
 ];
 
@@ -270,6 +276,8 @@ function surfaces() {
 /* Gold is floored at 52% lightness, so white can never sit on it. Every other
    bar takes white; gold takes near-black. Forced, not a preference. */
 const labelOn = (mark) => mark === "gold" ? "hsl(40 90% 12%)" : "hsl(0 0% 100%)";
+
+/* A show at 3 of 20 fills 15%: the fraction must survive whatever colours it. */
 
 /* The text colour for a count or a word on the page — per theme, and NOT the
    surface. Deep surfaces used as text fail AA on the dark card. */
@@ -305,13 +313,17 @@ function mediaBar(it, isShow) {
   if (isShow) {
     const aired = it.airedEpisodeCount || 0;
     const held = Math.min(Math.max(0, it.airedWithFileCount || 0), aired);
-    if (aired <= 0) return { pct: 100, label: MARKS[mark], lead: "EPS" };
-    return { pct: Math.round(held / aired * 100), label: held + " / " + aired, lead: "EPS" };
+    /* Nothing aired is not a fraction — an Upcoming show is not 0% of
+       anything, it simply has not started. */
+    if (aired <= 0) return { pct: 100, label: MARKS[mark], lead: "EPS", fraction: false };
+    return { pct: Math.round(held / aired * 100), label: held + " / " + aired, lead: "EPS", fraction: true };
   }
   const quality = (it.currentQuality || "").trim();
-  if (it.hasFile && quality) return { pct: 100, label: quality, lead: "QLTY" };
-  if (it.hasFile) return { pct: 100, label: "On disk", lead: "QLTY" };
-  return { pct: mark === "down" ? 45 : 0, label: MARKS[mark], lead: "QLTY" };
+  if (it.hasFile && quality) return { pct: 100, label: quality, lead: "QLTY", fraction: true };
+  if (it.hasFile) return { pct: 100, label: "On disk", lead: "QLTY", fraction: true };
+  /* Bytes moving is not a composition either — there is no held part yet. */
+  if (mark === "down") return { pct: 45, label: MARKS[mark], lead: "QLTY", fraction: false };
+  return { pct: 0, label: MARKS[mark], lead: "QLTY", fraction: mark === "miss" };
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -351,6 +363,36 @@ function remainder() {
 
 function esc(s) { return String(s).replace(/[<>&]/g, c => ({ "<":"&lt;", ">":"&gt;", "&":"&amp;" }[c])); }
 
+/*
+  What the FILLED part of a media bar is coloured by.
+
+  James, looking at Severance drawing a flat red bar at 3 of 20: *"why cant we do
+  the episodes the same as the subs with the bar and number?"* The subtitle bar
+  colours what you HOLD and leaves the rest red, which is why its fill is always
+  visible; the media bar coloured the whole fill by the title's RUNG, so when the
+  rung was Missing the fill and the remainder were the same red and the fraction
+  vanished.
+
+  Three answers, because they trade against each other and the trade is his to
+  make:
+
+    state — the fill is the rung's colour. What shipped in this render. Every
+            state keeps its colour, and a Missing title reads as one flat red.
+    mixed — the fill is the rung's colour, EXCEPT a Missing title's held part,
+            which is green because what you hold is held regardless. Fixes the
+            flat bar and costs nothing: every rung still has its colour.
+    held  — the fill is always what you hold, green or gold, exactly as the
+            subtitle bar does it. The most consistent of the three, and the most
+            expensive: a fully-held show is green whether it is Continuing or
+            Upgradable, so Continuing loses its colour on the shelf — which
+            would make the whole magenta question moot.
+*/
+function fillColourFor(mark, isFullyHeld, C) {
+  if (S.fill === "held") return "hsl(" + (isFullyHeld && mark === "gold" ? C.gold : C.upg) + ")";
+  if (S.fill === "mixed" && mark === "miss") return "hsl(" + C.upg + ")";
+  return "hsl(" + C[mark] + ")";
+}
+
 function cardHtml(it, isShow) {
   const C = surfaces(), mark = markFor(it);
   const colour = "hsl(" + C[mark] + ")";
@@ -386,10 +428,25 @@ function cardHtml(it, isShow) {
   const subFill = subSettled ? "hsl(" + C.gold + ")" : "hsl(" + C.upg + ")";
   const subOnFill = subSettled ? labelOn("gold") : labelOn("upg");
 
+  /* A bar with no fraction to show — an Upcoming title, or one whose bytes are
+     moving — keeps the rung's own colour whatever the fill rule is, because
+     there is no "held" part for a composition rule to colour.
+
+     This asked `pct > 0 && pct < 100`, which is not the same question: a
+     fully-held Continuing show is 100% and DOES have a fraction, so the guard
+     excluded the one case the `held` mode exists to show. `mediaBar` says
+     outright whether there is a fraction now, rather than it being inferred
+     from a number that cannot carry the distinction. */
+  const compositional = media.fraction;
+  const topFill = compositional
+    ? fillColourFor(mark, media.pct === 100, C)
+    : colour;
+  const topOnFill = topFill === "hsl(" + C.gold + ")" ? labelOn("gold") : labelOn(mark === "gold" ? "gold" : "other");
+
   const topBar = showText
-    ? twoTone(colour, media.pct, media.label, mediaLead, labelOn(mark), R.colour, R.label)
+    ? twoTone(topFill, media.pct, media.label, mediaLead, topOnFill, R.colour, R.label)
     : '<div class="bar" style="height:5px;background:' + R.colour + '"><div class="fill" style="width:'
-      + media.pct + '%;background:' + colour + '"></div></div>';
+      + media.pct + '%;background:' + topFill + '"></div></div>';
 
   const botBar = showText
     ? twoTone(subFill, subPct, subLabel, subLead, subOnFill, R.colour, R.label)

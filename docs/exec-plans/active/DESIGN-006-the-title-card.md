@@ -151,9 +151,11 @@ Both bars are **16px**, full bleed, on the card's top and bottom edges, **always
 the artwork** — settled by James: *"corner pill is a complete removal and bars always
 on artwork"*.
 
-**The label is 11.5px bold**, not 10px. At 10px `WEBDL-1080p` was hard to read even
-where the contrast passed; Sonarr and Radarr both set 12px on a 15px bar and that is
-the size the string needs.
+**The label is 11.5px at weight 700**, not 10px at 900. Two separate faults: at 10px
+`WEBDL-1080p` was too small even where contrast passed — Sonarr and Radarr both set
+12px on a 15px bar — and the `<b>` inside a 700 parent resolved to **900**, which is
+what made white on a saturated bar bloom. James: *"almost like its overexposed"*. The
+tag is there for structure, so it is pinned back to 700.
 
 **And the label is a hard argument against the Shipped palette.** White on the
 shipped dark green is **1.69:1** — not marginal, illegible. Deep gives 5.49 and Jewel
@@ -437,22 +439,40 @@ Shipped is out as a palette: it cannot carry a white label at all (1.69:1).
 All six are switches on `/renders/card-decider.html`, drawn on the real library.
 Flip them, then send the settings line the page prints — it names every one.
 
-## 13. Known consequence, not yet settled
+## 13. What the filled part is coloured by
 
-**A Missing title's bar is one flat colour.** The fill is the mark's colour and the
-remainder is Missing red, so when the mark *is* Missing the two are the same and the
-fraction is invisible — Severance at 3 of 20 and Foundation at 0 of 29 draw identical
-bars. Only the label tells them apart, and it does: `3 / 20` against `0 / 29`, in
-11.5px on a 16px bar, which is the entire reason the label is there.
+James, looking at Severance drawing a flat red bar at 3 of 20: *"why cant we do the
+episodes the same as the subs with the bar and number?"*
 
-That may be exactly right — a Missing title is missing, and the number is on it. The
-alternative is to colour the fill by *what you hold* rather than by the title's rung,
-making both bars the same gold/green/red miniature the subtitle bar already is; the
-cost is that Continuing, Upcoming and Downloading are not compositional facts and
-would lose their colour on a fully-held show.
+He is pointing at a real inconsistency. The subtitle bar colours **what you hold** and
+leaves the rest red, so its fill is always visible. The media bar coloured the whole
+fill by the title's **rung** — so when the rung was Missing, fill and remainder were
+the same red and the fraction disappeared. Severance at 3 of 20 and Foundation at
+0 of 29 drew identical bars.
 
-Recorded rather than decided, because the render is what exposed it and it deserves
-to be looked at rather than argued.
+Three rules, measured on the render:
+
+| Rule | Severance (Missing, 3/20) | Silo (Continuing, 10/10) |
+|---|---|---|
+| **State colour** | flat red, fraction invisible | magenta |
+| **State, held green** ← *recommended* | green sliver, then red | magenta |
+| **Held, like SUBS** | green sliver, then red | **green — Continuing's colour is gone** |
+
+*Held, like SUBS* is the most consistent of the three and the most expensive: a
+fully-held show is green whether it is Continuing or Upgradable, so Continuing loses
+its colour on the shelf entirely — which would make the whole magenta question in §4
+moot. That is a real option, but it should be chosen knowingly.
+
+*State, held green* is the recommendation: the fill is the rung's colour, **except** a
+Missing title's held part, which is green because what you hold is held regardless. It
+fixes the flat bar and costs nothing — every rung keeps its colour.
+
+A bar with **no fraction** keeps its rung's colour under all three rules, because there
+is no held part for a composition rule to colour: an Upcoming title has not started,
+and a downloading one has no held part yet. `mediaBar` states this outright rather than
+letting it be inferred from the percentage — the first attempt tested
+`pct > 0 && pct < 100`, which quietly excluded a fully-held Continuing show, the one
+case the *held* rule exists to show.
 
 ---
 
