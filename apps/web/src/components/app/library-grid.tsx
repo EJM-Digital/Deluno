@@ -374,36 +374,51 @@ function PosterCard({
       */}
       <div className="mt-2 min-w-0 text-center">
         {displayOptions.showTitle ? (
-          // Exactly two lines of space, whether the title needs one or two.
+          // One line, truncated — the same rule as every row beneath it.
           //
-          // `lh` is the element's own line height, so this is two lines at
-          // whatever size the card is drawing at. An em-based guess was close
-          // and not exact, and "close" is what James circled: a title that
-          // wraps pushed its own metadata row below every other card's, and a
-          // grid whose rows do not line up reads as broken rather than varied.
-          <p className={cn("line-clamp-2 h-[2lh] font-semibold leading-tight text-foreground", titleCls)}>
+          // This wrapped to two lines and reserved the space on every card so
+          // the rows below stayed level. That worked and it cost a blank line
+          // under every short title, which is the gap James circled: "truncate
+          // long names so there is no gap between the details and as I said, 1
+          // per line". One line for the title means no reservation to make, and
+          // the metadata starts in the same place on every card because there
+          // is only ever one line above it.
+          //
+          // The full name is in the tooltip, and the title is also the card's
+          // accessible label, so nothing is lost to the ellipsis.
+          <p
+            className={cn("h-[1lh] truncate font-semibold leading-tight text-foreground", titleCls)}
+            title={item.title}
+          >
             {item.title}
           </p>
         ) : null}
 
+        {/*
+          Two rows, not one.
+
+          The year and the monitored state shared a line, which broke the rule
+          for the one switch that sets both — James: "Monitored also needs to be
+          under the name". One switch can still draw two rows; what it cannot do
+          is put two facts on the same one.
+        */}
         {showMeta ? (
-          // One line, and it never wraps. `flex-wrap` here meant a long enough
-          // metadata row silently became two lines on one card and one on the
-          // next — the same misalignment, from the other direction.
-          <div className="flex h-[1lh] min-w-0 items-center justify-center gap-x-1.5 overflow-hidden whitespace-nowrap leading-tight text-[length:var(--library-meta-size)] text-muted-foreground">
-            <span className="tabular shrink-0">{item.year}</span>
-            <span className="shrink-0 text-foreground/20">·</span>
-            <span
-              className="inline-flex min-w-0 items-center gap-1 truncate"
-              title={item.monitored
-                ? "Deluno will keep looking for this title."
-                : "Deluno will not search for this title automatically."}
-            >
-              {item.monitored
-                ? <ShieldCheck className="h-3 w-3 shrink-0" />
-                : <ShieldOff className="h-3 w-3 shrink-0" />}
-              <span className="truncate">{item.monitored ? "Monitored" : "Not monitored"}</span>
-            </span>
+          <p className="h-[1lh] truncate leading-tight text-[length:var(--library-meta-size)] text-muted-foreground tabular">
+            {item.year ?? " "}
+          </p>
+        ) : null}
+
+        {showMeta ? (
+          <div
+            className="flex h-[1lh] min-w-0 items-center justify-center gap-1 leading-tight text-[length:var(--library-meta-size)] text-muted-foreground"
+            title={item.monitored
+              ? "Deluno will keep looking for this title."
+              : "Deluno will not search for this title automatically."}
+          >
+            {item.monitored
+              ? <ShieldCheck className="h-3 w-3 shrink-0 opacity-70" aria-hidden="true" />
+              : <ShieldOff className="h-3 w-3 shrink-0 opacity-70" aria-hidden="true" />}
+            <span className="truncate">{item.monitored ? "Monitored" : "Not monitored"}</span>
           </div>
         ) : null}
 
