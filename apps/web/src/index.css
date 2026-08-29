@@ -61,8 +61,8 @@
       the Quality met count and lightening it would cost contrast to buy an
       effect that belongs on a 13px dot.
     */
-    --mark-quality-met-high: 47 100% 62%;
-    --mark-quality-met-deep: 33 92% 28%;
+    --mark-quality-met-high: 49 100% 66%;
+    --mark-quality-met-deep: 40 96% 30%;
     --mark-upcoming: 265 62% 52%;
     /*
       Continuing, and up to date.
@@ -155,8 +155,8 @@
     --info: 207 96% 62%;
     --info-foreground: 210 30% 98%;
     --mark-quality-met: 44 98% 58%;
-    --mark-quality-met-high: 48 100% 78%;
-    --mark-quality-met-deep: 34 90% 40%;
+    --mark-quality-met-high: 50 100% 82%;
+    --mark-quality-met-deep: 41 96% 40%;
     --mark-upcoming: 265 82% 72%;
     --mark-airing: 184 78% 52%;
     --mark-idle: 217 16% 26%;
@@ -1755,6 +1755,19 @@ html .text-\[64px\] {
   Pixels rather than percentages, so the glint is the same physical streak at
   every size: it fills a 13px dot the way it always did, and crosses a 187px bar
   as a highlight rather than a wipe.
+
+  **And the streak is gold, not white.** Sizing it right was not enough: 72%
+  white over the deep end of the old ladder — which was amber at hue 34 — mixes
+  to a pale peach, and James read it off the poster as *"it still has a red pink
+  to it"*. He is right, and pure white was the cause: an achromatic wipe over a
+  warm colour desaturates toward whatever the base's hue happens to be, so the
+  one part of the bar that catches the eye was the one part that was not gold.
+
+  So nothing in this treatment is outside the gold band any more. The ladder is
+  49-50 / 42-44 / 40-41 rather than reaching down to 33, and the shine is a
+  bright gold at hue 50 rather than white. `GoldStaysGoldTests` reads these
+  values back and fails if anything here leaves it — a hue is exactly the kind
+  of thing that gets nudged one token at a time.
 */
 .mark-grail::after {
   content: "";
@@ -1763,7 +1776,7 @@ html .text-\[64px\] {
   background-image: linear-gradient(
     100deg,
     transparent 0,
-    hsl(0 0% 100% / 0.72) 18px,
+    hsl(50 100% 88% / 0.9) 18px,
     transparent 36px
   );
   background-size: 300% 100%;
