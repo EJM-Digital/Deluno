@@ -216,7 +216,8 @@ export function ShowDetailPage() {
             }
           : upcomingCount > 0
             ? {
-                eyebrow: "Up to date",
+                // The same word the shelf's mark uses, which is Sonarr's.
+                eyebrow: "Continuing",
                 title: `Every aired episode is here`,
                 description: `${upcomingCount} episode${upcomingCount === 1 ? " has" : "s have"} not aired yet. Deluno will look as each one does.`,
                 action: null,

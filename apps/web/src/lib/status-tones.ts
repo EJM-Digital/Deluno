@@ -218,7 +218,12 @@ export const TITLE_MARK_PRESENTATION: Record<TitleMark, TitleMarkPresentation> =
     text: "text-mark-airing",
     tint: "bg-mark-airing/15",
     cssVar: "--mark-airing",
-    label: "Up to date",
+    // Sonarr's word, not one of ours. Its legend reads "Continuing (All
+    // episodes downloaded)" for exactly this state, and James asked why we had
+    // invented a different one. "Up to date" also reads as metadata freshness
+    // rather than episode coverage, which is what he was asking about when he
+    // said "in tv shows what does up to date mean?".
+    label: "Continuing",
     hint: "You have every episode that has aired. More are still to come, and Deluno will look for them as they do.",
     canBeHalf: true
   },
