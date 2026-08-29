@@ -18,6 +18,8 @@ type LibraryResultsProps = {
    * the moment `isLoading` blinked false between two fetches, which is both a
    * flash of the wrong answer and a lie while a request is still in flight.
    */
+  /** Which shelf. Decides whether the list offers an Episodes column. */
+  variant: "movies" | "shows";
   hasLoadedOnce: boolean;
   items: MediaItem[];
   label: string;
@@ -44,6 +46,7 @@ type LibraryResultsProps = {
 };
 
 export function LibraryResults({
+  variant,
   hasLoadedOnce, items, label, singular, libraryCount, hasActiveFilter, view, cardSize, density, displayOptions, selectedIds,
   keyBust, sortField, sortDirection, isComplete, onOpenCreate,
   onClearFilters, onSelect, onToggle, onToggleAll, onEndReached,
@@ -82,7 +85,7 @@ export function LibraryResults({
     ) : view === "grid" ? (
       <ProgressiveGrid items={items} cardSize={cardSize} density={density} displayOptions={displayOptions} selectedIds={selectedIds} keyBust={keyBust} sortField={sortField} sortDirection={sortDirection} isComplete={isComplete} onSelect={onSelect} onToggle={onToggle} onEndReached={onEndReached} />
     ) : (
-      <GlassTile className="p-0"><LibraryTable items={items} selectedIds={selectedIds} onSelect={onSelect} onToggle={onToggle} onToggleAll={onToggleAll} allSelected={items.length > 0 && items.every((item) => selectedIds.includes(item.id))} someSelected={selectedIds.length > 0 && !items.every((item) => selectedIds.includes(item.id))} sortField={sortField} sortDirection={sortDirection} isComplete={isComplete} onEndReached={onEndReached} /></GlassTile>
+      <GlassTile className="p-0"><LibraryTable variant={variant} items={items} selectedIds={selectedIds} onSelect={onSelect} onToggle={onToggle} onToggleAll={onToggleAll} allSelected={items.length > 0 && items.every((item) => selectedIds.includes(item.id))} someSelected={selectedIds.length > 0 && !items.every((item) => selectedIds.includes(item.id))} sortField={sortField} sortDirection={sortDirection} isComplete={isComplete} onEndReached={onEndReached} /></GlassTile>
     )}
     {/*
       `Previous 100` / `Next 100` and the line "Only this page is kept in

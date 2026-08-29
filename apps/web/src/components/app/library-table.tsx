@@ -7,7 +7,7 @@ import { Badge } from "../ui/badge";
 import { Checkbox } from "../ui/checkbox";
 import { PosterArtwork } from "./library-grid";
 import { heldQualityLabel } from "../../lib/quality-label";
-import { TitleMarkLabel } from "../ui/title-mark";
+import { EpisodeProgressBar, TitleMarkLabel, titleBarGradient } from "../ui/title-mark";
 import { titleBar } from "../../lib/status-tones";
 import { buildJumpBuckets } from "../../lib/library-buckets";
 import type { SortField } from "../../lib/library-filters";
@@ -25,7 +25,13 @@ export function LibraryTable(
   sortField,
   sortDirection,
   isComplete,
-  onEndReached
+  onEndReached,
+  /**
+   * Which shelf this is. Only used to decide whether the Episodes column
+   * exists: a film has no fraction of itself, so the column would be a
+   * dash on every row — the same defect as a filter that can never match.
+   */
+  variant
 }: {
   items: MediaItem[];
   selectedIds: string[];
@@ -38,6 +44,7 @@ export function LibraryTable(
   sortDirection: "asc" | "desc";
   isComplete: boolean;
   onEndReached: () => void;
+  variant: "movies" | "shows";
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLTableElement>(null);
@@ -129,6 +136,11 @@ export function LibraryTable(
   );
   const { slotWidth, activeIndex, jumpTo } = useJumpRail(rowVirtualizer, 1, virtualRows, buckets);
 
+  // The spacer rows the virtualiser needs have to span every column. It was
+  // hard-coded to 9, which was right until a column was added — and a spacer
+  // one column short does not fail, it quietly skews the layout.
+  const columnCount = variant === "shows" ? 10 : 9;
+
   return (
     <div className="flex items-stretch gap-1">
     <div ref={scrollRef} className="max-h-[calc(100dvh-260px)] min-w-0 flex-1 overflow-auto">
@@ -154,6 +166,11 @@ export function LibraryTable(
             {/* The same question the poster's bar asks, in words. The list had
                 no subtitle state at all, so the two views of one library
                 disagreed about what they could tell you (DESIGN-001, #301). */}
+            {/*
+              Sonarr's Episodes column, which is where its list puts the count
+              that its poster wall leaves off. Shows only.
+            */}
+            {variant === "shows" ? <th scope="col" className="hidden lg:table-cell">Episodes</th> : null}
             <th scope="col" className="hidden lg:table-cell">Subtitles</th>
             <th scope="col" className="hidden lg:table-cell">Genre</th>
             <th scope="col" className="num hidden lg:table-cell">Size</th>
@@ -162,7 +179,7 @@ export function LibraryTable(
           </tr>
         </thead>
         <tbody>
-          {virtualRows.length > 0 && virtualRows[0].start > 0 ? <tr aria-hidden="true"><td colSpan={9} style={{ height: virtualRows[0].start, padding: 0 }} /></tr> : null}
+          {virtualRows.length > 0 && virtualRows[0].start > 0 ? <tr aria-hidden="true"><td colSpan={columnCount} style={{ height: virtualRows[0].start, padding: 0 }} /></tr> : null}
           {virtualRows.map((virtualRow) => {
             const index = virtualRow.index;
             const item = items[index];
@@ -230,6 +247,11 @@ export function LibraryTable(
                 <td>
                   <TitleMarkLabel item={item} />
                 </td>
+                {variant === "shows" ? (
+                  <td className="hidden lg:table-cell">
+                    <EpisodeCell item={item} />
+                  </td>
+                ) : null}
                 <td className="hidden lg:table-cell">
                   <SubtitleCell item={item} />
                 </td>
@@ -263,7 +285,7 @@ export function LibraryTable(
               </tr>
             );
           })}
-          {virtualRows.length > 0 && rowVirtualizer.getTotalSize() - virtualRows.at(-1)!.end > 0 ? <tr aria-hidden="true"><td colSpan={9} style={{ height: rowVirtualizer.getTotalSize() - virtualRows.at(-1)!.end, padding: 0 }} /></tr> : null}
+          {virtualRows.length > 0 && rowVirtualizer.getTotalSize() - virtualRows.at(-1)!.end > 0 ? <tr aria-hidden="true"><td colSpan={columnCount} style={{ height: rowVirtualizer.getTotalSize() - virtualRows.at(-1)!.end, padding: 0 }} /></tr> : null}
         </tbody>
       </table>
     </div>
@@ -293,6 +315,18 @@ export function LibraryTable(
  * column, once. Saying it again here would be the same defect from the other
  * side.
  */
+/**
+ * The episodes you hold, the way Sonarr's list draws them.
+ *
+ * A show Deluno has not yet learned the episode counts for gets a dash, the
+ * same as Quality and Size do on this row: it is not that the number is zero,
+ * it is that there is no number yet, and printing "0 / 0" claims otherwise.
+ */
+function EpisodeCell({ item }: { item: MediaItem }) {
+  const bar = <EpisodeProgressBar item={item} />;
+  return bar ?? <span className="text-muted-foreground">—</span>;
+}
+
 function SubtitleCell({ item }: { item: MediaItem }) {
   const bar = titleBar(item);
 
@@ -300,7 +334,16 @@ function SubtitleCell({ item }: { item: MediaItem }) {
     return <span className="text-muted-foreground">—</span>;
   }
 
-  const complete = bar.held >= bar.wanted;
+  // The poster's own gradient, not a second one written here.
+  //
+  // This cell used to build its own from `--success` and `--destructive`, which
+  // is another place naming the bar's colours by hand and the exact thing
+  // `TITLE_BAR_SEGMENTS` exists to stop. It also meant the row and the poster
+  // disagreed: the poster paints three rungs and this painted two, so a title
+  // whose subtitles were at the cutoff looked identical here to one Deluno was
+  // still improving.
+  const percent = (value: number) => Math.round(Math.min(1, Math.max(0, value / bar.wanted)) * 100);
+
   return (
     <span
       className="inline-flex items-center gap-1.5 whitespace-nowrap"
@@ -308,10 +351,8 @@ function SubtitleCell({ item }: { item: MediaItem }) {
     >
       <span
         aria-hidden
-        className={cn("h-1.5 w-6 shrink-0 rounded-full", complete ? "bg-success" : "bg-mark-idle")}
-        style={complete ? undefined : {
-          background: `linear-gradient(to right, hsl(var(--success)) 0 ${Math.round((bar.held / bar.wanted) * 100)}%, hsl(var(--destructive)) ${Math.round((bar.held / bar.wanted) * 100)}% 100%)`
-        }}
+        className="h-1.5 w-6 shrink-0 rounded-full"
+        style={{ background: titleBarGradient(percent(bar.settled), percent(bar.held)) }}
       />
       <span className="tabular">{bar.held} of {bar.wanted}</span>
     </span>

@@ -1,6 +1,6 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { MarkStrip, TitleMarkBar, TitleMarkBarLegend, TitleMarkTopBar } from "./title-mark";
+import { EpisodeProgressBar, MarkStrip, TitleMarkBar, TitleMarkBarLegend, TitleMarkTopBar } from "./title-mark";
 import { TITLE_BAR_SEGMENTS, TITLE_MARK_LADDER, TITLE_MARK_PRESENTATION } from "../../lib/status-tones";
 import { quickFiltersFor } from "../app/library-control-rail";
 import railSource from "../app/library-control-rail.tsx?raw";
@@ -162,5 +162,44 @@ describe("the chip row and the bar legend", () => {
     for (const mark of TITLE_MARK_LADDER) {
       expect(chips).toContain(mark);
     }
+  });
+});
+
+describe("the episode count, the way Sonarr's list draws it", () => {
+  const show = { monitored: true, hasFile: true, airedEpisodeCount: 16, airedWithFileCount: 12 };
+
+  it("prints the count on a bar filled to what you hold", () => {
+    const { container } = render(<EpisodeProgressBar item={show} />);
+    const bar = container.querySelector<HTMLElement>("span[role='img']");
+
+    expect(bar?.textContent).toBe("12 / 16");
+    // 12 of 16 is 75%, and the fill has to be the fraction rather than the
+    // count: a bar that reads 12/16 and is drawn full is worse than no bar.
+    const fill = container.querySelector<HTMLElement>("span[aria-hidden]");
+    expect(fill?.style.width).toBe("75%");
+  });
+
+  it("wears the title's own mark, so a row and its poster cannot disagree", () => {
+    const { container } = render(<EpisodeProgressBar item={show} />);
+    // Twelve of sixteen aired episodes held is Missing, and it is red here for
+    // the same reason the poster is red.
+    expect(container.innerHTML).toContain(TITLE_MARK_PRESENTATION.missing.dot);
+  });
+
+  it("draws nothing for a title with no episodes to count", () => {
+    // A film, and a show whose counts have not arrived. Zero of zero is not a
+    // fraction, and drawing one claims knowledge Deluno has not got.
+    expect(render(<EpisodeProgressBar item={{ monitored: true, hasFile: true }} />)
+      .container.innerHTML).toBe("");
+    expect(render(<EpisodeProgressBar item={{ monitored: true, airedEpisodeCount: 0 }} />)
+      .container.innerHTML).toBe("");
+  });
+
+  it("never claims more episodes than have aired", () => {
+    const { container } = render(
+      <EpisodeProgressBar item={{ monitored: true, airedEpisodeCount: 4, airedWithFileCount: 99 }} />
+    );
+
+    expect(container.querySelector("span[role='img']")?.textContent).toBe("4 / 4");
   });
 });
