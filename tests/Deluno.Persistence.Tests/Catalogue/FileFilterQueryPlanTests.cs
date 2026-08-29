@@ -1,3 +1,4 @@
+using Deluno.Media;
 using Deluno.Contracts;
 using Deluno.Infrastructure.Storage;
 using Deluno.Infrastructure.Storage.Migrations;
@@ -190,6 +191,83 @@ public sealed class FileFilterQueryPlanTests
 
         var two = CatalogueFilters.Parse(MediaKind.Movie, ["libraryCount:min:2"], out _);
         Assert.Single((await movies.ListPageAsync(new CatalogueQuery(Filters: two), CancellationToken.None)).Items);
+    }
+
+    /// <summary>
+    /// What ffprobe read out of the file reaches the column the shelf filters.
+    ///
+    /// <para>A renamed library carries no codec in its filenames, so the name
+    /// parser produces nothing and the Codec switch draws a dash on every card.
+    /// The subtitle scan already opens each file; this is that probe's other
+    /// answer. The value has to travel from the probe, through the wanted-state
+    /// row, through V0025's trigger, into the cached entry column — four hops,
+    /// any of which silently produces an empty filter.</para>
+    /// </summary>
+    [Fact]
+    public async Task What_the_probe_read_reaches_the_filter()
+    {
+        using var storage = TestStorage.Create();
+        var movies = await CreateAsync(storage);
+        var shared = new SqliteMediaStateRepository(
+            storage.Factory,
+            new FixedTimeProvider(DateTimeOffset.Parse("2026-08-29T00:00:00Z")));
+
+        // A name that says nothing, which is the whole case.
+        const string path = @"C:\Library\Big Buck Bunny (2008)\Big Buck Bunny (2008).mkv";
+        await ImportAsync(movies, path);
+
+        var before = CatalogueFilters.Parse(MediaKind.Movie, ["videoCodec:set"], out _);
+        Assert.Empty((await movies.ListPageAsync(new CatalogueQuery(Filters: before), CancellationToken.None)).Items);
+
+        var movie = Assert.Single((await movies.ListPageAsync(new CatalogueQuery(), CancellationToken.None)).Items);
+        await shared.UpdateProbedFileFactsAsync(
+            MediaKind.Movie,
+            movie.Id,
+            path,
+            new ProbedFileFacts("HEVC", "E-AC-3", "5.1"),
+            CancellationToken.None);
+
+        foreach (var condition in new[] { "videoCodec:is:HEVC", "audioCodec:is:E-AC-3", "audioChannels:is:5.1" })
+        {
+            var filters = CatalogueFilters.Parse(MediaKind.Movie, [condition], out var errors);
+            Assert.True(errors.Count == 0, string.Join("; ", errors));
+
+            var page = await movies.ListPageAsync(new CatalogueQuery(Filters: filters), CancellationToken.None);
+            Assert.True(page.Items.Count == 1, $"{condition} matched nothing, so the probe's answer never reached the column.");
+        }
+    }
+
+    /// <summary>
+    /// A probe that could not read the audio does not erase what the name said.
+    /// </summary>
+    [Fact]
+    public async Task A_silent_probe_leaves_the_name_parsed_answer_alone()
+    {
+        using var storage = TestStorage.Create();
+        var movies = await CreateAsync(storage);
+        var shared = new SqliteMediaStateRepository(
+            storage.Factory,
+            new FixedTimeProvider(DateTimeOffset.Parse("2026-08-29T00:00:00Z")));
+
+        await ImportAsync(movies, @"D:\Media\Arrival (2016)\Arrival.2016.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS.mkv");
+        var movie = Assert.Single((await movies.ListPageAsync(new CatalogueQuery(), CancellationToken.None)).Items);
+
+        // The probe read the video and nothing else — a container it only half
+        // understood. Blanking the audio here would be a measurement that was
+        // never taken beating a claim that was.
+        await shared.UpdateProbedFileFactsAsync(
+            MediaKind.Movie,
+            movie.Id,
+            @"D:\Media\Arrival (2016)\Arrival.2016.1080p.BluRay.x264.DTS-HD.MA.5.1-SPARKS.mkv",
+            new ProbedFileFacts("HEVC", null, null),
+            CancellationToken.None);
+
+        foreach (var condition in new[] { "videoCodec:is:HEVC", "audioCodec:is:DTS-HD", "audioChannels:is:5.1" })
+        {
+            var filters = CatalogueFilters.Parse(MediaKind.Movie, [condition], out _);
+            var page = await movies.ListPageAsync(new CatalogueQuery(Filters: filters), CancellationToken.None);
+            Assert.True(page.Items.Count == 1, $"{condition} matched nothing.");
+        }
     }
 
     private static Task ImportAsync(IMovieCatalogRepository movies, string filePath)

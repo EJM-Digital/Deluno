@@ -1,3 +1,4 @@
+using Deluno.Quality;
 using Deluno.Contracts;
 
 namespace Deluno.Filesystem;
@@ -54,7 +55,31 @@ public sealed record SubtitleInventory(
     /// </summary>
     string ProbeStatus,
     string? ProbeMessage,
-    IReadOnlyList<DetectedSubtitle> Subtitles);
+    IReadOnlyList<DetectedSubtitle> Subtitles,
+    /// <summary>
+    /// What the container says about the video and audio, when the probe
+    /// actually ran.
+    ///
+    /// <para>The probe reads every stream in the file and this service was
+    /// throwing all but the subtitles away — so a library whose files were
+    /// renamed on the way in had no codec and no audio layout anywhere, because
+    /// the only other source is the release name. One probe answers both
+    /// questions and there is no reason to open the file twice.</para>
+    ///
+    /// <para><c>null</c> when nothing was read, which is not the same as "the
+    /// file has no audio": a failed or unavailable probe must not erase what
+    /// the name already told us.</para>
+    /// </summary>
+    ProbedMediaFacts? Probed = null);
+
+/// <summary>
+/// The video and audio facts a probe can state, in Deluno's own vocabulary.
+/// </summary>
+/// <remarks>
+/// No release group: nothing inside a container records who released it, so
+/// that stays a naming convention and stays name-only.
+/// </remarks>
+public sealed record ProbedMediaFacts(string? VideoCodec, string? AudioCodec, string? AudioChannels);
 
 public sealed record DetectedSubtitle(
     string Language,
@@ -134,7 +159,32 @@ public sealed class SubtitleInventoryService(IMediaProbeService mediaProbeServic
             }
         }
 
-        return new SubtitleInventory(videoPath, true, probe.Status, probe.Message, Deduplicate(found));
+        return new SubtitleInventory(videoPath, true, probe.Status, probe.Message, Deduplicate(found), ReadFacts(probe));
+    }
+
+    /// <summary>
+    /// The video and audio the container actually holds.
+    ///
+    /// <para>The first video stream and the first audio stream, which is what
+    /// every player picks by default and therefore what a person means when
+    /// they ask what codec a file is. A probe that did not succeed reports
+    /// nothing at all rather than a row of nulls, so the name-parsed answer
+    /// survives.</para>
+    /// </summary>
+    private static ProbedMediaFacts? ReadFacts(MediaProbeInfo probe)
+    {
+        if (probe.Status != "succeeded")
+        {
+            return null;
+        }
+
+        var video = probe.VideoStreams.FirstOrDefault();
+        var audio = probe.AudioStreams.FirstOrDefault();
+
+        return new ProbedMediaFacts(
+            MediaProbedFacts.VideoCodec(video?.Codec),
+            MediaProbedFacts.AudioCodec(audio?.Codec, audio?.Profile),
+            MediaProbedFacts.AudioChannels(audio?.ChannelLayout, audio?.Channels));
     }
 
     /// <summary>

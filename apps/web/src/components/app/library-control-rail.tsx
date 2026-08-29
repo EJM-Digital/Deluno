@@ -1,3 +1,4 @@
+import { useConfiguredProviders } from "../../hooks/use-configured-providers";
 import { QUICK_FILTER_MARK, type MonitoringFilter, type QuickFilter, type SortDirection, type SortField } from "../../lib/library-filters";
 import { TITLE_MARK_PRESENTATION, type TitleMark } from "../../lib/status-tones";
 import { TitleMarkBarLegend } from "../ui/title-mark";
@@ -212,6 +213,8 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
     savedPresets, newPresetName, setNewPresetName, isSavingPreset, saveCurrentPreset, applyPreset,
     deletePreset, activeFilterCount
   } = controls;
+
+  const configuredProviders = useConfiguredProviders();
 
   const [openPanel, setOpenPanel] = useState<"sort" | "filter" | "view" | null>(null);
   const pillTrackRef = useRef<HTMLDivElement>(null);
@@ -601,15 +604,30 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
           <div>
             <SectionLabel>What each poster shows</SectionLabel>
             <div className="mt-2 divide-y divide-hairline">
-              {controlSet.posterOptions.map((option) => (
-                <SwitchRow
-                  key={option.id}
-                  label={option.label}
-                  description={option.description}
-                  checked={displayOptions[option.id] ?? option.defaultOn}
-                  onCheckedChange={(checked) => setDisplayOptions({ ...displayOptions, [option.id]: checked })}
-                />
-              ))}
+              {/*
+                A switch that needs a provider you have not set up says so.
+
+                IMDb, Rotten Tomatoes and Metacritic all come from OMDb. With no
+                key they draw a dash on every card, and three switches that can
+                only ever do nothing are indistinguishable from three broken
+                ones — which is precisely how they read. Saying it here is the
+                difference between "not set up" and "not working".
+              */}
+              {controlSet.posterOptions.map((option) => {
+                const missing = option.requires && !configuredProviders.includes(option.requires);
+
+                return (
+                  <SwitchRow
+                    key={option.id}
+                    label={option.label}
+                    description={missing
+                      ? `${option.description}. Needs an ${option.requires!.toUpperCase()} key — nothing to show until then.`
+                      : option.description}
+                    checked={displayOptions[option.id] ?? option.defaultOn}
+                    onCheckedChange={(checked) => setDisplayOptions({ ...displayOptions, [option.id]: checked })}
+                  />
+                );
+              })}
             </div>
           </div>
         </div>

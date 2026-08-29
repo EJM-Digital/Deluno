@@ -38,7 +38,17 @@ public sealed record CataloguePosterOption(
     string Label,
     string Description,
     bool DefaultOn,
-    bool Line = false);
+    bool Line = false,
+    /// <summary>
+    /// The provider this switch has nothing to draw without, or <c>null</c>
+    /// when it stands on its own.
+    ///
+    /// <para>IMDb, Rotten Tomatoes and Metacritic all come from OMDb. With no
+    /// key configured they can only ever draw a dash, and three switches that
+    /// do nothing are indistinguishable from three broken ones — which is
+    /// exactly how they read on the rig. The interface says so instead.</para>
+    /// </summary>
+    string? Requires = null);
 
 /// <summary>
 /// Everything the library toolbar offers for one media kind: what it can filter
@@ -114,7 +124,10 @@ public sealed record CatalogueControls(
             source.Label,
             $"The {source.Label} score, whether or not it is the preferred one",
             DefaultOn: false,
-            Line: true));
+            Line: true,
+            // TMDb comes with the metadata lookup Deluno already does. The
+            // other three are OMDb's, and OMDb is optional.
+            Requires: source.Source == RatingSources.Tmdb ? null : "omdb"));
 
     /// <summary>
     /// Sorts that only mean something for a show.

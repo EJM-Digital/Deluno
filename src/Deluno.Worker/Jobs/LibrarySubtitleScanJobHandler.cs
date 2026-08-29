@@ -39,6 +39,7 @@ public sealed class LibrarySubtitleScanJobHandler(
     ILibrariesRepository librariesRepository,
     IMediaSubtitleRepository mediaSubtitleRepository,
     ISubtitleInventoryService subtitleInventoryService,
+    IMediaStateRepository mediaStateRepository,
     IJobScheduler jobScheduler,
     TimeProvider timeProvider)
     : IJobHandler
@@ -194,6 +195,25 @@ public sealed class LibrarySubtitleScanJobHandler(
                     ScannedUtc: now),
                 rows,
                 cancellationToken);
+
+            // The other half of the same probe.
+            //
+            // ffprobe reads every stream in the file and this pass was keeping
+            // only the subtitles, so a library whose files were renamed on the
+            // way in had no codec and no audio layout at all — the release name
+            // is the only other source and a renamed file has none. Written
+            // here because the file is already open; a second pass to ask the
+            // same question of the same bytes would be a second scheduler's
+            // worth of work for nothing (DESIGN-002 rule 3).
+            if (inventory.Probed is { } probed)
+            {
+                await mediaStateRepository.UpdateProbedFileFactsAsync(
+                    kind,
+                    candidate.MediaId,
+                    candidate.FilePath,
+                    new ProbedFileFacts(probed.VideoCodec, probed.AudioCodec, probed.AudioChannels),
+                    cancellationToken);
+            }
 
             scanned++;
             if (rows.Count > 0)
