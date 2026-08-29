@@ -175,6 +175,31 @@ export function TitleMarkDot({
 }
 
 /**
+ * What colour a word sitting on one of these bars has to be.
+ *
+ * <p>The state bar's label was a fixed <c>text-black/85</c>, on the reasoning
+ * that every rung's fill is a light colour and white would vanish into the
+ * gold. That was true of a bar that was entirely fill. It stopped being true
+ * the moment the bar started tracking episode progress: a show holding three of
+ * twenty is 15% bright colour and 85% dimmed track over dark artwork, and black
+ * on that is unreadable. James: <i>"fix the washing out, if the text is the
+ * problem change the colour to white or something"</i>.</p>
+ *
+ * <p>So the word follows the surface under it rather than the mark. Mostly
+ * filled means a light ground and dark text; mostly track means a dark ground
+ * and white text, with a shadow because the ground behind it is artwork and
+ * artwork can be any colour. One rule, used by both bars, because they are the
+ * same problem twice.</p>
+ */
+function labelTone(fillPercent: number): string {
+  return fillPercent >= 55
+    ? "text-black/85"
+    // Tailwind cannot parse commas inside an arbitrary value, so the shadow is
+    // spelled with underscores and a slash.
+    : "text-white [text-shadow:0_1px_2px_rgb(0_0_0_/_0.65)]";
+}
+
+/**
  * The state, as a bar across the top of a poster.
  *
  * <p>It replaced a dot in the corner. A dot is nine pixels and it was carrying
@@ -292,9 +317,10 @@ export function TitleMarkTopBar({
       </span>
 
       {label ? (
-        // Dark text: every rung's fill is a light colour — red 62%, green 52%,
-        // gold 58% — and white would vanish into the gold.
-        <span className="relative truncate text-[length:var(--library-badge-size)] font-bold uppercase tracking-wider text-black/85">
+        <span className={cn(
+          "relative truncate text-[length:var(--library-badge-size)] font-bold uppercase tracking-wider",
+          labelTone(fillPercent)
+        )}>
           {label}
         </span>
       ) : null}
@@ -354,7 +380,7 @@ export function EpisodeProgressBar({ item, className }: { item: TitleMarkInput; 
       <span aria-hidden className="absolute inset-y-0 left-0" style={{ width: `${percent}%` }}>
         <span className={cn("block h-full w-full", presentation.dot, presentation.sheen)} />
       </span>
-      <span className={cn("relative px-1.5", percent >= 55 ? "text-black/85" : "text-foreground")}>
+      <span className={cn("relative px-1.5", labelTone(percent))}>
         {held} / {aired}
       </span>
     </span>

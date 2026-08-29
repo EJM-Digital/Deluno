@@ -249,6 +249,28 @@ describe("the state bar on a poster", () => {
       .toBe("WEB 1080p · Missing · 3 of 20 aired episodes on disk");
   });
 
+  it("writes its label in white when the bar is mostly track", () => {
+    // A show holding three of twenty is 15% bright colour and 85% dimmed track
+    // over artwork. Black on that is the wash-out James read off the screen.
+    const mostlyTrack = render(
+      <TitleMarkTopBar
+        item={{ monitored: true, airedEpisodeCount: 20, airedWithFileCount: 3 }}
+        label="WEB 1080p"
+      />
+    ).container.querySelector("div[role='img'] > span:last-child");
+
+    expect(mostlyTrack?.className).toContain("text-white");
+    expect(mostlyTrack?.className).not.toContain("text-black");
+
+    // A film is a solid bar of a light colour, and there white is the one that
+    // vanishes.
+    const solid = render(
+      <TitleMarkTopBar item={{ monitored: true, hasFile: true }} label="WEB 2160p" />
+    ).container.querySelector("div[role='img'] > span:last-child");
+
+    expect(solid?.className).toContain("text-black");
+  });
+
   it("does not say the state twice when there is no quality to name", () => {
     // The label falls back to the state's own word, so a missing title read
     // "Missing · Missing" to a screen reader.
