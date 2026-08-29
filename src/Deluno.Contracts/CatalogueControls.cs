@@ -184,7 +184,16 @@ public sealed record CatalogueControls(
         // not be aligned to monitored or not monitored". The year is gone and
         // this does the one thing its name says.
         new("showMonitored", "Monitoring", "Whether Deluno is watching for this title", DefaultOn: true, Line: true),
-        new("showStatusPill", "Status mark", "Missing, Upgradable, Quality met or Upcoming", DefaultOn: true),
+        // **The status mark is not here, and that is deliberate.** It was a
+        // switch — "Status mark", on by default — and James: *"I think status
+        // mark should not be an option, its mandatory"*. He is right, and the
+        // switch had a second cost beyond the obvious one: the chip row above
+        // the shelf is the legend for these colours, and it does not know what
+        // a reader has switched off. A shelf with the mark hidden left a legend
+        // explaining five colours that were nowhere on the page.
+        //
+        // Everything else here is a detail about a title. The mark is what the
+        // shelf is *for*.
         new("showQualityBadge", "Quality", "The tier the file actually is — WEB 2160p, Remux 1080p", DefaultOn: true),
         // A line of its own, like every other switch. "Year and monitoring" is
         // one switch and gets one row; the rating is a second switch and shared

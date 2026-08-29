@@ -259,6 +259,65 @@ export function TitleMarkTopBar({
 }
 
 /**
+ * How many aired episodes you hold, as a filled bar with the count on it.
+ *
+ * <p><b>Sonarr's, deliberately.</b> Looked at on James's own instance: its list
+ * draws the episode count as a proportionally filled bar with <c>16 / 16</c>
+ * printed on it, coloured by the show's state — and its poster wall draws a
+ * thin line with no numbers, with the count behind an opt-in that ships off.
+ * James: <i>"I want to mimic what sonarr is doing"</i>. Deluno's list had the
+ * count as plain text on a status chip and no bar at all, so this is the half
+ * that was missing.</p>
+ *
+ * <p>The colour is the mark's, from the one table, so a row and the poster it
+ * corresponds to cannot disagree. Gold takes dark text for the same reason the
+ * state bar does: every rung on the ladder is a light colour and white would
+ * vanish into it.</p>
+ *
+ * <p>A film has no fraction — it is here or it is not — so this draws nothing
+ * and the caller shows a dash. That is not the same as zero of zero, which is
+ * what a show whose episodes Deluno has not learned about yet has.</p>
+ */
+export function EpisodeProgressBar({ item, className }: { item: TitleMarkInput; className?: string }) {
+  const aired = item.airedEpisodeCount;
+  if (typeof aired !== "number" || aired <= 0) {
+    return null;
+  }
+
+  const held = Math.min(Math.max(0, item.airedWithFileCount ?? 0), aired);
+  const mark = titleMark(item);
+  const presentation = TITLE_MARK_PRESENTATION[mark];
+  const percent = Math.round((held / aired) * 100);
+  const label = `${held} of ${aired} aired episodes on disk`;
+
+  return (
+    <span
+      role="img"
+      aria-label={label}
+      title={label}
+      className={cn(
+        "relative inline-flex h-[18px] min-w-[58px] items-center justify-center overflow-hidden rounded",
+        "bg-mark-idle/70 text-[length:var(--library-badge-size)] font-bold tabular-nums",
+        className
+      )}
+    >
+      {/*
+        The fill is its own layer rather than a background on the box, because
+        `.mark-grail` sets `position: relative` and beats a Tailwind `absolute`
+        on the same element — it has dropped an element out of its parent twice
+        in this file already.
+      */}
+      <span aria-hidden className="absolute inset-y-0 left-0" style={{ width: `${percent}%` }}>
+        <span className={cn("block h-full w-full", presentation.dot, presentation.sheen)} />
+      </span>
+      <span className={cn("relative px-1.5", percent >= 55 ? "text-black/85" : "text-foreground")}>
+        {held} / {aired}
+      </span>
+    </span>
+  );
+}
+
+/**
  * The bar, on the bottom edge of a poster: the subtitle languages you asked for.
  *
  * Green up to what you have, red for the rest — and the same question on both
@@ -314,7 +373,7 @@ export function TitleMarkBar({ item, className }: { item: TitleMarkInput; classN
  * `--destructive` written in here: the legend names the same three, and two
  * places naming one set is how they drift.
  */
-function titleBarGradient(settledPercent: number, heldPercent: number): string {
+export function titleBarGradient(settledPercent: number, heldPercent: number): string {
   const [done, ready, missing] = TITLE_BAR_SEGMENTS;
   // `surfaceVar` where a mark has one, because this bar is a surface on
   // artwork rather than a word on a page. Only gold differs, and it has to:

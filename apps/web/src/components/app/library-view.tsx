@@ -966,6 +966,7 @@ export function LibraryView({
         />
 
         <LibraryResults
+          variant={variant}
           hasLoadedOnce={hasLoadedOnce}
           items={filtered}
           label={label}
@@ -977,7 +978,7 @@ export function LibraryView({
           density={density}
           displayOptions={displayOptions}
           selectedIds={selectedIds}
-          keyBust={`${cardSize}-${libraryId ?? "all"}-${quickFilter}-${monitoring}-${query}-${sortField}-${sortDirection}-${displayOptions.showMonitored}-${displayOptions.showStatusPill}-${displayOptions.showQualityBadge}-${displayOptions.showRating}`}
+          keyBust={`${cardSize}-${libraryId ?? "all"}-${quickFilter}-${monitoring}-${query}-${sortField}-${sortDirection}-${displayOptions.showMonitored}-${displayOptions.showQualityBadge}-${displayOptions.showRating}`}
           sortField={sortField}
           sortDirection={sortDirection}
           isComplete={isComplete}

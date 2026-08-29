@@ -353,16 +353,20 @@ function PosterCard({
             With the subtitle bar on the bottom edge the two book-end the
             artwork, which is what the renders were for.
           */}
-          {displayOptions.showStatusPill || displayOptions.showQualityBadge ? (
-            <TitleMarkTopBar
-              item={item}
-              // Only the full bar carries words, and only when there is a tier
-              // to name or a state worth naming.
-              label={displayOptions.showQualityBadge
-                ? heldQualityLabel(item) ?? qualityTone(item).label
-                : null}
-            />
-          ) : null}
+          {/*
+            Always drawn. It was behind the Status mark switch and is not any
+            more — James: *"I think status mark should not be an option, its
+            mandatory"*. The Quality switch still decides the bar's *size*,
+            which is the one thing it ever really controlled.
+          */}
+          <TitleMarkTopBar
+            item={item}
+            // Only the full bar carries words, and only when there is a tier
+            // to name or a state worth naming.
+            label={displayOptions.showQualityBadge
+              ? heldQualityLabel(item) ?? qualityTone(item).label
+              : null}
+          />
 
           {/* What you asked for beyond the title. A movie has no bar. */}
           <TitleMarkBar item={item} />
