@@ -238,19 +238,18 @@ function PosterCard({
 
     try {
       const response = await authedFetch(url, { method: "POST" });
+      if (!response.ok) throw new Error(name);
 
-      // The card is two centimetres wide, so the answer has to be a word. The
-      // detail page is where a search explains itself.
-      setActionResult(response.ok
-        ? (name === "search" ? "Searching" : "Refreshing")
-        : "Failed");
+      // What it did, not what it is doing. "Searching" was a lie by the time
+      // it was drawn - the request had already come back.
+      setActionResult(name === "search" ? await searchOutcome(response) : "Refreshed");
     } catch {
       setActionResult("Failed");
     } finally {
       setBusyAction(null);
       // Long enough to read, short enough that it is gone before you look
       // back. Nothing else on the card moves while it is there.
-      window.setTimeout(() => setActionResult(null), 2600);
+      window.setTimeout(() => setActionResult(null), 3200);
     }
   }
   // Whether this card size draws anything under the artwork at all. Small is
@@ -428,6 +427,11 @@ function PosterCard({
               label={`Search for ${item.title} now`}
               icon={Search}
               busy={busyAction === "search"}
+              // The automatic search, deliberately - no `?mode=preview`.
+              // James: "the search should be an automatic search and not an
+              // interactive one fyi". Interactive returns candidates for a
+              // person to choose between, which needs a screen; this button
+              // means "go and get it".
               onClick={() => void runAction("search", `/api/${apiSegment}/${item.id}/search`)}
             />
             <PosterAction
@@ -618,6 +622,24 @@ function PosterExtras({ item, displayOptions }: { item: MediaItem; displayOption
       })}
     </>
   );
+}
+
+/**
+ * What a finished search actually did, in one word.
+ *
+ * <p>On a card two centimetres wide the answer has to be a word, and the useful
+ * word is the outcome: whether a release was taken or nothing was found. The
+ * detail page is where a search explains itself.</p>
+ */
+async function searchOutcome(response: Response) {
+  try {
+    const payload = (await response.json()) as { outcome?: string; releaseName?: string | null };
+    // "matched" is what the pipeline writes when a release was taken; every
+    // other outcome is effort that came back empty.
+    return payload.outcome === "matched" || payload.releaseName ? "Grabbed" : "Nothing found";
+  } catch {
+    return "Searched";
+  }
 }
 
 /**
