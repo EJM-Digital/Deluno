@@ -114,6 +114,15 @@
                     background: transparent; color: var(--muted); cursor: pointer;
                     font: 600 11px/1 "Inter", system-ui, sans-serif; padding: 7px 9px; }
   .readout button:hover { color: var(--fg); }
+
+  .presets { display: flex; gap: 8px; align-items: center; margin: 14px 0 2px; flex-wrap: wrap; }
+  .presets span { font: 600 10px/1 "JetBrains Mono", monospace; letter-spacing: .1em;
+                  text-transform: uppercase; color: var(--muted); }
+  .presets button { appearance: none; border: 1px solid var(--line); border-radius: 8px;
+                    background: var(--chip); color: var(--fg); cursor: pointer;
+                    font: 600 12px/1 "Inter", system-ui, sans-serif; padding: 8px 11px; }
+  .presets button:hover { border-color: hsl(211 100% 50% / .5); }
+  .presets em { font-style: normal; color: var(--muted); font-size: 12px; }
 </style>
 
 <div class="rail" id="rail"></div>
@@ -131,6 +140,7 @@
     Swept against those six, the roomiest arc left is <b>magenta and pink</b>, which
     nothing uses. Teal was never the last free colour; it is a crowded one, wedged
     28&deg; from green and 36&deg; from blue. The table below is measured, not asserted.</p>
+  <div class="presets" id="presets"></div>
   <div id="banner"></div>
   <div id="shelves"></div>
 </main>
@@ -223,9 +233,9 @@ const S = {
   theme: "dark",
   depth: "deep",       // shipped | deep | jewel
   labels: "subs",      // none | subs | both
-  rem: "missing",      // neutral | missing — what the UNFILLED part of a bar means
+  rem: "neutral",      // neutral | missing — what the UNFILLED part of a bar means
   cont: "magenta",     // which hue Continuing takes — see CONT_CANDIDATES
-  fill: "mixed",       // state | mixed | held — what the FILLED part is coloured by
+  fill: "state",       // state | mixed | held — what the FILLED part is coloured by
   size: "md"           // sm | md | lg
 };
 
@@ -356,8 +366,23 @@ function twoTone(fillColour, pct, label, lead, onFillColour, remColour, onRemCol
 
   Neutral is kept as a switch so the two can be compared rather than argued.
 */
-function remainder() {
-  if (S.rem === "neutral") return { colour: "var(--idle)", label: "var(--tracktext)" };
+function remainder(mark) {
+  /*
+    Sonarr's one blind spot, closed at no cost.
+
+    With a neutral track, a title at 0% fill is a wholly grey bar — Foundation at
+    0 of 29 says its state nowhere, and Deluno has deleted the corner pill that
+    used to carry it. Sonarr has the same gap and gets away with it because its
+    poster carries nothing else either.
+
+    So on the neutral track the label wears the state's own TEXT colour (not its
+    surface — the surfaces are tuned for white-on-bar, the text tokens for
+    reading on a ground). "0 / 29" comes out red on grey. The fill still means
+    exactly what Sonarr's means, and nothing is spent to keep the state.
+  */
+  if (S.rem === "neutral") {
+    return { colour: "var(--idle)", label: "hsl(" + TEXT[S.theme][mark] + ")" };
+  }
   return { colour: "hsl(" + surfaces().miss + ")", label: "hsl(0 0% 100%)" };
 }
 
@@ -416,7 +441,10 @@ function cardHtml(it, isShow) {
   const subLead = S.labels === "none" ? null : "SUBS";
   const showText = S.labels !== "none";
 
-  const R = remainder();
+  const R = remainder(mark);
+  /* The subtitle bar's own remainder: what is not here is Missing, whatever the
+     title's rung is. */
+  const RS = remainder("miss");
 
   /*
     A subtitle bar is the ladder in miniature, using the ladder's own colours
@@ -449,8 +477,8 @@ function cardHtml(it, isShow) {
       + media.pct + '%;background:' + topFill + '"></div></div>';
 
   const botBar = showText
-    ? twoTone(subFill, subPct, subLabel, subLead, subOnFill, R.colour, R.label)
-    : '<div class="bar" style="height:5px;background:' + R.colour + '"><div class="fill" style="width:'
+    ? twoTone(subFill, subPct, subLabel, subLead, subOnFill, RS.colour, RS.label)
+    : '<div class="bar" style="height:5px;background:' + RS.colour + '"><div class="fill" style="width:'
       + subPct + '%;background:' + subFill + '"></div></div>';
 
   const art = '<div class="art">'
@@ -567,6 +595,31 @@ function drawRail() {
   };
 }
 
+/*
+  The two coherent grammars, each as one click, because the difference between
+  them is the whole of the fill question and flipping two switches to compare is
+  how you lose track of what you are looking at.
+
+  Measured in Sonarr's own DOM: the track is neutral grey on EVERY bar without
+  exception, and the fill is the state's colour filled to the fraction held — a
+  series missing episodes is a red bar at 86%. Colour says the state, length says
+  how much, and neither is lost. Deluno's flat-red Missing bar was caused by
+  painting the remainder red; Sonarr never has that problem.
+*/
+const PRESETS = [
+  { label: "Sonarr's grammar", why: "state fill, neutral track — colour is the state, length is the fraction",
+    set: { fill: "state", rem: "neutral" } },
+  { label: "Composition, like SUBS", why: "no neutral anywhere — every segment is what that part IS",
+    set: { fill: "held", rem: "missing" } }
+];
+
+function drawPresets() {
+  document.getElementById("presets").innerHTML = '<span>Presets</span>'
+    + PRESETS.map((p, i) => '<button data-preset="' + i + '">' + p.label + '</button>').join("")
+    + '<em>' + esc(PRESETS.find(p => Object.keys(p.set).every(k => S[k] === p.set[k]))?.why
+        || "a combination of your own") + '</em>';
+}
+
 function drawBanner() {
   const el = document.getElementById("banner");
   if (DATA.live) {
@@ -601,10 +654,16 @@ function drawShelves() {
 
 function drawAll() {
   document.body.className = S.theme === "light" ? "light" : "";
-  drawRail(); drawBanner(); drawShelves();
+  drawRail(); drawPresets(); drawBanner(); drawShelves();
 }
 
 document.addEventListener("click", (e) => {
+  const preset = e.target.closest("button[data-preset]");
+  if (preset) {
+    Object.assign(S, PRESETS[+preset.dataset.preset].set);
+    drawAll();
+    return;
+  }
   const b = e.target.closest("button[data-k]");
   if (!b) return;
   S[b.dataset.k] = b.dataset.v;
