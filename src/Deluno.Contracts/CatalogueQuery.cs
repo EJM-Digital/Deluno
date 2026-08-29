@@ -210,9 +210,54 @@ public static class CatalogueSortFields
     /// <summary>The language it was made in.</summary>
     public const string OriginalLanguage = "originallanguage";
 
+    /// <summary>
+    /// Where it sits on disk — Radarr's "Path", and the order you want when the
+    /// question is about the filesystem rather than the film.
+    ///
+    /// <para><b>It reads a cached column, not the wanted state.</b> The path
+    /// lives on the picked file, and a sort through the correlated pick cannot
+    /// use an index: it would run the pick for every title in the library
+    /// before it could order one, which is the failure
+    /// <c>RatingSortQueryPlanTests</c> exists to catch. #335 assumed this
+    /// needed a migration; it does not, because V0025/V0026 already cache
+    /// <c>primary_file_path</c> on the entry and index it, for the filter that
+    /// shipped first.</para>
+    /// </summary>
+    public const string Path = "path";
+
     public const string InCinemas = "incinemas";
     public const string DigitalRelease = "digitalrelease";
     public const string PhysicalRelease = "physicalrelease";
+
+    /// <summary>
+    /// The values a null sorts as, so a title with nothing to say goes last in
+    /// both directions rather than first.
+    ///
+    /// <para><b>They live here because two things have to agree on them.</b> An
+    /// expression index only serves an <c>ORDER BY</c> that matches it character
+    /// for character, so the literal in <c>CatalogueKeyset.SortExpression</c> and
+    /// the literal in the migration that indexes it are the same string or the
+    /// order silently becomes a scan of the whole catalogue. They were written
+    /// out by hand in both places and agreed by luck.</para>
+    ///
+    /// <para>The luck had already run out once: <c>next_air_date_utc</c> was
+    /// indexed as a bare column while the sort wrapped it in a
+    /// <c>COALESCE</c>, so ordering the TV shelf by <i>Next airing</i> read
+    /// every row and sorted it. Nothing failed, because nothing planned that
+    /// query — the plan tests only ever ran against the movie tables.</para>
+    /// </summary>
+    public static class Sentinels
+    {
+        /// <summary>A date-only column with no value. Sorts after every real date.</summary>
+        public const string NoDate = "9999-12-31";
+
+        /// <summary>
+        /// A show with no episode still to come. A full timestamp rather than
+        /// <see cref="NoDate"/>, because the column holds timestamps and SQLite
+        /// compares text.
+        /// </summary>
+        public const string NoNextAiring = "9999-12-31T00:00:00.0000000+00:00";
+    }
 
     /// <summary>
     /// One order per rating source — "IMDb rating", not "rating".
@@ -226,7 +271,7 @@ public static class CatalogueSortFields
     public static readonly IReadOnlyList<string> All =
         [Added, Title, Year, Rating, Runtime, Popularity, Size, Quality, Bitrate,
          .. RatingSources.All.Select(source => ForRating(source.Source)),
-         Monitored, Certification, OriginalTitle, OriginalLanguage,
+         Monitored, Certification, OriginalTitle, OriginalLanguage, Path,
          Studio, InCinemas, DigitalRelease, PhysicalRelease,
          NextAiring, EpisodeProgress, Network];
 

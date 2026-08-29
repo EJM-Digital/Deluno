@@ -88,7 +88,10 @@ public sealed record CatalogueControls(
         new(CatalogueSortFields.Monitored, "Monitored", "What you have told Deluno to leave alone, and what you have not"),
         new(CatalogueSortFields.Certification, "Certification", "By classification — PG-13, 15, MA15+"),
         new(CatalogueSortFields.OriginalTitle, "Original title", "The name in its own language"),
-        new(CatalogueSortFields.OriginalLanguage, "Original language", "Group what was made in the same language")
+        new(CatalogueSortFields.OriginalLanguage, "Original language", "Group what was made in the same language"),
+
+        // Both shelves, because both have files. Radarr offers it on one.
+        new(CatalogueSortFields.Path, "Path", "Where it sits on disk")
     ];
 
     /// <summary>Orders only a film can be put in.</summary>

@@ -2,6 +2,7 @@ using Deluno.Contracts;
 using Deluno.Infrastructure.Storage;
 using Deluno.Infrastructure.Storage.Migrations;
 using Deluno.Movies.Data;
+using Deluno.Series.Data;
 using Deluno.Persistence.Tests.Support;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -75,7 +76,8 @@ public sealed class RatingSortQueryPlanTests
 
             Assert.False(
                 plan.Any(line => line.Contains("USE TEMP B-TREE FOR ORDER BY", StringComparison.Ordinal)),
-                $"Ordering by '{sort}' sorts the whole library: {string.Join(" | ", plan)}");
+                $"Ordering by '{sort}' [{CatalogueKeyset.SortExpression(sort, "m", "release_year")}] "
+                + $"sorts the whole library: {string.Join(" | ", plan)}");
         }
     }
 
@@ -97,6 +99,43 @@ public sealed class RatingSortQueryPlanTests
 
         Assert.All(plan, line =>
             Assert.DoesNotContain("USE TEMP B-TREE FOR ORDER BY", line, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// And the same for the other shelf, which offers most of the same orders
+    /// over its own tables.
+    ///
+    /// <para>This half was missing. Every order was asserted against
+    /// <c>movie_entries</c> and nothing planned one against
+    /// <c>series_entries</c>, on the reasoning that the two schemas are
+    /// generated from one list so what holds for one holds for the other. That
+    /// reasoning is how "one rule in two places that cannot check each other"
+    /// gets written — the index names differ, the year column differs, and
+    /// SQLite plans each database on its own statistics.</para>
+    /// </summary>
+    [Fact]
+    public async Task No_order_the_other_shelf_offers_sorts_the_whole_library()
+    {
+        using var storage = TestStorage.Create();
+        await InitialiseSeriesAsync(storage);
+
+        foreach (var sort in CatalogueSortFields.ForKind(MediaKind.Series))
+        {
+            // Same three exceptions as the movie shelf, and for the same
+            // reason: they live on the wanted state and are only meaningful
+            // against the real page query's join.
+            if (sort is CatalogueSortFields.Size or CatalogueSortFields.Quality or CatalogueSortFields.Bitrate)
+            {
+                continue;
+            }
+
+            var plan = await ExplainSeriesAsync(storage, sort);
+
+            Assert.False(
+                plan.Any(line => line.Contains("USE TEMP B-TREE FOR ORDER BY", StringComparison.Ordinal)),
+                $"Ordering shows by '{sort}' [{CatalogueKeyset.SortExpression(sort, "s", "start_year")}] "
+                + $"sorts the whole library: {string.Join(" | ", plan)}");
+        }
     }
 
     private static async Task InitialiseAsync(TestStorage storage)
@@ -129,6 +168,45 @@ public sealed class RatingSortQueryPlanTests
             SELECT m.id, {expression} AS sort_value
             FROM movie_entries m
             ORDER BY sort_value DESC, m.id DESC
+            LIMIT 51;
+            """;
+
+        var lines = new List<string>();
+        using var reader = await command.ExecuteReaderAsync(CancellationToken.None);
+        while (await reader.ReadAsync(CancellationToken.None))
+        {
+            lines.Add(reader.GetString(3));
+        }
+
+        return lines;
+    }
+
+    private static async Task InitialiseSeriesAsync(TestStorage storage)
+    {
+        var clock = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-29T00:00:00Z"));
+
+        await new SeriesSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, clock),
+            NullLogger<SeriesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+    }
+
+    /// <summary>
+    /// The same, with the alias and year column the series repository passes.
+    /// Written from <see cref="CatalogueKeyset"/> for the same reason as above.
+    /// </summary>
+    private static async Task<IReadOnlyList<string>> ExplainSeriesAsync(TestStorage storage, string sortField)
+    {
+        var expression = CatalogueKeyset.SortExpression(sortField, "s", "start_year");
+
+        await using var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Series);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            $"""
+            EXPLAIN QUERY PLAN
+            SELECT s.id, {expression} AS sort_value
+            FROM series_entries s
+            ORDER BY sort_value DESC, s.id DESC
             LIMIT 51;
             """;
 
