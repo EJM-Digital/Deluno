@@ -203,3 +203,74 @@ describe("the episode count, the way Sonarr's list draws it", () => {
     expect(container.querySelector("span[role='img']")?.textContent).toBe("4 / 4");
   });
 });
+
+describe("the state bar on a poster", () => {
+  function fill(container: HTMLElement): string | undefined {
+    return container.querySelector<HTMLElement>("span[aria-hidden] > span")?.style.width;
+  }
+
+  it("is filled to how far through the show you are", () => {
+    // Three of twenty aired episodes drew a full red bar, identical to a show
+    // holding none. `titleProgress` had computed this fraction since DESIGN-001
+    // and nothing drew it.
+    const { container } = render(
+      <TitleMarkTopBar
+        item={{ monitored: true, airedEpisodeCount: 20, airedWithFileCount: 3 }}
+        label={null}
+      />
+    );
+
+    expect(fill(container)).toBe("15%");
+  });
+
+  it("is solid for a film, which is not partway through itself", () => {
+    // Filling by hasFile would leave every missing film with an empty strip and
+    // no state on the poster at all.
+    expect(fill(render(<TitleMarkTopBar item={{ monitored: true, hasFile: false }} label={null} />).container))
+      .toBe("100%");
+    expect(fill(render(<TitleMarkTopBar item={{ monitored: true, hasFile: true }} label={null} />).container))
+      .toBe("100%");
+  });
+
+  it("is solid for a show whose episode counts have not arrived", () => {
+    expect(fill(render(<TitleMarkTopBar item={{ monitored: true, airedEpisodeCount: 0 }} label={null} />).container))
+      .toBe("100%");
+  });
+
+  it("says the fraction out loud, since the bar now carries it", () => {
+    const { container } = render(
+      <TitleMarkTopBar
+        item={{ monitored: true, airedEpisodeCount: 20, airedWithFileCount: 3 }}
+        label="WEB 1080p"
+      />
+    );
+
+    expect(container.querySelector("div[role='img']")?.getAttribute("aria-label"))
+      .toBe("WEB 1080p · Missing · 3 of 20 aired episodes on disk");
+  });
+
+  it("does not say the state twice when there is no quality to name", () => {
+    // The label falls back to the state's own word, so a missing title read
+    // "Missing · Missing" to a screen reader.
+    const { container } = render(
+      <TitleMarkTopBar item={{ monitored: true, hasFile: false }} label="Missing" />
+    );
+
+    expect(container.querySelector("div[role='img']")?.getAttribute("aria-label")).toBe("Missing");
+  });
+
+  it("keeps the state visible on a show holding nothing", () => {
+    // The first version tracked in grey, so a show at 0% had no colour on it at
+    // all — one commit after the state mark was made mandatory.
+    const { container } = render(
+      <TitleMarkTopBar
+        item={{ monitored: true, airedEpisodeCount: 29, airedWithFileCount: 0 }}
+        label={null}
+      />
+    );
+
+    const track = container.querySelector<HTMLElement>("span[aria-hidden]");
+    expect(track?.style.background).toContain(TITLE_MARK_PRESENTATION.missing.cssVar);
+    expect(track?.className).not.toContain("mark-idle");
+  });
+});
