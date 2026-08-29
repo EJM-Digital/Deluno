@@ -216,10 +216,20 @@ export function TitleMarkTopBar({
     ? `${presentation.label} · not monitored`
     : presentation.label;
 
+  // Shows only. `titleProgress` answers 0 or 1 for anything without episode
+  // counts, and a film reading 0 would be a poster with no state on it.
+  const tracksEpisodes = typeof item.airedEpisodeCount === "number" && item.airedEpisodeCount > 0;
+  const fillPercent = tracksEpisodes ? Math.round(titleProgress(item) * 100) : 100;
+
   return (
     <div
       role="img"
-      aria-label={label ? `${label} · ${description}` : description}
+      // The quality label is the state's own word when there is no file to
+      // name, so a missing title announced "Missing · Missing" until this
+      // deduplicated them.
+      aria-label={[label === description ? null : label, description, tracksEpisodes
+        ? `${Math.min(Math.max(0, item.airedWithFileCount ?? 0), item.airedEpisodeCount!)} of ${item.airedEpisodeCount} aired episodes on disk`
+        : null].filter(Boolean).join(" · ")}
       title={half ? `${presentation.hint} Deluno is not watching this one.` : presentation.hint}
       className={cn(
         "absolute inset-x-0 top-0 z-10 flex items-center justify-center overflow-hidden",
@@ -233,17 +243,51 @@ export function TitleMarkTopBar({
         exactly that twice while the quality pill was being built, once dropping
         it out of the poster and once collapsing it to nothing, both times
         rendering the right gradient invisibly.
+
+        **And its width is how far through the show you are.** It was always
+        100%, so a series holding three of twenty aired episodes drew the same
+        full red bar as one holding none — James: *"the red bar at the top
+        doesnt track episodes properly"*. `titleProgress` has computed exactly
+        this fraction since DESIGN-001 and nothing has ever drawn it: declared,
+        never populated, and invisible because a full bar is what a full bar
+        looks like.
+
+        A film is not partway through itself, so it keeps a solid bar. Filling
+        one by `hasFile` would leave every missing film with an empty strip and
+        no state on the poster at all.
       */}
-      <span aria-hidden="true" className="absolute inset-0">
+      <span
+        aria-hidden="true"
+        className="absolute inset-0"
+        // The track is the mark's own colour, dimmed — not grey.
+        //
+        // Grey was the first attempt and it cost the thing that matters: a show
+        // holding none of its aired episodes filled to 0%, so five of six TV
+        // posters had no colour on them at all, one commit after the state mark
+        // was made mandatory. Sonarr does not do that either — its bar is the
+        // state colour throughout, with the filled part brighter.
+        //
+        // `surfaceVar` where a mark has one, so gold dims to gold.
+        //
+        // 0.55 rather than the 0.3 Sonarr uses, because Sonarr's bar sits on a
+        // white page and this one sits on artwork: at 0.3 the label washed out
+        // and the strip read as a smear rather than a colour. The filled part
+        // is still obviously brighter, which is the only thing the ratio has to
+        // preserve.
+        style={{
+          background: `hsl(var(${presentation.surfaceVar ?? presentation.cssVar}) / 0.55)`
+        }}
+      >
         <span
           className={cn(
-            "block h-full w-full",
+            "block h-full",
             half
               ? "bg-[linear-gradient(90deg,currentColor_0_50%,hsl(var(--mark-idle))_50%_100%)]"
               : presentation.dot,
             half && presentation.text,
             !half && presentation.sheen
           )}
+          style={{ width: `${fillPercent}%` }}
         />
       </span>
 
