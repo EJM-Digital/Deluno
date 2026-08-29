@@ -3532,6 +3532,8 @@ public sealed class SqliteJobStore(
         {
             ["library.subtitles.scan"] = new(
                 "a subtitle check", "Started reading your files for subtitles.", "Subtitle check"),
+            ["library.media.probe"] = new(
+                "a media read", "Started reading what your files actually are.", "Media read"),
             ["library.subtitles.search"] = new(
                 "a subtitle search", "Started looking for the subtitles you asked for.", "Subtitle search"),
             ["subtitle.sync"] = new(

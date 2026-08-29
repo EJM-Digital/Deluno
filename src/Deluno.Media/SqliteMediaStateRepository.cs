@@ -686,6 +686,50 @@ public sealed class SqliteMediaStateRepository(
     }
 
     /// <summary>
+    /// What the media probe still owes.
+    ///
+    /// <para>A file qualifies when it has never been read, or when its size no
+    /// longer matches the size recorded at the last read — a repack or an
+    /// upgrade that reused the path. Ordered oldest-first so a large library
+    /// works through evenly rather than re-reading the same slice.</para>
+    /// </summary>
+    public async Task<IReadOnlyList<MediaFileProbeCandidate>> ListFileProbeCandidatesAsync(
+        MediaKind kind,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        var map = MediaTableMap.For(kind);
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            map.DatabaseName,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT {map.WantedMediaIdColumn}, file_path, file_size_bytes
+            FROM {map.WantedTable}
+            WHERE has_file = 1
+              AND file_path IS NOT NULL
+              AND (facts_probed_utc IS NULL
+                   OR facts_probed_size_bytes IS NOT file_size_bytes)
+            ORDER BY facts_probed_utc IS NOT NULL, facts_probed_utc
+            LIMIT @take;
+            """;
+        AddParameter(command, "@take", take);
+
+        var candidates = new List<MediaFileProbeCandidate>();
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            candidates.Add(new MediaFileProbeCandidate(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.IsDBNull(2) ? null : reader.GetInt64(2)));
+        }
+
+        return candidates;
+    }
+
+    /// <summary>
     /// The probe's answer about the file, onto the row that holds that file.
     ///
     /// <para>COALESCE on every column: a probe that could not read the audio
@@ -705,11 +749,6 @@ public sealed class SqliteMediaStateRepository(
         ProbedFileFacts facts,
         CancellationToken cancellationToken)
     {
-        if (facts.VideoCodec is null && facts.AudioCodec is null && facts.AudioChannels is null)
-        {
-            return;
-        }
-
         var map = MediaTableMap.For(kind);
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             map.DatabaseName,
@@ -721,6 +760,12 @@ public sealed class SqliteMediaStateRepository(
             SET video_codec = COALESCE(@videoCodec, video_codec),
                 audio_codec = COALESCE(@audioCodec, audio_codec),
                 audio_channels = COALESCE(@audioChannels, audio_channels),
+                -- Stamped whether or not the probe answered. A file ffprobe
+                -- cannot read is still a file that has been looked at, and
+                -- leaving it unstamped would put it at the front of every
+                -- future pass forever.
+                facts_probed_utc = @updatedUtc,
+                facts_probed_size_bytes = file_size_bytes,
                 updated_utc = @updatedUtc
             WHERE {map.WantedMediaIdColumn} = @mediaId
               AND file_path = @filePath;

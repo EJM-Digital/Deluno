@@ -273,6 +273,11 @@ public sealed class DelunoHeartbeatWorker(
 
                 await jobQueueRepository.PlanLibrarySearchesAsync(automationPlans, stoppingToken);
                 await workPlanner.PlanIntakeAutomationAsync(intakeSyncService, stoppingToken);
+
+                // Reads the files themselves. Claimed separately and queued
+                // separately, so it neither waits on nor blocks anything above
+                // it.
+                await workPlanner.PlanMediaProbeAsync(jobScheduler, stoppingToken);
             }
 
             if (lane.PlanImports)

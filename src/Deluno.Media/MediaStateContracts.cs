@@ -139,6 +139,16 @@ public sealed record MediaRatingFact(string Source, double? Score, int? Votes);
 /// </summary>
 public sealed record ProbedFileFacts(string? VideoCodec, string? AudioCodec, string? AudioChannels);
 
+/// <summary>One file the media probe still owes an answer for.</summary>
+/// <param name="FileSizeBytes">
+/// Recorded with the answer, so the next pass can tell a file that was repacked
+/// in place from one nobody has touched — without stat-ing the whole library.
+/// </param>
+public sealed record MediaFileProbeCandidate(
+    string MediaId,
+    string FilePath,
+    long? FileSizeBytes);
+
 public sealed record MediaEntryCreate(
     string Title,
     int? Year,
@@ -345,6 +355,20 @@ public interface IMediaStateRepository
     /// <para>Keyed by file path as well as media id, because a title can be
     /// held in two libraries and the probe read one of them.</para>
     /// </summary>
+    /// <summary>
+    /// Files whose streams Deluno has not read, or has read before they
+    /// changed.
+    ///
+    /// <para>Answers only to this pass's own bookkeeping — nothing about
+    /// subtitles, libraries or metadata decides what it returns. That is the
+    /// point: a pass that depends on another feature being switched on is a
+    /// pass that silently stops.</para>
+    /// </summary>
+    Task<IReadOnlyList<MediaFileProbeCandidate>> ListFileProbeCandidatesAsync(
+        MediaKind kind,
+        int take,
+        CancellationToken cancellationToken);
+
     Task UpdateProbedFileFactsAsync(
         MediaKind kind,
         string mediaId,
