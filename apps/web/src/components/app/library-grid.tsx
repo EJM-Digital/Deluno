@@ -24,6 +24,7 @@ export type CardSize = "sm" | "md" | "lg";
  * header describes, one import below it.
  */
 import type { DisplayOptions } from "../../lib/library-filters";
+import { TITLE_MARK_PRESENTATION, titleMark } from "../../lib/status-tones";
 export type { DisplayOptions } from "../../lib/library-filters";
 
 /**
@@ -334,11 +335,73 @@ function PosterCard({
             are not — you read those once you have stopped, which is what the
             block under the poster is.
           */}
+          {/*
+            The tier you hold, across the foot of the artwork.
+
+            It was a small grey pill in the bottom-left corner, and grey is the
+            one thing it should not be — James: "if its quality met its gold, if
+            its upgradeable its green". Those colours already exist and already
+            mean that; the badge was the one place on the card ignoring them.
+
+            So it takes its colour from the title's own mark, which is the same
+            source the dot and the chip read. Gold for Quality met, green for
+            Upgradable, red for Missing — and it can never disagree with the mark
+            above it, because there is one answer and both draw from it.
+
+            Full width and centred rather than tucked in a corner: it is the
+            second thing you look for after the artwork, and Radarr puts its
+            equivalent exactly here for the same reason.
+          */}
           {displayOptions.showQualityBadge && heldQualityLabel(item) ? (
-            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent px-2 pb-2 pt-8">
-              <Badge className="whitespace-nowrap bg-white/15 px-1.5 py-0 text-[length:var(--library-badge-size)] font-bold text-[hsl(var(--media-foreground))] backdrop-blur-sm">
+            <div
+              className={cn(
+                // One row up from the very bottom, because the bottom edge
+                // belongs to the subtitle bar — James, on DESIGN-001: "adding a
+                // bar isnt a good idea — the bar is strictly for subtitles".
+                "absolute inset-x-0 bottom-1 flex items-center justify-center overflow-hidden px-2 py-1"
+              )}
+              title={`${heldQualityLabel(item)} · ${qualityTone(item).label}`}
+            >
+              {/*
+                The fill is a layer of its own, and that is not decoration.
+
+                `.mark-grail` — the gold leaf and its glint — sets
+                `position: relative`, and on an element that is also `absolute`
+                it wins: the bar quietly stopped being positioned, dropped out
+                of the poster and was clipped to a four-pixel sliver by the
+                artwork's `overflow-hidden`. It still rendered, still had the
+                right gradient, and could not be seen. Keeping the fill on an
+                inner layer means the sheen can position itself however it likes
+                without touching the bar.
+              */}
+              <span aria-hidden="true" className="absolute inset-0">
+                <span
+                  className={cn(
+                    // Sized, never positioned. `.mark-grail` sets
+                    // `position: relative` and beats a Tailwind `absolute` on
+                    // the same element — it did it twice while this was being
+                    // built, first dropping the bar out of the poster and then
+                    // collapsing this fill to zero height. Both times it still
+                    // rendered with the right gradient and could not be seen.
+                    // Keeping the positioning one element out means the sheen
+                    // can do whatever it likes.
+                    "block h-full w-full",
+                    // The same classes the dot wears, so the two cannot drift:
+                    // gold leaf for Quality met, green for Upgradable, and the
+                    // half-grey gradient when Deluno is not watching it.
+                    qualityHalf(item)
+                      ? "bg-[linear-gradient(90deg,currentColor_0_50%,hsl(var(--mark-idle))_50%_100%)]"
+                      : qualityTone(item).dot,
+                    qualityHalf(item) && qualityTone(item).text,
+                    !qualityHalf(item) && qualityTone(item).sheen
+                  )}
+                />
+              </span>
+              {/* Dark text: every rung's fill is a light colour — red 62%,
+                  green 52%, gold 58% — and white would vanish into the gold. */}
+              <span className="relative truncate text-[length:var(--library-badge-size)] font-bold uppercase tracking-wider text-black/85">
                 {heldQualityLabel(item)}
-              </Badge>
+              </span>
             </div>
           ) : null}
 
@@ -525,6 +588,25 @@ function PosterExtras({ item, displayOptions }: { item: MediaItem; displayOption
       })}
     </>
   );
+}
+
+/**
+ * The colour the quality bar takes: the title's own mark.
+ *
+ * <p>Read through <c>titleMark</c> rather than kept as a second table, so the
+ * bar and the dot above it cannot disagree — there is one answer to "what state
+ * is this title in" and both draw from it.</p>
+ */
+function qualityTone(item: MediaItem) {
+  return TITLE_MARK_PRESENTATION[titleMark(item)];
+}
+
+/**
+ * Not monitored, on a rung where that is a meaningful thing to say — the same
+ * test the dot makes, so the bar is half-filled exactly when the dot is.
+ */
+function qualityHalf(item: MediaItem) {
+  return !item.monitored && qualityTone(item).canBeHalf;
 }
 
 /**
