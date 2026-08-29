@@ -1,7 +1,6 @@
 import {
   CalendarDays, Clapperboard, Disc, HardDrive, ListVideo, MonitorPlay, Play,
-  ShieldCheck, ShieldOff, Star, Tag, Timer, Tv, Users
-} from "lucide-react";
+  ShieldCheck, ShieldOff, Star, Tag, Timer, Tv, Users, RefreshCw, Search} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -12,6 +11,7 @@ import type { SortField } from "../../lib/library-filters";
 import { JumpRail, useJumpRail } from "./library-jump-rail";
 import { heldQualityLabel } from "../../lib/quality-label";
 import type { Density } from "../../lib/use-density";
+import { authedFetch } from "../../lib/use-auth";
 import { cn } from "../../lib/utils";
 import { Badge } from "../ui/badge";
 import { TitleMarkBar, TitleMarkTopBar } from "../ui/title-mark";
@@ -220,6 +220,39 @@ function PosterCard({
   onToggle: () => void;
 }) {
   const workspaceHref = item.type === "movie" ? `/movies/${item.id}` : `/tv/${item.id}`;
+  const apiSegment = item.type === "movie" ? "movies" : "series";
+
+  // Which action is in flight, and what the last one said.
+  //
+  // Held on the card rather than lifted to the shelf: a search on one poster
+  // says nothing about the others, and threading a callback per action through
+  // the grid would make every card re-render when any one of them was clicked.
+  const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [actionResult, setActionResult] = useState<string | null>(null);
+
+  async function runAction(name: string, url: string) {
+    if (busyAction) return;
+
+    setBusyAction(name);
+    setActionResult(null);
+
+    try {
+      const response = await authedFetch(url, { method: "POST" });
+
+      // The card is two centimetres wide, so the answer has to be a word. The
+      // detail page is where a search explains itself.
+      setActionResult(response.ok
+        ? (name === "search" ? "Searching" : "Refreshing")
+        : "Failed");
+    } catch {
+      setActionResult("Failed");
+    } finally {
+      setBusyAction(null);
+      // Long enough to read, short enough that it is gone before you look
+      // back. Nothing else on the card moves while it is there.
+      window.setTimeout(() => setActionResult(null), 2600);
+    }
+  }
   // Whether this card size draws anything under the artwork at all. Small is
   // deliberately title-only. It is not a switch — the switches decide *what*
   // is drawn, and this decides whether there is room to draw it.
@@ -367,16 +400,51 @@ function PosterCard({
             second thing you look for after the artwork, and Radarr puts its
             equivalent exactly here for the same reason.
           */}
-          {/* Hover-reveal action row */}
-          <div className="absolute inset-x-0 bottom-0 flex items-center gap-1 bg-gradient-to-t from-black to-transparent px-2 pb-2 pt-6 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-            <Link
-              to={workspaceHref}
-              onClick={(e) => e.stopPropagation()}
-              className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-primary px-2 py-1.5 text-[length:var(--library-badge-size)] font-bold text-primary-foreground shadow-md transition hover:brightness-110"
-            >
-              <Play className="h-2.5 w-2.5" fill="currentColor" />
-              Open
-            </Link>
+          {/*
+            The actions, as a small cluster in the middle of the artwork.
+
+            It was one full-width "Open" bar across the foot of the poster,
+            which is a lot of paint for one verb and sat on top of the two bars
+            that carry state and subtitles. James: "I think the open button
+            should be a smaller button in the center of the poster too - look at
+            what radarr does we should do the same".
+
+            Radarr puts three or four round icon buttons in the middle on hover
+            and nothing at the edges, which leaves the top and bottom to the
+            things that are always drawn. These are the three Deluno already has
+            a per-title endpoint for.
+
+            The scrim is the whole poster rather than a foot gradient: at the
+            centre there is artwork behind the buttons, not a dark edge, and
+            without it a white poster swallows them.
+          */}
+          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center gap-1.5 bg-black/45 opacity-0 backdrop-blur-[1px] transition-opacity duration-200 group-hover:opacity-100 focus-within:opacity-100">
+            <PosterAction
+              label="Open"
+              icon={Play}
+              href={workspaceHref}
+            />
+            <PosterAction
+              label={`Search for ${item.title} now`}
+              icon={Search}
+              busy={busyAction === "search"}
+              onClick={() => void runAction("search", `/api/${apiSegment}/${item.id}/search`)}
+            />
+            <PosterAction
+              label={`Refresh metadata for ${item.title}`}
+              icon={RefreshCw}
+              busy={busyAction === "refresh"}
+              onClick={() => void runAction("refresh", `/api/${apiSegment}/${item.id}/metadata/refresh`)}
+            />
+
+            {actionResult ? (
+              <span
+                role="status"
+                className="pointer-events-none absolute inset-x-2 bottom-3 truncate text-center text-[length:var(--library-badge-size)] font-bold uppercase tracking-wider text-white"
+              >
+                {actionResult}
+              </span>
+            ) : null}
           </div>
         </div>
       </button>
@@ -549,6 +617,66 @@ function PosterExtras({ item, displayOptions }: { item: MediaItem; displayOption
         );
       })}
     </>
+  );
+}
+
+/**
+ * One round action on a poster.
+ *
+ * <p>A link when it navigates and a button when it does something, because
+ * those are different things to a keyboard and to a screen reader — and because
+ * middle-clicking Open should open a tab, which a button cannot do.</p>
+ *
+ * <p>The label is only ever a tooltip and an accessible name: at this size a
+ * word does not fit, and three glyphs in a row is what Radarr does for the same
+ * reason.</p>
+ */
+function PosterAction({
+  label,
+  icon: Icon,
+  href,
+  onClick,
+  busy = false
+}: {
+  label: string;
+  icon: LucideIcon;
+  href?: string;
+  onClick?: () => void;
+  busy?: boolean;
+}) {
+  const className = cn(
+    "pointer-events-auto inline-flex h-7 w-7 items-center justify-center rounded-full",
+    "bg-black/55 text-white ring-1 ring-inset ring-white/25 backdrop-blur-sm",
+    "transition hover:bg-primary hover:text-primary-foreground hover:ring-primary",
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+    busy && "opacity-60"
+  );
+
+  const glyph = <Icon className={cn("h-3.5 w-3.5", busy && "animate-spin")} aria-hidden="true" />;
+
+  if (href) {
+    return (
+      <Link to={href} onClick={(event) => event.stopPropagation()} title={label} aria-label={label} className={className}>
+        {glyph}
+      </Link>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      disabled={busy}
+      onClick={(event) => {
+        // The card behind this opens the drawer on click.
+        event.stopPropagation();
+        onClick?.();
+      }}
+      className={className}
+    >
+      {glyph}
+    </button>
   );
 }
 
