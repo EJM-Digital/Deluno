@@ -1,0 +1,116 @@
+/* Shared by both decider pages. One card, one set of rules, two shelves. */
+* { box-sizing: border-box; }
+:root {
+  --bg: hsl(222 35% 7%); --fg: hsl(220 18% 96%); --card: hsl(218 32% 11%);
+  --line: hsl(217 22% 18%); --muted: hsl(217 13% 70%); --chip: hsl(217 24% 15%);
+  --idle: hsl(217 16% 26%);
+}
+body.light {
+  --bg: hsl(220 20% 97%); --fg: hsl(222 26% 10%); --card: hsl(0 0% 100%);
+  --line: hsl(220 14% 86%); --muted: hsl(217 10% 40%); --chip: hsl(220 14% 93%);
+  --idle: hsl(220 10% 82%);
+}
+body {
+  margin: 0; padding: 0 0 90px;
+  font: 15px/1.5 "Inter", system-ui, sans-serif;
+  background: var(--bg); color: var(--fg);
+  transition: background .18s, color .18s;
+}
+
+/* ── control rail ── */
+.rail {
+  position: sticky; top: 0; z-index: 50;
+  background: var(--card); border-bottom: 1px solid var(--line);
+  padding: 12px 28px; display: flex; flex-wrap: wrap; gap: 20px; align-items: center;
+}
+.grp { display: flex; align-items: center; gap: 8px; }
+.grp > label { font: 600 10px/1 "JetBrains Mono", monospace; letter-spacing: .1em;
+               text-transform: uppercase; color: var(--muted); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button {
+  appearance: none; border: 0; background: transparent; color: var(--muted);
+  font: 600 12px/1 "Inter", system-ui, sans-serif; padding: 7px 11px; cursor: pointer;
+  border-right: 1px solid var(--line);
+}
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed="true"] { background: hsl(211 100% 50% / .16); color: var(--fg); }
+.seg button:hover:not([aria-pressed="true"]) { background: hsl(0 0% 50% / .1); }
+
+/* The page must always state what it is showing: a stray click on the sticky
+   rail otherwise leaves you judging a combination you did not choose. */
+.readout { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.readout code { font: 700 11px/1.4 "JetBrains Mono", monospace; color: var(--fg);
+                background: var(--chip); border: 1px solid var(--line);
+                padding: 6px 9px; border-radius: 7px; }
+.readout button { appearance: none; border: 1px solid var(--line); border-radius: 7px;
+                  background: transparent; color: var(--muted); cursor: pointer;
+                  font: 600 11px/1 "Inter", system-ui, sans-serif; padding: 7px 9px; }
+.readout button:hover { color: var(--fg); }
+
+main { padding: 24px 28px 0; }
+h1 { font-size: 21px; margin: 0 0 4px; display: flex; align-items: baseline; gap: 12px; }
+h1 a { font: 600 12px/1 "Inter", system-ui, sans-serif; color: var(--muted); text-decoration: none;
+       border: 1px solid var(--line); border-radius: 7px; padding: 6px 9px; }
+h1 a:hover { color: var(--fg); border-color: hsl(211 100% 50% / .5); }
+.lede { color: var(--muted); max-width: 82ch; margin: 8px 0 0; font-size: 14px; }
+.lede b { color: var(--fg); }
+.spec { margin: 16px 0 0; border-collapse: collapse; font-size: 13.5px; }
+.spec th { text-align: left; font: 600 10px/1 "JetBrains Mono", monospace; letter-spacing: .08em;
+           text-transform: uppercase; color: var(--muted); padding: 7px 18px 7px 0;
+           border-bottom: 1px solid var(--line); }
+.spec td { padding: 7px 18px 7px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.spec td:first-child { color: var(--muted); white-space: nowrap; }
+
+.presets { display: flex; gap: 8px; align-items: center; margin: 18px 0 2px; flex-wrap: wrap; }
+.presets span { font: 600 10px/1 "JetBrains Mono", monospace; letter-spacing: .1em;
+                text-transform: uppercase; color: var(--muted); }
+.presets button { appearance: none; border: 1px solid var(--line); border-radius: 8px;
+                  background: var(--chip); color: var(--fg); cursor: pointer;
+                  font: 600 12px/1 "Inter", system-ui, sans-serif; padding: 8px 11px; }
+.presets button:hover { border-color: hsl(211 100% 50% / .5); }
+.presets em { font-style: normal; color: var(--muted); font-size: 12px; }
+
+.banner { margin: 14px 0 0; padding: 11px 14px; border-radius: 9px; font-size: 13.5px; border: 1px solid; }
+.banner.warn { border-color: hsl(28 90% 50% / .45); background: hsl(28 90% 50% / .1); }
+.banner.ok   { border-color: hsl(150 70% 45% / .4); background: hsl(150 70% 45% / .1); }
+
+/* ── the shelf ── */
+.wall { display: grid; gap: 14px; margin-top: 14px; }
+.card { border-radius: 10px; overflow: hidden; background: var(--chip); position: relative; }
+.art { position: relative; aspect-ratio: 2/3; background: hsl(220 12% 30%);
+       display: flex; align-items: flex-end; overflow: hidden; }
+.art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.art .noart { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+              font-size: 11px; color: hsl(0 0% 100% / .4);
+              background: linear-gradient(150deg, hsl(220 14% 26%), hsl(222 20% 14%)); }
+.name { position: relative; padding: 7px 8px; font-size: 11px; font-weight: 600; color: #fff;
+        line-height: 1.25; text-shadow: 0 1px 4px rgb(0 0 0 / .9);
+        background: linear-gradient(to top, rgb(0 0 0 / .72), transparent); width: 100%; }
+
+.bar { position: relative; width: 100%; overflow: hidden; }
+.bar .fill { position: absolute; inset: 0 auto 0 0; }
+.bar .txt { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+            white-space: nowrap; padding: 0 4px;
+            font: 700 11.5px/1 "JetBrains Mono", monospace; }
+.bar .txt > span { display: flex; align-items: center; gap: 4px; overflow: hidden; text-overflow: ellipsis; }
+/* `<b>` inside a 700 parent resolves to 900, and white 900 mono on a saturated
+   bar blooms — "almost like its overexposed". The tag is structure, not weight. */
+.bar .txt b { font-weight: 700; }
+.bar .lead { font-size: 9px; opacity: .75; letter-spacing: .08em; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 7px; margin: 6px 0 0; }
+.lchip { display: inline-flex; align-items: center; gap: 7px; padding: 5px 9px; border-radius: 8px;
+         font-size: 12px; border: 1px solid var(--line); background: var(--chip); }
+.lstrip { width: 16px; height: 4px; border-radius: 2px; flex: none;
+          display: inline-block; vertical-align: middle; margin-right: 6px; }
+
+/* Each candidate reports its own clearance, computed rather than written down,
+   so a value cannot be edited without its number moving with it. */
+.clear { border-collapse: collapse; margin: 6px 0 4px; font-size: 12.5px; }
+.clear th { text-align: left; font: 600 10px/1 "JetBrains Mono", monospace; letter-spacing: .08em;
+            text-transform: uppercase; color: var(--muted); padding: 6px 14px 6px 0;
+            border-bottom: 1px solid var(--line); }
+.clear td { padding: 5px 14px 5px 0; border-bottom: 1px solid var(--line); }
+.clear td.num { font: 700 12px/1 "JetBrains Mono", monospace; }
+.clear td.bad { color: hsl(0 84% 62%); }
+.clear tr.on td { background: hsl(211 100% 50% / .1); font-weight: 700; }
