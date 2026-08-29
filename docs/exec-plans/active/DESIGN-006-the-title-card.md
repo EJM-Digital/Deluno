@@ -91,23 +91,38 @@ only fraction that medium has.
 
 ### What the unfilled part of a bar is
 
-**Missing.** Not a neutral grey.
+**Neutral. Measured in Sonarr, not reasoned about.**
 
-`4bdfe45` made the remainder a solid neutral, reasoning that "the remainder is
-not a weaker version of the state; it is the part you do not have yet". The first
-half is right and the second half names it: *the part you do not have* is Missing,
-which is a rung on this ladder with a colour of its own.
+An earlier revision of this document asserted the remainder should be Missing red,
+on the argument that *the part you do not have* is Missing and the subtitle bar's
+`titleBarGradient` already ends in red. That argument is tidy and it is wrong, and
+it caused the defect it then needed two more rules to repair: with the remainder
+red, a Missing title's fill and remainder were the same colour and the fraction
+vanished — Severance at 3 of 20 drew the same flat bar as Foundation at 0 of 29.
 
-The shipped subtitle bar already knew this. `titleBarGradient` runs gold → green →
-**red**, with no neutral anywhere in it. Only the media bar ended in grey, and
-drawing the two on one card is what made the disagreement visible: a title holding
-nothing was an entirely grey card, carrying its state nowhere — the corner pill
-having been the only thing colouring it.
+Read out of Sonarr's own DOM, every poster, no exceptions:
 
-So both bars end in Missing red, and a show at 3 of 20 shows three-twentieths of
-its state colour against seventeen-twentieths of red. Neutral grey survives only
-as `--mark-idle` under the *half* a title wears when it is not monitored, which is
-a different question and keeps its own colour.
+| Series state | Track | Fill | Fill width |
+|---|---|---|---|
+| Continuing, all held | grey `rgb(91,91,91)` | blue `rgb(93,156,236)` | 100% |
+| Ended, all held | grey `rgb(91,91,91)` | green `rgb(39,194,76)` | 100% |
+| Missing episodes | grey `rgb(91,91,91)` | **red** `rgb(240,80,80)` | **86%** |
+
+**The colour is the state and the length is the fraction.** A series missing
+episodes is a red bar filled to how much you hold. Both facts on one bar, neither
+lost, and it works precisely *because* the track is neutral. Deluno had this right
+before the red remainder was introduced.
+
+#### The one gap, and it closes for free
+
+At 0% fill a neutral bar is wholly grey, so its state is drawn nowhere — and Deluno
+has deleted the corner pill that used to carry it. Sonarr has the same gap and gets
+away with it because its poster carries nothing else either.
+
+So **on the neutral track the label wears the state's own text colour**: Foundation's
+`0 / 29` is red on grey. The *text* token, not the surface — surfaces are tuned for
+white-on-bar, text tokens for reading on a ground (§4). The fill still means exactly
+what Sonarr's means, and nothing is spent to keep the state.
 
 ### The subtitle bar counts only files you hold
 
@@ -211,7 +226,7 @@ never a reason for it to invert — the same argument that already makes
 | Continuing | `hsl(178 96% 24%)` | white | 5.33 |
 | Quality met | the existing `--mark-leaf-*` gradient | **near-black** `hsl(40 90% 12%)` | 10.46 |
 | Upcoming | `hsl(270 76% 47%)` | white | 7.22 |
-| Remainder | **Missing's surface** — see §2 | white | 6.27 |
+| Remainder (track) | `--mark-idle`, per theme | the **state's text colour** — see §2 | — |
 | Unmonitored half | `--mark-idle`, per theme | — | — |
 
 **Gold's label is the one asymmetry, and it is forced.** Gold is floored at 52%
@@ -426,10 +441,11 @@ chosen here with reasons and are his to overturn:
 2. **Treatment: both bars speak, only the subtitle bar is labelled.** §3.
 3. **Three switches, named per shelf.** §6. The alternative is one switch called
    something generic, which is what the arrs did and what he objected to.
-4. **The remainder is Missing red, not neutral grey**, and *none asked for* is
-   gone. §2. Both were found by drawing the card rather than by reasoning about
-   it, and both are switchable on the decider page so the alternative can be
-   looked at rather than argued.
+4. **The remainder is a neutral track and the fill is the state's colour**, which
+   is what Sonarr does and was measured rather than argued (§2, §13). An earlier
+   revision of this document got that backwards and caused a defect with it.
+   *None asked for* is gone (§2), and the subtitle bar still counts — James:
+   *"bar should count I was wrong, we are doing it now and no reason to stop it"*.
 5. **Continuing goes magenta.** §4.
 
 **Settled, no longer switches:** the corner pill is deleted and the bars are always
@@ -442,37 +458,36 @@ Flip them, then send the settings line the page prints — it names every one.
 ## 13. What the filled part is coloured by
 
 James, looking at Severance drawing a flat red bar at 3 of 20: *"why cant we do the
-episodes the same as the subs with the bar and number?"*
+episodes the same as the subs with the bar and number?"* — then, on being shown the
+options: *"Im torn with this fill thing now, what does sonarr do?"*
 
-He is pointing at a real inconsistency. The subtitle bar colours **what you hold** and
-leaves the rest red, so its fill is always visible. The media bar coloured the whole
-fill by the title's **rung** — so when the rung was Missing, fill and remainder were
-the same red and the fraction disappeared. Severance at 3 of 20 and Foundation at
-0 of 29 drew identical bars.
+Going and looking settled it, and settled §2 with it. Sonarr colours the **fill by
+the state** and fills it to the **fraction held**, over a neutral track. There is no
+tension to resolve: the flat bar was caused by the red remainder, not by the fill
+rule, and removing the red remainder removes the need for any of the alternatives.
 
-Three rules, measured on the render:
+Two coherent grammars remain, both one click on the decider page:
 
-| Rule | Severance (Missing, 3/20) | Silo (Continuing, 10/10) |
-|---|---|---|
-| **State colour** | flat red, fraction invisible | magenta |
-| **State, held green** ← *recommended* | green sliver, then red | magenta |
-| **Held, like SUBS** | green sliver, then red | **green — Continuing's colour is gone** |
+| | Track | Fill | Missing title at 3/20 | Continuing, fully held |
+|---|---|---|---|---|
+| **Sonarr's grammar** ← *recommended* | neutral | the state's colour | red sliver, then grey | magenta |
+| Composition, like SUBS | none | what you hold | green sliver, then red | **green — Continuing's colour gone** |
 
-*Held, like SUBS* is the most consistent of the three and the most expensive: a
+*Composition* is the more internally consistent of the two and the more expensive: a
 fully-held show is green whether it is Continuing or Upgradable, so Continuing loses
-its colour on the shelf entirely — which would make the whole magenta question in §4
-moot. That is a real option, but it should be chosen knowingly.
+its colour on the shelf entirely, which would make the whole magenta question in §4
+moot.
 
-*State, held green* is the recommendation: the fill is the rung's colour, **except** a
-Missing title's held part, which is green because what you hold is held regardless. It
-fixes the flat bar and costs nothing — every rung keeps its colour.
+*Sonarr's grammar* is recommended because it carries both facts on one bar, it is
+proven in the app Deluno is replacing, and with the tinted track label (§2) it has no
+remaining blind spot.
 
-A bar with **no fraction** keeps its rung's colour under all three rules, because there
-is no held part for a composition rule to colour: an Upcoming title has not started,
-and a downloading one has no held part yet. `mediaBar` states this outright rather than
-letting it be inferred from the percentage — the first attempt tested
-`pct > 0 && pct < 100`, which quietly excluded a fully-held Continuing show, the one
-case the *held* rule exists to show.
+**A bar with no fraction** keeps its state's colour under either grammar, because
+there is no held part to colour: an Upcoming title has not started, and a downloading
+one has no held part yet. `mediaBar` says whether there is a fraction outright — the
+first attempt inferred it from `pct > 0 && pct < 100`, which quietly excluded a
+fully-held Continuing show, the single case the composition rule exists to show, so
+that rule silently rendered identically to the one beside it.
 
 ---
 
