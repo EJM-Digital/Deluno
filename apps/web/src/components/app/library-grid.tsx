@@ -9,12 +9,10 @@ import type { MediaItem } from "../../lib/media-types";
 import { buildJumpBuckets } from "../../lib/library-buckets";
 import type { SortField } from "../../lib/library-filters";
 import { JumpRail, useJumpRail } from "./library-jump-rail";
-import { heldQualityLabel } from "../../lib/quality-label";
 import type { Density } from "../../lib/use-density";
 import { authedFetch } from "../../lib/use-auth";
 import { cn } from "../../lib/utils";
-import { Badge } from "../ui/badge";
-import { TitleMarkBar, TitleMarkTopBar } from "../ui/title-mark";
+import { TitleMarkBar, TitleMarkCorner, TitleMarkTopBar } from "../ui/title-mark";
 
 export type CardSize = "sm" | "md" | "lg";
 
@@ -24,7 +22,6 @@ export type CardSize = "sm" | "md" | "lg";
  * header describes, one import below it.
  */
 import type { DisplayOptions } from "../../lib/library-filters";
-import { TITLE_MARK_PRESENTATION, titleMark } from "../../lib/status-tones";
 export type { DisplayOptions } from "../../lib/library-filters";
 
 /**
@@ -354,19 +351,22 @@ function PosterCard({
             artwork, which is what the renders were for.
           */}
           {/*
-            Always drawn. It was behind the Status mark switch and is not any
-            more — James: *"I think status mark should not be an option, its
-            mandatory"*. The Quality switch still decides the bar's *size*,
-            which is the one thing it ever really controlled.
+            Two facts, two places, neither optional.
+
+            The bar answers *what state* across the whole top edge, where it can
+            be read down a wall of posters. The corner answers *how far* — a
+            number, read one card at a time, in the spot the dot used to hold.
+
+            Both were switches once. The state mark was one until James: *"I
+            think status mark should not be an option, its mandatory"*, and the
+            quality tier was the other until the label on this bar turned out to
+            be unfixable — a word whose ground changes with the episode count
+            cannot be given a colour that works, and three rounds of trying is
+            how we know. Quality is on the list row, in the drawer and on the
+            detail page; it is not on the artwork any more.
           */}
-          <TitleMarkTopBar
-            item={item}
-            // Only the full bar carries words, and only when there is a tier
-            // to name or a state worth naming.
-            label={displayOptions.showQualityBadge
-              ? heldQualityLabel(item) ?? qualityTone(item).label
-              : null}
-          />
+          <TitleMarkTopBar item={item} />
+          <TitleMarkCorner item={item} />
 
           {/* What you asked for beyond the title. A movie has no bar. */}
           <TitleMarkBar item={item} />
@@ -705,15 +705,6 @@ function PosterAction({
     </button>
   );
 }
-
-/**
- * The title's own mark, for the word the top bar falls back to when there is no
- * file to name a tier from.
- */
-function qualityTone(item: MediaItem) {
-  return TITLE_MARK_PRESENTATION[titleMark(item)];
-}
-
 
 /**
  * The rows one card draws, in order — one per switch that is on, whether or not

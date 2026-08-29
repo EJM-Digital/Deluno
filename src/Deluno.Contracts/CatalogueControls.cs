@@ -165,8 +165,11 @@ public sealed record CatalogueControls(
     /// <summary>What only a show's card can show.</summary>
     private static IReadOnlyList<CataloguePosterOption> SeriesOnlyPosterOptions =>
     [
-        new("showNextAiring", "Next airing", "When the next episode is due", DefaultOn: false, Line: true),
-        new("showEpisodeProgress", "Episode progress", "How many aired episodes you hold", DefaultOn: false, Line: true)
+        new("showNextAiring", "Next airing", "When the next episode is due", DefaultOn: false, Line: true)
+        // Episode progress is not here either, and for the opposite reason: it
+        // is now on every show's card whether you ask for it or not, in the
+        // corner. A switch for a line reading "3/20 episodes" underneath would
+        // be the same fact twice on one card.
     ];
 
     /// <summary>
@@ -194,7 +197,12 @@ public sealed record CatalogueControls(
         //
         // Everything else here is a detail about a title. The mark is what the
         // shelf is *for*.
-        new("showQualityBadge", "Quality", "The tier the file actually is — WEB 2160p, Remux 1080p", DefaultOn: true),
+        // **Quality is not a poster option any more.** It was the tier printed
+        // on the state bar, and that label is what three rounds of wash-out
+        // were about: a word whose ground changes with the episode count cannot
+        // be given a colour that works on every card. James, after four
+        // rendered treatments, chose the one with no words on artwork at all.
+        // The tier is on the list row, in the drawer and on the detail page.
         // A line of its own, like every other switch. "Year and monitoring" is
         // one switch and gets one row; the rating is a second switch and shared
         // that row until James pointed out the rule — nothing shares a row.

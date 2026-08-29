@@ -202,65 +202,51 @@ function labelTone(fillPercent: number): string {
 /**
  * The state, as a bar across the top of a poster.
  *
- * <p>It replaced a dot in the corner. A dot is nine pixels and it was carrying
- * the most important fact on the card, with the tier you hold as a separate
- * pill at the other end — three things to learn, two of them tiny. James, after
- * looking at four rendered treatments: <i>"I like a combination of 1 and 2...
- * if quality is not ticked it goes to the small bar, if its ticked it goes to
- * the big bar with the quality or status"</i>.</p>
+ * <p><b>It carries no words.</b> It used to grow into a full bar and print the
+ * tier you hold, and that is what three rounds of wash-out were about: a word
+ * on a bar whose ground changes with the episode count cannot be given a colour
+ * that works. James, after four rendered treatments: <i>"lets do A"</i> — the
+ * bar says the state, the corner says the count, and nothing sits on artwork.
+ * Quality left the poster with it; it is on the list row, in the drawer and on
+ * the detail page already.</p>
  *
- * <p><b>The label decides the size.</b> No label and it is a thin strip of
- * colour; a label and it is a full bar carrying the words. That is one control
- * — the Quality switch — doing one thing, rather than two switches arguing over
- * one corner.</p>
+ * <p><b>Full-strength colours, nothing translucent.</b> <i>"ensure colours are
+ * full and not transparent or washed out"</i>. The fill is the mark's own
+ * colour at full opacity and the unfilled remainder is a solid neutral — not
+ * the mark dimmed, which is what a track was before and what read as a smear.
+ * The remainder is not a weaker version of the state; it is the part you do not
+ * have yet, and it says so by being a different thing rather than a faded one.
+ * The state itself is never lost, because {@link TitleMarkCorner} carries it in
+ * full colour whatever the bar is filled to.</p>
  *
- * <p>The colour comes from <c>titleMark</c>, the same source the dot used, the
- * legend reads and the detail page reads. Gold means Deluno has finished with
- * it and glints to say so; the other rungs are flat because they are all still
- * in progress. Half-width for a title Deluno is not watching, exactly as the
- * dot went half.</p>
- *
- * <p>The bottom edge belongs to the subtitle bar and is not touched, so the two
- * book-end the artwork rather than competing for one end of it.</p>
+ * <p>The width is how far through the show you are. A film is not partway
+ * through itself, so its bar is solid.</p>
  */
 export function TitleMarkTopBar({
   item,
-  label,
   className
 }: {
   item: TitleMarkInput;
-  /** The tier you hold, or the state's own word. Null draws the thin strip. */
-  label?: string | null;
   className?: string;
 }) {
   const mark = titleMark(item);
   const presentation = TITLE_MARK_PRESENTATION[mark];
   const half = !item.monitored && presentation.canBeHalf;
+  const tracksEpisodes = typeof item.airedEpisodeCount === "number" && item.airedEpisodeCount > 0;
+  const fillPercent = tracksEpisodes ? Math.round(titleProgress(item) * 100) : 100;
 
   const description = half
     ? `${presentation.label} · not monitored`
     : presentation.label;
 
-  // Shows only. `titleProgress` answers 0 or 1 for anything without episode
-  // counts, and a film reading 0 would be a poster with no state on it.
-  const tracksEpisodes = typeof item.airedEpisodeCount === "number" && item.airedEpisodeCount > 0;
-  const fillPercent = tracksEpisodes ? Math.round(titleProgress(item) * 100) : 100;
-
   return (
     <div
       role="img"
-      // The quality label is the state's own word when there is no file to
-      // name, so a missing title announced "Missing · Missing" until this
-      // deduplicated them.
-      aria-label={[label === description ? null : label, description, tracksEpisodes
-        ? `${Math.min(Math.max(0, item.airedWithFileCount ?? 0), item.airedEpisodeCount!)} of ${item.airedEpisodeCount} aired episodes on disk`
-        : null].filter(Boolean).join(" · ")}
+      aria-label={tracksEpisodes
+        ? `${description} · ${episodesHeld(item)} of ${item.airedEpisodeCount} aired episodes on disk`
+        : description}
       title={half ? `${presentation.hint} Deluno is not watching this one.` : presentation.hint}
-      className={cn(
-        "absolute inset-x-0 top-0 z-10 flex items-center justify-center overflow-hidden",
-        label ? "px-2 py-0.5" : "h-[5px]",
-        className
-      )}
+      className={cn("absolute inset-x-0 top-0 z-10 h-[5px] overflow-hidden bg-mark-idle", className)}
     >
       {/*
         The fill is its own layer because `.mark-grail` sets `position:
@@ -268,63 +254,82 @@ export function TitleMarkTopBar({
         exactly that twice while the quality pill was being built, once dropping
         it out of the poster and once collapsing it to nothing, both times
         rendering the right gradient invisibly.
-
-        **And its width is how far through the show you are.** It was always
-        100%, so a series holding three of twenty aired episodes drew the same
-        full red bar as one holding none — James: *"the red bar at the top
-        doesnt track episodes properly"*. `titleProgress` has computed exactly
-        this fraction since DESIGN-001 and nothing has ever drawn it: declared,
-        never populated, and invisible because a full bar is what a full bar
-        looks like.
-
-        A film is not partway through itself, so it keeps a solid bar. Filling
-        one by `hasFile` would leave every missing film with an empty strip and
-        no state on the poster at all.
       */}
       <span
         aria-hidden="true"
-        className="absolute inset-0"
-        // The track is the mark's own colour, dimmed — not grey.
-        //
-        // Grey was the first attempt and it cost the thing that matters: a show
-        // holding none of its aired episodes filled to 0%, so five of six TV
-        // posters had no colour on them at all, one commit after the state mark
-        // was made mandatory. Sonarr does not do that either — its bar is the
-        // state colour throughout, with the filled part brighter.
-        //
-        // `surfaceVar` where a mark has one, so gold dims to gold.
-        //
-        // 0.55 rather than the 0.3 Sonarr uses, because Sonarr's bar sits on a
-        // white page and this one sits on artwork: at 0.3 the label washed out
-        // and the strip read as a smear rather than a colour. The filled part
-        // is still obviously brighter, which is the only thing the ratio has to
-        // preserve.
-        style={{
-          background: `hsl(var(${presentation.surfaceVar ?? presentation.cssVar}) / 0.55)`
-        }}
-      >
-        <span
-          className={cn(
-            "block h-full",
-            half
-              ? "bg-[linear-gradient(90deg,currentColor_0_50%,hsl(var(--mark-idle))_50%_100%)]"
-              : presentation.dot,
-            half && presentation.text,
-            !half && presentation.sheen
-          )}
-          style={{ width: `${fillPercent}%` }}
-        />
-      </span>
-
-      {label ? (
-        <span className={cn(
-          "relative truncate text-[length:var(--library-badge-size)] font-bold uppercase tracking-wider",
-          labelTone(fillPercent)
-        )}>
-          {label}
-        </span>
-      ) : null}
+        className={cn(
+          "block h-full",
+          half
+            ? "bg-[linear-gradient(90deg,currentColor_0_50%,hsl(var(--mark-idle))_50%_100%)]"
+            : presentation.dot,
+          half && presentation.text,
+          !half && presentation.sheen
+        )}
+        style={{ width: `${fillPercent}%` }}
+      />
     </div>
+  );
+}
+
+/** Of the aired episodes, how many are on disk — never more than have aired. */
+function episodesHeld(item: TitleMarkInput): number {
+  return Math.min(Math.max(0, item.airedWithFileCount ?? 0), item.airedEpisodeCount ?? 0);
+}
+
+/**
+ * The corner, where the dot used to be: the count for a show, the state's word
+ * for a film.
+ *
+ * <p>This is the other half of the treatment James picked. The bar answers
+ * <i>what state</i> across the whole top edge, where it can be read down a wall
+ * of thirty posters; this answers <i>how far</i>, which is a number and has to
+ * be read one card at a time. Two facts, two places, neither borrowing the
+ * other's space.</p>
+ *
+ * <p><b>Opaque.</b> No translucent black, no backdrop blur: over artwork those
+ * make the pill a different colour on every poster, which is the same class of
+ * problem as the label that kept washing out. A solid ground and a full-colour
+ * pip read identically on a white poster and a black one.</p>
+ *
+ * <p>A film says its state here rather than a fraction. It is here or it is
+ * not, and "1 / 1" would be a fraction invented to fill a shape.</p>
+ */
+export function TitleMarkCorner({ item, className }: { item: TitleMarkInput; className?: string }) {
+  const mark = titleMark(item);
+  const presentation = TITLE_MARK_PRESENTATION[mark];
+  const half = !item.monitored && presentation.canBeHalf;
+  const tracksEpisodes = typeof item.airedEpisodeCount === "number" && item.airedEpisodeCount > 0;
+
+  const text = tracksEpisodes
+    ? `${episodesHeld(item)} / ${item.airedEpisodeCount}`
+    : presentation.label;
+  const description = half ? `${presentation.label} · not monitored` : presentation.label;
+
+  return (
+    <span
+      role="img"
+      aria-label={tracksEpisodes ? `${description} · ${text} aired episodes on disk` : description}
+      title={half ? `${presentation.hint} Deluno is not watching this one.` : presentation.hint}
+      className={cn(
+        "absolute right-2 top-2 z-20 inline-flex items-center gap-1.5 rounded-full",
+        "border border-white/15 bg-surface-1 px-2 py-0.5 shadow-card",
+        "text-[length:var(--library-badge-size)] font-bold tabular-nums text-foreground",
+        className
+      )}
+    >
+      <span
+        aria-hidden
+        className={cn(
+          "h-2 w-2 shrink-0 rounded-full",
+          half
+            ? "bg-[linear-gradient(90deg,currentColor_0_50%,hsl(var(--mark-idle))_50%_100%)]"
+            : presentation.dot,
+          half && presentation.text,
+          !half && presentation.sheen
+        )}
+      />
+      {text}
+    </span>
   );
 }
 

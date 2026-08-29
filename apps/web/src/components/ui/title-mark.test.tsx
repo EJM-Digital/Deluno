@@ -1,6 +1,6 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { EpisodeProgressBar, MarkStrip, TitleMarkBar, TitleMarkBarLegend, TitleMarkTopBar } from "./title-mark";
+import { EpisodeProgressBar, MarkStrip, TitleMarkBar, TitleMarkBarLegend, TitleMarkCorner, TitleMarkTopBar } from "./title-mark";
 import { TITLE_BAR_SEGMENTS, TITLE_MARK_LADDER, TITLE_MARK_PRESENTATION } from "../../lib/status-tones";
 import { quickFiltersFor } from "../app/library-control-rail";
 import railSource from "../app/library-control-rail.tsx?raw";
@@ -32,22 +32,12 @@ describe("the swatch a legend wears", () => {
     expect(strip.className).not.toMatch(/\bh-(?:2|3|4)\b/);
   });
 
-  it("is the same height as the bar it explains, read off the bar itself", () => {
-    // Measured through the component that draws the poster's bottom edge, not
-    // off a constant either side could drift from.
-    const { container } = render(
-      <TitleMarkTopBar item={{ monitored: true, hasFile: true }} label={null} />
-    );
-    const bar = container.querySelector<HTMLElement>("div[role='img']");
+  it("is the height of the state bar, which no longer moves", () => {
+    // The bar used to grow to carry the quality tier. It does not any more, so
+    // the swatch and the thing it explains are finally the same size.
+    const { container } = render(<TitleMarkTopBar item={{ monitored: true, hasFile: true }} />);
 
-    // The state bar is thin without a label and grows with one. That is exactly
-    // why the legend does not follow it.
-    expect(bar?.className).toContain("h-[5px]");
-
-    const { container: withLabel } = render(
-      <TitleMarkTopBar item={{ monitored: true, hasFile: true }} label="1080p" />
-    );
-    expect(withLabel.querySelector<HTMLElement>("div[role='img']")?.className).not.toContain("h-[5px]");
+    expect(container.querySelector<HTMLElement>("div[role='img']")?.className).toContain("h-[5px]");
   });
 
   it("wears the mark's own colour and nothing hand-written", () => {
@@ -206,7 +196,7 @@ describe("the episode count, the way Sonarr's list draws it", () => {
 
 describe("the state bar on a poster", () => {
   function fill(container: HTMLElement): string | undefined {
-    return container.querySelector<HTMLElement>("span[aria-hidden] > span")?.style.width;
+    return container.querySelector<HTMLElement>("span[aria-hidden]")?.style.width;
   }
 
   it("is filled to how far through the show you are", () => {
@@ -214,10 +204,7 @@ describe("the state bar on a poster", () => {
     // holding none. `titleProgress` had computed this fraction since DESIGN-001
     // and nothing drew it.
     const { container } = render(
-      <TitleMarkTopBar
-        item={{ monitored: true, airedEpisodeCount: 20, airedWithFileCount: 3 }}
-        label={null}
-      />
+      <TitleMarkTopBar item={{ monitored: true, airedEpisodeCount: 20, airedWithFileCount: 3 }} />
     );
 
     expect(fill(container)).toBe("15%");
@@ -226,73 +213,91 @@ describe("the state bar on a poster", () => {
   it("is solid for a film, which is not partway through itself", () => {
     // Filling by hasFile would leave every missing film with an empty strip and
     // no state on the poster at all.
-    expect(fill(render(<TitleMarkTopBar item={{ monitored: true, hasFile: false }} label={null} />).container))
+    expect(fill(render(<TitleMarkTopBar item={{ monitored: true, hasFile: false }} />).container))
       .toBe("100%");
-    expect(fill(render(<TitleMarkTopBar item={{ monitored: true, hasFile: true }} label={null} />).container))
+    expect(fill(render(<TitleMarkTopBar item={{ monitored: true, hasFile: true }} />).container))
       .toBe("100%");
   });
 
   it("is solid for a show whose episode counts have not arrived", () => {
-    expect(fill(render(<TitleMarkTopBar item={{ monitored: true, airedEpisodeCount: 0 }} label={null} />).container))
+    expect(fill(render(<TitleMarkTopBar item={{ monitored: true, airedEpisodeCount: 0 }} />).container))
       .toBe("100%");
   });
 
-  it("says the fraction out loud, since the bar now carries it", () => {
+  it("says the fraction out loud, since it is drawn and not written", () => {
     const { container } = render(
-      <TitleMarkTopBar
-        item={{ monitored: true, airedEpisodeCount: 20, airedWithFileCount: 3 }}
-        label="WEB 1080p"
-      />
+      <TitleMarkTopBar item={{ monitored: true, airedEpisodeCount: 20, airedWithFileCount: 3 }} />
     );
 
     expect(container.querySelector("div[role='img']")?.getAttribute("aria-label"))
-      .toBe("WEB 1080p · Missing · 3 of 20 aired episodes on disk");
+      .toBe("Missing · 3 of 20 aired episodes on disk");
   });
 
-  it("writes its label in white when the bar is mostly track", () => {
-    // A show holding three of twenty is 15% bright colour and 85% dimmed track
-    // over artwork. Black on that is the wash-out James read off the screen.
-    const mostlyTrack = render(
-      <TitleMarkTopBar
-        item={{ monitored: true, airedEpisodeCount: 20, airedWithFileCount: 3 }}
-        label="WEB 1080p"
-      />
-    ).container.querySelector("div[role='img'] > span:last-child");
-
-    expect(mostlyTrack?.className).toContain("text-white");
-    expect(mostlyTrack?.className).not.toContain("text-black");
-
-    // A film is a solid bar of a light colour, and there white is the one that
-    // vanishes.
-    const solid = render(
-      <TitleMarkTopBar item={{ monitored: true, hasFile: true }} label="WEB 2160p" />
-    ).container.querySelector("div[role='img'] > span:last-child");
-
-    expect(solid?.className).toContain("text-black");
-  });
-
-  it("does not say the state twice when there is no quality to name", () => {
-    // The label falls back to the state's own word, so a missing title read
-    // "Missing · Missing" to a screen reader.
+  it("carries no words at all", () => {
+    // Three rounds of wash-out were a word on a bar whose ground changes with
+    // the episode count. There is no word now, so there is nothing to colour.
     const { container } = render(
-      <TitleMarkTopBar item={{ monitored: true, hasFile: false }} label="Missing" />
+      <TitleMarkTopBar item={{ monitored: true, airedEpisodeCount: 20, airedWithFileCount: 3 }} />
     );
 
-    expect(container.querySelector("div[role='img']")?.getAttribute("aria-label")).toBe("Missing");
+    expect(container.querySelector("div[role='img']")?.textContent).toBe("");
   });
 
-  it("keeps the state visible on a show holding nothing", () => {
-    // The first version tracked in grey, so a show at 0% had no colour on it at
-    // all — one commit after the state mark was made mandatory.
+  it("uses full-strength colour and a solid remainder, never a dimmed mark", () => {
+    // James: "ensure colours are full and not transparent or washed out". The
+    // unfilled part is the bit you do not have yet, not a faded version of the
+    // state — and the state is never lost with it, because the corner carries
+    // it at full strength whatever the bar is filled to.
     const { container } = render(
-      <TitleMarkTopBar
-        item={{ monitored: true, airedEpisodeCount: 29, airedWithFileCount: 0 }}
-        label={null}
-      />
+      <TitleMarkTopBar item={{ monitored: true, airedEpisodeCount: 29, airedWithFileCount: 0 }} />
     );
 
-    const track = container.querySelector<HTMLElement>("span[aria-hidden]");
-    expect(track?.style.background).toContain(TITLE_MARK_PRESENTATION.missing.cssVar);
-    expect(track?.className).not.toContain("mark-idle");
+    const bar = container.querySelector<HTMLElement>("div[role='img']");
+    expect(bar?.className).toContain("bg-mark-idle");
+
+    const fillLayer = container.querySelector<HTMLElement>("span[aria-hidden]");
+    expect(fillLayer?.className).toContain(TITLE_MARK_PRESENTATION.missing.dot);
+    // No opacity modifier on the mark's own colour anywhere.
+    expect(bar?.outerHTML).not.toMatch(/--destructive\)\s*\/\s*0/);
+  });
+});
+
+describe("the corner, where the dot used to be", () => {
+  it("carries the count for a show and the state's word for a film", () => {
+    const show = render(
+      <TitleMarkCorner item={{ monitored: true, airedEpisodeCount: 20, airedWithFileCount: 3 }} />
+    ).container.querySelector("span[role='img']");
+    expect(show?.textContent?.trim()).toBe("3 / 20");
+
+    // "1 / 1" would be a fraction invented to fill a shape, so a film gets a
+    // word. Which word is `titleMark`'s business and is asserted elsewhere.
+    const film = render(<TitleMarkCorner item={{ monitored: true, hasFile: true }} />)
+      .container.querySelector("span[role='img']");
+    const words = Object.values(TITLE_MARK_PRESENTATION).map((rung) => rung.label);
+
+    expect(film?.textContent?.trim()).not.toMatch(/\d+\s*\/\s*\d+/);
+    expect(words).toContain(film?.textContent?.trim());
+  });
+
+  it("is opaque, because a translucent pill is a different colour on every poster", () => {
+    const { container } = render(
+      <TitleMarkCorner item={{ monitored: true, airedEpisodeCount: 20, airedWithFileCount: 3 }} />
+    );
+    const pill = container.querySelector<HTMLElement>("span[role='img']");
+
+    expect(pill?.className).toContain("bg-surface-1");
+    expect(pill?.className).not.toMatch(/bg-black\/|backdrop-blur/);
+  });
+
+  it("wears the mark at full strength, so the state survives an empty bar", () => {
+    const { container } = render(
+      <TitleMarkCorner item={{ monitored: true, airedEpisodeCount: 29, airedWithFileCount: 0 }} />
+    );
+    const pip = container.querySelector<HTMLElement>("span[aria-hidden]");
+
+    expect(pip?.className).toContain(TITLE_MARK_PRESENTATION.missing.dot);
+    // No Tailwind opacity modifier on the mark's own colour — `bg-destructive/40`
+    // and friends are exactly the wash James asked to be rid of.
+    expect(pip?.className).not.toContain(`${TITLE_MARK_PRESENTATION.missing.dot}/`);
   });
 });
