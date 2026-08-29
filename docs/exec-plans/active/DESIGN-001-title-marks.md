@@ -8,6 +8,14 @@ design for [#300](https://github.com/jampat000/Deluno/issues/300) and
 Rendered reference, every mark drawn at real poster sizes:
 <https://claude.ai/code/artifact/f6e8656a-8e43-4b5b-a4a2-215e983e8232>
 
+> **Superseded in part by [DESIGN-006](DESIGN-006-the-title-card.md)**
+> (2026-08-30). The *ladder* below — its rungs, their names and their order — is
+> unchanged and still the source. What DESIGN-006 replaces is how a card
+> **draws** them: the dot and the corner pill are gone, each rung gains a deep
+> *surface* value distinct from its text value, and the two bars carry their own
+> labels. Read this document for what a mark means and DESIGN-006 for what a
+> card looks like.
+
 ## The idea
 
 A title gets **one dot** and **one bar**.
