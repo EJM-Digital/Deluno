@@ -1,0 +1,54 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>The TV card — DESIGN-006</title>
+<link rel="stylesheet" href="card-decider.css">
+
+<div class="rail" id="rail"></div>
+
+<main>
+  <h1>The TV card <a href="card-decider-movies.html">&larr; Movie shelf</a></h1>
+
+  <p class="lede"><b>A show is many files.</b> The reader's question is <i>how far
+    through am I, and is more coming?</i> A show has <b>no single quality</b> &mdash;
+    twenty episodes can sit at twenty different tiers, and printing any one of them
+    would be picking an arbitrary file and calling it the show. That is why this card
+    cannot say what the movie card says, and why Sonarr prints <code>16 / 16</code>
+    where Radarr prints <code>Remux&#8209;2160p</code>.</p>
+
+  <table class="spec">
+    <thead><tr><th>The show card</th><th>says</th></tr></thead>
+    <tbody>
+      <tr><td>Top bar &mdash; text</td><td>Aired episodes held: <b>3 / 20</b>. When
+        nothing has aired, the state's own word &mdash; <b>Upcoming</b>.</td></tr>
+      <tr><td>Top bar &mdash; fill</td><td><b>Coverage</b> &mdash; the fraction of what
+        has <i>aired</i> that is on disk. Counted over what has aired and never over
+        what will exist: an ongoing show measured against its eventual episode count
+        reads permanently unfinished, which is true of every ongoing show and so tells
+        you nothing.</td></tr>
+      <tr><td>Bottom bar</td><td><b>SUBS 2 / 6</b> &mdash; summed across the episodes
+        you actually <i>hold</i>. A show short of episodes already says so on the bar
+        above, in red, on the same card; dragging this one down for the same reason
+        would be the same fact twice.</td></tr>
+      <tr><td>Only here</td><td><b>Continuing</b> &mdash; you have every episode that
+        has aired, and more are still to come. The one rung the movie shelf does not
+        have, and the only reason its colour is a question.</td></tr>
+      <tr><td>Also gone</td><td>The corner pill, and any bar under the poster rather
+        than on it.</td></tr>
+    </tbody>
+  </table>
+
+  <p class="lede"><b>Continuing is the open question, and only on this page.</b> Five
+    rungs are fixed &mdash; Missing red, Downloading blue (also the app's primary),
+    Upgradable green, Quality met gold, Upcoming violet &mdash; and amber is reserved
+    for &ldquo;a person is needed&rdquo;. Swept against those six, the roomiest arc left
+    is <b>magenta and pink</b>, which nothing uses. Teal was never the last free colour;
+    it is a crowded one, wedged 28&deg; from green and 36&deg; from blue. Each candidate
+    below reports its own clearance, computed on this page rather than written down.</p>
+
+  <div class="presets" id="presets"></div>
+  <div id="banner"></div>
+  <div id="shelf"></div>
+</main>
+
+<script src="card-decider-core.js"></script>
+<script>mountDecider({ medium: "tv" });</script>

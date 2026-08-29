@@ -7,9 +7,20 @@ decision in `4bdfe45`. The subtitle vocabulary from
 
 Rendered references on the rig:
 
-- **`/renders/card-decider.html`** — every open decision as a switch, drawn on the
-  real library. This is the one to decide from.
-  (source: `ui-explorations/card-decider.html`)
+- **`/renders/card-decider-movies.html`** — the film card, every open decision as a
+  switch, drawn on the real library. **Start here.**
+- **`/renders/card-decider-tv.html`** — the show card, same.
+
+  One page per shelf, because one page carrying both was too hard to read — James:
+  *"we need to split this up I think, its too confusing for me and everyone... lets
+  focus on Movies first"*. Splitting it proved his point immediately: **Continuing
+  does not exist on the movie shelf**, so a third of the questions on that page were
+  noise. The movie page has no Continuing switch, no Continuing legend rung and no
+  clearance table.
+
+  Two pages, one implementation: `ui-explorations/card-decider-core.js` draws the
+  card and each page mounts it with its medium. The pages differ only in the prose
+  they carry.
 - `/renders/bars-that-speak.html` — the treatments side by side, with the reasoning
   written between them. (source: `ui-explorations/bars-that-speak.html`)
 

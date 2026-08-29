@@ -1,0 +1,50 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>The movie card — DESIGN-006</title>
+<link rel="stylesheet" href="card-decider.css">
+
+<div class="rail" id="rail"></div>
+
+<main>
+  <h1>The movie card <a href="card-decider-tv.html">TV shelf &rarr;</a></h1>
+
+  <p class="lede"><b>A film is one file.</b> The reader's question is <i>do I have it,
+    and is it any good?</i> &mdash; and the second half has a single answer, because
+    there is a single file to describe. That is the whole reason this card differs from
+    a show's, and it is why Radarr prints <code>Remux&#8209;2160p</code> where Sonarr
+    prints <code>16 / 16</code>.</p>
+
+  <table class="spec">
+    <thead><tr><th>The film card</th><th>says</th></tr></thead>
+    <tbody>
+      <tr><td>Top bar &mdash; text</td><td>The quality on disk: <b>Bluray-1080p</b>.
+        When there is no file, the state's own word &mdash; <b>Missing</b>,
+        <b>Upcoming</b>, <b>Downloading</b>.</td></tr>
+      <tr><td>Top bar &mdash; fill</td><td><b>Download progress.</b> A film is not
+        partway through itself, so unlike a show's bar the fill is free to mean the one
+        fraction a film actually has. Held is solid; downloading fills as the bytes
+        arrive; missing is empty.</td></tr>
+      <tr><td>Bottom bar</td><td><b>SUBS 1 / 3</b> &mdash; the languages you asked for
+        against the ones that are here, over its one file. There is no
+        &ldquo;none asked for&rdquo;: languages Subber has not resolved yet are
+        <b>Missing</b>, and say so.</td></tr>
+      <tr><td>Never on this card</td><td><b>Continuing.</b> A film is never still
+        airing, so that rung does not exist here &mdash; not in the legend, not as a
+        colour, not as a question. It is on the TV page only.</td></tr>
+      <tr><td>Also gone</td><td>The corner pill, and any bar under the poster rather
+        than on it.</td></tr>
+    </tbody>
+  </table>
+
+  <p class="lede"><b>Every label is drawn twice</b> &mdash; a copy on the track and a
+    copy clipped to exactly the fill width &mdash; so each glyph is coloured for the
+    ground beneath it. That is how Sonarr and Radarr keep a word legible on a bar whose
+    ground moves, and it is what makes <code>Remux-2160p</code> readable at 108px.</p>
+
+  <div class="presets" id="presets"></div>
+  <div id="banner"></div>
+  <div id="shelf"></div>
+</main>
+
+<script src="card-decider-core.js"></script>
+<script>mountDecider({ medium: "movies" });</script>
