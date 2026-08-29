@@ -685,6 +685,57 @@ public sealed class SqliteMediaStateRepository(
         return string.Join("," + Environment.NewLine + "                ", lines) + ",";
     }
 
+    /// <summary>
+    /// The probe's answer about the file, onto the row that holds that file.
+    ///
+    /// <para>COALESCE on every column: a probe that could not read the audio
+    /// must not erase what the release name already said. The two sources land
+    /// in one vocabulary — see <c>MediaProbedFacts</c> — so a filter matches
+    /// whichever one supplied the value.</para>
+    ///
+    /// <para>Nothing here recomputes the cached entry columns. V0025's trigger
+    /// on this table does that, which is the whole reason it is a trigger: this
+    /// write did not exist when the trigger was written and did not have to
+    /// know about it.</para>
+    /// </summary>
+    public async Task UpdateProbedFileFactsAsync(
+        MediaKind kind,
+        string mediaId,
+        string filePath,
+        ProbedFileFacts facts,
+        CancellationToken cancellationToken)
+    {
+        if (facts.VideoCodec is null && facts.AudioCodec is null && facts.AudioChannels is null)
+        {
+            return;
+        }
+
+        var map = MediaTableMap.For(kind);
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            map.DatabaseName,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            UPDATE {map.WantedTable}
+            SET video_codec = COALESCE(@videoCodec, video_codec),
+                audio_codec = COALESCE(@audioCodec, audio_codec),
+                audio_channels = COALESCE(@audioChannels, audio_channels),
+                updated_utc = @updatedUtc
+            WHERE {map.WantedMediaIdColumn} = @mediaId
+              AND file_path = @filePath;
+            """;
+
+        AddParameter(command, "@mediaId", mediaId);
+        AddParameter(command, "@filePath", filePath);
+        AddParameter(command, "@videoCodec", NormalizeText(facts.VideoCodec));
+        AddParameter(command, "@audioCodec", NormalizeText(facts.AudioCodec));
+        AddParameter(command, "@audioChannels", NormalizeText(facts.AudioChannels));
+        AddParameter(command, "@updatedUtc", timeProvider.GetUtcNow().ToString("O"));
+
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     public async Task<bool> UpdateMetadataAsync(
         MediaKind kind,
         MediaMetadataUpdate update,

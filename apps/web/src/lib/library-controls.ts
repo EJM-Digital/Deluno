@@ -58,8 +58,17 @@ export interface PosterOptionSpec {
   label: string;
   description: string;
   defaultOn: boolean;
-  /** Joins the single truncated line under the title rather than claiming a row. */
+  /** Draws its own row beneath the poster rather than on the artwork. */
   line: boolean;
+  /**
+   * A provider this switch has nothing to draw without.
+   *
+   * IMDb, Rotten Tomatoes and Metacritic all come from OMDb, which is optional.
+   * Without a key they draw a dash on every card, and a switch that does
+   * nothing looks exactly like a switch that is broken — which is how all three
+   * read until the drawer started saying so.
+   */
+  requires?: string | null;
 }
 
 export interface LibraryControlSet {

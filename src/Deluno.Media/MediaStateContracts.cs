@@ -132,6 +132,13 @@ public sealed record MediaMetadataUpdate(
 /// </param>
 public sealed record MediaRatingFact(string Source, double? Score, int? Votes);
 
+/// <summary>
+/// What the container itself says. Any field may be <c>null</c>, meaning the
+/// probe did not answer it — the write leaves what is there rather than
+/// blanking a name-parsed value with a measurement that was never taken.
+/// </summary>
+public sealed record ProbedFileFacts(string? VideoCodec, string? AudioCodec, string? AudioChannels);
+
 public sealed record MediaEntryCreate(
     string Title,
     int? Year,
@@ -323,6 +330,26 @@ public interface IMediaStateRepository
 
     Task<MediaImportRecoverySummary> GetImportRecoverySummaryAsync(
         MediaKind kind,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// What a probe read out of the file, onto the wanted-state row that holds
+    /// it.
+    ///
+    /// <para>The codec, the audio and the channel layout are parsed from the
+    /// release name, which carries them by convention and carries nothing at
+    /// all once a library has been renamed. The subtitle scan already opens
+    /// every file with ffprobe; this is the same probe's other answer, written
+    /// rather than thrown away.</para>
+    ///
+    /// <para>Keyed by file path as well as media id, because a title can be
+    /// held in two libraries and the probe read one of them.</para>
+    /// </summary>
+    Task UpdateProbedFileFactsAsync(
+        MediaKind kind,
+        string mediaId,
+        string filePath,
+        ProbedFileFacts facts,
         CancellationToken cancellationToken);
 
     Task<bool> UpdateMetadataAsync(
