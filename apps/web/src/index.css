@@ -1736,15 +1736,35 @@ html .text-\[64px\] {
     0 0 5px -1px hsl(var(--mark-quality-met) / 0.6);
 }
 
+/*
+  The glint, at a fixed width rather than a share of what it is drawn on.
+
+  It was `transparent 36%, white 50%, transparent 64%` — a band 28% of the
+  element's own width. On a 13px dot that is about 4px and reads as a glint on
+  metal. The same rule on the poster's state bar, which is 187px wide and 20px
+  tall once the Quality switch turns it into a labelled bar, is a 52px wall of
+  90% white travelling across the whole thing: for a good part of every cycle
+  the bar is not gold, it is white with a gold edge. James, looking at one:
+  *"this colour isnt turning out well for gold"*.
+
+  Nothing was wrong with the colour. The band was sized in percentages of an
+  element that had since grown fourteen times wider, which is the same defect as
+  a legend swatch sized to a dot that no longer exists — a rule that was right
+  when it was written and was never told the thing under it had changed.
+
+  Pixels rather than percentages, so the glint is the same physical streak at
+  every size: it fills a 13px dot the way it always did, and crosses a 187px bar
+  as a highlight rather than a wipe.
+*/
 .mark-grail::after {
   content: "";
   position: absolute;
   inset: 0;
   background-image: linear-gradient(
     100deg,
-    transparent 36%,
-    hsl(0 0% 100% / 0.9) 50%,
-    transparent 64%
+    transparent 0,
+    hsl(0 0% 100% / 0.72) 18px,
+    transparent 36px
   );
   background-size: 300% 100%;
   background-repeat: no-repeat;
