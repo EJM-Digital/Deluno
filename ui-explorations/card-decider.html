@@ -107,9 +107,11 @@
   <p class="lede">Every open decision in
     <b>DESIGN&#8209;006 &sect;12</b> is a switch above, drawn on <b>your own library</b>.
     Flip them until it is right, then tell me the settings and I will build exactly
-    that. <b>Nothing held</b> is a sixth decision the spec did not settle &mdash; the
-    render is what found it: at zero fill the bar is all neutral track, so with the corner
-    pill deleted a Missing title carried its state nowhere on the card.</p>
+    that. <b>Remainder</b> is a sixth decision the spec did not settle, and the render is
+    what found it: the shipped subtitle bar already ends in <b>Missing red</b> while the
+    media bar ended in neutral grey, so a title holding nothing was a completely grey
+    card. There is no &ldquo;none asked for&rdquo; state &mdash; subtitles Subber has not
+    found yet are missing, and say so.</p>
   <div id="banner"></div>
   <div id="shelves"></div>
 </main>
@@ -124,7 +126,7 @@ const S = {
   labels: "subs",      // none | subs | both
   corner: "off",       // off | on
   place: "art",        // art | under
-  empty: "tint",       // grey | tint | solid  — what a title with nothing held looks like
+  rem: "missing",      // neutral | missing — what the UNFILLED part of a bar means
   size: "md"           // sm | md | lg
 };
 
@@ -141,7 +143,7 @@ const CONTROLS = [
   { key: "labels", label: "Labels", opts: [["none","None"],["subs","SUBS only"],["both","Both"]] },
   { key: "corner", label: "Corner pill", opts: [["off","Deleted"],["on","Kept"]] },
   { key: "place",  label: "Bars",   opts: [["art","On artwork"],["under","Under poster"]] },
-  { key: "empty",  label: "Nothing held", opts: [["grey","Grey label"],["tint","Coloured label"],["solid","Solid fill"]] },
+  { key: "rem",    label: "Remainder", opts: [["neutral","Neutral grey"],["missing","Missing red"]] },
   { key: "size",   label: "Card",   opts: [["sm","Small"],["md","Medium"],["lg","Large"]] }
 ];
 
@@ -221,17 +223,34 @@ function mediaBar(it, isShow) {
    ══════════════════════════════════════════════════════════════ */
 const BARH = 14;
 
-function twoTone(colour, pct, label, lead, fillText, trackText) {
+function twoTone(fillColour, pct, label, lead, onFillColour, remColour, onRemColour) {
   const inner = (lead ? '<i class="lead">' + lead + '</i>' : '') + '<b>' + esc(label) + '</b>';
-  return '<div class="bar" style="height:' + BARH + 'px;background:var(--idle)">'
-    + '<div class="fill" style="width:' + pct + '%;background:' + colour + '"></div>'
+  return '<div class="bar" style="height:' + BARH + 'px;background:' + remColour + '">'
+    + '<div class="fill" style="width:' + pct + '%;background:' + fillColour + '"></div>'
     /* Both layers are the same string in the same place. Only the paint of the
        front one is clipped — sizing-and-centring it instead makes the label
        slide sideways as the bar fills. */
-    + '<div class="txt" style="color:' + (trackText || "var(--tracktext)") + '"><span>' + inner + '</span></div>'
-    + '<div class="txt" style="color:' + fillText + ';clip-path:inset(0 ' + (100 - pct) + '% 0 0)">'
+    + '<div class="txt" style="color:' + onRemColour + '"><span>' + inner + '</span></div>'
+    + '<div class="txt" style="color:' + onFillColour + ';clip-path:inset(0 ' + (100 - pct) + '% 0 0)">'
     + '<span>' + inner + '</span></div>'
     + '</div>';
+}
+
+/*
+  What the UNFILLED part of a bar is.
+
+  It was a neutral grey, on the reasoning that "the remainder is not a weaker
+  version of the state, it is the part you do not have yet". True — but *the
+  part you do not have* has a name on this ladder, and the name is Missing. The
+  shipped subtitle bar already knew this: `titleBarGradient` runs gold to green
+  to **red**, with no neutral anywhere in it. The media bar was the odd one out,
+  and drawing the two side by side is what made that visible.
+
+  Neutral is kept as a switch so the two can be compared rather than argued.
+*/
+function remainder() {
+  if (S.rem === "neutral") return { colour: "var(--idle)", label: "var(--tracktext)" };
+  return { colour: "hsl(" + surfaces().miss + ")", label: "hsl(0 0% 100%)" };
 }
 
 function esc(s) { return String(s).replace(/[<>&]/g, c => ({ "<":"&lt;", ">":"&gt;", "&":"&amp;" }[c])); }
@@ -242,48 +261,44 @@ function cardHtml(it, isShow) {
   const media = mediaBar(it, isShow);
   const subs = subtitleBar(it, isShow);
   const subPct = subs.wanted ? Math.round(subs.held / subs.wanted * 100) : 0;
-  const subLabel = subs.wanted ? subs.held + " / " + subs.wanted : "none asked for";
+  /*
+    **"None asked for" is not a state.** It was drawn as a grey bar with those
+    words on it, which invented a fourth thing a subtitle bar can be. James:
+    *"this is an interim state right... in the event the subtitle is not
+    available it would go to missing so my gut feeling is it should just be
+    missing regardless cause it is missing"*. He is right — a title whose
+    languages Subber has not resolved yet is a title whose subtitles are not
+    here, and "not here" is Missing. There is no denominator to print in that
+    case, so the bar prints the word, exactly as a film's media bar does when
+    it has no quality to name.
+  */
+  const subLabel = subs.wanted ? subs.held + " / " + subs.wanted : MARKS.miss;
 
   const mediaLead = S.labels === "both" ? media.lead : null;
   const subLead = S.labels === "none" ? null : "SUBS";
   const showText = S.labels !== "none";
 
+  const R = remainder();
+
   /*
-    What a title with NOTHING held looks like.
-
-    The render exposed this and the spec had not settled it: at 0% fill the bar
-    is entirely the neutral track, so with the corner pill deleted a Missing
-    title carried its state nowhere on the card. Three answers, and they are a
-    switch rather than a guess.
-
-      grey  — the track's own muted label. Honest about the fill, says nothing
-              about the state. This is what the first render did, and it is the
-              defect.
-      tint  — the track label wears the state's TEXT colour. The fill stays
-              honest at 0% and the state is never lost. Costs nothing.
-      solid — a title holding nothing is painted the state's colour full width,
-              on the reasoning that "progress" is meaningless at zero. Reads
-              strongest, but 0 of 29 then looks fuller than 3 of 20.
+    A subtitle bar is the ladder in miniature, using the ladder's own colours
+    (DESIGN-002): gold for what is settled, green for what is held, and the rest
+    is Missing. Gold only appears when the whole bar is settled, which is the
+    one case where the label needs near-black rather than white.
   */
-  const T = TEXT[S.theme];
-  const empty = (pct, key) => {
-    if (S.empty === "solid" && pct === 0) return { pct: 100, track: null };
-    if (S.empty === "tint") return { pct, track: "hsl(" + T[key] + ")" };
-    return { pct, track: null };
-  };
-
-  const topE = empty(media.pct, mark);
-  const botE = empty(subPct, "upg");
+  const subSettled = subs.wanted > 0 && subs.held === subs.wanted;
+  const subFill = subSettled ? "hsl(" + C.gold + ")" : "hsl(" + C.upg + ")";
+  const subOnFill = subSettled ? labelOn("gold") : labelOn("upg");
 
   const topBar = showText
-    ? twoTone(colour, topE.pct, media.label, mediaLead, labelOn(mark), topE.track)
-    : '<div class="bar" style="height:5px;background:var(--idle)"><div class="fill" style="width:'
-      + topE.pct + '%;background:' + colour + '"></div></div>';
+    ? twoTone(colour, media.pct, media.label, mediaLead, labelOn(mark), R.colour, R.label)
+    : '<div class="bar" style="height:5px;background:' + R.colour + '"><div class="fill" style="width:'
+      + media.pct + '%;background:' + colour + '"></div></div>';
 
   const botBar = showText
-    ? twoTone("hsl(" + C.upg + ")", botE.pct, subLabel, subLead, labelOn("upg"), botE.track)
-    : '<div class="bar" style="height:5px;background:var(--idle)"><div class="fill" style="width:'
-      + botE.pct + '%;background:hsl(' + C.upg + ')"></div></div>';
+    ? twoTone(subFill, subPct, subLabel, subLead, subOnFill, R.colour, R.label)
+    : '<div class="bar" style="height:5px;background:' + R.colour + '"><div class="fill" style="width:'
+      + subPct + '%;background:' + subFill + '"></div></div>';
 
   const corner = S.corner === "on"
     ? '<div class="corner"><span class="pip" style="background:' + colour + '"></span>'
