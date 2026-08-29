@@ -14,7 +14,7 @@ import { heldQualityLabel } from "../../lib/quality-label";
 import type { Density } from "../../lib/use-density";
 import { cn } from "../../lib/utils";
 import { Badge } from "../ui/badge";
-import { MARK_DOT_SIZE, TitleMarkBar, TitleMarkChip, TitleMarkDot } from "../ui/title-mark";
+import { TitleMarkBar, TitleMarkTopBar } from "../ui/title-mark";
 
 export type CardSize = "sm" | "md" | "lg";
 
@@ -298,23 +298,38 @@ function PosterCard({
           />
 
           {/*
-            One dot and one bar, and nothing else — see DESIGN-001.
+            The state, as a bar across the top of the artwork.
 
-            The dot was a lifecycle *chip* derived from `status`, which only ever
-            said whether a file existed: a movie below its target quality looked
-            identical to a finished one, and monitoring had to be repeated as
-            supporting text underneath because a chip could not carry it. The dot
-            says which of the four rungs the title is on, and a half says you are
-            not monitoring it.
+            It was a dot in the corner — nine pixels carrying the most important
+            fact on the card — with the tier as a separate pill at the foot, so
+            there were three things to learn and two of them were tiny. James,
+            after looking at four rendered treatments: "I like a combination of
+            1 and 2... if quality is not ticked it goes to the small bar, if its
+            ticked it goes to the big bar with the quality or status".
+
+            So the mark is a bar, and the Quality switch decides its size:
+
+              Quality off  →  a thin strip, colour only
+              Quality on   →  a full bar carrying the tier you hold, or the
+                              state's own word when there is no file to name
+
+            The colour is the state's either way — gold for Quality met, green
+            for Upgradable — read through `titleMark`, the same source the
+            legend and the detail page use. Half-width for a title Deluno is not
+            watching, exactly as the dot went half.
+
+            With the subtitle bar on the bottom edge the two book-end the
+            artwork, which is what the renders were for.
           */}
-          {displayOptions.showStatusPill ? (
-            <div className="absolute right-1.5 top-1.5 z-10">
-              {size === "sm" ? (
-                <TitleMarkDot item={item} size={MARK_DOT_SIZE} />
-              ) : (
-                <TitleMarkChip item={item} />
-              )}
-            </div>
+          {displayOptions.showStatusPill || displayOptions.showQualityBadge ? (
+            <TitleMarkTopBar
+              item={item}
+              // Only the full bar carries words, and only when there is a tier
+              // to name or a state worth naming.
+              label={displayOptions.showQualityBadge
+                ? heldQualityLabel(item) ?? qualityTone(item).label
+                : null}
+            />
           ) : null}
 
           {/* What you asked for beyond the title. A movie has no bar. */}
@@ -352,72 +367,6 @@ function PosterCard({
             second thing you look for after the artwork, and Radarr puts its
             equivalent exactly here for the same reason.
           */}
-          {/*
-            The tier you hold, as a pill on the artwork.
-
-            It was a small grey pill in a corner, and grey is the one thing it
-            should not be — James: "if its quality met its gold, if its
-            upgradeable its green". Those colours already exist and already mean
-            that; this was the only thing on the card ignoring them.
-
-            Held off every edge rather than run full width. James: "how is it
-            going to look when quality is green and subtitles are green? is
-            there going to be a separator or just one full green bar?" — edge to
-            edge they abut, and Upgradable green over ready-subtitles green is
-            one unbroken block. A one-pixel seam was the first answer and could
-            not be seen at green on green. With the artwork running around it
-            there is no colour combination where the two can merge, because they
-            never touch.
-          */}
-          {displayOptions.showQualityBadge && heldQualityLabel(item) ? (
-            <div
-              className={cn(
-                "absolute bottom-2 left-2 right-2 flex items-center justify-center",
-                "overflow-hidden rounded-md px-2 py-0.5",
-                // Lifted, not outlined. A ring read as a drawn border and
-                // looked it — James: "border looks kind of bad can we do
-                // something better?". A soft shadow does the same job by depth.
-                // rgb(0_0_0_/_0.55), not rgba(0,0,0,0.55): Tailwind cannot
-                // parse the commas inside an arbitrary value and silently emits
-                // nothing, which is what it did here — the class was on the
-                // element and the computed shadow was none.
-                "shadow-[0_1px_4px_rgb(0_0_0_/_0.55)]"
-              )}
-              title={`${heldQualityLabel(item)} · ${qualityTone(item).label}`}
-            >
-              {/*
-                The fill is a layer of its own, and that is not decoration.
-                `.mark-grail` — the gold leaf and its glint — sets
-                `position: relative`, and on an element Tailwind is also
-                positioning it wins. It did this twice while this was built:
-                first dropping the pill out of the poster, then collapsing the
-                fill to zero height. Both times it rendered with the right
-                gradient and could not be seen.
-              */}
-              <span aria-hidden="true" className="absolute inset-0">
-                <span
-                  className={cn(
-                    // Sized, never positioned. See above.
-                    "block h-full w-full",
-                    // The same classes the dot wears, so the two cannot drift:
-                    // gold leaf for Quality met, green for Upgradable, and the
-                    // half-grey gradient when Deluno is not watching it.
-                    qualityHalf(item)
-                      ? "bg-[linear-gradient(90deg,currentColor_0_50%,hsl(var(--mark-idle))_50%_100%)]"
-                      : qualityTone(item).dot,
-                    qualityHalf(item) && qualityTone(item).text,
-                    !qualityHalf(item) && qualityTone(item).sheen
-                  )}
-                />
-              </span>
-              {/* Dark text: every rung's fill is a light colour — red 62%,
-                  green 52%, gold 58% — and white would vanish into the gold. */}
-              <span className="relative truncate text-[length:var(--library-badge-size)] font-bold uppercase tracking-wider text-black/85">
-                {heldQualityLabel(item)}
-              </span>
-            </div>
-          ) : null}
-
           {/* Hover-reveal action row */}
           <div className="absolute inset-x-0 bottom-0 flex items-center gap-1 bg-gradient-to-t from-black to-transparent px-2 pb-2 pt-6 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
             <Link
@@ -604,23 +553,13 @@ function PosterExtras({ item, displayOptions }: { item: MediaItem; displayOption
 }
 
 /**
- * The colour the quality bar takes: the title's own mark.
- *
- * <p>Read through <c>titleMark</c> rather than kept as a second table, so the
- * bar and the dot above it cannot disagree — there is one answer to "what state
- * is this title in" and both draw from it.</p>
+ * The title's own mark, for the word the top bar falls back to when there is no
+ * file to name a tier from.
  */
 function qualityTone(item: MediaItem) {
   return TITLE_MARK_PRESENTATION[titleMark(item)];
 }
 
-/**
- * Not monitored, on a rung where that is a meaningful thing to say — the same
- * test the dot makes, so the bar is half-filled exactly when the dot is.
- */
-function qualityHalf(item: MediaItem) {
-  return !item.monitored && qualityTone(item).canBeHalf;
-}
 
 /**
  * The rows one card draws, in order — one per switch that is on, whether or not

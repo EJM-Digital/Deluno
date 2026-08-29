@@ -129,6 +129,90 @@ export function TitleMarkDot({
 }
 
 /**
+ * The state, as a bar across the top of a poster.
+ *
+ * <p>It replaced a dot in the corner. A dot is nine pixels and it was carrying
+ * the most important fact on the card, with the tier you hold as a separate
+ * pill at the other end — three things to learn, two of them tiny. James, after
+ * looking at four rendered treatments: <i>"I like a combination of 1 and 2...
+ * if quality is not ticked it goes to the small bar, if its ticked it goes to
+ * the big bar with the quality or status"</i>.</p>
+ *
+ * <p><b>The label decides the size.</b> No label and it is a thin strip of
+ * colour; a label and it is a full bar carrying the words. That is one control
+ * — the Quality switch — doing one thing, rather than two switches arguing over
+ * one corner.</p>
+ *
+ * <p>The colour comes from <c>titleMark</c>, the same source the dot used, the
+ * legend reads and the detail page reads. Gold means Deluno has finished with
+ * it and glints to say so; the other rungs are flat because they are all still
+ * in progress. Half-width for a title Deluno is not watching, exactly as the
+ * dot went half.</p>
+ *
+ * <p>The bottom edge belongs to the subtitle bar and is not touched, so the two
+ * book-end the artwork rather than competing for one end of it.</p>
+ */
+export function TitleMarkTopBar({
+  item,
+  label,
+  className
+}: {
+  item: TitleMarkInput;
+  /** The tier you hold, or the state's own word. Null draws the thin strip. */
+  label?: string | null;
+  className?: string;
+}) {
+  const mark = titleMark(item);
+  const presentation = TITLE_MARK_PRESENTATION[mark];
+  const half = !item.monitored && presentation.canBeHalf;
+
+  const description = half
+    ? `${presentation.label} · not monitored`
+    : presentation.label;
+
+  return (
+    <div
+      role="img"
+      aria-label={label ? `${label} · ${description}` : description}
+      title={half ? `${presentation.hint} Deluno is not watching this one.` : presentation.hint}
+      className={cn(
+        "absolute inset-x-0 top-0 z-10 flex items-center justify-center overflow-hidden",
+        label ? "px-2 py-0.5" : "h-[5px]",
+        className
+      )}
+    >
+      {/*
+        The fill is its own layer because `.mark-grail` sets `position:
+        relative` and beats a Tailwind `absolute` on the same element — it did
+        exactly that twice while the quality pill was being built, once dropping
+        it out of the poster and once collapsing it to nothing, both times
+        rendering the right gradient invisibly.
+      */}
+      <span aria-hidden="true" className="absolute inset-0">
+        <span
+          className={cn(
+            "block h-full w-full",
+            half
+              ? "bg-[linear-gradient(90deg,currentColor_0_50%,hsl(var(--mark-idle))_50%_100%)]"
+              : presentation.dot,
+            half && presentation.text,
+            !half && presentation.sheen
+          )}
+        />
+      </span>
+
+      {label ? (
+        // Dark text: every rung's fill is a light colour — red 62%, green 52%,
+        // gold 58% — and white would vanish into the gold.
+        <span className="relative truncate text-[length:var(--library-badge-size)] font-bold uppercase tracking-wider text-black/85">
+          {label}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/**
  * The bar, on the bottom edge of a poster: the subtitle languages you asked for.
  *
  * Green up to what you have, red for the rest — and the same question on both
