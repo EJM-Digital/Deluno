@@ -147,7 +147,18 @@ be a fourth, verdict-free thing is a bar a reader has to learn a fourth rule for
 └───────────────────────────┘
 ```
 
-Both bars are **14px**, full bleed, on the card's top and bottom edges.
+Both bars are **16px**, full bleed, on the card's top and bottom edges, **always on
+the artwork** — settled by James: *"corner pill is a complete removal and bars always
+on artwork"*.
+
+**The label is 11.5px bold**, not 10px. At 10px `WEBDL-1080p` was hard to read even
+where the contrast passed; Sonarr and Radarr both set 12px on a 15px bar and that is
+the size the string needs.
+
+**And the label is a hard argument against the Shipped palette.** White on the
+shipped dark green is **1.69:1** — not marginal, illegible. Deep gives 5.49 and Jewel
+7.36. A ladder that cannot carry a white label is a ladder that cannot carry this
+design, so Shipped is out on measurement rather than taste.
 
 ### How a reader knows which is which
 
@@ -219,7 +230,41 @@ Per theme, unchanged from what ships today except Continuing, which has to move.
 | Quality met | `hsl(42 96% 40%)` | `hsl(44 98% 58%)` |
 | Upcoming | `hsl(268 62% 50%)` | `hsl(268 82% 72%)` |
 
-### Continuing moves off Downloading's blue
+### The wheel is not full — Continuing goes magenta
+
+James: *"I really wish we could find a better colour for continuing... have we
+exhausted all the standard colours already? red and yellow and pink and green
+purple and orange and blue"*.
+
+We had not. Five rungs are fixed — Missing red, Downloading blue (also the app's
+primary), Upgradable green, Quality met gold, Upcoming violet — and amber is
+reserved app-wide for *a person is needed* even though it never appears on a title.
+Sweeping the whole hue circle against those six, **the roomiest arc left is magenta
+and pink, and nothing in Deluno uses it.**
+
+Teal was never the last free colour. It is a *crowded* one, wedged 28° from green
+and 36° from blue, which is why moving it 184 → 178 bought so little. Measured at
+the tuned values each candidate would actually ship at:
+
+| Candidate | Clear by | of its nearest rung | White label |
+|---|---|---|---|
+| **Magenta `318 78% 38%`** | **ΔE 54.7** | Upcoming | 6.60 |
+| Steel `200 26% 40%` | ΔE 51.1 | Upgradable | 5.41 |
+| Pink `330 78% 40%` | ΔE 46.2 | Missing | 6.39 |
+| Teal `178 96% 24%` | ΔE 32.6 | Upgradable | 5.33 |
+| Cyan `192 95% 27%` | ΔE 32.5 | Upgradable | 6.00 |
+| Lime `92 88% 24%` | ΔE 23.6 | Upgradable | 5.78 |
+
+Magenta clears its nearest neighbour by **two-thirds more than teal does**, and it is
+the only candidate that puts Continuing in an arc nothing else occupies. Lime — the
+other free arc, between gold and green — is the worst of the six; the gap looks open
+on a colour wheel and is not one in Lab.
+
+The candidates are switches on the decider page, each printing its own clearance,
+computed rather than written down so a value cannot be edited without its number
+moving with it.
+
+### Continuing no longer collides with Downloading's blue
 
 The pair James flagged was Continuing and Upcoming. Measured, those two are the
 *furthest apart* on the ladder (ΔE 88). The pair that actually collides is
@@ -379,17 +424,39 @@ chosen here with reasons and are his to overturn:
 2. **Treatment: both bars speak, only the subtitle bar is labelled.** §3.
 3. **Three switches, named per shelf.** §6. The alternative is one switch called
    something generic, which is what the arrs did and what he objected to.
-4. **The corner pill is deleted.** §7. It is the only removal here, and it is
-   removed because the bar now says what it said.
-5. **The remainder is Missing red, not neutral grey**, and *none asked for* is
+4. **The remainder is Missing red, not neutral grey**, and *none asked for* is
    gone. §2. Both were found by drawing the card rather than by reasoning about
    it, and both are switchable on the decider page so the alternative can be
    looked at rather than argued.
+5. **Continuing goes magenta.** §4.
+
+**Settled, no longer switches:** the corner pill is deleted and the bars are always
+on the artwork — *"corner pill is a complete removal and bars always on artwork"*.
+Shipped is out as a palette: it cannot carry a white label at all (1.69:1).
 
 All six are switches on `/renders/card-decider.html`, drawn on the real library.
 Flip them, then send the settings line the page prints — it names every one.
 
-## 13. Rejected, and why
+## 13. Known consequence, not yet settled
+
+**A Missing title's bar is one flat colour.** The fill is the mark's colour and the
+remainder is Missing red, so when the mark *is* Missing the two are the same and the
+fraction is invisible — Severance at 3 of 20 and Foundation at 0 of 29 draw identical
+bars. Only the label tells them apart, and it does: `3 / 20` against `0 / 29`, in
+11.5px on a 16px bar, which is the entire reason the label is there.
+
+That may be exactly right — a Missing title is missing, and the number is on it. The
+alternative is to colour the fill by *what you hold* rather than by the title's rung,
+making both bars the same gold/green/red miniature the subtitle bar already is; the
+cost is that Continuing, Upcoming and Downloading are not compositional facts and
+would lose their colour on a fully-held show.
+
+Recorded rather than decided, because the render is what exposed it and it deserves
+to be looked at rather than argued.
+
+---
+
+## 14. Rejected, and why
 
 - **Bars under the poster, the arr way** (treatment 4 on the render). It is the
   only arrangement where nothing is written over artwork at all, which is a real
