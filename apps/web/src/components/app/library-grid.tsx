@@ -477,18 +477,23 @@ function nextAiringLabel(nextAirDateUtc: string): string | null {
  * misalignment this was fixed for in the first place.</p>
  */
 function PosterExtras({ item, displayOptions }: { item: MediaItem; displayOptions: DisplayOptions }) {
-  // Only what this title actually has.
+  // Every switch that is on gets a row on every card, whether or not this
+  // title has a value for it.
   //
-  // These were reserved — every enabled switch drew a row whether or not there
-  // was a value — so that every card had identical rows and nothing could drift.
-  // On the rig that meant five empty lines per card, and James: "there is still
-  // gaps". Radarr does not reserve either; a card with less to say is simply
-  // shorter, and because the grid aligns to the top and the title block is a
-  // fixed two lines, everything that *is* drawn still starts at the same place.
-  const rows = POSTER_ROWS
-    .filter((row) => displayOptions[row.option])
-    .map((row) => ({ ...row, value: row.read(item) }))
-    .filter((row) => row.value !== null);
+  // I had this reserved, took the reservation out to close the gaps James
+  // circled, and broke something worse: with rows dropped, row four is the size
+  // on one card and the runtime on the next, so a column means two different
+  // things depending on which title you are looking at. James: "the columns
+  // should mean the same thing for every card Im kind of shocked why they
+  // dont?" — correct, and the gaps were never the real problem.
+  //
+  // What made the blanks look like a fault was that they said nothing. A row
+  // that reads "—" is a stated absence: the switch is on, this is that fact,
+  // and this title has none. It is also the only way to tell a switch that does
+  // nothing from a switch that is broken — five of them produce no value on a
+  // library with no release groups in its filenames and no OMDb key, and
+  // silence made all five look like defects.
+  const rows = posterRowsFor(item, displayOptions);
 
   if (rows.length === 0) return null;
 
@@ -502,7 +507,7 @@ function PosterExtras({ item, displayOptions }: { item: MediaItem; displayOption
           <div
             key={row.option}
             className="flex h-[1lh] min-w-0 items-center justify-center gap-1 leading-tight text-[length:var(--library-meta-size)] text-muted-foreground"
-            title={`${row.label}: ${value}`}
+            title={value ? `${row.label}: ${value}` : `${row.label}: nothing known for this title`}
           >
             {/* An icon rather than a word. "Cinemas Nov 10, 2016" spends half a
                 narrow card saying which date it is; Radarr uses a glyph and
@@ -513,13 +518,29 @@ function PosterExtras({ item, displayOptions }: { item: MediaItem; displayOption
                 own points at a fact that is not there, which reads worse than
                 the blank line it was meant to explain. The row keeps its height
                 either way, which is what holds the cards level. */}
-            <Icon className="h-3 w-3 shrink-0 opacity-70" aria-hidden="true" />
-            <span className="truncate">{value}</span>
+            <Icon className={cn("h-3 w-3 shrink-0", value ? "opacity-70" : "opacity-30")} aria-hidden="true" />
+            <span className={cn("truncate", value ? "" : "opacity-40")}>{value ?? "—"}</span>
           </div>
         );
       })}
     </>
   );
+}
+
+/**
+ * The rows one card draws, in order — one per switch that is on, whether or not
+ * this title has a value for it.
+ *
+ * <p>Exported because it is the rule the cards are judged by and it cannot be
+ * checked by looking: a switch that is on and produces nothing is
+ * indistinguishable from a broken switch, and a row that is dropped on one card
+ * and drawn on the next silently changes what a column means. Both of those got
+ * past a browser sweep that measured row counts and alignment.</p>
+ */
+export function posterRowsFor(item: MediaItem, displayOptions: DisplayOptions) {
+  return POSTER_ROWS
+    .filter((row) => displayOptions[row.option])
+    .map((row) => ({ ...row, value: row.read(item) }));
 }
 
 /**
