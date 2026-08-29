@@ -1770,15 +1770,23 @@ html .text-\[64px\] {
   **And the streak is gold, not white.** Sizing it right was not enough: 72%
   white over the deep end of the old ladder — which was amber at hue 34 — mixes
   to a pale peach, and James read it off the poster as *"it still has a red pink
-  to it"*. He is right, and pure white was the cause: an achromatic wipe over a
-  warm colour desaturates toward whatever the base's hue happens to be, so the
-  one part of the bar that catches the eye was the one part that was not gold.
+  to it"*. Pure white was the cause: an achromatic wipe over a warm colour
+  desaturates toward whatever the base's hue happens to be, so the one part of
+  the bar that catches the eye was the one part that was not gold.
 
-  So nothing in this treatment is outside the gold band any more. The ladder is
-  49-50 / 42-44 / 40-41 rather than reaching down to 33, and the shine is a
-  bright gold at hue 50 rather than white. `GoldStaysGoldTests` reads these
-  values back and fails if anything here leaves it — a hue is exactly the kind
-  of thing that gets nudged one token at a time.
+  Nothing in this treatment is outside the gold band now — the surface is
+  `--mark-leaf-*` above, and the streak is a bright gold at hue 52.
+  `gold-stays-gold.test.ts` reads these values back and fails if anything here
+  leaves it: a hue is exactly the kind of thing that gets nudged one token at a
+  time.
+
+  **Two streaks, and more often.** James: *"make it more animated!!!"*. It was
+  one pass every six seconds with the band parked off-frame for three-quarters
+  of the cycle, which on a shelf you glance at means most posters are never seen
+  to move at all. It is a bright streak with a fainter one behind it now, on a
+  3.4s cycle — the second is what makes it read as a surface catching light
+  twice rather than one band sliding past. Both are cancelled wholesale under
+  `prefers-reduced-motion: reduce` further up this file.
 */
 .mark-grail::after {
   content: "";
@@ -1787,15 +1795,18 @@ html .text-\[64px\] {
   background-image: linear-gradient(
     100deg,
     transparent 0,
-    hsl(52 100% 92% / 0.9) 18px,
-    transparent 36px
+    hsl(52 100% 92% / 0.92) 17px,
+    transparent 34px,
+    transparent 54px,
+    hsl(52 100% 92% / 0.45) 66px,
+    transparent 82px
   );
   background-size: 300% 100%;
   background-repeat: no-repeat;
-  animation: mark-grail-sheen 6s ease-in-out infinite;
+  animation: mark-grail-sheen 3.4s ease-in-out infinite;
 }
 
 @keyframes mark-grail-sheen {
-  0%, 74%   { background-position: -160% 0; }
-  92%, 100% { background-position: 260% 0; }
+  0%, 22%   { background-position: -160% 0; }
+  82%, 100% { background-position: 260% 0; }
 }

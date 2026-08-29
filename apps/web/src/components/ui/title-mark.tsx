@@ -55,9 +55,11 @@ export const MARK_DOT_SIZE = 13;
 export function MarkStrip({
   mark,
   /**
-   * Whether to draw the mark's sheen. On for a swatch explaining the state bar,
-   * which glints for gold; off for one explaining the subtitle bar, which is a
-   * flat gradient. Each swatch is drawn the way the thing it explains is drawn.
+   * Whether to draw the mark's sheen. On everywhere gold is currently drawn:
+   * one gold, one treatment, wherever "Deluno has finished" is said. It stays a
+   * parameter rather than being folded into the table because a swatch on a
+   * dense list row is a place this would be noise, and that is a judgement about
+   * where it is drawn rather than about the mark.
    */
   sheen = false,
   className
@@ -314,7 +316,14 @@ export function TitleMarkBar({ item, className }: { item: TitleMarkInput; classN
  */
 function titleBarGradient(settledPercent: number, heldPercent: number): string {
   const [done, ready, missing] = TITLE_BAR_SEGMENTS;
-  const colour = (mark: TitleMark) => `hsl(var(${TITLE_MARK_PRESENTATION[mark].cssVar}))`;
+  // `surfaceVar` where a mark has one, because this bar is a surface on
+  // artwork rather than a word on a page. Only gold differs, and it has to:
+  // its semantic value is the Quality met count's text colour, dark by design
+  // in the light theme, and a dark yellow painted onto a poster is brown.
+  const colour = (mark: TitleMark) => {
+    const presentation = TITLE_MARK_PRESENTATION[mark];
+    return `hsl(var(${presentation.surfaceVar ?? presentation.cssVar}))`;
+  };
 
   return "linear-gradient(to right, "
     + `${colour(done.mark)} 0 ${settledPercent}%, `
@@ -366,10 +375,17 @@ export function TitleMarkBarLegend({ className }: { className?: string }) {
         >
           {/*
             Colour is never the only carrier (#318): the word is always beside
-            it. No sheen — the subtitle bar is a flat gradient, so a glinting
-            swatch would be showing a treatment the bar never wears.
+            it.
+
+            The sheen is on, and it did not used to be: the argument was that
+            the subtitle bar is a flat gradient, so a glinting swatch would show
+            a treatment the bar never wears. That was true when gold here was
+            the semantic colour. It is the leaf now — the same surface the state
+            bar is painted with — so a reader sees one gold in one treatment
+            wherever "Deluno has finished" is being said, which is the whole
+            point of a legend.
           */}
-          <MarkStrip mark={segment.mark} />
+          <MarkStrip mark={segment.mark} sheen />
           {/*
             The ladder's own word, not a synonym.
             James: *"users need to also be able to distinguish between done and

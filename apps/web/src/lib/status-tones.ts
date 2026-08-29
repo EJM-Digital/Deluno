@@ -173,6 +173,21 @@ export interface TitleMarkPresentation {
    * what happened to `text-mark-quality-met` and `text-mark-upcoming`.
    */
   sheen?: string;
+  /**
+   * The custom property to paint this mark with when it is a *surface* rather
+   * than a word or a dot.
+   *
+   * Only Quality met has one, and it exists because gold is the one rung whose
+   * two jobs need different values. `cssVar` above is the semantic colour: it is
+   * the Quality met count's text, so in the light theme it is deliberately dark
+   * enough to read on a page. A surface sits on artwork, and a dark yellow is
+   * not a dark gold, it is brown — which is what the subtitle bar's gold segment
+   * was, and what the poster's state bar was until `--mark-leaf` existed.
+   *
+   * Everything else falls back to `cssVar`, because for every other rung the
+   * two jobs want the same colour.
+   */
+  surfaceVar?: string;
 }
 
 export const TITLE_MARK_PRESENTATION: Record<TitleMark, TitleMarkPresentation> = {
@@ -208,6 +223,7 @@ export const TITLE_MARK_PRESENTATION: Record<TitleMark, TitleMarkPresentation> =
     text: "text-mark-quality-met",
     tint: "bg-mark-quality-met/15",
     cssVar: "--mark-quality-met",
+    surfaceVar: "--mark-leaf",
     label: "Quality met",
     hint: "This is the quality your Library Profile asked for, so Deluno has stopped looking.",
     canBeHalf: false,

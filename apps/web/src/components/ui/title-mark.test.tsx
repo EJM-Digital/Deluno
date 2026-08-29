@@ -1,6 +1,6 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { MarkStrip, TitleMarkBarLegend, TitleMarkTopBar } from "./title-mark";
+import { MarkStrip, TitleMarkBar, TitleMarkBarLegend, TitleMarkTopBar } from "./title-mark";
 import { TITLE_BAR_SEGMENTS, TITLE_MARK_LADDER, TITLE_MARK_PRESENTATION } from "../../lib/status-tones";
 import { quickFiltersFor } from "../app/library-control-rail";
 import railSource from "../app/library-control-rail.tsx?raw";
@@ -73,6 +73,38 @@ describe("the swatch a legend wears", () => {
   });
 });
 
+describe("the subtitle bar", () => {
+  it("paints its gold from the leaf, not from the text colour", () => {
+    // The bar is a surface on artwork. `--mark-quality-met` is the Quality met
+    // *count's* colour, dark by design in the light theme, and a dark yellow
+    // painted onto a poster is brown — the same defect the state bar had.
+    const { container } = render(
+      <TitleMarkBar item={{
+        monitored: true,
+        hasFile: true,
+        subtitleLanguagesWanted: 2,
+        subtitleLanguagesHeld: 2,
+        subtitleLanguagesSettled: 1
+      }} />
+    );
+
+    const bar = container.querySelector<HTMLElement>("span[role='img']");
+    const gradient = bar?.style.background ?? "";
+
+    expect(gradient).toContain("--mark-leaf");
+    expect(gradient).not.toContain("--mark-quality-met");
+    // The other two rungs are unchanged: they have no surface value because
+    // their one colour does both jobs.
+    expect(gradient).toContain(TITLE_MARK_PRESENTATION.upgrade.cssVar);
+    expect(gradient).toContain(TITLE_MARK_PRESENTATION.missing.cssVar);
+  });
+
+  it("has no bar to paint when nothing was asked for", () => {
+    const { container } = render(<TitleMarkBar item={{ monitored: true, hasFile: true }} />);
+    expect(container.querySelector("span[role='img']")).toBeNull();
+  });
+});
+
 describe("the subtitle bar's legend", () => {
   it("draws one strip per segment and no dot", () => {
     const { container } = render(<TitleMarkBarLegend />);
@@ -83,6 +115,18 @@ describe("the subtitle bar's legend", () => {
       expect(strip.className).toContain("h-1");
       expect(strip.className).toContain("w-4");
     }
+  });
+
+  it("shines its gold, the same as everywhere else gold is drawn", () => {
+    // One gold in one treatment wherever "Deluno has finished" is said. This
+    // swatch was deliberately flat while the bar beside it was painted from the
+    // semantic colour; both are the leaf now, so both shine.
+    const { container } = render(<TitleMarkBarLegend />);
+    const gold = swatches(container)
+      .find((strip) => strip.className.includes(TITLE_MARK_PRESENTATION.covered.dot));
+
+    expect(gold, "no gold swatch in the legend").toBeTruthy();
+    expect(gold!.className).toContain(TITLE_MARK_PRESENTATION.covered.sheen);
   });
 
   it("names nothing a poster cannot draw", () => {
