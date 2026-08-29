@@ -70,7 +70,7 @@ public static class CatalogueKeyset
             // burying the answer under every finished series would make the
             // sort useless on any real library.
             CatalogueSortFields.NextAiring =>
-                $"COALESCE({alias}.next_air_date_utc, '9999-12-31T00:00:00.0000000+00:00')",
+                $"COALESCE({alias}.next_air_date_utc, '{CatalogueSortFields.Sentinels.NoNextAiring}')",
 
             CatalogueSortFields.EpisodeProgress => $"{alias}.aired_with_file_count",
 
@@ -85,13 +85,20 @@ public static class CatalogueKeyset
             CatalogueSortFields.OriginalTitle => $"lower(COALESCE({alias}.original_title, ''))",
             CatalogueSortFields.OriginalLanguage => $"lower(COALESCE({alias}.original_language, ''))",
 
+            // Spelled exactly as CatalogueFileFactsMigrationSql indexes a text
+            // fact -- lower(COALESCE(col, '')) -- because an expression index
+            // only serves an ORDER BY that matches it character for character.
+            // Titles with no file sort together at the top, which is the honest
+            // place for them: they have no path.
+            CatalogueSortFields.Path => $"lower(COALESCE({alias}.primary_file_path, ''))",
+
             // A film with no date sorts last rather than first, in both
             // directions: "what is coming out" is a question about films that
             // have a date, and burying the answer under everything already
             // released would make the order useless on a real library.
-            CatalogueSortFields.InCinemas => $"COALESCE({alias}.in_cinemas_date, '9999-12-31')",
-            CatalogueSortFields.DigitalRelease => $"COALESCE({alias}.digital_release_date, '9999-12-31')",
-            CatalogueSortFields.PhysicalRelease => $"COALESCE({alias}.physical_release_date, '9999-12-31')",
+            CatalogueSortFields.InCinemas => $"COALESCE({alias}.in_cinemas_date, '{CatalogueSortFields.Sentinels.NoDate}')",
+            CatalogueSortFields.DigitalRelease => $"COALESCE({alias}.digital_release_date, '{CatalogueSortFields.Sentinels.NoDate}')",
+            CatalogueSortFields.PhysicalRelease => $"COALESCE({alias}.physical_release_date, '{CatalogueSortFields.Sentinels.NoDate}')",
 
             _ => $"{alias}.created_utc"
         };

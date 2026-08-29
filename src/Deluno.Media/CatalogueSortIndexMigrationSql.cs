@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using System.Globalization;
 using System.Text;
 
@@ -53,7 +54,7 @@ public static class CatalogueSortIndexMigrationSql
             // serve this order, and the difference is invisible until somebody
             // measures it.
             sql.AppendLine(CultureInfo.InvariantCulture,
-                $"CREATE INDEX IF NOT EXISTS ix_{indexPrefix}_{column}_sort ON {table} (COALESCE({column}, '9999-12-31'), id);");
+                $"CREATE INDEX IF NOT EXISTS ix_{indexPrefix}_{column}_sort ON {table} (COALESCE({column}, '{CatalogueSortFields.Sentinels.NoDate}'), id);");
         }
 
         // The title order, which V0021/V0022 indexed as (sort_title, id) while
