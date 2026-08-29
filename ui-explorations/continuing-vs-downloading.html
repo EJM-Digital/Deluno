@@ -1,0 +1,173 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Continuing vs Downloading — five treatments</title>
+<style>
+  :root {
+    --info-l: 207 92% 45%;   --info-d: 207 96% 62%;
+    --miss-l: 0 84% 48%;     --miss-d: 0 84% 62%;
+    --up-l: 145 72% 34%;     --up-d: 145 78% 52%;
+    --gold-l: 49 100% 62%;   --gold-d: 49 100% 62%;
+    --soon-l: 265 62% 52%;   --soon-d: 265 82% 72%;
+    --idle-l: 220 10% 82%;   --idle-d: 217 16% 26%;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px 40px 80px;
+    font: 15px/1.5 "Inter", system-ui, sans-serif;
+    background: hsl(222 35% 7%); color: hsl(220 18% 96%);
+  }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  .lede { color: hsl(217 13% 70%); max-width: 64ch; margin: 0 0 8px; }
+  .lede b { color: hsl(220 18% 96%); }
+  h2 { font-size: 17px; margin: 34px 0 2px; }
+  h2 .tag { font: 600 11px/1 "JetBrains Mono", monospace; letter-spacing: .06em;
+            padding: 4px 7px; border-radius: 5px; margin-right: 9px;
+            background: hsl(217 24% 15%); color: hsl(217 13% 70%); vertical-align: 2px; }
+  .why { color: hsl(217 13% 70%); max-width: 76ch; margin: 6px 0 14px; font-size: 14px; }
+  .vals { font: 12px/1 "JetBrains Mono", monospace; color: hsl(217 13% 55%); margin: 0 0 14px; }
+
+  .panes { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .pane { border-radius: 12px; padding: 18px 20px 22px; border: 1px solid; }
+  .pane.dark  { background: hsl(218 32% 11%); border-color: hsl(217 22% 18%); color: hsl(220 18% 96%); }
+  .pane.light { background: hsl(0 0% 100%);   border-color: hsl(220 14% 86%); color: hsl(222 26% 10%); }
+  .pane h3 { margin: 0 0 14px; font: 600 11px/1 "JetBrains Mono", monospace;
+             letter-spacing: .08em; text-transform: uppercase; opacity: .5; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 20px; }
+  .chip { display: inline-flex; align-items: center; gap: 7px;
+          padding: 5px 9px; border-radius: 8px; font-size: 12.5px; font-weight: 500;
+          border: 1px solid; }
+  .pane.dark  .chip { border-color: hsl(217 22% 18%); background: hsl(217 24% 15%); }
+  .pane.light .chip { border-color: hsl(220 14% 86%); background: hsl(220 14% 93%); }
+  .strip { width: 16px; height: 4px; border-radius: 2px; flex: none; }
+  .count { font: 700 11px/1 "JetBrains Mono", monospace; padding: 3px 5px; border-radius: 5px; }
+
+  .wall { display: grid; grid-template-columns: repeat(4, 104px); gap: 8px; }
+  .poster { position: relative; aspect-ratio: 2/3; border-radius: 8px; overflow: hidden;
+            display: flex; align-items: flex-end; padding: 8px; }
+  .poster .name { font-size: 11px; font-weight: 600; color: #fff;
+                  text-shadow: 0 1px 3px rgb(0 0 0 / .8); }
+  .bar { position: absolute; inset-inline: 0; top: 0; height: 5px; }
+  .bar span { display: block; height: 100%; }
+  .corner { position: absolute; top: 9px; right: 7px; display: inline-flex; align-items: center;
+            gap: 5px; padding: 3px 6px; border-radius: 6px; font: 700 10px/1 "JetBrains Mono", monospace; }
+  .pane.dark  .corner { background: hsl(218 32% 11%); color: hsl(220 18% 96%); }
+  .pane.light .corner { background: hsl(0 0% 100%); color: hsl(222 26% 10%); }
+  .pip { width: 6px; height: 6px; border-radius: 999px; flex: none; }
+
+  .pair { display: flex; margin: 18px 0 0; border-radius: 6px; overflow: hidden; }
+  .pair div { height: 26px; flex: 1; }
+  .thin { display: flex; margin-top: 10px; border-radius: 3px; overflow: hidden; }
+  .thin div { height: 5px; flex: 1; }
+  .pairlabel { display: flex; font: 11px/1 "JetBrains Mono", monospace; opacity: .55; margin-top: 6px; }
+  .pairlabel span { flex: 1; }
+</style>
+
+<h1>Continuing and Downloading are the same blue</h1>
+<p class="lede">Measured on the running build: of every pair on the ladder these two
+are the closest &mdash; <b>&Delta;E 49</b> in Lab, hues 23&deg; apart, both bright and
+both cool. At the 16&times;4 strip in the chip row and the 5px bar on a poster they read
+as one colour. Downloading cannot move &mdash; it is the app's primary blue &mdash; so
+Continuing moves.</p>
+<p class="lede">Each treatment shows the chip row, a wall of posters, and the two colours
+touching with nothing else on screen, in both themes. A teal that separates in the dark
+can collapse into the page in the light, so both have to be judged.</p>
+
+<div id="out"></div>
+
+<script>
+const OPTIONS = [
+  {
+    tag: "SHIPPED",
+    name: "Teal, as it is now",
+    why: "The baseline, so there is something to judge against. Hue 184 was picked as the nearest free hue to the blue Sonarr uses &mdash; and nearest to blue is exactly the problem.",
+    dark: "184 78% 52%", light: "184 72% 34%"
+  },
+  {
+    tag: "A",
+    name: "Same teal, but deep",
+    why: "Hue unchanged; lightness drops 14 points and saturation goes to full. The two stay in the same family and separate on weight rather than hue, which is the difference that survives at 5px on a bright poster. Costs nothing elsewhere &mdash; no other mark is anywhere near 184.",
+    dark: "184 100% 38%", light: "184 100% 26%"
+  },
+  {
+    tag: "B",
+    name: "Sea green &mdash; halfway to Upgradable",
+    why: "Moves 18&deg; away from blue, to 166. The widest gap from Downloading of anything still inside the teal window. The risk is the other side: Upgradable is green at 145, so this trades a collision with blue for a smaller one with green.",
+    dark: "166 82% 46%", light: "166 84% 30%"
+  },
+  {
+    tag: "C",
+    name: "Both moves at once",
+    why: "Hue to 172 and the lightness down. Between A and B: enough hue shift to read as its own colour beside blue, enough depth to stay clear of Upgradable's bright green. The most balanced of the three, and the one I would ship.",
+    dark: "172 92% 40%", light: "172 96% 26%"
+  },
+  {
+    tag: "D",
+    name: "Steel &mdash; quiet, not vivid",
+    why: "Hue roughly kept, saturation cut to about a third. Continuing is the one rung that is not asking for anything &mdash; you are up to date and there is nothing to do &mdash; so it is the one that can afford to be quiet while every other mark stays vivid. The risk here is the opposite of the others: getting too close to the idle grey a half mark wears.",
+    dark: "190 34% 62%", light: "195 30% 42%"
+  }
+];
+
+const POSTERS = [
+  { name: "Severance",     mark: "cont", fill: 15,  count: "3 / 20",  art: "linear-gradient(150deg,#1d3b4d,#0d1b26)" },
+  { name: "Andor",         mark: "down", fill: 100, count: "↓",  art: "linear-gradient(150deg,#4a3520,#1a1208)" },
+  { name: "Shōgun",   mark: "cont", fill: 100, count: "10 / 10", art: "linear-gradient(150deg,#5a2c2c,#1d0e0e)" },
+  { name: "The Bear",      mark: "down", fill: 100, count: "↓",  art: "linear-gradient(150deg,#2c3d2a,#0e150d)" },
+  { name: "Silo",          mark: "cont", fill: 60,  count: "6 / 10",  art: "linear-gradient(150deg,#3a3a4d,#131320)" },
+  { name: "Foundation",    mark: "miss", fill: 0,   count: "0 / 29",  art: "linear-gradient(150deg,#4d3f1d,#1a1509)" },
+  { name: "Dune: Prophecy",mark: "soon", fill: 100, count: "0 / 6",   art: "linear-gradient(150deg,#3d2450,#150c1d)" },
+  { name: "Slow Horses",   mark: "gold", fill: 100, count: "6 / 6",   art: "linear-gradient(150deg,#2a4a4a,#0c1a1a)" }
+];
+
+function pane(theme, opt) {
+  const t = theme === "dark" ? "d" : "l";
+  const C = {
+    cont: "hsl(" + (theme === "dark" ? opt.dark : opt.light) + ")",
+    down: "hsl(var(--info-" + t + "))",
+    miss: "hsl(var(--miss-" + t + "))",
+    soon: "hsl(var(--soon-" + t + "))",
+    gold: "hsl(var(--gold-" + t + "))",
+    upg:  "hsl(var(--up-" + t + "))",
+    idle: "hsl(var(--idle-" + t + "))"
+  };
+
+  const chipRow = [
+    ["Missing", C.miss, 4], ["Downloading", C.down, 2], ["Upgradable", C.upg, 1],
+    ["Continuing", C.cont, 3], ["Quality met", C.gold, 6], ["Upcoming", C.soon, 2]
+  ].map(function (row) {
+    const label = row[0], colour = row[1], n = row[2];
+    return '<span class="chip">'
+      + '<span class="strip" style="background:' + colour + '"></span>'
+      + '<span>' + label + '</span>'
+      + '<span class="count" style="background:color-mix(in srgb, ' + colour + ' 15%, transparent); color:' + colour + '">' + n + '</span>'
+      + '</span>';
+  }).join("");
+
+  const wall = POSTERS.map(function (p) {
+    const colour = C[p.mark];
+    return '<div class="poster" style="background:' + p.art + '">'
+      + '<div class="bar" style="background:' + C.idle + '">'
+      + '<span style="width:' + p.fill + '%; background:' + colour + '"></span></div>'
+      + '<div class="corner"><span class="pip" style="background:' + colour + '"></span>' + p.count + '</div>'
+      + '<div class="name">' + p.name + '</div>'
+      + '</div>';
+  }).join("");
+
+  return '<div class="pane ' + theme + '">'
+    + '<h3>' + theme + '</h3>'
+    + '<div class="chips">' + chipRow + '</div>'
+    + '<div class="wall">' + wall + '</div>'
+    + '<div class="pair"><div style="background:' + C.down + '"></div><div style="background:' + C.cont + '"></div></div>'
+    + '<div class="thin"><div style="background:' + C.down + '"></div><div style="background:' + C.cont + '"></div></div>'
+    + '<div class="pairlabel"><span>Downloading</span><span>Continuing</span></div>'
+    + '</div>';
+}
+
+document.getElementById("out").innerHTML = OPTIONS.map(function (opt) {
+  return '<h2><span class="tag">' + opt.tag + '</span>' + opt.name + '</h2>'
+    + '<p class="why">' + opt.why + '</p>'
+    + '<p class="vals">dark ' + opt.dark + ' &nbsp;&middot;&nbsp; light ' + opt.light + '</p>'
+    + '<div class="panes">' + pane("dark", opt) + pane("light", opt) + '</div>';
+}).join("");
+</script>
