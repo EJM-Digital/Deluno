@@ -162,7 +162,12 @@ public sealed record CatalogueControls(
     private static IReadOnlyList<CataloguePosterOption> SharedPosterOptions =>
     [
         new("showTitle", "Title", "The movie or series name", DefaultOn: true),
-        new("showMeta", "Year and monitoring", "Release year and monitored state", DefaultOn: true),
+        // One switch, one fact. It used to draw the release year *and* the
+        // monitored state, so neither could be turned off without the other —
+        // James: "year should be removed as a not required option and it should
+        // not be aligned to monitored or not monitored". The year is gone and
+        // this does the one thing its name says.
+        new("showMonitored", "Monitoring", "Whether Deluno is watching for this title", DefaultOn: true, Line: true),
         new("showStatusPill", "Status mark", "Missing, Upgradable, Quality met or Upcoming", DefaultOn: true),
         new("showQualityBadge", "Quality", "The tier the file actually is — WEB 2160p, Remux 1080p", DefaultOn: true),
         // A line of its own, like every other switch. "Year and monitoring" is

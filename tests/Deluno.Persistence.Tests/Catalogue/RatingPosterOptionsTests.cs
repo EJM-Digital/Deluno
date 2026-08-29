@@ -94,6 +94,16 @@ public sealed class RatingPosterOptionsTests
         {
             foreach (var option in CatalogueControls.For(kind).PosterOptions.Where(option => option.Line))
             {
+                // Monitoring is drawn directly rather than from the table,
+                // because it is the one row with two shapes — a shield and a
+                // crossed shield — and a table of readers returning strings
+                // cannot say that.
+                if (option.Id == "showMonitored")
+                {
+                    Assert.Contains("displayOptions.showMonitored", source, StringComparison.Ordinal);
+                    continue;
+                }
+
                 Assert.True(
                     drawn.Contains(option.Id),
                     $"The server offers '{option.Id}' as a line under the poster and library-grid.tsx draws no row for it.");

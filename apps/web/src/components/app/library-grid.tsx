@@ -219,7 +219,10 @@ function PosterCard({
   onToggle: () => void;
 }) {
   const workspaceHref = item.type === "movie" ? `/movies/${item.id}` : `/tv/${item.id}`;
-  const showMeta = SHOW_META[size] && displayOptions.showMeta;
+  // Whether this card size draws anything under the artwork at all. Small is
+  // deliberately title-only. It is not a switch — the switches decide *what*
+  // is drawn, and this decides whether there is room to draw it.
+  const carriesMeta = SHOW_META[size];
   const titleCls = TITLE_CLASS_BY_DENSITY[density][size];
 
   return (
@@ -395,20 +398,18 @@ function PosterCard({
         ) : null}
 
         {/*
-          Two rows, not one.
+          The year is gone.
 
-          The year and the monitored state shared a line, which broke the rule
-          for the one switch that sets both — James: "Monitored also needs to be
-          under the name". One switch can still draw two rows; what it cannot do
-          is put two facts on the same one.
+          It was drawn by the same switch as the monitored state — "Year and
+          monitoring" — so the two were welded together and neither could be
+          turned off without the other. James: "year should be removed as a not
+          required option and it should not be aligned to monitored or not
+          monitored." It is not required, and pairing it with monitoring was the
+          part that made it feel mandatory.
+
+          The switch is now Monitoring, and it does one thing.
         */}
-        {showMeta ? (
-          <p className="h-[1lh] truncate leading-tight text-[length:var(--library-meta-size)] text-muted-foreground tabular">
-            {item.year ?? " "}
-          </p>
-        ) : null}
-
-        {showMeta ? (
+        {carriesMeta && displayOptions.showMonitored ? (
           <div
             className="flex h-[1lh] min-w-0 items-center justify-center gap-1 leading-tight text-[length:var(--library-meta-size)] text-muted-foreground"
             title={item.monitored
@@ -422,7 +423,7 @@ function PosterCard({
           </div>
         ) : null}
 
-        {showMeta ? <PosterExtras item={item} displayOptions={displayOptions} /> : null}
+        {carriesMeta ? <PosterExtras item={item} displayOptions={displayOptions} /> : null}
       </div>
     </div>
   );
