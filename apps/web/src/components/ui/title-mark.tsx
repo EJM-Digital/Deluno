@@ -22,16 +22,60 @@ import {
  */
 
 /**
- * The dot's diameter, everywhere one is drawn: the legend chips above the
- * shelf, the dot on a small poster, and the dot inside a status chip on a large
- * one.
+ * The dot's diameter wherever one is drawn beside a title's name — a list row's
+ * status chip today, and whatever joins it.
  *
- * One constant because the legend row exists to teach the shelf. A legend whose
- * dots are a different size from the dots they explain is doing the job at half
- * strength — and the chip's was hard-coded at 9 against the legend's 13 for
- * exactly as long as nobody put them side by side.
+ * It used to govern the shelf's legend chips as well, on the reasoning that a
+ * legend whose dots differ in size from the dots they explain is working at half
+ * strength. That reasoning is intact; its premise is not. A poster has not
+ * carried a dot since the state became a bar across its top, so the legend now
+ * draws {@link MarkStrip} and this governs the dots that are still drawn.
  */
 export const MARK_DOT_SIZE = 13;
+
+/**
+ * The swatch a legend uses for a mark: a short strip, at the subtitle bar's own
+ * height.
+ *
+ * **Why a strip and not a dot.** The row above the shelf explains what is drawn
+ * on the posters below it, and nothing down there is a dot any more — the state
+ * is a bar across the poster's top and the subtitles are a bar across its
+ * bottom. A dot in the legend was a shape a reader could not then find.
+ *
+ * **Why the subtitle bar's height rather than the state bar's.** James: *"its a
+ * thicker line than subtitles or thinner or just use the same as subs actually
+ * because the thicker line doesnt exist until someone clicks on quality and its
+ * just a visual reference anyway"*. Right — the state bar is thin at `5px` and
+ * grows to a full labelled bar the moment the Quality switch goes on, so there
+ * is no one height for the legend to match. A swatch that changed size with a
+ * display switch would be claiming that the switch changed what the colour
+ * means. One height for every swatch on the row, and it is the one height on a
+ * poster that never moves.
+ */
+export function MarkStrip({
+  mark,
+  /**
+   * Whether to draw the mark's sheen. On for a swatch explaining the state bar,
+   * which glints for gold; off for one explaining the subtitle bar, which is a
+   * flat gradient. Each swatch is drawn the way the thing it explains is drawn.
+   */
+  sheen = false,
+  className
+}: { mark: TitleMark; sheen?: boolean; className?: string }) {
+  const presentation = TITLE_MARK_PRESENTATION[mark];
+
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "h-1 w-4 shrink-0 rounded-full",
+        presentation.dot,
+        sheen && presentation.sheen,
+        className
+      )}
+    />
+  );
+}
 
 export interface TitleMarkInput {
   monitored: boolean;
@@ -295,36 +339,22 @@ function titleBarGradient(settledPercent: number, heldPercent: number): string {
  * the rule between them and the chips, is what says they explain rather than
  * narrow.
  *
- * The swatch is a short strip at the bar's own height rather than a dot,
- * because a dot is what the chips beside it already use for the other mark. The
- * two must not be mistaken for each other.
+ * The swatch is {@link MarkStrip}, the same strip the chips beside it wear —
+ * one shape for every swatch on the row, because both halves of the row now
+ * explain a bar.
+ *
+ * <b>An Episodes entry has gone with it.</b> It was behind a `showEpisodes`
+ * prop nothing ever passed, drawing a swatch for a strip posters stopped
+ * carrying when episode counts moved to a show's own page: a legend for
+ * something that cannot appear, which is the defect a chip that can never match
+ * is. Declared, never populated, and no test could see it.
  */
-export function TitleMarkBarLegend({
-  className,
-  /**
-   * Whether this shelf draws an episode bar at all. A movie is not a collection,
-   * so naming a mark films never carry would be a legend for something that
-   * cannot appear — the same defect as a filter chip that can never match.
-   */
-  showEpisodes = false
-}: { className?: string; showEpisodes?: boolean }) {
+export function TitleMarkBarLegend({ className }: { className?: string }) {
   return (
     <div className={cn("flex items-center gap-2.5", className)}>
-      {showEpisodes ? (
-        <span
-          className="flex items-center gap-1.5 text-[length:var(--library-toolbar-size)] font-medium text-muted-foreground"
-          title={"The upper strip on a poster's bottom edge: how many of a show's aired episodes are on disk, "
-            + "in the colour of the mark above it."}
-        >
-          <span aria-hidden className="flex h-1 w-6 shrink-0 overflow-hidden rounded-full bg-mark-idle/70">
-            <span className="h-full w-2/3 bg-destructive" />
-          </span>
-          <span>Episodes</span>
-        </span>
-      ) : null}
       <span
         className="text-[length:var(--library-toolbar-size)] font-medium text-muted-foreground"
-        title={"The lower strip on a poster's bottom edge: the subtitle languages this shelf asked for. "
+        title={"The strip on a poster's bottom edge: the subtitle languages this shelf asked for. "
           + "Counted over the files a title has, so a show you have downloaded nothing of shows no bar."}
       >
         Subtitles
@@ -334,11 +364,12 @@ export function TitleMarkBarLegend({
           key={segment.mark}
           className="flex items-center gap-1.5 text-[length:var(--library-toolbar-size)] font-medium text-muted-foreground"
         >
-          {/* Colour is never the only carrier (#318): the word is always beside it. */}
-          <span
-            aria-hidden
-            className={cn("h-1 w-4 shrink-0 rounded-full", TITLE_MARK_PRESENTATION[segment.mark].dot)}
-          />
+          {/*
+            Colour is never the only carrier (#318): the word is always beside
+            it. No sheen — the subtitle bar is a flat gradient, so a glinting
+            swatch would be showing a treatment the bar never wears.
+          */}
+          <MarkStrip mark={segment.mark} />
           {/*
             The ladder's own word, not a synonym.
             James: *"users need to also be able to distinguish between done and
