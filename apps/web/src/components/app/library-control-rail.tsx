@@ -1,8 +1,7 @@
 import { useConfiguredProviders } from "../../hooks/use-configured-providers";
 import { QUICK_FILTER_MARK, type MonitoringFilter, type QuickFilter, type SortDirection, type SortField } from "../../lib/library-filters";
 import { TITLE_MARK_PRESENTATION, type TitleMark } from "../../lib/status-tones";
-import { TitleMarkBarLegend } from "../ui/title-mark";
-import { MARK_DOT_SIZE } from "../ui/title-mark";
+import { MarkStrip, TitleMarkBarLegend } from "../ui/title-mark";
 import {
   ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, Filter, LayoutGrid, LayoutTemplate, List, Search, Rows3} from "lucide-react";
 import React, { useLayoutEffect, useRef, useState } from "react";
@@ -70,9 +69,10 @@ export interface SavedFilterPreset {
  * can be asked *together*: "missing, and I have told Deluno to leave it alone"
  * was unaskable while they shared one value.
  *
- * **The colour is on the number.** It used to be a 6px dot to the left of the
- * label — too small to work as a legend for a wall of posters. The count is the
- * part you read, so the count wears the mark.
+ * **The colour is on the number**, and on a strip beside the label. The strip
+ * was a 6px dot once, which was too small to work as a legend for a wall of
+ * posters; it is now the shape a poster actually draws. The count wears the
+ * mark as well, because the count is the part you read.
  */
 export interface QuickFilterChip {
   key: QuickFilter;
@@ -88,7 +88,7 @@ export interface QuickFilterChip {
  * **Per media kind, and it has to be.** A film is never partway through
  * anything, so *Up to date* on the Movies shelf would be a chip that can never
  * match — the defect #324 was opened about. But the reverse is worse: a TV
- * poster can now carry a teal dot, and without a chip naming it there is a
+ * poster can now carry a teal bar, and without a chip naming it there is a
  * colour on screen that nothing on the page explains.
  */
 export function quickFiltersFor(kind: "movies" | "shows"): QuickFilterChip[] {
@@ -346,19 +346,22 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                       active ? "font-semibold text-foreground" : "font-medium text-muted-foreground hover:text-foreground"
                     )}
                   >
-                    {/* The mark's own colour, at the same diameter as the dot on
-                        a small poster, so the chip and the posters it filters to
-                        are one signal rather than two. */}
-                    {chip.mark ? (
-                      <span
-                        aria-hidden
-                        // The sheen too, so the legend is drawn the same way as
-                        // the thing it explains. A legend that leaves out what
-                        // makes a mark recognisable is working at half strength.
-                        className={cn("shrink-0 rounded-full", TITLE_MARK_PRESENTATION[chip.mark].dot, TITLE_MARK_PRESENTATION[chip.mark].sheen)}
-                        style={{ width: MARK_DOT_SIZE, height: MARK_DOT_SIZE }}
-                      />
-                    ) : null}
+                    {/*
+                      The mark's own colour, as a strip rather than a dot.
+
+                      It was a dot at the same diameter as the dot on a small
+                      poster, on the reasoning that the chip and the posters it
+                      filters to should be one signal rather than two. That
+                      reasoning held right up until the poster's dot became a
+                      bar across its top — after which the legend was teaching a
+                      shape the shelf below it no longer drew.
+
+                      The sheen comes with it, so the swatch is drawn the way
+                      the bar is drawn, gold leaf included. A legend that leaves
+                      out what makes a mark recognisable is working at half
+                      strength.
+                    */}
+                    {chip.mark ? <MarkStrip mark={chip.mark} sheen /> : null}
                     <span>{chip.label}</span>
                     {/* The count wears the colour: the number is the part you read. */}
                     <span
