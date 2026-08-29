@@ -352,39 +352,52 @@ function PosterCard({
             second thing you look for after the artwork, and Radarr puts its
             equivalent exactly here for the same reason.
           */}
+          {/*
+            The tier you hold, as a pill on the artwork.
+
+            It was a small grey pill in a corner, and grey is the one thing it
+            should not be — James: "if its quality met its gold, if its
+            upgradeable its green". Those colours already exist and already mean
+            that; this was the only thing on the card ignoring them.
+
+            Held off every edge rather than run full width. James: "how is it
+            going to look when quality is green and subtitles are green? is
+            there going to be a separator or just one full green bar?" — edge to
+            edge they abut, and Upgradable green over ready-subtitles green is
+            one unbroken block. A one-pixel seam was the first answer and could
+            not be seen at green on green. With the artwork running around it
+            there is no colour combination where the two can merge, because they
+            never touch.
+          */}
           {displayOptions.showQualityBadge && heldQualityLabel(item) ? (
             <div
               className={cn(
-                // One row up from the very bottom, because the bottom edge
-                // belongs to the subtitle bar — James, on DESIGN-001: "adding a
-                // bar isnt a good idea — the bar is strictly for subtitles".
-                "absolute inset-x-0 bottom-1 flex items-center justify-center overflow-hidden px-2 py-1"
+                "absolute bottom-2 left-2 right-2 flex items-center justify-center",
+                "overflow-hidden rounded-md px-2 py-0.5",
+                // Lifted, not outlined. A ring read as a drawn border and
+                // looked it — James: "border looks kind of bad can we do
+                // something better?". A soft shadow does the same job by depth.
+                // rgb(0_0_0_/_0.55), not rgba(0,0,0,0.55): Tailwind cannot
+                // parse the commas inside an arbitrary value and silently emits
+                // nothing, which is what it did here — the class was on the
+                // element and the computed shadow was none.
+                "shadow-[0_1px_4px_rgb(0_0_0_/_0.55)]"
               )}
               title={`${heldQualityLabel(item)} · ${qualityTone(item).label}`}
             >
               {/*
                 The fill is a layer of its own, and that is not decoration.
-
                 `.mark-grail` — the gold leaf and its glint — sets
-                `position: relative`, and on an element that is also `absolute`
-                it wins: the bar quietly stopped being positioned, dropped out
-                of the poster and was clipped to a four-pixel sliver by the
-                artwork's `overflow-hidden`. It still rendered, still had the
-                right gradient, and could not be seen. Keeping the fill on an
-                inner layer means the sheen can position itself however it likes
-                without touching the bar.
+                `position: relative`, and on an element Tailwind is also
+                positioning it wins. It did this twice while this was built:
+                first dropping the pill out of the poster, then collapsing the
+                fill to zero height. Both times it rendered with the right
+                gradient and could not be seen.
               */}
               <span aria-hidden="true" className="absolute inset-0">
                 <span
                   className={cn(
-                    // Sized, never positioned. `.mark-grail` sets
-                    // `position: relative` and beats a Tailwind `absolute` on
-                    // the same element — it did it twice while this was being
-                    // built, first dropping the bar out of the poster and then
-                    // collapsing this fill to zero height. Both times it still
-                    // rendered with the right gradient and could not be seen.
-                    // Keeping the positioning one element out means the sheen
-                    // can do whatever it likes.
+                    // Sized, never positioned. See above.
                     "block h-full w-full",
                     // The same classes the dot wears, so the two cannot drift:
                     // gold leaf for Quality met, green for Upgradable, and the

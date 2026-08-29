@@ -145,6 +145,12 @@ public static class JobLanes
         // imports, and now unable to delay one.
         new("subtitles.scan", ["library.subtitles.scan"], BatchSize: LocalWidth, MaxConcurrency: LocalWidth / 2),
 
+        // Reading a file's own streams. Its own lane, not the subtitle scan's,
+        // because James asked for passes that do not depend on each other and
+        // sharing one would mean a library that wants no subtitles never learns
+        // what codec its files are.
+        new("media.probe", ["library.media.probe"], BatchSize: LocalWidth, MaxConcurrency: LocalWidth / 2),
+
         // Timing sync: an FFmpeg pass over a whole audio track, then a
         // correlation. Sized exactly like the scan beside it, because it is the
         // same kind of work — a local process per file, bounded by the machine.

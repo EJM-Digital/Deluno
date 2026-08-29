@@ -35,7 +35,8 @@ public static class SeriesDatabaseMigrations
         new V0027SeriesSubtitleFacts(),
         new V0028SeriesConformance(),
         new V0029SeriesDecisionFacts(),
-        new V0030SeriesSearchEffort()
+        new V0030SeriesSearchEffort(),
+        new V0031SeriesFileProbe()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

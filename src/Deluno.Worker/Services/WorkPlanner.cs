@@ -59,7 +59,7 @@ public sealed class WorkPlanner(
         IDispatchCleanupService cleanupService,
         CancellationToken cancellationToken)
     {
-        if (!await jobQueueRepository.TryClaimScheduledPassAsync("dispatch.cleanup", TimeSpan.FromHours(6), cancellationToken))
+        if (!await jobQueueRepository.TryClaimScheduledPassAsync(SystemTasks.DispatchCleanup, SystemTasks.IntervalFor(SystemTasks.DispatchCleanup), cancellationToken))
         {
             return;
         }
@@ -92,7 +92,7 @@ public sealed class WorkPlanner(
         IDownloadStateReconciler reconciler,
         CancellationToken cancellationToken)
     {
-        if (!await jobQueueRepository.TryClaimScheduledPassAsync("download.state", TimeSpan.FromMinutes(5), cancellationToken))
+        if (!await jobQueueRepository.TryClaimScheduledPassAsync(SystemTasks.DownloadState, SystemTasks.IntervalFor(SystemTasks.DownloadState), cancellationToken))
         {
             return;
         }
@@ -111,7 +111,7 @@ public sealed class WorkPlanner(
         IDownloadRetryService downloadRetryService,
         CancellationToken cancellationToken)
     {
-        if (!await jobQueueRepository.TryClaimScheduledPassAsync("dispatch.retry", TimeSpan.FromMinutes(2), cancellationToken))
+        if (!await jobQueueRepository.TryClaimScheduledPassAsync(SystemTasks.DispatchRetry, SystemTasks.IntervalFor(SystemTasks.DispatchRetry), cancellationToken))
         {
             return;
         }
@@ -133,7 +133,7 @@ public sealed class WorkPlanner(
         TimeProvider timeProvider,
         CancellationToken cancellationToken)
     {
-        if (!await jobQueueRepository.TryClaimScheduledPassAsync("metadata.refresh", MetadataTopUpInterval, cancellationToken))
+        if (!await jobQueueRepository.TryClaimScheduledPassAsync(SystemTasks.MetadataRefresh, SystemTasks.IntervalFor(SystemTasks.MetadataRefresh), cancellationToken))
         {
             return;
         }
@@ -225,11 +225,44 @@ public sealed class WorkPlanner(
             MetadataQueueTargetDepth);
     }
 
+    /// <summary>
+    /// Queues a slice of the media probe, for each kind, when one is due.
+    ///
+    /// <para>Its own claim on the shared heartbeat — no timer, no worker, no
+    /// dependency on any other pass. The handler re-queues itself while there
+    /// is more to read, so this only has to start it.</para>
+    /// </summary>
+    public async Task PlanMediaProbeAsync(
+        IJobScheduler jobScheduler,
+        CancellationToken cancellationToken)
+    {
+        if (!await jobQueueRepository.TryClaimScheduledPassAsync(
+                SystemTasks.MediaProbe,
+                SystemTasks.IntervalFor(SystemTasks.MediaProbe),
+                cancellationToken))
+        {
+            return;
+        }
+
+        foreach (var entity in new[] { "movie", "series" })
+        {
+            await jobScheduler.EnqueueAsync(
+                new EnqueueJobRequest(
+                    JobType: "library.media.probe",
+                    Source: "system",
+                    PayloadJson: null,
+                    RelatedEntityType: entity,
+                    RelatedEntityId: null,
+                    DedupeKey: $"media-probe:{entity}"),
+                cancellationToken);
+        }
+    }
+
     public async Task PlanIntakeAutomationAsync(
         IIntakeSyncService intakeSyncService,
         CancellationToken cancellationToken)
     {
-        if (!await jobQueueRepository.TryClaimScheduledPassAsync("intake.automation", TimeSpan.FromMinutes(5), cancellationToken))
+        if (!await jobQueueRepository.TryClaimScheduledPassAsync(SystemTasks.IntakeAutomation, SystemTasks.IntervalFor(SystemTasks.IntakeAutomation), cancellationToken))
         {
             return;
         }
@@ -264,8 +297,8 @@ public sealed class WorkPlanner(
         CancellationToken cancellationToken)
     {
         if (!await jobQueueRepository.TryClaimScheduledPassAsync(
-                "library.import.resume",
-                TimeSpan.FromMinutes(1),
+                SystemTasks.LibraryImportResume,
+                SystemTasks.IntervalFor(SystemTasks.LibraryImportResume),
                 cancellationToken))
         {
             return;
@@ -330,7 +363,7 @@ public sealed class WorkPlanner(
         SharingReclaimService reclaimService,
         CancellationToken cancellationToken)
     {
-        if (!await jobQueueRepository.TryClaimScheduledPassAsync("sharing.reclaim", TimeSpan.FromSeconds(30), cancellationToken))
+        if (!await jobQueueRepository.TryClaimScheduledPassAsync(SystemTasks.SharingReclaim, SystemTasks.IntervalFor(SystemTasks.SharingReclaim), cancellationToken))
         {
             return;
         }
@@ -514,7 +547,7 @@ public sealed class WorkPlanner(
         TimeProvider timeProvider,
         CancellationToken cancellationToken)
     {
-        if (!await jobQueueRepository.TryClaimScheduledPassAsync("import.automation", TimeSpan.FromSeconds(15), cancellationToken))
+        if (!await jobQueueRepository.TryClaimScheduledPassAsync(SystemTasks.ImportAutomation, SystemTasks.IntervalFor(SystemTasks.ImportAutomation), cancellationToken))
         {
             return;
         }
