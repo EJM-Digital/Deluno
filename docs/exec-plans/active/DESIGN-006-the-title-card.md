@@ -378,24 +378,41 @@ kept because the reasons are the useful part.
    thing on the picture for a fact Deluno already says in words on a line under the
    poster, behind its own switch.
 
-4. **Settled.** James: *"the poster option should stay as a grey or black bar on the
-   poster and the shield removed from the poster and kept under in the selectable
-   options"*.
+4. **A neutral bar, with the shield kept as a line underneath.** Nearly right, and I
+   misread the last clause: *"kept under in the selectable options"* meant kept in
+   the option list, not kept as a line under the poster.
+
+5. **Settled.** James: *"why is monitored under the poster, it doesnt need to be
+   there anymore"*. Right — and the reason is one this codebase has already acted on
+   twice: **when a bar starts saying a fact, the switch that used to say it is
+   removed.** `4bdfe45` deleted the Quality poster option the moment the bar carried
+   the quality, and `showEpisodeProgress` went the same way. A line reading *Not
+   monitored* under a card whose bars have already gone neutral is the same fact
+   twice.
 
 ### The rule
 
-**An unmonitored title's bars go neutral — both of them — and the artwork carries
-nothing.** The shield keeps its existing home: a line *under* the poster, behind
-`showMonitored`, exactly as `library-grid.tsx` already draws it.
-
-Two facts, two places, neither borrowing the other's space — the same rule the top
-and bottom bars already follow.
+**An unmonitored title's bars go neutral — both of them — and that is the whole of
+it.** Nothing on the artwork, no line underneath, no switch.
 
 | | Monitored | Not monitored |
 |---|---|---|
 | Both bars | the state's colour | **one neutral**, black or grey |
-| Line under the poster | shield · `Monitored` | slashed shield · `Not monitored` |
-| On the artwork | nothing | nothing |
+| Anywhere else on the card | nothing | nothing |
+
+A card is now exactly three things: a bar, the artwork, a bar.
+
+**`showMonitored` is deleted from `CatalogueControls.cs`**, alongside the Quality and
+Episode-progress options that went for the same reason. Monitoring is not switchable
+on a card: it is a fact about whether Deluno will act at all, and a reader turning
+off a display line should not be able to hide that from the shelf.
+
+`library-grid.tsx` loses the shield line, and `ShieldCheck`/`ShieldOff` may then have
+no remaining use in the grid — check before removing the imports.
+
+The **detail pages keep their shield**, as the pressable control settled below. That
+is a different job: on a card you are reading the fact, on a detail page you are
+changing it.
 
 **Black or grey is open.** The thing to watch is that the track is already grey, so a
 grey fill on a grey track could make the bar vanish and take the fraction with it.
@@ -423,7 +440,7 @@ options, so both are kept and each is used where it belongs:
 
 | Where | Reads |
 |---|---|
-| Line under the poster (not pressable) | `Monitored` · `Not monitored` — the fact, and stop |
+| Card | said by the bars going neutral — no words |
 | Movie header, series header, season row, episode row | `Monitored — click to unmonitor` · `Not monitored — click to monitor` |
 
 The verb pair is fixed: **Monitor** and **Unmonitor** are what pressing does and
@@ -440,21 +457,17 @@ filters, one displays, one edits:
 | Selectable | What it is | Says today | Verdict |
 |---|---|---|---|
 | **Filter** — `MonitoringFilter` | narrows the shelf | `Any monitoring` · `Monitored (n)` · `Not monitored (n)` | **already correct**, leave it |
-| **Poster option** — `showMonitored` | shows or hides the shield line under the poster | switch labelled `Monitoring` | **unchanged** |
+| **Poster option** — `showMonitored` | showed the shield line under the poster | switch labelled `Monitoring` | **deleted** — the bars say it |
 | **Bulk edit** | sets the fact on a selection | `Monitored` / `Unmonitored` | → `Not monitored` |
 
 The internal value `"unmonitored"` stays as it is; it is a code identifier and never
 reaches a reader.
 
-#### `showMonitored` is unchanged
+#### `showMonitored` is deleted
 
-An earlier revision of this document had it controlling a corner badge instead of a
-line. With the badge gone, **it goes on doing exactly what it does today**: showing
-or hiding the shield line under the poster. Nothing to build, nothing to reword.
-
-Note what it does *not* control: the bars going neutral is not optional. Monitoring
-is a fact about whether Deluno will act, and a reader turning off a display line
-should not be able to hide it from the shelf entirely.
+Two earlier revisions of this document had it controlling a corner badge, then a
+line. It controls neither: the bars say monitoring now, so the option goes the way
+of Quality and Episode progress. See §5.
 
 ### The seven vocabularies this replaces
 
@@ -464,7 +477,8 @@ and adopting the above means **all of these change**:
 
 | Where | Says today | Should say |
 |---|---|---|
-| Poster line, overview | `Monitored` / `Not monitored` | unchanged |
+| Poster line | `Monitored` / `Not monitored` | **gone** — the bars say it |
+| Overview row | `Monitored` / `Not monitored` | unchanged |
 | Filter panel | `Not monitored (n)` | unchanged |
 | Bulk dialog dropdown | `Monitored` / `Unmonitored` | `Monitored` / `Not monitored` |
 | Movie detail stat row | `On` / `Paused` | `Monitored` / `Not monitored` |

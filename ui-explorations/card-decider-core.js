@@ -124,20 +124,21 @@ const UNMONITORED = {
   grey:  { fill: "hsl(220 8% 46%)",  label: "hsl(0 0% 100%)" }
 };
 
-const SHIELD = {
-  on: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/>',
-  off: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M2 2l20 20"/>'
-};
-const shieldSvg = on => '<svg viewBox="0 0 24 24" width="11" height="11" fill="none"'
-  + ' stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"'
-  + ' aria-hidden="true">' + SHIELD[on ? "on" : "off"] + '</svg>';
+/*
+  There is no monitoring line, and `showMonitored` should stop being an option.
 
-/* The `showMonitored` poster option: a line UNDER the artwork, which is where
-   Deluno already draws it (library-grid.tsx, ShieldCheck / ShieldOff plus the
-   words). Nothing about this moves onto the picture. */
-const MONITOR_LINE = monitored => S.mon === "off" ? "" :
-  '<div class="mon' + (monitored ? '' : ' off') + '">' + shieldSvg(monitored) + ' '
-  + (monitored ? 'Monitored' : 'Not monitored') + '</div>';
+  It was kept underneath at first — I read *"kept under in the selectable options"*
+  as *keep the line under the poster*. James: *"why is monitored under the poster,
+  it doesnt need to be there anymore"*. He is right, and the reason is the one this
+  codebase has already acted on once: **when a bar starts saying a fact, the switch
+  that used to say it is removed.** `4bdfe45` deleted the Quality poster option the
+  moment the bar carried the quality; `showEpisodeProgress` went the same way. A
+  line reading "Not monitored" beneath a card whose bars have already gone neutral
+  is the same fact twice.
+
+  So monitoring is said by the bars alone, it is not switchable, and
+  `CatalogueControls.cs` loses `showMonitored` exactly as it lost the other two.
+*/
 
 /* ── Continuing's hue: a TV-only question ─────────────────────── */
 const CONT_CANDIDATES = {
@@ -174,7 +175,6 @@ const S = {
   media: "on",         // "Quality on the bar" / "Episode count on the bar"
   subs: "on",          // "Subtitle count on the bar"
   leads: "subs",       // none | subs | both — the DESIGN choice, lead words
-  mon: "on",           // the showMonitored poster option — the line UNDER the poster
   unmon: "black",      // black | grey — what an unmonitored title's BARS become
   rem: "neutral",      // neutral | missing
   fill: "state",       // state | held
@@ -192,8 +192,6 @@ function controlsFor(medium) {
       opts: [["on","On"],["off","Off"]], user: true },
     { key: "subs",   label: "Subtitle count", opts: [["on","On"],["off","Off"]], user: true },
     { key: "leads",  label: "Lead words", opts: [["none","None"],["subs","SUBS only"],["both","Both"]] },
-    /* This IS the `showMonitored` poster option — the line under the artwork. */
-    { key: "mon",    label: "Monitoring line", opts: [["on","On"],["off","Off"]], user: true },
     { key: "unmon",  label: "Unmonitored bars", opts: [["black","Black"],["grey","Grey"]] },
     { key: "rem",    label: "Track",  opts: [["neutral","Neutral grey"],["missing","Missing red"]] },
     { key: "fill",   label: "Fill",   opts: [["state","State colour"],["held","What you hold"]] }
@@ -456,15 +454,16 @@ function cardHtml(it, isShow, withCaption) {
      poster option with its own switch — but it is drawn here because it is now
      the ONLY thing that says a title is unmonitored, and a render that omits it
      would make those scenarios look identical to the monitored ones. */
-  /* Nothing on the artwork but the two bars. Monitoring is said by the bars going
-     neutral and by the line underneath, never by a mark on the picture. */
-  const card = '<div class="card">' + topBar + art + botBar + MONITOR_LINE(monitored) + '</div>';
+  /* The whole card: two bars and the artwork. Monitoring is said by the bars going
+     neutral, and by nothing else. */
+  const card = '<div class="card">' + topBar + art + botBar + '</div>';
   if (!withCaption) return card;
 
   const note = barNote(media, subs, mark, isShow);
   const halfNote = off
     ? " Deluno is not watching this one, so both bars go neutral — an unmonitored title's"
-      + " rung is not telling you to do anything. The shield says it in words underneath."
+      + " rung is not telling you to do anything, so its colour is the thing least worth"
+      + " keeping."
     : "";
   return '<div class="titled">' + card
     + '<div class="cap">'
