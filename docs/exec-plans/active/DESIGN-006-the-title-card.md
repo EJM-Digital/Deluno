@@ -357,37 +357,56 @@ worse**, and fixing them is its own issue, not a silent rider on this one.
 
 ---
 
-## 5. Monitoring — its own mark, on the poster
+## 5. Monitoring — the bars go neutral, the shield stays underneath
 
-DESIGN-001 gives an unmonitored title a **half-grey dot**. An earlier revision of
-this document carried that over and halved the *bar's fill* instead. That is wrong:
-a half works on a **dot** because a dot has no length of its own, and **a bar is a
-length** whose length already means the fraction you hold. The render proved it
-before the argument did — on a Missing title, whose fill is 0% wide, the half
-rendered as *nothing at all*.
+Four attempts, three of them mine and each wrong for a different reason. The road is
+kept because the reasons are the useful part.
 
-The next attempt overrode the bars' colour entirely when unmonitored — black or
-grey, both measured clear of the track. It worked, and it spent the bar's colour on
-a fact that is not about the title's state.
+1. **Halving the bar's fill.** DESIGN-001 gives an unmonitored title a half-grey
+   *dot*; this was carried straight over to the *bar*. James: *"I think the half was
+   in reference to the dots which we have removed"*. Right — and the render proved it
+   before the argument did: on a Missing title, whose fill is 0% wide, the half
+   rendered as **nothing at all**. A half works on a dot because a dot has no length
+   of its own. A bar *is* a length, and that length already means the fraction held.
 
-**The answer is a separate mark.** James: *"maybe a nice little monitored /
-unmonitored on the poster is the best play here"*. The bars go on saying what the
-title *is*; whether Deluno is watching it is a different fact and gets a different
-mark — a small opaque badge in the corner of the artwork.
+2. **Overriding the bars with a flat neutral.** Worked. I then talked myself out of
+   it, on the grounds that it "spends the bar's colour on a fact that is not about
+   the title's state" — which is backwards. An unmonitored title's rung is not
+   telling you to do anything, so its colour is the thing *least* worth keeping.
 
-**Shown only when it is OFF.** Nearly every title is monitored, so a badge on every
-card says nothing on almost all of them, and the one card that needs to stand out
-stops standing out. An exception is worth marking; a default is not. The badge is
-opaque for the same reason the label is two-toned: a translucent mark is a different
-colour on every poster.
+3. **A shield badge in the corner of the artwork.** Reads well, and it is one more
+   thing on the picture for a fact Deluno already says in words on a line under the
+   poster, behind its own switch.
 
-**The glyph is a shield**, because Deluno already has one: `library-grid.tsx` draws
-`ShieldCheck` / `ShieldOff` for monitoring. The render first reached for an eye —
-which reads as *watching* in English but is not the app's own word for it, and a
-second icon for a fact that already has one is how an icon language stops being a
-language.
+4. **Settled.** James: *"the poster option should stay as a grey or black bar on the
+   poster and the shield removed from the poster and kept under in the selectable
+   options"*.
 
-### The control, and the words — settled
+### The rule
+
+**An unmonitored title's bars go neutral — both of them — and the artwork carries
+nothing.** The shield keeps its existing home: a line *under* the poster, behind
+`showMonitored`, exactly as `library-grid.tsx` already draws it.
+
+Two facts, two places, neither borrowing the other's space — the same rule the top
+and bottom bars already follow.
+
+| | Monitored | Not monitored |
+|---|---|---|
+| Both bars | the state's colour | **one neutral**, black or grey |
+| Line under the poster | shield · `Monitored` | slashed shield · `Not monitored` |
+| On the artwork | nothing | nothing |
+
+**Black or grey is open.** The thing to watch is that the track is already grey, so a
+grey fill on a grey track could make the bar vanish and take the fraction with it.
+Measured, both stay clear — black ΔE 19.2 dark / 74.9 light, grey 21.3 / 35.5 — so
+it is a taste call, not a legibility one. Both are switches on the decider pages.
+
+**`canBeHalf`** in `TITLE_MARK_PRESENTATION` now has no consumer on the card. Do not
+delete it blindly — the drawer and detail page may still read it — but check, because
+a flag nothing reads is the shape of the defects this project keeps finding.
+
+### The control, and the words — settled### The control, and the words — settled
 
 Chosen from four rendered variants (`/renders/monitoring-control.html`), James:
 *"honestly I like A"*. **An icon whose tooltip carries the state.** It is Sonarr's
@@ -404,7 +423,7 @@ options, so both are kept and each is used where it belongs:
 
 | Where | Reads |
 |---|---|
-| Card badge (not pressable) | `Not monitored` — the fact, and stop |
+| Line under the poster (not pressable) | `Monitored` · `Not monitored` — the fact, and stop |
 | Movie header, series header, season row, episode row | `Monitored — click to unmonitor` · `Not monitored — click to monitor` |
 
 The verb pair is fixed: **Monitor** and **Unmonitor** are what pressing does and
@@ -421,28 +440,21 @@ filters, one displays, one edits:
 | Selectable | What it is | Says today | Verdict |
 |---|---|---|---|
 | **Filter** — `MonitoringFilter` | narrows the shelf | `Any monitoring` · `Monitored (n)` · `Not monitored (n)` | **already correct**, leave it |
-| **Poster option** — `showMonitored` | shows or hides the fact on a card | switch labelled `Monitoring` | keep the switch, **change what it controls** — see below |
+| **Poster option** — `showMonitored` | shows or hides the shield line under the poster | switch labelled `Monitoring` | **unchanged** |
 | **Bulk edit** | sets the fact on a selection | `Monitored` / `Unmonitored` | → `Not monitored` |
 
 The internal value `"unmonitored"` stays as it is; it is a code identifier and never
 reaches a reader.
 
-#### `showMonitored` now controls the badge, not a line
+#### `showMonitored` is unchanged
 
-This is the consequence of choosing A and it is easy to miss. `showMonitored` is a
-poster option, on by default, and today it draws a **line under the poster** —
-`ShieldCheck` / `ShieldOff` plus the words. With the badge on the artwork carrying
-monitoring, that line would be the same fact twice on one card.
+An earlier revision of this document had it controlling a corner badge instead of a
+line. With the badge gone, **it goes on doing exactly what it does today**: showing
+or hiding the shield line under the poster. Nothing to build, nothing to reword.
 
-So the switch survives, its label survives, and **what it controls changes**: it
-turns the corner badge on and off. Its description changes with it — *"Whether
-Deluno is watching for this title"* describes the fact, not the option; it should
-say what switching it off does, which is stop marking the titles Deluno is not
-watching.
-
-And because the badge only appears when monitoring is **off**, this switch is one a
-reader will almost never see do anything — which is correct. It is there for someone
-who does not want the exception marked at all.
+Note what it does *not* control: the bars going neutral is not optional. Monitoring
+is a fact about whether Deluno will act, and a reader turning off a display line
+should not be able to hide it from the shelf entirely.
 
 ### The seven vocabularies this replaces
 
@@ -455,7 +467,6 @@ and adopting the above means **all of these change**:
 | Poster line, overview | `Monitored` / `Not monitored` | unchanged |
 | Filter panel | `Not monitored (n)` | unchanged |
 | Bulk dialog dropdown | `Monitored` / `Unmonitored` | `Monitored` / `Not monitored` |
-| Poster option `showMonitored` | draws a line under the poster | controls the corner badge |
 | Movie detail stat row | `On` / `Paused` | `Monitored` / `Not monitored` |
 | Movie detail eyebrow | `Monitoring paused` | `Not monitored` |
 | Movie detail button | `Monitor` / `Stop monitoring` | the icon control above |

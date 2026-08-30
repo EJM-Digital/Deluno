@@ -85,74 +85,59 @@ const TEXT = {
 const labelOn = mark => mark === "gold" ? "hsl(40 90% 12%)" : "hsl(0 0% 100%)";
 
 /*
-  Monitoring gets its own mark, and the bars keep their colour.
+  How a card says "Deluno is not watching this one".
 
-  The road here is worth keeping. DESIGN-001 gave an unmonitored title a half-grey
-  **dot**; an earlier revision of this render halved the **bar's fill** instead.
-  James: *"I think the half was in reference to the dots which we have removed"* —
-  right, and the measurement agreed before the argument did: on a Missing title,
-  whose fill is 0% wide, the half rendered as nothing at all. A half works on a dot
-  because a dot has no length of its own; a bar IS a length, and that length already
-  means the fraction you hold.
+  The road here is worth keeping, because three of the four attempts were mine and
+  each was wrong for a different reason.
 
-  Then: *"ditch the half and just overright it when its unmonitored its just black or
-  grey period"* — which worked, but spent the bar's colour on a fact that is not
-  about the title's state. And finally: *"maybe a nice little monitored /
-  unmonitored on the poster is the best play here"*. That is the right answer. The
-  bars go on saying what the title IS; whether Deluno is watching it is a separate
-  fact and gets a separate mark.
+  1. DESIGN-001 gives an unmonitored title a half-grey **dot**. This render halved
+     the **bar's fill** instead. James: *"I think the half was in reference to the
+     dots which we have removed"* — right, and the measurement agreed before the
+     argument did: on a Missing title, whose fill is 0% wide, the half rendered as
+     nothing at all. A half works on a dot because a dot has no length of its own;
+     a bar IS a length, and that length already means the fraction you hold.
 
-  **Shown only when it is OFF, by default.** Nearly every title is monitored, so a
-  badge on every card is a badge that says nothing on almost all of them — and the
-  one card that needs to stand out stops standing out. An exception is worth marking;
-  a default is not. Both are drawn so the choice can be looked at.
+  2. Overriding the bars with a flat neutral. Worked, and I talked myself out of it
+     on the grounds that it "spends the bar's colour on a fact that is not about the
+     title's state" — which is backwards: an unmonitored title's rung is not telling
+     you to do anything, so its colour is the thing least worth keeping.
+
+  3. A shield badge in the corner of the artwork. Reads well, but it is another
+     thing on the picture, and Deluno already says monitoring in words on a line
+     under the poster behind its own switch.
+
+  4. What James settled on: *"the poster option should stay as a grey or black bar
+     on the poster and the shield removed from the poster and kept under in the
+     selectable options"*. **The bars go neutral, the artwork stays clean, and the
+     shield keeps its existing home under the poster.** Two facts, two places,
+     neither borrowing the other's space — which is the same rule the top and bottom
+     bars already follow.
+
+  Black or grey is a switch. The thing to watch is that the TRACK is already grey,
+  so a grey fill on a grey track could make the bar vanish and take the fraction
+  with it — measured, both stay clear of it (black ΔE 19.2 dark / 74.9 light; grey
+  21.3 / 35.5), so this is a taste call rather than a legibility one.
 */
-/*
-  The glyph.
-
-  **Deluno already has one for monitoring: a shield.** `library-grid.tsx` draws
-  ShieldCheck / ShieldOff on the line under the poster. This render reached for an
-  eye — which reads as "watching" in English but is not the app's own word for it,
-  and a second icon for a fact that already has one is how an icon language stops
-  being a language. The shield is the default here for that reason; the others are
-  drawn so the choice can be looked at rather than assumed.
-*/
-const GLYPHS = {
-  shield: {
-    on: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/>',
-    off: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M2 2l20 20"/>'
-  },
-  eye: {
-    on: '<path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/>',
-    off: '<path d="M2 2l20 20"/><path d="M6.7 6.8A10.6 10.6 0 0 0 1 12s4 7 11 7a10.4 10.4 0 0 0 5.3-1.4"/>'
-       + '<path d="M9.9 5.2A10.9 10.9 0 0 1 12 5c7 0 11 7 11 7a19 19 0 0 1-3.2 4.2"/>'
-       + '<path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>'
-  },
-  bell: {
-    on: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 8-3 8h18s-3-1-3-8"/><path d="M10.3 21a2 2 0 0 0 3.4 0"/>',
-    off: '<path d="M18 8a6 6 0 0 0-9.3-5"/><path d="M6 8c0 7-3 8-3 8h13"/>'
-       + '<path d="M10.3 21a2 2 0 0 0 3.4 0"/><path d="M2 2l20 20"/>'
-  }
+const UNMONITORED = {
+  /* One value for both themes, like the surfaces — these sit on artwork. */
+  black: { fill: "hsl(220 14% 10%)", label: "hsl(220 10% 72%)" },
+  grey:  { fill: "hsl(220 8% 46%)",  label: "hsl(0 0% 100%)" }
 };
-const glyph = monitored => '<svg viewBox="0 0 24 24" width="11" height="11" fill="none"'
+
+const SHIELD = {
+  on: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/>',
+  off: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M2 2l20 20"/>'
+};
+const shieldSvg = on => '<svg viewBox="0 0 24 24" width="11" height="11" fill="none"'
   + ' stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"'
-  + ' aria-hidden="true">' + GLYPHS[S.glyph][monitored ? "on" : "off"] + '</svg>';
+  + ' aria-hidden="true">' + SHIELD[on ? "on" : "off"] + '</svg>';
 
-/* On the artwork, in the corner. Opaque, because a translucent badge is a
-   different colour on every poster — the same problem that killed the label. */
-function monitorBadge(monitored) {
-  if (S.mon === "off") return "";
-  if (S.mon === "when-off" && monitored) return "";
-  /* On a card the badge is not a control, so it states the fact and stops. The
-     "click to …" half of the tooltip belongs on the detail pages, where the same
-     glyph IS pressable. One vocabulary, two jobs. */
-  return '<div class="mbadge' + (monitored ? '' : ' off') + '" title="'
-    + (monitored ? 'Monitored' : 'Not monitored') + '">'
-    + glyph(monitored) + '</div>';
-}
-
-const MONITOR_LINE = monitored => '<div class="mon' + (monitored ? '' : ' off') + '">'
-  + (monitored ? '&#9679;' : '&#9675;') + ' ' + (monitored ? 'Monitored' : 'Not monitored') + '</div>';
+/* The `showMonitored` poster option: a line UNDER the artwork, which is where
+   Deluno already draws it (library-grid.tsx, ShieldCheck / ShieldOff plus the
+   words). Nothing about this moves onto the picture. */
+const MONITOR_LINE = monitored => S.mon === "off" ? "" :
+  '<div class="mon' + (monitored ? '' : ' off') + '">' + shieldSvg(monitored) + ' '
+  + (monitored ? 'Monitored' : 'Not monitored') + '</div>';
 
 /* ── Continuing's hue: a TV-only question ─────────────────────── */
 const CONT_CANDIDATES = {
@@ -189,8 +174,8 @@ const S = {
   media: "on",         // "Quality on the bar" / "Episode count on the bar"
   subs: "on",          // "Subtitle count on the bar"
   leads: "subs",       // none | subs | both — the DESIGN choice, lead words
-  mon: "when-off",     // when-off | always | line | off — how monitoring is shown
-  glyph: "shield",     // shield | eye | bell — the app already uses a shield
+  mon: "on",           // the showMonitored poster option — the line UNDER the poster
+  unmon: "black",      // black | grey — what an unmonitored title's BARS become
   rem: "neutral",      // neutral | missing
   fill: "state",       // state | held
   cont: "magenta",     // TV only
@@ -207,11 +192,9 @@ function controlsFor(medium) {
       opts: [["on","On"],["off","Off"]], user: true },
     { key: "subs",   label: "Subtitle count", opts: [["on","On"],["off","Off"]], user: true },
     { key: "leads",  label: "Lead words", opts: [["none","None"],["subs","SUBS only"],["both","Both"]] },
-    /* This IS the `showMonitored` poster option. Choosing the badge changes what
-       that switch controls — it drew a line under the poster, and a line plus a
-       badge would be the same fact twice on one card. */
-    { key: "mon",    label: "Monitoring", opts: [["when-off","Badge when off"],["always","Badge always"],["line","Line under"],["off","Not shown"]], user: true },
-    { key: "glyph",  label: "Glyph", opts: [["shield","Shield"],["eye","Eye"],["bell","Bell"]] },
+    /* This IS the `showMonitored` poster option — the line under the artwork. */
+    { key: "mon",    label: "Monitoring line", opts: [["on","On"],["off","Off"]], user: true },
+    { key: "unmon",  label: "Unmonitored bars", opts: [["black","Black"],["grey","Grey"]] },
     { key: "rem",    label: "Track",  opts: [["neutral","Neutral grey"],["missing","Missing red"]] },
     { key: "fill",   label: "Fill",   opts: [["state","State colour"],["held","What you hold"]] }
   ];
@@ -394,7 +377,7 @@ function fillColourFor(mark, fullyHeld, C) {
 }
 
 function cardHtml(it, isShow, withCaption) {
-  const C = surfaces(), mark = markFor(it);
+  const C = surfaces(), mark = markFor(it), monitored = it.monitored !== false;
   const media = mediaBar(it, isShow);
   const subs = subtitleBar(it, isShow);
   const subPct = subs.wanted ? Math.round(subs.held / subs.wanted * 100) : 0;
@@ -408,9 +391,12 @@ function cardHtml(it, isShow, withCaption) {
 
   /* A bar with no fraction keeps its state's colour under either grammar: an
      Upcoming title has not started, a downloading one has no held part yet. */
+  /* Unmonitored wins over every colour rule, on both bars. */
+  const off = monitored ? null : UNMONITORED[S.unmon];
   const topFillFlat = media.fraction ? fillColourFor(mark, media.pct === 100, C) : "hsl(" + C[mark] + ")";
-  const topFill = topFillFlat;
-  const topOnFill = topFillFlat === "hsl(" + C.gold + ")" ? labelOn("gold") : "hsl(0 0% 100%)";
+  const topFill = off ? off.fill : topFillFlat;
+  const topOnFill = off ? off.label
+    : topFillFlat === "hsl(" + C.gold + ")" ? labelOn("gold") : "hsl(0 0% 100%)";
 
   const subSettled = subs.wanted > 0 && subs.held === subs.wanted;
   /* With no files there is nothing held, so the bar carries the title's own
@@ -419,8 +405,9 @@ function cardHtml(it, isShow, withCaption) {
   const subPctDrawn = subNoFiles ? (subState === "miss" ? 0 : 100) : subPct;
   const subFillFlat = subNoFiles ? "hsl(" + C[subState] + ")"
     : subSettled ? "hsl(" + C.gold + ")" : "hsl(" + C.upg + ")";
-  const subFill = subFillFlat;
-  const subOnFill = subNoFiles ? labelOn(subState)
+  const subFill = off ? off.fill : subFillFlat;
+  const subOnFill = off ? off.label
+    : subNoFiles ? labelOn(subState)
     : subSettled ? labelOn("gold") : labelOn("upg");
 
   /* Each bar answers to its own user switch. With the text off a bar falls back
@@ -469,15 +456,15 @@ function cardHtml(it, isShow, withCaption) {
      poster option with its own switch — but it is drawn here because it is now
      the ONLY thing that says a title is unmonitored, and a render that omits it
      would make those scenarios look identical to the monitored ones. */
-  const monitored = it.monitored !== false;
-  const card = '<div class="card">' + monitorBadge(monitored) + topBar + art + botBar
-    + (S.mon === "line" ? MONITOR_LINE(monitored) : '') + '</div>';
+  /* Nothing on the artwork but the two bars. Monitoring is said by the bars going
+     neutral and by the line underneath, never by a mark on the picture. */
+  const card = '<div class="card">' + topBar + art + botBar + MONITOR_LINE(monitored) + '</div>';
   if (!withCaption) return card;
 
   const note = barNote(media, subs, mark, isShow);
-  const halfNote = it.monitored === false
-    ? " Deluno is not watching this one — its own mark, so the bars go on saying what the"
-      + " title is."
+  const halfNote = off
+    ? " Deluno is not watching this one, so both bars go neutral — an unmonitored title's"
+      + " rung is not telling you to do anything. The shield says it in words underneath."
     : "";
   return '<div class="titled">' + card
     + '<div class="cap">'
