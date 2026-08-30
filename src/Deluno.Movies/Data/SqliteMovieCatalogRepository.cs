@@ -93,6 +93,19 @@ public sealed class SqliteMovieCatalogRepository(
             return existing;
         }
 
+        // **Missing excludes Downloading, and that is not obvious.**
+        //
+        // This arm is "no file, and not Upcoming" rather than
+        // `wanted_status = 'missing'`, so that a title Deluno holds no wanted row
+        // for still counts as Missing — which is what the card draws for one.
+        // But a downloading title also has no file, so it was counted twice: once
+        // under Downloading and once under Missing, and the chip row summed to
+        // twelve across eleven titles.
+        //
+        // Invisible until the lab library had anything downloading in it. Every
+        // other arm names its status outright; this one is the only one that
+        // describes a state by what it is not, which is why it was the one that
+        // could quietly overlap.
         using var command = connection.CreateCommand();
         command.CommandText =
             """
@@ -1000,7 +1013,7 @@ public sealed class SqliteMovieCatalogRepository(
                 SUM(CASE WHEN {statusArm} AND m.monitored = 1 THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {statusArm} AND m.monitored = 0 THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {monitoredArm} AND {CatalogueHasFileFor(libraryId)} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {monitoredArm} AND NOT ({CatalogueHasFileFor(libraryId)} OR {CatalogueWantedIs(libraryId, WantedStatuses.Upcoming)}) THEN 1 ELSE 0 END),
+                SUM(CASE WHEN {monitoredArm} AND NOT ({CatalogueHasFileFor(libraryId)} OR {CatalogueWantedIs(libraryId, WantedStatuses.Upcoming)} OR {CatalogueWantedIs(libraryId, WantedStatuses.Downloading)}) THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {monitoredArm} AND {CatalogueUpgradeFor(libraryId)} THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, WantedStatuses.Covered)} THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, WantedStatuses.Upcoming)} THEN 1 ELSE 0 END),
