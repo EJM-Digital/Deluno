@@ -250,10 +250,27 @@ function controlsFor(medium) {
        "unmonitored" and nothing else, so a grey track makes a monitored title with
        nothing held look unmonitored. */
     { key: "rem",    label: "Track",  opts: [["missing","Missing red"],["neutral","Neutral grey — collides"]] },
-    { key: "fill",   label: "Fill",   opts: [["mixed","State, held green"],["state","State colour"],["held","What you hold"]] }
   ];
-  /* The one control the movie shelf must not carry. */
-  if (medium === "tv") base.push({ key: "cont", label: "Continuing", opts: CONT_OPTS });
+  /*
+    **Two controls the movie shelf must not carry**, and both for the same reason:
+    a film is one file.
+
+    `cont` — a film is never still airing, so Continuing does not exist here.
+
+    `fill` — the fill rule decides how to colour the part you HOLD, and a film has
+    no partial coverage: it is held (100%) or it is not (0%), and download progress
+    is explicitly non-compositional because there is no held part yet. Measured
+    rather than reasoned: across all three fill rules, **zero** movie cards render
+    differently, against **13** of the TV cards. James: *"this one isnt changing
+    anything at all"* — he was looking at the movie page, and it genuinely was not.
+
+    A switch that cannot change what you are looking at is worse than no switch: it
+    invites you to keep flipping it looking for the difference.
+  */
+  if (medium === "tv") {
+    base.push({ key: "cont", label: "Continuing", opts: CONT_OPTS });
+    base.push({ key: "fill", label: "Fill", opts: [["mixed","State, held green"],["state","State colour"],["held","What you hold"]] });
+  }
   base.push({ key: "size", label: "Card", opts: [["sm","Small"],["md","Medium"],["lg","Large"]] });
   return base;
 }
@@ -838,6 +855,9 @@ function mountDecider({ medium }) {
   function drawPresets() {
     const el = document.getElementById("presets");
     if (!el) return;
+    /* Both presets set `fill` and `rem`. On the movie shelf `fill` does nothing,
+       so a preset there would be half a control pretending to be a whole one. */
+    if (!isShow) { el.innerHTML = ""; return; }
     const match = PRESETS.find(p => Object.keys(p.set).every(k => S[k] === p.set[k]));
     el.innerHTML = '<span>Presets</span>'
       + PRESETS.map((p, i) => '<button data-preset="' + i + '">' + p.label + '</button>').join("")

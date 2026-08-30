@@ -731,6 +731,10 @@ Invariants asserted, each one a bug that had already happened:
 6. **Nothing but the image is on the artwork.**
 7. **No two cards render the same shape** — compared on fill width, fill colour,
    track colour and label text, not on their names.
+8. **Every switch changes what is on screen.** Each control is swept from a reset
+   baseline and its options must produce N distinct paints. The bars are
+   deliberately theme-independent, so `theme` is exempt on the bars and checked on
+   the page chrome instead.
 
 Invariant 7 is the one that had been missing, and it is why a duplicate survived a
 passing audit: it asserted that scenario *names* were unique, which is a different
@@ -741,6 +745,33 @@ is meant to catch.**
 
 The Shipped palette fails #5 on 60 combinations and is excluded from the run, which
 is the measured reason it is not a candidate rather than a matter of taste.
+
+---
+
+## 12b. The fill rule is a TV-only decision
+
+Like Continuing, and for the same reason: **a film is one file.**
+
+The fill rule decides how to colour the part you *hold*. A film has no partial
+coverage — it is held (100%) or it is not (0%) — and download progress is explicitly
+non-compositional, because there is no held part yet. So the rule has nothing to act
+on.
+
+Measured across all three fill rules, on the same catalogue:
+
+| | Cards whose style differs | Cards **visibly** different |
+|---|---|---|
+| Movies | 1 | **0** |
+| TV | 14 | **13** |
+
+The single movie card whose style differs is a Missing film, whose fill is 0% wide —
+a colour on a zero-width element is not on screen. James, looking at the movie page:
+*"this one isnt changing anything at all"*. It was not.
+
+**A switch that cannot change what you are looking at is worse than no switch**: it
+invites you to keep flipping it looking for the difference. `Fill` and `Continuing`
+are both TV-only controls, and the movie page says why it lacks them rather than
+leaving a reader to wonder.
 
 ---
 
