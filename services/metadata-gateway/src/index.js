@@ -560,6 +560,10 @@ function readCast(item, artworkOrigin) {
     .filter((person) => typeof person?.name === "string" && person.name.trim())
     .slice(0, MAX_CAST)
     .map((person) => ({
+      // The TMDb person id, passed through rather than dropped. It is what a
+      // credit links to, and what following a person's filmography would key
+      // on — neither is possible from a name alone, because names collide.
+      personId: typeof person.id === "number" ? String(person.id) : null,
       name: person.name.trim(),
       character: typeof person.character === "string" ? person.character.trim() || null : null,
       profileUrl: imageUrl(person.profile_path, PORTRAIT_SIZE, artworkOrigin)
@@ -601,6 +605,7 @@ function readCrew(crew, artworkOrigin) {
       }
 
       byPerson.set(key, {
+        personId: typeof person.id === "number" ? String(person.id) : null,
         name,
         jobs: [job],
         profileUrl: imageUrl(person.profile_path, PORTRAIT_SIZE, artworkOrigin)
@@ -610,7 +615,12 @@ function readCrew(crew, artworkOrigin) {
 
   return [...byPerson.values()]
     .slice(0, MAX_CREW)
-    .map((person) => ({ name: person.name, job: person.jobs.join(", "), profileUrl: person.profileUrl }));
+    .map((person) => ({
+      personId: person.personId,
+      name: person.name,
+      job: person.jobs.join(", "),
+      profileUrl: person.profileUrl
+    }));
 }
 
 function imageUrl(path, size, artworkOrigin) {

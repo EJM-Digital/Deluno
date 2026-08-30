@@ -892,7 +892,7 @@ export function ShowDetailPage() {
                         <ListCell primary={episode.lastSearchUtc ? formatDateTime(episode.lastSearchUtc) : "Never"} />
                         <ListCell>
                           {/* An episode is a title. Same five marks (DESIGN-001). */}
-                          <TitleMarkLabel item={{ monitored: episode.monitored, wantedStatus: episode.wantedStatus }} />
+                          <TitleMarkLabel item={{ monitored: episode.monitored, wantedStatus: episode.wantedStatus }} type="show" />
                         </ListCell>
                         <div role="cell" className="flex justify-start">
                           <Switch

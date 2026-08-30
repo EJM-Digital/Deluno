@@ -1498,6 +1498,8 @@ public sealed class TmdbMetadataProvider(
         "Costume Design", "Casting", "Visual Effects Supervisor"
     ];
 
+    private static string? PersonId(int id) => id > 0 ? id.ToString() : null;
+
     private static string? Portrait(string? path) =>
         string.IsNullOrWhiteSpace(path) ? null : $"https://image.tmdb.org/t/p/{ArtworkSizes.Portrait}{path}";
 
@@ -1510,7 +1512,7 @@ public sealed class TmdbMetadataProvider(
         [.. (cast ?? [])
             .Where(member => !string.IsNullOrWhiteSpace(member.Name))
             .Take(MaxCast)
-            .Select(member => new MetadataCastMember(member.Name!, member.Character, Portrait(member.ProfilePath)))];
+            .Select(member => new MetadataCastMember(member.Name!, member.Character, Portrait(member.ProfilePath), PersonId(member.Id)))];
 
     /// <summary>
     /// One row per person, in <see cref="CrewJobs"/> order, with every job that
@@ -1519,7 +1521,7 @@ public sealed class TmdbMetadataProvider(
     /// </summary>
     private static IReadOnlyList<MetadataCrewMember> ReadCrew(IReadOnlyList<TmdbCrewMember>? crew)
     {
-        var byPerson = new Dictionary<string, (string Name, List<string> Jobs, string? Portrait)>();
+        var byPerson = new Dictionary<string, (string Name, List<string> Jobs, string? Portrait, string? PersonId)>();
         var order = new List<string>();
 
         foreach (var job in CrewJobs)
@@ -1535,7 +1537,7 @@ public sealed class TmdbMetadataProvider(
                     continue;
                 }
 
-                byPerson[key] = (member.Name!.Trim(), [job], Portrait(member.ProfilePath));
+                byPerson[key] = (member.Name!.Trim(), [job], Portrait(member.ProfilePath), PersonId(member.Id));
                 order.Add(key);
             }
         }
@@ -1543,7 +1545,7 @@ public sealed class TmdbMetadataProvider(
         return [.. order
             .Take(MaxCrew)
             .Select(key => byPerson[key])
-            .Select(person => new MetadataCrewMember(person.Name, string.Join(", ", person.Jobs), person.Portrait))];
+            .Select(person => new MetadataCrewMember(person.Name, string.Join(", ", person.Jobs), person.Portrait, person.PersonId))];
     }
 
     private static string BuildTmdbUrl(string mediaType, int providerId)
@@ -1780,6 +1782,7 @@ public sealed class TmdbMetadataProvider(
         [property: JsonPropertyName("crew")] IReadOnlyList<TmdbCrewMember>? Crew);
 
     private sealed record TmdbCastMember(
+        [property: JsonPropertyName("id")] int Id,
         [property: JsonPropertyName("name")] string? Name,
         [property: JsonPropertyName("character")] string? Character,
         [property: JsonPropertyName("profile_path")] string? ProfilePath);

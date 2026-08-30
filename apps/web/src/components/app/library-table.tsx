@@ -245,7 +245,18 @@ export function LibraryTable(
                     : <span className="text-muted-foreground">—</span>}
                 </td>
                 <td>
-                  <TitleMarkLabel item={item} />
+                  {/*
+                    **`type`, or this row draws a different red from the poster.**
+                    A shelf that has adopted DESIGN-006 paints its marks from the
+                    bar SURFACES; without the medium, this label falls back to the
+                    page-text palette — measured on the rig as rgb(239,77,77) here
+                    against rgb(192,17,28) on the card for the same title.
+
+                    That is the third place this exact mismatch has appeared: the
+                    legend chips, this row, and the marks inside them. A list and
+                    the shelf it mirrors must not disagree about a colour.
+                  */}
+                  <TitleMarkLabel item={item} type={variant === "shows" ? "show" : "movie"} />
                 </td>
                 {variant === "shows" ? (
                   <td className="hidden lg:table-cell">
