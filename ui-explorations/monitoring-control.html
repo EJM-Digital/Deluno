@@ -1,0 +1,157 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Monitoring — the control and the words</title>
+<link rel="stylesheet" href="card-decider.css">
+<style>
+  .lvl { margin: 30px 0 0; }
+  .lvl h3 { font: 600 10px/1 "JetBrains Mono", monospace; letter-spacing: .1em;
+            text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+  .row { display: flex; align-items: center; gap: 14px; padding: 11px 14px;
+         border: 1px solid var(--line); border-radius: 10px; background: var(--chip);
+         margin-bottom: 8px; }
+  .row .grow { flex: 1; min-width: 0; }
+  .row .t { font-weight: 600; font-size: 13.5px; }
+  .row .s { font-size: 11.5px; color: var(--muted); }
+  .opts { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 18px; }
+  .opt { border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px 18px; }
+  .opt h2 { font-size: 15px; margin: 0 0 4px; display: flex; align-items: baseline; gap: 9px; }
+  .opt h2 .tag { font: 700 10px/1 "JetBrains Mono", monospace; letter-spacing: .06em;
+                 background: var(--chip); border: 1px solid var(--line); color: var(--muted);
+                 padding: 4px 6px; border-radius: 5px; }
+  .opt .why { font-size: 12.5px; color: var(--muted); margin: 0 0 14px; line-height: 1.5; }
+  .opt .why b { color: var(--fg); }
+
+  /* the controls themselves */
+  .icobtn { display: inline-flex; align-items: center; justify-content: center;
+            width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line);
+            background: transparent; color: var(--fg); cursor: pointer; }
+  .icobtn.off { color: var(--muted); }
+  .icobtn:hover { border-color: hsl(211 100% 50% / .55); }
+  .vbtn { display: inline-flex; align-items: center; gap: 7px; padding: 7px 11px;
+          border-radius: 8px; border: 1px solid var(--line); background: transparent;
+          color: var(--fg); cursor: pointer; font: 600 12.5px/1 "Inter", system-ui, sans-serif; }
+  .vbtn:hover { border-color: hsl(211 100% 50% / .55); }
+  .sw { display: inline-flex; align-items: center; gap: 9px; font-size: 12.5px; cursor: pointer; }
+  .track2 { width: 34px; height: 19px; border-radius: 999px; background: var(--idle);
+            position: relative; transition: background .16s; flex: none; }
+  .track2.on { background: hsl(211 100% 50% / .85); }
+  .knob { position: absolute; top: 2px; left: 2px; width: 15px; height: 15px; border-radius: 999px;
+          background: #fff; transition: left .16s; }
+  .track2.on .knob { left: 17px; }
+  .chip2 { display: inline-flex; align-items: center; gap: 7px; padding: 6px 10px;
+           border-radius: 999px; border: 1px solid var(--line); background: transparent;
+           color: var(--fg); cursor: pointer; font: 600 12px/1 "Inter", system-ui, sans-serif; }
+  .chip2.off { color: var(--muted); }
+  .chip2:hover { border-color: hsl(211 100% 50% / .55); }
+</style>
+
+<div class="rail" id="rail"></div>
+
+<main>
+  <h1>Monitoring — the control and the words
+    <a href="card-decider-movies.html">&larr; Movie card</a></h1>
+
+  <p class="lede">James: <i>"monitoring should be something that takes on the word monitor
+    and unmonitor dont you think? or does it not matter?"</i> &mdash; it matters, and the
+    answer has a shape: <b>a state word describes, a verb instructs.</b> Anything that
+    merely shows the fact wants <b>Monitored / Not monitored</b>; anything you press wants
+    <b>Monitor / Unmonitor</b>, because a button should say what pressing it does.</p>
+
+  <p class="lede"><b>Sonarr does both at once.</b> Its control is an icon whose tooltip
+    reads <i>&ldquo;Monitored, click to unmonitor&rdquo;</i> and
+    <i>&ldquo;Unmonitored, click to monitor&rdquo;</i> &mdash; read from its own DOM, not
+    recalled. State first, action second, one control.</p>
+
+  <p class="lede"><b>Deluno currently says it seven ways.</b> State as
+    <code>Monitored / Not monitored</code> (poster, overview), <code>Monitored /
+    Unmonitored</code> (bulk dialog), <code>On / Paused</code> (movie stats) and
+    <code>Monitoring paused</code> (movie eyebrow); action as <code>Monitor /
+    Unmonitor</code> (selection bar), <code>Monitor / Stop monitoring</code> (movie
+    button) and <code>Monitor or unmonitor</code> (bulk dropdown). Whichever option
+    below wins, it wins <b>everywhere</b> &mdash; that is the point of picking one.</p>
+
+  <div id="out"></div>
+</main>
+
+<script>
+const S = { theme: "dark", vocab: "not-monitored", state: "on" };
+
+const CONTROLS = [
+  { key: "theme", label: "Theme", opts: [["dark","Dark"],["light","Light"]] },
+  { key: "vocab", label: "State words",
+    opts: [["not-monitored","Monitored / Not monitored"],["unmonitored","Monitored / Unmonitored"]] },
+  { key: "state", label: "This title is", opts: [["on","Monitored"],["off","Not monitored"]] }
+];
+
+const SHIELD_ON  = '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/>';
+const SHIELD_OFF = '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M2 2l20 20"/>';
+const svg = on => '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"'
+  + ' stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+  + (on ? SHIELD_ON : SHIELD_OFF) + '</svg>';
+
+/* The two candidate vocabularies. The VERB pair never changes — "Monitor" and
+   "Unmonitor" are what pressing does, and nothing else says that as briefly.
+   Only the state words are in question. */
+const stateWord = on => on
+  ? "Monitored"
+  : (S.vocab === "unmonitored" ? "Unmonitored" : "Not monitored");
+const verbWord = on => on ? "Unmonitor" : "Monitor";
+const tip = on => stateWord(on) + " — click to " + verbWord(on).toLowerCase();
+
+const VARIANTS = [
+  { tag: "A", name: "Icon, state in the tooltip",
+    why: "Sonarr's exact shape. <b>Cheapest in space</b> — it fits a season row, an episode row and a header alike, which matters because this control has to appear at three levels. The cost is that the state is invisible until hovered, and on a touch screen there is no hover.",
+    render: on => '<button class="icobtn' + (on ? '' : ' off') + '" title="' + tip(on) + '">'
+      + svg(on) + '</button>' },
+  { tag: "B", name: "Switch, labelled with the noun",
+    why: "The control says <b>Monitoring</b> and its position says on or off. This is what a switch is for, and it is already what the movie page's Automation card does. Reads as a setting rather than an action, which is right for a detail page and wrong for a dense row.",
+    render: on => '<label class="sw"><span class="track2' + (on ? ' on' : '') + '"><span class="knob"></span></span>Monitoring</label>' },
+  { tag: "C", name: "Button, labelled with the verb",
+    why: "Says what pressing it <b>does</b>, which is the one thing a button must say. The state is then implied rather than stated — you read <i>Unmonitor</i> and infer it is currently monitored, which is one inference more than a reader should have to make.",
+    render: on => '<button class="vbtn">' + svg(on) + verbWord(on) + '</button>' },
+  { tag: "D", name: "State chip you can press",
+    why: "Says the state outright and is still pressable, with the verb in the tooltip — Sonarr's tooltip idea, made visible. <b>Both facts, no hover required.</b> Widest of the four, which is the only thing against it on a season row.",
+    render: on => '<button class="chip2' + (on ? '' : ' off') + '" title="Click to '
+      + verbWord(on).toLowerCase() + '">' + svg(on) + stateWord(on) + '</button>' }
+];
+
+const LEVELS = [
+  { h: "Movie detail — the header", t: "Blade Runner 2049", s: "2017 · Remux-2160p · 82 GB" },
+  { h: "Series detail — the header", t: "Severance", s: "2022 · 3 of 20 aired episodes on disk" },
+  { h: "Season row — inside a series", t: "Season 2", s: "10 episodes · 3 on disk · 7 missing" },
+  { h: "Episode row — inside a season", t: "2×04 · Woe's Hollow", s: "Aired 21 Feb · on disk" }
+];
+
+function drawRail() {
+  document.getElementById("rail").innerHTML = CONTROLS.map(c =>
+    '<div class="grp"><label>' + c.label + '</label><div class="seg">'
+    + c.opts.map(o => '<button data-k="' + c.key + '" data-v="' + o[0] + '" aria-pressed="'
+        + (S[c.key] === o[0]) + '">' + o[1] + '</button>').join("")
+    + '</div></div>').join("")
+    + '<div class="readout"><code>' + CONTROLS.filter(c => c.key !== "theme")
+        .map(c => c.label + ": " + c.opts.find(o => o[0] === S[c.key])[1]).join("  ·  ")
+    + '</code></div>';
+}
+
+function draw() {
+  document.body.className = S.theme === "light" ? "light" : "";
+  drawRail();
+  const on = S.state === "on";
+  document.getElementById("out").innerHTML = '<div class="opts">' + VARIANTS.map(v =>
+    '<div class="opt"><h2><span class="tag">' + v.tag + '</span>' + v.name + '</h2>'
+    + '<p class="why">' + v.why + '</p>'
+    + LEVELS.map(l => '<div class="lvl"><h3>' + l.h + '</h3><div class="row">'
+        + '<div class="grow"><div class="t">' + l.t + '</div><div class="s">' + l.s + '</div></div>'
+        + v.render(on) + '</div></div>').join("")
+    + '</div>').join("") + '</div>';
+}
+
+document.addEventListener("click", e => {
+  const b = e.target.closest("button[data-k]");
+  if (!b) return;
+  S[b.dataset.k] = b.dataset.v;
+  draw();
+});
+
+draw();
+</script>
