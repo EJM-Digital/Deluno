@@ -137,6 +137,27 @@ describe("the label is drawn twice and clipped into halves", () => {
   });
 });
 
+describe("every label is coloured for the ground it sits on", () => {
+  it("puts the surface's own label on a surface track, not the grey-track one", () => {
+    // `onTrack` is solved against the NEUTRAL grey track. This shelf's track is
+    // Missing red, which is a surface — so its label is that surface's label,
+    // white. Wiring `onTrack` here measured 2.85:1 on the live shelf, under the
+    // 4.5 the spec requires of every visible label. The spec said both things and
+    // the wrong two were connected.
+    const [top, bottom] = bars(film({ wantedStatus: "missing", hasFile: false, subtitleLanguagesHeld: 0 }));
+    for (const bar of [top, bottom]) {
+      const back = layers(bar)[0];
+      expect(back.style.color).toContain(TITLE_MARK_PAINT.missing.onSurface);
+      expect(back.style.color).not.toContain(TITLE_MARK_PAINT.missing.onTrack);
+    }
+  });
+
+  it("keeps the unmonitored track's label white too", () => {
+    const [top] = bars(film({ monitored: false, wantedStatus: "missing", hasFile: false }));
+    expect(layers(top)[0].style.color).toContain(UNMONITORED_PAINT.onSurface);
+  });
+});
+
 describe("the bars are pinned to the artwork's edges", () => {
   it("positions them absolutely, at top and bottom", () => {
     // **This is the test that was missing.** The first build laid the bars out in

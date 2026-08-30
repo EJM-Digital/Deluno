@@ -361,7 +361,7 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                       out what makes a mark recognisable is working at half
                       strength.
                     */}
-                    {chip.mark ? <MarkStrip mark={chip.mark} sheen /> : null}
+                    {chip.mark ? <MarkStrip mark={chip.mark} type={variant === "movies" ? "movie" : "show"} sheen /> : null}
                     <span>{chip.label}</span>
                     {/* The count wears the colour: the number is the part you read. */}
                     <span
@@ -396,7 +396,7 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                 The divider is what says the rest of the row does not filter.
                 These carry no count and no click for the same reason.
               */}
-              <TitleMarkBarLegend className="ml-1.5 border-l border-hairline pl-3" />
+              <TitleMarkBarLegend className="ml-1.5 border-l border-hairline pl-3" type={variant === "movies" ? "movie" : "show"} />
             </div>
 
             {/*

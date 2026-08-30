@@ -138,7 +138,10 @@ describe("the chip row and the bar legend", () => {
     // Read off the rail's own source, the way `WorkPlanner`'s interval tests
     // are: rendering the rail proves the swatch it happens to draw today, while
     // this fails the moment somebody hand-rolls a second one beside it.
-    expect(railSource).toContain("<MarkStrip mark={chip.mark} sheen />");
+    // The `type` is threaded so the swatch can paint from the bar SURFACES on a
+    // shelf that has adopted DESIGN-006 — a legend has to be drawn in the
+    // colours it is explaining, and it was not.
+    expect(railSource).toMatch(/<MarkStrip mark=\{chip\.mark\} type=\{[^}]+\} sheen \/>/);
     // The dot it used to draw, and the constant that sized it.
     expect(railSource).not.toContain("MARK_DOT_SIZE");
     expect(railSource).not.toMatch(/rounded-full[^"]*TITLE_MARK_PRESENTATION/);
