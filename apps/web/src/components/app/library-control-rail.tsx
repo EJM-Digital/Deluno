@@ -381,6 +381,54 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
               })}
 
               {/*
+                Not monitored, as a chip — on the OTHER axis.
+
+                James: *"not monitored should be a filter the same as quality
+                met, upgradeable downloading missing etc etc"*. It was a legend
+                entry, on the grounds `library-filters.ts` gives for taking
+                Monitored/Unmonitored out of the chips: monitoring multiplies
+                across the rungs rather than sitting beside them, so a chip that
+                set `quickFilter` would make *"missing, and I have told Deluno to
+                leave it alone"* unaskable again.
+
+                That objection is about which axis the chip writes to, not about
+                whether it can be a chip. This one sets `monitoring`, the axis
+                that already exists for it — so it looks and behaves like every
+                other chip and **stacks** with them instead of replacing them.
+                Missing + Not monitored is now one click each, which is the
+                question the old shared value could not ask at all.
+
+                It also has a colour now, which is the other reason it was
+                excluded: grey is what an unmonitored card's bars are painted.
+                A chip that could not be given a colour had no business in a row
+                that is the shelf's colour legend; this one has one.
+              */}
+              {variant === "movies" ? (
+                <button
+                  type="button"
+                  onClick={() => setMonitoring(monitoring === "unmonitored" ? "any" : "unmonitored")}
+                  aria-pressed={monitoring === "unmonitored"}
+                  title="Titles Deluno is not watching. Stacks with the state chips rather than replacing them."
+                  className={cn(
+                    "relative flex min-h-[calc(var(--library-toolbar-height)*0.78)] items-center gap-1.5 rounded-lg px-3 text-[length:var(--library-toolbar-size)] select-none",
+                    monitoring === "unmonitored"
+                      ? "font-semibold text-foreground"
+                      : "font-medium text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <span
+                    aria-hidden
+                    className="h-1 w-4 shrink-0 rounded-full"
+                    style={{ background: "hsl(var(--mark-unmonitored))" }}
+                  />
+                  <span>Not monitored</span>
+                  <span className="tabular rounded-md bg-foreground/[0.06] px-1.5 py-px text-[length:var(--library-badge-size)] font-bold leading-tight text-muted-foreground dark:bg-white/[0.07]">
+                    {facets?.unmonitored ?? 0}
+                  </span>
+                </button>
+              ) : null}
+
+              {/*
                 The bar's legend (#327), on the row that is already the legend.
 
                 It was first built into the View drawer, on the issue's own
@@ -396,43 +444,6 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                 The divider is what says the rest of the row does not filter.
                 These carry no count and no click for the same reason.
               */}
-              {/*
-                Not monitored, and why it is a legend entry rather than a chip.
-
-                James: *"do we need to add an unmonitored in the legend as
-                well?"* — yes, because grey is now a colour on the shelf: an
-                unmonitored title's bars are painted flat grey, overriding the
-                rung. A row whose job is to explain the colours below it cannot
-                leave one out.
-
-                But NOT as a filter chip. `library-filters.ts` gives two reasons
-                Monitored and Unmonitored were taken out of the chips, and only
-                one of them has expired. The dead one was "two chips that cannot
-                have a colour" — grey has one now. The live one is that
-                monitoring is a **separate axis**: it multiplies across the
-                rungs rather than sitting beside them, so a chip would make
-                "missing, and I have told Deluno to leave it alone" unaskable
-                again. That question belongs to the Monitoring filter, which
-                already asks it.
-
-                It sits past the divider, where nothing filters and nothing
-                carries a count — but BEFORE the subtitle legend, because it is a
-                card-level override of both bars rather than a subtitle colour.
-                Placed after it, it read as one of the subtitle segments.
-              */}
-              {variant === "movies" ? (
-                <span
-                  className="ml-1.5 flex items-center gap-1.5 border-l border-hairline pl-3 text-[length:var(--library-toolbar-size)] font-medium text-muted-foreground"
-                  title="Deluno is not watching this title, so its bars drop their colour. Filter by it under Monitoring."
-                >
-                  <span
-                    aria-hidden
-                    className="h-1 w-4 shrink-0 rounded-full"
-                    style={{ background: "hsl(var(--mark-unmonitored))" }}
-                  />
-                  Not monitored
-                </span>
-              ) : null}
 
               <TitleMarkBarLegend className="ml-1.5 border-l border-hairline pl-3" type={variant === "movies" ? "movie" : "show"} />
 
