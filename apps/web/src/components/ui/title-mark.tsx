@@ -318,7 +318,19 @@ function TwoToneBar({
       aria-label={ariaLabel}
       title={title}
       className={cn(
-        "absolute inset-x-0 z-10 h-4 overflow-hidden",
+        "absolute inset-x-0 z-10 overflow-hidden",
+        /*
+          **The bar shrinks when its words are switched off.**
+
+          A 16px band exists to carry a label; with no label it is 16px of
+          chrome over the artwork saying what 5px says. James: *"when these 2 are
+          triggered off the bar should go smaller"*, and DESIGN-006 §6 already
+          said it — *"with a switch off its bar falls back to the 5px strip
+          Deluno ships today"*. The state and the fraction survive either way,
+          which is the rule the switch must never break: it removes words, never
+          facts.
+        */
+        inner ? "h-4" : "h-[5px]",
         edge === "top" ? "top-0" : "bottom-0"
       )}
       style={{ background: trackColour }}

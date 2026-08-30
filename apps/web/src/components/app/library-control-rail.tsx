@@ -397,6 +397,42 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                 These carry no count and no click for the same reason.
               */}
               <TitleMarkBarLegend className="ml-1.5 border-l border-hairline pl-3" type={variant === "movies" ? "movie" : "show"} />
+
+              {/*
+                Not monitored, and why it is a legend entry rather than a chip.
+
+                James: *"do we need to add an unmonitored in the legend as
+                well?"* — yes, because grey is now a colour on the shelf: an
+                unmonitored title's bars are painted flat grey, overriding the
+                rung. A row whose job is to explain the colours below it cannot
+                leave one out.
+
+                But NOT as a filter chip. `library-filters.ts` gives two reasons
+                Monitored and Unmonitored were taken out of the chips, and only
+                one of them has expired. The dead one was "two chips that cannot
+                have a colour" — grey has one now. The live one is that
+                monitoring is a **separate axis**: it multiplies across the
+                rungs rather than sitting beside them, so a chip would make
+                "missing, and I have told Deluno to leave it alone" unaskable
+                again. That question belongs to the Monitoring filter, which
+                already asks it.
+
+                So it sits past the divider with the subtitle legend, where
+                nothing filters and nothing carries a count.
+              */}
+              {variant === "movies" ? (
+                <span
+                  className="ml-1.5 flex items-center gap-1.5 border-l border-hairline pl-3 text-[length:var(--library-toolbar-size)] font-medium text-muted-foreground"
+                  title="Deluno is not watching this title, so its bars drop their colour. Filter by it under Monitoring."
+                >
+                  <span
+                    aria-hidden
+                    className="h-1 w-4 shrink-0 rounded-full"
+                    style={{ background: "hsl(var(--mark-unmonitored))" }}
+                  />
+                  Not monitored
+                </span>
+              ) : null}
             </div>
 
             {/*
