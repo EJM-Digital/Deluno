@@ -396,8 +396,6 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                 The divider is what says the rest of the row does not filter.
                 These carry no count and no click for the same reason.
               */}
-              <TitleMarkBarLegend className="ml-1.5 border-l border-hairline pl-3" type={variant === "movies" ? "movie" : "show"} />
-
               {/*
                 Not monitored, and why it is a legend entry rather than a chip.
 
@@ -417,8 +415,10 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                 again. That question belongs to the Monitoring filter, which
                 already asks it.
 
-                So it sits past the divider with the subtitle legend, where
-                nothing filters and nothing carries a count.
+                It sits past the divider, where nothing filters and nothing
+                carries a count — but BEFORE the subtitle legend, because it is a
+                card-level override of both bars rather than a subtitle colour.
+                Placed after it, it read as one of the subtitle segments.
               */}
               {variant === "movies" ? (
                 <span
@@ -433,6 +433,10 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                   Not monitored
                 </span>
               ) : null}
+
+              <TitleMarkBarLegend className="ml-1.5 border-l border-hairline pl-3" type={variant === "movies" ? "movie" : "show"} />
+
+
             </div>
 
             {/*
