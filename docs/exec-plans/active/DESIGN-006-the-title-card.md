@@ -187,15 +187,30 @@ wrong, and it threw away the one distinction the ladder exists to make: **Missin
 means it is out and you do not have it.** An Upcoming title is not out. You cannot
 be missing a subtitle for a file that cannot exist yet.
 
-So when a title holds **no files at all**, the subtitle bar inherits the title's own
-reason for having none:
+So when a title holds no files, the subtitle bar inherits — but **only Upcoming**.
+That first read as "inherit whatever the title's reason is", which over-corrected;
+James: *"subs should not be downloading it should always be missing"*.
+
+He is right, and the reason is sharper than the one he gave. **Upcoming and
+Downloading are different in kind.** Upcoming means the thing *cannot exist yet* —
+not released, not aired — so nothing can be fetched and calling it Missing is a
+category error. Downloading means it exists and is arriving, so its subtitles exist
+out there and you do not have them, which is precisely what Missing means.
+
+His own argument is the second reason and stands on its own: a film's download earns
+a progress bar because it lasts, while a subtitle is a few kilobytes of text and
+would be here and gone before the bar could be read. *"seeing a progress bar for subs
+will be here and gone in seconds"*. **A state nobody can ever see should not be
+modelled** — the same rule that keeps a filter chip which can never match off the
+shelf.
 
 | Title | Its subtitle bar reads |
 |---|---|
-| Upcoming | `SUBS Upcoming`, in violet |
-| Downloading | `SUBS Downloading`, in blue |
+| Upcoming | `SUBS Upcoming`, in violet — the one inheritance |
+| Downloading | `SUBS Missing`, in red |
 | Missing | `SUBS Missing`, in red |
 | Held, languages short | `SUBS 1 / 3` — a real count |
+| **Not monitored** | grey, whatever the above says |
 
 Once there **is** a file the bar is about subtitles again, and a language Subber has
 not found for a file you hold is genuinely missing.
@@ -746,7 +761,9 @@ Invariants asserted, each one a bug that had already happened:
    track colour and label text, not on their names.
 8. **No text region is painted twice, and none is left unpainted** — the front
    layer's clip and the back layer's clip must meet exactly at the fill edge.
-9. **Every switch changes what is on screen.** Each control is swept from a reset
+9. **No subtitle bar ever says Downloading** — the one media state it must not
+   borrow.
+10. **Every switch changes what is on screen.** Each control is swept from a reset
    baseline and its options must produce N distinct paints. The bars are
    deliberately theme-independent, so `theme` is exempt on the bars and checked on
    the page chrome instead.

@@ -305,23 +305,30 @@ function subtitleBar(it, isShow) {
 /*
   What a subtitle bar says when there is nothing to count, and in whose colour.
 
-  James: *"upcoming is the wrong colour, its missing yes but its upcoming too"*.
+  **It inherits Upcoming, and nothing else.**
 
-  He is right and this was mine: the subtitle bar's empty state was hardcoded to
-  Missing, so an Upcoming film read "SUBS Missing" in red. **You cannot be missing
-  a subtitle for a file that cannot exist yet.** Missing means *it is out and you
-  do not have it* — that is the whole of what separates it from Upcoming on the
-  ladder, and the subtitle bar was throwing the distinction away.
+  The first version said *not here is Missing* for every title, which threw away the
+  distinction the ladder exists to make — James: *"upcoming is the wrong colour, its
+  missing yes but its upcoming too"*. So it inherited the title's reason for holding
+  no files, whatever that reason was. That over-corrected, and he caught that too:
+  *"subs should not be downloading it should always be missing"*.
 
-  So when a title holds no files at all, the subtitle bar inherits the title's own
-  reason for having none: Upcoming stays Upcoming, Downloading stays Downloading,
-  and only a title that really is out and really is absent reads Missing.
+  He is right, and the reason is sharper than the one he offered. **Upcoming and
+  Downloading are different in kind.** Upcoming means the thing *cannot exist yet* —
+  not released, not aired — so nothing can be fetched and calling it Missing is a
+  category error. Downloading means it exists and is arriving, so its subtitles
+  exist out there and you do not have them, which is precisely what Missing means.
 
-  Once there IS a file, the bar is about subtitles again, and a language Subber
-  has not found for a file you hold is genuinely missing.
+  His own argument stands as the second reason: a film's download is worth a
+  progress bar because it lasts, while a subtitle is a few kilobytes of text and
+  would be here and gone before the bar could be read. A state nobody can ever see
+  should not be modelled — the same rule that keeps a filter chip which can never
+  match off the shelf.
+
+  Unmonitored still overrides everything, as it does everywhere.
 */
 function subtitleState(subs, mark) {
-  if (subs.files === 0) return mark;   /* no file — the title's reason is the subtitle's reason */
+  if (subs.files === 0 && mark === "soon") return "soon";
   return "miss";
 }
 
@@ -397,7 +404,9 @@ function barNote(media, subs, mark, isShow) {
       : (media.pct === 100 ? "Solid — a film is one file, so it is here or it is not."
                            : "Empty — the file is not here.");
   const bottom = subs.files === 0
-    ? "No files yet, so the subtitle bar carries the same state rather than claiming Missing."
+    ? (mark === "soon"
+        ? "Nothing is out yet, so nothing can be fetched — the bar says Upcoming rather than claiming Missing."
+        : "No files yet, so no subtitles yet — they exist out there and you do not have them, which is Missing.")
     : subs.wanted === 0
       ? "Subber has not resolved this title, so its languages are not here yet."
       : "Filled to the languages you asked for that are actually here.";
