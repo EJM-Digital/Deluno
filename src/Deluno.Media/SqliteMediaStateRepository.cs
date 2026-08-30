@@ -1162,6 +1162,16 @@ public sealed class SqliteMediaStateRepository(
                 {map.EntryAlias}.created_utc,
                 {map.EntryAlias}.updated_utc,
                 ws.current_quality,
+                -- The file's own facts. They were on the list projection and not
+                -- on this one, so a detail page showed LESS than the grid it was
+                -- opened from. Held shut now by DetailMatchesListProjectionTests.
+                {map.EntryAlias}.primary_file_path,
+                {map.EntryAlias}.primary_file_size_bytes,
+                {map.EntryAlias}.primary_video_codec,
+                {map.EntryAlias}.primary_audio_codec,
+                {map.EntryAlias}.primary_audio_channels,
+                {map.EntryAlias}.primary_release_group,
+                {map.EntryAlias}.runtime_minutes,
             {CatalogueWantedState.PageColumns}
             FROM {map.EntryTable} {map.EntryAlias}
             {CatalogueWantedState.Join(map.EntryAlias, map.WantedTable, map.WantedMediaIdColumn, scopedToLibrary: false)}
@@ -1176,9 +1186,10 @@ public sealed class SqliteMediaStateRepository(
             return null;
         }
 
-        // Ordinal 19 is the current quality; the seven search-state columns
-        // follow it, in the order CatalogueWantedState.PageColumns declares.
-        var wanted = CatalogueWantedState.Read(reader, 20);
+        // Ordinal 19 is the current quality, 20..26 are the file's own facts, and
+        // the search-state columns follow, in the order
+        // CatalogueWantedState.PageColumns declares.
+        var wanted = CatalogueWantedState.Read(reader, 27);
 
         return new MediaEntryDetails(
             reader.GetString(0),
@@ -1207,7 +1218,14 @@ public sealed class SqliteMediaStateRepository(
             TargetQuality: wanted.TargetQuality,
             QualityCutoffMet: wanted.QualityCutoffMet,
             LastSearchUtc: wanted.LastSearchUtc,
-            NextEligibleSearchUtc: wanted.NextEligibleSearchUtc);
+            NextEligibleSearchUtc: wanted.NextEligibleSearchUtc,
+            FilePath: ReadNullableString(reader, 20),
+            FileSizeBytes: reader.IsDBNull(21) ? null : reader.GetInt64(21),
+            VideoCodec: ReadNullableString(reader, 22),
+            AudioCodec: ReadNullableString(reader, 23),
+            AudioChannels: ReadNullableString(reader, 24),
+            ReleaseGroup: ReadNullableString(reader, 25),
+            RuntimeMinutes: ReadNullableInt(reader, 26));
     }
 
     public async Task<MediaDailyMetrics> GetDailyMetricsAsync(

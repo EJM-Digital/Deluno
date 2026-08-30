@@ -30,6 +30,7 @@ import {
   type SeriesSearchHistoryItem
 } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
+import { cn } from "../lib/utils";
 import { isEpisodeMissing, isEpisodeUpcoming, summariseEpisodes } from "../lib/episode-progress";
 import { describeSearchReason } from "../lib/search-reasons";
 import { Badge } from "../components/ui/badge";
@@ -565,25 +566,7 @@ export function ShowDetailPage() {
               stays that way: a show you stop watching is not the same as an
               episode you never want.
             */}
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => void handleSeriesMonitoring(!series.monitored)}
-              disabled={busyAction !== null}
-              aria-label={series.monitored ? "Monitored — click to unmonitor" : "Unmonitored — click to monitor"}
-              title={series.monitored ? "Monitored — click to unmonitor" : "Unmonitored — click to monitor"}
-            >
-              {/*
-                One control, one vocabulary, both shelves. The state word
-                describes and the verb instructs, so the tooltip carries both —
-                and the shield is the app's own icon for monitoring, which this
-                button was not using.
-              */}
-              {busyAction === "series-monitor"
-                ? <LoaderCircle className="h-4 w-4 animate-spin" />
-                : series.monitored ? <ShieldCheck className="h-4 w-4" /> : <ShieldOff className="h-4 w-4" />}
-              {series.monitored ? "Monitored" : "Unmonitored"}
-            </Button>
+
             <Button
               type="button"
               variant="outline"
@@ -623,6 +606,24 @@ export function ShowDetailPage() {
               <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 <h1 className="font-display text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">{series.title}</h1>
                 {series.startYear ? <span className="font-display text-2xl text-muted-foreground sm:text-3xl">{series.startYear}</span> : null}
+                {/* The shield, beside the title — one control, both shelves. */}
+                <button
+                  type="button"
+                  onClick={() => void handleSeriesMonitoring(!series.monitored)}
+                  disabled={busyAction !== null}
+                  aria-label={series.monitored ? "Monitored — click to unmonitor" : "Unmonitored — click to monitor"}
+                  title={series.monitored ? "Monitored — click to unmonitor" : "Unmonitored — click to monitor"}
+                  className={cn(
+                    "self-center rounded-lg p-1.5 transition-colors",
+                    series.monitored
+                      ? "text-foreground hover:bg-surface-2"
+                      : "text-muted-foreground hover:bg-surface-2 hover:text-foreground"
+                  )}
+                >
+                  {busyAction === "series-monitor"
+                    ? <LoaderCircle className="h-5 w-5 animate-spin" />
+                    : series.monitored ? <ShieldCheck className="h-5 w-5" /> : <ShieldOff className="h-5 w-5" />}
+                </button>
               </div>
               {series.originalTitle && series.originalTitle !== series.title ? <p className="mt-1 text-sm text-muted-foreground">Also known as {series.originalTitle}</p> : null}
               <div className="mt-4 flex flex-wrap gap-2">
