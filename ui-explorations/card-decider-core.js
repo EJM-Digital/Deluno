@@ -73,6 +73,26 @@ const SURFACES = {
   jewel: { both: { miss:"352 88% 34%", down:"219 96% 33%", upg:"156 94% 20%", cont:"182 100% 19%", gold:"49 100% 62%", soon:"272 84% 39%" } }
 };
 
+/*
+  A THIRD set: the label where it sits on the empty track.
+
+  Not the surface (tuned for white-on-bar) and not the card text (tuned for the
+  card's background). The track is `--mark-idle` — lighter than the dark card and
+  darker than the light one — so a colour that reads on the card can fail on it.
+  Mine did, on 40 card/switch combinations: Missing red on the dark track came out
+  at 2.91:1, and the unmonitored grey on the light track at 1.79:1.
+
+  Solved rather than guessed: for each rung, the lightness that first clears 4.6:1
+  against that theme's track, searching upward on the dark track and downward on
+  the light one. The audit re-checks every value against the element it lands on.
+*/
+const ON_TRACK = {
+  dark:  { miss:"0 84% 77%", down:"207 92% 67%", upg:"145 72% 45%", cont:"178 74% 45%",
+           gold:"44 98% 45%", soon:"268 72% 78%", off:"220 8% 69%" },
+  light: { miss:"0 84% 37%", down:"207 92% 32%", upg:"145 72% 23%", cont:"178 74% 22%",
+           gold:"44 98% 22%", soon:"268 72% 45%", off:"220 8% 35%" }
+};
+
 /* The text colour for a count or a word on a ground — per theme, and NOT the
    surface. The deep surfaces used as text fail AA on the dark card. */
 const TEXT = {
@@ -138,7 +158,26 @@ const labelOn = mark => mark === "gold" ? "hsl(40 90% 12%)" : "hsl(0 0% 100%)";
   make the bar vanish and take the fraction with it. Measured: ΔE 21.3 against the
   dark track, 35.5 against the light one, and white sits on it at 4.82.
 */
-const UNMONITORED = { fill: "hsl(220 8% 46%)", label: "hsl(0 0% 100%)" };
+/*
+  **One grey, flat, both bars.**
+
+  James: *"why is the martian different grey to mad max and big buck bunny come
+  on."* Because the override was applied to the fill and the track as two separate
+  greys: The Martian is a Missing film, so its fill is 0% wide and what you see is
+  the TRACK; Mad Max and Big Buck Bunny have 100% fills, so what you see is the
+  FILL. Two greys, and which one you got depended on the title's rung — the very
+  thing an override is supposed to stop mattering.
+
+  So the fill and the track are the SAME value. An unmonitored title is one flat
+  grey bar, identical on every card, whatever its rung and whatever its fraction.
+  The count or the quality is still written on it, so the number survives; only the
+  colour goes, which is the point.
+*/
+const UNMONITORED = {
+  fill:  "hsl(220 8% 46%)",
+  track: "hsl(220 8% 46%)",
+  label: "hsl(0 0% 100%)"
+};
 
 /*
   There is no monitoring line, and `showMonitored` should stop being an option.
@@ -191,8 +230,8 @@ const S = {
   media: "on",         // "Quality on the bar" / "Episode count on the bar"
   subs: "on",          // "Subtitle count on the bar"
   leads: "subs",       // none | subs | both — the DESIGN choice, lead words
-  rem: "neutral",      // neutral | missing
-  fill: "state",       // state | held
+  rem: "missing",      // missing | neutral — grey is reserved for unmonitored
+  fill: "mixed",       // state | mixed | held
   cont: "magenta",     // TV only
   size: "md"
 };
@@ -207,8 +246,11 @@ function controlsFor(medium) {
       opts: [["on","On"],["off","Off"]], user: true },
     { key: "subs",   label: "Subtitle count", opts: [["on","On"],["off","Off"]], user: true },
     { key: "leads",  label: "Lead words", opts: [["none","None"],["subs","SUBS only"],["both","Both"]] },
-    { key: "rem",    label: "Track",  opts: [["neutral","Neutral grey"],["missing","Missing red"]] },
-    { key: "fill",   label: "Fill",   opts: [["state","State colour"],["held","What you hold"]] }
+    /* Neutral grey is kept only so the collision can be looked at: grey now means
+       "unmonitored" and nothing else, so a grey track makes a monitored title with
+       nothing held look unmonitored. */
+    { key: "rem",    label: "Track",  opts: [["missing","Missing red"],["neutral","Neutral grey — collides"]] },
+    { key: "fill",   label: "Fill",   opts: [["mixed","State, held green"],["state","State colour"],["held","What you hold"]] }
   ];
   /* The one control the movie shelf must not carry. */
   if (medium === "tv") base.push({ key: "cont", label: "Continuing", opts: CONT_OPTS });
@@ -217,7 +259,7 @@ function controlsFor(medium) {
 }
 
 const PRESETS = [
-  { label: "Sonarr's grammar", why: "state fill over a neutral track — colour is the state, length is the fraction",
+  { label: "Sonarr's grammar", why: "state fill over a neutral track — but grey now means unmonitored, so this collides",
     set: { fill: "state", rem: "neutral" } },
   { label: "Composition, like SUBS", why: "no neutral anywhere — every segment is what that part IS",
     set: { fill: "held", rem: "missing" } }
@@ -379,12 +421,20 @@ function twoTone(fillColour, pct, label, lead, onFill, remColour, onRem) {
   white-on-bar and text tokens for reading on a ground.
 */
 function track(mark) {
-  if (S.rem === "neutral") return { colour: "var(--idle)", label: "hsl(" + TEXT[S.theme][mark] + ")" };
+  if (S.rem === "neutral") return { colour: "var(--idle)", label: "hsl(" + ON_TRACK[S.theme][mark] + ")" };
   return { colour: "hsl(" + surfaces().miss + ")", label: "hsl(0 0% 100%)" };
 }
 
+/*
+  With the track painted Missing red, a Missing title's fill must not ALSO be red or
+  the bar goes flat and the fraction vanishes — Severance at 3 of 20 drawing the same
+  bar as Foundation at 0 of 29. That is why `mixed` exists and why it is the default:
+  the fill is the rung's colour, except a Missing title's held part, which is green
+  because what you hold is held regardless of the rung.
+*/
 function fillColourFor(mark, fullyHeld, C) {
   if (S.fill === "held") return "hsl(" + (fullyHeld && mark === "gold" ? C.gold : C.upg) + ")";
+  if (S.fill === "mixed" && mark === "miss") return "hsl(" + C.upg + ")";
   return "hsl(" + C[mark] + ")";
 }
 
@@ -399,12 +449,16 @@ function cardHtml(it, isShow, withCaption) {
   const subState = subtitleState(subs, mark);
   const subLabel = subs.wanted ? subs.held + " / " + subs.wanted : MARKS[subState];
 
-  const T = track(mark), TS = track(subState);
 
   /* A bar with no fraction keeps its state's colour under either grammar: an
      Upcoming title has not started, a downloading one has no held part yet. */
   /* Unmonitored wins over every colour rule, on both bars. */
   const off = monitored ? null : UNMONITORED;
+  /* Unmonitored overrules the Track choice as well as the Fill: it is an override
+     on the whole bar, not a recolouring of part of it. */
+  const NEUTRAL = { colour: UNMONITORED.track, label: UNMONITORED.label };
+  const T = off ? NEUTRAL : track(mark);
+  const TS = off ? NEUTRAL : track(subState);
   const topFillFlat = media.fraction ? fillColourFor(mark, media.pct === 100, C) : "hsl(" + C[mark] + ")";
   const topFill = off ? off.fill : topFillFlat;
   const topOnFill = off ? off.label

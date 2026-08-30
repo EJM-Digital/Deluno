@@ -406,18 +406,29 @@ title: nothing is remembered, nothing is special-cased.
 
 | | Monitored | Not monitored |
 |---|---|---|
-| Both bars | the state's colour | **grey `hsl(220 8% 46%)`**, always |
+| Both bars, **fill and track alike** | the state's colour | **one flat grey `hsl(220 8% 46%)`** |
 | Anywhere else on the card | nothing | nothing |
+
+**Fill and track are the same value, and that is not a detail.** The override was
+first applied to them separately, which produced *two* greys: a Missing film has a
+0%-wide fill so you saw the track, while a fully-held one showed the fill — and which
+grey you got depended on the title's rung, the very thing an override exists to stop
+mattering. James: *"why is the martian different grey to mad max and big buck bunny
+come on."* An unmonitored card is one flat grey bar, identical everywhere. The count
+or quality is still written on it, so the number survives; only the colour goes.
+
+**And grey therefore means exactly one thing.** That rules out the neutral track:
+with a grey track, a *monitored* title holding nothing went grey too and read as
+unmonitored. So the track is **Missing red** — which in turn is why the fill rule is
+*state, held green* (§13): with a red track, a Missing title's fill must not also be
+red or the bar goes flat and the fraction vanishes.
 
 **This is the only override in the design.** Everywhere else colour is decided by the
 title's state; here the state is overruled outright. On the shelf that reads as: two
 titles both *Missing*, one red and one grey, and the grey one is the one Deluno will
 not act on.
 
-The grey is deliberately not the track's. The track is `--mark-idle` — 26% lightness
-in dark, 82% in light — and a fill the same value as its track would make the bar
-vanish and take the fraction with it. Measured: ΔE 21.3 against the dark track, 35.5
-against the light, white on it at 4.82.
+White sits on the grey at 4.82:1.
 
 A card is now exactly three things: a bar, the artwork, a bar.
 
@@ -687,6 +698,35 @@ Shipped is out as a palette: it cannot carry a white label at all (1.69:1).
 
 All six are switches on `/renders/card-decider.html`, drawn on the real library.
 Flip them, then send the settings line the page prints — it names every one.
+
+## 12a. The audit, and what it caught
+
+Every rule in this document is checked in the browser across every card and every
+switch combination, computing what is **visibly rendered** rather than what is set.
+That distinction is the whole value of it: a colour on a zero-width element is not on
+screen, and reading the style back told me the override was working when it was not.
+
+| | Movies | TV |
+|---|---|---|
+| Card renders checked | 528 | 864 |
+| Switch combinations | 48 | 72 |
+| Problems | **0** | **0** |
+
+Invariants asserted, each one a bug that had already happened:
+
+1. **Unmonitored is grey** — every *visible* region, fill and track, on both bars.
+2. **Unmonitored is one grey** — fill and track the same value, so the rung cannot
+   change which grey you see.
+3. **Grey appears nowhere else** — a monitored card never shows it.
+4. **Upcoming never says Missing.**
+5. **Every visible label clears 4.5:1** against the ground actually under it — the
+   fill where the fill is wide enough to be seen, the track otherwise.
+6. **Nothing but the image is on the artwork.**
+
+The Shipped palette fails #5 on 60 combinations and is excluded from the run, which
+is the measured reason it is not a candidate rather than a matter of taste.
+
+---
 
 ## 13. What the filled part is coloured by
 
