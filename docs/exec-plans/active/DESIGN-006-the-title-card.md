@@ -11,6 +11,13 @@ Rendered references on the rig:
   switch, drawn on the real library. **Start here.**
 - **`/renders/card-decider-tv.html`** — the show card, same.
 
+  Each page draws **every scenario once** — one card per distinct state, no repeats,
+  every toggle both ways — above the live library. The catalogue is drawn whether or
+  not the page is signed in, because a real library cannot be relied on to contain a
+  downloading title or an unmonitored one at the moment you happen to look, and those
+  are exactly the cards a design fails on. Each card carries its status, what that
+  status means, and why its bar is the length it is.
+
   One page per shelf, because one page carrying both was too hard to read — James:
   *"we need to split this up I think, its too confusing for me and everyone... lets
   focus on Movies first"*. Splitting it proved his point immediately: **Continuing
@@ -350,11 +357,28 @@ worse**, and fixing them is its own issue, not a silent rider on this one.
 
 ---
 
-## 5. Monitoring
+## 5. Monitoring — not on a bar
 
-Unchanged. A rung that `canBeHalf` and is not monitored draws the *fill* as
-`linear-gradient(90deg, <surface> 0 50%, <idle> 50% 100%)`. The label is
-unaffected — it is already two-toned, and the half is a property of the fill.
+DESIGN-001 gives an unmonitored title a **half-grey dot**. An earlier revision of
+this document carried that straight over and halved the *bar's fill* instead.
+
+That is wrong, and James caught it: *"I think the half was in reference to the dots
+which we have removed"*. A half works on a **dot** because a dot has no length of
+its own, so half of it is free to mean something. **A bar is a length**, and that
+length already means the fraction you hold — a 50/50 split collides with it. The
+render proved it before the argument did: on a Missing title, whose fill is 0% wide,
+the half rendered as *nothing at all*.
+
+**Nothing is lost by dropping it**, which is the only test that matters when
+removing a fact. Monitoring already has its own line under the poster — a shield and
+the words *Monitored* / *Not monitored*, behind the `showMonitored` option, on by
+default (`library-grid.tsx`). The dot is gone; that line is not, and it says the
+thing in words rather than in a shape a reader has to be taught.
+
+`canBeHalf` in `TITLE_MARK_PRESENTATION` therefore has no consumer on the card any
+more. It should not be deleted blindly — the drawer and the detail page may still
+read it — but it must be checked, because a flag nothing reads is the exact shape of
+the defects this project keeps finding.
 
 ---
 

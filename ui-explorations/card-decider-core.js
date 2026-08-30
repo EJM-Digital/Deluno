@@ -84,6 +84,25 @@ const TEXT = {
    bar takes white; gold takes near-black. Forced, not a preference. */
 const labelOn = mark => mark === "gold" ? "hsl(40 90% 12%)" : "hsl(0 0% 100%)";
 
+/*
+  Monitoring is NOT a property of the bar.
+
+  DESIGN-001 said an unmonitored title wears a **half-grey dot**, and this render
+  duly halved the bar's fill instead. James: *"I think the half was in reference
+  to the dots which we have removed"* — right, and the measurement agreed before
+  he said it. A half works on a dot because a dot has no length of its own. A bar
+  IS a length, and that length already means the fraction you hold, so a 50/50
+  split collides with it — and on a Missing title, whose fill is 0% wide, the
+  half rendered as nothing at all.
+
+  Nothing is lost by dropping it, which is the test that matters: monitoring
+  already has its own line under the poster — a shield and the words *Monitored*
+  / *Not monitored*, behind the `showMonitored` option, on by default. See
+  `library-grid.tsx`. The dot is gone; that line is not.
+*/
+const MONITOR_LINE = monitored => '<div class="mon' + (monitored ? '' : ' off') + '">'
+  + (monitored ? '&#9679;' : '&#9675;') + ' ' + (monitored ? 'Monitored' : 'Not monitored') + '</div>';
+
 /* ── Continuing's hue: a TV-only question ─────────────────────── */
 const CONT_CANDIDATES = {
   teal:    { label: "Teal 178",    hsl: "178 96% 24%" },
@@ -223,6 +242,57 @@ function mediaBar(it, isShow) {
 }
 
 /* ══════════════════════════════════════════════════════════════
+   What each status means, in the app's own words
+
+   Lifted from `TITLE_MARK_PRESENTATION` in lib/status-tones.ts, which is the one
+   place a state gets a meaning. Two rungs need a different sentence per shelf,
+   because the thing they describe is different: for a film "it" is a file, for a
+   show "it" is a collection of episodes. The rest read the same either way.
+   ══════════════════════════════════════════════════════════════ */
+const HINTS = {
+  miss: {
+    movies: "It is out and Deluno does not have it yet. Deluno searches on the library's schedule.",
+    tv: "At least one episode that has aired is not on disk. Deluno searches on the library's schedule."
+  },
+  down: { both: "Coming down, processing, or importing right now." },
+  upg: {
+    movies: "Here and watchable tonight. Deluno is still looking for a better copy.",
+    tv: "Every aired episode is here and watchable. Deluno is still looking for better copies."
+  },
+  cont: { tv: "You have every episode that has aired. More are still to come, and Deluno will look for each as it does." },
+  gold: { both: "This is the quality your Library Profile asked for, so Deluno has stopped looking." },
+  soon: {
+    movies: "Not released yet. Deluno will start looking on release.",
+    tv: "Nothing has aired yet. Deluno will start looking as episodes air."
+  }
+};
+const hintFor = (mark, medium) => (HINTS[mark] || {}).both || (HINTS[mark] || {})[medium] || "";
+
+/*
+  Why THIS card's bar is the length it is.
+
+  The hint says what the status means; this says what the bar in front of you is
+  doing, which is the part that is not obvious from a colour and a number.
+*/
+function barNote(media, subs, mark, isShow) {
+  const top = !media.fraction
+    ? (mark === "soon"
+        ? (isShow ? "Solid — nothing has aired, so there is no fraction to draw."
+                  : "Solid — a film that is not out yet is not partway through anything.")
+        : "Filled to how far the download has got.")
+    : isShow
+      ? "Filled to " + media.label + " aired episodes on disk."
+      : (media.pct === 100 ? "Solid — a film is one file, so it is here or it is not."
+                           : "Empty — the file is not here.");
+  const bottom = subs.files === 0
+    ? "No files yet, so the subtitle bar carries the same state rather than claiming Missing."
+    : subs.wanted === 0
+      ? "Subber has not resolved this title, so its languages are not here yet."
+      : "Filled to the languages you asked for that are actually here.";
+  return { top, bottom };
+}
+
+/* ══════════════════════════════════════════════════════════════
    Drawing
    ══════════════════════════════════════════════════════════════ */
 const BARH = 16;
@@ -265,7 +335,7 @@ function fillColourFor(mark, fullyHeld, C) {
   return "hsl(" + C[mark] + ")";
 }
 
-function cardHtml(it, isShow) {
+function cardHtml(it, isShow, withCaption) {
   const C = surfaces(), mark = markFor(it);
   const media = mediaBar(it, isShow);
   const subs = subtitleBar(it, isShow);
@@ -281,7 +351,8 @@ function cardHtml(it, isShow) {
   /* A bar with no fraction keeps its state's colour under either grammar: an
      Upcoming title has not started, a downloading one has no held part yet. */
   const topFill = media.fraction ? fillColourFor(mark, media.pct === 100, C) : "hsl(" + C[mark] + ")";
-  const topOnFill = topFill === "hsl(" + C.gold + ")" ? labelOn("gold") : "hsl(0 0% 100%)";
+  const topFillFlat = topFill;
+  const topOnFill = topFillFlat === "hsl(" + C.gold + ")" ? labelOn("gold") : "hsl(0 0% 100%)";
 
   const subSettled = subs.wanted > 0 && subs.held === subs.wanted;
   /* With no files there is nothing held, so the bar carries the title's own
@@ -320,30 +391,117 @@ function cardHtml(it, isShow) {
 
   /* No corner pill, and the bars are always on the artwork — both settled:
      "corner pill is a complete removal and bars always on artwork". */
-  return '<div class="card">' + topBar + art + botBar + '</div>';
+  /* The monitoring line is not part of this design decision — it is an existing
+     poster option with its own switch — but it is drawn here because it is now
+     the ONLY thing that says a title is unmonitored, and a render that omits it
+     would make those scenarios look identical to the monitored ones. */
+  const card = '<div class="card">' + topBar + art + botBar
+    + MONITOR_LINE(it.monitored !== false) + '</div>';
+  if (!withCaption) return card;
+
+  const note = barNote(media, subs, mark, isShow);
+  const halfNote = it.monitored === false
+    ? " Deluno is not watching this one — said on its own line under the poster, not on a bar."
+    : "";
+  return '<div class="titled">' + card
+    + '<div class="cap">'
+    + (it.scenario ? '<i class="scen">' + esc(it.scenario) + '</i>' : '')
+    + '<b style="color:hsl(' + TEXT[S.theme][mark] + ')">' + MARKS[mark]
+    + (it.monitored === false ? ' <span class="nm">not monitored</span>' : '') + '</b>'
+    + '<p>' + esc(hintFor(mark, isShow ? "tv" : "movies") + halfNote) + '</p>'
+    + '<p class="says"><span>Top</span> ' + esc(note.top) + '</p>'
+    + '<p class="says"><span>Bottom</span> ' + esc(note.bottom) + '</p>'
+    + '</div></div>';
 }
 
 /* ══════════════════════════════════════════════════════════════
-   Sample data, used only until the page is opened from a signed-in tab
+   Every scenario, once.
+
+   This was an arbitrary handful of titles and it showed Missing three times,
+   Upgradable twice and Quality met twice while covering the unmonitored half not
+   at all — James: *"there are some duplicates as well... be sure to cover ALL
+   scenarios, toggles on and off etc etc"*.
+
+   So it is a catalogue now, not a sample: **one card per distinct scenario, no
+   repeats**, and it is drawn whether or not the page is signed in — a real
+   library cannot be relied on to contain a downloading title or an unmonitored
+   one at the moment you happen to look, and those are exactly the cards a design
+   fails on. The real library is drawn underneath it, as itself.
    ══════════════════════════════════════════════════════════════ */
-const SAMPLE = {
-  tv: [
-    { title:"Severance", wantedStatus:"missing", airedEpisodeCount:20, airedWithFileCount:3, subtitleLanguagesWanted:2, subtitleLanguagesHeld:2 },
-    { title:"Shōgun", wantedStatus:"covered", airedEpisodeCount:10, airedWithFileCount:10, subtitleLanguagesWanted:2, subtitleLanguagesHeld:20 },
-    { title:"Foundation", wantedStatus:"missing", airedEpisodeCount:29, airedWithFileCount:0, subtitleLanguagesWanted:0, subtitleLanguagesHeld:0 },
-    { title:"Dune: Prophecy", wantedStatus:"upcoming", airedEpisodeCount:0, airedWithFileCount:0, subtitleLanguagesWanted:2, subtitleLanguagesHeld:0 },
-    { title:"Silo", wantedStatus:"airing", airedEpisodeCount:10, airedWithFileCount:10, subtitleLanguagesWanted:2, subtitleLanguagesHeld:14 },
-    { title:"Slow Horses", wantedStatus:"upgrade", airedEpisodeCount:6, airedWithFileCount:6, subtitleLanguagesWanted:1, subtitleLanguagesHeld:4 }
-  ],
+const SCENARIOS = {
   movies: [
-    { title:"Dune: Part Two", wantedStatus:"covered", hasFile:true, currentQuality:"Remux-2160p", subtitleLanguagesWanted:3, subtitleLanguagesHeld:3 },
-    { title:"The Substance", wantedStatus:"upgrade", hasFile:true, currentQuality:"WEBDL-1080p", subtitleLanguagesWanted:3, subtitleLanguagesHeld:1 },
-    { title:"Nosferatu", wantedStatus:"downloading", hasFile:false, subtitleLanguagesWanted:3, subtitleLanguagesHeld:0 },
-    { title:"Conclave", wantedStatus:"missing", hasFile:false, subtitleLanguagesWanted:3, subtitleLanguagesHeld:0 },
-    { title:"Anora", wantedStatus:"upcoming", hasFile:false, subtitleLanguagesWanted:0, subtitleLanguagesHeld:0 },
-    { title:"Sinners", wantedStatus:"covered", hasFile:true, currentQuality:"Bluray-1080p", subtitleLanguagesWanted:2, subtitleLanguagesHeld:2 },
-    { title:"The Brutalist", wantedStatus:"upgrade", hasFile:true, currentQuality:"WEBRip-720p", subtitleLanguagesWanted:2, subtitleLanguagesHeld:2 },
-    { title:"Wicked", wantedStatus:"missing", hasFile:false, subtitleLanguagesWanted:2, subtitleLanguagesHeld:0 }
+    { scenario: "At the cutoff, subtitles complete",
+      title:"Dune: Part Two", wantedStatus:"covered", hasFile:true, monitored:true,
+      currentQuality:"Remux-2160p", subtitleLanguagesWanted:3, subtitleLanguagesHeld:3 },
+    { scenario: "Below the cutoff, subtitles short",
+      title:"The Substance", wantedStatus:"upgrade", hasFile:true, monitored:true,
+      currentQuality:"WEBDL-1080p", subtitleLanguagesWanted:3, subtitleLanguagesHeld:1 },
+    { scenario: "Held, no subtitles at all yet",
+      title:"The Brutalist", wantedStatus:"upgrade", hasFile:true, monitored:true,
+      currentQuality:"WEBRip-720p", subtitleLanguagesWanted:2, subtitleLanguagesHeld:0 },
+    { scenario: "Held, Subber has not resolved it",
+      title:"Sinners", wantedStatus:"covered", hasFile:true, monitored:true,
+      currentQuality:"Bluray-1080p", subtitleLanguagesWanted:0, subtitleLanguagesHeld:0 },
+    { scenario: "Bytes moving now",
+      title:"Nosferatu", wantedStatus:"downloading", hasFile:false, monitored:true,
+      subtitleLanguagesWanted:3, subtitleLanguagesHeld:0 },
+    { scenario: "Out, and not here",
+      title:"Conclave", wantedStatus:"missing", hasFile:false, monitored:true,
+      subtitleLanguagesWanted:3, subtitleLanguagesHeld:0 },
+    { scenario: "Out, not here, NOT monitored",
+      title:"Wicked", wantedStatus:"missing", hasFile:false, monitored:false,
+      subtitleLanguagesWanted:3, subtitleLanguagesHeld:0 },
+    { scenario: "Not released yet",
+      title:"Anora", wantedStatus:"upcoming", hasFile:false, monitored:true,
+      subtitleLanguagesWanted:2, subtitleLanguagesHeld:0 },
+    { scenario: "Not released, NOT monitored",
+      title:"Mickey 17", wantedStatus:"upcoming", hasFile:false, monitored:false,
+      subtitleLanguagesWanted:2, subtitleLanguagesHeld:0 },
+    { scenario: "Held below cutoff, NOT monitored",
+      title:"A Complete Unknown", wantedStatus:"upgrade", hasFile:true, monitored:false,
+      currentQuality:"WEBDL-2160p", subtitleLanguagesWanted:2, subtitleLanguagesHeld:2 },
+    { scenario: "The longest strings this card must survive",
+      title:"The Lord of the Rings: The Return of the King", wantedStatus:"covered",
+      hasFile:true, monitored:true, currentQuality:"Bluray-2160p Remux",
+      subtitleLanguagesWanted:12, subtitleLanguagesHeld:12 }
+  ],
+  tv: [
+    { scenario: "Every aired episode held, more to come",
+      title:"Silo", wantedStatus:"airing", monitored:true,
+      airedEpisodeCount:10, airedWithFileCount:10, subtitleLanguagesWanted:2, subtitleLanguagesHeld:20 },
+    { scenario: "Every aired episode held, subtitles short",
+      title:"The Diplomat", wantedStatus:"airing", monitored:true,
+      airedEpisodeCount:8, airedWithFileCount:8, subtitleLanguagesWanted:2, subtitleLanguagesHeld:11 },
+    { scenario: "Ended, complete, at the cutoff",
+      title:"Shōgun", wantedStatus:"covered", monitored:true,
+      airedEpisodeCount:10, airedWithFileCount:10, subtitleLanguagesWanted:2, subtitleLanguagesHeld:20 },
+    { scenario: "Complete, below the cutoff",
+      title:"Slow Horses", wantedStatus:"upgrade", monitored:true,
+      airedEpisodeCount:6, airedWithFileCount:6, subtitleLanguagesWanted:1, subtitleLanguagesHeld:4 },
+    { scenario: "Part of the way through",
+      title:"Severance", wantedStatus:"missing", monitored:true,
+      airedEpisodeCount:20, airedWithFileCount:3, subtitleLanguagesWanted:2, subtitleLanguagesHeld:2 },
+    { scenario: "Aired, and none of it held",
+      title:"Foundation", wantedStatus:"missing", monitored:true,
+      airedEpisodeCount:29, airedWithFileCount:0, subtitleLanguagesWanted:2, subtitleLanguagesHeld:0 },
+    { scenario: "Part of the way through, NOT monitored",
+      title:"The Wire", wantedStatus:"missing", monitored:false,
+      airedEpisodeCount:60, airedWithFileCount:22, subtitleLanguagesWanted:2, subtitleLanguagesHeld:30 },
+    { scenario: "Bytes moving now",
+      title:"Andor", wantedStatus:"downloading", monitored:true,
+      airedEpisodeCount:12, airedWithFileCount:4, subtitleLanguagesWanted:2, subtitleLanguagesHeld:8 },
+    { scenario: "Nothing has aired yet",
+      title:"Dune: Prophecy", wantedStatus:"upcoming", monitored:true,
+      airedEpisodeCount:0, airedWithFileCount:0, subtitleLanguagesWanted:2, subtitleLanguagesHeld:0 },
+    { scenario: "Nothing aired, NOT monitored",
+      title:"A Knight of the Seven Kingdoms", wantedStatus:"upcoming", monitored:false,
+      airedEpisodeCount:0, airedWithFileCount:0, subtitleLanguagesWanted:2, subtitleLanguagesHeld:0 },
+    { scenario: "Held, Subber has not resolved it",
+      title:"Ted Lasso", wantedStatus:"covered", monitored:true,
+      airedEpisodeCount:34, airedWithFileCount:34, subtitleLanguagesWanted:0, subtitleLanguagesHeld:0 },
+    { scenario: "The longest strings this card must survive",
+      title:"It's Always Sunny in Philadelphia", wantedStatus:"missing", monitored:true,
+      airedEpisodeCount:170, airedWithFileCount:148, subtitleLanguagesWanted:12, subtitleLanguagesHeld:900 }
   ]
 };
 
@@ -355,7 +513,7 @@ const WIDTHS = { sm: 108, md: 148, lg: 190 };
 function mountDecider({ medium }) {
   const isShow = medium === "tv";
   const CONTROLS = controlsFor(medium);
-  let DATA = { items: SAMPLE[medium], live: false, reason: "" };
+  let DATA = { items: [], live: false, reason: "" };
 
   try {
     const h = new URLSearchParams(location.hash.slice(1));
@@ -400,17 +558,19 @@ function mountDecider({ medium }) {
     const noun = isShow ? "shows" : "films";
     if (DATA.live) {
       el.className = "banner ok";
-      el.innerHTML = "Drawing your real library — <b>" + DATA.items.length + " " + noun
-        + "</b>, with their own artwork and counts.";
+      el.innerHTML = "Your real library is drawn below the catalogue — <b>" + DATA.items.length
+        + " " + noun + "</b>, with their own artwork and counts.";
       return;
     }
     el.className = "banner warn";
     const why = DATA.reason === "notab" ? "This tab is not signed in."
       : DATA.reason === "empty" ? "The library came back empty."
       : "The library could not be read (" + esc(DATA.reason) + ").";
-    el.innerHTML = "<b>Showing sample cards.</b> " + why
-      + " To draw your own: from your signed-in Deluno tab, paste this page's address into"
-      + " <b>that same tab</b> and press enter. The session token lives in that tab only.";
+    el.innerHTML = "<b>Catalogue only.</b> " + why
+      + " Every scenario is drawn below regardless — a real library cannot be relied on to"
+      + " contain a downloading or unmonitored title when you look. To see yours as well:"
+      + " from your signed-in Deluno tab, paste this page's address into <b>that same tab</b>"
+      + " and press enter. The session token lives in that tab only.";
   }
 
   function clearanceHtml() {
@@ -442,7 +602,7 @@ function mountDecider({ medium }) {
     that leans on its label falls over.
   */
   function matrixHtml() {
-    const item = DATA.items.find(it => markFor(it) === "miss") || DATA.items[0];
+    const item = SCENARIOS[medium].find(it => markFor(it) === "miss") || SCENARIOS[medium][0];
     if (!item) return "";
     const saveM = S.media, saveS = S.subs;
     const cells = [
@@ -461,11 +621,29 @@ function mountDecider({ medium }) {
       + '<div class="matrix">' + cells + '</div>';
   }
 
+  function wallHtml(items) {
+    return '<div class="wall" style="grid-template-columns: repeat(auto-fill, minmax('
+      + WIDTHS[S.size] + 'px, ' + (WIDTHS[S.size] + 40) + 'px));">'
+      + items.map(it => cardHtml(it, isShow, true)).join("") + '</div>';
+  }
+
   function drawShelf() {
-    document.getElementById("shelf").innerHTML =
-      clearanceHtml() + legendHtml() + matrixHtml()
-      + '<div class="wall" style="grid-template-columns: repeat(auto-fill, ' + WIDTHS[S.size] + 'px);">'
-      + DATA.items.map(it => cardHtml(it, isShow)).join("") + '</div>';
+    const noun = isShow ? "show" : "film";
+    /* The catalogue is drawn whether or not there is a live library: a real one
+       cannot be relied on to contain a downloading title or an unmonitored one
+       at the moment you happen to look, and those are the cards a design fails
+       on. The live library is drawn as itself, underneath. */
+    let html = clearanceHtml() + legendHtml() + matrixHtml()
+      + '<h2 class="mx">Every scenario, once <small>one card per distinct state a '
+      + noun + ' can be in — no repeats, and every toggle both ways</small></h2>'
+      + wallHtml(SCENARIOS[medium]);
+
+    if (DATA.items.length) {
+      html += '<h2 class="mx">Your library <small>' + DATA.items.length + ' '
+        + noun + (DATA.items.length === 1 ? '' : 's') + ', as they actually are</small></h2>'
+        + wallHtml(DATA.items);
+    }
+    document.getElementById("shelf").innerHTML = html;
   }
 
   function drawAll() {
