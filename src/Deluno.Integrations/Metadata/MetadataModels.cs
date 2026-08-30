@@ -16,6 +16,15 @@ public sealed record MetadataSearchResult(
     string? ImdbId,
     string? ExternalUrl,
     IReadOnlyList<MetadataCastMember>? Cast = null,
+    /// <summary>
+    /// Who made it, beside who is in it.
+    ///
+    /// <para>A detail page that lists the cast and stops there answers half the
+    /// question — Radarr's does both, and the crew is the half that says whose
+    /// film it is. One <see cref="Director"/> was all Deluno ever kept, which is
+    /// the right shape for a sort column and much too thin for a page.</para>
+    /// </summary>
+    IReadOnlyList<MetadataCrewMember>? Crew = null,
     // Movies carry several dates and they mean different things: a movie can be
     // in cinemas months before it is obtainable. `Year` alone cannot express
     // "not out yet", which is what an availability rule needs to decide.
@@ -107,6 +116,16 @@ public sealed record MetadataEpisode(
 public sealed record MetadataCastMember(
     string Name,
     string? Character,
+    string? ProfileUrl);
+
+/// <summary>
+/// A crew credit. <paramref name="Job"/> holds every job this person did on the
+/// title, joined — the same person is routinely credited three times, and three
+/// identical portraits in a row reads as a bug rather than as a fuller credit.
+/// </summary>
+public sealed record MetadataCrewMember(
+    string Name,
+    string? Job,
     string? ProfileUrl);
 
 public sealed record MetadataRatingItem(

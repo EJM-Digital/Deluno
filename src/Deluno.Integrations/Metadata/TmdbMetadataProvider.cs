@@ -932,14 +932,8 @@ public sealed class TmdbMetadataProvider(
             Genres: detail.Genres?.Select(genre => genre.Name).Where(name => !string.IsNullOrWhiteSpace(name)).Cast<string>().ToArray() ?? [],
             ImdbId: detail.ExternalIds?.ImdbId,
             ExternalUrl: BuildTmdbUrl(mediaType, detail.Id),
-            Cast: detail.Credits?.Cast?
-                .Where(member => !string.IsNullOrWhiteSpace(member.Name))
-                .Take(10)
-                .Select(member => new MetadataCastMember(
-                    member.Name!,
-                    member.Character,
-                    string.IsNullOrWhiteSpace(member.ProfilePath) ? null : $"https://image.tmdb.org/t/p/{ArtworkSizes.Portrait}{member.ProfilePath}"))
-                .ToArray() ?? [],
+            Cast: ReadCast(detail.Credits?.Cast),
+            Crew: ReadCrew(detail.Credits?.Crew),
             RuntimeMinutes: detail.Runtime ?? detail.EpisodeRunTime?.FirstOrDefault(minutes => minutes > 0),
             Popularity: detail.Popularity,
             VoteCount: detail.VoteCount,
@@ -948,6 +942,12 @@ public sealed class TmdbMetadataProvider(
             Studio: detail.ProductionCompanies?.Select(company => company?.Name).FirstOrDefault(name => !string.IsNullOrWhiteSpace(name)),
             Network: detail.Networks?.Select(network => network?.Name).FirstOrDefault(name => !string.IsNullOrWhiteSpace(name)),
             Collection: string.IsNullOrWhiteSpace(detail.BelongsToCollection?.Name) ? null : detail.BelongsToCollection.Name,
+            // Never set here at all, though the crew list it comes out of has
+            // been fetched all along. The catalogue has a Director column and
+            // sorts on it, so a direct-TMDb library sorted every title as blank
+            // — the same shape as the studio and status fields above.
+            Director: detail.Credits?.Crew?
+                .FirstOrDefault(member => member.Job == "Director" && !string.IsNullOrWhiteSpace(member.Name))?.Name,
             Tagline: string.IsNullOrWhiteSpace(detail.Tagline) ? null : detail.Tagline,
             Homepage: string.IsNullOrWhiteSpace(detail.Homepage) ? null : detail.Homepage,
             OriginalLanguage: string.IsNullOrWhiteSpace(detail.OriginalLanguage) ? null : detail.OriginalLanguage,
@@ -1479,6 +1479,73 @@ public sealed class TmdbMetadataProvider(
             .ToArray();
     }
 
+    /// <summary>How many of the billed cast a detail page is worth showing.</summary>
+    private const int MaxCast = 30;
+
+    private const int MaxCrew = 20;
+
+    /// <summary>
+    /// The crew jobs a viewer recognises, in the order a title card lists them.
+    ///
+    /// <para>TMDb's crew array is exhaustive — every runner and assistant — and
+    /// ordered by nothing useful, so it cannot be taken as it comes.</para>
+    /// </summary>
+    private static readonly string[] CrewJobs =
+    [
+        "Director", "Screenplay", "Writer", "Story", "Novel", "Characters",
+        "Producer", "Executive Producer", "Original Music Composer", "Music",
+        "Director of Photography", "Editor", "Production Design", "Art Direction",
+        "Costume Design", "Casting", "Visual Effects Supervisor"
+    ];
+
+    private static string? Portrait(string? path) =>
+        string.IsNullOrWhiteSpace(path) ? null : $"https://image.tmdb.org/t/p/{ArtworkSizes.Portrait}{path}";
+
+    /// <summary>
+    /// The billed cast, not the first ten of it. TMDb bills them in order, so
+    /// the cut can simply be made past the point where a name still means
+    /// something to a viewer.
+    /// </summary>
+    private static IReadOnlyList<MetadataCastMember> ReadCast(IReadOnlyList<TmdbCastMember>? cast) =>
+        [.. (cast ?? [])
+            .Where(member => !string.IsNullOrWhiteSpace(member.Name))
+            .Take(MaxCast)
+            .Select(member => new MetadataCastMember(member.Name!, member.Character, Portrait(member.ProfilePath)))];
+
+    /// <summary>
+    /// One row per person, in <see cref="CrewJobs"/> order, with every job that
+    /// person did joined onto it — Villeneuve directs and produces, and two
+    /// identical portraits in a row reads as a bug rather than a fuller credit.
+    /// </summary>
+    private static IReadOnlyList<MetadataCrewMember> ReadCrew(IReadOnlyList<TmdbCrewMember>? crew)
+    {
+        var byPerson = new Dictionary<string, (string Name, List<string> Jobs, string? Portrait)>();
+        var order = new List<string>();
+
+        foreach (var job in CrewJobs)
+        {
+            foreach (var member in crew ?? [])
+            {
+                if (member.Job != job || string.IsNullOrWhiteSpace(member.Name)) continue;
+
+                var key = member.Id > 0 ? member.Id.ToString() : member.Name!;
+                if (byPerson.TryGetValue(key, out var existing))
+                {
+                    if (!existing.Jobs.Contains(job)) existing.Jobs.Add(job);
+                    continue;
+                }
+
+                byPerson[key] = (member.Name!.Trim(), [job], Portrait(member.ProfilePath));
+                order.Add(key);
+            }
+        }
+
+        return [.. order
+            .Take(MaxCrew)
+            .Select(key => byPerson[key])
+            .Select(person => new MetadataCrewMember(person.Name, string.Join(", ", person.Jobs), person.Portrait))];
+    }
+
     private static string BuildTmdbUrl(string mediaType, int providerId)
         => $"https://www.themoviedb.org/{(mediaType == "tv" ? "tv" : "movie")}/{providerId.ToString(CultureInfo.InvariantCulture)}";
 
@@ -1709,11 +1776,18 @@ public sealed class TmdbMetadataProvider(
         [property: JsonPropertyName("name")] string? Name);
 
     private sealed record TmdbCredits(
-        [property: JsonPropertyName("cast")] IReadOnlyList<TmdbCastMember>? Cast);
+        [property: JsonPropertyName("cast")] IReadOnlyList<TmdbCastMember>? Cast,
+        [property: JsonPropertyName("crew")] IReadOnlyList<TmdbCrewMember>? Crew);
 
     private sealed record TmdbCastMember(
         [property: JsonPropertyName("name")] string? Name,
         [property: JsonPropertyName("character")] string? Character,
+        [property: JsonPropertyName("profile_path")] string? ProfilePath);
+
+    private sealed record TmdbCrewMember(
+        [property: JsonPropertyName("id")] int Id,
+        [property: JsonPropertyName("name")] string? Name,
+        [property: JsonPropertyName("job")] string? Job,
         [property: JsonPropertyName("profile_path")] string? ProfilePath);
 
     private sealed record TmdbGenre(

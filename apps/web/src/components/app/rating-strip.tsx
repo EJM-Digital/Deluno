@@ -1,4 +1,5 @@
 import type { MetadataRatingItem } from "../../lib/api";
+import { SourceMark } from "./source-mark";
 
 interface RatingStripProps {
   ratings?: MetadataRatingItem[] | null;
@@ -41,9 +42,7 @@ export function RatingStrip({ ratings, fallbackRating }: RatingStripProps) {
         const content = (
           <div className={`rounded-xl border p-3 transition hover:border-primary/35 hover:bg-surface-2 ${tone}`}>
             <div className="flex items-center justify-between gap-3">
-              <span className="text-[length:var(--type-caption)] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                {rating.label}
-              </span>
+              <SourceMark source={rating.source} label={rating.label} />
               <span className="h-2 w-2 rounded-full bg-primary shadow-[0_0_12px_hsl(var(--primary)/0.8)]" aria-hidden="true" />
             </div>
             <p className="mt-2 font-display text-2xl font-semibold tracking-tight text-foreground">
@@ -89,10 +88,8 @@ export function RatingLine({ ratings, fallbackRating }: RatingStripProps) {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
       {visible.map((rating) => (
-        <span key={rating.source} className="flex items-baseline gap-1.5 whitespace-nowrap">
-          <span className="text-[length:var(--type-caption)] font-bold uppercase tracking-[0.12em] text-muted-foreground">
-            {rating.label}
-          </span>
+        <span key={rating.source} className="flex items-center gap-1.5 whitespace-nowrap">
+          <SourceMark source={rating.source} label={rating.label} />
           <span className="text-sm font-semibold text-foreground">{formatRating(rating)}</span>
         </span>
       ))}

@@ -281,7 +281,9 @@ test.describe("dashboard workflow", () => {
     for (const scenario of scenarios) {
       for (const monitored of [true, false]) {
         const title = `${monitored ? "Monitored" : "Passive"} presentation ${scenario.route} ${Date.now()}`;
-        const monitoringLabel = monitored ? "Monitored" : "Not monitored";
+        // One word, settled: James on the vocabulary — "change to unmonitored then".
+        // The card, the mark's label and the filter all say it; this said the old one.
+        const monitoringLabel = monitored ? "Monitored" : "Unmonitored";
         let created: { id: string } | null = null;
         try {
           const create = await api.post(scenario.createPath, {
@@ -292,13 +294,19 @@ test.describe("dashboard workflow", () => {
 
           await page.goto(scenario.route);
           await page.getByPlaceholder(scenario.placeholder).fill(title);
-          const titleCard = page.getByRole("button", { name: new RegExp(title) }).last();
-          await expect(titleCard).toBeVisible();
+          // The poster is the button; the title, the monitoring line and the
+          // rating sit BESIDE it, not inside it — so a locator scoped to the
+          // button can only see half the card, and asserting the meta line
+          // through it failed with "element(s) not found" while the line was
+          // plainly on screen. Scope to the card, which is the button's parent.
+          const poster = page.getByRole("button", { name: new RegExp(title) }).last();
+          await expect(poster).toBeVisible();
+          const titleCard = poster.locator('xpath=ancestor::div[contains(@class,"group")][1]');
 
           // A title with no file is Missing, and Missing is red — red is freed
           // for it because nothing on a poster is ever a failure or a machine's
           // health. Amber would be claiming a person has to act.
-          const markName = monitored ? "Missing" : "Missing · not monitored";
+          const markName = monitored ? "Missing" : "Missing · unmonitored";
 
           // Open, choose, close. The drawer is modal, so the shelf behind it is
           // inert until it is shut — which is the price of it not moving the
@@ -358,7 +366,7 @@ test.describe("dashboard workflow", () => {
           // One mark per row. The row used to state monitoring three times over
           // — a halved dot beside the title, the word in the meta line under it,
           // and the status cell — for one fact. The mark keeps its own
-          // "· not monitored"; what had to go is the meta line's copy of it, so
+          // "· unmonitored"; what had to go is the meta line's copy of it, so
           // this pins that line to the two things only it can say.
           await expect(row.getByText(/^(Movie|TV) · \d{4}$/)).toBeVisible();
 

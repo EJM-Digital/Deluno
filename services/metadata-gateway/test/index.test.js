@@ -311,3 +311,46 @@ test("reports no dates rather than guessing when TMDb has none", async () => {
   const result = await lookupMovieReleaseDates("1", "key", tmdb.fetch);
   assert.deepEqual([result.inCinemas, result.digital, result.physical], [null, null, null]);
 });
+
+test("bills the whole cast, and folds each crew member into one credit", () => {
+  // Twelve billed players and a crew credited the way TMDb actually credits
+  // one: the director also produces, the writer is credited twice, and most of
+  // the list is jobs nobody reads.
+  const cast = Array.from({ length: 12 }, (_, index) => ({
+    name: `Player ${index + 1}`,
+    character: `Role ${index + 1}`,
+    profile_path: `/p${index + 1}.jpg`
+  }));
+
+  const detail = mapTmdbResult({
+    id: 329865,
+    title: "Arrival",
+    credits: {
+      cast,
+      crew: [
+        { id: 1, job: "Producer", name: "Shawn Levy" },
+        { id: 2, job: "Best Boy Electric", name: "Nobody Reads This" },
+        { id: 3, job: "Novel", name: "Ted Chiang" },
+        { id: 4, job: "Director", name: "Denis Villeneuve", profile_path: "/dv.jpg" },
+        { id: 3, job: "Screenplay", name: "Ted Chiang" },
+        { id: 4, job: "Producer", name: "Denis Villeneuve", profile_path: "/dv.jpg" }
+      ]
+    }
+  }, "movies", "https://metadata.deluno.example");
+
+  // Ten used to be the cut, so a film with a real ensemble looked like it had
+  // ten people in it.
+  assert.equal(detail.cast.length, 12);
+  assert.equal(detail.cast.at(-1).name, "Player 12");
+
+  // Title-card order, not TMDb's; one row per person; the unrecognised job is
+  // gone; and a person credited twice reads as one entry with both jobs.
+  assert.deepEqual(detail.crew, [
+    { name: "Denis Villeneuve", job: "Director, Producer", profileUrl: "https://metadata.deluno.example/artwork/w185/dv.jpg" },
+    { name: "Ted Chiang", job: "Screenplay, Novel", profileUrl: null },
+    { name: "Shawn Levy", job: "Producer", profileUrl: null }
+  ]);
+
+  // The single director field the catalogue sorts on is unchanged.
+  assert.equal(detail.director, "Denis Villeneuve");
+});

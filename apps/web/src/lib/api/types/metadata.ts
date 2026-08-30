@@ -12,6 +12,7 @@ export interface MetadataSearchResult {
   ratings?: MetadataRatingItem[] | null;
   genres: string[];
   cast?: MetadataCastMember[] | null;
+  crew?: MetadataCrewMember[] | null;
   imdbId: string | null;
   externalUrl: string | null;
 }
@@ -67,5 +68,12 @@ export interface MetadataRefreshJobsResponse {
 export interface MetadataCastMember {
   name: string;
   character: string | null;
+  profileUrl: string | null;
+}
+
+/** `job` holds every job this person did on the title, joined. */
+export interface MetadataCrewMember {
+  name: string;
+  job: string | null;
   profileUrl: string | null;
 }

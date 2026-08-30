@@ -22,11 +22,11 @@ import {
   type DownloadDispatchItem,
   type LibraryItem,
   type IntakeTitleOriginItem,
-  type MetadataCastMember,
   type MovieImportRecoverySummary,
   type MovieListItem,
   type MovieSearchHistoryItem
 } from "../lib/api";
+import { CreditsRow, readStoredCredits } from "../components/app/credits-row";
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
 import { describeSearchReason } from "../lib/search-reasons";
@@ -36,6 +36,8 @@ import { Card, CardContent } from "../components/ui/card";
 import { RemoveMediaDialog, type MediaRemovalPreview, type RemoveMediaOptions } from "../components/app/remove-media-dialog";
 import { DecisionExplanationList } from "../components/app/decision-explanation-list";
 import { MediaMetadataDrawer } from "../components/app/media-metadata-drawer";
+import { HeroBackdrop } from "../components/app/hero-backdrop";
+import { SourceMark } from "../components/app/source-mark";
 import { RatingLine } from "../components/app/rating-strip";
 import { Chip } from "../components/ui/chip";
 import { Drawer, DrawerFacts, DrawerFooter, DrawerSection } from "../components/ui/drawer";
@@ -148,7 +150,7 @@ export function MovieDetailPage() {
   const importCases = importRecovery.recentCases.filter(
     (item) => item.title.trim().toLowerCase() === movie.title.trim().toLowerCase()
   );
-  const cast = readStoredCast(movie.metadataJson);
+  const { cast, crew } = readStoredCredits(movie.metadataJson);
   const openSearch = movieSearches.find((item) => item.id === openSearchId) ?? null;
 
   /*
@@ -167,7 +169,7 @@ export function MovieDetailPage() {
     if (!movie.metadataJson) return null;
     try { return JSON.parse(movie.metadataJson) as Record<string, unknown>; } catch { return null; }
   }, [movie.metadataJson]);
-  // `cast` is already read above by `readStoredCast`, which handles both the
+  // `cast` and `crew` are already read above by `readStoredCredits`, which handles both the
   // camelCase and PascalCase shapes the store has used. A second parse here
   // would be the same rule written twice.
   const metaText = (key: string) => {
@@ -504,21 +506,13 @@ export function MovieDetailPage() {
       />
 
       <Card className="relative isolate min-h-[19rem] overflow-hidden border-primary/25 bg-card">
-        {movie.backdropUrl ? (
-          <img
-            src={movie.backdropUrl}
-            alt=""
-            className="pointer-events-none absolute inset-0 h-full w-full scale-105 object-cover opacity-[0.34] saturate-[0.8]"
-          />
-        ) : null}
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-card via-card/80 to-card/45" />
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-card/90 via-transparent to-card/25" />
+        <HeroBackdrop url={movie.backdropUrl} />
         <CardContent className="relative p-[var(--tile-pad)] sm:p-[calc(var(--tile-pad)*1.15)]">
-          <div className="grid min-h-[30rem] items-start gap-[var(--grid-gap)] md:grid-cols-[20rem_minmax(0,1fr)] xl:grid-cols-[20rem_minmax(0,1fr)_14rem]">
+          <div className="grid items-start gap-[var(--grid-gap)] md:grid-cols-[16rem_minmax(0,1fr)] xl:grid-cols-[16rem_minmax(0,1fr)_14rem]">
             {movie.posterUrl ? (
-              <img src={movie.posterUrl} alt={`${movie.title} poster`} className="h-[30rem] w-80 justify-self-center rounded-2xl border border-white/15 bg-surface-1 object-cover shadow-2xl md:justify-self-start" />
+              <img src={movie.posterUrl} alt={`${movie.title} poster`} className="h-96 w-64 justify-self-center rounded-2xl border border-white/15 bg-surface-1 object-cover shadow-2xl md:justify-self-start" />
             ) : (
-              <div className="flex h-[30rem] w-80 justify-self-center items-center justify-center rounded-2xl border border-hairline bg-surface-1 px-3 text-center text-xs text-muted-foreground md:justify-self-start">Artwork is being refreshed</div>
+              <div className="flex h-96 w-64 justify-self-center items-center justify-center rounded-2xl border border-hairline bg-surface-1 px-3 text-center text-xs text-muted-foreground md:justify-self-start">Artwork is being refreshed</div>
             )}
             <div className="min-w-0 self-start">
               <p className="text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-primary">Movie</p>
@@ -648,7 +642,7 @@ export function MovieDetailPage() {
                 into the space two rows of chips would take — and every one is
                 skippable by eye until you want it.
               */}
-              <dl className="mt-4 flex flex-wrap gap-x-7 gap-y-3">
+              <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
                 {[
                   { label: "Path", value: movie.filePath || null, mono: true },
                   // Quality and Target are NOT here: the summary strip below says
@@ -685,44 +679,6 @@ export function MovieDetailPage() {
               <p className="mt-4 max-w-4xl text-sm leading-relaxed text-muted-foreground">
                 {movie.overview ?? "No overview has been stored yet. Refresh metadata when you want Deluno to enrich this title."}
               </p>
-              {/*
-                The cast, at a size worth looking at.
-
-                It was six 40px avatars squeezed into the header, which is the
-                size you use when you have decided nobody looks — and the
-                `ArtworkSizes.Portrait` comment says exactly that: "drawn small
-                and there are ten per title... the one image on the page nobody
-                looks closely at". James, with Radarr beside it: *"where are the
-                bigger poster and actors... bigger come on"*.
-
-                So it is a row of portrait cards, twenty of them, scrolling
-                sideways rather than wrapping — a wall of faces is the one thing
-                on this page you scan rather than read, and wrapping turns it
-                into a block you have to parse.
-              */}
-              {cast.length ? (
-                <section className="mt-6 border-t border-white/10 pt-5">
-                  <div className="flex items-baseline justify-between gap-3">
-                    <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.18em] text-muted-foreground">Cast</p>
-                    <span className="text-[length:var(--type-caption)] text-muted-foreground">{cast.length} credited</span>
-                  </div>
-                  <div className="-mx-1 mt-3 flex gap-3 overflow-x-auto px-1 pb-2">
-                    {cast.slice(0, 20).map((person) => (
-                      <figure key={`${person.name}-${person.character ?? ""}`} className="w-[7.5rem] shrink-0">
-                        {person.profileUrl
-                          ? <img src={person.profileUrl} alt="" loading="lazy" className="aspect-[2/3] w-full rounded-xl border border-white/15 bg-surface-2 object-cover shadow-lg" />
-                          : <div className="flex aspect-[2/3] w-full items-center justify-center rounded-xl border border-white/15 bg-surface-2 text-[length:var(--type-caption)] text-muted-foreground">No photo</div>}
-                        <figcaption className="mt-2 leading-tight">
-                          <span className="block truncate text-xs font-semibold text-foreground" title={person.name}>{person.name}</span>
-                          {person.character
-                            ? <span className="mt-0.5 block truncate text-[length:var(--type-caption)] text-muted-foreground" title={person.character}>{person.character}</span>
-                            : null}
-                        </figcaption>
-                      </figure>
-                    ))}
-                  </div>
-                </section>
-              ) : null}
             </div>
             <aside className="w-full self-start rounded-xl border border-white/10 bg-card/80 p-4 backdrop-blur-sm">
               {/* "Ratings & IDs" while the ratings moved to the title line would be a
@@ -730,8 +686,8 @@ export function MovieDetailPage() {
               <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.18em] text-muted-foreground">Metadata</p>
               <p className="mt-1 text-xs text-muted-foreground">The metadata Deluno is using</p>
               <div className="mt-4 space-y-2 border-t border-hairline pt-4 text-sm">
-                <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Source</span><span className="font-medium text-foreground">{movie.metadataProvider?.toUpperCase() ?? "Not linked"}</span></div>
-                <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">IMDb</span><span className="font-medium text-foreground">{movie.imdbId ?? "—"}</span></div>
+                <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Source</span>{movie.metadataProvider ? <SourceMark source={movie.metadataProvider.toLowerCase()} label={movie.metadataProvider.toUpperCase()} /> : <span className="font-medium text-foreground">Not linked</span>}</div>
+                <div className="flex items-center justify-between gap-3"><SourceMark source="imdb" label="IMDb" /><span className="font-mono text-xs font-medium text-foreground">{movie.imdbId ?? "—"}</span></div>
               </div>
               <Button variant="outline" className="mt-4 w-full" onClick={() => void handleMetadataRefresh()} disabled={busyAction !== null}>
                 {busyAction === "metadata-refresh" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
@@ -753,6 +709,34 @@ export function MovieDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/*
+        Cast and crew, out of the bubble.
+
+        They lived inside the header card, which made that card a mile tall and
+        put a wall of thirty faces in the same box as the runtime and the
+        overview — a header that has to be scrolled is not a header. Radarr and
+        Sonarr both break them out as their own full-width blocks below, and
+        James, looking at the two side by side: *"lets move the cast and the
+        crew out of the main bubble like radarr and sonarr do"*.
+
+        Each is its own card, so a title with no crew simply has no crew card
+        rather than an empty band under the cast.
+      */}
+      {cast.length ? (
+        <Card>
+          <CardContent className="p-4">
+            <CreditsRow heading="Cast" people={cast} className="border-t-0 pt-0" />
+          </CardContent>
+        </Card>
+      ) : null}
+      {crew.length ? (
+        <Card>
+          <CardContent className="p-4">
+            <CreditsRow heading="Crew" people={crew} className="border-t-0 pt-0" />
+          </CardContent>
+        </Card>
+      ) : null}
 
       {/*
         Three cells, and none of them the mark.
@@ -1267,30 +1251,6 @@ export function MovieDetailPage() {
 }
 
 /* -------------------------------------------------------------- helpers */
-
-function readStoredCast(metadataJson: string | null): MetadataCastMember[] {
-  if (!metadataJson) return [];
-  try {
-    const value = JSON.parse(metadataJson) as { cast?: unknown; Cast?: unknown };
-    const cast = value.cast ?? value.Cast;
-    if (!Array.isArray(cast)) return [];
-
-    return cast.flatMap((person) => {
-      if (typeof person !== "object" || person === null) return [];
-      const item = person as Record<string, unknown>;
-      const name = item.name ?? item.Name;
-      if (typeof name !== "string" || !name.trim()) return [];
-
-      return [{
-        name,
-        character: typeof (item.character ?? item.Character) === "string" ? (item.character ?? item.Character) as string : null,
-        profileUrl: typeof (item.profileUrl ?? item.ProfileUrl) === "string" ? (item.profileUrl ?? item.ProfileUrl) as string : null
-      }];
-    });
-  } catch {
-    return [];
-  }
-}
 
 interface SearchPlanCandidate {
   releaseName: string;
