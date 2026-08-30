@@ -59,6 +59,21 @@ export const MARK_DOT_SIZE = 13;
 export function MarkStrip({
   mark,
   /**
+   * The shelf this legend sits above.
+   *
+   * **A legend must be painted in the colours it is explaining.** Once a shelf
+   * adopts DESIGN-006 its cards are painted from the bar *surfaces*, which are a
+   * different set from the page-text colours this swatch used — so the row above
+   * the shelf was explaining one palette while the posters below it drew
+   * another. James: *"you havent executed it exactly as per the spec"*. Measured
+   * on the rig: Missing rgb(239,77,77) in the legend against rgb(192,17,28) on
+   * the card, and every other rung likewise.
+   *
+   * Absent, or a shelf that has not adopted the bars, keeps the old swatch — TV
+   * is deliberately frozen, and its legend must go on matching its own cards.
+   */
+  type,
+  /**
    * Whether to draw the mark's sheen. On everywhere gold is currently drawn:
    * one gold, one treatment, wherever "Deluno has finished" is said. It stays a
    * parameter rather than being folded into the table because a swatch on a
@@ -67,18 +82,20 @@ export function MarkStrip({
    */
   sheen = false,
   className
-}: { mark: TitleMark; sheen?: boolean; className?: string }) {
+}: { mark: TitleMark; type?: MediaType; sheen?: boolean; className?: string }) {
   const presentation = TITLE_MARK_PRESENTATION[mark];
+  const paintsBars = type ? cardDesign(type).bars : false;
 
   return (
     <span
       aria-hidden
       className={cn(
         "h-1 w-4 shrink-0 rounded-full",
-        presentation.dot,
+        !paintsBars && presentation.dot,
         sheen && presentation.sheen,
         className
       )}
+      style={paintsBars ? { background: `hsl(var(${TITLE_MARK_PAINT[mark].surface}))` } : undefined}
     />
   );
 }
@@ -437,6 +454,19 @@ export function TitleBars({
         : mark;
   const topPaint = paint(media.fraction ? topMark : mark);
   const trackPaint = off ? UNMONITORED_PAINT : TITLE_MARK_PAINT.missing;
+  /*
+    **The label on the track takes the track's own kind of colour.**
+
+    `onTrack` is solved against the *neutral grey* track — the option the spec
+    keeps only so its collision with the unmonitored grey can be looked at. This
+    shelf's track is Missing red, which is a SURFACE, so its label is that
+    surface's label: white.
+
+    Wiring `onTrack` here put a red-for-grey colour on red and measured 2.85:1 on
+    the live shelf, under the 4.5 the spec requires of every visible label. The
+    spec said both things and I connected the wrong two.
+  */
+  const trackLabel = design.track === "neutral" ? trackPaint.onTrack : trackPaint.onSurface;
   const subPaint = paint(files === 0 ? subState : subSettled ? "covered" : "upgrade");
 
   const rung = TITLE_MARK_PRESENTATION[mark];
@@ -449,7 +479,7 @@ export function TitleBars({
         fillColour={paintVar(topPaint.surface)}
         onFill={paintVar(topPaint.onSurface)}
         trackColour={paintVar(trackPaint.surface)}
-        onTrack={paintVar(trackPaint.onTrack)}
+        onTrack={paintVar(trackLabel)}
         lead={design.leads === "both" ? media.lead : undefined}
         label={showMediaText ? media.label : undefined}
         title={rung.hint + (monitored ? "" : " Deluno is not watching this one.")}
@@ -463,7 +493,7 @@ export function TitleBars({
         fillColour={paintVar(subPaint.surface)}
         onFill={paintVar(subPaint.onSurface)}
         trackColour={paintVar(trackPaint.surface)}
-        onTrack={paintVar(trackPaint.onTrack)}
+        onTrack={paintVar(trackLabel)}
         lead={design.leads === "none" ? undefined : "SUBS"}
         label={showSubtitleText ? subLabel : undefined}
         edge="bottom"
@@ -752,7 +782,7 @@ export function titleBarGradient(settledPercent: number, heldPercent: number): s
  * something that cannot appear, which is the defect a chip that can never match
  * is. Declared, never populated, and no test could see it.
  */
-export function TitleMarkBarLegend({ className }: { className?: string }) {
+export function TitleMarkBarLegend({ className, type }: { className?: string; type?: MediaType }) {
   return (
     <div className={cn("flex items-center gap-2.5", className)}>
       <span
@@ -779,7 +809,7 @@ export function TitleMarkBarLegend({ className }: { className?: string }) {
             wherever "Deluno has finished" is being said, which is the whole
             point of a legend.
           */}
-          <MarkStrip mark={segment.mark} sheen />
+          <MarkStrip mark={segment.mark} type={type} sheen />
           {/*
             The ladder's own word, not a synonym.
             James: *"users need to also be able to distinguish between done and
