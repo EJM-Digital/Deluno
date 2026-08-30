@@ -62,11 +62,24 @@ in the fill's label colour and 85% in the remainder's, and every glyph is colour
 beneath it. Verified against the live Sonarr at `192.168.1.35:8989` — three DOM
 layers, `ProgressBar-backTextContainer` / `progressBar` / `frontTextContainer`.
 
-**Implementation note that is not optional.** Clip the front layer with
-`clip-path: inset(0 <100-N>% 0 0)` over an identically positioned element. Do
-**not** make the front container `width: N%` and centre the text inside it — the
-label then centres on the *fill* instead of the *bar* and slides sideways as the
-bar fills. That was the first attempt here and it is visibly wrong at 3 of 20.
+**Two implementation notes, both of which cost a round to find.**
+
+**Clip the front layer, do not size it.** `clip-path: inset(0 <100-N>% 0 0)` over an
+identically positioned element. Making the front container `width: N%` and centring
+the text inside it centres the label on the *fill* instead of the *bar*, so it slides
+sideways as the bar fills — visibly wrong at 3 of 20.
+
+**Clip the back layer to the complement, `inset(0 0 0 N%)`.** Leaving it unclipped is
+the more insidious bug, because on a *fully filled* bar both layers then paint the
+identical glyphs on top of each other. Every antialiased edge pixel is composited
+twice, so the semi-transparent edges turn opaque and the text thickens and glows —
+literally a double exposure, and worst on saturated grounds. James, twice: *"the
+quality text is still a little hard to read on small posters almost like its
+overexposed"*, then *"the font on green deep still looks so overexposed to me is
+there something wrong here?"* There was, and it was this.
+
+Clipped both ways, each glyph region is painted exactly once and the two halves tile
+at the fill edge with no overlap and no seam. Asserted in the audit.
 
 ---
 
@@ -731,7 +744,9 @@ Invariants asserted, each one a bug that had already happened:
 6. **Nothing but the image is on the artwork.**
 7. **No two cards render the same shape** — compared on fill width, fill colour,
    track colour and label text, not on their names.
-8. **Every switch changes what is on screen.** Each control is swept from a reset
+8. **No text region is painted twice, and none is left unpainted** — the front
+   layer's clip and the back layer's clip must meet exactly at the fill edge.
+9. **Every switch changes what is on screen.** Each control is swept from a reset
    baseline and its options must produce N distinct paints. The bars are
    deliberately theme-independent, so `theme` is exempt on the bars and checked on
    the page chrome instead.

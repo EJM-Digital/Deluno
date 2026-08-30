@@ -414,10 +414,22 @@ function twoTone(fillColour, pct, label, lead, onFill, remColour, onRem) {
   const inner = (lead ? '<i class="lead">' + lead + '</i>' : '') + '<b>' + esc(label) + '</b>';
   return '<div class="bar" style="height:' + BARH + 'px;background:' + remColour + '">'
     + '<div class="fill" style="width:' + pct + '%;background:' + fillColour + '"></div>'
-    /* Both layers are the same string in the same place. Only the paint of the
-       front one is clipped — sizing-and-centring it instead makes the label
-       slide sideways as the bar fills. */
-    + '<div class="txt" style="color:' + onRem + '"><span>' + inner + '</span></div>'
+    /*
+      Two layers, same string, same place — and **each clipped to its own half**.
+
+      The front is clipped to the fill; the back is clipped to the COMPLEMENT of
+      the fill. That second clip was missing, and the bug it caused is the one
+      James kept seeing: on a fully-filled bar both layers painted the identical
+      white glyphs on top of each other, so every antialiased edge pixel was
+      composited twice and the text thickened and glowed. *"the font on green deep
+      still looks so overexposed"* — it was literally a double exposure, worst on
+      saturated grounds where the halo shows.
+
+      Clipped this way each glyph region is painted exactly once, and the two
+      halves tile at the fill edge with no seam and no overlap.
+    */
+    + '<div class="txt" style="color:' + onRem + ';clip-path:inset(0 0 0 ' + pct + '%)">'
+    + '<span>' + inner + '</span></div>'
     + '<div class="txt" style="color:' + onFill + ';clip-path:inset(0 ' + (100 - pct) + '% 0 0)">'
     + '<span>' + inner + '</span></div>'
     + '</div>';
