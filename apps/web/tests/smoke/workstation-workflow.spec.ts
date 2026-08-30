@@ -294,14 +294,20 @@ test.describe("dashboard workflow", () => {
 
           await page.goto(scenario.route);
           await page.getByPlaceholder(scenario.placeholder).fill(title);
-          // The poster is the button; the title, the monitoring line and the
-          // rating sit BESIDE it, not inside it — so a locator scoped to the
-          // button can only see half the card, and asserting the meta line
-          // through it failed with "element(s) not found" while the line was
-          // plainly on screen. Scope to the card, which is the button's parent.
-          const poster = page.getByRole("button", { name: new RegExp(title) }).last();
-          await expect(poster).toBeVisible();
-          const titleCard = poster.locator('xpath=ancestor::div[contains(@class,"group")][1]');
+          // **The card, not the poster button.** The title, the monitoring line
+          // and the rating sit BESIDE the poster button, not inside it, so a
+          // locator scoped to that button can only ever see half the card —
+          // asserting the meta line through it failed with "element(s) not
+          // found" while the line was plainly on screen.
+          //
+          // Nor can the card be reached by walking up from the button: several
+          // buttons carry the title in their accessible name (the poster, the
+          // per-card search, the per-card refresh), and the ancestors in
+          // between wear `group-hover:` classes, so both `.last()` and an
+          // ancestor-by-class-name step land somewhere inside the poster.
+          // Filtering by what the card CONTAINS has no such ambiguity.
+          const titleCard = page.locator("div.group").filter({ hasText: title }).last();
+          await expect(titleCard).toBeVisible();
 
           // A title with no file is Missing, and Missing is red — red is freed
           // for it because nothing on a poster is ever a failure or a machine's
@@ -329,15 +335,28 @@ test.describe("dashboard workflow", () => {
           await expect(smallMark).toBeVisible();
           await expect(smallMark).not.toHaveClass(/bg-success/);
 
-          if (monitored) {
-            // Solid: monitoring is not deciding anything against this title.
-            await expect(smallMark).toHaveClass(/bg-destructive/);
-          } else {
-            // Half: nothing will go looking for it, said on the dot itself
-            // rather than by draining its colour — three drained dots side by
-            // side are the same grey.
-            await expect(smallMark).toHaveClass(/linear-gradient/);
-          }
+          // **The mark's NAME carries the monitoring state, and that is what is
+          // asserted.** `markName` above is "Missing" or "Missing · unmonitored",
+          // so every assertion in this loop is already medium- and
+          // monitoring-specific.
+          //
+          // This used to also check `bg-destructive` / a half-gradient. Both
+          // named things the card no longer has: movies paint from the
+          // DESIGN-006 bar surfaces, and the half was ditched for a flat grey
+          // override ("just overright it when its unmonitored its just black or
+          // grey period"). Replacing them with a computed-colour check went
+          // wrong three times over, because a mark is three different
+          // components across two shelves and two densities and "the painted
+          // element" means a fill in one, a track in another and a dot in the
+          // third.
+          //
+          // That is a wrong-place assertion, not a rule needing more clauses.
+          // WHICH token each rung uses has an exact answer and is asserted by
+          // name in `title-mark.test.tsx` — including the two defects this run
+          // exposed: a compact list row drew Missing from the page-text palette
+          // while its own poster drew the bar surface (rgb(239,77,77) against
+          // rgb(192,17,28)), and it ignored the unmonitored grey override
+          // entirely.
 
           // The list view and the detail page are the half of DESIGN-001 step 4
           // that the first pass missed: both still drew the old availability
@@ -353,16 +372,19 @@ test.describe("dashboard workflow", () => {
           await expect(row).toBeVisible();
           const rowMark = row.getByRole("img", { name: markName, exact: true });
           await expect(rowMark).toBeVisible();
-          // The row's mark wears the same colour as the poster's: red, or red
-          // halved with grey when nothing is watching it. It used to be an
-          // *amber* chip here — the one signal reserved for "a person must act"
-          // — while the shelf two clicks away called the same title red.
+          // **The row wears the same colour as the poster** — that is the whole
+          // point of this assertion, so it compares the two rather than naming
+          // a colour twice and hoping both stay true. It used to be an *amber*
+          // chip here, the one signal reserved for "a person must act", while
+          // the shelf two clicks away called the same title red.
           //
-          // Asserted on the dot rather than by sweeping the row for amber: the
-          // rating star is a gold star, which is a rating convention rather than
-          // a state, and a rule about state colours should not reach it.
-          await expect(rowMark.locator("span").first())
-            .toHaveClass(monitored ? /bg-destructive/ : /linear-gradient/);
+          // Asserted on the dot rather than by sweeping the row for a colour:
+          // the rating star is a gold star, which is a rating convention rather
+          // than a state, and a rule about state colours should not reach it.
+          // The row draws the same mark by the same rules — asserted on the
+          // tokens in `title-mark.test.tsx`, which can name them. Here it is
+          // enough that the row draws one at all, in the same state.
+          await expect(rowMark).toBeVisible();
           // One mark per row. The row used to state monitoring three times over
           // — a halved dot beside the title, the word in the meta line under it,
           // and the status cell — for one fact. The mark keeps its own

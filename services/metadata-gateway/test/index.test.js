@@ -60,7 +60,7 @@ test("maps a TMDb detail response into Deluno's broker contract with gateway-cac
     vote_count: 25000,
     genres: [{ name: "Action" }, { name: "Science Fiction" }],
     external_ids: { imdb_id: "tt0133093" },
-    credits: { cast: [{ name: "Keanu Reeves", character: "Neo", profile_path: "/neo.jpg" }] }
+    credits: { cast: [{ id: 6384, name: "Keanu Reeves", character: "Neo", profile_path: "/neo.jpg" }] }
   }, "movies", "https://metadata.deluno.example");
 
   assert.equal(result.provider, "tmdb");
@@ -68,7 +68,7 @@ test("maps a TMDb detail response into Deluno's broker contract with gateway-cac
   assert.deepEqual(result.genres, ["Action", "Science Fiction"]);
   assert.equal(result.posterUrl, "https://metadata.deluno.example/artwork/w780/poster.jpg");
   assert.equal(result.backdropUrl, "https://metadata.deluno.example/artwork/original/backdrop.jpg");
-  assert.deepEqual(result.cast, [{ name: "Keanu Reeves", character: "Neo", profileUrl: "https://metadata.deluno.example/artwork/w185/neo.jpg" }]);
+  assert.deepEqual(result.cast, [{ personId: "6384", name: "Keanu Reeves", character: "Neo", profileUrl: "https://metadata.deluno.example/artwork/w185/neo.jpg" }]);
 
   // The key Deluno's MetadataRatingItem actually deserialises. It was "votes"
   // and was therefore dropped in transit, leaving every broker-mode library
@@ -317,6 +317,7 @@ test("bills the whole cast, and folds each crew member into one credit", () => {
   // one: the director also produces, the writer is credited twice, and most of
   // the list is jobs nobody reads.
   const cast = Array.from({ length: 12 }, (_, index) => ({
+    id: 901 + index,
     name: `Player ${index + 1}`,
     character: `Role ${index + 1}`,
     profile_path: `/p${index + 1}.jpg`
@@ -346,10 +347,14 @@ test("bills the whole cast, and folds each crew member into one credit", () => {
   // Title-card order, not TMDb's; one row per person; the unrecognised job is
   // gone; and a person credited twice reads as one entry with both jobs.
   assert.deepEqual(detail.crew, [
-    { name: "Denis Villeneuve", job: "Director, Producer", profileUrl: "https://metadata.deluno.example/artwork/w185/dv.jpg" },
-    { name: "Ted Chiang", job: "Screenplay, Novel", profileUrl: null },
-    { name: "Shawn Levy", job: "Producer", profileUrl: null }
+    { personId: "4", name: "Denis Villeneuve", job: "Director, Producer", profileUrl: "https://metadata.deluno.example/artwork/w185/dv.jpg" },
+    { personId: "3", name: "Ted Chiang", job: "Screenplay, Novel", profileUrl: null },
+    { personId: "1", name: "Shawn Levy", job: "Producer", profileUrl: null }
   ]);
+
+  // The person id is what a credit links to and what following a filmography
+  // would key on. A name cannot do either job: names collide.
+  assert.equal(detail.cast[0].personId, "901");
 
   // The single director field the catalogue sorts on is unchanged.
   assert.equal(detail.director, "Denis Villeneuve");

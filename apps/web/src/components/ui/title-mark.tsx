@@ -81,10 +81,25 @@ export function MarkStrip({
    * where it is drawn rather than about the mark.
    */
   sheen = false,
+  /**
+   * Whether the title this swatch stands for is being watched.
+   *
+   * **Unmonitored is the override, and it overrides here too.** The card paints
+   * an unmonitored title one flat grey — fill and track both — and this strip
+   * did not, so a compact list row drew Missing red for a title whose poster
+   * two clicks away drew it grey. Measured on the rig: rgb(192,17,28) in the
+   * row against rgb(108,114,127) on the card.
+   *
+   * Defaults to true because a LEGEND is not a title: the chips above a shelf
+   * explain what each colour means, and "Unmonitored" is its own chip beside
+   * them rather than a state the other five can be in.
+   */
+  monitored = true,
   className
-}: { mark: TitleMark; type?: MediaType; sheen?: boolean; className?: string }) {
+}: { mark: TitleMark; type?: MediaType; sheen?: boolean; monitored?: boolean; className?: string }) {
   const presentation = TITLE_MARK_PRESENTATION[mark];
   const paintsBars = type ? cardDesign(type).bars : false;
+  const paint = monitored ? TITLE_MARK_PAINT[mark] : UNMONITORED_PAINT;
 
   return (
     <span
@@ -92,10 +107,22 @@ export function MarkStrip({
       className={cn(
         "h-1 w-4 shrink-0 rounded-full",
         !paintsBars && presentation.dot,
-        sheen && presentation.sheen,
+        // No gold leaf on a title nothing is watching: the grail says "Deluno
+        // has finished", and it has not been asked to start.
+        sheen && monitored && presentation.sheen,
         className
       )}
-      style={paintsBars ? { background: `hsl(var(${TITLE_MARK_PAINT[mark].surface}))` } : undefined}
+      // `backgroundColor`, NOT the `background` shorthand.
+      //
+      // The shorthand resets `background-image`, which is the whole of
+      // `.mark-grail` — so painting the legend from the card's surfaces
+      // silently cancelled the gold leaf on Quality met, and the one rung with
+      // a treatment of its own went flat while the card's own bar stayed gold.
+      // That is the exact failure this swatch exists to prevent: a legend
+      // explaining a palette its shelf does not draw. The longhand lets the
+      // surface be the colour underneath and the grail gradient sit on top, the
+      // same layering the bar itself uses.
+      style={paintsBars ? { backgroundColor: `hsl(var(${paint.surface}))` } : undefined}
     />
   );
 }
@@ -305,8 +332,21 @@ function TwoToneBar({
     the shelf around it at three of the four settings.
   */
   const layer = "pointer-events-none absolute inset-0 flex items-center justify-center whitespace-nowrap px-1 font-mono text-[length:var(--library-badge-size)] font-bold leading-none";
+  /*
+    **Baseline, not centre, between the lead and the number.**
+
+    `items-center` centres the two BOXES, and the boxes are different sizes —
+    the lead is 0.72em. Worse, the lead is uppercase with no descenders, so its
+    glyphs sit in the top of its box while "0 / 2" fills its own; equal centres
+    therefore read as the word floating above the number. James: *"center the
+    subs top to bottom on the posters, it looks a bit odd and too high compared
+    to the number"*.
+
+    Two sizes of type on one line share a baseline. That is what the eye reads
+    as level, and it is what the outer layer then centres as a single block.
+  */
   const inner = label ? (
-    <span className="flex items-center gap-1">
+    <span className="flex items-baseline gap-1">
       {lead ? <i className="not-italic text-[0.72em] tracking-wider opacity-75">{lead}</i> : null}
       <b className="font-bold">{label}</b>
     </span>
@@ -872,9 +912,11 @@ export function TitleMarkLabel({ item, className, type }: { item: TitleMarkInput
 
         `type` is passed so it paints from the bar SURFACE on a shelf that has
         adopted DESIGN-006 — the same colour the card carries, rather than the
-        page-text one.
+        page-text one. `monitored` for the same reason one step further: grey is
+        the override, and a row that ignored it called a title Missing red while
+        its own poster called it grey.
       */}
-      <MarkStrip mark={mark} type={type} sheen />
+      <MarkStrip mark={mark} type={type} monitored={item.monitored} sheen />
       <span>{presentation.label}</span>
       {half ? <span className="text-muted-foreground">· unmonitored</span> : null}
     </span>

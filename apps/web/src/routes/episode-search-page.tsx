@@ -242,7 +242,7 @@ export function EpisodeSearchPage() {
                       <ListCell primary={episode.nextEligibleSearchUtc ? formatDateTime(episode.nextEligibleSearchUtc) : "Any time"} />
                       <ListCell>
                         {/* An episode is a title. Same five marks (DESIGN-001). */}
-                        <TitleMarkLabel item={{ monitored: episode.monitored, wantedStatus: episode.wantedStatus }} />
+                        <TitleMarkLabel item={{ monitored: episode.monitored, wantedStatus: episode.wantedStatus }} type="show" />
                       </ListCell>
                       <div role="cell" className="flex justify-end">
                         <Button

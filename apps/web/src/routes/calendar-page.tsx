@@ -31,6 +31,7 @@ import { SegmentedControl } from "../components/ui/segmented-control";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { TitleMarkDot, TitleMarkLabel } from "../components/ui/title-mark";
 import type { TitleMarkInput } from "../components/ui/title-mark";
+import type { MediaType } from "../lib/media-types";
 
 interface SeriesCalendarEpisode {
   episodeId: string;
@@ -93,6 +94,15 @@ interface CalendarEntry {
   sub: string;
   kindLabel: string;
   detail: string;
+  /**
+   * Which shelf this row's mark belongs to.
+   *
+   * The calendar is the one list that mixes both media, so it cannot assume a
+   * medium the way a movie list can — and a mark drawn without one falls back
+   * to the page-text palette instead of the bar surfaces its card uses. The
+   * same title would then be one red here and another on its poster.
+   */
+  mediaType: MediaType;
   /**
    * The mark, the same one the title's own card carries.
    *
@@ -331,7 +341,7 @@ export function CalendarPage() {
                     <ListCell primary={formatTime(entry.date)} />
                     <ListCell primary={entry.detail} />
                     <ListCell>
-                      <TitleMarkLabel item={entry.mark} />
+                      <TitleMarkLabel item={entry.mark} type={entry.mediaType} />
                     </ListCell>
                   </ListRow>
                 ))}
@@ -408,6 +418,7 @@ function buildEntries(data: CalendarLoaderData): CalendarEntry[] {
       name: episode.seriesTitle,
       sub: `S${String(episode.seasonNumber).padStart(2, "0")}E${String(episode.episodeNumber).padStart(2, "0")}`,
       kindLabel: "Episode",
+      mediaType: "show",
       detail: episode.title ?? "Episode title pending",
       mark: { monitored: episode.monitored, wantedStatus: episode.wantedStatus },
       href: `/tv/${episode.seriesId}`
@@ -420,6 +431,7 @@ function buildEntries(data: CalendarLoaderData): CalendarEntry[] {
     name: movie.title,
     sub: movie.releaseYear ? String(movie.releaseYear) : "Movie",
     kindLabel: movieKindLabel(movie.kind),
+    mediaType: "movie",
     detail: movieKindDetail(movie.kind),
     mark: { monitored: movie.monitored, wantedStatus: movie.wantedStatus },
     href: `/movies/${movie.movieId}`

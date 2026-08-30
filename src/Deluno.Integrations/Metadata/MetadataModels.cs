@@ -116,7 +116,15 @@ public sealed record MetadataEpisode(
 public sealed record MetadataCastMember(
     string Name,
     string? Character,
-    string? ProfileUrl);
+    string? ProfileUrl,
+    /// <summary>
+    /// The provider's id for this person.
+    ///
+    /// <para>What a credit links to, and what following a person's filmography
+    /// would key on. Neither is possible from a name: names collide, and two
+    /// different Chris Evanses are one row if you key on the string.</para>
+    /// </summary>
+    string? PersonId = null);
 
 /// <summary>
 /// A crew credit. <paramref name="Job"/> holds every job this person did on the
@@ -126,7 +134,9 @@ public sealed record MetadataCastMember(
 public sealed record MetadataCrewMember(
     string Name,
     string? Job,
-    string? ProfileUrl);
+    string? ProfileUrl,
+    /// <summary>The provider's id for this person. See <see cref="MetadataCastMember.PersonId"/>.</summary>
+    string? PersonId = null);
 
 public sealed record MetadataRatingItem(
     string Source,

@@ -304,3 +304,50 @@ describe("the corner, where the dot used to be", () => {
     expect(pip?.className).not.toContain(`${TITLE_MARK_PRESENTATION.missing.dot}/`);
   });
 });
+
+describe("the legend's swatch keeps the gold leaf", () => {
+  it("paints the shelf's surface WITHOUT cancelling the grail gradient", () => {
+    // `background: <colour>` resets background-image, and background-image is
+    // the whole of `.mark-grail`. Painting the legend from the card's surfaces
+    // with the shorthand therefore turned Quality met flat while the card's own
+    // bar stayed gold — a legend explaining a palette its shelf does not draw,
+    // which is the one thing this swatch exists to prevent.
+    const { container } = render(<MarkStrip mark="covered" type="movie" sheen />);
+    const swatch = container.firstElementChild as HTMLElement;
+
+    expect(swatch.className).toContain("mark-grail");
+    expect(swatch.style.backgroundColor).not.toBe("");
+    expect(swatch.style.background).not.toMatch(/^hsl/);
+  });
+});
+
+describe("unmonitored overrides the mark's colour everywhere it is drawn", () => {
+  it("greys a list row's strip the way the card greys its bars", () => {
+    // The card paints an unmonitored title one flat grey, fill and track alike.
+    // This strip did not, so the compact list drew Missing red for a title
+    // whose poster two clicks away drew it grey — measured on the rig as
+    // rgb(192,17,28) against rgb(108,114,127). A list and the shelf it mirrors
+    // must not disagree about a colour.
+    const watched = render(<MarkStrip mark="missing" type="movie" />).container.firstElementChild as HTMLElement;
+    const ignored = render(<MarkStrip mark="missing" type="movie" monitored={false} />).container.firstElementChild as HTMLElement;
+
+    expect(watched.style.backgroundColor).toContain("--mark-missing-surface");
+    expect(ignored.style.backgroundColor).toContain("--mark-unmonitored");
+  });
+
+  it("takes the gold leaf off a title nothing is watching", () => {
+    // The grail says "Deluno has finished". It has not been asked to start.
+    const ignored = render(<MarkStrip mark="covered" type="movie" monitored={false} sheen />)
+      .container.firstElementChild as HTMLElement;
+
+    expect(ignored.className).not.toContain("mark-grail");
+  });
+
+  it("keeps the legend's own swatches at full colour", () => {
+    // A legend is not a title. The chips above a shelf explain what each colour
+    // means, and "Unmonitored" is its own chip beside them rather than a state
+    // the other five can be in — so the default must be "watched".
+    const legend = render(<MarkStrip mark="missing" type="movie" />).container.firstElementChild as HTMLElement;
+    expect(legend.style.backgroundColor).toContain("--mark-missing-surface");
+  });
+});

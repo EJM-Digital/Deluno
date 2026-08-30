@@ -21,6 +21,8 @@ export interface CreditedPerson {
   /** A character for a player, a job for a crew member. */
   role: string | null;
   profileUrl: string | null;
+  /** The provider's person id. Absent on credits stored before it was read. */
+  personId: string | null;
 }
 
 interface CreditsRowProps {
@@ -88,20 +90,56 @@ export function CreditsRow({ heading, people, className }: CreditsRowProps) {
       </div>
       <div ref={scroller} onScroll={measure} className="no-scrollbar -mx-1 mt-3 flex gap-3 overflow-x-auto px-1 pb-1">
         {people.map((person) => (
-          <figure key={`${person.name}-${person.role ?? ""}`} className="w-[7.5rem] shrink-0">
-            {person.profileUrl
-              ? <img src={person.profileUrl} alt="" loading="lazy" className="aspect-[2/3] w-full rounded-xl border border-white/15 bg-surface-2 object-cover shadow-lg" />
-              : <div className="flex aspect-[2/3] w-full items-center justify-center rounded-xl border border-white/15 bg-surface-2 text-center text-[length:var(--type-caption)] text-muted-foreground">No photo</div>}
-            <figcaption className="mt-2 leading-tight">
-              <span className="block truncate text-xs font-semibold text-foreground" title={person.name}>{person.name}</span>
-              {person.role
-                ? <span className="mt-0.5 block truncate text-[length:var(--type-caption)] text-muted-foreground" title={person.role}>{person.role}</span>
-                : null}
-            </figcaption>
-          </figure>
+          <CreditCard key={`${person.name}-${person.role ?? ""}`} person={person} />
         ))}
       </div>
     </section>
+  );
+}
+
+/**
+ * One credit — a link when the person can be looked up, a plain card when they
+ * cannot.
+ *
+ * <p>A face with a name under it invites a click, and until now nothing happened
+ * — James: <i>"clicking on cast and crew should bring up their imdb link dont
+ * you think?"</i>. The destination is the provider's own person page, because
+ * the person id is the one identifier we actually hold: a name is not a link,
+ * two people share one routinely, and an IMDb id would cost a separate lookup
+ * per person on every metadata refresh — fifty extra upstream calls a title.</p>
+ *
+ * <p>Credits stored before the id was read have no `personId`, so they stay
+ * plain cards rather than linking somewhere wrong. A metadata refresh fills
+ * them in.</p>
+ */
+function CreditCard({ person }: { person: CreditedPerson }) {
+  const portrait = person.profileUrl
+    ? <img src={person.profileUrl} alt="" loading="lazy" className="aspect-[2/3] w-full rounded-xl border border-white/15 bg-surface-2 object-cover shadow-lg transition group-hover/credit:border-primary/50" />
+    : <div className="flex aspect-[2/3] w-full items-center justify-center rounded-xl border border-white/15 bg-surface-2 text-center text-[length:var(--type-caption)] text-muted-foreground">No photo</div>;
+
+  const caption = (
+    <figcaption className="mt-2 leading-tight">
+      <span className="block truncate text-xs font-semibold text-foreground" title={person.name}>{person.name}</span>
+      {person.role
+        ? <span className="mt-0.5 block truncate text-[length:var(--type-caption)] text-muted-foreground" title={person.role}>{person.role}</span>
+        : null}
+    </figcaption>
+  );
+
+  if (!person.personId) {
+    return <figure className="w-[7.5rem] shrink-0">{portrait}{caption}</figure>;
+  }
+
+  return (
+    <a
+      href={`https://www.themoviedb.org/person/${person.personId}`}
+      target="_blank"
+      rel="noreferrer"
+      title={`${person.name} on TMDb`}
+      className="group/credit w-[7.5rem] shrink-0 no-underline"
+    >
+      <figure>{portrait}{caption}</figure>
+    </a>
   );
 }
 
@@ -166,11 +204,13 @@ function readPeople(value: unknown, roleKeys: readonly string[]): CreditedPerson
 
     const role = roleKeys.map((key) => item[key]).find((candidate) => typeof candidate === "string" && candidate.trim());
     const profileUrl = item.profileUrl ?? item.ProfileUrl;
+    const personId = item.personId ?? item.PersonId;
 
     return [{
       name: name.trim(),
       role: typeof role === "string" ? role : null,
-      profileUrl: typeof profileUrl === "string" ? profileUrl : null
+      profileUrl: typeof profileUrl === "string" ? profileUrl : null,
+      personId: typeof personId === "string" && personId.trim() ? personId : null
     }];
   });
 }
