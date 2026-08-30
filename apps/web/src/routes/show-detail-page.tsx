@@ -21,7 +21,6 @@ import {
   type DecisionExplanationItem,
   type DownloadDispatchItem,
   type LibraryItem,
-  type MetadataCastMember,
   type IntakeTitleOriginItem,
   type SeriesEpisodeInventoryItem,
   type SeriesImportRecoverySummary,
@@ -37,8 +36,11 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { RemoveMediaDialog, type MediaRemovalPreview, type RemoveMediaOptions } from "../components/app/remove-media-dialog";
+import { CreditsRow, readStoredCredits } from "../components/app/credits-row";
 import { DecisionExplanationList } from "../components/app/decision-explanation-list";
 import { MediaMetadataDrawer } from "../components/app/media-metadata-drawer";
+import { HeroBackdrop } from "../components/app/hero-backdrop";
+import { SourceMark } from "../components/app/source-mark";
 import { RatingStrip } from "../components/app/rating-strip";
 import { Chip } from "../components/ui/chip";
 import { Drawer, DrawerFacts, DrawerFooter, DrawerSection } from "../components/ui/drawer";
@@ -148,7 +150,7 @@ export function ShowDetailPage() {
   const importCases = importRecovery.recentCases.filter(
     (item) => item.title.trim().toLowerCase() === series.title.trim().toLowerCase()
   );
-  const cast = readStoredCast(series.metadataJson);
+  const { cast, crew } = readStoredCredits(series.metadataJson);
 
   const visibleEpisodes = useMemo(
     () => inventory.episodes.filter((episode) => matchesEpisodeFilter(episode, episodeFilter, query)),
@@ -591,9 +593,7 @@ export function ShowDetailPage() {
       />
 
       <Card className="relative isolate min-h-[19rem] overflow-hidden border-primary/25 bg-card">
-        {series.backdropUrl ? <img src={series.backdropUrl} alt="" className="pointer-events-none absolute inset-0 h-full w-full scale-105 object-cover opacity-[0.34] saturate-[0.8]" /> : null}
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-card via-card/80 to-card/45" />
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-card/90 via-transparent to-card/25" />
+        <HeroBackdrop url={series.backdropUrl} />
         <CardContent className="relative p-[var(--tile-pad)] sm:p-[calc(var(--tile-pad)*1.15)]">
           <div className="grid min-h-[15rem] items-center gap-[var(--grid-gap)] md:grid-cols-[10rem_minmax(0,1fr)] xl:grid-cols-[10rem_minmax(0,1fr)_14rem]">
             {series.posterUrl ? (
@@ -656,27 +656,14 @@ export function ShowDetailPage() {
               <p className="mt-4 max-w-4xl text-sm leading-relaxed text-muted-foreground">
                 {series.overview ?? "No overview has been stored yet. Refresh metadata when you want Deluno to enrich this series."}
               </p>
-              {cast.length > 0 ? (
-                <section className="mt-5 border-t border-white/10 pt-4">
-                  <div className="flex items-center justify-between gap-3"><p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.18em] text-muted-foreground">Starring</p><span className="text-[length:var(--type-caption)] text-muted-foreground">{cast.length} credited</span></div>
-                  <div className="mt-3 flex flex-wrap gap-x-5 gap-y-3">
-                    {cast.slice(0, 6).map((person) => (
-                      <div key={`${person.name}-${person.character ?? ""}`} className="flex min-w-0 items-center gap-2.5">
-                        {person.profileUrl ? <img src={person.profileUrl} alt="" className="h-10 w-10 shrink-0 rounded-full border border-white/15 bg-surface-2 object-cover shadow-lg" /> : <div className="h-10 w-10 shrink-0 rounded-full border border-white/15 bg-surface-2" />}
-                        <span className="max-w-28 min-w-0 leading-tight"><span className="block truncate text-xs font-semibold text-foreground">{person.name}</span>{person.character ? <span className="mt-0.5 block truncate text-[length:var(--type-caption)] text-muted-foreground">{person.character}</span> : null}</span>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              ) : null}
             </div>
             <aside className="w-full self-center rounded-xl border border-white/10 bg-card/80 p-4 backdrop-blur-sm">
               <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.18em] text-muted-foreground">Ratings &amp; IDs</p>
               <p className="mt-1 text-xs text-muted-foreground">The metadata Deluno is using</p>
               <div className="mt-3"><RatingStrip ratings={series.ratings} fallbackRating={series.rating} /></div>
               <div className="mt-4 space-y-2 border-t border-hairline pt-4 text-sm">
-                <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Source</span><span className="font-medium text-foreground">{series.metadataProvider?.toUpperCase() ?? "Not linked"}</span></div>
-                <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">IMDb</span><span className="font-medium text-foreground">{series.imdbId ?? "—"}</span></div>
+                <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Source</span>{series.metadataProvider ? <SourceMark source={series.metadataProvider.toLowerCase()} label={series.metadataProvider.toUpperCase()} /> : <span className="font-medium text-foreground">Not linked</span>}</div>
+                <div className="flex items-center justify-between gap-3"><SourceMark source="imdb" label="IMDb" /><span className="font-mono text-xs font-medium text-foreground">{series.imdbId ?? "—"}</span></div>
               </div>
               <Button variant="outline" className="mt-4 w-full" onClick={() => void handleMetadataRefresh()} disabled={busyAction !== null}>
                 {busyAction === "metadata-refresh" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
@@ -698,6 +685,23 @@ export function ShowDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Out of the bubble and into their own blocks, the same as a film's page
+          and for the same reason — a header you have to scroll is not a header. */}
+      {cast.length ? (
+        <Card>
+          <CardContent className="p-4">
+            <CreditsRow heading="Cast" people={cast} className="border-t-0 pt-0" />
+          </CardContent>
+        </Card>
+      ) : null}
+      {crew.length ? (
+        <Card>
+          <CardContent className="p-4">
+            <CreditsRow heading="Crew" people={crew} className="border-t-0 pt-0" />
+          </CardContent>
+        </Card>
+      ) : null}
 
       {nextStep ? (
         <ListCard title="Next step" count={nextStep.eyebrow}>
@@ -1375,31 +1379,6 @@ export function ShowDetailPage() {
 }
 
 /* -------------------------------------------------------------- helpers */
-
-function readStoredCast(metadataJson: string | null): MetadataCastMember[] {
-  if (!metadataJson) return [];
-
-  try {
-    const parsed = JSON.parse(metadataJson) as { cast?: unknown; Cast?: unknown };
-    const cast = parsed.cast ?? parsed.Cast;
-    if (!Array.isArray(cast)) return [];
-
-    return cast.flatMap((person) => {
-      if (typeof person !== "object" || person === null) return [];
-      const item = person as Record<string, unknown>;
-      const name = item.name ?? item.Name;
-      if (typeof name !== "string" || !name.trim()) return [];
-
-      return [{
-        name,
-        character: typeof (item.character ?? item.Character) === "string" ? (item.character ?? item.Character) as string : null,
-        profileUrl: typeof (item.profileUrl ?? item.ProfileUrl) === "string" ? (item.profileUrl ?? item.ProfileUrl) as string : null
-      }];
-    });
-  } catch {
-    return [];
-  }
-}
 
 function matchesEpisodeFilter(episode: SeriesEpisodeInventoryItem, filter: EpisodeFilter, query: string) {
   const haystack = `${formatEpisodeCode(episode)} ${episode.title ?? ""}`.toLowerCase();

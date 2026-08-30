@@ -22,6 +22,8 @@ const ARTWORK_SIZES = new Set(["w92", "w185", "w342", "w500", "w780", "w1280", "
 const POSTER_SIZE = "w780";
 const BACKDROP_SIZE = "original";
 const PORTRAIT_SIZE = "w185";
+const MAX_CAST = 30;
+const MAX_CREW = 20;
 
 export default {
   async fetch(request, env) {
@@ -464,16 +466,8 @@ export function mapTmdbResult(item, mediaType, artworkOrigin = null) {
     // show — the same data under two names, which is the sort of thing that
     // silently returns an empty list for half a library if only one is read.
     keywords: readKeywords(item),
-    cast: Array.isArray(item.credits?.cast)
-      ? item.credits.cast
-        .filter((person) => typeof person?.name === "string" && person.name.trim())
-        .slice(0, 10)
-        .map((person) => ({
-          name: person.name.trim(),
-          character: typeof person.character === "string" ? person.character.trim() || null : null,
-          profileUrl: imageUrl(person.profile_path, PORTRAIT_SIZE, artworkOrigin)
-        }))
-      : [],
+    cast: readCast(item, artworkOrigin),
+    crew: readCrew(crew, artworkOrigin),
     imdbId: item.external_ids?.imdb_id ?? null,
     externalUrl,
     certification,
@@ -551,6 +545,74 @@ function readKeywords(item) {
     .slice(0, 25);
 }
 
+/**
+ * The billed cast, not the first ten of it.
+ *
+ * Ten was the whole ensemble of a small film and the opening titles of a big
+ * one — Arrival's page stopped at Frank Schorpion and never reached the rest,
+ * so the section read as if the film had a cast of ten. TMDb bills them in
+ * order, so the cut can simply be made much later; thirty is past the point
+ * where a name means anything to a viewer, and it is still one small array.
+ */
+function readCast(item, artworkOrigin) {
+  const cast = Array.isArray(item.credits?.cast) ? item.credits.cast : [];
+  return cast
+    .filter((person) => typeof person?.name === "string" && person.name.trim())
+    .slice(0, MAX_CAST)
+    .map((person) => ({
+      name: person.name.trim(),
+      character: typeof person.character === "string" ? person.character.trim() || null : null,
+      profileUrl: imageUrl(person.profile_path, PORTRAIT_SIZE, artworkOrigin)
+    }));
+}
+
+/**
+ * Who made it, beyond the one director already read.
+ *
+ * <p>TMDb's crew list is exhaustive — every runner and assistant — and ordered
+ * by nothing useful, so it cannot be taken as it comes. Two rules make it
+ * readable: keep only the jobs a viewer recognises, in the order a title card
+ * would list them, and fold each person into a single entry. The same person is
+ * routinely credited three times (Villeneuve directs and produces; a writer is
+ * "Screenplay" and "Novel"), and three identical portraits in a row reads as a
+ * bug rather than as a fuller credit.</p>
+ */
+const CREW_JOBS = [
+  "Director", "Screenplay", "Writer", "Story", "Novel", "Characters",
+  "Producer", "Executive Producer", "Original Music Composer", "Music",
+  "Director of Photography", "Editor", "Production Design", "Art Direction",
+  "Costume Design", "Casting", "Visual Effects Supervisor"
+];
+
+function readCrew(crew, artworkOrigin) {
+  const byPerson = new Map();
+
+  for (const job of CREW_JOBS) {
+    for (const person of crew) {
+      if (person?.job !== job) continue;
+      const name = typeof person.name === "string" ? person.name.trim() : "";
+      if (!name) continue;
+
+      const key = person.id ?? name;
+      const existing = byPerson.get(key);
+      if (existing) {
+        if (!existing.jobs.includes(job)) existing.jobs.push(job);
+        continue;
+      }
+
+      byPerson.set(key, {
+        name,
+        jobs: [job],
+        profileUrl: imageUrl(person.profile_path, PORTRAIT_SIZE, artworkOrigin)
+      });
+    }
+  }
+
+  return [...byPerson.values()]
+    .slice(0, MAX_CREW)
+    .map((person) => ({ name: person.name, job: person.jobs.join(", "), profileUrl: person.profileUrl }));
+}
+
 function imageUrl(path, size, artworkOrigin) {
   if (typeof path !== "string" || !path.startsWith("/")) {
     return null;
@@ -585,6 +647,15 @@ async function serveArtwork(request, url) {
   const headers = new Headers();
   headers.set("Cache-Control", `public, max-age=${ARTWORK_CACHE_TTL_SECONDS}, immutable`);
   headers.set("Content-Type", upstream.headers.get("Content-Type") ?? "image/jpeg");
+  // Readable by the page that draws it, not just displayable.
+  //
+  // A detail page's hero scrim is solved from the backdrop's own brightness —
+  // Arrival's is a pale fog plate and drowns light text at the same scrim
+  // strength that a dark plate needs. Measuring it means drawing the image to a
+  // canvas, and a canvas tainted by a cross-origin image cannot be read back.
+  // This is public artwork already served to anyone who asks; the header lets
+  // the browser hand the pixels to the page that is displaying them anyway.
+  headers.set("Access-Control-Allow-Origin", "*");
   const response = new Response(upstream.body, { status: 200, headers });
   await cache.put(cacheKey, response.clone());
   return response;
