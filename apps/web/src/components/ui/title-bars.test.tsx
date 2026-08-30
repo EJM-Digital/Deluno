@@ -137,6 +137,31 @@ describe("the label is drawn twice and clipped into halves", () => {
   });
 });
 
+describe("the bars are pinned to the artwork's edges", () => {
+  it("positions them absolutely, at top and bottom", () => {
+    // **This is the test that was missing.** The first build laid the bars out in
+    // normal flow. The artwork box is `relative aspect-[2/3] overflow-hidden`
+    // with the image at `h-full w-full`, so an in-flow bar is pushed below a
+    // full-height image and clipped away — the card rendered with NO BARS AT
+    // ALL, and every other assertion still passed because the elements existed
+    // in the DOM. James: "there are no bars at all on the movies".
+    //
+    // Present in the DOM is not the same as on the card.
+    const [top, bottom] = bars(film());
+    for (const bar of [top, bottom]) {
+      expect(bar.className).toContain("absolute");
+      expect(bar.className).toContain("inset-x-0");
+    }
+    expect(top.className).toContain("top-0");
+    expect(bottom.className).toContain("bottom-0");
+    expect(top.className).not.toContain("bottom-0");
+  });
+
+  it("keeps them above the artwork rather than behind it", () => {
+    for (const bar of bars(film())) expect(bar.className).toContain("z-10");
+  });
+});
+
 describe("the switches remove words, never facts", () => {
   it("keeps the colour and the fill when the text is switched off", () => {
     const [on] = bars(film(), true, true);
