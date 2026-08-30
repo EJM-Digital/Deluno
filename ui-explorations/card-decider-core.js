@@ -207,7 +207,10 @@ function controlsFor(medium) {
       opts: [["on","On"],["off","Off"]], user: true },
     { key: "subs",   label: "Subtitle count", opts: [["on","On"],["off","Off"]], user: true },
     { key: "leads",  label: "Lead words", opts: [["none","None"],["subs","SUBS only"],["both","Both"]] },
-    { key: "mon",    label: "Monitoring", opts: [["when-off","Badge when off"],["always","Badge always"],["line","Line under"],["off","Not shown"]] },
+    /* This IS the `showMonitored` poster option. Choosing the badge changes what
+       that switch controls — it drew a line under the poster, and a line plus a
+       badge would be the same fact twice on one card. */
+    { key: "mon",    label: "Monitoring", opts: [["when-off","Badge when off"],["always","Badge always"],["line","Line under"],["off","Not shown"]], user: true },
     { key: "glyph",  label: "Glyph", opts: [["shield","Shield"],["eye","Eye"],["bell","Bell"]] },
     { key: "rem",    label: "Track",  opts: [["neutral","Neutral grey"],["missing","Missing red"]] },
     { key: "fill",   label: "Fill",   opts: [["state","State colour"],["held","What you hold"]] }

@@ -412,6 +412,38 @@ nothing else says it as briefly. The state pair is **Monitored / Not monitored**
 which is already the majority in the app — the poster line, the overview and the
 filter panel all use it.
 
+### Monitoring is also *selectable*, in three places
+
+James: *"we do have to remember we also have monitored / unmonitored as a
+selectable option as well"*. Three, and they are not the same kind of thing — one
+filters, one displays, one edits:
+
+| Selectable | What it is | Says today | Verdict |
+|---|---|---|---|
+| **Filter** — `MonitoringFilter` | narrows the shelf | `Any monitoring` · `Monitored (n)` · `Not monitored (n)` | **already correct**, leave it |
+| **Poster option** — `showMonitored` | shows or hides the fact on a card | switch labelled `Monitoring` | keep the switch, **change what it controls** — see below |
+| **Bulk edit** | sets the fact on a selection | `Monitored` / `Unmonitored` | → `Not monitored` |
+
+The internal value `"unmonitored"` stays as it is; it is a code identifier and never
+reaches a reader.
+
+#### `showMonitored` now controls the badge, not a line
+
+This is the consequence of choosing A and it is easy to miss. `showMonitored` is a
+poster option, on by default, and today it draws a **line under the poster** —
+`ShieldCheck` / `ShieldOff` plus the words. With the badge on the artwork carrying
+monitoring, that line would be the same fact twice on one card.
+
+So the switch survives, its label survives, and **what it controls changes**: it
+turns the corner badge on and off. Its description changes with it — *"Whether
+Deluno is watching for this title"* describes the fact, not the option; it should
+say what switching it off does, which is stop marking the titles Deluno is not
+watching.
+
+And because the badge only appears when monitoring is **off**, this switch is one a
+reader will almost never see do anything — which is correct. It is there for someone
+who does not want the exception marked at all.
+
 ### The seven vocabularies this replaces
 
 One fact currently has seven wordings, none able to check the others. This is the
@@ -422,7 +454,8 @@ and adopting the above means **all of these change**:
 |---|---|---|
 | Poster line, overview | `Monitored` / `Not monitored` | unchanged |
 | Filter panel | `Not monitored (n)` | unchanged |
-| Bulk dialog dropdown | `Monitored` / `Unmonitored` | `Not monitored` |
+| Bulk dialog dropdown | `Monitored` / `Unmonitored` | `Monitored` / `Not monitored` |
+| Poster option `showMonitored` | draws a line under the poster | controls the corner badge |
 | Movie detail stat row | `On` / `Paused` | `Monitored` / `Not monitored` |
 | Movie detail eyebrow | `Monitoring paused` | `Not monitored` |
 | Movie detail button | `Monitor` / `Stop monitoring` | the icon control above |
