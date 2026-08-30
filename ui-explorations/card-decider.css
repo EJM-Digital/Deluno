@@ -77,15 +77,15 @@ h1 a:hover { color: var(--fg); border-color: hsl(211 100% 50% / .5); }
 /* ── the shelf ── */
 .wall { display: grid; gap: 14px; margin-top: 14px; }
 .card { border-radius: 10px; overflow: hidden; background: var(--chip); position: relative; }
-.art { position: relative; aspect-ratio: 2/3; background: hsl(220 12% 30%);
-       display: flex; align-items: flex-end; overflow: hidden; }
+.art { position: relative; aspect-ratio: 2/3; background: hsl(220 12% 30%); overflow: hidden; }
 .art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .art .noart { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
               font-size: 11px; color: hsl(0 0% 100% / .4);
               background: linear-gradient(150deg, hsl(220 14% 26%), hsl(222 20% 14%)); }
-.name { position: relative; padding: 7px 8px; font-size: 11px; font-weight: 600; color: #fff;
-        line-height: 1.25; text-shadow: 0 1px 4px rgb(0 0 0 / .9);
-        background: linear-gradient(to top, rgb(0 0 0 / .72), transparent); width: 100%; }
+/* The title is a line UNDER the poster — the showTitle option — not an overlay.
+   Drawing it on the artwork made every card a lie about how the shelf looks. */
+.tline { padding: 7px 8px 2px; font-size: 11.5px; font-weight: 600; line-height: 1.3;
+         color: var(--fg); }
 
 .bar { position: relative; width: 100%; overflow: hidden; }
 .bar .fill { position: absolute; inset: 0 auto 0 0; }
@@ -151,3 +151,11 @@ h2.mx small { font: 500 12px/1 "Inter", system-ui, sans-serif; color: var(--mute
 .mon { padding: 5px 7px 6px; font: 600 10px/1 "Inter", system-ui, sans-serif;
        color: var(--muted); display: flex; align-items: center; gap: 5px; }
 .mon.off { opacity: .75; }
+
+/* The monitoring mark, on the artwork. Opaque — a translucent badge is a
+   different colour on every poster, the same problem that killed the label. */
+.mbadge { position: absolute; top: 23px; right: 7px; z-index: 6;
+          display: inline-flex; align-items: center; justify-content: center;
+          width: 20px; height: 20px; border-radius: 6px;
+          background: var(--card); color: var(--fg); }
+.mbadge.off { color: var(--muted); }
