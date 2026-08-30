@@ -256,7 +256,8 @@ function TwoToneBar({
   lead,
   label,
   title,
-  ariaLabel
+  ariaLabel,
+  edge
 }: {
   /** 0 to 100. */
   fill: number;
@@ -268,6 +269,16 @@ function TwoToneBar({
   label?: string;
   title: string;
   ariaLabel: string;
+  /**
+   * Which edge of the artwork this bar pins to.
+   *
+   * **It must be positioned, not laid out in flow.** The artwork box is
+   * `relative aspect-[2/3] overflow-hidden` with the image at `h-full w-full`,
+   * so a bar in normal flow is pushed below a full-height image and clipped away
+   * entirely — the card renders with no bars at all, which is exactly what
+   * happened on the first build.
+   */
+  edge: "top" | "bottom";
 }) {
   const pct = Math.min(100, Math.max(0, Math.round(fill)));
     /*
@@ -289,7 +300,10 @@ function TwoToneBar({
       role="img"
       aria-label={ariaLabel}
       title={title}
-      className="relative h-4 w-full overflow-hidden"
+      className={cn(
+        "absolute inset-x-0 z-10 h-4 overflow-hidden",
+        edge === "top" ? "top-0" : "bottom-0"
+      )}
       style={{ background: trackColour }}
     >
       <span
@@ -439,6 +453,7 @@ export function TitleBars({
         lead={design.leads === "both" ? media.lead : undefined}
         label={showMediaText ? media.label : undefined}
         title={rung.hint + (monitored ? "" : " Deluno is not watching this one.")}
+        edge="top"
         ariaLabel={`${rung.label}${watch}${
           isShow && media.fraction ? ` · ${media.label} aired episodes on disk` : ""
         }${!isShow && item.hasFile && item.quality ? ` · ${item.quality}` : ""}`}
@@ -451,6 +466,7 @@ export function TitleBars({
         onTrack={paintVar(trackPaint.onTrack)}
         lead={design.leads === "none" ? undefined : "SUBS"}
         label={showSubtitleText ? subLabel : undefined}
+        edge="bottom"
         title={
           subs.wanted
             ? `${subs.held} of ${subs.wanted} subtitle languages you asked for are here.`
