@@ -184,6 +184,23 @@ describe("the bars are pinned to the artwork's edges", () => {
 });
 
 describe("the switches remove words, never facts", () => {
+  it("shrinks the bar to the 5px strip when its words are off, per bar", () => {
+    // A 16px band exists to carry a label. With no label it is 16px of chrome
+    // over the artwork saying what 5px says. Each switch governs its own bar, so
+    // one off and one on must give one strip and one band.
+    const [top, bottom] = bars(film(), true, true);
+    expect(top.className).toContain("h-4");
+    expect(bottom.className).toContain("h-4");
+
+    const [topOff, bottomOff] = bars(film(), false, false);
+    expect(topOff.className).toContain("h-[5px]");
+    expect(bottomOff.className).toContain("h-[5px]");
+
+    const [topMixed, bottomMixed] = bars(film(), true, false);
+    expect(topMixed.className).toContain("h-4");
+    expect(bottomMixed.className).toContain("h-[5px]");
+  });
+
   it("keeps the colour and the fill when the text is switched off", () => {
     const [on] = bars(film(), true, true);
     const [off] = bars(film(), false, false);
