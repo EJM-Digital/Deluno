@@ -82,10 +82,10 @@ h1 a:hover { color: var(--fg); border-color: hsl(211 100% 50% / .5); }
 .art .noart { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
               font-size: 11px; color: hsl(0 0% 100% / .4);
               background: linear-gradient(150deg, hsl(220 14% 26%), hsl(222 20% 14%)); }
-/* The title is a line UNDER the poster — the showTitle option — not an overlay.
-   Drawing it on the artwork made every card a lie about how the shelf looks. */
-.tline { padding: 7px 8px 2px; font-size: 11.5px; font-weight: 600; line-height: 1.3;
-         color: var(--fg); }
+/* The title is not on the card at all — it is a switchable line and not part of
+   what is being decided. The name identifies the card from the description. */
+.cap .who { display: block; font: 700 12px/1.3 "Inter", system-ui, sans-serif;
+            color: var(--fg); margin-bottom: 5px; }
 
 .bar { position: relative; width: 100%; overflow: hidden; }
 .bar .fill { position: absolute; inset: 0 auto 0 0; }
