@@ -387,6 +387,62 @@ which reads as *watching* in English but is not the app's own word for it, and a
 second icon for a fact that already has one is how an icon language stops being a
 language.
 
+### The control, and the words — settled
+
+Chosen from four rendered variants (`/renders/monitoring-control.html`), James:
+*"honestly I like A"*. **An icon whose tooltip carries the state.** It is Sonarr's
+exact shape, and the cheapest in space — which is what matters, because this control
+has to appear at four levels and one of them is an episode row.
+
+**The state is not hidden by it.** The glyph differs — shield against slashed shield
+— so the fact reads without hover; what hover adds is the *word* and the action. An
+earlier note in the render claimed the state was invisible until hovered, and that
+was wrong.
+
+**A state word describes, a verb instructs.** They are different jobs, not competing
+options, so both are kept and each is used where it belongs:
+
+| Where | Reads |
+|---|---|
+| Card badge (not pressable) | `Not monitored` — the fact, and stop |
+| Movie header, series header, season row, episode row | `Monitored — click to unmonitor` · `Not monitored — click to monitor` |
+
+The verb pair is fixed: **Monitor** and **Unmonitor** are what pressing does and
+nothing else says it as briefly. The state pair is **Monitored / Not monitored**,
+which is already the majority in the app — the poster line, the overview and the
+filter panel all use it.
+
+### The seven vocabularies this replaces
+
+One fact currently has seven wordings, none able to check the others. This is the
+same defect shape as everything else in this document, in words rather than colour,
+and adopting the above means **all of these change**:
+
+| Where | Says today | Should say |
+|---|---|---|
+| Poster line, overview | `Monitored` / `Not monitored` | unchanged |
+| Filter panel | `Not monitored (n)` | unchanged |
+| Bulk dialog dropdown | `Monitored` / `Unmonitored` | `Not monitored` |
+| Movie detail stat row | `On` / `Paused` | `Monitored` / `Not monitored` |
+| Movie detail eyebrow | `Monitoring paused` | `Not monitored` |
+| Movie detail button | `Monitor` / `Stop monitoring` | the icon control above |
+| Bulk operation dropdown | `Monitor or unmonitor` | `Monitor or unmonitor` (a verb pair — correct) |
+| Selection command bar | `Monitor` / `Unmonitor` | unchanged — verbs on buttons |
+
+### Where the control has to appear
+
+James: *"whatever we pick needs to go into the title detail as well so if you are in
+a movie or series / season you can just toggle it on or off"*.
+
+| Level | Endpoint |
+|---|---|
+| Movie | `PUT /api/movies/monitoring` — exists |
+| Series | `PUT /api/series/monitoring` — exists |
+| Episode | `PUT /api/series/episodes/monitoring` — exists |
+| **Season** | **none** — sets its episodes in bulk through the episode endpoint, which is how Sonarr does it |
+
+Only the season level is new work, and it needs no new endpoint.
+
 `canBeHalf` in `TITLE_MARK_PRESENTATION` therefore has no consumer on the card any
 more. Do not delete it blindly — the drawer and detail page may still read it — but
 check, because a flag nothing reads is the shape of the defects this project keeps

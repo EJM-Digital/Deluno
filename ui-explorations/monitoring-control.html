@@ -99,18 +99,18 @@ const verbWord = on => on ? "Unmonitor" : "Monitor";
 const tip = on => stateWord(on) + " — click to " + verbWord(on).toLowerCase();
 
 const VARIANTS = [
-  { tag: "A", name: "Icon, state in the tooltip",
-    why: "Sonarr's exact shape. <b>Cheapest in space</b> — it fits a season row, an episode row and a header alike, which matters because this control has to appear at three levels. The cost is that the state is invisible until hovered, and on a touch screen there is no hover.",
+  { tag: "A ✓ CHOSEN", name: "Icon, state in the tooltip",
+    why: "Sonarr's exact shape, and James's pick. <b>Cheapest in space</b> — it fits a season row, an episode row and a header alike, which matters because this control has to appear at four levels. <b>The state is not hidden:</b> the glyph itself differs, shield against slashed shield, so the fact reads without hover — what hover adds is the <i>word</i> and the action. An earlier note here called the state invisible until hovered, which was wrong and undersold it.",
     render: on => '<button class="icobtn' + (on ? '' : ' off') + '" title="' + tip(on) + '">'
       + svg(on) + '</button>' },
   { tag: "B", name: "Switch, labelled with the noun",
-    why: "The control says <b>Monitoring</b> and its position says on or off. This is what a switch is for, and it is already what the movie page's Automation card does. Reads as a setting rather than an action, which is right for a detail page and wrong for a dense row.",
+    why: "<b>Not chosen.</b> The control says <b>Monitoring</b> and its position says on or off. This is what a switch is for, and it is already what the movie page's Automation card does. Reads as a setting rather than an action, which is right for a detail page and wrong for a dense row.",
     render: on => '<label class="sw"><span class="track2' + (on ? ' on' : '') + '"><span class="knob"></span></span>Monitoring</label>' },
   { tag: "C", name: "Button, labelled with the verb",
-    why: "Says what pressing it <b>does</b>, which is the one thing a button must say. The state is then implied rather than stated — you read <i>Unmonitor</i> and infer it is currently monitored, which is one inference more than a reader should have to make.",
+    why: "<b>Not chosen.</b> Says what pressing it <b>does</b>, which is the one thing a button must say. The state is then implied rather than stated — you read <i>Unmonitor</i> and infer it is currently monitored, which is one inference more than a reader should have to make.",
     render: on => '<button class="vbtn">' + svg(on) + verbWord(on) + '</button>' },
   { tag: "D", name: "State chip you can press",
-    why: "Says the state outright and is still pressable, with the verb in the tooltip — Sonarr's tooltip idea, made visible. <b>Both facts, no hover required.</b> Widest of the four, which is the only thing against it on a season row.",
+    why: "<b>Not chosen.</b> Says the state outright and is still pressable, with the verb in the tooltip — Sonarr's tooltip idea, made visible. <b>Both facts, no hover required.</b> Widest of the four, which is the only thing against it on a season row.",
     render: on => '<button class="chip2' + (on ? '' : ' off') + '" title="Click to '
       + verbWord(on).toLowerCase() + '">' + svg(on) + stateWord(on) + '</button>' }
 ];
