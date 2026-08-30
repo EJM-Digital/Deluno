@@ -13,7 +13,7 @@
 import type { Tone } from "../lib/status-tones";
 import { useState } from "react";
 import { Link, useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
-import { ArrowLeft, LoaderCircle, RefreshCw, Search, Trash2, Eye, EyeOff
+import { ArrowLeft, LoaderCircle, RefreshCw, Search, Trash2, ShieldCheck, ShieldOff
 } from "lucide-react";
 import {
   fetchJson, fetchPageItems,
@@ -176,7 +176,7 @@ export function MovieDetailPage() {
         }
       : !movie.monitored
         ? {
-            eyebrow: "Monitoring paused",
+            eyebrow: "Unmonitored",
             title: "Resume automatic care",
             description: "This movie is not being watched for a missing file or a quality improvement.",
             action: "Resume automation",
@@ -454,19 +454,34 @@ export function MovieDetailPage() {
               It sits beside the search actions because it belongs to the same
               question they answer: whether Deluno is working on this title.
             */}
+            {/*
+              Monitoring: the icon whose tooltip carries the state, chosen from
+              four rendered variants — James: *"honestly I like A"*.
+
+              **A state word describes, a verb instructs**, so the tooltip says
+              both: "Monitored — click to unmonitor". Sonarr does the same thing
+              in the same order, read out of its own DOM rather than recalled.
+              The state is not hidden by the icon either: the glyph differs,
+              shield against slashed shield.
+
+              The shield is Deluno's own icon for this — `library-grid.tsx` has
+              drawn `ShieldCheck` / `ShieldOff` for it all along. This button used
+              an eye, which reads as "watching" in English but is not the app's
+              word for it, and a second icon for a fact that already has one is
+              how an icon language stops being a language.
+            */}
             <Button
               type="button"
               variant="outline"
               onClick={() => void handleMonitoring(!movie.monitored)}
               disabled={busyAction !== null}
-              title={movie.monitored
-                ? "Stop searching for this film, and stop counting it as missing."
-                : "Resume searching for this film on the library's schedule."}
+              aria-label={movie.monitored ? "Monitored — click to unmonitor" : "Unmonitored — click to monitor"}
+              title={movie.monitored ? "Monitored — click to unmonitor" : "Unmonitored — click to monitor"}
             >
               {busyAction === "monitor"
                 ? <LoaderCircle className="h-4 w-4 animate-spin" />
-                : movie.monitored ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              {movie.monitored ? "Stop monitoring" : "Monitor"}
+                : movie.monitored ? <ShieldCheck className="h-4 w-4" /> : <ShieldOff className="h-4 w-4" />}
+              {movie.monitored ? "Monitored" : "Unmonitored"}
             </Button>
             <Button
               type="button"
@@ -619,7 +634,7 @@ export function MovieDetailPage() {
                         ? "last release scored worse"
                         : "last release scored the same"
           },
-          { label: "Monitoring", value: movie.monitored ? "On" : "Paused", help: movie.monitored ? "searched on schedule" : "no automatic searches" },
+          { label: "Monitoring", value: movie.monitored ? "Monitored" : "Unmonitored", help: movie.monitored ? "searched on schedule" : "no automatic searches" },
           {
             label: "Import issues",
             value: importCases.length,
@@ -700,7 +715,7 @@ export function MovieDetailPage() {
             </ListTable>
           </ListCard>
 
-          <ListCard title="Automation" count={movie.monitored ? "Watching this movie" : "Paused"}>
+          <ListCard title="Automation" count={movie.monitored ? "Monitored" : "Unmonitored"}>
             <ListTable chevron={false} columns={[{ label: "Control" }, { label: "Action", width: "auto", align: "end", mobile: true }]}>
               <ListRow>
                 <ListNameCell

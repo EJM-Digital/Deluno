@@ -381,9 +381,9 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
               })}
 
               {/*
-                Not monitored, as a chip — on the OTHER axis.
+                Unmonitored, as a chip — on the OTHER axis.
 
-                James: *"not monitored should be a filter the same as quality
+                James: *"unmonitored should be a filter the same as quality
                 met, upgradeable downloading missing etc etc"*. It was a legend
                 entry, on the grounds `library-filters.ts` gives for taking
                 Monitored/Unmonitored out of the chips: monitoring multiplies
@@ -395,7 +395,7 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                 whether it can be a chip. This one sets `monitoring`, the axis
                 that already exists for it — so it looks and behaves like every
                 other chip and **stacks** with them instead of replacing them.
-                Missing + Not monitored is now one click each, which is the
+                Missing + Unmonitored is now one click each, which is the
                 question the old shared value could not ask at all.
 
                 It also has a colour now, which is the other reason it was
@@ -421,7 +421,7 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                     className="h-1 w-4 shrink-0 rounded-full"
                     style={{ background: "hsl(var(--mark-unmonitored))" }}
                   />
-                  <span>Not monitored</span>
+                  <span>Unmonitored</span>
                   <span className="tabular rounded-md bg-foreground/[0.06] px-1.5 py-px text-[length:var(--library-badge-size)] font-bold leading-tight text-muted-foreground dark:bg-white/[0.07]">
                     {facets?.unmonitored ?? 0}
                   </span>

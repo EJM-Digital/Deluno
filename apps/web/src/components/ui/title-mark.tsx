@@ -159,7 +159,7 @@ export function TitleMarkDot({
   // what a fraction needs.
   //
   // So the fraction is text now, on the chip — see TitleMarkChip.
-  const label = half ? `${presentation.label} · not monitored` : presentation.label;
+  const label = half ? `${presentation.label} · unmonitored` : presentation.label;
 
   return (
     <span
@@ -482,7 +482,7 @@ export function TitleBars({
   const subPaint = paint(files === 0 ? subState : subSettled ? "covered" : "upgrade");
 
   const rung = TITLE_MARK_PRESENTATION[mark];
-  const watch = monitored ? "" : " · not monitored";
+  const watch = monitored ? "" : " · unmonitored";
 
   return (
     <>
@@ -538,7 +538,7 @@ export function TitleMarkTopBar({
   const fillPercent = tracksEpisodes ? Math.round(titleProgress(item) * 100) : 100;
 
   const description = half
-    ? `${presentation.label} · not monitored`
+    ? `${presentation.label} · unmonitored`
     : presentation.label;
 
   return (
@@ -605,7 +605,7 @@ export function TitleMarkCorner({ item, className }: { item: TitleMarkInput; cla
   const text = tracksEpisodes
     ? `${episodesHeld(item)} / ${item.airedEpisodeCount}`
     : presentation.label;
-  const description = half ? `${presentation.label} · not monitored` : presentation.label;
+  const description = half ? `${presentation.label} · unmonitored` : presentation.label;
 
   return (
     <span
@@ -843,7 +843,7 @@ export function TitleMarkBarLegend({ className, type }: { className?: string; ty
  * The dot with its name beside it, for a list row or a detail header.
  *
  * One image carrying the whole mark, rather than a dot and some loose text: a
- * screen reader gets "Missing · not monitored" once, in the order a sighted
+ * screen reader gets "Missing · unmonitored" once, in the order a sighted
  * reader gets it, instead of a decorative dot followed by two unrelated
  * fragments. The dot inside is hidden for the same reason.
  */
@@ -851,7 +851,7 @@ export function TitleMarkLabel({ item, className }: { item: TitleMarkInput; clas
   const mark = titleMark(item);
   const presentation = TITLE_MARK_PRESENTATION[mark];
   const half = !item.monitored && presentation.canBeHalf;
-  const label = half ? `${presentation.label} · not monitored` : presentation.label;
+  const label = half ? `${presentation.label} · unmonitored` : presentation.label;
 
   return (
     <span
@@ -862,7 +862,7 @@ export function TitleMarkLabel({ item, className }: { item: TitleMarkInput; clas
     >
       <TitleMarkDot item={item} size={10} decorative />
       <span>{presentation.label}</span>
-      {half ? <span className="text-muted-foreground">· not monitored</span> : null}
+      {half ? <span className="text-muted-foreground">· unmonitored</span> : null}
     </span>
   );
 }
@@ -888,7 +888,7 @@ export function TitleMarkChip({ item, className }: { item: TitleMarkInput; class
     ? `${Math.min(Math.max(0, item.airedWithFileCount ?? 0), aired)}/${aired}`
     : null;
 
-  const label = half ? `${presentation.label} · not monitored` : presentation.label;
+  const label = half ? `${presentation.label} · unmonitored` : presentation.label;
 
   return (
     <span

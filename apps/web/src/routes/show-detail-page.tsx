@@ -13,7 +13,7 @@
 import type { Tone } from "../lib/status-tones";
 import { Fragment, useMemo, useState } from "react";
 import { Link, useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
-import { ArrowLeft, LoaderCircle, RefreshCw, Search, Trash2, Eye, EyeOff
+import { ArrowLeft, LoaderCircle, RefreshCw, Search, Trash2, ShieldCheck, ShieldOff
 } from "lucide-react";
 import {
   fetchJson, fetchPageItems,
@@ -198,7 +198,7 @@ export function ShowDetailPage() {
         }
       : !series.monitored
         ? {
-            eyebrow: "Monitoring paused",
+            eyebrow: "Unmonitored",
             title: "Resume automatic care",
             description: "This show is not being watched for missing episodes or quality improvements.",
             action: "Resume automation",
@@ -570,14 +570,19 @@ export function ShowDetailPage() {
               variant="outline"
               onClick={() => void handleSeriesMonitoring(!series.monitored)}
               disabled={busyAction !== null}
-              title={series.monitored
-                ? "Stop searching for this show, and stop counting its gaps as missing."
-                : "Resume searching for this show on the library schedule."}
+              aria-label={series.monitored ? "Monitored — click to unmonitor" : "Unmonitored — click to monitor"}
+              title={series.monitored ? "Monitored — click to unmonitor" : "Unmonitored — click to monitor"}
             >
+              {/*
+                One control, one vocabulary, both shelves. The state word
+                describes and the verb instructs, so the tooltip carries both —
+                and the shield is the app's own icon for monitoring, which this
+                button was not using.
+              */}
               {busyAction === "series-monitor"
                 ? <LoaderCircle className="h-4 w-4 animate-spin" />
-                : series.monitored ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              {series.monitored ? "Stop monitoring" : "Monitor"}
+                : series.monitored ? <ShieldCheck className="h-4 w-4" /> : <ShieldOff className="h-4 w-4" />}
+              {series.monitored ? "Monitored" : "Unmonitored"}
             </Button>
             <Button
               type="button"
@@ -922,7 +927,7 @@ export function ShowDetailPage() {
             </ListTable>
           </ListCard>
 
-          <ListCard title="Automation" count={series.monitored ? "Watching this show" : "Paused"}>
+          <ListCard title="Automation" count={series.monitored ? "Monitored" : "Unmonitored"}>
             <ListTable chevron={false} columns={[{ label: "Control" }, { label: "Action", width: "auto", align: "end", mobile: true }]}>
               <ListRow>
                 <ListNameCell

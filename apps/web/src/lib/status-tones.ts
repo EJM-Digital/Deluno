@@ -555,7 +555,7 @@ export const TITLE_BAR_SEGMENTS: readonly { mark: TitleMark; hint: string }[] = 
  * on both shelves, when only one of them has the problem.
  *
  * The dot can already be drawn partially — that is what a half-grey dot means
- * for "not monitored" — so the fraction goes there. Same four rungs, same
+ * for "unmonitored" — so the fraction goes there. Same four rungs, same
  * colours, and the shape now says how far along.
  *
  * A movie is one file: it is either here or it is not, so it is always 0 or 1

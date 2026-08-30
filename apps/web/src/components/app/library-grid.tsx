@@ -555,7 +555,7 @@ function PosterCard({
             {item.monitored
               ? <ShieldCheck className="h-3 w-3 shrink-0 opacity-70" aria-hidden="true" />
               : <ShieldOff className="h-3 w-3 shrink-0 opacity-70" aria-hidden="true" />}
-            <span className="truncate">{item.monitored ? "Monitored" : "Not monitored"}</span>
+            <span className="truncate">{item.monitored ? "Monitored" : "Unmonitored"}</span>
           </div>
         ) : null}
 
