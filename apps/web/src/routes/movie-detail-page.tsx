@@ -28,6 +28,7 @@ import {
   type MovieSearchHistoryItem
 } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
+import { cn } from "../lib/utils";
 import { describeSearchReason } from "../lib/search-reasons";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -454,35 +455,7 @@ export function MovieDetailPage() {
               It sits beside the search actions because it belongs to the same
               question they answer: whether Deluno is working on this title.
             */}
-            {/*
-              Monitoring: the icon whose tooltip carries the state, chosen from
-              four rendered variants — James: *"honestly I like A"*.
 
-              **A state word describes, a verb instructs**, so the tooltip says
-              both: "Monitored — click to unmonitor". Sonarr does the same thing
-              in the same order, read out of its own DOM rather than recalled.
-              The state is not hidden by the icon either: the glyph differs,
-              shield against slashed shield.
-
-              The shield is Deluno's own icon for this — `library-grid.tsx` has
-              drawn `ShieldCheck` / `ShieldOff` for it all along. This button used
-              an eye, which reads as "watching" in English but is not the app's
-              word for it, and a second icon for a fact that already has one is
-              how an icon language stops being a language.
-            */}
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => void handleMonitoring(!movie.monitored)}
-              disabled={busyAction !== null}
-              aria-label={movie.monitored ? "Monitored — click to unmonitor" : "Unmonitored — click to monitor"}
-              title={movie.monitored ? "Monitored — click to unmonitor" : "Unmonitored — click to monitor"}
-            >
-              {busyAction === "monitor"
-                ? <LoaderCircle className="h-4 w-4 animate-spin" />
-                : movie.monitored ? <ShieldCheck className="h-4 w-4" /> : <ShieldOff className="h-4 w-4" />}
-              {movie.monitored ? "Monitored" : "Unmonitored"}
-            </Button>
             <Button
               type="button"
               variant="outline"
@@ -517,11 +490,11 @@ export function MovieDetailPage() {
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-card via-card/80 to-card/45" />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-card/90 via-transparent to-card/25" />
         <CardContent className="relative p-[var(--tile-pad)] sm:p-[calc(var(--tile-pad)*1.15)]">
-          <div className="grid min-h-[15rem] items-center gap-[var(--grid-gap)] md:grid-cols-[10rem_minmax(0,1fr)] xl:grid-cols-[10rem_minmax(0,1fr)_14rem]">
+          <div className="grid min-h-[19.5rem] items-center gap-[var(--grid-gap)] md:grid-cols-[13rem_minmax(0,1fr)] xl:grid-cols-[13rem_minmax(0,1fr)_14rem]">
             {movie.posterUrl ? (
-              <img src={movie.posterUrl} alt={`${movie.title} poster`} className="h-64 w-40 justify-self-center rounded-2xl border border-white/15 bg-surface-1 object-cover shadow-2xl md:justify-self-start" />
+              <img src={movie.posterUrl} alt={`${movie.title} poster`} className="h-[19.5rem] w-52 justify-self-center rounded-2xl border border-white/15 bg-surface-1 object-cover shadow-2xl md:justify-self-start" />
             ) : (
-              <div className="flex h-64 w-40 justify-self-center items-center justify-center rounded-2xl border border-hairline bg-surface-1 px-3 text-center text-xs text-muted-foreground md:justify-self-start">Artwork is being refreshed</div>
+              <div className="flex h-[19.5rem] w-52 justify-self-center items-center justify-center rounded-2xl border border-hairline bg-surface-1 px-3 text-center text-xs text-muted-foreground md:justify-self-start">Artwork is being refreshed</div>
             )}
             <div className="min-w-0 self-center">
               <p className="text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-primary">Movie</p>
@@ -544,10 +517,87 @@ export function MovieDetailPage() {
                 <TitleMarkLabel
                   className="rounded-full border border-hairline bg-surface-2 px-2.5 py-1 text-xs font-medium"
                   item={{ monitored: movie.monitored, wantedStatus: wantedItem?.wantedStatus }}
+                  type="movie"
                 />
+                {/*
+                  Monitoring sits with the title's own chips, not in the toolbar.
+
+                  James: *"I think it can be in the main box and not up the
+                  toolbar"*. He is right — the toolbar row is page ACTIONS (all
+                  movies, choose a release, search now) while this is a PROPERTY
+                  of the title, and it belongs beside the rung that is its
+                  neighbour in meaning.
+
+                  The tooltip carries the state and the action, which is variant A
+                  from the four rendered: a state word describes, a verb
+                  instructs, and Sonarr says both in that order.
+                */}
+                <button
+                  type="button"
+                  onClick={() => void handleMonitoring(!movie.monitored)}
+                  disabled={busyAction !== null}
+                  aria-label={movie.monitored ? "Monitored — click to unmonitor" : "Unmonitored — click to monitor"}
+                  title={movie.monitored ? "Monitored — click to unmonitor" : "Unmonitored — click to monitor"}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
+                    movie.monitored
+                      ? "border-hairline bg-surface-2 text-foreground hover:border-primary/50"
+                      : "border-hairline bg-surface-2 text-muted-foreground hover:border-primary/50"
+                  )}
+                >
+                  {busyAction === "monitor"
+                    ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                    : movie.monitored ? <ShieldCheck className="h-3.5 w-3.5" /> : <ShieldOff className="h-3.5 w-3.5" />}
+                  {movie.monitored ? "Monitored" : "Unmonitored"}
+                </button>
                 {importCases.length ? <Badge variant="warning">{importCases.length} import issue{importCases.length === 1 ? "" : "s"}</Badge> : null}
                 {movie.genres?.split(",").map((genre) => <span key={genre} className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">{genre.trim()}</span>)}
               </div>
+              {/*
+                The facts about this title, in one dense row.
+
+                James, with a Radarr header beside ours: *"bigger poster, a lot
+                more information... I like what we have, I think it just can be
+                better similar to what radarr is doing"*, and earlier *"we should
+                have a small list of things that show the title"*.
+
+                **Everything, unconditionally — this is not the poster options.**
+                The shelf and this page have opposite jobs: on a shelf you choose
+                what each card carries, because you are scanning a wall and space
+                is scarce. Here you have stopped and gone looking, so mirroring
+                the toggles would make a fact you switched off for scanning
+                unfindable at exactly the moment you want it.
+
+                Label above value, Radarr's shape, because it packs eight facts
+                into the space two rows of chips would take — and every one is
+                skippable by eye until you want it.
+              */}
+              <dl className="mt-4 flex flex-wrap gap-x-7 gap-y-3">
+                {[
+                  { label: "Path", value: movie.filePath || null, mono: true },
+                  // Quality and Target are NOT here: the summary strip below says
+                  // both, with a tone and the reason beside them, which a flat
+                  // row cannot. Repeating them here is what made "WEB 2160p"
+                  // appear three times on one page.
+                  { label: "Size", value: movie.fileSizeBytes ? formatBytes(movie.fileSizeBytes) : null },
+                  { label: "Runtime", value: movie.runtimeMinutes ? `${Math.floor(movie.runtimeMinutes / 60)}h ${movie.runtimeMinutes % 60}m` : null },
+                  // Studio, Certification and Original language are in the
+                  // database and sortable, but `MovieListItem` does not project
+                  // them — Radarr shows all three in this row and they belong
+                  // here. Adding them is a contract change, so it is deliberate
+                  // rather than smuggled in with a layout commit.
+                  { label: "Codec", value: [movie.videoCodec, movie.audioCodec].filter(Boolean).join(" · ") || null },
+                  { label: "Release group", value: movie.releaseGroup || null },
+                  { label: "Added", value: movie.createdUtc ? new Date(movie.createdUtc).toLocaleDateString() : null },
+                  { label: "Import issues", value: importCases.length ? String(importCases.length) : null }
+                ].filter((f) => f.value).map((f) => (
+                  <div key={f.label} className="min-w-0">
+                    <dt className="text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{f.label}</dt>
+                    <dd className={cn("truncate text-sm text-foreground", f.mono && "font-mono text-xs")} title={String(f.value)}>{f.value}</dd>
+                  </div>
+                ))}
+              </dl>
+
               <p className="mt-4 max-w-4xl text-sm leading-relaxed text-muted-foreground">
                 {movie.overview ?? "No overview has been stored yet. Refresh metadata when you want Deluno to enrich this title."}
               </p>
@@ -622,8 +672,13 @@ export function MovieDetailPage() {
             // Say what the comparison meant instead of printing its number.
             help: !movie.hasFile
               ? `waiting for ${targetQuality}`
+              // "meets X" restated the rung, which the chip beside the title
+              // already says: two things saying one thing on one page. The tile
+              // says what the FILE is and what the plan asked for; the chip says
+              // the verdict. James, circling both: "this conflicts with what is
+              // shown above as in quality met".
               : cutoffMet === true
-                ? `meets ${targetQuality}`
+                ? `plan asked for ${targetQuality}`
                 : cutoffMet === false
                   ? `plan asks for ${targetQuality}`
                   : lastDelta === null
@@ -634,7 +689,12 @@ export function MovieDetailPage() {
                         ? "last release scored worse"
                         : "last release scored the same"
           },
-          { label: "Monitoring", value: movie.monitored ? "Monitored" : "Unmonitored", help: movie.monitored ? "searched on schedule" : "no automatic searches" },
+          // **Monitoring is not a tile.** The shield in the header says the state
+          // and changes it in one control, so a tile beside it is the same fact
+          // read-only — James: "montoring, I dont think we need this here".
+          //
+          // The Next Step card still surfaces it when it is the thing standing in
+          // the way, which is a different job: that is advice, not a readout.
           {
             label: "Import issues",
             value: importCases.length,
@@ -703,9 +763,13 @@ export function MovieDetailPage() {
                 { label: "Library", value: library?.name ?? "Not linked" },
                 { label: "Root folder", value: library?.rootPath || "No root configured", path: Boolean(library?.rootPath) },
                 { label: "Downloads folder", value: library?.downloadsPath || "Download client default", path: Boolean(library?.downloadsPath) },
-                { label: "Import workflow", value: library?.importWorkflow === "refine-before-import" ? "Refine before import" : "Standard import" },
-                { label: "Current quality", value: currentQuality ?? "Unknown" },
-                { label: "Target quality", value: targetQuality }
+                { label: "Import workflow", value: library?.importWorkflow === "refine-before-import" ? "Refine before import" : "Standard import" }
+                // Current and Target quality are NOT here. This table is where a
+                // title is ROUTED — library, folders, workflow — and quality is
+                // not routing. The summary strip says both, with a tone and a
+                // reason; saying them again here is the third copy that made
+                // James circle it: "we have 2 different things saying the same
+                // thing".
               ] as Array<{ label: string; value: string; path?: boolean }>).map(({ label, value, path }) => (
                 <ListRow key={label}>
                   <ListNameCell name={label} />

@@ -847,7 +847,7 @@ export function TitleMarkBarLegend({ className, type }: { className?: string; ty
  * reader gets it, instead of a decorative dot followed by two unrelated
  * fragments. The dot inside is hidden for the same reason.
  */
-export function TitleMarkLabel({ item, className }: { item: TitleMarkInput; className?: string }) {
+export function TitleMarkLabel({ item, className, type }: { item: TitleMarkInput; className?: string; type?: MediaType }) {
   const mark = titleMark(item);
   const presentation = TITLE_MARK_PRESENTATION[mark];
   const half = !item.monitored && presentation.canBeHalf;
@@ -860,7 +860,21 @@ export function TitleMarkLabel({ item, className }: { item: TitleMarkInput; clas
       title={half ? `${presentation.hint} Deluno is not watching this one.` : presentation.hint}
       className={cn("inline-flex items-center gap-1.5 whitespace-nowrap", className)}
     >
-      <TitleMarkDot item={item} size={10} decorative />
+      {/*
+        A strip, not a dot.
+
+        The shelf stopped drawing dots when the state became a bar across the
+        poster's top — the legend row moved to `MarkStrip` for exactly that
+        reason, and this label did not follow. James, circling it on the detail
+        page: *"we should not be using dots anymore"*. A page that teaches a
+        shape the rest of the product no longer draws is teaching the wrong
+        thing.
+
+        `type` is passed so it paints from the bar SURFACE on a shelf that has
+        adopted DESIGN-006 — the same colour the card carries, rather than the
+        page-text one.
+      */}
+      <MarkStrip mark={mark} type={type} sheen />
       <span>{presentation.label}</span>
       {half ? <span className="text-muted-foreground">· unmonitored</span> : null}
     </span>
