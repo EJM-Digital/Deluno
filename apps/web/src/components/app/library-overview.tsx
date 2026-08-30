@@ -137,7 +137,7 @@ function OverviewRow({
               <span className="text-foreground/20">·</span>
               <span className="inline-flex items-center gap-1">
                 {item.monitored ? <ShieldCheck className="h-3 w-3" /> : <ShieldOff className="h-3 w-3" />}
-                {item.monitored ? "Monitored" : "Not monitored"}
+                {item.monitored ? "Monitored" : "Unmonitored"}
               </span>
               {item.runtimeMinutes ? (
                 <>

@@ -231,6 +231,55 @@ describe("the two shelves are declared apart", () => {
   });
 });
 
+describe("monitoring is said one way, everywhere", () => {
+  // One fact had SEVEN wordings: Monitored / Not monitored, Monitored /
+  // Unmonitored, On / Paused, Monitoring paused, Monitor / Stop monitoring,
+  // Monitor or unmonitor. None could check the others — the same defect shape as
+  // everything else in this design, in words rather than colour.
+  //
+  // The rule: **a state word describes, a verb instructs.** Anything showing the
+  // fact says Monitored / Unmonitored; anything you press says what pressing
+  // does. Read off the sources, so a sixth place cannot quietly reintroduce one.
+  //
+  // **Unmonitored, not "Not monitored"**, because it pairs with the verb: the
+  // action is already Unmonitor, so Monitored/Unmonitored and Monitor/Unmonitor
+  // are one word family learned once. "Not monitored" pairs with nothing — there
+  // is no verb "not monitor" — and it is two words, so it wraps in a chip. It is
+  // also the arr word, which is what a reader arriving from Sonarr knows.
+  const sources = [
+    "src/routes/movie-detail-page.tsx",
+    "src/routes/show-detail-page.tsx",
+    "src/components/app/library-bulk-tools-dialog.tsx",
+    "src/components/app/library-grid.tsx",
+    "src/components/app/library-overview.tsx"
+  ].map(f => readFileSync(resolve(process.cwd(), f), "utf8"));
+
+  it("has no leftover vocabulary for the state", () => {
+    for (const src of sources) {
+      expect(src).not.toContain("Monitoring paused");
+      expect(src).not.toContain("Stop monitoring");
+      expect(src).not.toContain(">Not monitored<");
+      expect(src).not.toContain('"Watching this');
+    }
+  });
+
+  it("gives the pressable controls the state AND the action", () => {
+    for (const src of sources.slice(0, 2)) {
+      expect(src).toContain("Monitored — click to unmonitor");
+      expect(src).toContain("Unmonitored — click to monitor");
+    }
+  });
+
+  it("uses the shield, which is the app's own icon for it", () => {
+    for (const src of sources.slice(0, 2)) {
+      expect(src).toContain("ShieldCheck");
+      expect(src).toContain("ShieldOff");
+      // The eye reads as "watching" in English but is not the app's word.
+      expect(src).not.toMatch(/<EyeOff className/);
+    }
+  });
+});
+
 describe("the tokens exist and mean one thing each", () => {
   // Read from the project root, not `import.meta.url` — under Vitest that is not
   // a file: URL and `readFileSync` refuses it.

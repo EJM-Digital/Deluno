@@ -121,7 +121,7 @@ export function LibraryFilterPanel({
           options={[
             { value: "any", label: "Any monitoring" },
             { value: "monitored", label: `Monitored (${monitoredCount})` },
-            { value: "unmonitored", label: `Not monitored (${unmonitoredCount})` }
+            { value: "unmonitored", label: `Unmonitored (${unmonitoredCount})` }
           ]}
           className="w-full sm:max-w-xs"
           triggerClassName="min-h-[var(--control-height-sm)] w-full bg-background/50 px-2.5 text-[length:var(--library-toolbar-size)] font-semibold ring-1 ring-inset ring-hairline/60"
