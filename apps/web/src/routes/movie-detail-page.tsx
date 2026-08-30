@@ -11,7 +11,7 @@
  * /api/movies/bulk.
  */
 import type { Tone } from "../lib/status-tones";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
 import { ArrowLeft, LoaderCircle, RefreshCw, Search, Trash2, ShieldCheck, ShieldOff
 } from "lucide-react";
@@ -150,6 +150,30 @@ export function MovieDetailPage() {
   );
   const cast = readStoredCast(movie.metadataJson);
   const openSearch = movieSearches.find((item) => item.id === openSearchId) ?? null;
+
+  /*
+    The metadata Deluno already stores, and nothing was reading.
+
+    `metadataJson` is delivered with the detail item and carries Studio,
+    Certification, Original language, Collection, Director, Tagline and **Cast** —
+    everything Radarr's header shows. James: *"where are the bigger poster and
+    actors"*. They were never missing from the data, only from the page.
+
+    Parsed here rather than added to `MovieListItem`, because the fields are
+    already on the wire: widening the contract to re-deliver what is already
+    being delivered would be the same fact travelling twice.
+  */
+  const meta = useMemo<Record<string, unknown> | null>(() => {
+    if (!movie.metadataJson) return null;
+    try { return JSON.parse(movie.metadataJson) as Record<string, unknown>; } catch { return null; }
+  }, [movie.metadataJson]);
+  // `cast` is already read above by `readStoredCast`, which handles both the
+  // camelCase and PascalCase shapes the store has used. A second parse here
+  // would be the same rule written twice.
+  const metaText = (key: string) => {
+    const value = meta?.[key];
+    return typeof value === "string" && value.trim() ? value.trim() : null;
+  };
 
   const currentQuality = workflowStatus?.currentQuality ?? wantedItem?.currentQuality ?? null;
   const targetQuality = workflowStatus?.targetQuality ?? wantedItem?.targetQuality ?? "WEB 1080p";
@@ -490,11 +514,11 @@ export function MovieDetailPage() {
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-card via-card/80 to-card/45" />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-card/90 via-transparent to-card/25" />
         <CardContent className="relative p-[var(--tile-pad)] sm:p-[calc(var(--tile-pad)*1.15)]">
-          <div className="grid min-h-[19.5rem] items-center gap-[var(--grid-gap)] md:grid-cols-[13rem_minmax(0,1fr)] xl:grid-cols-[13rem_minmax(0,1fr)_14rem]">
+          <div className="grid min-h-[30rem] items-center gap-[var(--grid-gap)] md:grid-cols-[20rem_minmax(0,1fr)] xl:grid-cols-[20rem_minmax(0,1fr)_14rem]">
             {movie.posterUrl ? (
-              <img src={movie.posterUrl} alt={`${movie.title} poster`} className="h-[19.5rem] w-52 justify-self-center rounded-2xl border border-white/15 bg-surface-1 object-cover shadow-2xl md:justify-self-start" />
+              <img src={movie.posterUrl} alt={`${movie.title} poster`} className="h-[30rem] w-80 justify-self-center rounded-2xl border border-white/15 bg-surface-1 object-cover shadow-2xl md:justify-self-start" />
             ) : (
-              <div className="flex h-[19.5rem] w-52 justify-self-center items-center justify-center rounded-2xl border border-hairline bg-surface-1 px-3 text-center text-xs text-muted-foreground md:justify-self-start">Artwork is being refreshed</div>
+              <div className="flex h-[30rem] w-80 justify-self-center items-center justify-center rounded-2xl border border-hairline bg-surface-1 px-3 text-center text-xs text-muted-foreground md:justify-self-start">Artwork is being refreshed</div>
             )}
             <div className="min-w-0 self-center">
               <p className="text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-primary">Movie</p>
@@ -520,18 +544,40 @@ export function MovieDetailPage() {
                   aria-label={movie.monitored ? "Monitored — click to unmonitor" : "Unmonitored — click to monitor"}
                   title={movie.monitored ? "Monitored — click to unmonitor" : "Unmonitored — click to monitor"}
                   className={cn(
-                    "self-center rounded-lg p-1.5 transition-colors",
+                    // Baseline, not centre: the row is `items-baseline`, and a
+                    // centred icon floats above the type it sits beside.
+                    "self-baseline rounded-lg p-1 transition-colors",
                     movie.monitored
                       ? "text-foreground hover:bg-surface-2"
                       : "text-muted-foreground hover:bg-surface-2 hover:text-foreground"
                   )}
                 >
                   {busyAction === "monitor"
-                    ? <LoaderCircle className="h-5 w-5 animate-spin" />
-                    : movie.monitored ? <ShieldCheck className="h-5 w-5" /> : <ShieldOff className="h-5 w-5" />}
+                    ? <LoaderCircle className="h-7 w-7 animate-spin" />
+                    : movie.monitored ? <ShieldCheck className="h-7 w-7" /> : <ShieldOff className="h-7 w-7" />}
                 </button>
               </div>
               {movie.originalTitle && movie.originalTitle !== movie.title ? <p className="mt-1 text-sm text-muted-foreground">Also known as {movie.originalTitle}</p> : null}
+              {/*
+                Certification and the scores, where Radarr puts them: on the
+                title, not in a panel off to the side. James: *"radarr shows
+                ratings and certification - PG / M - R etc"*.
+
+                The strip MOVED here rather than being copied — the aside kept
+                the source and the actions. Two of anything on one page is the
+                thing this page has been circled for three times already.
+              */}
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+                {metaText("Certification") ? (
+                  <span
+                    className="rounded border border-hairline px-1.5 py-0.5 text-xs font-bold uppercase tracking-wide text-muted-foreground"
+                    title="Classification"
+                  >
+                    {metaText("Certification")}
+                  </span>
+                ) : null}
+                <RatingStrip ratings={movie.ratings} fallbackRating={movie.rating} />
+              </div>
               <div className="mt-4 flex flex-wrap gap-2">
                 {/*
                   The mark, and nothing beside it about monitoring.
@@ -578,7 +624,18 @@ export function MovieDetailPage() {
                   // row cannot. Repeating them here is what made "WEB 2160p"
                   // appear three times on one page.
                   { label: "Size", value: movie.fileSizeBytes ? formatBytes(movie.fileSizeBytes) : null },
-                  { label: "Runtime", value: movie.runtimeMinutes ? `${Math.floor(movie.runtimeMinutes / 60)}h ${movie.runtimeMinutes % 60}m` : null },
+                  { label: "Runtime", value: movie.runtimeMinutes
+                      ? (movie.runtimeMinutes >= 60
+                          ? `${Math.floor(movie.runtimeMinutes / 60)}h ${movie.runtimeMinutes % 60}m`
+                          : `${movie.runtimeMinutes}m`)
+                      : null },
+                  { label: "Studio", value: metaText("Studio") },
+                  // Certification is NOT here: it is the badge on the title,
+                  // where Radarr puts it. Saying it twice is the duplication
+                  // this page has already been circled for.
+                  { label: "Language", value: metaText("OriginalLanguage") },
+                  { label: "Collection", value: metaText("Collection") },
+                  { label: "Director", value: metaText("Director") },
                   // Studio, Certification and Original language are in the
                   // database and sortable, but `MovieListItem` does not project
                   // them — Radarr shows all three in this row and they belong
@@ -599,19 +656,41 @@ export function MovieDetailPage() {
               <p className="mt-4 max-w-4xl text-sm leading-relaxed text-muted-foreground">
                 {movie.overview ?? "No overview has been stored yet. Refresh metadata when you want Deluno to enrich this title."}
               </p>
+              {/*
+                The cast, at a size worth looking at.
+
+                It was six 40px avatars squeezed into the header, which is the
+                size you use when you have decided nobody looks — and the
+                `ArtworkSizes.Portrait` comment says exactly that: "drawn small
+                and there are ten per title... the one image on the page nobody
+                looks closely at". James, with Radarr beside it: *"where are the
+                bigger poster and actors... bigger come on"*.
+
+                So it is a row of portrait cards, twenty of them, scrolling
+                sideways rather than wrapping — a wall of faces is the one thing
+                on this page you scan rather than read, and wrapping turns it
+                into a block you have to parse.
+              */}
               {cast.length ? (
-                <section className="mt-5 border-t border-white/10 pt-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.18em] text-muted-foreground">Starring</p>
+                <section className="mt-6 border-t border-white/10 pt-5">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.18em] text-muted-foreground">Cast</p>
                     <span className="text-[length:var(--type-caption)] text-muted-foreground">{cast.length} credited</span>
                   </div>
-                  <div className="mt-3 flex flex-wrap gap-x-5 gap-y-3">
-                  {cast.slice(0, 6).map((person) => (
-                    <div key={`${person.name}-${person.character ?? ""}`} className="flex min-w-0 items-center gap-2.5">
-                      {person.profileUrl ? <img src={person.profileUrl} alt="" className="h-10 w-10 shrink-0 rounded-full border border-white/15 bg-surface-2 object-cover shadow-lg" /> : <div className="h-10 w-10 shrink-0 rounded-full border border-white/15 bg-surface-2" />}
-                      <span className="max-w-28 min-w-0 leading-tight"><span className="block truncate text-xs font-semibold text-foreground">{person.name}</span>{person.character ? <span className="mt-0.5 block truncate text-[length:var(--type-caption)] text-muted-foreground">{person.character}</span> : null}</span>
-                    </div>
-                  ))}
+                  <div className="-mx-1 mt-3 flex gap-3 overflow-x-auto px-1 pb-2">
+                    {cast.slice(0, 20).map((person) => (
+                      <figure key={`${person.name}-${person.character ?? ""}`} className="w-[7.5rem] shrink-0">
+                        {person.profileUrl
+                          ? <img src={person.profileUrl} alt="" loading="lazy" className="aspect-[2/3] w-full rounded-xl border border-white/15 bg-surface-2 object-cover shadow-lg" />
+                          : <div className="flex aspect-[2/3] w-full items-center justify-center rounded-xl border border-white/15 bg-surface-2 text-[length:var(--type-caption)] text-muted-foreground">No photo</div>}
+                        <figcaption className="mt-2 leading-tight">
+                          <span className="block truncate text-xs font-semibold text-foreground" title={person.name}>{person.name}</span>
+                          {person.character
+                            ? <span className="mt-0.5 block truncate text-[length:var(--type-caption)] text-muted-foreground" title={person.character}>{person.character}</span>
+                            : null}
+                        </figcaption>
+                      </figure>
+                    ))}
                   </div>
                 </section>
               ) : null}
@@ -619,7 +698,6 @@ export function MovieDetailPage() {
             <aside className="w-full self-center rounded-xl border border-white/10 bg-card/80 p-4 backdrop-blur-sm">
               <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.18em] text-muted-foreground">Ratings &amp; IDs</p>
               <p className="mt-1 text-xs text-muted-foreground">The metadata Deluno is using</p>
-              <div className="mt-3"><RatingStrip ratings={movie.ratings} fallbackRating={movie.rating} /></div>
               <div className="mt-4 space-y-2 border-t border-hairline pt-4 text-sm">
                 <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Source</span><span className="font-medium text-foreground">{movie.metadataProvider?.toUpperCase() ?? "Not linked"}</span></div>
                 <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">IMDb</span><span className="font-medium text-foreground">{movie.imdbId ?? "—"}</span></div>
