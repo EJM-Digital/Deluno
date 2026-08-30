@@ -12,7 +12,8 @@ import { JumpRail, useJumpRail } from "./library-jump-rail";
 import type { Density } from "../../lib/use-density";
 import { authedFetch } from "../../lib/use-auth";
 import { cn } from "../../lib/utils";
-import { TitleMarkBar, TitleMarkCorner, TitleMarkTopBar } from "../ui/title-mark";
+import { TitleBars, TitleMarkBar, TitleMarkCorner, TitleMarkTopBar } from "../ui/title-mark";
+import { cardDesign } from "../../lib/card-design";
 
 export type CardSize = "sm" | "md" | "lg";
 
@@ -365,11 +366,45 @@ function PosterCard({
             how we know. Quality is on the list row, in the drawer and on the
             detail page; it is not on the artwork any more.
           */}
-          <TitleMarkTopBar item={item} />
-          <TitleMarkCorner item={item} />
+          {/*
+            DESIGN-006 replaces all three of the above on a shelf that has opted
+            in, and only that shelf. James: *"they should be independant of each
+            other, tv and movie"* — the movie card is settled, TV's Continuing
+            hue is not, and he asked that TV stay *"frozen on today's card"*
+            until it is decided on its own terms.
 
-          {/* What you asked for beyond the title. A movie has no bar. */}
-          <TitleMarkBar item={item} />
+            `cardDesign(item.type).bars` is the whole of the opt-in. Flipping it
+            for shows is how TV adopts this, and nothing about the movie card
+            moves when it does. The mechanism underneath is shared: one bar
+            component, so the two-layer label, the contrast rules and the
+            unmonitored override cannot drift between the shelves.
+          */}
+          {cardDesign(item.type).bars ? (
+            <TitleBars
+              item={{
+                type: item.type,
+                monitored: item.monitored,
+                wantedStatus: item.wantedStatus,
+                hasFile: item.hasFile,
+                quality: item.quality,
+                airedEpisodeCount: item.airedEpisodeCount,
+                airedWithFileCount: item.airedWithFileCount,
+                subtitleLanguagesWanted: item.subtitleLanguagesWanted,
+                subtitleLanguagesHeld: item.subtitleLanguagesHeld,
+                subtitleLanguagesSettled: item.subtitleLanguagesSettled
+              }}
+              showMediaText={displayOptions.showQualityOnBar !== false}
+              showSubtitleText={displayOptions.showSubtitleCountOnBar !== false}
+            />
+          ) : (
+            <>
+              <TitleMarkTopBar item={item} />
+              <TitleMarkCorner item={item} />
+
+              {/* What you asked for beyond the title. A movie has no bar. */}
+              <TitleMarkBar item={item} />
+            </>
+          )}
 
           {/*
             The quality stays on the artwork, and nothing else does.

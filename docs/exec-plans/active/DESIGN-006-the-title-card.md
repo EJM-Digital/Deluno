@@ -1,5 +1,14 @@
 # DESIGN-006 — The title card, per medium
 
+> **Films: built and on the rig.** Settled by James as *Depth: Deep · Quality on
+> bar: On · Subtitle count: On · Lead words: SUBS only · Track: Missing red*.
+>
+> **Shows: not yet.** James: *"they should be independant of each other, tv and
+> movie"* — the TV shelf is deliberately frozen on its existing card until its own
+> open question (the Continuing hue, §4) is decided. `CARD_DESIGN.show.bars` is the
+> whole of the opt-in, and a test asserts it is still `false` so it cannot be
+> flipped by accident.
+
 Settled 2026-08-30 with James. Supersedes the card half of
 [DESIGN-001](DESIGN-001-title-marks.md) and the poster half of the Option A
 decision in `4bdfe45`. The subtitle vocabulary from

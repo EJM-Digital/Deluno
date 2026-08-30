@@ -92,8 +92,53 @@
       looking — and a show still airing is the one state where Deluno is up to
       date and has emphatically not stopped.
     */
-    --mark-airing: 184 72% 34%;
+    --mark-airing: 178 74% 30%;
     --mark-idle: 220 10% 82%;
+
+    /*
+      ── THE BAR SURFACES ──────────────────────────────────────────────
+      What a bar on a poster is PAINTED with. Not what a count or a word on the
+      page is coloured with — that is the set above, and the two cannot be one
+      set. Measured: the deep values used as text on the dark card give Missing
+      3.20:1, Downloading 3.37:1 and Upcoming 3.11:1, all under AA.
+
+      **One set for both themes.** A bar sits on artwork, not on the page, so it
+      has no reason to invert — the same argument that already makes
+      `--mark-leaf-*` theme-independent. Gold IS `--mark-leaf`.
+
+      Every surface carries a white label at 5.3:1 or better, except gold, which
+      is floored at 52% lightness and therefore takes a near-black one. That
+      asymmetry is forced, not chosen. See DESIGN-006 section 4.
+    */
+    --mark-missing-surface: 356 84% 41%;
+    --mark-downloading-surface: 214 94% 40%;
+    --mark-upgrade-surface: 150 90% 25%;
+    --mark-airing-surface: 178 96% 24%;
+    --mark-upcoming-surface: 270 76% 47%;
+    /* The label a surface carries. White everywhere but gold. */
+    --mark-on-surface: 0 0% 100%;
+    --mark-on-gold: 40 90% 12%;
+    /*
+      An unmonitored title's bars — fill AND track, one flat value, overriding
+      every other colour rule. Deluno is not watching it, so the rung it happens
+      to sit on is not telling you to do anything. DESIGN-006 section 5.
+    */
+    --mark-unmonitored: 220 8% 46%;
+
+    /*
+      ── THE LABEL ON THE EMPTY TRACK ──────────────────────────────────
+      A third set, and it has to be: the track is lighter than the dark card and
+      darker than the light one, so a colour that reads on the card can fail on
+      it. Solved per rung as the lightness that first clears 4.6:1 against this
+      theme's track, rather than guessed.
+    */
+    --mark-missing-on-track: 0 84% 37%;
+    --mark-downloading-on-track: 207 92% 32%;
+    --mark-upgrade-on-track: 145 72% 23%;
+    --mark-airing-on-track: 178 74% 22%;
+    --mark-quality-met-on-track: 44 98% 22%;
+    --mark-upcoming-on-track: 268 72% 45%;
+    --mark-unmonitored-on-track: 220 8% 35%;
     --border: 220 14% 86%;
     --input: 220 14% 86%;
     --surface-1: 0 0% 100%;
@@ -169,8 +214,17 @@
     --info-foreground: 210 30% 98%;
     --mark-quality-met: 44 98% 58%;
     --mark-upcoming: 265 82% 72%;
-    --mark-airing: 184 78% 52%;
+    --mark-airing: 178 76% 50%;
     --mark-idle: 217 16% 26%;
+    /* The surfaces do NOT invert — they sit on artwork. Only the on-track
+       labels do, because the track itself inverts. */
+    --mark-missing-on-track: 0 84% 77%;
+    --mark-downloading-on-track: 207 92% 67%;
+    --mark-upgrade-on-track: 145 72% 45%;
+    --mark-airing-on-track: 178 74% 45%;
+    --mark-quality-met-on-track: 44 98% 45%;
+    --mark-upcoming-on-track: 268 72% 78%;
+    --mark-unmonitored-on-track: 220 8% 69%;
     --border: 217 22% 18%;
     --input: 217 22% 18%;
     --surface-1: 218 32% 11%;

@@ -159,13 +159,39 @@ public sealed record CatalogueControls(
     [
         new("showInCinemas", "In cinemas", "The theatrical date", DefaultOn: false, Line: true),
         new("showDigitalRelease", "Digital release", "When it became buyable or streamable", DefaultOn: false, Line: true),
-        new("showPhysicalRelease", "Physical release", "Disc", DefaultOn: false, Line: true)
+        new("showPhysicalRelease", "Physical release", "Disc", DefaultOn: false, Line: true),
+        // ── DESIGN-006, the film card ──────────────────────────────────────
+        //
+        // These are on the movie shelf ONLY, and deliberately so. James: "they
+        // should be independant of each other, tv and movie" — the film card is
+        // settled and the show card is not, so TV keeps what it has until it is
+        // decided on its own terms. The TV equivalent is "Episode count on the
+        // bar" and it arrives with that decision, not with this one.
+        //
+        // Named for what they put on the card rather than for the widget. Sonarr
+        // and Radarr both call this "Detailed Progress Bar — show text on
+        // progress bar", which names the control and says nothing about what
+        // appears; a reader of the movie shelf wants to know it is the quality.
+        new("showQualityOnBar", "Quality on the bar", "The quality you hold, written across the top bar", DefaultOn: true),
+        new("showSubtitleCountOnBar", "Subtitle count on the bar", "How many of the languages you asked for are here", DefaultOn: true)
     ];
 
     /// <summary>What only a show's card can show.</summary>
     private static IReadOnlyList<CataloguePosterOption> SeriesOnlyPosterOptions =>
     [
-        new("showNextAiring", "Next airing", "When the next episode is due", DefaultOn: false, Line: true)
+        new("showNextAiring", "Next airing", "When the next episode is due", DefaultOn: false, Line: true),
+        // ── Shared until DESIGN-006 reaches the TV shelf ───────────────────
+        //
+        // This was a shared option. It is show-only now, not because a film has
+        // no monitoring, but because the film card says it WITHOUT words: an
+        // unmonitored title's bars go flat grey, overriding whatever rung it
+        // sits on. A line reading "Not monitored" beneath bars that have already
+        // gone grey is the same fact twice — the rule that removed the Quality
+        // option the moment the bar carried the quality.
+        //
+        // The show card still draws the shield line, because the show card has
+        // not adopted DESIGN-006 yet. When it does, this leaves with it.
+        new("showMonitored", "Monitoring", "Whether Deluno is watching for this title", DefaultOn: true, Line: true)
         // Episode progress is not here either, and for the opposite reason: it
         // is now on every show's card whether you ask for it or not, in the
         // corner. A switch for a line reading "3/20 episodes" underneath would
@@ -186,7 +212,7 @@ public sealed record CatalogueControls(
         // James: "year should be removed as a not required option and it should
         // not be aligned to monitored or not monitored". The year is gone and
         // this does the one thing its name says.
-        new("showMonitored", "Monitoring", "Whether Deluno is watching for this title", DefaultOn: true, Line: true),
+
         // **The status mark is not here, and that is deliberate.** It was a
         // switch — "Status mark", on by default — and James: *"I think status
         // mark should not be an option, its mandatory"*. He is right, and the

@@ -1,12 +1,16 @@
 import { cn } from "../../lib/utils";
 import {
   TITLE_BAR_SEGMENTS,
+  TITLE_MARK_PAINT,
   TITLE_MARK_PRESENTATION,
+  UNMONITORED_PAINT,
   titleBar,
   titleProgress,
   titleMark,
   type TitleMark
 } from "../../lib/status-tones";
+import { cardDesign } from "../../lib/card-design";
+import type { MediaType } from "../../lib/media-types";
 
 /**
  * The mark on a title: one dot, and one bar. See `DESIGN-001-title-marks.md`.
@@ -222,6 +226,246 @@ function labelTone(fillPercent: number): string {
  * <p>The width is how far through the show you are. A film is not partway
  * through itself, so its bar is solid.</p>
  */
+/* ═══════════════ THE CARD'S BARS — DESIGN-006 ═══════════════ */
+
+/**
+ * One bar, drawn once, for whichever shelf asks for it.
+ *
+ * <p><b>The label is drawn twice and each copy is clipped to its own half.</b> A
+ * copy in the fill's colour clipped to the fill, and a copy in the track's
+ * colour clipped to the complement. Every glyph is therefore coloured for the
+ * ground directly beneath it, so a bar 15% full has 15% of its label in one
+ * colour and 85% in the other. This is how Sonarr and Radarr keep a word legible
+ * on a bar whose ground moves — read out of Sonarr's own DOM rather than
+ * recalled.</p>
+ *
+ * <p><b>Two ways to get it wrong, both of which happened here.</b> Sizing the
+ * front layer to the fill and centring the text inside it centres the label on
+ * the <i>fill</i> rather than the <i>bar</i>, so it slides sideways as the bar
+ * fills. And leaving the back layer unclipped makes a fully-filled bar paint the
+ * identical glyphs twice, compositing every antialiased edge pixel into an
+ * opaque one, so the text thickens and glows. James, twice, before the cause was
+ * found: <i>"almost like its overexposed"</i>. It was a double exposure.</p>
+ */
+function TwoToneBar({
+  fill,
+  fillColour,
+  onFill,
+  trackColour,
+  onTrack,
+  lead,
+  label,
+  title,
+  ariaLabel
+}: {
+  /** 0 to 100. */
+  fill: number;
+  fillColour: string;
+  onFill: string;
+  trackColour: string;
+  onTrack: string;
+  lead?: string;
+  label?: string;
+  title: string;
+  ariaLabel: string;
+}) {
+  const pct = Math.min(100, Math.max(0, Math.round(fill)));
+    /*
+    The label rides `--library-badge-size`, the shelf's own density-aware token,
+    rather than a fixed size. `validate-ui-typography` rejects a raw pixel value
+    and it is right to: a card that ignores density is a card that stops matching
+    the shelf around it at three of the four settings.
+  */
+  const layer = "pointer-events-none absolute inset-0 flex items-center justify-center whitespace-nowrap px-1 font-mono text-[length:var(--library-badge-size)] font-bold leading-none";
+  const inner = label ? (
+    <span className="flex items-center gap-1">
+      {lead ? <i className="not-italic text-[0.72em] tracking-wider opacity-75">{lead}</i> : null}
+      <b className="font-bold">{label}</b>
+    </span>
+  ) : null;
+
+  return (
+    <div
+      role="img"
+      aria-label={ariaLabel}
+      title={title}
+      className="relative h-4 w-full overflow-hidden"
+      style={{ background: trackColour }}
+    >
+      <span
+        aria-hidden="true"
+        className="absolute inset-y-0 left-0 block"
+        style={{ width: `${pct}%`, background: fillColour }}
+      />
+      {inner ? (
+        <>
+          {/*
+            Both layers are aria-hidden: one string rendered twice must not be
+            heard twice. What a screen reader gets is `ariaLabel`, a sentence.
+          */}
+          <span aria-hidden="true" className={layer} style={{ color: onTrack, clipPath: `inset(0 0 0 ${pct}%)` }}>
+            {inner}
+          </span>
+          <span aria-hidden="true" className={layer} style={{ color: onFill, clipPath: `inset(0 ${100 - pct}% 0 0)` }}>
+            {inner}
+          </span>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+const paintVar = (token: string) => `hsl(var(${token}))`;
+
+export interface TitleBarsInput {
+  type: MediaType;
+  monitored?: boolean;
+  wantedStatus?: string | null;
+  isTransferring?: boolean;
+  hasFile?: boolean;
+  quality?: string | null;
+  airedEpisodeCount?: number;
+  airedWithFileCount?: number;
+  subtitleLanguagesWanted?: number;
+  subtitleLanguagesHeld?: number;
+  subtitleLanguagesSettled?: number;
+}
+
+/**
+ * What the top bar says and how far it fills, per medium.
+ *
+ * `fraction` states outright whether there IS a held part to colour. Inferring
+ * it from the percentage does not work: a fully-held Continuing show is 100% and
+ * does have a fraction, so testing `pct > 0 && pct < 100` silently excludes it.
+ */
+function mediaBarOf(item: TitleBarsInput, mark: TitleMark) {
+  const design = cardDesign(item.type);
+  const word = TITLE_MARK_PRESENTATION[mark].label;
+
+  if (design.mediaBar === "episodes") {
+    const aired = item.airedEpisodeCount ?? 0;
+    // Nothing aired is not a fraction — an Upcoming show has not started.
+    if (aired <= 0) return { pct: 100, label: word, lead: "EPS", fraction: false };
+    const held = Math.min(Math.max(0, item.airedWithFileCount ?? 0), aired);
+    return { pct: Math.round((held / aired) * 100), label: `${held} / ${aired}`, lead: "EPS", fraction: true };
+  }
+
+  const quality = (item.quality ?? "").trim();
+  if (item.hasFile) return { pct: 100, label: quality || "On disk", lead: "QLTY", fraction: true };
+  // Bytes moving is not a composition either — there is no held part yet.
+  if (mark === "downloading") return { pct: 45, label: word, lead: "QLTY", fraction: false };
+  // An Upcoming film is not 0% of anything; it has not been released.
+  if (mark === "upcoming") return { pct: 100, label: word, lead: "QLTY", fraction: false };
+  return { pct: 0, label: word, lead: "QLTY", fraction: true };
+}
+
+/**
+ * The two bars that book-end a poster: the media above, the subtitles below.
+ *
+ * <p><b>Nothing else sits on the artwork.</b> No corner pill, no title, no
+ * monitoring mark. The title is `showTitle`, a switchable line beneath the
+ * image, and monitoring is said by the bars themselves.</p>
+ *
+ * <p><b>Unmonitored overrides every colour rule</b>, on both bars, fill and
+ * track alike — see {@link UNMONITORED_PAINT}.</p>
+ */
+export function TitleBars({
+  item,
+  showMediaText,
+  showSubtitleText
+}: {
+  item: TitleBarsInput;
+  showMediaText: boolean;
+  showSubtitleText: boolean;
+}) {
+  const design = cardDesign(item.type);
+  const mark = titleMark(item);
+  const monitored = item.monitored !== false;
+  const isShow = design.mediaBar === "episodes";
+
+  const media = mediaBarOf(item, mark);
+  const subs = titleBar(item);
+  const files = isShow
+    ? Math.max(0, item.airedWithFileCount ?? 0)
+    : item.hasFile === false ? 0 : 1;
+
+  /*
+    The subtitle bar inherits **Upcoming, and nothing else**.
+
+    Upcoming means the thing cannot exist yet, so nothing can be fetched and
+    calling it Missing is a category error. Downloading means it exists and is
+    arriving — its subtitles exist out there and you do not have them, which is
+    precisely what Missing means. A subtitle is also a few kilobytes: a progress
+    state for one would be gone before it could be read, and a state nobody can
+    ever see should not be modelled.
+  */
+  const subState: TitleMark = files === 0 && mark === "upcoming" ? "upcoming" : "missing";
+  const subSettled = subs.wanted > 0 && subs.held === subs.wanted;
+  const subPct = files === 0
+    ? (subState === "missing" ? 0 : 100)
+    : subs.wanted ? Math.round((subs.held / subs.wanted) * 100) : 0;
+  const subLabel = subs.wanted
+    ? `${subs.held} / ${subs.wanted}`
+    : TITLE_MARK_PRESENTATION[subState].label;
+
+  const off = !monitored;
+  const paint = (m: TitleMark) => (off ? UNMONITORED_PAINT : TITLE_MARK_PAINT[m]);
+
+  /*
+    With the track painted Missing red, a Missing title's fill must not also be
+    red or the bar goes flat and the fraction vanishes.
+  */
+  const topMark: TitleMark =
+    design.fill === "held"
+      ? (media.pct === 100 && mark === "covered" ? "covered" : "upgrade")
+      : design.fill === "mixed" && mark === "missing" && media.fraction
+        ? "upgrade"
+        : mark;
+  const topPaint = paint(media.fraction ? topMark : mark);
+  const trackPaint = off ? UNMONITORED_PAINT : TITLE_MARK_PAINT.missing;
+  const subPaint = paint(files === 0 ? subState : subSettled ? "covered" : "upgrade");
+
+  const rung = TITLE_MARK_PRESENTATION[mark];
+  const watch = monitored ? "" : " · not monitored";
+
+  return (
+    <>
+      <TwoToneBar
+        fill={media.pct}
+        fillColour={paintVar(topPaint.surface)}
+        onFill={paintVar(topPaint.onSurface)}
+        trackColour={paintVar(trackPaint.surface)}
+        onTrack={paintVar(trackPaint.onTrack)}
+        lead={design.leads === "both" ? media.lead : undefined}
+        label={showMediaText ? media.label : undefined}
+        title={rung.hint + (monitored ? "" : " Deluno is not watching this one.")}
+        ariaLabel={`${rung.label}${watch}${
+          isShow && media.fraction ? ` · ${media.label} aired episodes on disk` : ""
+        }${!isShow && item.hasFile && item.quality ? ` · ${item.quality}` : ""}`}
+      />
+      <TwoToneBar
+        fill={subPct}
+        fillColour={paintVar(subPaint.surface)}
+        onFill={paintVar(subPaint.onSurface)}
+        trackColour={paintVar(trackPaint.surface)}
+        onTrack={paintVar(trackPaint.onTrack)}
+        lead={design.leads === "none" ? undefined : "SUBS"}
+        label={showSubtitleText ? subLabel : undefined}
+        title={
+          subs.wanted
+            ? `${subs.held} of ${subs.wanted} subtitle languages you asked for are here.`
+            : TITLE_MARK_PRESENTATION[subState].hint
+        }
+        ariaLabel={
+          subs.wanted
+            ? `${subs.held} of ${subs.wanted} subtitle languages${watch}`
+            : `Subtitles ${TITLE_MARK_PRESENTATION[subState].label.toLowerCase()}${watch}`
+        }
+      />
+    </>
+  );
+}
+
 export function TitleMarkTopBar({
   item,
   className

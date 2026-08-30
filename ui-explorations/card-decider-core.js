@@ -866,10 +866,32 @@ function mountDecider({ medium }) {
       + '<button id="copy">Copy</button></div>';
 
     history.replaceState(null, "", "#" + Object.keys(S).map(k => k + "=" + S[k]).join("&"));
+    /*
+      `navigator.clipboard` exists only in a secure context, and the rig is plain
+      HTTP — so on the one machine this page is actually used from, the API is
+      undefined and the button did nothing at all, silently. James: "copy button
+      doesnt work". The execCommand path is deprecated and works everywhere; it is
+      the fallback precisely because the modern API is the one that is unavailable
+      here.
+    */
     document.getElementById("copy").onclick = () => {
-      navigator.clipboard.writeText(medium.toUpperCase() + " — " + settingsLine() + " — " + location.href)
-        .then(() => { const b = document.getElementById("copy"); b.textContent = "Copied";
-                      setTimeout(() => { b.textContent = "Copy"; }, 1400); }, () => {});
+      const text = medium.toUpperCase() + " — " + settingsLine() + " — " + location.href;
+      const done = ok => { const b = document.getElementById("copy");
+        b.textContent = ok ? "Copied" : "Press Ctrl+C";
+        if (!ok) { const r = document.createRange(); r.selectNodeContents(document.getElementById("line"));
+                   const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); }
+        setTimeout(() => { b.textContent = "Copy"; }, 1800); };
+      const legacy = () => {
+        const ta = document.createElement("textarea");
+        ta.value = text; ta.style.cssText = "position:fixed;top:-1000px;opacity:0";
+        document.body.appendChild(ta); ta.select();
+        let ok = false;
+        try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+        ta.remove(); done(ok);
+      };
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(() => done(true), legacy);
+      } else legacy();
     };
   }
 
