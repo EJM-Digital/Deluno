@@ -522,7 +522,18 @@ export function MovieDetailPage() {
             )}
             <div className="min-w-0 self-start">
               <p className="text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-primary">Movie</p>
-              <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              {/*
+                **Centre, not baseline.** A button whose only child is an SVG has
+                its baseline at the BOTTOM of its box, so aligning that to the
+                title's baseline lifts the icon well above the text — James: *"the
+                shield isnt on the same line as the title its too high"*.
+
+                Baseline was right when the year shared this row, because the year
+                is text. The year moved to the meta line, so this row holds a
+                heading and an icon, and two things of different heights line up
+                on their centres.
+              */}
+              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
                 <h1 className="font-display text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">{movie.title}</h1>
                 {/*
                   Monitoring: the shield, beside the title, and nothing else.
@@ -543,9 +554,7 @@ export function MovieDetailPage() {
                   aria-label={movie.monitored ? "Monitored — click to unmonitor" : "Unmonitored — click to monitor"}
                   title={movie.monitored ? "Monitored — click to unmonitor" : "Unmonitored — click to monitor"}
                   className={cn(
-                    // Baseline, not centre: the row is `items-baseline`, and a
-                    // centred icon floats above the type it sits beside.
-                    "self-baseline rounded-lg p-1 transition-colors",
+                    "rounded-lg p-1.5 transition-colors",
                     movie.monitored
                       ? "text-foreground hover:bg-surface-2"
                       : "text-muted-foreground hover:bg-surface-2 hover:text-foreground"
@@ -580,7 +589,7 @@ export function MovieDetailPage() {
                 is a line now: `RatingLine`, reading the same normaliser and
                 formatter as the cards so the two can never disagree.
               */}
-              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
                 {metaText("Certification") ? (
                   <span
                     className="rounded border border-hairline px-1.5 py-px text-xs font-bold uppercase tracking-wide"
@@ -598,7 +607,7 @@ export function MovieDetailPage() {
                   </span>
                 ) : null}
               </div>
-              <div className="mt-2">
+              <div className="mt-1.5">
                 <RatingLine ratings={movie.ratings} fallbackRating={movie.rating} />
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
