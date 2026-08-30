@@ -107,14 +107,36 @@ const labelOn = mark => mark === "gold" ? "hsl(40 90% 12%)" : "hsl(0 0% 100%)";
   one card that needs to stand out stops standing out. An exception is worth marking;
   a default is not. Both are drawn so the choice can be looked at.
 */
-const EYE_OFF = '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor"'
-  + ' stroke-width="2.4" stroke-linecap="round" aria-hidden="true">'
-  + '<path d="M2 2l20 20"/><path d="M6.7 6.8A10.6 10.6 0 0 0 1 12s4 7 11 7a10.4 10.4 0 0 0 5.3-1.4"/>'
-  + '<path d="M9.9 5.2A10.9 10.9 0 0 1 12 5c7 0 11 7 11 7a19 19 0 0 1-3.2 4.2"/>'
-  + '<path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
-const EYE_ON = '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor"'
-  + ' stroke-width="2.4" stroke-linecap="round" aria-hidden="true">'
-  + '<path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>';
+/*
+  The glyph.
+
+  **Deluno already has one for monitoring: a shield.** `library-grid.tsx` draws
+  ShieldCheck / ShieldOff on the line under the poster. This render reached for an
+  eye — which reads as "watching" in English but is not the app's own word for it,
+  and a second icon for a fact that already has one is how an icon language stops
+  being a language. The shield is the default here for that reason; the others are
+  drawn so the choice can be looked at rather than assumed.
+*/
+const GLYPHS = {
+  shield: {
+    on: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/>',
+    off: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M2 2l20 20"/>'
+  },
+  eye: {
+    on: '<path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/>',
+    off: '<path d="M2 2l20 20"/><path d="M6.7 6.8A10.6 10.6 0 0 0 1 12s4 7 11 7a10.4 10.4 0 0 0 5.3-1.4"/>'
+       + '<path d="M9.9 5.2A10.9 10.9 0 0 1 12 5c7 0 11 7 11 7a19 19 0 0 1-3.2 4.2"/>'
+       + '<path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>'
+  },
+  bell: {
+    on: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 8-3 8h18s-3-1-3-8"/><path d="M10.3 21a2 2 0 0 0 3.4 0"/>',
+    off: '<path d="M18 8a6 6 0 0 0-9.3-5"/><path d="M6 8c0 7-3 8-3 8h13"/>'
+       + '<path d="M10.3 21a2 2 0 0 0 3.4 0"/><path d="M2 2l20 20"/>'
+  }
+};
+const glyph = monitored => '<svg viewBox="0 0 24 24" width="11" height="11" fill="none"'
+  + ' stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"'
+  + ' aria-hidden="true">' + GLYPHS[S.glyph][monitored ? "on" : "off"] + '</svg>';
 
 /* On the artwork, in the corner. Opaque, because a translucent badge is a
    different colour on every poster — the same problem that killed the label. */
@@ -123,7 +145,7 @@ function monitorBadge(monitored) {
   if (S.mon === "when-off" && monitored) return "";
   return '<div class="mbadge' + (monitored ? '' : ' off') + '" title="'
     + (monitored ? 'Deluno is watching this title.' : 'Deluno is not watching this title.') + '">'
-    + (monitored ? EYE_ON : EYE_OFF) + '</div>';
+    + glyph(monitored) + '</div>';
 }
 
 const MONITOR_LINE = monitored => '<div class="mon' + (monitored ? '' : ' off') + '">'
@@ -165,7 +187,7 @@ const S = {
   subs: "on",          // "Subtitle count on the bar"
   leads: "subs",       // none | subs | both — the DESIGN choice, lead words
   mon: "when-off",     // when-off | always | line | off — how monitoring is shown
-  title: "on",         // the showTitle poster option — a line UNDER the poster
+  glyph: "shield",     // shield | eye | bell — the app already uses a shield
   rem: "neutral",      // neutral | missing
   fill: "state",       // state | held
   cont: "magenta",     // TV only
@@ -181,9 +203,9 @@ function controlsFor(medium) {
     { key: "media",  label: medium === "tv" ? "Episode count" : "Quality on bar",
       opts: [["on","On"],["off","Off"]], user: true },
     { key: "subs",   label: "Subtitle count", opts: [["on","On"],["off","Off"]], user: true },
-    { key: "title",  label: "Title", opts: [["on","On"],["off","Off"]], user: true },
     { key: "leads",  label: "Lead words", opts: [["none","None"],["subs","SUBS only"],["both","Both"]] },
     { key: "mon",    label: "Monitoring", opts: [["when-off","Badge when off"],["always","Badge always"],["line","Line under"],["off","Not shown"]] },
+    { key: "glyph",  label: "Glyph", opts: [["shield","Shield"],["eye","Eye"],["bell","Bell"]] },
     { key: "rem",    label: "Track",  opts: [["neutral","Neutral grey"],["missing","Missing red"]] },
     { key: "fill",   label: "Fill",   opts: [["state","State colour"],["held","What you hold"]] }
   ];
@@ -415,18 +437,25 @@ function cardHtml(it, isShow, withCaption) {
     ? twoTone(subFill, subPctDrawn, subLabel, subLead, subOnFill, TS.colour, TS.label)
     : thin(subPctDrawn, subFill, TS);
 
-  /* Nothing but the bars and the monitoring mark sits on the artwork. The title
-     is `showTitle` — its own switchable line UNDER the poster, on by default —
-     and drawing it over the picture made every card here a lie about how the
-     shelf actually looks. James: "we shouldnt have the title on the poster we
-     dont even have that now, its a selectable option that appears under the
-     poster so its not a true representation". */
+  /*
+    **Nothing but the two bars and the monitoring mark is on this card.**
+
+    The title was first drawn over the artwork behind a gradient, which is not
+    what the shelf does — it is `showTitle`, a switchable line UNDER the poster.
+    Moving it there was still wrong for this exercise: James, *"still wrong take
+    them out entirely please for this exercise its not needed as we mentioned its
+    a switchable line"*. He is right. A switchable line that is not part of the
+    decision adds height, competes for attention, and invites judging the card on
+    something that is not being decided.
+
+    The name is in the description underneath instead, where it identifies the
+    card without being part of it.
+  */
   const art = '<div class="art">'
     + (it.posterUrl ? '<img loading="lazy" src="' + esc(it.posterUrl) + '" alt="">'
                     : '<div class="noart">no art</div>')
     + '</div>';
-  const titleLine = S.title === "on"
-    ? '<div class="tline">' + esc(it.title) + '</div>' : '';
+
 
   /* No corner pill, and the bars are always on the artwork — both settled:
      "corner pill is a complete removal and bars always on artwork". */
@@ -436,7 +465,7 @@ function cardHtml(it, isShow, withCaption) {
      would make those scenarios look identical to the monitored ones. */
   const monitored = it.monitored !== false;
   const card = '<div class="card">' + monitorBadge(monitored) + topBar + art + botBar
-    + titleLine + (S.mon === "line" ? MONITOR_LINE(monitored) : '') + '</div>';
+    + (S.mon === "line" ? MONITOR_LINE(monitored) : '') + '</div>';
   if (!withCaption) return card;
 
   const note = barNote(media, subs, mark, isShow);
@@ -447,6 +476,7 @@ function cardHtml(it, isShow, withCaption) {
   return '<div class="titled">' + card
     + '<div class="cap">'
     + (it.scenario ? '<i class="scen">' + esc(it.scenario) + '</i>' : '')
+    + '<i class="who">' + esc(it.title) + '</i>'
     + '<b style="color:hsl(' + TEXT[S.theme][mark] + ')">' + MARKS[mark]
     + (it.monitored === false ? ' <span class="nm">not monitored</span>' : '') + '</b>'
     + '<p>' + esc(hintFor(mark, isShow ? "tv" : "movies") + halfNote) + '</p>'

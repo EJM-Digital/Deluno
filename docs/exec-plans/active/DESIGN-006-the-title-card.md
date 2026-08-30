@@ -381,22 +381,36 @@ stops standing out. An exception is worth marking; a default is not. The badge i
 opaque for the same reason the label is two-toned: a translucent mark is a different
 colour on every poster.
 
+**The glyph is a shield**, because Deluno already has one: `library-grid.tsx` draws
+`ShieldCheck` / `ShieldOff` for monitoring. The render first reached for an eye —
+which reads as *watching* in English but is not the app's own word for it, and a
+second icon for a fact that already has one is how an icon language stops being a
+language.
+
 `canBeHalf` in `TITLE_MARK_PRESENTATION` therefore has no consumer on the card any
 more. Do not delete it blindly — the drawer and detail page may still read it — but
 check, because a flag nothing reads is the shape of the defects this project keeps
 finding.
 
-## 5a. What actually sits on the artwork
+## 5a. What actually sits on the card
 
-**Only the two bars and the monitoring badge.** Everything else is a line *under* the
-poster, which is what the shipped card already does and what these renders got wrong
-at first: the title was being drawn over the picture behind a gradient. James: *"we
-shouldnt have the title on the poster we dont even have that now, its a selectable
-option that appears under the poster so its not a true representation"*.
+**Only the two bars and the monitoring badge.** Nothing else.
 
-`showTitle` is a poster option with its own switch, on by default, and it renders as
-a line beneath the artwork. A render that puts it on the picture is not a render of
-this card.
+The title was first drawn over the picture behind a gradient — which is not what the
+shelf does. James: *"we shouldnt have the title on the poster we dont even have that
+now, its a selectable option that appears under the poster so its not a true
+representation"*. Moving it to a line beneath the artwork was still wrong for a page
+whose job is to decide the bars: *"still wrong take them out entirely please for this
+exercise its not needed as we mentioned its a switchable line"*.
+
+He is right, and the principle generalises: **a render that carries switchable
+furniture which is not part of the decision is not a neutral render.** It adds
+height, competes for attention, and invites judging the card on something nobody is
+choosing. The decider pages carry the title in the description underneath, where it
+identifies the card without being part of it.
+
+`showTitle` remains exactly what it is in the app — a poster option, on by default,
+rendered as a line under the artwork. This document does not change it.
 
 ## 6. The switch
 
