@@ -708,9 +708,16 @@ screen, and reading the style back told me the override was working when it was 
 
 | | Movies | TV |
 |---|---|---|
-| Card renders checked | 528 | 864 |
+| Distinct card states | **22** | **44** |
+| Card renders checked | 1,104 | 3,240 |
 | Switch combinations | 48 | 72 |
 | Problems | **0** | **0** |
+
+The catalogue is **enumerated, not hand-picked**: every rung, times every subtitle
+state, times monitored and not. A title holding no files has no independent subtitle
+state — it inherits the title's own reason for having none — so those rungs
+contribute one row rather than four. Artwork repeats where there are more states
+than posters, because the picture is not the subject.
 
 Invariants asserted, each one a bug that had already happened:
 
@@ -722,6 +729,15 @@ Invariants asserted, each one a bug that had already happened:
 5. **Every visible label clears 4.5:1** against the ground actually under it — the
    fill where the fill is wide enough to be seen, the track otherwise.
 6. **Nothing but the image is on the artwork.**
+7. **No two cards render the same shape** — compared on fill width, fill colour,
+   track colour and label text, not on their names.
+
+Invariant 7 is the one that had been missing, and it is why a duplicate survived a
+passing audit: it asserted that scenario *names* were unique, which is a different
+question. Two cards drew the identical Quality met / monitored / 100% / 100% and the
+check said nothing. James: *"we still have a duplicate quality met - please check
+again"*. **An audit that checks the label instead of the thing is the same defect it
+is meant to catch.**
 
 The Shipped palette fails #5 on 60 combinations and is excluded from the run, which
 is the measured reason it is not a candidate rather than a matter of taste.
