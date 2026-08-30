@@ -143,8 +143,11 @@ const glyph = monitored => '<svg viewBox="0 0 24 24" width="11" height="11" fill
 function monitorBadge(monitored) {
   if (S.mon === "off") return "";
   if (S.mon === "when-off" && monitored) return "";
+  /* On a card the badge is not a control, so it states the fact and stops. The
+     "click to …" half of the tooltip belongs on the detail pages, where the same
+     glyph IS pressable. One vocabulary, two jobs. */
   return '<div class="mbadge' + (monitored ? '' : ' off') + '" title="'
-    + (monitored ? 'Deluno is watching this title.' : 'Deluno is not watching this title.') + '">'
+    + (monitored ? 'Monitored' : 'Not monitored') + '">'
     + glyph(monitored) + '</div>';
 }
 
