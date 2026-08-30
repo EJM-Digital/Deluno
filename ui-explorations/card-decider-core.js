@@ -85,21 +85,47 @@ const TEXT = {
 const labelOn = mark => mark === "gold" ? "hsl(40 90% 12%)" : "hsl(0 0% 100%)";
 
 /*
-  Monitoring is NOT a property of the bar.
+  Monitoring gets its own mark, and the bars keep their colour.
 
-  DESIGN-001 said an unmonitored title wears a **half-grey dot**, and this render
-  duly halved the bar's fill instead. James: *"I think the half was in reference
-  to the dots which we have removed"* — right, and the measurement agreed before
-  he said it. A half works on a dot because a dot has no length of its own. A bar
-  IS a length, and that length already means the fraction you hold, so a 50/50
-  split collides with it — and on a Missing title, whose fill is 0% wide, the
-  half rendered as nothing at all.
+  The road here is worth keeping. DESIGN-001 gave an unmonitored title a half-grey
+  **dot**; an earlier revision of this render halved the **bar's fill** instead.
+  James: *"I think the half was in reference to the dots which we have removed"* —
+  right, and the measurement agreed before the argument did: on a Missing title,
+  whose fill is 0% wide, the half rendered as nothing at all. A half works on a dot
+  because a dot has no length of its own; a bar IS a length, and that length already
+  means the fraction you hold.
 
-  Nothing is lost by dropping it, which is the test that matters: monitoring
-  already has its own line under the poster — a shield and the words *Monitored*
-  / *Not monitored*, behind the `showMonitored` option, on by default. See
-  `library-grid.tsx`. The dot is gone; that line is not.
+  Then: *"ditch the half and just overright it when its unmonitored its just black or
+  grey period"* — which worked, but spent the bar's colour on a fact that is not
+  about the title's state. And finally: *"maybe a nice little monitored /
+  unmonitored on the poster is the best play here"*. That is the right answer. The
+  bars go on saying what the title IS; whether Deluno is watching it is a separate
+  fact and gets a separate mark.
+
+  **Shown only when it is OFF, by default.** Nearly every title is monitored, so a
+  badge on every card is a badge that says nothing on almost all of them — and the
+  one card that needs to stand out stops standing out. An exception is worth marking;
+  a default is not. Both are drawn so the choice can be looked at.
 */
+const EYE_OFF = '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor"'
+  + ' stroke-width="2.4" stroke-linecap="round" aria-hidden="true">'
+  + '<path d="M2 2l20 20"/><path d="M6.7 6.8A10.6 10.6 0 0 0 1 12s4 7 11 7a10.4 10.4 0 0 0 5.3-1.4"/>'
+  + '<path d="M9.9 5.2A10.9 10.9 0 0 1 12 5c7 0 11 7 11 7a19 19 0 0 1-3.2 4.2"/>'
+  + '<path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
+const EYE_ON = '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor"'
+  + ' stroke-width="2.4" stroke-linecap="round" aria-hidden="true">'
+  + '<path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>';
+
+/* On the artwork, in the corner. Opaque, because a translucent badge is a
+   different colour on every poster — the same problem that killed the label. */
+function monitorBadge(monitored) {
+  if (S.mon === "off") return "";
+  if (S.mon === "when-off" && monitored) return "";
+  return '<div class="mbadge' + (monitored ? '' : ' off') + '" title="'
+    + (monitored ? 'Deluno is watching this title.' : 'Deluno is not watching this title.') + '">'
+    + (monitored ? EYE_ON : EYE_OFF) + '</div>';
+}
+
 const MONITOR_LINE = monitored => '<div class="mon' + (monitored ? '' : ' off') + '">'
   + (monitored ? '&#9679;' : '&#9675;') + ' ' + (monitored ? 'Monitored' : 'Not monitored') + '</div>';
 
@@ -138,6 +164,8 @@ const S = {
   media: "on",         // "Quality on the bar" / "Episode count on the bar"
   subs: "on",          // "Subtitle count on the bar"
   leads: "subs",       // none | subs | both — the DESIGN choice, lead words
+  mon: "when-off",     // when-off | always | line | off — how monitoring is shown
+  title: "on",         // the showTitle poster option — a line UNDER the poster
   rem: "neutral",      // neutral | missing
   fill: "state",       // state | held
   cont: "magenta",     // TV only
@@ -153,7 +181,9 @@ function controlsFor(medium) {
     { key: "media",  label: medium === "tv" ? "Episode count" : "Quality on bar",
       opts: [["on","On"],["off","Off"]], user: true },
     { key: "subs",   label: "Subtitle count", opts: [["on","On"],["off","Off"]], user: true },
+    { key: "title",  label: "Title", opts: [["on","On"],["off","Off"]], user: true },
     { key: "leads",  label: "Lead words", opts: [["none","None"],["subs","SUBS only"],["both","Both"]] },
+    { key: "mon",    label: "Monitoring", opts: [["when-off","Badge when off"],["always","Badge always"],["line","Line under"],["off","Not shown"]] },
     { key: "rem",    label: "Track",  opts: [["neutral","Neutral grey"],["missing","Missing red"]] },
     { key: "fill",   label: "Fill",   opts: [["state","State colour"],["held","What you hold"]] }
   ];
@@ -350,8 +380,8 @@ function cardHtml(it, isShow, withCaption) {
 
   /* A bar with no fraction keeps its state's colour under either grammar: an
      Upcoming title has not started, a downloading one has no held part yet. */
-  const topFill = media.fraction ? fillColourFor(mark, media.pct === 100, C) : "hsl(" + C[mark] + ")";
-  const topFillFlat = topFill;
+  const topFillFlat = media.fraction ? fillColourFor(mark, media.pct === 100, C) : "hsl(" + C[mark] + ")";
+  const topFill = topFillFlat;
   const topOnFill = topFillFlat === "hsl(" + C.gold + ")" ? labelOn("gold") : "hsl(0 0% 100%)";
 
   const subSettled = subs.wanted > 0 && subs.held === subs.wanted;
@@ -359,8 +389,9 @@ function cardHtml(it, isShow, withCaption) {
      state at full width rather than an empty green one. */
   const subNoFiles = subs.files === 0;
   const subPctDrawn = subNoFiles ? (subState === "miss" ? 0 : 100) : subPct;
-  const subFill = subNoFiles ? "hsl(" + C[subState] + ")"
+  const subFillFlat = subNoFiles ? "hsl(" + C[subState] + ")"
     : subSettled ? "hsl(" + C.gold + ")" : "hsl(" + C.upg + ")";
+  const subFill = subFillFlat;
   const subOnFill = subNoFiles ? labelOn(subState)
     : subSettled ? labelOn("gold") : labelOn("upg");
 
@@ -384,10 +415,18 @@ function cardHtml(it, isShow, withCaption) {
     ? twoTone(subFill, subPctDrawn, subLabel, subLead, subOnFill, TS.colour, TS.label)
     : thin(subPctDrawn, subFill, TS);
 
+  /* Nothing but the bars and the monitoring mark sits on the artwork. The title
+     is `showTitle` — its own switchable line UNDER the poster, on by default —
+     and drawing it over the picture made every card here a lie about how the
+     shelf actually looks. James: "we shouldnt have the title on the poster we
+     dont even have that now, its a selectable option that appears under the
+     poster so its not a true representation". */
   const art = '<div class="art">'
     + (it.posterUrl ? '<img loading="lazy" src="' + esc(it.posterUrl) + '" alt="">'
                     : '<div class="noart">no art</div>')
-    + '<div class="name">' + esc(it.title) + '</div></div>';
+    + '</div>';
+  const titleLine = S.title === "on"
+    ? '<div class="tline">' + esc(it.title) + '</div>' : '';
 
   /* No corner pill, and the bars are always on the artwork — both settled:
      "corner pill is a complete removal and bars always on artwork". */
@@ -395,13 +434,15 @@ function cardHtml(it, isShow, withCaption) {
      poster option with its own switch — but it is drawn here because it is now
      the ONLY thing that says a title is unmonitored, and a render that omits it
      would make those scenarios look identical to the monitored ones. */
-  const card = '<div class="card">' + topBar + art + botBar
-    + MONITOR_LINE(it.monitored !== false) + '</div>';
+  const monitored = it.monitored !== false;
+  const card = '<div class="card">' + monitorBadge(monitored) + topBar + art + botBar
+    + titleLine + (S.mon === "line" ? MONITOR_LINE(monitored) : '') + '</div>';
   if (!withCaption) return card;
 
   const note = barNote(media, subs, mark, isShow);
   const halfNote = it.monitored === false
-    ? " Deluno is not watching this one — said on its own line under the poster, not on a bar."
+    ? " Deluno is not watching this one — its own mark, so the bars go on saying what the"
+      + " title is."
     : "";
   return '<div class="titled">' + card
     + '<div class="cap">'
@@ -428,80 +469,84 @@ function cardHtml(it, isShow, withCaption) {
    one at the moment you happen to look, and those are exactly the cards a design
    fails on. The real library is drawn underneath it, as itself.
    ══════════════════════════════════════════════════════════════ */
+/* Real titles and real artwork, served from Deluno's own /api/metadata/artwork
+   proxy, which needs no auth — so the catalogue looks like the shelf whether or
+   not the page is signed in. James: "put some artwork in as well so we can see
+   it for real". A card judged against a grey rectangle is not judged: the whole
+   point of a bar on a poster is how it sits on a picture. */
 const SCENARIOS = {
   movies: [
     { scenario: "At the cutoff, subtitles complete",
-      title:"Dune: Part Two", wantedStatus:"covered", hasFile:true, monitored:true,
-      currentQuality:"Remux-2160p", subtitleLanguagesWanted:3, subtitleLanguagesHeld:3 },
+      title: "Blade Runner 2049", posterUrl: "/api/metadata/artwork/8225563f8dad6e6bb1fea1e451eed27ac0c67543ed01aab55ef4a139f8d54e5e",
+      wantedStatus:"covered", hasFile:true, monitored:true, currentQuality:"Remux-2160p", subtitleLanguagesWanted:3, subtitleLanguagesHeld:3 },
     { scenario: "Below the cutoff, subtitles short",
-      title:"The Substance", wantedStatus:"upgrade", hasFile:true, monitored:true,
-      currentQuality:"WEBDL-1080p", subtitleLanguagesWanted:3, subtitleLanguagesHeld:1 },
+      title: "Arrival", posterUrl: "/api/metadata/artwork/473be3f38acc67c4b8289452deeabbadd4f65746808c84eae1c4d06fd29b691c",
+      wantedStatus:"upgrade", hasFile:true, monitored:true, currentQuality:"WEBDL-1080p", subtitleLanguagesWanted:3, subtitleLanguagesHeld:1 },
     { scenario: "Held, no subtitles at all yet",
-      title:"The Brutalist", wantedStatus:"upgrade", hasFile:true, monitored:true,
-      currentQuality:"WEBRip-720p", subtitleLanguagesWanted:2, subtitleLanguagesHeld:0 },
+      title: "Sicario", posterUrl: "/api/metadata/artwork/881aa7ac6ea972e5a95f862c6bfcfee32e2fac1df53934eaca3416d63206356a",
+      wantedStatus:"upgrade", hasFile:true, monitored:true, currentQuality:"WEBRip-720p", subtitleLanguagesWanted:2, subtitleLanguagesHeld:0 },
     { scenario: "Held, Subber has not resolved it",
-      title:"Sinners", wantedStatus:"covered", hasFile:true, monitored:true,
-      currentQuality:"Bluray-1080p", subtitleLanguagesWanted:0, subtitleLanguagesHeld:0 },
+      title: "Ex Machina", posterUrl: "/api/metadata/artwork/6bb5fb60d2f89eb56a211efd703eed1c3d0ec927abe3949f8ee4b32402552e4d",
+      wantedStatus:"covered", hasFile:true, monitored:true, currentQuality:"Bluray-1080p", subtitleLanguagesWanted:0, subtitleLanguagesHeld:0 },
     { scenario: "Bytes moving now",
-      title:"Nosferatu", wantedStatus:"downloading", hasFile:false, monitored:true,
-      subtitleLanguagesWanted:3, subtitleLanguagesHeld:0 },
+      title: "Dune", posterUrl: "/api/metadata/artwork/f48519a2f5b2b80a3aa3a0ee7ba65bcee08b1c75319b23dd60c6f4ad51fe5701",
+      wantedStatus:"downloading", hasFile:false, monitored:true, subtitleLanguagesWanted:3, subtitleLanguagesHeld:0 },
     { scenario: "Out, and not here",
-      title:"Conclave", wantedStatus:"missing", hasFile:false, monitored:true,
-      subtitleLanguagesWanted:3, subtitleLanguagesHeld:0 },
+      title: "Inception", posterUrl: "/api/metadata/artwork/b8859b643b9e36627948bc194975309f9d786c52fc99a44d90c9f654b310ae2b",
+      wantedStatus:"missing", hasFile:false, monitored:true, subtitleLanguagesWanted:3, subtitleLanguagesHeld:0 },
     { scenario: "Out, not here, NOT monitored",
-      title:"Wicked", wantedStatus:"missing", hasFile:false, monitored:false,
-      subtitleLanguagesWanted:3, subtitleLanguagesHeld:0 },
+      title: "The Martian", posterUrl: "/api/metadata/artwork/fafbc3108d750c4b0aa5347b7069ec1a58c81e0ab0c0306059572099ce23cb4c",
+      wantedStatus:"missing", hasFile:false, monitored:false, subtitleLanguagesWanted:3, subtitleLanguagesHeld:0 },
     { scenario: "Not released yet",
-      title:"Anora", wantedStatus:"upcoming", hasFile:false, monitored:true,
-      subtitleLanguagesWanted:2, subtitleLanguagesHeld:0 },
+      title: "Interstellar", posterUrl: "/api/metadata/artwork/ced3868f1e43a568d74a72ff561dd38a149229ea2c4fa52c5e9a554c71029c65",
+      wantedStatus:"upcoming", hasFile:false, monitored:true, subtitleLanguagesWanted:2, subtitleLanguagesHeld:0 },
     { scenario: "Not released, NOT monitored",
-      title:"Mickey 17", wantedStatus:"upcoming", hasFile:false, monitored:false,
-      subtitleLanguagesWanted:2, subtitleLanguagesHeld:0 },
+      title: "Mad Max: Fury Road", posterUrl: "/api/metadata/artwork/28376be2186dbf463a77de61bff882a209f0c2f98d8d8f0331e12b8efc2e4782",
+      wantedStatus:"upcoming", hasFile:false, monitored:false, subtitleLanguagesWanted:2, subtitleLanguagesHeld:0 },
     { scenario: "Held below cutoff, NOT monitored",
-      title:"A Complete Unknown", wantedStatus:"upgrade", hasFile:true, monitored:false,
-      currentQuality:"WEBDL-2160p", subtitleLanguagesWanted:2, subtitleLanguagesHeld:2 },
+      title: "Big Buck Bunny", posterUrl: "/api/metadata/artwork/8caa0b5403699888fe15bc4b32e91244d74474ab5cb4bb3cd6e49a17235d7598",
+      wantedStatus:"upgrade", hasFile:true, monitored:false, currentQuality:"WEBDL-2160p", subtitleLanguagesWanted:2, subtitleLanguagesHeld:2 },
     { scenario: "The longest strings this card must survive",
-      title:"The Lord of the Rings: The Return of the King", wantedStatus:"covered",
-      hasFile:true, monitored:true, currentQuality:"Bluray-2160p Remux",
-      subtitleLanguagesWanted:12, subtitleLanguagesHeld:12 }
+      title: "Everything Everywhere All at Once", posterUrl: "/api/metadata/artwork/af01bb2154b830c4de7e04a885fe9f9a646ccf008bb8efb505b3000f44a920c6",
+      wantedStatus:"covered", hasFile:true, monitored:true, currentQuality:"Bluray-2160p Remux", subtitleLanguagesWanted:12, subtitleLanguagesHeld:12 }
   ],
   tv: [
-    { scenario: "Every aired episode held, more to come",
-      title:"Silo", wantedStatus:"airing", monitored:true,
-      airedEpisodeCount:10, airedWithFileCount:10, subtitleLanguagesWanted:2, subtitleLanguagesHeld:20 },
-    { scenario: "Every aired episode held, subtitles short",
-      title:"The Diplomat", wantedStatus:"airing", monitored:true,
-      airedEpisodeCount:8, airedWithFileCount:8, subtitleLanguagesWanted:2, subtitleLanguagesHeld:11 },
-    { scenario: "Ended, complete, at the cutoff",
-      title:"Shōgun", wantedStatus:"covered", monitored:true,
-      airedEpisodeCount:10, airedWithFileCount:10, subtitleLanguagesWanted:2, subtitleLanguagesHeld:20 },
-    { scenario: "Complete, below the cutoff",
-      title:"Slow Horses", wantedStatus:"upgrade", monitored:true,
-      airedEpisodeCount:6, airedWithFileCount:6, subtitleLanguagesWanted:1, subtitleLanguagesHeld:4 },
     { scenario: "Part of the way through",
-      title:"Severance", wantedStatus:"missing", monitored:true,
-      airedEpisodeCount:20, airedWithFileCount:3, subtitleLanguagesWanted:2, subtitleLanguagesHeld:2 },
+      title: "Severance", posterUrl: "/api/metadata/artwork/3839bfc8c1e2bb20cf97f204ebf8d8009f37adbc6a2979ce57335c45821046a5",
+      wantedStatus:"missing", monitored:true, airedEpisodeCount:20, airedWithFileCount:3, subtitleLanguagesWanted:2, subtitleLanguagesHeld:4 },
+    { scenario: "Every aired episode held, more to come",
+      title: "The Bear", posterUrl: "/api/metadata/artwork/fee2ac574c6f38ea074ba8128e921b4dee8ba1330de8f35458fdad73a7b12ffc",
+      wantedStatus:"airing", monitored:true, airedEpisodeCount:8, airedWithFileCount:8, subtitleLanguagesWanted:2, subtitleLanguagesHeld:11 },
+    { scenario: "Ended, complete, at the cutoff",
+      title: "Andor", posterUrl: "/api/metadata/artwork/5c494a4b5cd53928dd0dc5409f68d8422697866e85a38840e609fb1ff6a31117",
+      wantedStatus:"covered", monitored:true, airedEpisodeCount:12, airedWithFileCount:12, subtitleLanguagesWanted:2, subtitleLanguagesHeld:24 },
+    { scenario: "Complete, below the cutoff",
+      title: "Slow Horses", posterUrl: "/api/metadata/artwork/23a4188c5777fc1fbeb37287ebae21c1825d2586f06c1e5983082853864607f5",
+      wantedStatus:"upgrade", monitored:true, airedEpisodeCount:6, airedWithFileCount:6, subtitleLanguagesWanted:1, subtitleLanguagesHeld:4 },
+    { scenario: "Every aired episode held, no subtitles yet",
+      title: "Shogun", posterUrl: "/api/metadata/artwork/c507eac5b0ccba375facac9262a7a4e58d9e0a9898d8419f5faad6540503bdbd",
+      wantedStatus:"airing", monitored:true, airedEpisodeCount:10, airedWithFileCount:10, subtitleLanguagesWanted:2, subtitleLanguagesHeld:0 },
     { scenario: "Aired, and none of it held",
-      title:"Foundation", wantedStatus:"missing", monitored:true,
-      airedEpisodeCount:29, airedWithFileCount:0, subtitleLanguagesWanted:2, subtitleLanguagesHeld:0 },
-    { scenario: "Part of the way through, NOT monitored",
-      title:"The Wire", wantedStatus:"missing", monitored:false,
-      airedEpisodeCount:60, airedWithFileCount:22, subtitleLanguagesWanted:2, subtitleLanguagesHeld:30 },
+      title: "For All Mankind", posterUrl: "/api/metadata/artwork/fee1f7759a1db260be24c2961b3687ebc604e7e41831b4ec01a11b4af6eb1ce3",
+      wantedStatus:"missing", monitored:true, airedEpisodeCount:40, airedWithFileCount:0, subtitleLanguagesWanted:2, subtitleLanguagesHeld:0 },
     { scenario: "Bytes moving now",
-      title:"Andor", wantedStatus:"downloading", monitored:true,
-      airedEpisodeCount:12, airedWithFileCount:4, subtitleLanguagesWanted:2, subtitleLanguagesHeld:8 },
+      title: "Severance", posterUrl: "/api/metadata/artwork/3839bfc8c1e2bb20cf97f204ebf8d8009f37adbc6a2979ce57335c45821046a5",
+      wantedStatus:"downloading", monitored:true, airedEpisodeCount:20, airedWithFileCount:4, subtitleLanguagesWanted:2, subtitleLanguagesHeld:6 },
     { scenario: "Nothing has aired yet",
-      title:"Dune: Prophecy", wantedStatus:"upcoming", monitored:true,
-      airedEpisodeCount:0, airedWithFileCount:0, subtitleLanguagesWanted:2, subtitleLanguagesHeld:0 },
+      title: "The Bear", posterUrl: "/api/metadata/artwork/fee2ac574c6f38ea074ba8128e921b4dee8ba1330de8f35458fdad73a7b12ffc",
+      wantedStatus:"upcoming", monitored:true, airedEpisodeCount:0, airedWithFileCount:0, subtitleLanguagesWanted:2, subtitleLanguagesHeld:0 },
     { scenario: "Nothing aired, NOT monitored",
-      title:"A Knight of the Seven Kingdoms", wantedStatus:"upcoming", monitored:false,
-      airedEpisodeCount:0, airedWithFileCount:0, subtitleLanguagesWanted:2, subtitleLanguagesHeld:0 },
+      title: "Andor", posterUrl: "/api/metadata/artwork/5c494a4b5cd53928dd0dc5409f68d8422697866e85a38840e609fb1ff6a31117",
+      wantedStatus:"upcoming", monitored:false, airedEpisodeCount:0, airedWithFileCount:0, subtitleLanguagesWanted:2, subtitleLanguagesHeld:0 },
+    { scenario: "Part of the way through, NOT monitored",
+      title: "Slow Horses", posterUrl: "/api/metadata/artwork/23a4188c5777fc1fbeb37287ebae21c1825d2586f06c1e5983082853864607f5",
+      wantedStatus:"missing", monitored:false, airedEpisodeCount:60, airedWithFileCount:22, subtitleLanguagesWanted:2, subtitleLanguagesHeld:30 },
     { scenario: "Held, Subber has not resolved it",
-      title:"Ted Lasso", wantedStatus:"covered", monitored:true,
-      airedEpisodeCount:34, airedWithFileCount:34, subtitleLanguagesWanted:0, subtitleLanguagesHeld:0 },
+      title: "Shogun", posterUrl: "/api/metadata/artwork/c507eac5b0ccba375facac9262a7a4e58d9e0a9898d8419f5faad6540503bdbd",
+      wantedStatus:"covered", monitored:true, airedEpisodeCount:34, airedWithFileCount:34, subtitleLanguagesWanted:0, subtitleLanguagesHeld:0 },
     { scenario: "The longest strings this card must survive",
-      title:"It's Always Sunny in Philadelphia", wantedStatus:"missing", monitored:true,
-      airedEpisodeCount:170, airedWithFileCount:148, subtitleLanguagesWanted:12, subtitleLanguagesHeld:900 }
+      title: "For All Mankind", posterUrl: "/api/metadata/artwork/fee1f7759a1db260be24c2961b3687ebc604e7e41831b4ec01a11b4af6eb1ce3",
+      wantedStatus:"missing", monitored:true, airedEpisodeCount:170, airedWithFileCount:148, subtitleLanguagesWanted:12, subtitleLanguagesHeld:900 }
   ]
 };
 
@@ -602,7 +647,8 @@ function mountDecider({ medium }) {
     that leans on its label falls over.
   */
   function matrixHtml() {
-    const item = SCENARIOS[medium].find(it => markFor(it) === "miss") || SCENARIOS[medium][0];
+    const item = SCENARIOS[medium].find(it => markFor(it) === "miss" && it.monitored !== false)
+      || SCENARIOS[medium][0];
     if (!item) return "";
     const saveM = S.media, saveS = S.subs;
     const cells = [

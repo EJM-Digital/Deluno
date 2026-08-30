@@ -357,30 +357,46 @@ worse**, and fixing them is its own issue, not a silent rider on this one.
 
 ---
 
-## 5. Monitoring — not on a bar
+## 5. Monitoring — its own mark, on the poster
 
 DESIGN-001 gives an unmonitored title a **half-grey dot**. An earlier revision of
-this document carried that straight over and halved the *bar's fill* instead.
+this document carried that over and halved the *bar's fill* instead. That is wrong:
+a half works on a **dot** because a dot has no length of its own, and **a bar is a
+length** whose length already means the fraction you hold. The render proved it
+before the argument did — on a Missing title, whose fill is 0% wide, the half
+rendered as *nothing at all*.
 
-That is wrong, and James caught it: *"I think the half was in reference to the dots
-which we have removed"*. A half works on a **dot** because a dot has no length of
-its own, so half of it is free to mean something. **A bar is a length**, and that
-length already means the fraction you hold — a 50/50 split collides with it. The
-render proved it before the argument did: on a Missing title, whose fill is 0% wide,
-the half rendered as *nothing at all*.
+The next attempt overrode the bars' colour entirely when unmonitored — black or
+grey, both measured clear of the track. It worked, and it spent the bar's colour on
+a fact that is not about the title's state.
 
-**Nothing is lost by dropping it**, which is the only test that matters when
-removing a fact. Monitoring already has its own line under the poster — a shield and
-the words *Monitored* / *Not monitored*, behind the `showMonitored` option, on by
-default (`library-grid.tsx`). The dot is gone; that line is not, and it says the
-thing in words rather than in a shape a reader has to be taught.
+**The answer is a separate mark.** James: *"maybe a nice little monitored /
+unmonitored on the poster is the best play here"*. The bars go on saying what the
+title *is*; whether Deluno is watching it is a different fact and gets a different
+mark — a small opaque badge in the corner of the artwork.
+
+**Shown only when it is OFF.** Nearly every title is monitored, so a badge on every
+card says nothing on almost all of them, and the one card that needs to stand out
+stops standing out. An exception is worth marking; a default is not. The badge is
+opaque for the same reason the label is two-toned: a translucent mark is a different
+colour on every poster.
 
 `canBeHalf` in `TITLE_MARK_PRESENTATION` therefore has no consumer on the card any
-more. It should not be deleted blindly — the drawer and the detail page may still
-read it — but it must be checked, because a flag nothing reads is the exact shape of
-the defects this project keeps finding.
+more. Do not delete it blindly — the drawer and detail page may still read it — but
+check, because a flag nothing reads is the shape of the defects this project keeps
+finding.
 
----
+## 5a. What actually sits on the artwork
+
+**Only the two bars and the monitoring badge.** Everything else is a line *under* the
+poster, which is what the shipped card already does and what these renders got wrong
+at first: the title was being drawn over the picture behind a gradient. James: *"we
+shouldnt have the title on the poster we dont even have that now, its a selectable
+option that appears under the poster so its not a true representation"*.
+
+`showTitle` is a poster option with its own switch, on by default, and it renders as
+a line beneath the artwork. A render that puts it on the picture is not a render of
+this card.
 
 ## 6. The switch
 
