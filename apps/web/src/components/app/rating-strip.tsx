@@ -69,6 +69,37 @@ export function RatingStrip({ ratings, fallbackRating }: RatingStripProps) {
   );
 }
 
+/**
+ * The same scores, on one line.
+ *
+ * <p>{@link RatingStrip} is a grid of cards, sized for the narrow aside it was
+ * built for. Dropped into a header row it dominated the title, pushed the chips
+ * down and left the certification badge floating beside a box — James: <i>"its
+ * all cock eyed and out of alignment"</i>. That is not a fault in the strip; it
+ * is a card being asked to be a line.</p>
+ *
+ * <p>So this is the line. Same sources, same order, same formatting — it reads
+ * `normalizeRatings` and `formatRating` rather than keeping its own copy, so the
+ * two can never disagree about what a score says.</p>
+ */
+export function RatingLine({ ratings, fallbackRating }: RatingStripProps) {
+  const visible = normalizeRatings(ratings, fallbackRating);
+  if (visible.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+      {visible.map((rating) => (
+        <span key={rating.source} className="flex items-baseline gap-1.5 whitespace-nowrap">
+          <span className="text-[length:var(--type-caption)] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+            {rating.label}
+          </span>
+          <span className="text-sm font-semibold text-foreground">{formatRating(rating)}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function normalizeRatings(ratings?: MetadataRatingItem[] | null, fallbackRating?: number | null) {
   if (ratings?.length) {
     return ratings.filter((rating) => rating.score !== null || rating.voteCount !== null);

@@ -36,7 +36,7 @@ import { Card, CardContent } from "../components/ui/card";
 import { RemoveMediaDialog, type MediaRemovalPreview, type RemoveMediaOptions } from "../components/app/remove-media-dialog";
 import { DecisionExplanationList } from "../components/app/decision-explanation-list";
 import { MediaMetadataDrawer } from "../components/app/media-metadata-drawer";
-import { RatingStrip } from "../components/app/rating-strip";
+import { RatingLine } from "../components/app/rating-strip";
 import { Chip } from "../components/ui/chip";
 import { Drawer, DrawerFacts, DrawerFooter, DrawerSection } from "../components/ui/drawer";
 import { Input } from "../components/ui/input";
@@ -514,17 +514,16 @@ export function MovieDetailPage() {
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-card via-card/80 to-card/45" />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-card/90 via-transparent to-card/25" />
         <CardContent className="relative p-[var(--tile-pad)] sm:p-[calc(var(--tile-pad)*1.15)]">
-          <div className="grid min-h-[30rem] items-center gap-[var(--grid-gap)] md:grid-cols-[20rem_minmax(0,1fr)] xl:grid-cols-[20rem_minmax(0,1fr)_14rem]">
+          <div className="grid min-h-[30rem] items-start gap-[var(--grid-gap)] md:grid-cols-[20rem_minmax(0,1fr)] xl:grid-cols-[20rem_minmax(0,1fr)_14rem]">
             {movie.posterUrl ? (
               <img src={movie.posterUrl} alt={`${movie.title} poster`} className="h-[30rem] w-80 justify-self-center rounded-2xl border border-white/15 bg-surface-1 object-cover shadow-2xl md:justify-self-start" />
             ) : (
               <div className="flex h-[30rem] w-80 justify-self-center items-center justify-center rounded-2xl border border-hairline bg-surface-1 px-3 text-center text-xs text-muted-foreground md:justify-self-start">Artwork is being refreshed</div>
             )}
-            <div className="min-w-0 self-center">
+            <div className="min-w-0 self-start">
               <p className="text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-primary">Movie</p>
               <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 <h1 className="font-display text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">{movie.title}</h1>
-                {movie.releaseYear ? <span className="font-display text-2xl text-muted-foreground sm:text-3xl">{movie.releaseYear}</span> : null}
                 {/*
                   Monitoring: the shield, beside the title, and nothing else.
                   James: *"instead of having a big button for monitor/unmonitored
@@ -567,16 +566,40 @@ export function MovieDetailPage() {
                 the source and the actions. Two of anything on one page is the
                 thing this page has been circled for three times already.
               */}
-              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+              {/*
+                Radarr's stack, and the reason it is a stack.
+
+                Certification, year and runtime are one line of small type under
+                the title; the scores are the line under that. The first attempt
+                put the certification badge beside `RatingStrip` — a grid of
+                CARDS built for the narrow aside — which dominated the title,
+                shoved the chips down and left the badge floating next to a box.
+                James: *"its all cock eyed and out of alignment"*.
+
+                A card asked to be a line is the whole of that defect, so there
+                is a line now: `RatingLine`, reading the same normaliser and
+                formatter as the cards so the two can never disagree.
+              */}
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
                 {metaText("Certification") ? (
                   <span
-                    className="rounded border border-hairline px-1.5 py-0.5 text-xs font-bold uppercase tracking-wide text-muted-foreground"
+                    className="rounded border border-hairline px-1.5 py-px text-xs font-bold uppercase tracking-wide"
                     title="Classification"
                   >
                     {metaText("Certification")}
                   </span>
                 ) : null}
-                <RatingStrip ratings={movie.ratings} fallbackRating={movie.rating} />
+                {movie.releaseYear ? <span>{movie.releaseYear}</span> : null}
+                {movie.runtimeMinutes ? (
+                  <span>
+                    {movie.runtimeMinutes >= 60
+                      ? `${Math.floor(movie.runtimeMinutes / 60)}h ${movie.runtimeMinutes % 60}m`
+                      : `${movie.runtimeMinutes}m`}
+                  </span>
+                ) : null}
+              </div>
+              <div className="mt-2">
+                <RatingLine ratings={movie.ratings} fallbackRating={movie.rating} />
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
                 {/*
@@ -624,11 +647,8 @@ export function MovieDetailPage() {
                   // row cannot. Repeating them here is what made "WEB 2160p"
                   // appear three times on one page.
                   { label: "Size", value: movie.fileSizeBytes ? formatBytes(movie.fileSizeBytes) : null },
-                  { label: "Runtime", value: movie.runtimeMinutes
-                      ? (movie.runtimeMinutes >= 60
-                          ? `${Math.floor(movie.runtimeMinutes / 60)}h ${movie.runtimeMinutes % 60}m`
-                          : `${movie.runtimeMinutes}m`)
-                      : null },
+                  // Runtime is on the meta line under the title, with the
+                  // certification and the year, where Radarr keeps it.
                   { label: "Studio", value: metaText("Studio") },
                   // Certification is NOT here: it is the badge on the title,
                   // where Radarr puts it. Saying it twice is the duplication
@@ -695,8 +715,10 @@ export function MovieDetailPage() {
                 </section>
               ) : null}
             </div>
-            <aside className="w-full self-center rounded-xl border border-white/10 bg-card/80 p-4 backdrop-blur-sm">
-              <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.18em] text-muted-foreground">Ratings &amp; IDs</p>
+            <aside className="w-full self-start rounded-xl border border-white/10 bg-card/80 p-4 backdrop-blur-sm">
+              {/* "Ratings & IDs" while the ratings moved to the title line would be a
+                  heading naming something that is not underneath it. */}
+              <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.18em] text-muted-foreground">Metadata</p>
               <p className="mt-1 text-xs text-muted-foreground">The metadata Deluno is using</p>
               <div className="mt-4 space-y-2 border-t border-hairline pt-4 text-sm">
                 <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Source</span><span className="font-medium text-foreground">{movie.metadataProvider?.toUpperCase() ?? "Not linked"}</span></div>
