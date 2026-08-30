@@ -190,6 +190,91 @@ export interface TitleMarkPresentation {
   surfaceVar?: string;
 }
 
+/**
+ * What a bar on a poster is painted with, and the label it can carry.
+ *
+ * **A third and fourth set of values, and both have to exist.** `cssVar` above
+ * is the colour a *count or a word on the page* takes; these are the colour a
+ * *bar on artwork* takes and the colour a label takes *on the empty track*. They
+ * cannot be one set, and that is measured rather than argued:
+ *
+ * - the deep surfaces used as page text give Missing 3.20:1, Downloading 3.37:1
+ *   and Upcoming 3.11:1 on the dark card — all under AA;
+ * - the page-text colours used on the empty track give Missing 2.91:1 on the
+ *   dark track and the unmonitored grey 1.79:1 on the light one.
+ *
+ * Gold already needed this exception — `surfaceVar` exists because gold's
+ * semantic value is a text colour and is dark in the light theme, and a dark
+ * yellow on a poster is brown. What was one rung's exception is now the rule.
+ *
+ * See DESIGN-006 §4. The values themselves live in `index.css`.
+ */
+export interface TitleMarkPaint {
+  /** The bar's fill, on artwork. One value for both themes — a bar does not invert. */
+  surface: string;
+  /** The label that sits on that fill. White everywhere but gold. */
+  onSurface: string;
+  /** The label where it sits on the empty track instead. Per theme. */
+  onTrack: string;
+}
+
+export const TITLE_MARK_PAINT: Record<TitleMark, TitleMarkPaint> = {
+  missing: {
+    surface: "--mark-missing-surface",
+    onSurface: "--mark-on-surface",
+    onTrack: "--mark-missing-on-track"
+  },
+  downloading: {
+    surface: "--mark-downloading-surface",
+    onSurface: "--mark-on-surface",
+    onTrack: "--mark-downloading-on-track"
+  },
+  upgrade: {
+    surface: "--mark-upgrade-surface",
+    onSurface: "--mark-on-surface",
+    onTrack: "--mark-upgrade-on-track"
+  },
+  covered: {
+    // Gold is the leaf, and the one surface a white label cannot sit on: it is
+    // floored at 52% lightness, below which yellow reads as bronze.
+    surface: "--mark-leaf",
+    onSurface: "--mark-on-gold",
+    onTrack: "--mark-quality-met-on-track"
+  },
+  airing: {
+    surface: "--mark-airing-surface",
+    onSurface: "--mark-on-surface",
+    onTrack: "--mark-airing-on-track"
+  },
+  upcoming: {
+    surface: "--mark-upcoming-surface",
+    onSurface: "--mark-on-surface",
+    onTrack: "--mark-upcoming-on-track"
+  }
+};
+
+/**
+ * What an unmonitored title's bars are, overriding every rule above.
+ *
+ * One flat grey, fill and track alike. Deluno is not watching the title, so the
+ * rung it happens to sit on is not telling you to do anything — its colour is the
+ * thing least worth keeping.
+ *
+ * **Fill and track must be the same value.** Applied separately they produce two
+ * greys, and which one you see depends on the title's fraction: a Missing film
+ * has a 0%-wide fill, so you see the track, while a fully-held one shows the
+ * fill. That made the override's appearance depend on the very thing it exists to
+ * stop mattering.
+ *
+ * Grey therefore means exactly one thing on a card, which is why the track is
+ * Missing red rather than the idle grey — see `CardDesign.track`.
+ */
+export const UNMONITORED_PAINT = {
+  surface: "--mark-unmonitored",
+  onSurface: "--mark-on-surface",
+  onTrack: "--mark-unmonitored-on-track"
+} as const;
+
 export const TITLE_MARK_PRESENTATION: Record<TitleMark, TitleMarkPresentation> = {
   missing: {
     dot: "bg-destructive",
