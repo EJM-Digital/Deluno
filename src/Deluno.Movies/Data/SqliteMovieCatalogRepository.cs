@@ -235,7 +235,16 @@ public sealed class SqliteMovieCatalogRepository(
                 TargetQuality: entry.TargetQuality,
                 QualityCutoffMet: entry.QualityCutoffMet,
                 LastSearchUtc: entry.LastSearchUtc,
-                NextEligibleSearchUtc: entry.NextEligibleSearchUtc);
+                NextEligibleSearchUtc: entry.NextEligibleSearchUtc,
+                // The file's own facts. Absent here, a detail page showed less
+                // about a title than the grid it was opened from.
+                FilePath: entry.FilePath,
+                FileSizeBytes: entry.FileSizeBytes,
+                VideoCodec: entry.VideoCodec,
+                AudioCodec: entry.AudioCodec,
+                AudioChannels: entry.AudioChannels,
+                ReleaseGroup: entry.ReleaseGroup,
+                RuntimeMinutes: entry.RuntimeMinutes);
         }
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -270,6 +279,19 @@ public sealed class SqliteMovieCatalogRepository(
                 m.physical_release_date,
                 m.minimum_availability,
                 ws.current_quality,
+                -- The file's own facts and the metadata numbers, which the LIST
+                -- projection returns and this one did not. A detail page that
+                -- knows less than the grid it was opened from is the defect
+                -- DetailMatchesListProjectionTests exists to stop.
+                m.primary_file_path,
+                m.primary_file_size_bytes,
+                m.primary_video_codec,
+                m.primary_audio_codec,
+                m.primary_audio_channels,
+                m.primary_release_group,
+                m.runtime_minutes,
+                m.popularity,
+                m.vote_count,
             {CatalogueWantedState.PageColumns}
             FROM movie_entries m
             {CatalogueWantedState.Join("m", "movie_wanted_state", "movie_id", scopedToLibrary: false)}
@@ -285,9 +307,10 @@ public sealed class SqliteMovieCatalogRepository(
             return null;
         }
 
-        // Ordinal 23 is the current quality; the search state follows it, in the
-        // order CatalogueWantedState.PageColumns declares.
-        var wanted = CatalogueWantedState.Read(reader, 24);
+        // Ordinal 23 is the current quality, 24..32 are the file facts and the
+        // metadata numbers, and the search state follows, in the order
+        // CatalogueWantedState.PageColumns declares.
+        var wanted = CatalogueWantedState.Read(reader, 33);
 
         return ReadMovie(reader) with
         {
@@ -298,7 +321,21 @@ public sealed class SqliteMovieCatalogRepository(
             TargetQuality = wanted.TargetQuality,
             QualityCutoffMet = wanted.QualityCutoffMet,
             LastSearchUtc = wanted.LastSearchUtc,
-            NextEligibleSearchUtc = wanted.NextEligibleSearchUtc
+            NextEligibleSearchUtc = wanted.NextEligibleSearchUtc,
+            FilePath = reader.IsDBNull(24) ? null : reader.GetString(24),
+            FileSizeBytes = reader.IsDBNull(25) ? null : reader.GetInt64(25),
+            VideoCodec = reader.IsDBNull(26) ? null : reader.GetString(26),
+            AudioCodec = reader.IsDBNull(27) ? null : reader.GetString(27),
+            AudioChannels = reader.IsDBNull(28) ? null : reader.GetString(28),
+            ReleaseGroup = reader.IsDBNull(29) ? null : reader.GetString(29),
+            RuntimeMinutes = reader.IsDBNull(30) ? null : (int)reader.GetInt64(30),
+            Popularity = reader.IsDBNull(31) ? null : reader.GetDouble(31),
+            VoteCount = reader.IsDBNull(32) ? null : (int)reader.GetInt64(32),
+            // Derived, not stored — so it has to be derived HERE too, or the
+            // detail page shows a blank where the shelf shows a number.
+            ApproximateBitrateMbps = MediaFileFacts.ApproximateBitrateMbps(
+                reader.IsDBNull(25) ? null : reader.GetInt64(25),
+                reader.IsDBNull(30) ? null : (int)reader.GetInt64(30))
         };
     }
 
@@ -1013,7 +1050,7 @@ public sealed class SqliteMovieCatalogRepository(
                 SUM(CASE WHEN {statusArm} AND m.monitored = 1 THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {statusArm} AND m.monitored = 0 THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {monitoredArm} AND {CatalogueHasFileFor(libraryId)} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {monitoredArm} AND NOT ({CatalogueHasFileFor(libraryId)} OR {CatalogueWantedIs(libraryId, WantedStatuses.Upcoming)} OR {CatalogueWantedIs(libraryId, WantedStatuses.Downloading)}) THEN 1 ELSE 0 END),
+                SUM(CASE WHEN {monitoredArm} AND {CatalogueKeyset.StatusFilter(CatalogueStatusFilters.Missing, "m", CatalogueHasFileFor(libraryId), null, null, CatalogueWantedIs(libraryId, WantedStatuses.Upcoming), CatalogueWantedIs(libraryId, WantedStatuses.Downloading))} THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {monitoredArm} AND {CatalogueUpgradeFor(libraryId)} THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, WantedStatuses.Covered)} THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, WantedStatuses.Upcoming)} THEN 1 ELSE 0 END),

@@ -501,6 +501,35 @@ export function MovieDetailPage() {
               <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 <h1 className="font-display text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">{movie.title}</h1>
                 {movie.releaseYear ? <span className="font-display text-2xl text-muted-foreground sm:text-3xl">{movie.releaseYear}</span> : null}
+                {/*
+                  Monitoring: the shield, beside the title, and nothing else.
+                  James: *"instead of having a big button for monitor/unmonitored
+                  why cant we just have a shield here with hover over test kiss"*.
+
+                  It was a button in the toolbar, then a labelled chip in the
+                  row below — both bigger than the fact deserves. The glyph
+                  already carries the state (shield against slashed shield) and
+                  the tooltip carries the state AND the action, which is the
+                  variant chosen from the four rendered. Radarr puts its bookmark
+                  in exactly this spot for exactly this reason.
+                */}
+                <button
+                  type="button"
+                  onClick={() => void handleMonitoring(!movie.monitored)}
+                  disabled={busyAction !== null}
+                  aria-label={movie.monitored ? "Monitored — click to unmonitor" : "Unmonitored — click to monitor"}
+                  title={movie.monitored ? "Monitored — click to unmonitor" : "Unmonitored — click to monitor"}
+                  className={cn(
+                    "self-center rounded-lg p-1.5 transition-colors",
+                    movie.monitored
+                      ? "text-foreground hover:bg-surface-2"
+                      : "text-muted-foreground hover:bg-surface-2 hover:text-foreground"
+                  )}
+                >
+                  {busyAction === "monitor"
+                    ? <LoaderCircle className="h-5 w-5 animate-spin" />
+                    : movie.monitored ? <ShieldCheck className="h-5 w-5" /> : <ShieldOff className="h-5 w-5" />}
+                </button>
               </div>
               {movie.originalTitle && movie.originalTitle !== movie.title ? <p className="mt-1 text-sm text-muted-foreground">Also known as {movie.originalTitle}</p> : null}
               <div className="mt-4 flex flex-wrap gap-2">
@@ -519,37 +548,6 @@ export function MovieDetailPage() {
                   item={{ monitored: movie.monitored, wantedStatus: wantedItem?.wantedStatus }}
                   type="movie"
                 />
-                {/*
-                  Monitoring sits with the title's own chips, not in the toolbar.
-
-                  James: *"I think it can be in the main box and not up the
-                  toolbar"*. He is right — the toolbar row is page ACTIONS (all
-                  movies, choose a release, search now) while this is a PROPERTY
-                  of the title, and it belongs beside the rung that is its
-                  neighbour in meaning.
-
-                  The tooltip carries the state and the action, which is variant A
-                  from the four rendered: a state word describes, a verb
-                  instructs, and Sonarr says both in that order.
-                */}
-                <button
-                  type="button"
-                  onClick={() => void handleMonitoring(!movie.monitored)}
-                  disabled={busyAction !== null}
-                  aria-label={movie.monitored ? "Monitored — click to unmonitor" : "Unmonitored — click to monitor"}
-                  title={movie.monitored ? "Monitored — click to unmonitor" : "Unmonitored — click to monitor"}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
-                    movie.monitored
-                      ? "border-hairline bg-surface-2 text-foreground hover:border-primary/50"
-                      : "border-hairline bg-surface-2 text-muted-foreground hover:border-primary/50"
-                  )}
-                >
-                  {busyAction === "monitor"
-                    ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                    : movie.monitored ? <ShieldCheck className="h-3.5 w-3.5" /> : <ShieldOff className="h-3.5 w-3.5" />}
-                  {movie.monitored ? "Monitored" : "Unmonitored"}
-                </button>
                 {importCases.length ? <Badge variant="warning">{importCases.length} import issue{importCases.length === 1 ? "" : "s"}</Badge> : null}
                 {movie.genres?.split(",").map((genre) => <span key={genre} className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">{genre.trim()}</span>)}
               </div>

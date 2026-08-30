@@ -228,7 +228,17 @@ public sealed class SqliteSeriesCatalogRepository(
                     TargetQuality: entry.TargetQuality,
                     QualityCutoffMet: entry.QualityCutoffMet,
                     LastSearchUtc: entry.LastSearchUtc,
-                    NextEligibleSearchUtc: entry.NextEligibleSearchUtc);
+                    NextEligibleSearchUtc: entry.NextEligibleSearchUtc,
+                    // The file's own facts, for the same reason as the movie
+                    // shelf: a detail projection poorer than the list one is a
+                    // page that knows less than the grid it was opened from.
+                    FilePath: entry.FilePath,
+                    FileSizeBytes: entry.FileSizeBytes,
+                    VideoCodec: entry.VideoCodec,
+                    AudioCodec: entry.AudioCodec,
+                    AudioChannels: entry.AudioChannels,
+                    ReleaseGroup: entry.ReleaseGroup,
+                    RuntimeMinutes: entry.RuntimeMinutes);
         }
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -259,6 +269,17 @@ public sealed class SqliteSeriesCatalogRepository(
                 s.created_utc,
                 s.updated_utc,
                 ws.current_quality,
+                -- The file facts and the metadata numbers the LIST projection
+                -- returns. See DetailMatchesListProjectionTests.
+                s.primary_file_path,
+                s.primary_file_size_bytes,
+                s.primary_video_codec,
+                s.primary_audio_codec,
+                s.primary_audio_channels,
+                s.primary_release_group,
+                s.runtime_minutes,
+                s.popularity,
+                s.vote_count,
             {CatalogueWantedState.PageColumns}
             FROM series_entries s
             {CatalogueWantedState.Join("s", "series_wanted_state", "series_id", scopedToLibrary: false)}
@@ -274,9 +295,9 @@ public sealed class SqliteSeriesCatalogRepository(
             return null;
         }
 
-        // Ordinal 19 is the current quality; the search state follows it, in the
-        // order CatalogueWantedState.PageColumns declares.
-        var singleWanted = CatalogueWantedState.Read(reader, 20);
+        // Ordinal 19 is the current quality, 20..28 are the file facts and the
+        // metadata numbers, and the search state follows.
+        var singleWanted = CatalogueWantedState.Read(reader, 29);
 
         return ReadSeries(reader) with
         {
@@ -287,7 +308,20 @@ public sealed class SqliteSeriesCatalogRepository(
             TargetQuality = singleWanted.TargetQuality,
             QualityCutoffMet = singleWanted.QualityCutoffMet,
             LastSearchUtc = singleWanted.LastSearchUtc,
-            NextEligibleSearchUtc = singleWanted.NextEligibleSearchUtc
+            NextEligibleSearchUtc = singleWanted.NextEligibleSearchUtc,
+            FilePath = reader.IsDBNull(20) ? null : reader.GetString(20),
+            FileSizeBytes = reader.IsDBNull(21) ? null : reader.GetInt64(21),
+            VideoCodec = reader.IsDBNull(22) ? null : reader.GetString(22),
+            AudioCodec = reader.IsDBNull(23) ? null : reader.GetString(23),
+            AudioChannels = reader.IsDBNull(24) ? null : reader.GetString(24),
+            ReleaseGroup = reader.IsDBNull(25) ? null : reader.GetString(25),
+            RuntimeMinutes = reader.IsDBNull(26) ? null : (int)reader.GetInt64(26),
+            Popularity = reader.IsDBNull(27) ? null : reader.GetDouble(27),
+            VoteCount = reader.IsDBNull(28) ? null : (int)reader.GetInt64(28),
+            // Derived, not stored — see the movie repository's note.
+            ApproximateBitrateMbps = MediaFileFacts.ApproximateBitrateMbps(
+                reader.IsDBNull(21) ? null : reader.GetInt64(21),
+                reader.IsDBNull(26) ? null : (int)reader.GetInt64(26))
         };
     }
 
@@ -1163,7 +1197,7 @@ public sealed class SqliteSeriesCatalogRepository(
                 SUM(CASE WHEN {statusArm} AND s.monitored = 1 THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {statusArm} AND s.monitored = 0 THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {monitoredArm} AND {CatalogueHasFileFor(libraryId)} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {monitoredArm} AND NOT ({CatalogueHasFileFor(libraryId)} OR {CatalogueWantedIs(libraryId, WantedStatuses.Upcoming)} OR {CatalogueWantedIs(libraryId, WantedStatuses.Downloading)}) THEN 1 ELSE 0 END),
+                SUM(CASE WHEN {monitoredArm} AND {CatalogueKeyset.StatusFilter(CatalogueStatusFilters.Missing, "m", CatalogueHasFileFor(libraryId), null, null, CatalogueWantedIs(libraryId, WantedStatuses.Upcoming), CatalogueWantedIs(libraryId, WantedStatuses.Downloading))} THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {monitoredArm} AND {CatalogueUpgradeFor(libraryId)} THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, WantedStatuses.Covered)} THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, WantedStatuses.Upcoming)} THEN 1 ELSE 0 END),

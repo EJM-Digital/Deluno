@@ -202,7 +202,30 @@ public sealed record MediaEntryDetails(
     string? TargetQuality = null,
     bool? QualityCutoffMet = null,
     DateTimeOffset? LastSearchUtc = null,
-    DateTimeOffset? NextEligibleSearchUtc = null);
+    DateTimeOffset? NextEligibleSearchUtc = null,
+    /// <summary>
+    /// The facts about the file itself.
+    ///
+    /// <para><b>These were on the list and not here</b>, so a detail page showed
+    /// LESS about a title than the grid it was opened from: the one film in the
+    /// lab with a real file had the emptiest header on the site, because path,
+    /// size, codecs, runtime and release group all came back null. James: <i>"Big
+    /// buck bunny is the only one with real files and how can it be the
+    /// thinnest"</i>.</para>
+    ///
+    /// <para>This is the same defect the <see cref="LibraryId"/> note above
+    /// records, one field-group along — a detail projection quietly poorer than
+    /// the list one. It is now held shut by a test that walks every field of the
+    /// list item and fails if the detail item does not carry it, on both shelves.
+    /// See <c>DetailMatchesListProjectionTests</c>.</para>
+    /// </summary>
+    string? FilePath = null,
+    long? FileSizeBytes = null,
+    string? VideoCodec = null,
+    string? AudioCodec = null,
+    string? AudioChannels = null,
+    string? ReleaseGroup = null,
+    int? RuntimeMinutes = null);
 
 public sealed record MediaExistingImportRequest(
     string Title,

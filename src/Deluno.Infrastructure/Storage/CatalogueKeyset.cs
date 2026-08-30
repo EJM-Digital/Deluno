@@ -207,6 +207,16 @@ public static class CatalogueKeyset
             // Missing is a *state*, not the absence of a file: a title that is
             // not out yet has no file either, and calling it missing counted it
             // against the library from the day it was added.
+            //
+            // **A title being downloaded has no file either**, and it was
+            // counted twice — once under Downloading and once under Missing — so
+            // the chips above the shelf summed to twelve across eleven titles.
+            // Invisible until the lab library had anything downloading in it.
+            // Same argument as Upcoming, one state along.
+            CatalogueStatusFilters.Missing
+                when !string.IsNullOrWhiteSpace(upcomingExpression)
+                  && !string.IsNullOrWhiteSpace(downloadingExpression)
+                => $"NOT {hasFileExpression} AND NOT {upcomingExpression} AND NOT {downloadingExpression}",
             CatalogueStatusFilters.Missing when !string.IsNullOrWhiteSpace(upcomingExpression)
                 => $"NOT {hasFileExpression} AND NOT {upcomingExpression}",
             CatalogueStatusFilters.Missing => $"NOT {hasFileExpression}",
