@@ -158,6 +158,33 @@ exactly as a film's media bar does when it has no quality to name.
 Deluno must never show a subtitle bar that means "nothing to say". A bar that can
 be a fourth, verdict-free thing is a bar a reader has to learn a fourth rule for.
 
+### And Missing is not the only way to have nothing
+
+James: *"upcoming is the wrong colour, its missing yes but its upcoming too"*.
+
+The rule above said *not here is Missing*, and applied it to every title. That is
+wrong, and it threw away the one distinction the ladder exists to make: **Missing
+means it is out and you do not have it.** An Upcoming title is not out. You cannot
+be missing a subtitle for a file that cannot exist yet.
+
+So when a title holds **no files at all**, the subtitle bar inherits the title's own
+reason for having none:
+
+| Title | Its subtitle bar reads |
+|---|---|
+| Upcoming | `SUBS Upcoming`, in violet |
+| Downloading | `SUBS Downloading`, in blue |
+| Missing | `SUBS Missing`, in red |
+| Held, languages short | `SUBS 1 / 3` — a real count |
+
+Once there **is** a file the bar is about subtitles again, and a language Subber has
+not found for a file you hold is genuinely missing.
+
+The same correction applies to the media bar: an Upcoming **film** was drawing a 0%
+bar while an Upcoming **show** drew a solid one, so the two shelves disagreed about
+the same state. Neither is partway through anything, so both draw solid. Only a
+Missing film is genuinely an empty bar.
+
 ---
 
 ## 3. Anatomy
@@ -350,9 +377,17 @@ Three switches rather than one, because they are three independent facts and a
 reader who wants the episode count but not the subtitle count should get it. It
 also keeps the rule the option list already follows — one switch, one fact.
 
-**Bars are never switched off, only their words.** With every switch off the card
-is what ships today: two coloured bars and no text. The state mark stays
-mandatory, per James on DESIGN-001.
+**Bars are never switched off, only their words.** With a switch off its bar falls
+back to the 5px strip Deluno ships today — it keeps saying the state *and* the
+fraction, it just stops spelling them out. **Turning a switch off must never remove
+a fact that has nowhere else to live**, and it does not: colour and length both
+survive. The state mark stays mandatory, per James on DESIGN-001.
+
+These are user switches, not design decisions, so **all four combinations are cards
+a real person will see** — James: *"some of these options are selectable for on and
+off so what are we doing about that here"*. Both decider pages draw the four
+together, above the shelf, rather than leaving an off-state to be found by flipping;
+an off-state left unlooked-at is where a design that leans on its label falls over.
 
 ---
 

@@ -114,3 +114,14 @@ h1 a:hover { color: var(--fg); border-color: hsl(211 100% 50% / .5); }
 .clear td.num { font: 700 12px/1 "JetBrains Mono", monospace; }
 .clear td.bad { color: hsl(0 84% 62%); }
 .clear tr.on td { background: hsl(211 100% 50% / .1); font-weight: 700; }
+
+/* ── the switch matrix ───────────────────────────────────────────
+   The two text switches are user options, so all four combinations are cards a
+   real person will see. Shown together rather than found by flipping. */
+h2.mx { font-size: 14px; margin: 26px 0 10px; display: flex; align-items: baseline; gap: 10px; }
+h2.mx small { font: 500 12px/1 "Inter", system-ui, sans-serif; color: var(--muted); }
+.matrix { display: flex; gap: 18px; flex-wrap: wrap; padding-bottom: 6px;
+          border-bottom: 1px solid var(--line); }
+.matrix figure { margin: 0; }
+.matrix figcaption { margin-top: 7px; font: 600 11px/1.3 "JetBrains Mono", monospace;
+                     color: var(--muted); max-width: 190px; }

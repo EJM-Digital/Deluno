@@ -112,7 +112,13 @@ function nearestTo(hsl) {
 const S = {
   theme: "dark",
   depth: "deep",
-  labels: "subs",
+  /* The two USER switches. These are not design decisions — they are the
+     poster options a person turns on and off in the View drawer, and the card
+     has to survive every combination of them. James: "some of these options are
+     selectable for on and off so what are we doing about that here". */
+  media: "on",         // "Quality on the bar" / "Episode count on the bar"
+  subs: "on",          // "Subtitle count on the bar"
+  leads: "subs",       // none | subs | both — the DESIGN choice, lead words
   rem: "neutral",      // neutral | missing
   fill: "state",       // state | held
   cont: "magenta",     // TV only
@@ -125,7 +131,10 @@ function controlsFor(medium) {
   const base = [
     { key: "theme",  label: "Theme",  opts: [["dark","Dark"],["light","Light"]] },
     { key: "depth",  label: "Depth",  opts: [["shipped","Shipped"],["deep","Deep"],["jewel","Jewel"]] },
-    { key: "labels", label: "Labels", opts: [["none","None"],["subs","SUBS only"],["both","Both"]] },
+    { key: "media",  label: medium === "tv" ? "Episode count" : "Quality on bar",
+      opts: [["on","On"],["off","Off"]], user: true },
+    { key: "subs",   label: "Subtitle count", opts: [["on","On"],["off","Off"]], user: true },
+    { key: "leads",  label: "Lead words", opts: [["none","None"],["subs","SUBS only"],["both","Both"]] },
     { key: "rem",    label: "Track",  opts: [["neutral","Neutral grey"],["missing","Missing red"]] },
     { key: "fill",   label: "Fill",   opts: [["state","State colour"],["held","What you hold"]] }
   ];
@@ -159,7 +168,30 @@ function subtitleBar(it, isShow) {
   const held = Math.max(0, it.subtitleLanguagesHeld || 0);
   const files = isShow ? Math.max(0, it.airedWithFileCount || 0) : (it.hasFile === false ? 0 : 1);
   const wanted = perFile * files;
-  return { held: Math.min(held, wanted), wanted };
+  return { held: Math.min(held, wanted), wanted, files };
+}
+
+/*
+  What a subtitle bar says when there is nothing to count, and in whose colour.
+
+  James: *"upcoming is the wrong colour, its missing yes but its upcoming too"*.
+
+  He is right and this was mine: the subtitle bar's empty state was hardcoded to
+  Missing, so an Upcoming film read "SUBS Missing" in red. **You cannot be missing
+  a subtitle for a file that cannot exist yet.** Missing means *it is out and you
+  do not have it* — that is the whole of what separates it from Upcoming on the
+  ladder, and the subtitle bar was throwing the distinction away.
+
+  So when a title holds no files at all, the subtitle bar inherits the title's own
+  reason for having none: Upcoming stays Upcoming, Downloading stays Downloading,
+  and only a title that really is out and really is absent reads Missing.
+
+  Once there IS a file, the bar is about subtitles again, and a language Subber
+  has not found for a file you hold is genuinely missing.
+*/
+function subtitleState(subs, mark) {
+  if (subs.files === 0) return mark;   /* no file — the title's reason is the subtitle's reason */
+  return "miss";
 }
 
 /*
@@ -183,7 +215,11 @@ function mediaBar(it, isShow) {
   if (it.hasFile && quality) return { pct: 100, label: quality, lead: "QLTY", fraction: true };
   if (it.hasFile) return { pct: 100, label: "On disk", lead: "QLTY", fraction: true };
   if (mark === "down") return { pct: 45, label: MARKS[mark], lead: "QLTY", fraction: false };
-  return { pct: 0, label: MARKS[mark], lead: "QLTY", fraction: mark === "miss" };
+  /* An Upcoming film is not 0% of anything — it has not been released. It draws
+     solid, exactly as an Upcoming show with nothing aired does, so the two
+     shelves agree. Only a Missing film is genuinely an empty bar. */
+  if (mark === "soon") return { pct: 100, label: MARKS[mark], lead: "QLTY", fraction: false };
+  return { pct: 0, label: MARKS[mark], lead: "QLTY", fraction: true };
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -237,9 +273,10 @@ function cardHtml(it, isShow) {
   /* "None asked for" is not a state: subtitles Subber has not resolved are
      simply not here, and not here is Missing. No denominator to print, so the
      bar prints the word — as a film's media bar does with no quality to name. */
-  const subLabel = subs.wanted ? subs.held + " / " + subs.wanted : MARKS.miss;
+  const subState = subtitleState(subs, mark);
+  const subLabel = subs.wanted ? subs.held + " / " + subs.wanted : MARKS[subState];
 
-  const T = track(mark), TS = track("miss");
+  const T = track(mark), TS = track(subState);
 
   /* A bar with no fraction keeps its state's colour under either grammar: an
      Upcoming title has not started, a downloading one has no held part yet. */
@@ -247,22 +284,34 @@ function cardHtml(it, isShow) {
   const topOnFill = topFill === "hsl(" + C.gold + ")" ? labelOn("gold") : "hsl(0 0% 100%)";
 
   const subSettled = subs.wanted > 0 && subs.held === subs.wanted;
-  const subFill = subSettled ? "hsl(" + C.gold + ")" : "hsl(" + C.upg + ")";
-  const subOnFill = subSettled ? labelOn("gold") : labelOn("upg");
+  /* With no files there is nothing held, so the bar carries the title's own
+     state at full width rather than an empty green one. */
+  const subNoFiles = subs.files === 0;
+  const subPctDrawn = subNoFiles ? (subState === "miss" ? 0 : 100) : subPct;
+  const subFill = subNoFiles ? "hsl(" + C[subState] + ")"
+    : subSettled ? "hsl(" + C.gold + ")" : "hsl(" + C.upg + ")";
+  const subOnFill = subNoFiles ? labelOn(subState)
+    : subSettled ? labelOn("gold") : labelOn("upg");
 
-  const showText = S.labels !== "none";
-  const mediaLead = S.labels === "both" ? media.lead : null;
-  const subLead = S.labels === "none" ? null : "SUBS";
+  /* Each bar answers to its own user switch. With the text off a bar falls back
+     to the 5px strip Deluno ships today — it keeps saying the state and the
+     fraction, it just stops spelling them out. Turning a switch off must never
+     remove a fact that has nowhere else to live, and here it does not: the
+     colour and the length both survive. */
+  const mediaText = S.media === "on";
+  const subsText = S.subs === "on";
+  const mediaLead = S.leads === "both" ? media.lead : null;
+  const subLead = S.leads === "none" ? null : "SUBS";
 
   const thin = (pct, colour, t) => '<div class="bar" style="height:5px;background:' + t.colour
     + '"><div class="fill" style="width:' + pct + '%;background:' + colour + '"></div></div>';
 
-  const topBar = showText
+  const topBar = mediaText
     ? twoTone(topFill, media.pct, media.label, mediaLead, topOnFill, T.colour, T.label)
     : thin(media.pct, topFill, T);
-  const botBar = showText
-    ? twoTone(subFill, subPct, subLabel, subLead, subOnFill, TS.colour, TS.label)
-    : thin(subPct, subFill, TS);
+  const botBar = subsText
+    ? twoTone(subFill, subPctDrawn, subLabel, subLead, subOnFill, TS.colour, TS.label)
+    : thin(subPctDrawn, subFill, TS);
 
   const art = '<div class="art">'
     + (it.posterUrl ? '<img loading="lazy" src="' + esc(it.posterUrl) + '" alt="">'
@@ -315,7 +364,8 @@ function mountDecider({ medium }) {
 
   function settingsLine() {
     return CONTROLS.filter(c => c.key !== "theme" && c.key !== "size")
-      .map(c => c.label + ": " + (c.opts.find(o => o[0] === S[c.key]) || ["", "?"])[1])
+      .map(c => (c.user ? "[switch] " : "") + c.label + ": "
+                + (c.opts.find(o => o[0] === S[c.key]) || ["", "?"])[1])
       .join("  ·  ");
   }
 
@@ -383,9 +433,37 @@ function mountDecider({ medium }) {
       + MARKS[k] + '</span>').join("") + '</div>';
   }
 
+  /*
+    All four switch combinations at once.
+
+    The two text switches are user options, so every one of these four is a card
+    a real person will see. Leaving them to be found by flipping is how an
+    off-state ships unlooked-at — and the off-state is exactly where a design
+    that leans on its label falls over.
+  */
+  function matrixHtml() {
+    const item = DATA.items.find(it => markFor(it) === "miss") || DATA.items[0];
+    if (!item) return "";
+    const saveM = S.media, saveS = S.subs;
+    const cells = [
+      ["on", "on", "both on"],
+      ["on", "off", (isShow ? "episode count" : "quality") + " only"],
+      ["off", "on", "subtitles only"],
+      ["off", "off", "both off — as Deluno ships today"]
+    ].map(([m, sub, caption]) => {
+      S.media = m; S.subs = sub;
+      return '<figure><div style="width:' + WIDTHS[S.size] + 'px">' + cardHtml(item, isShow)
+        + '</div><figcaption>' + caption + '</figcaption></figure>';
+    }).join("");
+    S.media = saveM; S.subs = saveS;
+    return '<h2 class="mx">Every switch combination <small>' + esc(item.title)
+      + ', the same card, all four states a person can put it in</small></h2>'
+      + '<div class="matrix">' + cells + '</div>';
+  }
+
   function drawShelf() {
     document.getElementById("shelf").innerHTML =
-      clearanceHtml() + legendHtml()
+      clearanceHtml() + legendHtml() + matrixHtml()
       + '<div class="wall" style="grid-template-columns: repeat(auto-fill, ' + WIDTHS[S.size] + 'px);">'
       + DATA.items.map(it => cardHtml(it, isShow)).join("") + '</div>';
   }
