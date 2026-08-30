@@ -382,23 +382,42 @@ kept because the reasons are the useful part.
    misread the last clause: *"kept under in the selectable options"* meant kept in
    the option list, not kept as a line under the poster.
 
-5. **Settled.** James: *"why is monitored under the poster, it doesnt need to be
-   there anymore"*. Right — and the reason is one this codebase has already acted on
+5. **The line goes too.** James: *"why is monitored under the poster, it doesnt need
+   to be there anymore"*. Right — and the reason is one this codebase has already acted on
    twice: **when a bar starts saying a fact, the switch that used to say it is
    removed.** `4bdfe45` deleted the Quality poster option the moment the bar carried
    the quality, and `showEpisodeProgress` went the same way. A line reading *Not
    monitored* under a card whose bars have already gone neutral is the same fact
    twice.
 
+6. **Settled, including the colour.** *"unmonitored titles are the override, they
+   are always grey — once they are monitored they inherit the normal statuses"*.
+
 ### The rule
 
-**An unmonitored title's bars go neutral — both of them — and that is the whole of
-it.** Nothing on the artwork, no line underneath, no switch.
+**Unmonitored is an override, and it is always grey.** James: *"unmonitored titles
+are the override, they are always grey — once they are monitored they inherit the
+normal statuses"*.
+
+One rule, no switch. If Deluno is not watching a title, both its bars are
+`hsl(220 8% 46%)` whatever rung it sits on — because that rung is not telling you to
+do anything. The moment it is monitored again it inherits the ladder like any other
+title: nothing is remembered, nothing is special-cased.
 
 | | Monitored | Not monitored |
 |---|---|---|
-| Both bars | the state's colour | **one neutral**, black or grey |
+| Both bars | the state's colour | **grey `hsl(220 8% 46%)`**, always |
 | Anywhere else on the card | nothing | nothing |
+
+**This is the only override in the design.** Everywhere else colour is decided by the
+title's state; here the state is overruled outright. On the shelf that reads as: two
+titles both *Missing*, one red and one grey, and the grey one is the one Deluno will
+not act on.
+
+The grey is deliberately not the track's. The track is `--mark-idle` — 26% lightness
+in dark, 82% in light — and a fill the same value as its track would make the bar
+vanish and take the fraction with it. Measured: ΔE 21.3 against the dark track, 35.5
+against the light, white on it at 4.82.
 
 A card is now exactly three things: a bar, the artwork, a bar.
 

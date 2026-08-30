@@ -118,11 +118,27 @@ const labelOn = mark => mark === "gold" ? "hsl(40 90% 12%)" : "hsl(0 0% 100%)";
   with it — measured, both stay clear of it (black ΔE 19.2 dark / 74.9 light; grey
   21.3 / 35.5), so this is a taste call rather than a legibility one.
 */
-const UNMONITORED = {
-  /* One value for both themes, like the surfaces — these sit on artwork. */
-  black: { fill: "hsl(220 14% 10%)", label: "hsl(220 10% 72%)" },
-  grey:  { fill: "hsl(220 8% 46%)",  label: "hsl(0 0% 100%)" }
-};
+/*
+  **Unmonitored is an override, and it is always grey.**
+
+  James, settling it: *"unmonitored titles are the override, they are always grey —
+  once they are monitored they inherit the normal statuses"*.
+
+  So there is one rule and no switch. If Deluno is not watching a title, both its
+  bars are grey, whatever rung the title happens to sit on — because that rung is
+  not telling you to do anything. The moment it is monitored again it inherits the
+  ladder exactly as any other title does; nothing is remembered and nothing is
+  special-cased.
+
+  This is the only override in the design. Everywhere else, colour is decided by the
+  title's state; here the state is overruled outright.
+
+  The grey is a mid grey, not the track's. The track is `--mark-idle` — 26%
+  lightness in dark, 82% in light — and a fill the same value as its track would
+  make the bar vanish and take the fraction with it. Measured: ΔE 21.3 against the
+  dark track, 35.5 against the light one, and white sits on it at 4.82.
+*/
+const UNMONITORED = { fill: "hsl(220 8% 46%)", label: "hsl(0 0% 100%)" };
 
 /*
   There is no monitoring line, and `showMonitored` should stop being an option.
@@ -175,7 +191,6 @@ const S = {
   media: "on",         // "Quality on the bar" / "Episode count on the bar"
   subs: "on",          // "Subtitle count on the bar"
   leads: "subs",       // none | subs | both — the DESIGN choice, lead words
-  unmon: "black",      // black | grey — what an unmonitored title's BARS become
   rem: "neutral",      // neutral | missing
   fill: "state",       // state | held
   cont: "magenta",     // TV only
@@ -192,7 +207,6 @@ function controlsFor(medium) {
       opts: [["on","On"],["off","Off"]], user: true },
     { key: "subs",   label: "Subtitle count", opts: [["on","On"],["off","Off"]], user: true },
     { key: "leads",  label: "Lead words", opts: [["none","None"],["subs","SUBS only"],["both","Both"]] },
-    { key: "unmon",  label: "Unmonitored bars", opts: [["black","Black"],["grey","Grey"]] },
     { key: "rem",    label: "Track",  opts: [["neutral","Neutral grey"],["missing","Missing red"]] },
     { key: "fill",   label: "Fill",   opts: [["state","State colour"],["held","What you hold"]] }
   ];
@@ -390,7 +404,7 @@ function cardHtml(it, isShow, withCaption) {
   /* A bar with no fraction keeps its state's colour under either grammar: an
      Upcoming title has not started, a downloading one has no held part yet. */
   /* Unmonitored wins over every colour rule, on both bars. */
-  const off = monitored ? null : UNMONITORED[S.unmon];
+  const off = monitored ? null : UNMONITORED;
   const topFillFlat = media.fraction ? fillColourFor(mark, media.pct === 100, C) : "hsl(" + C[mark] + ")";
   const topFill = off ? off.fill : topFillFlat;
   const topOnFill = off ? off.label
