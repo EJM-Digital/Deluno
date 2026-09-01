@@ -70,17 +70,30 @@ The owner-approved update flow is versioned and read-before-write:
 
 1. Review the upstream TRaSH custom-format/profile and quality-definition
    changes at the pinned upstream revision.
-2. Submit the candidate package to `POST /api/v1/guides/trash/preview` with
+2. For a source-snapshot update from the Settings UI, first run the opt-in
+   change check and choose **Preview sync**. Deluno downloads the archive for
+   that exact immutable Git revision, retains every supported source item,
+   preserves existing reviewed mappings, and leaves unfamiliar upstream rules
+   as Advanced. `POST /api/v1/guides/trash/sync/preview` returns the normal
+   versioned package diff without saving it.
+3. Choose **Sync reviewed snapshot** only after reviewing that diff. The
+   endpoint rebuilds the candidate from the same immutable revision and checks
+   the current and proposed package hashes before
+   `POST /api/v1/guides/trash/sync/apply` persists it. This updates no local custom
+   format, library profile, scenario plan, or release decision; plan changes
+   remain a separate preview-and-apply action.
+4. For an independently prepared reviewed package, submit the candidate to
+   `POST /api/v1/guides/trash/preview` with
    `expectedCurrentIntegritySha256` from the current package. The response
    validates schema, hashes every capability, compiles every profile, and
    returns typed-plan/Advanced diffs and warnings.
-3. Apply the exact reviewed candidate with
+5. Apply the exact reviewed candidate with
    `POST /api/v1/guides/trash/apply`. Deluno rejects stale previews, invalid or
    unaccounted mappings, and changed content reusing an old package version.
-4. Inspect `GET /api/v1/guides/trash/versions` to retain the immutable active
+6. Inspect `GET /api/v1/guides/trash/versions` to retain the immutable active
    and rollback-capable package history. Existing local quality profiles are
    not overwritten by a guide package update.
-5. Run the package contract, inventory, compiler, and endpoint inventory tests.
+7. Run the package contract, inventory, compiler, and endpoint inventory tests.
 
 The embedded package remains the bootstrap value until the owner applies an
 update. Package compilation is read-only and uses the active persisted package;
@@ -96,11 +109,12 @@ with the pinned source paths in the active package. It reports changed or
 removed custom formats, groups, and quality profiles, marks changes that touch
 saved custom formats, and lists new JSON files in the guide directories.
 
-This is deliberately **not** a sync: it does not download an upstream package,
-rewrite a local custom format, alter a quality profile, or change a release
-decision. Disabling the setting prevents outbound guide-check requests; the
-last report remains local for review. Any actual package change still goes
-through the preview/apply flow above.
+This is deliberately **not** an automatic sync: it does not download an
+upstream package, rewrite a local custom format, alter a quality profile, or
+change a release decision. When the report finds a change, **Preview sync**
+offers the separate, versioned owner-approved workflow above. Disabling the
+setting prevents outbound guide-check requests; the last report remains local
+for review.
 
 Upstream references:
 

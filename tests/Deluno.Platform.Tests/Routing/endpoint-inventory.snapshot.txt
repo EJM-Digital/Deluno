@@ -332,6 +332,8 @@ POST /api/v1/download-dispatches/poll
 POST /api/v1/download-dispatches/{dispatchId}/retry
 POST /api/v1/guides/trash/apply
 POST /api/v1/guides/trash/preview
+POST /api/v1/guides/trash/sync/apply
+POST /api/v1/guides/trash/sync/preview
 POST /api/v1/guides/trash/update-check/run
 POST /api/v1/release-preferences/plans
 POST /api/v1/release-preferences/preview
