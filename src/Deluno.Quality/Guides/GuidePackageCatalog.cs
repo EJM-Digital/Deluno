@@ -266,12 +266,16 @@ public static class GuidePackageCatalog
                 errors.Add($"Source custom format '{format.TrashId}' is not retained by the guide package.");
             if (string.IsNullOrWhiteSpace(format.MediaType) || string.IsNullOrWhiteSpace(format.SourcePath))
                 errors.Add($"Source custom format '{format.TrashId}' needs media applicability and a source path.");
+            if (source.SchemaVersion >= 2 && string.IsNullOrWhiteSpace(format.SourceBlobSha))
+                errors.Add($"Source custom format '{format.TrashId}' needs its pinned source blob SHA.");
             if ((format.MatcherClauses ?? []).Any(clause => string.IsNullOrWhiteSpace(clause.Implementation) || string.IsNullOrWhiteSpace(clause.FieldsJson)))
                 errors.Add($"Source custom format '{format.TrashId}' contains an incomplete matcher clause.");
         }
 
         foreach (var group in source.FormatGroups ?? [])
         {
+            if (source.SchemaVersion >= 2 && string.IsNullOrWhiteSpace(group.SourceBlobSha))
+                errors.Add($"Source format group '{group.TrashId}' needs its pinned source blob SHA.");
             foreach (var entry in group.CustomFormats ?? [])
             {
                 if (!sourceFormatIds.Contains(entry.TrashId))
@@ -286,6 +290,8 @@ public static class GuidePackageCatalog
 
         foreach (var profile in source.QualityProfiles ?? [])
         {
+            if (source.SchemaVersion >= 2 && string.IsNullOrWhiteSpace(profile.SourceBlobSha))
+                errors.Add($"Source quality profile '{profile.TrashId}' needs its pinned source blob SHA.");
             foreach (var assignment in profile.FormatAssignments ?? [])
             {
                 if (!sourceFormatIds.Contains(assignment.TrashId))

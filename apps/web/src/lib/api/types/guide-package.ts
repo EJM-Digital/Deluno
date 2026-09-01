@@ -65,6 +65,7 @@ export interface GuideSourceCustomFormat {
   description?: string | null;
   mediaType: string;
   sourcePath: string;
+  sourceBlobSha: string;
   scores: Record<string, number>;
   includeWhenRenaming: boolean;
   matcherClauses: GuideSourceMatcherClause[];
@@ -84,6 +85,7 @@ export interface GuideSourceFormatGroup {
   description?: string | null;
   mediaType: string;
   sourcePath: string;
+  sourceBlobSha: string;
   customFormats: GuideSourceFormatGroupEntry[];
   qualityProfileIds: string[];
 }
@@ -100,6 +102,7 @@ export interface GuideSourceQualityProfile {
   description?: string | null;
   mediaType: string;
   sourcePath: string;
+  sourceBlobSha: string;
   formatAssignments: GuideSourceProfileFormatAssignment[];
   definitionJson: string;
 }
@@ -200,4 +203,41 @@ export interface GuideCapabilityInventory {
   items: GuideCapabilityInventoryItem[];
   unaccounted: string[];
   inventoryHash: string;
+}
+
+export interface GuideUpdateCheckState {
+  isEnabled: boolean;
+  lastCheckedUtc: string | null;
+  lastSeenRevision: string | null;
+  status: "disabled" | "never-checked" | "up-to-date" | "update-available" | "failed" | string;
+  error: string | null;
+  report: GuideUpdateCheckReport | null;
+  updatedUtc: string;
+}
+
+export interface GuideUpdateCheckReport {
+  baselineRevision: string;
+  remoteRevision: string;
+  checkedUtc: string;
+  isComplete: boolean;
+  changes: GuideUpdateCheckChange[];
+  addedSources: GuideUpdateCheckAddedSource[];
+  summary: string;
+}
+
+export interface GuideUpdateCheckChange {
+  kind: string;
+  id: string;
+  name: string;
+  mediaType: string;
+  sourcePath: string;
+  changeType: "changed" | "removed" | string;
+  isInUse: boolean;
+  inUseCustomFormatIds: string[];
+}
+
+export interface GuideUpdateCheckAddedSource {
+  kind: string;
+  mediaType: string;
+  sourcePath: string;
 }

@@ -20,6 +20,14 @@ function Get-JsonFiles([string]$RelativePath) {
         Sort-Object FullName
 }
 
+function Get-SourcePath([System.IO.FileInfo]$File) {
+    $File.FullName.Substring($resolvedSource.Length + 1).Replace('\', '/')
+}
+
+function Get-SourceBlobSha([string]$RelativePath) {
+    (git -C $resolvedSource rev-parse "${revision}:$RelativePath").Trim()
+}
+
 function Convert-SourceCustomFormat([System.IO.FileInfo]$File, [string]$MediaType) {
     $raw = Get-Content -LiteralPath $File.FullName -Raw | ConvertFrom-Json -Depth 100
     $scores = [ordered]@{}
@@ -38,12 +46,14 @@ function Convert-SourceCustomFormat([System.IO.FileInfo]$File, [string]$MediaTyp
             fieldsJson = $fields
         }
     })
+    $sourcePath = Get-SourcePath $File
     [ordered]@{
         trashId = [string]$raw.trash_id
         name = [string]$raw.name
         description = if ($null -eq $raw.trash_description) { $null } else { [string]$raw.trash_description }
         mediaType = $MediaType
-        sourcePath = $File.FullName.Substring($resolvedSource.Length + 1).Replace('\', '/')
+        sourcePath = $sourcePath
+        sourceBlobSha = Get-SourceBlobSha $sourcePath
         scores = $scores
         includeWhenRenaming = [bool]$raw.includeCustomFormatWhenRenaming
         matcherClauses = $clauses
@@ -65,12 +75,14 @@ function Convert-SourceFormatGroup([System.IO.FileInfo]$File, [string]$MediaType
             Sort-Object Name |
             ForEach-Object { [string]$_.Value })
     }
+    $sourcePath = Get-SourcePath $File
     [ordered]@{
         trashId = [string]$raw.trash_id
         name = [string]$raw.name
         description = if ($null -eq $raw.trash_description) { $null } else { [string]$raw.trash_description }
         mediaType = $MediaType
-        sourcePath = $File.FullName.Substring($resolvedSource.Length + 1).Replace('\', '/')
+        sourcePath = $sourcePath
+        sourceBlobSha = Get-SourceBlobSha $sourcePath
         customFormats = $entries
         qualityProfileIds = $profileIds
     }
@@ -85,12 +97,14 @@ function Convert-SourceQualityProfile([System.IO.FileInfo]$File, [string]$MediaT
             Sort-Object Name |
             ForEach-Object { [ordered]@{ name = $_.Name; trashId = [string]$_.Value } })
     }
+    $sourcePath = Get-SourcePath $File
     [ordered]@{
         trashId = [string]$raw.trash_id
         name = [string]$raw.name
         description = if ($null -eq $raw.trash_description) { $null } else { [string]$raw.trash_description }
         mediaType = $MediaType
-        sourcePath = $File.FullName.Substring($resolvedSource.Length + 1).Replace('\', '/')
+        sourcePath = $sourcePath
+        sourceBlobSha = Get-SourceBlobSha $sourcePath
         formatAssignments = $assignments
         definitionJson = $rawText.Trim()
     }
@@ -110,7 +124,7 @@ $profiles = @(
 )
 
 $inventory = [ordered]@{
-    schemaVersion = 1
+    schemaVersion = 2
     upstreamRevision = $revision
     customFormats = @($customFormats | Sort-Object mediaType, trashId)
     formatGroups = @($groups | Sort-Object mediaType, trashId)

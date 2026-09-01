@@ -22,12 +22,16 @@ It contains:
 - a package version, upstream revision, review date, adaptation note, and
   deterministic SHA-256 integrity value.
 
-The package also carries a pinned source inventory for the exact upstream
+The backend package also carries a pinned source inventory for the exact upstream
 revision: 478 custom formats, 78 format groups, and 62 quality profiles at the
 current revision. It keeps native matcher clauses, per-score-set provenance,
 media applicability, and stable group/profile membership. This inventory is
 loaded from the backend assembly; it is never fetched while deciding whether to
 acquire or replace a release.
+
+The normal package endpoint intentionally omits that 1.5 MB source payload so
+ordinary setup screens remain quick. `GET /api/v1/guides/trash/source-inventory`
+returns it on demand for audit, export, and package-review tooling.
 
 The package is deliberately a Deluno adaptation of TRaSH Guides, not a
 Recyclarr input or a verbatim Radarr/Sonarr export. Deluno uses the guide as
@@ -81,6 +85,22 @@ The owner-approved update flow is versioned and read-before-write:
 The embedded package remains the bootstrap value until the owner applies an
 update. Package compilation is read-only and uses the active persisted package;
 release decisions never fetch guide content from the network.
+
+## Optional upstream-change checks
+
+`GET /api/v1/guides/trash/update-check` exposes a local, default-off setting
+and the most recent report. When the owner enables it, Deluno may run one check
+per week; `POST /api/v1/guides/trash/update-check/run` runs the same check on
+demand. The check reads the public TRaSH Git tree and compares its blob IDs
+with the pinned source paths in the active package. It reports changed or
+removed custom formats, groups, and quality profiles, marks changes that touch
+saved custom formats, and lists new JSON files in the guide directories.
+
+This is deliberately **not** a sync: it does not download an upstream package,
+rewrite a local custom format, alter a quality profile, or change a release
+decision. Disabling the setting prevents outbound guide-check requests; the
+last report remains local for review. Any actual package change still goes
+through the preview/apply flow above.
 
 Upstream references:
 

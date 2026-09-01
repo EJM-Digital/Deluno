@@ -41,13 +41,30 @@ public static class QualityEndpointRouteBuilderExtensions
 
         guideEndpoints.MapGet("/trash/package", async (
             IGuidePackageStore store,
-            CancellationToken cancellationToken) => Results.Json(
-                (await store.GetCurrentAsync(cancellationToken)).Package,
-                ReleasePreferenceJson.Options));
+            CancellationToken cancellationToken) =>
+        {
+            var package = (await store.GetCurrentAsync(cancellationToken)).Package;
+            // The source inventory is deliberately a separate, on-demand
+            // endpoint. Setup screens need the concise curated package, not a
+            // 1.5 MB provenance payload on every visit.
+            return Results.Json(package with { SourceInventory = null }, ReleasePreferenceJson.Options);
+        });
+        guideEndpoints.MapGet("/trash/source-inventory", async (
+            IGuidePackageStore store,
+            CancellationToken cancellationToken) =>
+        {
+            var source = (await store.GetCurrentAsync(cancellationToken)).Package.SourceInventory;
+            return source is null ? Results.NotFound() : Results.Json(source, ReleasePreferenceJson.Options);
+        });
         guideEndpoints.MapGet("/trash/inventory", async (
             IGuidePackageStore store,
             CancellationToken cancellationToken) => Results.Json(
                 GuideCapabilityInventoryBuilder.Build((await store.GetCurrentAsync(cancellationToken)).Package),
+                ReleasePreferenceJson.Options));
+        guideEndpoints.MapGet("/trash/update-check", async (
+            IGuideUpdateCheckService updateCheckService,
+            CancellationToken cancellationToken) => Results.Json(
+                await updateCheckService.GetAsync(cancellationToken),
                 ReleasePreferenceJson.Options));
         guideEndpoints.MapGet("/trash/versions", async (
             IGuidePackageStore store,
@@ -95,6 +112,39 @@ public static class QualityEndpointRouteBuilderExtensions
 
             var preview = await store.PreviewAsync(request, cancellationToken);
             return Results.Json(preview, ReleasePreferenceJson.Options);
+        });
+
+        guideWrites.MapPut("/trash/update-check/settings", async (
+            HttpContext httpContext,
+            [FromBody] UpdateGuideUpdateCheckSettingsRequest request,
+            IGuideUpdateCheckService updateCheckService,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            return Results.Json(
+                await updateCheckService.SetEnabledAsync(request.IsEnabled, cancellationToken),
+                ReleasePreferenceJson.Options);
+        });
+
+        guideWrites.MapPost("/trash/update-check/run", async (
+            HttpContext httpContext,
+            IGuideUpdateCheckService updateCheckService,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            return Results.Json(
+                await updateCheckService.CheckNowAsync(cancellationToken),
+                ReleasePreferenceJson.Options);
         });
 
         guideWrites.MapPost("/trash/apply", async (

@@ -180,6 +180,8 @@ GET /api/v1/download-dispatches/{dispatchId}
 GET /api/v1/guides/trash/inventory
 GET /api/v1/guides/trash/package
 GET /api/v1/guides/trash/profiles/{profileId}/compile
+GET /api/v1/guides/trash/source-inventory
+GET /api/v1/guides/trash/update-check
 GET /api/v1/guides/trash/versions
 GET /api/v1/guides/trash/versions/{version:int}
 GET /api/v1/import-resolutions/
@@ -329,6 +331,7 @@ POST /api/v1/download-dispatches/poll
 POST /api/v1/download-dispatches/{dispatchId}/retry
 POST /api/v1/guides/trash/apply
 POST /api/v1/guides/trash/preview
+POST /api/v1/guides/trash/update-check/run
 POST /api/v1/release-preferences/plans
 POST /api/v1/release-preferences/preview
 PUT /api/auth/password
@@ -375,3 +378,4 @@ PUT /api/setup/progress
 PUT /api/subtitle-providers/{key}
 PUT /api/tags/{id}
 PUT /api/updates/preferences
+PUT /api/v1/guides/trash/update-check/settings

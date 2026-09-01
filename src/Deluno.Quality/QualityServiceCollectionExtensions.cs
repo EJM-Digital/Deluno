@@ -17,6 +17,16 @@ public static class QualityServiceCollectionExtensions
         services.AddSingleton<IReleasePreferencePlanRepository, SqliteReleasePreferencePlanRepository>();
         services.AddSingleton<IPlaybackGoalRepository, SqlitePlaybackGoalRepository>();
         services.AddSingleton<IGuidePackageStore, SqliteGuidePackageStore>();
+        services.AddHttpClient(GuideUpstreamTreeClient.HttpClientName, client =>
+        {
+            client.BaseAddress = new Uri("https://api.github.com/");
+            client.Timeout = TimeSpan.FromSeconds(20);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("Deluno guide-update-check/1.0");
+        });
+        services.AddSingleton<GuideUpstreamTreeClient>();
+        services.AddSingleton<IGuideUpdateCheckStore, SqliteGuideUpdateCheckStore>();
+        services.AddSingleton<IGuideUpdateCheckService, GuideUpdateCheckService>();
+        services.AddHostedService<GuideUpdateCheckHostedService>();
         return services;
     }
 

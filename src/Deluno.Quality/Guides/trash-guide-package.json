@@ -1,7 +1,7 @@
 {
   "id": "trash-guides",
   "name": "TRaSH Guides — Deluno curated package",
-  "version": 2,
+  "version": 3,
   "schemaVersion": 2,
   "source": {
     "sourceName": "TRaSH Guides",
@@ -9,7 +9,7 @@
     "guideUrl": "https://trash-guides.info/Radarr/Radarr-collection-of-custom-formats/",
     "upstreamRevision": "a63c1d05510d73887be1b0198f95a363c4f7bef6",
     "reviewedUtc": "2026-08-31",
-    "adaptation": "Reviewed Deluno adaptation of the upstream quality, custom-format, and profile guidance. The pinned backend source inventory retains every upstream custom format, group, profile, score set, and matcher clause. Only explicitly reviewed mappings enter typed decisions; unreviewed semantics remain Advanced. This package is not a Recyclarr export."
+    "adaptation": "Reviewed Deluno adaptation of the upstream quality, custom-format, and profile guidance. The pinned backend source inventory retains every upstream custom format, group, profile, score set, matcher clause, and Git blob fingerprint. Only explicitly reviewed mappings enter typed decisions; unreviewed semantics remain Advanced. This package is not a Recyclarr export."
   },
   "integritySha256": null,
   "qualityTiers": [

@@ -44,6 +44,10 @@ public sealed class GuideCapabilityInventoryTests
         Assert.Equal(478, source.CustomFormats.Count);
         Assert.Equal(78, source.FormatGroups.Count);
         Assert.Equal(62, source.QualityProfiles.Count);
+        Assert.Equal(2, source.SchemaVersion);
+        Assert.All(source.CustomFormats, format => Assert.Matches("^[0-9a-f]{40}$", format.SourceBlobSha));
+        Assert.All(source.FormatGroups, group => Assert.Matches("^[0-9a-f]{40}$", group.SourceBlobSha));
+        Assert.All(source.QualityProfiles, profile => Assert.Matches("^[0-9a-f]{40}$", profile.SourceBlobSha));
         Assert.Equal(source.CustomFormats.Count, source.CustomFormats
             .Select(format => format.TrashId)
             .Distinct(StringComparer.OrdinalIgnoreCase)

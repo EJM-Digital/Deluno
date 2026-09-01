@@ -4,6 +4,7 @@ import type {
   GuidePackageUpdatePreview,
   GuidePackageUpdateRequest,
   GuideCapabilityInventory,
+  GuideUpdateCheckState,
   StoredGuidePackage
 } from "./types";
 
@@ -18,6 +19,25 @@ export function fetchTrashGuideVersions(): Promise<StoredGuidePackage[]> {
 
 export function fetchTrashGuideInventory(): Promise<GuideCapabilityInventory> {
   return fetchJson<GuideCapabilityInventory>("/api/v1/guides/trash/inventory");
+}
+
+/** Reads the owner-controlled, report-only upstream guide check state. */
+export function fetchTrashGuideUpdateCheck(): Promise<GuideUpdateCheckState> {
+  return fetchJson<GuideUpdateCheckState>("/api/v1/guides/trash/update-check");
+}
+
+export function setTrashGuideUpdateCheckEnabled(isEnabled: boolean): Promise<GuideUpdateCheckState> {
+  return fetchJson<GuideUpdateCheckState>("/api/v1/guides/trash/update-check/settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ isEnabled })
+  });
+}
+
+export function runTrashGuideUpdateCheck(): Promise<GuideUpdateCheckState> {
+  return fetchJson<GuideUpdateCheckState>("/api/v1/guides/trash/update-check/run", {
+    method: "POST"
+  });
 }
 
 export function previewTrashGuideUpdate(request: GuidePackageUpdateRequest): Promise<GuidePackageUpdatePreview> {
