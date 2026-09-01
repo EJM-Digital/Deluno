@@ -23,6 +23,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          # The recovery proof builds the known pre-media-plan baseline below.
+          fetch-depth: 10
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
@@ -66,6 +69,25 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Build populated-schema baseline image
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        env:
+          BASELINE_REVISION: 38e5ae8
+        run: |
+          set -euo pipefail
+          git cat-file -e "${BASELINE_REVISION}^{commit}"
+          baseline_context="$(mktemp -d)"
+          trap 'rm -rf "$baseline_context"' EXIT
+          git archive "$BASELINE_REVISION" | tar -x -C "$baseline_context"
+          cp Dockerfile "$baseline_context/Dockerfile"
+          cp .dockerignore "$baseline_context/.dockerignore"
+          # The baseline predates the supported SDK workspace. Its production
+          # host/web sources are otherwise built through the same Dockerfile.
+          sed -i '/^COPY sdk\/typescript\/package\.json /d' "$baseline_context/Dockerfile"
+          baseline_image="deluno-schema-baseline:${GITHUB_RUN_ID}"
+          docker build --tag "$baseline_image" "$baseline_context"
+          echo "DOCKER_BASELINE_IMAGE=$baseline_image" >> "$GITHUB_ENV"
+
       - name: Verify persistent data and failed-replacement recovery
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         env:
@@ -73,7 +95,7 @@ jobs:
         run: |
           set -euo pipefail
           image_tag="$(printf '%s\n' "$IMAGE_TAGS" | sed -n '1p')"
-          bash scripts/test-docker-recovery.sh "$image_tag"
+          bash scripts/test-docker-recovery.sh "$DOCKER_BASELINE_IMAGE" "$image_tag"
 
       - name: Verify pushed digest is addressable
         if: startsWith(github.ref, 'refs/tags/v')
