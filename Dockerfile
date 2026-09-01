@@ -33,7 +33,9 @@ RUN dotnet publish src/Deluno.Host/Deluno.Host.csproj \
 # Keep the runtime image small, but include the native tools used for media
 # probing and subtitle timing. FfmpegTools resolves these from /usr/bin when
 # DELUNO_FFMPEG_DIR is set below.
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-bookworm-slim AS runtime
+# .NET 10 images are published on Ubuntu rather than Debian, so do not use
+# the retired bookworm-slim tag here. Noble retains apt for FFmpeg installation.
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble AS runtime
 
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends ca-certificates curl ffmpeg \
