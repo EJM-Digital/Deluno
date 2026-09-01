@@ -90,29 +90,49 @@ public static class GuideCapabilityInventoryBuilder
             items.Add(new GuideCapabilityInventoryItem(
                 "custom-format",
                 format.TrashId,
-                "movies+tv",
+                FormatMediaType(format),
                 format.Category,
                 representation,
                 typedTraits,
-                format.SourceKind));
+                FormatProvenance(format)));
             if (representation == "unaccounted")
             {
                 unaccounted.Add($"custom-format:{format.TrashId} has an invalid typed/Advanced representation.");
             }
 
-            // The package currently exposes release-title regex clauses. Keep
-            // the clause shape in the inventory so a future package cannot add
-            // a matcher form without making the coverage decision explicit.
-            for (var index = 0; index < (format.Patterns ?? []).Count; index++)
+            // Preserve every upstream matcher clause separately. A clause that
+            // is not part of a reviewed typed mapping is deliberately marked
+            // Advanced rather than reduced to a title regex or silently lost.
+            var sourceClauses = format.SourceMatcherClauses ?? [];
+            for (var index = 0; index < sourceClauses.Count; index++)
             {
                 items.Add(new GuideCapabilityInventoryItem(
-                    "matcher-clause",
+                    "source-matcher-clause",
                     $"{format.TrashId}:{index + 1}",
-                    "movies+tv",
+                    FormatMediaType(format),
                     format.Category,
-                    "release-title-regex|required|not-negated",
+                    format.MappingStatus == GuideMappingStatus.Reviewed
+                        ? "typed-source-matcher"
+                        : "advanced-source-matcher",
                     [],
-                    format.SourceKind));
+                    FormatProvenance(format)));
+            }
+
+            // Curated adaptations written before the upstream source inventory
+            // retain their regex clauses as explicit legacy matcher evidence.
+            if (sourceClauses.Count == 0)
+            {
+                for (var index = 0; index < (format.Patterns ?? []).Count; index++)
+                {
+                    items.Add(new GuideCapabilityInventoryItem(
+                        "matcher-clause",
+                        $"{format.TrashId}:{index + 1}",
+                        FormatMediaType(format),
+                        format.Category,
+                        "release-title-regex|required|not-negated",
+                        [],
+                        FormatProvenance(format)));
+                }
             }
         }
 
@@ -175,6 +195,8 @@ public static class GuideCapabilityInventoryBuilder
                 unaccounted.Add($"format-bundle:{bundle.Id} references missing custom-format:{missingId}.");
             }
         }
+
+        AddSourceInventoryItems(package, items, unaccounted);
 
         var orderedItems = items
             .OrderBy(item => item.Kind, StringComparer.Ordinal)
@@ -239,4 +261,69 @@ public static class GuideCapabilityInventoryBuilder
     private static bool IsForbiddenCategory(string? category)
         => string.Equals(category?.Trim(), "unwanted", StringComparison.OrdinalIgnoreCase)
             || string.Equals(category?.Trim(), "safety", StringComparison.OrdinalIgnoreCase);
+
+    private static string FormatMediaType(GuideCustomFormat format)
+        => format.MediaTypes is { Count: > 0 }
+            ? string.Join('+', format.MediaTypes.OrderBy(item => item, StringComparer.Ordinal))
+            : "movies+tv";
+
+    private static string FormatProvenance(GuideCustomFormat format)
+        => string.IsNullOrWhiteSpace(format.SourcePath)
+            ? format.SourceKind
+            : $"{format.SourceKind}:{format.SourcePath}";
+
+    private static void AddSourceInventoryItems(
+        GuidePackage package,
+        ICollection<GuideCapabilityInventoryItem> items,
+        ICollection<string> unaccounted)
+    {
+        var source = package.SourceInventory;
+        if (source is null)
+        {
+            // A schema-v1 package is historical, not incomplete at the time it
+            // was approved. Its legacy inventory remains readable; new schema
+            // versions are rejected by GuidePackageCatalog.Validate unless they
+            // carry the pinned source inventory.
+            return;
+        }
+
+        var formatsById = (package.CustomFormats ?? [])
+            .Where(format => !string.IsNullOrWhiteSpace(format.TrashId))
+            .ToDictionary(format => format.TrashId, StringComparer.OrdinalIgnoreCase);
+        foreach (var group in source.FormatGroups ?? [])
+        {
+            var missing = (group.CustomFormats ?? [])
+                .Where(entry => !formatsById.ContainsKey(entry.TrashId))
+                .Select(entry => entry.TrashId)
+                .ToArray();
+            items.Add(new GuideCapabilityInventoryItem(
+                "source-format-group",
+                group.TrashId,
+                group.MediaType,
+                "upstream-group",
+                missing.Length == 0 ? "advanced-source-group" : "unaccounted",
+                [],
+                $"trash-guides:{source.UpstreamRevision}:{group.SourcePath}"));
+            foreach (var missingId in missing)
+                unaccounted.Add($"source-format-group:{group.TrashId} references missing custom-format:{missingId}.");
+        }
+
+        foreach (var profile in source.QualityProfiles ?? [])
+        {
+            var missing = (profile.FormatAssignments ?? [])
+                .Where(assignment => !formatsById.ContainsKey(assignment.TrashId))
+                .Select(assignment => assignment.TrashId)
+                .ToArray();
+            items.Add(new GuideCapabilityInventoryItem(
+                "source-quality-profile",
+                profile.TrashId,
+                profile.MediaType,
+                "upstream-profile",
+                missing.Length == 0 ? "advanced-source-profile" : "unaccounted",
+                [],
+                $"trash-guides:{source.UpstreamRevision}:{profile.SourcePath}"));
+            foreach (var missingId in missing)
+                unaccounted.Add($"source-quality-profile:{profile.TrashId} references missing custom-format:{missingId}.");
+        }
+    }
 }

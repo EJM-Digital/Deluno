@@ -17,7 +17,8 @@ public sealed record GuidePackage(
     IReadOnlyList<GuideQualityTier> QualityTiers,
     IReadOnlyList<GuideCustomFormat> CustomFormats,
     IReadOnlyList<GuideQualityProfile> QualityProfiles,
-    IReadOnlyList<GuideFormatBundle> Bundles);
+    IReadOnlyList<GuideFormatBundle> Bundles,
+    GuideSourceInventory? SourceInventory = null);
 
 public sealed record GuidePackageProvenance(
     string SourceName,
@@ -46,7 +47,12 @@ public sealed record GuideCustomFormat(
     bool BundleOnly,
     GuideMappingStatus MappingStatus,
     IReadOnlyList<string> MappedTraitIds,
-    string SourceKind);
+    string SourceKind,
+    IReadOnlyList<string>? MediaTypes = null,
+    IReadOnlyList<string>? SourceGroupIds = null,
+    IReadOnlyList<GuideSourceMatcherClause>? SourceMatcherClauses = null,
+    IReadOnlyDictionary<string, int>? SourceScores = null,
+    string? SourcePath = null);
 
 public enum GuideMappingStatus
 {

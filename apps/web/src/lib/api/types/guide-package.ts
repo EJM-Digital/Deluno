@@ -11,6 +11,7 @@ export interface GuidePackage {
   customFormats: GuideCustomFormat[];
   qualityProfiles: GuideQualityProfile[];
   bundles: GuideFormatBundle[];
+  sourceInventory?: GuideSourceInventory | null;
 }
 
 export interface GuidePackageProvenance {
@@ -43,6 +44,69 @@ export interface GuideCustomFormat {
   mappingStatus: GuideMappingStatus;
   mappedTraitIds: string[];
   sourceKind: string;
+  mediaTypes?: string[];
+  sourceGroupIds?: string[];
+  sourceMatcherClauses?: GuideSourceMatcherClause[];
+  sourceScores?: Record<string, number>;
+  sourcePath?: string;
+}
+
+export interface GuideSourceInventory {
+  schemaVersion: number;
+  upstreamRevision: string;
+  customFormats: GuideSourceCustomFormat[];
+  formatGroups: GuideSourceFormatGroup[];
+  qualityProfiles: GuideSourceQualityProfile[];
+}
+
+export interface GuideSourceCustomFormat {
+  trashId: string;
+  name: string;
+  description?: string | null;
+  mediaType: string;
+  sourcePath: string;
+  scores: Record<string, number>;
+  includeWhenRenaming: boolean;
+  matcherClauses: GuideSourceMatcherClause[];
+}
+
+export interface GuideSourceMatcherClause {
+  name: string;
+  implementation: string;
+  negate: boolean;
+  required: boolean;
+  fieldsJson: string;
+}
+
+export interface GuideSourceFormatGroup {
+  trashId: string;
+  name: string;
+  description?: string | null;
+  mediaType: string;
+  sourcePath: string;
+  customFormats: GuideSourceFormatGroupEntry[];
+  qualityProfileIds: string[];
+}
+
+export interface GuideSourceFormatGroupEntry {
+  trashId: string;
+  name: string;
+  required: boolean;
+}
+
+export interface GuideSourceQualityProfile {
+  trashId: string;
+  name: string;
+  description?: string | null;
+  mediaType: string;
+  sourcePath: string;
+  formatAssignments: GuideSourceProfileFormatAssignment[];
+  definitionJson: string;
+}
+
+export interface GuideSourceProfileFormatAssignment {
+  name: string;
+  trashId: string;
 }
 
 export interface GuideRecommendedFormat {

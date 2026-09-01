@@ -89,4 +89,58 @@ public sealed class GuidePackageUpdateTests
             new GuidePackageUpdateRequest(valid, current.IntegritySha256),
             CancellationToken.None));
     }
+
+    [Fact]
+    public async Task Preview_rejects_copying_a_legacy_package_forward_without_the_source_inventory()
+    {
+        using var storage = TestStorage.Create();
+        var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-31T00:00:00Z"));
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, time),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var store = new SqliteGuidePackageStore(storage.Factory, time);
+        var current = await store.GetCurrentAsync(CancellationToken.None);
+        var legacy = current.Package with
+        {
+            Version = 1,
+            SchemaVersion = 1,
+            SourceInventory = null,
+            IntegritySha256 = null
+        };
+        legacy = legacy with { IntegritySha256 = GuidePackageCatalog.ComputeIntegritySha256(legacy) };
+
+        await using (var connection = await storage.Factory.OpenConnectionAsync(
+                         Deluno.Infrastructure.Storage.DelunoDatabaseNames.Platform,
+                         CancellationToken.None))
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "INSERT INTO guide_package_versions (package_id, package_version, integrity_sha256, package_json, source_revision, is_active, stored_utc) VALUES (@id, @version, @integrity, @json, @revision, 1, @storedUtc);";
+            Add(command, "@id", legacy.Id);
+            Add(command, "@version", legacy.Version);
+            Add(command, "@integrity", legacy.IntegritySha256!);
+            Add(command, "@json", System.Text.Json.JsonSerializer.Serialize(legacy, Deluno.Quality.ReleasePreferences.ReleasePreferenceJson.Options));
+            Add(command, "@revision", legacy.Source.UpstreamRevision);
+            Add(command, "@storedUtc", time.GetUtcNow().ToString("O"));
+            await command.ExecuteNonQueryAsync(CancellationToken.None);
+        }
+
+        var reread = await store.GetCurrentAsync(CancellationToken.None);
+        Assert.Null(reread.Package.SourceInventory);
+        var proposed = reread.Package with { Version = 2 };
+        var preview = await store.PreviewAsync(
+            new GuidePackageUpdateRequest(proposed, reread.IntegritySha256),
+            CancellationToken.None);
+
+        Assert.False(preview.CanApply);
+        Assert.Contains(preview.Errors, error => error.Contains("source inventory", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static void Add(System.Data.Common.DbCommand command, string name, object value)
+    {
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = name;
+        parameter.Value = value;
+        command.Parameters.Add(parameter);
+    }
 }

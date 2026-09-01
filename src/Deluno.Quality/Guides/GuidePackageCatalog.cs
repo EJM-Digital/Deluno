@@ -121,6 +121,8 @@ public static class GuidePackageCatalog
             }
         }
 
+        ValidateSourceInventory(package, formatIds, errors);
+
         return errors;
     }
 
@@ -128,12 +130,168 @@ public static class GuidePackageCatalog
     {
         using var stream = typeof(GuidePackageCatalog).Assembly.GetManifestResourceStream(ResourceName)
             ?? throw new InvalidOperationException($"Embedded guide package '{ResourceName}' was not found.");
-        var package = JsonSerializer.Deserialize<GuidePackage>(stream, ReleasePreferenceJson.Options)
+        var curated = JsonSerializer.Deserialize<GuidePackage>(stream, ReleasePreferenceJson.Options)
             ?? throw new InvalidOperationException("The embedded guide package was empty.");
+        var package = MergeSourceInventory(curated, GuideSourceInventoryCatalog.Current);
         var errors = Validate(package);
         if (errors.Count > 0)
             throw new InvalidOperationException($"The embedded guide package is invalid: {string.Join(" | ", errors)}");
         return package with { IntegritySha256 = ComputeIntegritySha256(package) };
+    }
+
+    /// <summary>
+    /// The short curated package contains only the mappings Deluno has reviewed
+    /// by hand. Merge it with the complete, pinned upstream inventory so every
+    /// remaining TRaSH rule is visible as Advanced instead of being omitted or
+    /// interpreted from its numeric score.
+    /// </summary>
+    private static GuidePackage MergeSourceInventory(
+        GuidePackage curated,
+        GuideSourceInventory sourceInventory)
+    {
+        var groupIdsByFormat = (sourceInventory.FormatGroups ?? [])
+            .SelectMany(group => (group.CustomFormats ?? []).Select(format => new
+            {
+                format.TrashId,
+                GroupId = group.TrashId
+            }))
+            .Where(item => !string.IsNullOrWhiteSpace(item.TrashId) && !string.IsNullOrWhiteSpace(item.GroupId))
+            .GroupBy(item => item.TrashId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<string>)group
+                    .Select(item => item.GroupId)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(item => item, StringComparer.Ordinal)
+                    .ToArray(),
+                StringComparer.OrdinalIgnoreCase);
+        var curatedById = (curated.CustomFormats ?? [])
+            .Where(format => !string.IsNullOrWhiteSpace(format.TrashId))
+            .ToDictionary(format => format.TrashId, StringComparer.OrdinalIgnoreCase);
+        var formats = new List<GuideCustomFormat>(curatedById.Count + sourceInventory.CustomFormats.Count);
+
+        foreach (var sourceFormat in (sourceInventory.CustomFormats ?? [])
+                     .OrderBy(item => item.MediaType, StringComparer.Ordinal)
+                     .ThenBy(item => item.TrashId, StringComparer.Ordinal))
+        {
+            var groupIds = groupIdsByFormat.GetValueOrDefault(sourceFormat.TrashId, []);
+            if (curatedById.Remove(sourceFormat.TrashId, out var reviewed))
+            {
+                formats.Add(reviewed with
+                {
+                    MediaTypes = [sourceFormat.MediaType],
+                    SourceGroupIds = groupIds,
+                    SourceMatcherClauses = sourceFormat.MatcherClauses,
+                    SourceScores = sourceFormat.Scores,
+                    SourcePath = sourceFormat.SourcePath
+                });
+                continue;
+            }
+
+            formats.Add(new GuideCustomFormat(
+                sourceFormat.TrashId,
+                sourceFormat.Name,
+                "upstream-advanced",
+                sourceFormat.Description ?? "Upstream TRaSH rule retained for Advanced review.",
+                sourceFormat.Scores.GetValueOrDefault("default"),
+                [],
+                false,
+                GuideMappingStatus.Advanced,
+                [],
+                "trash-guides-upstream-advanced",
+                [sourceFormat.MediaType],
+                groupIds,
+                sourceFormat.MatcherClauses,
+                sourceFormat.Scores,
+                sourceFormat.SourcePath));
+        }
+
+        // Deluno may retain deliberately authored rules that do not map to an
+        // upstream custom-format id. They stay explicit curated adaptations;
+        // the upstream coverage invariant below applies to every source item.
+        formats.AddRange(curatedById.Values
+            .OrderBy(format => format.TrashId, StringComparer.Ordinal));
+
+        return curated with
+        {
+            CustomFormats = formats,
+            SourceInventory = sourceInventory
+        };
+    }
+
+    private static void ValidateSourceInventory(
+        GuidePackage package,
+        IReadOnlySet<string> formatIds,
+        ICollection<string> errors)
+    {
+        var source = package.SourceInventory;
+        if (source is null)
+        {
+            // Package schema v1 was already persisted before the full source
+            // inventory existed. Keep those historical plans readable and
+            // immutable; schema v2 and later must carry the inventory so a
+            // newly proposed package can never silently omit upstream rules.
+            if (package.SchemaVersion >= 2)
+            {
+                errors.Add("The guide package needs its pinned upstream source inventory.");
+            }
+            return;
+        }
+
+        if (source.SchemaVersion <= 0)
+            errors.Add("The guide source inventory schema version must be positive.");
+        if (!string.Equals(source.UpstreamRevision, package.Source.UpstreamRevision, StringComparison.OrdinalIgnoreCase))
+            errors.Add("The guide source inventory revision must match the package provenance revision.");
+        ValidateUnique((source.CustomFormats ?? []).Select(item => item.TrashId), "source custom format", errors);
+        ValidateUnique((source.FormatGroups ?? []).Select(item => item.TrashId), "source format group", errors);
+        ValidateUnique((source.QualityProfiles ?? []).Select(item => item.TrashId), "source quality profile", errors);
+
+        var sourceFormatIds = (source.CustomFormats ?? [])
+            .Where(item => !string.IsNullOrWhiteSpace(item.TrashId))
+            .Select(item => item.TrashId)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var sourceProfileIds = (source.QualityProfiles ?? [])
+            .Where(item => !string.IsNullOrWhiteSpace(item.TrashId))
+            .Select(item => item.TrashId)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var format in source.CustomFormats ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(format.TrashId))
+            {
+                errors.Add("Every source custom format needs a stable TRaSH id.");
+                continue;
+            }
+            if (!formatIds.Contains(format.TrashId))
+                errors.Add($"Source custom format '{format.TrashId}' is not retained by the guide package.");
+            if (string.IsNullOrWhiteSpace(format.MediaType) || string.IsNullOrWhiteSpace(format.SourcePath))
+                errors.Add($"Source custom format '{format.TrashId}' needs media applicability and a source path.");
+            if ((format.MatcherClauses ?? []).Any(clause => string.IsNullOrWhiteSpace(clause.Implementation) || string.IsNullOrWhiteSpace(clause.FieldsJson)))
+                errors.Add($"Source custom format '{format.TrashId}' contains an incomplete matcher clause.");
+        }
+
+        foreach (var group in source.FormatGroups ?? [])
+        {
+            foreach (var entry in group.CustomFormats ?? [])
+            {
+                if (!sourceFormatIds.Contains(entry.TrashId))
+                    errors.Add($"Source format group '{group.TrashId}' refers to unknown source custom format '{entry.TrashId}'.");
+            }
+            foreach (var profileId in group.QualityProfileIds ?? [])
+            {
+                if (!sourceProfileIds.Contains(profileId))
+                    errors.Add($"Source format group '{group.TrashId}' refers to unknown source quality profile '{profileId}'.");
+            }
+        }
+
+        foreach (var profile in source.QualityProfiles ?? [])
+        {
+            foreach (var assignment in profile.FormatAssignments ?? [])
+            {
+                if (!sourceFormatIds.Contains(assignment.TrashId))
+                    errors.Add($"Source quality profile '{profile.TrashId}' refers to unknown source custom format '{assignment.TrashId}'.");
+            }
+        }
     }
 
     private static void ValidateUnique(IEnumerable<string?> values, string kind, ICollection<string> errors)
