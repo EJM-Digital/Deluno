@@ -160,6 +160,13 @@ export interface GuidePackageUpdateRequest {
   expectedCurrentIntegritySha256?: string | null;
 }
 
+/** Identifies the immutable guide sync the owner reviewed before applying it. */
+export interface GuidePackageSyncRequest {
+  expectedCurrentIntegritySha256: string;
+  expectedUpstreamRevision: string;
+  expectedProposedIntegritySha256?: string | null;
+}
+
 export interface GuideProfileUpdateDiff {
   profileId: string;
   profileName: string;

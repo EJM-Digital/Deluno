@@ -143,9 +143,11 @@ public static class GuidePackageCatalog
     /// The short curated package contains only the mappings Deluno has reviewed
     /// by hand. Merge it with the complete, pinned upstream inventory so every
     /// remaining TRaSH rule is visible as Advanced instead of being omitted or
-    /// interpreted from its numeric score.
+    /// interpreted from its numeric score. Reviewed Deluno mappings remain
+    /// intact; a newly discovered upstream format is retained as Advanced until
+    /// Deluno has reviewed its semantics.
     /// </summary>
-    private static GuidePackage MergeSourceInventory(
+    public static GuidePackage MergeSourceInventory(
         GuidePackage curated,
         GuideSourceInventory sourceInventory)
     {

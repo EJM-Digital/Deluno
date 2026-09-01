@@ -114,6 +114,23 @@ public static class QualityEndpointRouteBuilderExtensions
             return Results.Json(preview, ReleasePreferenceJson.Options);
         });
 
+        guideWrites.MapPost("/trash/sync/preview", async (
+            HttpContext httpContext,
+            [FromBody] GuidePackageSyncRequest request,
+            IGuidePackageSyncService syncService,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            return Results.Json(
+                await syncService.PreviewAsync(request, cancellationToken),
+                ReleasePreferenceJson.Options);
+        });
+
         guideWrites.MapPut("/trash/update-check/settings", async (
             HttpContext httpContext,
             [FromBody] UpdateGuideUpdateCheckSettingsRequest request,
@@ -169,6 +186,36 @@ public static class QualityEndpointRouteBuilderExtensions
                 return Results.ValidationProblem(new Dictionary<string, string[]>
                 {
                     ["package"] = [exception.Message]
+                });
+            }
+            catch (InvalidOperationException exception)
+            {
+                return Results.Conflict(new { message = exception.Message });
+            }
+        });
+
+        guideWrites.MapPost("/trash/sync/apply", async (
+            HttpContext httpContext,
+            [FromBody] GuidePackageSyncRequest request,
+            IGuidePackageSyncService syncService,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            try
+            {
+                var applied = await syncService.ApplyAsync(request, cancellationToken);
+                return Results.Json(applied, ReleasePreferenceJson.Options, statusCode: StatusCodes.Status201Created);
+            }
+            catch (ArgumentException exception)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["sync"] = [exception.Message]
                 });
             }
             catch (InvalidOperationException exception)

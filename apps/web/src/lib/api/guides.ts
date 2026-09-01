@@ -3,6 +3,7 @@ import type {
   GuidePackage,
   GuidePackageUpdatePreview,
   GuidePackageUpdateRequest,
+  GuidePackageSyncRequest,
   GuideCapabilityInventory,
   GuideUpdateCheckState,
   StoredGuidePackage
@@ -50,6 +51,24 @@ export function previewTrashGuideUpdate(request: GuidePackageUpdateRequest): Pro
 
 export function applyTrashGuideUpdate(request: GuidePackageUpdateRequest): Promise<StoredGuidePackage> {
   return fetchJson<StoredGuidePackage>("/api/v1/guides/trash/apply", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request)
+  });
+}
+
+/** Stages an exact upstream revision as a validated package diff; it does not persist anything. */
+export function previewTrashGuideSync(request: GuidePackageSyncRequest): Promise<GuidePackageUpdatePreview> {
+  return fetchJson<GuidePackageUpdatePreview>("/api/v1/guides/trash/sync/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request)
+  });
+}
+
+/** Applies precisely the upstream candidate that was previewed. */
+export function applyTrashGuideSync(request: GuidePackageSyncRequest): Promise<StoredGuidePackage> {
+  return fetchJson<StoredGuidePackage>("/api/v1/guides/trash/sync/apply", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request)

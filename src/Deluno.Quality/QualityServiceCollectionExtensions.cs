@@ -24,6 +24,7 @@ public static class QualityServiceCollectionExtensions
             client.DefaultRequestHeaders.UserAgent.ParseAdd("Deluno guide-update-check/1.0");
         });
         services.AddSingleton<GuideUpstreamTreeClient>();
+        services.AddSingleton<IGuidePackageSyncService, GuidePackageSyncService>();
         services.AddSingleton<IGuideUpdateCheckStore, SqliteGuideUpdateCheckStore>();
         services.AddSingleton<IGuideUpdateCheckService, GuideUpdateCheckService>();
         services.AddHostedService<GuideUpdateCheckHostedService>();

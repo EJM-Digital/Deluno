@@ -40,6 +40,8 @@ import {
   fetchTrashGuidePackage,
   fetchTrashGuideUpdateCheck,
   fetchJson,
+  previewTrashGuideSync,
+  applyTrashGuideSync,
   previewReleasePreference,
   runTrashGuideUpdateCheck,
   setTrashGuideUpdateCheckEnabled,
@@ -47,6 +49,7 @@ import {
   type GuideCustomFormat,
   type GuideFormatBundle,
   type GuidePackage,
+  type GuidePackageUpdatePreview,
   type GuideUpdateCheckState,
   type LibraryItem,
   type PolicySetItem,
@@ -178,8 +181,9 @@ export function SettingsCustomFormatsPage() {
   const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
   const [busy, setBusy] = useState<string | null>(null);
   const [updateCheck, setUpdateCheck] = useState(guideUpdateCheck);
-  const [updateCheckBusy, setUpdateCheckBusy] = useState<"settings" | "run" | null>(null);
+  const [updateCheckBusy, setUpdateCheckBusy] = useState<"settings" | "run" | "sync-preview" | "sync-apply" | null>(null);
   const [guideUpdateDetailsOpen, setGuideUpdateDetailsOpen] = useState(false);
+  const [guideSyncPreview, setGuideSyncPreview] = useState<GuidePackageUpdatePreview | null>(null);
 
   const split = useMediaTypeSplit(customFormats, (format) => format.mediaType);
   const librariesByFormat = useMemo(() => {
@@ -239,10 +243,59 @@ export function SettingsCustomFormatsPage() {
     try {
       const next = await runTrashGuideUpdateCheck();
       setUpdateCheck(next);
+      setGuideSyncPreview(null);
       setGuideUpdateDetailsOpen((next.report?.changes.length ?? 0) > 0 || (next.report?.addedSources.length ?? 0) > 0);
       toast.success(next.status === "up-to-date" ? "Guide sources are up to date" : "Guide change report ready");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not check TRaSH Guides.");
+    } finally {
+      setUpdateCheckBusy(null);
+    }
+  }
+
+  async function previewGuideSync() {
+    const remoteRevision = updateCheck.report?.remoteRevision;
+    if (!remoteRevision) return;
+    setUpdateCheckBusy("sync-preview");
+    try {
+      const preview = await previewTrashGuideSync({
+        expectedCurrentIntegritySha256: guide.integritySha256,
+        expectedUpstreamRevision: remoteRevision
+      });
+      setGuideSyncPreview(preview);
+      if (preview.canApply) {
+        toast.success("Guide sync preview is ready");
+      } else {
+        toast.error(preview.errors[0] ?? "Could not stage a guide sync preview.");
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not stage a TRaSH Guides sync.");
+    } finally {
+      setUpdateCheckBusy(null);
+    }
+  }
+
+  async function applyGuideSync() {
+    const remoteRevision = updateCheck.report?.remoteRevision;
+    if (!remoteRevision || !guideSyncPreview?.canApply) return;
+    setUpdateCheckBusy("sync-apply");
+    try {
+      const applied = await applyTrashGuideSync({
+        expectedCurrentIntegritySha256: guide.integritySha256,
+        expectedUpstreamRevision: remoteRevision,
+        expectedProposedIntegritySha256: guideSyncPreview.proposedIntegritySha256
+      });
+      setGuideSyncPreview(null);
+      revalidator.revalidate();
+      try {
+        setUpdateCheck(await runTrashGuideUpdateCheck());
+      } catch {
+        // The versioned package is already saved. Retain the prior report if a
+        // fresh metadata-only check is unavailable right now.
+      }
+      toast.success(`TRaSH guide snapshot synced as version ${applied.package.version}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not sync the reviewed guide snapshot.");
     } finally {
       setUpdateCheckBusy(null);
     }
@@ -508,11 +561,11 @@ export function SettingsCustomFormatsPage() {
         </ListTable>
       </ListCard>
 
-      <ListCard title="TRaSH guide updates" count="Optional awareness only — Deluno never syncs or changes a plan automatically">
+      <ListCard title="TRaSH guide updates" count="Optional check and owner-approved sync — Deluno never changes a plan automatically">
         <div className="grid gap-3 p-[var(--card-pad-x)]">
           <SwitchRow
             label="Check upstream guide changes weekly"
-            description="Off by default. When enabled, Deluno compares the public TRaSH Git tree with the exact guide files behind your saved rules. It only creates a report; package updates still need a separate preview and apply."
+            description="Off by default. When enabled, Deluno compares the public TRaSH Git tree with the exact guide files behind your saved rules. A detected update can be staged, reviewed, and explicitly synced; it never changes a local rule or plan automatically."
             checked={updateCheck.isEnabled}
             onCheckedChange={(checked) => void setGuideUpdateCheckEnabled(checked)}
             disabled={updateCheckBusy !== null}
@@ -526,7 +579,7 @@ export function SettingsCustomFormatsPage() {
             </div>
             <Button type="button" variant="outline" size="sm" onClick={() => void runGuideUpdateCheck()} disabled={!updateCheck.isEnabled || updateCheckBusy !== null}>
               {updateCheckBusy === "run" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-              Check now
+              Check TRaSH now
             </Button>
           </div>
           {updateCheck.report && (updateCheck.report.changes.length || updateCheck.report.addedSources.length) ? (
@@ -555,6 +608,42 @@ export function SettingsCustomFormatsPage() {
                   New upstream {source.mediaType === "tv" ? "TV" : "movie"} {source.kind}: <span className="font-mono">{source.sourcePath}</span>
                 </p>
               ))}
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-[10px] border border-hairline bg-surface-2 px-3 py-2">
+                <p className="max-w-2xl text-[length:var(--type-caption)] text-muted-foreground">
+                  Build a versioned sync preview from this exact upstream revision. Deluno preserves its reviewed mappings, keeps unknown rules Advanced, and does not change saved custom formats, library profiles, or scenario plans.
+                </p>
+                <Button type="button" variant="outline" size="sm" onClick={() => void previewGuideSync()} disabled={updateCheckBusy !== null}>
+                  {updateCheckBusy === "sync-preview" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                  Preview sync
+                </Button>
+              </div>
+              {guideSyncPreview ? (
+                <div className="mt-3 rounded-[10px] border border-hairline bg-surface-2 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-[length:var(--type-body-sm)] font-medium text-foreground">
+                        {guideSyncPreview.canApply ? `Ready to sync guide package v${guideSyncPreview.proposed.version}` : "Sync preview needs attention"}
+                      </p>
+                      <p className="mt-0.5 text-[length:var(--type-caption)] text-muted-foreground">
+                        {guideSyncPreview.canApply
+                          ? `Pins the source inventory to ${guideSyncPreview.proposed.source.upstreamRevision.slice(0, 12)}. Existing local rules and plans stay as they are.`
+                          : "Nothing has been saved. Resolve the reported problem, then run a fresh check."}
+                      </p>
+                    </div>
+                    {guideSyncPreview.canApply ? (
+                      <Button type="button" size="sm" onClick={() => void applyGuideSync()} disabled={updateCheckBusy !== null}>
+                        {updateCheckBusy === "sync-apply" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                        Sync reviewed snapshot
+                      </Button>
+                    ) : null}
+                  </div>
+                  {guideSyncPreview.errors.map((error) => <p key={error} className="mt-2 text-[length:var(--type-caption)] text-destructive">{error}</p>)}
+                  {guideSyncPreview.warnings.map((warning) => <p key={warning} className="mt-2 text-[length:var(--type-caption)] text-warning">{warning}</p>)}
+                  <p className="mt-2 text-[length:var(--type-caption)] text-muted-foreground">
+                    {guideSyncPreview.profileDiffs.filter((diff) => diff.changes.length > 0).length} guide profile(s) have a compiled-package diff. Review and apply those plan changes separately; this snapshot sync does not mutate them.
+                  </p>
+                </div>
+              ) : null}
             </Disclosure>
           ) : null}
         </div>
