@@ -24,8 +24,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          # The recovery proof builds the known pre-media-plan baseline below.
-          fetch-depth: 10
+          # The recovery proof builds the declared historical baseline below.
+          # Keep its commit resolvable as main advances; a shallow fixed depth
+          # silently expires this required upgrade/recovery test after enough
+          # ordinary merges.
+          fetch-depth: 0
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3

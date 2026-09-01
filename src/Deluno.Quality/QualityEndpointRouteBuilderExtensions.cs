@@ -461,6 +461,72 @@ public static class QualityEndpointRouteBuilderExtensions
             }
         });
 
+        scenarioReads.MapPost("/{id}/preview", async (
+            string id,
+            [FromBody] ApplyMediaPlanScenarioRequest request,
+            [FromServices] IQualityRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            MediaPlanScenarioCompilation compilation;
+            try
+            {
+                compilation = MediaPlanScenarioCompiler.Compile(id, request.MediaType, request.Name, request.IsEnabled);
+            }
+            catch (KeyNotFoundException)
+            {
+                return Results.NotFound();
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    [ex.ParamName ?? "mediaType"] = [ex.Message]
+                });
+            }
+
+            var matchingPlans = (await repository.ListPolicySetsAsync(cancellationToken))
+                .Where(plan => MediaPlanScenarioPlanIdentity.Matches(plan, compilation.ScenarioId, compilation.MediaType))
+                .ToArray();
+            if (matchingPlans.Length > 1)
+            {
+                return Results.Conflict(new
+                {
+                    code = "scenario_plan_ambiguous",
+                    message = "More than one Media Plan claims this scenario and media type. Review the duplicate plans before updating either one.",
+                    scenarioId = compilation.ScenarioId,
+                    mediaType = compilation.MediaType,
+                    planIds = matchingPlans.Select(plan => plan.Id).ToArray()
+                });
+            }
+
+            var current = matchingPlans.SingleOrDefault();
+            if (current is null)
+            {
+                return Results.NotFound(new
+                {
+                    code = "scenario_plan_not_installed",
+                    message = "This scenario has not been applied for this media type yet. Review its compilation before creating a new Media Plan.",
+                    scenario = compilation
+                });
+            }
+
+            var qualityProfile = (await repository.ListQualityProfilesAsync(cancellationToken))
+                .FirstOrDefault(profile =>
+                    string.Equals(profile.MediaType, compilation.MediaType, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(profile.PresetId, compilation.QualityPresetId, StringComparison.OrdinalIgnoreCase));
+            if (qualityProfile is null)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["qualityProfileId"] = ["The scenario needs its matching Quality Profile before an update can be previewed. Create or restore that profile, then review again."]
+                });
+            }
+
+            var scenarioRequest = ToUpdateRequest(compilation.PolicySet with { QualityProfileId = qualityProfile.Id });
+            var preview = await BuildMediaPlanPreviewAsync(current, scenarioRequest, repository, cancellationToken);
+            return Results.Ok(new MediaPlanScenarioUpdatePreview(compilation, preview));
+        });
+
         scenarioWrites.MapPost("/{id}/apply", async (
             string id,
             HttpContext httpContext,
@@ -493,32 +559,36 @@ public static class QualityEndpointRouteBuilderExtensions
                 });
             }
 
-            // Applying a scenario reconciles its generated plan. Identify the
-            // plan by the stable scenario marker rather than its display name
-            // or exact version, so a name override and a newer catalog version
-            // update the same plan instead of creating a duplicate.
-            var existing = (await repository.ListPolicySetsAsync(cancellationToken))
-                .FirstOrDefault(plan =>
-                    plan.Notes?.Contains($"Scenario: {compilation.ScenarioId}", StringComparison.OrdinalIgnoreCase) == true);
+            // A scenario deliberately has separate Movie and TV variants. Its
+            // structured marker and media type together are the identity, so a
+            // TV update can never select and overwrite the Movie plan.
+            var matchingPlans = (await repository.ListPolicySetsAsync(cancellationToken))
+                .Where(plan => MediaPlanScenarioPlanIdentity.Matches(plan, compilation.ScenarioId, compilation.MediaType))
+                .ToArray();
+            if (matchingPlans.Length > 1)
+            {
+                return Results.Conflict(new
+                {
+                    code = "scenario_plan_ambiguous",
+                    message = "More than one Media Plan claims this scenario and media type. Review the duplicate plans before updating either one.",
+                    scenarioId = compilation.ScenarioId,
+                    mediaType = compilation.MediaType,
+                    planIds = matchingPlans.Select(plan => plan.Id).ToArray()
+                });
+            }
 
+            var existing = matchingPlans.SingleOrDefault();
             var qualityProfile = (await repository.ListQualityProfilesAsync(cancellationToken))
                 .FirstOrDefault(profile =>
                     string.Equals(profile.MediaType, compilation.MediaType, StringComparison.OrdinalIgnoreCase) &&
                     string.Equals(profile.PresetId, compilation.QualityPresetId, StringComparison.OrdinalIgnoreCase));
             var createdQualityProfile = false;
-            if (qualityProfile is null)
-            {
-                qualityProfile = await repository.CreateQualityProfileFromPresetAsync(
-                    compilation.QualityPresetId,
-                    null,
-                    cancellationToken);
-                createdQualityProfile = true;
-            }
 
             if (existing is not null)
             {
                 var versionMarker = $"Scenario: {compilation.ScenarioId} v{compilation.ScenarioVersion}";
                 if (existing.Notes?.Contains(versionMarker, StringComparison.OrdinalIgnoreCase) == true
+                    && qualityProfile is not null
                     && string.Equals(existing.QualityProfileId, qualityProfile.Id, StringComparison.OrdinalIgnoreCase))
                 {
                     return Results.Ok(new
@@ -532,11 +602,69 @@ public static class QualityEndpointRouteBuilderExtensions
                     });
                 }
 
-                var updated = await repository.UpdatePolicySetAsync(
-                    existing.Id,
-                    ToUpdateRequest(compilation.PolicySet with { QualityProfileId = qualityProfile.Id }),
-                    cancellationToken,
-                    "scenario-update");
+                if (qualityProfile is null)
+                {
+                    return Results.ValidationProblem(new Dictionary<string, string[]>
+                    {
+                        ["qualityProfileId"] = ["The scenario needs its matching Quality Profile before an update can be previewed. Create or restore that profile, then review again."]
+                    });
+                }
+
+                var scenarioRequest = ToUpdateRequest(compilation.PolicySet with { QualityProfileId = qualityProfile.Id });
+                var preview = await BuildMediaPlanPreviewAsync(existing, scenarioRequest, repository, cancellationToken);
+                if (!preview.HasChanges)
+                {
+                    return Results.Ok(new
+                    {
+                        scenario = compilation,
+                        qualityProfile,
+                        policySet = existing,
+                        created = false,
+                        updated = false,
+                        createdQualityProfile
+                    });
+                }
+
+                if (string.IsNullOrWhiteSpace(request.BasePlanHash))
+                {
+                    return Results.Conflict(new
+                    {
+                        code = "scenario_update_requires_preview",
+                        message = "This scenario would change an existing Media Plan. Review the returned diff, then apply using its basePlanHash.",
+                        scenario = compilation,
+                        preview
+                    });
+                }
+
+                if (!string.Equals(request.BasePlanHash.Trim(), preview.BasePlanHash, StringComparison.OrdinalIgnoreCase))
+                {
+                    return Results.Conflict(new
+                    {
+                        code = "scenario_preview_stale",
+                        message = "This Media Plan changed after the scenario preview. Review a fresh diff before applying it.",
+                        scenario = compilation,
+                        preview
+                    });
+                }
+
+                PolicySetItem? updated;
+                try
+                {
+                    updated = await repository.UpdatePolicySetAsync(
+                        existing.Id,
+                        scenarioRequest,
+                        cancellationToken,
+                        "scenario-update",
+                        preview.BasePlanHash);
+                }
+                catch (MediaPlanVersionConflictException)
+                {
+                    return Results.Conflict(new
+                    {
+                        code = "scenario_preview_stale",
+                        message = "This Media Plan changed while the scenario update was being applied. Review a fresh diff before trying again."
+                    });
+                }
                 if (updated is null)
                 {
                     return Results.NotFound();
@@ -553,6 +681,15 @@ public static class QualityEndpointRouteBuilderExtensions
                     updated = true,
                     createdQualityProfile
                 });
+            }
+
+            if (qualityProfile is null)
+            {
+                qualityProfile = await repository.CreateQualityProfileFromPresetAsync(
+                    compilation.QualityPresetId,
+                    null,
+                    cancellationToken);
+                createdQualityProfile = true;
             }
 
             var policySet = await repository.CreatePolicySetAsync(
@@ -955,7 +1092,7 @@ public static class QualityEndpointRouteBuilderExtensions
                 proposedSnapshot,
                 changes,
                 changes.Count > 0,
-                latest?.PlanHash));
+                latest?.PlanHash ?? MediaPlanVersionCodec.ComputeHash(currentSnapshot)));
         });
 
         policySets.MapPost("{id}/effective-preview", async (
@@ -1534,6 +1671,42 @@ public static class QualityEndpointRouteBuilderExtensions
             request.AutomationIntent ?? current.AutomationIntent,
             releasePreferencePlan);
         return MediaPlanSnapshot.From(proposed);
+    }
+
+    private static async Task<MediaPlanPreview> BuildMediaPlanPreviewAsync(
+        PolicySetItem current,
+        UpdatePolicySetRequest request,
+        IQualityRepository repository,
+        CancellationToken cancellationToken)
+    {
+        var currentSnapshot = MediaPlanSnapshot.From(current);
+        var requestedQualityProfileId = string.IsNullOrWhiteSpace(request.QualityProfileId)
+            ? null
+            : request.QualityProfileId.Trim();
+        var proposedReleasePreferencePlan = current.ReleasePreferencePlan;
+        if (!string.Equals(requestedQualityProfileId, current.QualityProfileId, StringComparison.OrdinalIgnoreCase))
+        {
+            proposedReleasePreferencePlan = requestedQualityProfileId is null
+                ? null
+                : (await repository.ListQualityProfilesAsync(cancellationToken))
+                    .FirstOrDefault(profile => string.Equals(profile.Id, requestedQualityProfileId, StringComparison.OrdinalIgnoreCase))
+                    ?.ReleasePreferencePlan;
+        }
+
+        var proposedSnapshot = BuildProposedMediaPlanSnapshot(
+            current,
+            request,
+            proposedReleasePreferencePlan);
+        var changes = MediaPlanVersionCodec.Diff(currentSnapshot, proposedSnapshot);
+        var latest = await repository.GetLatestMediaPlanVersionAsync(current.Id, cancellationToken);
+        return new MediaPlanPreview(
+            current.Id,
+            latest?.Version,
+            currentSnapshot,
+            proposedSnapshot,
+            changes,
+            changes.Count > 0,
+            latest?.PlanHash ?? MediaPlanVersionCodec.ComputeHash(currentSnapshot));
     }
 
     private static Dictionary<string, string[]> ValidateQualityProfile(

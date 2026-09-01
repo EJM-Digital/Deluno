@@ -110,6 +110,24 @@ public sealed record MediaPlanPreview(
 public sealed record RollbackMediaPlanRequest(int Version);
 
 /// <summary>
+/// Raised when a reviewed Media Plan is no longer the same immutable content
+/// at apply time. Callers must fetch a fresh preview rather than overwriting a
+/// change that happened after the owner reviewed it.
+/// </summary>
+public sealed class MediaPlanVersionConflictException(
+    string planId,
+    string expectedPlanHash,
+    string actualPlanHash)
+    : InvalidOperationException($"Media Plan '{planId}' changed after it was previewed.")
+{
+    public string PlanId { get; } = planId;
+
+    public string ExpectedPlanHash { get; } = expectedPlanHash;
+
+    public string ActualPlanHash { get; } = actualPlanHash;
+}
+
+/// <summary>
 /// Canonical serialization and diffing for media-plan history. A version hash
 /// is content-addressed and intentionally independent of its sequence number:
 /// rolling back creates a new audit version while retaining the old content

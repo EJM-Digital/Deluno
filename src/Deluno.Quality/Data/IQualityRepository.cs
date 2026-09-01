@@ -54,7 +54,8 @@ public interface IQualityRepository
         string id,
         UpdatePolicySetRequest request,
         CancellationToken cancellationToken,
-        string changeKind = "update");
+        string changeKind = "update",
+        string? expectedPlanHash = null);
 
     Task<bool> DeleteQualityProfileAsync(string id, CancellationToken cancellationToken);
     Task<bool> DeleteCustomFormatAsync(string id, CancellationToken cancellationToken);

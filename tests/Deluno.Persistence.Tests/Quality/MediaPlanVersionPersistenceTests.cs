@@ -237,4 +237,38 @@ public sealed class MediaPlanVersionPersistenceTests
         Assert.Single(versions);
         Assert.Equal("create", versions[0].ChangeKind);
     }
+
+    [Fact]
+    public async Task Reviewed_update_rejects_a_stale_plan_hash_without_overwriting_newer_work()
+    {
+        using var storage = TestStorage.Create();
+        var clock = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-31T03:00:00Z"));
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, clock),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var repository = new SqliteQualityRepository(storage.Factory, clock);
+        var created = await repository.CreatePolicySetAsync(
+            new CreatePolicySetRequest("Plan", "movies", null, null, null, null, null, true, true, null),
+            CancellationToken.None);
+        var reviewedHash = (await repository.GetLatestMediaPlanVersionAsync(created.Id, CancellationToken.None))!.PlanHash;
+
+        var updated = await repository.UpdatePolicySetAsync(
+            created.Id,
+            new UpdatePolicySetRequest("Newer plan", "movies", null, null, null, null, null, true, true, null),
+            CancellationToken.None);
+        Assert.NotNull(updated);
+
+        var conflict = await Assert.ThrowsAsync<MediaPlanVersionConflictException>(() => repository.UpdatePolicySetAsync(
+            created.Id,
+            new UpdatePolicySetRequest("Stale plan", "movies", null, null, null, null, null, true, true, null),
+            CancellationToken.None,
+            expectedPlanHash: reviewedHash));
+
+        Assert.Equal(created.Id, conflict.PlanId);
+        var current = Assert.Single(await repository.ListPolicySetsAsync(CancellationToken.None));
+        Assert.Equal("Newer plan", current.Name);
+        Assert.Equal([2, 1], (await repository.ListMediaPlanVersionsAsync(created.Id, CancellationToken.None)).Select(item => item.Version));
+    }
 }
