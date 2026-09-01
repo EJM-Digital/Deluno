@@ -323,21 +323,22 @@ public static partial class ReleaseDecisionEngine
             // look comparable to the new one. When a real installed file is
             // present, a stale or missing snapshot is not repaired by parsing
             // its path: the path is not proof of the container's contents.
+            // An installed-file baseline is trusted only when every part of
+            // the durable snapshot names this exact immutable plan.  In
+            // particular, never rebuild installed facts from a release name
+            // or a quality label: those values describe a search row, not the
+            // container that is currently held.  A missing or malformed
+            // snapshot therefore holds replacement automation until a probe
+            // records fresh evidence for the file.
             var currentFacts = input.CurrentPreferenceEvaluation is { } snapshot
                 && string.Equals(snapshot.PlanId, preferencePlan.Id, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(snapshot.PlanVersion, preferencePlan.Version, StringComparison.Ordinal)
                 && string.Equals(snapshot.PlanHash, preferencePlan.PlanHash, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(snapshot.Evaluation.PlanId, snapshot.PlanId, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(snapshot.Evaluation.PlanVersion, snapshot.PlanVersion, StringComparison.Ordinal)
                 && string.Equals(snapshot.Evaluation.PlanHash, snapshot.PlanHash, StringComparison.OrdinalIgnoreCase)
                 ? snapshot.Facts
-                : input.CurrentPreferenceEvaluation is not null || input.CurrentFilePresent
-                    ? null
-                    : string.IsNullOrWhiteSpace(input.CurrentReleaseName) && string.IsNullOrWhiteSpace(input.CurrentQuality)
-                    ? null
-                    : ReleasePreferenceFactFactory.FromReleaseName(
-                        preferencePlan,
-                        input.CurrentReleaseName,
-                        input.CurrentQuality,
-                        "installed-file-re-evaluation");
+                : null;
             if (currentFacts is not null)
             {
                 preferenceComparison = ReleasePreferenceEvaluator.Compare(
