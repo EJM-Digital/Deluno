@@ -66,29 +66,14 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Verify local image starts and serves health endpoint
+      - name: Verify persistent data and failed-replacement recovery
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         env:
           IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
         run: |
           set -euo pipefail
           image_tag="$(printf '%s\n' "$IMAGE_TAGS" | sed -n '1p')"
-          docker run --detach --name deluno-docker-ci \
-            --publish 18080:8080 \
-            --env Server__Port=8080 \
-            --env Server__AllowLan=true \
-            --env Storage__DataRoot=/data \
-            "$image_tag"
-          cleanup() { docker logs deluno-docker-ci || true; docker rm --force deluno-docker-ci || true; }
-          trap cleanup EXIT
-          for attempt in $(seq 1 60); do
-            if curl --fail --silent http://127.0.0.1:18080/health >/dev/null; then
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "Container did not become live within 120 seconds."
-          exit 1
+          bash scripts/test-docker-recovery.sh "$image_tag"
 
       - name: Verify pushed digest is addressable
         if: startsWith(github.ref, 'refs/tags/v')
