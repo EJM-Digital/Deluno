@@ -79,7 +79,65 @@ public sealed record MediaPlanScenarioCompilation(
 public sealed record ApplyMediaPlanScenarioRequest(
     string? MediaType = null,
     string? Name = null,
-    bool? IsEnabled = null);
+    bool? IsEnabled = null,
+    string? BasePlanHash = null);
+
+/// <summary>
+/// The server-side result an owner reviews before applying a newer scenario to
+/// an existing Media Plan. The base hash is a concurrency precondition, not a
+/// hidden approval token: it proves the preview was based on the same immutable
+/// plan content that the owner is about to change.
+/// </summary>
+public sealed record MediaPlanScenarioUpdatePreview(
+    MediaPlanScenarioCompilation Scenario,
+    MediaPlanPreview Preview);
+
+/// <summary>
+/// Identifies the one generated plan for a scenario *and* media type. A
+/// scenario can deliberately have Movie and TV variants, so matching the
+/// scenario marker alone could otherwise overwrite the other variant.
+/// </summary>
+public static class MediaPlanScenarioPlanIdentity
+{
+    public static bool Matches(PolicySetItem plan, string scenarioId, string mediaType)
+    {
+        if (!string.Equals(NormalizeMediaType(plan.MediaType), NormalizeMediaType(mediaType), StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (string.Equals(plan.AutomationIntent?.ScenarioId, scenarioId, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        // Older generated plans predate the structured scenario id. Retain a
+        // narrow, line-based fallback so they remain discoverable without
+        // treating a display name or a partial marker as identity.
+        return (plan.Notes ?? string.Empty)
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Any(line =>
+            {
+                const string prefix = "Scenario:";
+                if (!line.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+
+                var marker = line[prefix.Length..].Trim()
+                    .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .FirstOrDefault();
+                return string.Equals(marker, scenarioId, StringComparison.OrdinalIgnoreCase);
+            });
+    }
+
+    private static string NormalizeMediaType(string? value)
+        => string.Equals(value?.Trim(), "tv", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(value?.Trim(), "tv shows", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(value?.Trim(), "tvshows", StringComparison.OrdinalIgnoreCase)
+            ? "tv"
+            : "movies";
+}
 
 public static class MediaPlanScenarioCompiler
 {

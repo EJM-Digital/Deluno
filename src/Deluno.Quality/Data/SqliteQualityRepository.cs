@@ -540,7 +540,8 @@ public sealed class SqliteQualityRepository(
         string id,
         UpdatePolicySetRequest request,
         CancellationToken cancellationToken,
-        string changeKind = "update")
+        string changeKind = "update",
+        string? expectedPlanHash = null)
     {
         var now = timeProvider.GetUtcNow();
 
@@ -553,6 +554,20 @@ public sealed class SqliteQualityRepository(
         if (current is null)
         {
             return null;
+        }
+
+        // A reviewed update uses updated_utc as its compare-and-swap witness.
+        // Keep it strictly monotonic for one plan even under a fixed/coarse
+        // clock, otherwise two writes in the same clock tick could both look
+        // like they still match the reviewed snapshot.
+        var updatedUtc = now <= current.UpdatedUtc
+            ? current.UpdatedUtc.AddTicks(1)
+            : now;
+        var currentPlanHash = MediaPlanVersionCodec.ComputeHash(MediaPlanSnapshot.From(current));
+        if (!string.IsNullOrWhiteSpace(expectedPlanHash)
+            && !string.Equals(expectedPlanHash.Trim(), currentPlanHash, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new MediaPlanVersionConflictException(id, expectedPlanHash.Trim(), currentPlanHash);
         }
 
         // Plans created before version history was introduced still receive a
@@ -615,7 +630,8 @@ public sealed class SqliteQualityRepository(
                 notes = @notes,
                 automation_intent_json = @automationIntent,
                 updated_utc = @updatedUtc
-            WHERE id = @id;
+            WHERE id = @id
+              AND (@expectedUpdatedUtc IS NULL OR updated_utc = @expectedUpdatedUtc);
             """;
 
         AddParameter(command, "@id", id);
@@ -631,8 +647,15 @@ public sealed class SqliteQualityRepository(
         AddParameter(command, "@notes", NormalizeName(request.Notes));
         AddParameter(command, "@automationIntent", MediaPlanAutomationIntentCodec.Serialize(
             request.AutomationIntent ?? current.AutomationIntent));
-        AddParameter(command, "@updatedUtc", now.ToString("O"));
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        AddParameter(command, "@updatedUtc", updatedUtc.ToString("O"));
+        AddParameter(command, "@expectedUpdatedUtc", string.IsNullOrWhiteSpace(expectedPlanHash)
+            ? null
+            : current.UpdatedUtc.ToString("O"));
+        var affected = await command.ExecuteNonQueryAsync(cancellationToken);
+        if (!string.IsNullOrWhiteSpace(expectedPlanHash) && affected == 0)
+        {
+            throw new MediaPlanVersionConflictException(id, expectedPlanHash.Trim(), currentPlanHash);
+        }
 
         var updated = await GetPolicySetAsync(connection, id, cancellationToken, transaction);
         if (updated is not null)

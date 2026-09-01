@@ -248,6 +248,7 @@ POST /api/libraries/{id}/search-now
 POST /api/libraries/{id}/skip-cycle
 POST /api/library-views/
 POST /api/media-plan-scenarios/{id}/apply
+POST /api/media-plan-scenarios/{id}/preview
 POST /api/metadata/test
 POST /api/migration/apply
 POST /api/migration/preview
